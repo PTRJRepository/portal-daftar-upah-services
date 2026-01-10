@@ -8,3 +8,5 @@ backend/data/users.db
 *.db
 backend/nul  
 nul 
+node_modules 
+dist 
