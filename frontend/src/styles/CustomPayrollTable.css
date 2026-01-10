@@ -1,0 +1,262 @@
+/* CustomPayrollTable.css - Solid Multi-Level Headers */
+
+.payroll-table-container {
+    overflow: auto;
+    position: relative;
+    height: 100%;
+    border: 1px solid #1a365d;
+    font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: white;
+}
+
+.payroll-table {
+    border-collapse: collapse;
+    /* KEY: Use collapse instead of separate */
+    border-spacing: 0;
+    width: max-content;
+    min-width: 100%;
+    font-size: 12px;
+}
+
+/* --- Headers (Solid, No Gaps) --- */
+.payroll-table thead th {
+    background-color: #1a365d;
+    color: white;
+    padding: 4px 8px;
+    /* Reduced padding */
+    margin: 0;
+    border: none;
+    /* NO borders between header cells */
+    border-right: 1px solid rgba(255, 255, 255, 0.15);
+    /* Subtle vertical divider only */
+    font-weight: 600;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 0.9em;
+    user-select: none;
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+
+/* Last column no right border */
+.payroll-table thead th:last-child {
+    border-right: none;
+}
+
+/* Sticky Headers */
+.sticky-header {
+    position: sticky;
+    z-index: 20;
+    background-color: #1a365d;
+    /* Ensure solid background */
+}
+
+/* Sticky Columns (Body) */
+.sticky-col {
+    position: sticky;
+    z-index: 10;
+    background-color: #fff;
+}
+
+/* Corner cell (both sticky row and column) */
+.sticky-corner {
+    z-index: 30 !important;
+    background-color: #1a365d !important;
+    color: white !important;
+}
+
+/* --- Body Cells --- */
+.payroll-table tbody td {
+    padding: 4px 8px;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    color: #2d3748;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    cursor: default;
+    box-sizing: border-box;
+}
+
+.payroll-table tbody tr.row-even {
+    background-color: #f8fafc;
+}
+
+.payroll-table tbody tr.row-odd {
+    background-color: #ffffff;
+}
+
+.payroll-table tbody tr:hover td {
+    background-color: #ebf8ff;
+}
+
+.payroll-table tbody tr.row-highlighted td {
+    background-color: #e3f2fd !important;
+}
+
+/* Sticky Body Cells inherit row background */
+.payroll-table tbody tr.row-even .sticky-col {
+    background-color: #f8fafc;
+}
+
+.payroll-table tbody tr.row-odd .sticky-col {
+    background-color: #ffffff;
+}
+
+.payroll-table tbody tr:hover .sticky-col {
+    background-color: #ebf8ff;
+}
+
+.payroll-table tbody tr.row-highlighted .sticky-col {
+    background-color: #e3f2fd !important;
+}
+
+/* --- Cell Selection --- */
+.cell-selected {
+    background-color: rgba(33, 150, 243, 0.2) !important;
+    outline: 1px solid #2196f3;
+    outline-offset: -1px;
+}
+
+/* --- Gang Header Row --- */
+.gang-header-row td {
+    background-color: #e2e8f0;
+    font-weight: bold;
+    color: #1a365d;
+    padding: 8px 12px;
+    border-top: 2px solid #94a3b8;
+    border-bottom: 2px solid #94a3b8;
+}
+
+/* --- Gang Total Row --- */
+.gang-total-row td {
+    background-color: #cbd5e1;
+    font-weight: bold;
+    color: #1e293b;
+    border-top: 1px solid #94a3b8;
+}
+
+/* --- Grand Total Row (Footer) --- */
+.grand-total-row td {
+    background-color: #1a365d !important;
+    color: #fbbf24 !important;
+    font-weight: bold;
+    border-top: 2px solid #0f172a;
+    position: sticky;
+    bottom: 0;
+    z-index: 15;
+}
+
+.grand-total-row .sticky-col {
+    z-index: 25;
+    background-color: #1a365d !important;
+    color: #fbbf24 !important;
+}
+
+/* --- Text Alignment --- */
+.text-right {
+    text-align: right;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-left {
+    text-align: left;
+}
+
+.font-bold {
+    font-weight: bold;
+}
+
+/* --- Column Specific Colors --- */
+.cell-absensi {
+    background-color: #f0f4ff;
+}
+
+.cell-upah-dasar {
+    background-color: #f3e8ff;
+}
+
+.cell-total-tunjangan {
+    background-color: #e6fffa;
+    font-weight: bold;
+}
+
+.cell-premi-dynamic {
+    background-color: #fefce8;
+}
+
+.cell-total-premi {
+    background-color: #f0fff4;
+    font-weight: bold;
+}
+
+.cell-deduction {
+    background-color: #fff1f2;
+    font-weight: bold;
+    color: #dc2626;
+}
+
+.cell-net-salary {
+    background-color: #166534 !important;
+    /* Dark green */
+    color: #fff !important;
+    font-weight: bold;
+}
+
+.cell-upah-kotor {
+    background-color: #dbeafe;
+    font-weight: bold;
+    color: #1e40af;
+}
+
+/* --- Context Menu --- */
+.context-menu {
+    position: fixed;
+    background: white;
+    border: 1px solid #ccc;
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 160px;
+    border-radius: 4px;
+}
+
+.context-menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #333;
+}
+
+.context-menu-item:hover {
+    background-color: #f0f0f0;
+}
+
+.context-menu-separator {
+    height: 1px;
+    background-color: #eee;
+    margin: 4px 0;
+}
+
+/* --- Selection Status Bar --- */
+.selection-status-bar {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to right, #f8f9fa, #e9ecef);
+    border-top: 1px solid #dee2e6;
+    padding: 6px 16px;
+    font-size: 11px;
+    display: flex;
+    gap: 24px;
+    justify-content: flex-end;
+    color: #495057;
+    z-index: 40;
+}
+
+.stat-item strong {
+    color: #1a365d;
+    margin-right: 4px;
+}

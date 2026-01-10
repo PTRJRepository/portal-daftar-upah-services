@@ -1,0 +1,10 @@
+.DS_Store
+.env
+*.pyc
+__pycache__/
+*.swp
+*~
+backend/data/users.db
+*.db
+backend/nul  
+nul 

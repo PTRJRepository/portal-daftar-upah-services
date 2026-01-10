@@ -1,0 +1,56 @@
+﻿python : Traceback 
+(most recent call 
+last):
+At line:1 char:1
++ python 
+test_db_gateway.py 
+2>&1 | Out-File 
+-FilePath 
+test_results.txt  ...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (Traceba   
+ ck (most recent     
+call last)::Stri    
+ng) [], RemoteEx    
+ception
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+  File "D:\Gawean 
+Rebinmas\Monitoring D
+atabase\Plantware_Aut
+o_Report\Daftar_Upah_
+baru\payroll_daftar_u
+pah\refactor_producti
+on\backend\test_db_ga
+teway.py", line 102, 
+in <module>
+    print("\n" + 
+"\U0001f680 TESTING 
+REFACTORED DATABASE 
+CLASS ".center(60, 
+"="))
+  File "C:\Program Fi
+les\WindowsApps\Pytho
+nSoftwareFoundation.P
+ython.3.10_3.10.3056.
+0_x64__qbz5n2kfra8p0\
+lib\encodings\cp1252.
+py", line 19, in 
+encode
+    return codecs.cha
+rmap_encode(input,sel
+f.errors,encoding_tab
+le)[0]
+UnicodeEncodeError: 
+'charmap' codec 
+can't encode 
+character 
+'\U0001f680' in 
+position 14: 
+character maps to 
+<undefined>

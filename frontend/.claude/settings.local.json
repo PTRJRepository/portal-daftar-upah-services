@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(npm run dev:test:*)",
+      "Bash(python:*)",
+      "Bash(cd:*)",
+      "Bash(set:*)",
+      "Bash(dir:*)",
+      "Bash(git checkout:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(DEV_MODE=true python:*)",
+      "Bash(DEV_MODE=true uvicorn:*)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(uvicorn:*)",
+      "Bash(node:*)",
+      "Bash(powershell \"Stop-Process -Id 98564 -Force\")",
+      "Bash(ipconfig:*)",
+      "Bash(powershell:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,193 @@
+Berdasarkan file daftar_upah_engine_real_database.py yang telah saya baca, saya dapat menganalisis cara pengambilan data dan endpoint real di backend lama:
+
+  Analisis Backend Lama
+
+  1. Struktur Pengambilan Data
+   - Backend lama menggunakan fungsi generate_report_from_real_database() untuk mengambil data dari database
+   - Fungsi ini terlebih dahulu mendapatkan data karyawan menggunakan self.query_manager.get_employees_for_gang(gang_code, limit)
+   - Kemudian menggabungkan data karyawan dengan data cuti menggunakan merge_employee_with_cuti_data()
+
+  2. Fungsi-Fungsi Pengambilan Data Spesifik
+   - get_employee_hk_count(emp_code, bulan, tahun) - Mengambil jumlah HK dari PR_EMP_ATTN_ARC
+   - get_employee_payrate(emp_code) - Mengambil upah dasar dari HR_PAYROLL
+   - get_employee_beras_payrate(emp_code) - Mengambil rate beras dari query Payrate_Beras.sql
+   - get_employee_jabatan_amount(emp_code, month, year) - Mengambil tunjangan jabatan dari query Gett_Amount_Tunjangan_Jabatan.sql
+   - get_employee_masa_kerja_amount(emp_code, month, year) - Mengambil tunjangan masa kerja
+   - get_employee_lembur_hours_and_amount(emp_code, month, year) - Mengambil lembur
+   - get_employee_brondol_amount(emp_code, month, year) - Mengambil premi brondol dari PR_LOOSEFRUIT_ARC
+   - get_employee_pruning_amount(emp_code, month, year) - Mengambil premi pruning
+   - get_employee_dynamic_premi_amount(emp_code, doc_desc, month, year) - Mengambil premi dinamis
+   - get_employee_spsi_amount(emp_code, month, year) - Mengambil potongan SPSI
+   - get_employee_pph21_amount(emp_code, month, year) - Mengambil potongan PPH21
+
+  3. Penggunaan Query File
+  Backend lama:
+   - Menggunakan file-file SQL dari direktori query/ seperti:
+     - get_detail_emp_each_gang.sql
+     - Tunjangan/Payrate_Beras.sql
+     - Tunjangan/Gett_Amount_Tunjangan_Jabatan.sql
+     - potongan/potongan_spsi.sql
+     - potongan/potong_pph21.sql
+     - get_cuti_tahunan.sql
+     - get_cuti_sakit.sql
+     - dan lainnya
+
+  4. Archive Mode Detection
+   - Sistem mendeteksi apakah menggunakan tabel arsip (_ARC) atau tabel dasar (_BASE)
+   - PR_EMP_ATTN_ARC, PR_ADTRANS_ARC, dll. bisa digunakan atau yang tanpa _ARC
+
+  5. Perhitungan yang Digunakan
+   - calculate_hari_kerja() - Menghitung hari kerja dari HK dikurangi cuti
+   - calculate_gaji_pokok() - Menghitung gaji pokok dari HK dikurangi cuti × upah dasar
+   - calculate_gaji_pokok_jmlhk() - Menghitung gaji pokok dari JML HK × upah dasar
+   - calculate_total_tunjangan() - Menghitung total tunjangan
+   - calculate_total_premi() - Menghitung total premi
+   - calculate_total_potongan() - Menghitung total potongan
+   - calculate_upah_bersih() - Menghitung upah bersih
+
+  Sekarang saya akan lanjutkan ke analisis berikutnya:
+
+
+  Based on my analysis of the old backend system, I'll now document the key components and their interactions:
+
+  Old Backend Architecture Analysis
+
+  1. Core Components
+
+  Payroll Service (payroll_service.py)
+   - Purpose: Main business logic for payroll calculations
+   - Key Functions:
+     - generate_rows(): Main method that fetches employee data and calculates payroll
+     - Calculation methods for various components (Gaji Pokok, Tunjangan, Premi, etc.)
+     - BPJS calculations with complex business rules
+   - Data Flow: Fetches data from multiple SQL queries and calculates payroll components
+
+  Database Service (database/database.py)
+   - Purpose: Handles database connections with connection pooling
+   - Features:
+     - Connection pooling for performance
+     - Retry mechanisms for failed queries
+     - Transaction support
+     - Query timeout handling
+
+  Employee Repository (employee_repository_db.py)
+   - Purpose: Manages employee data retrieval
+   - Functionality:
+     - Fetches employee details by gang code
+     - Handles gang filtering and pagination
+     - Joins HR_EMPLOYEE with HR_GANGLN tables
+
+  API Layer (api/payroll.py)
+   - Purpose: Exposes payroll data via REST endpoints
+   - Key Endpoints:
+     - /report - Main payroll data endpoint
+     - /headers - Dynamic column headers
+     - /columns - Column definitions
+     - /divisions - Division codes
+     - /gangs - Gang codes
+     - /report/aggregate - Summary data
+     - /report/division-optimized - Division-wide data
+
+  2. Data Flow Process
+
+  Employee Data Retrieval
+   1. EmployeeRepositoryDB.list() fetches employees from database
+   2. SQL query joins HR_EMPLOYEE with HR_GANGLN to get gang membership
+   3. Results are filtered by gang code if specified
+
+  Payroll Calculation Process
+   1. Employee Data: Fetch employee list using EmployeeRepositoryDB
+   2. Payrate Data: Query HR_PAYROLL table for PayRate
+   3. HK (Hari Kerja) Data: Use get_total_HK_each_Emp.sql query
+   4. Cuti Data: Multiple queries for different cuti types (tahunan, sakit, minggu, nasional)
+   5. Tunjangan Data: Multiple queries for beras, jabatan, masa kerja, lembur
+   6. Premi Data: Static (brondol) and dynamic queries from PR_ADTRANS_ARC and PR_LOOSEFRUIT_ARC
+   7. Potongan Data: BPJS, SPSI, PPH21, and dynamic potongan calculations
+   8. Final Calculations: Apply business formulas to calculate totals
+
+  3. Key Business Logic
+
+  BPJS Calculation Formula:
+   - Base = gaji_pokok_min (config) + masa_kerja_jumlah
+   - BPJS Kesehatan Pekerja = Base × 1%
+   - BPJS Kesehatan Majikan = Base × 4%
+   - BPJS Pensiun Pekerja = Base × 1%
+   - BPJS Pensiun Majikan = Base × 2%
+
+  Hari Kerja Calculation:
+   - hari_kerja = hk_count - (cuti_tahunan + cuti_sakit + hk_minggu + hk_nasional)
+
+  Gaji Pokok Calculation:
+   - gaji_pokok = hari_kerja * payrate (after cuti deductions)
+   - jumlah_upah_kotor = (hk_count * payrate) + total_tunjangan + total_premi (before cuti deductions)
+
+  4. Dynamic Headers and Premi
+
+  Dynamic Premi Headers:
+   - Queries PR_ADTRANS_ARC table for distinct DocDesc values
+   - Filters out excluded keywords (PPH21, SPSI, etc.)
+   - Normalizes field names using _normalize_premi_field_name()
+
+  Dynamic Potongan:
+   - Similar to premi but for deduction items
+   - Must start with "POT" prefix to be included
+
+  5. Configuration and Constants
+
+  Config File (config.json):
+   - Database connection settings
+   - Constants for BPJS calculations
+   - Upah minimum values
+   - Different profiles for local/remote connections
+
+  6. Caching Mechanism
+
+  In-Memory Cache:
+   - Payrate mappings
+   - Premi data caches
+   - Cuti data caches
+   - 300-second TTL by default
+
+  7. Error Handling & Retries
+
+  Robust Error Handling:
+   - Query timeout handling
+   - Connection retry mechanisms
+   - Graceful degradation for missing data
+   - Fallback values for failed calculations
+
+  This analysis provides the foundation for refactoring the backend to maintain the same functionality while potentially improving
+  architecture and performance.
+
+ ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ ✓  TodoWrite Update todos                                                                        │
+ │                                                                                                  │
+ │    ●  Analyze payroll_service.py to understand core payroll calculation logic                    │
+ │    ●  Analyze payroll API endpoints to understand data flow and response structure               │
+ │    ●  Analyze employee repository to understand database queries                                 │
+ │    ●  Analyze database service to understand connection pooling and query execution              │
+ │    ●  Analyze reference engine daftar_upah_engine_real_database.py to understand business logic  │
+ │    ●  Document the key components and their interactions                                         │
+ ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+✦ I have completed my analysis of the old backend system. Here's a summary of what I found:
+
+  Summary of Old Backend Analysis
+
+  I have thoroughly analyzed the old backend system and documented:
+
+   1. Core Components: Payroll Service, Database Service, Employee Repository, and API layer
+   2. Data Flow Process: From employee data retrieval to payroll calculation
+   3. Key Business Logic: BPJS calculations, Hari Kerja formulas, Gaji Pokok calculations
+   4. Dynamic Headers: How premi and potongan headers are dynamically generated
+   5. Configuration: How constants and database settings are managed
+   6. Caching: In-memory caching mechanisms for performance
+   7. Error Handling: Robust retry and fallback mechanisms
+
+  The old backend is a well-structured system with complex payroll calculations that integrate with SQL Server database queries. It handles
+  employee data, calculates various components (tunjangan, premi, potongan), and provides REST API endpoints for the frontend.
+
+  The system uses connection pooling, caching, and has comprehensive error handling. The payroll calculation logic follows specific business
+  rules for BPJS, cuti calculations, and other payroll components.
+
+  All analysis tasks are now complete. The information gathered provides a solid foundation for understanding how the original system works,
+  which will be valuable for any refactoring or enhancement work while maintaining the same functionality.

@@ -1,0 +1,275 @@
+:root {
+  /* Brand Colors - Plantation Green (Sawit Theme) */
+  --primary-50: #f0fdf4;
+  --primary-100: #dcfce7;
+  --primary-200: #bbf7d0;
+  --primary-300: #86efac;
+  --primary-400: #4ade80;
+  --primary-500: #22c55e;
+  --primary-600: #16a34a;
+  --primary-700: #15803d;
+  --primary-800: #166534;
+  --primary-900: #14532d;
+  --primary-950: #052e16;
+
+  /* Neutral / Slate - Professional Grey */
+  --neutral-50: #f8fafc;
+  --neutral-100: #f1f5f9;
+  --neutral-200: #e2e8f0;
+  --neutral-300: #cbd5e1;
+  --neutral-400: #94a3b8;
+  --neutral-500: #64748b;
+  --neutral-600: #475569;
+  --neutral-700: #334155;
+  --neutral-800: #1e293b;
+  --neutral-900: #0f172a;
+
+  /* Components */
+  --bg-body: var(--neutral-50);
+  --bg-card: #ffffff;
+  --border-color: var(--neutral-200);
+  --text-main: var(--neutral-800);
+  --text-secondary: var(--neutral-600);
+  --text-muted: var(--neutral-400);
+
+  /* AG Grid Overrides */
+  --ag-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ag-font-size: 13px;
+  --ag-header-height: 44px;
+  --ag-row-height: 32px; /* Compact for accounting */
+  --ag-header-background-color: #ffffff;
+  --ag-header-foreground-color: var(--neutral-700);
+  --ag-border-color: var(--neutral-200);
+  --ag-odd-row-background-color: #ffffff;
+  --ag-row-hover-color: var(--primary-50);
+  --ag-selected-row-background-color: rgba(34, 197, 94, 0.15);
+  --ag-range-selection-border-color: var(--primary-600);
+  --ag-range-selection-background-color: rgba(34, 197, 94, 0.1);
+}
+
+body {
+  margin: 0;
+  font-family: var(--ag-font-family);
+  background-color: var(--bg-body);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Layout Utilities */
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-col { display: flex; flexDirection: column; }
+.gap-2 { gap: 0.5rem; }
+.gap-4 { gap: 1rem; }
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
+/* Card Style */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  gap: 0.5rem;
+}
+
+.btn-primary {
+  background-color: var(--primary-700); /* Darker green for professional look */
+  color: white;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+.btn-primary:hover { background-color: var(--primary-800); }
+
+.btn-secondary {
+  background-color: white;
+  border-color: var(--neutral-300);
+  color: var(--neutral-700);
+}
+.btn-secondary:hover { background-color: var(--neutral-50); border-color: var(--neutral-400); }
+
+.btn-icon {
+  padding: 0.4rem;
+  border-radius: 4px;
+  color: var(--neutral-500);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.btn-icon:hover { background: var(--neutral-100); color: var(--neutral-700); }
+
+/* Inputs */
+.input-field {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: var(--text-main);
+  background: white;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-field:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+/* AG Grid Customization for Accounting */
+.ag-theme-alpine {
+  border-top: 1px solid var(--neutral-200) !important;
+}
+
+.ag-header-cell {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.025em;
+}
+
+.ag-header-group-cell-label {
+    justify-content: center;
+    font-weight: 800;
+}
+
+/* Column Specific Styling - Clean & Professional */
+.ag-header-cell-text {
+  font-weight: 700;
+  color: var(--neutral-700);
+}
+
+/* --- SECTIONS (Header & Cells) --- */
+
+/* 1. Identitas - Neutral/Grey */
+.header-section-identitas {
+  background-color: var(--neutral-50) !important;
+  border-bottom: 3px solid var(--neutral-400) !important;
+}
+
+/* 2. Absensi - Warm Orange/Amber */
+.header-section-absensi {
+  background-color: #fff7ed !important; /* Orange-50 */
+  border-bottom: 3px solid #f97316 !important; /* Orange-500 */
+}
+.cell-absensi {
+  background-color: #fffaf5;
+  color: #c2410c; /* Orange-700 */
+  font-weight: 500;
+}
+
+/* 3. Income (Upah Dasar/Pokok) - Blue */
+.header-section-income {
+  background-color: #eff6ff !important; /* Blue-50 */
+  border-bottom: 3px solid #3b82f6 !important; /* Blue-500 */
+}
+.cell-income {
+  background-color: #f0f9ff;
+  color: #1e40af; /* Blue-800 */
+}
+
+/* 4. Premi - Green (Plantation Core) */
+.header-section-premi {
+  background-color: #f0fdf4 !important; /* Green-50 */
+  border-bottom: 3px solid #22c55e !important; /* Green-500 */
+}
+.cell-premi {
+  background-color: #f0fdf4;
+  color: #15803d; /* Green-700 */
+  font-weight: 500;
+}
+
+/* 5. Deduction (Potongan) - Red */
+.header-section-deduction {
+  background-color: #fef2f2 !important; /* Red-50 */
+  border-bottom: 3px solid #ef4444 !important; /* Red-500 */
+}
+.cell-deduction {
+  background-color: #fef2f2;
+  color: #b91c1c; /* Red-700 */
+}
+
+/* 6. Net Salary - Teal/Emerald Standout */
+.header-section-net {
+  background-color: #ecfdf5 !important; /* Emerald-50 */
+  border-bottom: 3px solid #059669 !important; /* Emerald-600 */
+}
+.cell-net-salary {
+  background-color: #ecfdf5;
+  font-weight: 700;
+  color: #064e3b; /* Emerald-900 */
+  border-left: 1px solid #a7f3d0;
+}
+
+/* Grand Total Row */
+.row-grand-total {
+  background-color: var(--neutral-100) !important;
+  font-weight: 800;
+  font-size: 13px;
+  border-top: 2px solid var(--neutral-400) !important;
+  color: var(--neutral-900);
+}
+
+/* Cell Number Formatting */
+.cell-accounting {
+  font-family: 'Roboto Mono', 'Menlo', monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  letter-spacing: -0.025em;
+}
+
+/* Selection Stats Footer */
+.selection-stats-bar {
+  height: 32px;
+  background: #f8fafc;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 16px;
+  gap: 24px;
+  font-size: 11px;
+  color: var(--neutral-600);
+  font-family: var(--ag-font-family);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--neutral-400);
+}
+
+.stat-value {
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 600;
+  color: var(--neutral-800);
+}
+
+/* Highlighted Row Styling (Added for user request) */
+.ag-row-selected {
+  background-color: var(--ag-selected-row-background-color) !important;
+  font-weight: bold !important;
+  color: var(--primary-900) !important;
+}
+
+.ag-row-selected .ag-cell {
+    /* Ensure cells inherit the bold weight */
+    font-weight: bold !important;
+}

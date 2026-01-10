@@ -1,0 +1,26 @@
+{
+  "name": "payroll-system",
+  "version": "1.0.0",
+  "description": "Payroll System with Backend and Frontend",
+  "scripts": {
+    "backend:dev": "cd backend && python main.py --mode dev",
+    "backend:prod": "cd backend && python main.py --mode prod",
+    "backend:custom": "cd backend && python main.py --mode dev --custom-ip 192.168.1.100",
+    "backend:default": "cd backend && python main.py",
+    "frontend:dev": "cd frontend && npm run dev:test",
+    "frontend:lan": "cd frontend && npm run dev:lan",
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:lan\"",
+    "prod": "concurrently \"npm run backend:prod\" \"npm run frontend:lan\"",
+    "custom": "concurrently \"npm run backend:custom\" \"npm run frontend:lan\"",
+    "start": "npm run dev",
+    "setup:backend": "cd backend && pip install -r requirements.txt",
+    "setup:frontend": "cd frontend && npm install",
+    "setup": "npm run setup:backend && npm run setup:frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["payroll", "fastapi", "react", "vite"],
+  "author": "Payroll System Team",
+  "license": "MIT"
+}
