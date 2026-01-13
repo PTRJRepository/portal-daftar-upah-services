@@ -519,61 +519,32 @@ class ThreadedDataExtractor:
     def _get_attendance_query(self, gang_code: str, start_date: str, end_date: str, division_code: str = None) -> Dict[str, Any]:
         """
         Get HK (hari kerja) count from PR_TASKREGLN.
-        Total HK = count of distinct TrxDate where OT=0 AND Hours > 5.
+        Total HK = count of ALL records where OT=0 (excluding alfa where there's no data).
         
-        Uses UNION between ARC and BASE tables to capture both historical and new employee data.
+        This matches the detail activity page logic which counts total records with data.
+        Includes: hadir, cuti, sakit, minggu, libur - basically any day that has a record.
         
-        VALIDATION: 
-        1. JOIN to PR_TASKREG ensures only records with valid master are counted.
-           This filters out orphan records in PR_TASKREGLN that don't have a corresponding PR_TASKREG entry.
-        2. Hours > 5 validation ensures only days with more than 5 hours of work are counted as valid HK.
-           This prevents partial day attendance from being counted as full working days.
+        VALIDATION: JOIN to PR_TASKREG ensures only records with valid master are counted.
+        This filters out orphan records in PR_TASKREGLN that don't have a corresponding PR_TASKREG entry.
         """
         condition_sql, condition_params = self._get_gang_condition_sql(gang_code, division_code)
-        # Duplicate params for UNION
-        all_params = [start_date, end_date] + condition_params + [start_date, end_date] + condition_params
+        
         return {
             'sql': f"""
-                SELECT EmpCode, SUM(hk_count) as hk_count
-                FROM (
-                    -- From ARC table (with PR_TASKREG_ARC validation and Hours > 5 filter)
-                    SELECT
-                        tr.EmpCode,
-                        COUNT(DISTINCT tr.TrxDate) as hk_count
-                    FROM PR_TASKREGLN_ARC tr
-                    JOIN PR_TASKREG_ARC tm ON tr.MasterID = tm.ID
-                    JOIN HR_GANGLN g ON g.GangMember = tr.EmpCode
-                    WHERE tr.TrxDate >= ?
-                      AND tr.TrxDate < ?
-                      AND tr.OT = 0
-                      AND tr.Hours > 5
-                      AND {condition_sql}
-                    GROUP BY tr.EmpCode
-                    
-                    UNION ALL
-                    
-                    -- From BASE table (new employees, with PR_TASKREG validation and Hours > 5 filter)
-                    SELECT
-                        tr.EmpCode,
-                        COUNT(DISTINCT tr.TrxDate) as hk_count
-                    FROM PR_TASKREGLN tr
-                    JOIN PR_TASKREG tm ON tr.MasterID = tm.ID
-                    JOIN HR_GANGLN g ON g.GangMember = tr.EmpCode
-                    WHERE tr.TrxDate >= ?
-                      AND tr.TrxDate < ?
-                      AND tr.OT = 0
-                      AND tr.Hours > 5
-                      AND {condition_sql}
-                      AND tr.EmpCode NOT IN (
-                          SELECT DISTINCT EmpCode FROM PR_TASKREGLN_ARC 
-                          WHERE TrxDate >= ? AND TrxDate < ?
-                      )
-                    GROUP BY tr.EmpCode
-                ) combined
-                GROUP BY EmpCode
-                ORDER BY EmpCode
+                SELECT
+                    tr.EmpCode,
+                    COUNT(*) as hk_count
+                FROM PR_TASKREGLN_ARC tr
+                JOIN PR_TASKREG_ARC tm ON tr.MasterID = tm.ID
+                JOIN HR_GANGLN g ON g.GangMember = tr.EmpCode
+                WHERE tr.TrxDate >= ?
+                  AND tr.TrxDate < ?
+                  AND tr.OT = 0
+                  AND {condition_sql}
+                GROUP BY tr.EmpCode
+                ORDER BY tr.EmpCode
             """,
-            'params': all_params + [start_date, end_date]
+            'params': [start_date, end_date] + condition_params
         }
 
     def _get_dynamic_premi_headers_query(self, gang_code: str, start_date: str, end_date: str, division_code: str = None) -> Dict[str, Any]:
