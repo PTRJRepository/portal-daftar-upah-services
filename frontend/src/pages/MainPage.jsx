@@ -11,6 +11,7 @@ import WagesSummaryRebinmasPage from './WagesSummaryRebinmasPage'
 import WagesSummaryIJLPage from './WagesSummaryIJLPage'
 import AnalysisReportPage from './AnalysisReportPage'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
+import { checkReportAccess } from '../services/summaryReportService'
 
 // Check if running in dev/test mode (admin mode)
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
@@ -52,6 +53,7 @@ export default function MainPage({ lockedDiv = null }) {
   const [fontSize, setFontSize] = useState(100) // Default 100% font size
   const [exportHandler, setExportHandler] = useState(null) // Export function from CustomPayrollTable
   const [exportLoading, setExportLoading] = useState(false)
+  const [canAccessReports, setCanAccessReports] = useState(DEV_MODE) // Default to DEV_MODE, will be checked via API
 
   // Font Size handlers (relative adjustment)
   const handleFontIncrease = () => setFontSize(prev => Math.min(prev + 10, 150))
@@ -110,6 +112,32 @@ export default function MainPage({ lockedDiv = null }) {
     }
     loadDivisions()
   }, [token])
+
+  // Check report access for proxy mode
+  useEffect(() => {
+    async function checkAccess() {
+      if (!token) {
+        setCanAccessReports(DEV_MODE)
+        return
+      }
+
+      try {
+        const result = await checkReportAccess(token)
+        if (result.success) {
+          setCanAccessReports(result.can_access_reports || DEV_MODE)
+          console.log('[MainPage] Report access check:', result)
+        } else {
+          setCanAccessReports(DEV_MODE)
+        }
+      } catch (error) {
+        console.error('[MainPage] Failed to check report access:', error)
+        setCanAccessReports(DEV_MODE) // Fallback to DEV_MODE
+      }
+    }
+
+    checkAccess()
+  }, [token])
+
 
   // Initialize Division from User or first available
   useEffect(() => {
@@ -443,8 +471,8 @@ export default function MainPage({ lockedDiv = null }) {
               {gangLoading ? 'Memuat Data...' : 'Tampilkan Laporan'}
             </button>
 
-            {/* Summary Report Button - Only visible in DEV_MODE (admin mode) */}
-            {DEV_MODE && division && (
+            {/* Summary Report Button - Only visible for admin in proxy mode or DEV_MODE */}
+            {canAccessReports && division && (
               <button
                 className="btn btn-secondary"
                 style={{
@@ -471,8 +499,8 @@ export default function MainPage({ lockedDiv = null }) {
               </button>
             )}
 
-            {/* Wages Rebinmas Report Button - Only visible in DEV_MODE */}
-            {DEV_MODE && (
+            {/* Wages Rebinmas Report Button - Only visible for admin in proxy mode or DEV_MODE */}
+            {canAccessReports && (
               <>
                 <button
                   className="btn btn-secondary"

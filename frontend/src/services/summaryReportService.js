@@ -213,3 +213,22 @@ export async function fetchAnalysisReport(token, { month, year, type = 'all' }) 
     return response.data;
 }
 
+/**
+ * Check if current user can access reports (admin in proxy mode)
+ * @param {string} token - Auth token
+ * @returns {Promise<Object>} Access check result
+ */
+export async function checkReportAccess(token) {
+    const url = `${BACKEND_BASE}/payroll/summary/access-check`;
+
+    const response = await axios.get(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
+
