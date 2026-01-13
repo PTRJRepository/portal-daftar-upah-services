@@ -319,273 +319,418 @@ export default function MainPage({ lockedDiv = null }) {
     )
   }
 
-  // -- SELECTION SCREEN (Initial View) --
+  // -- SELECTION SCREEN (Formal Professional Theme) --
   if (!isReportGenerated) {
     return (
       <div style={{
+        display: 'flex',
         height: '100vh',
         width: '100vw',
-        background: 'linear-gradient(to bottom, #f0fdf4, #ffffff)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center'
+        backgroundColor: '#f8fafc', // Very light gray background
+        fontFamily: "'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        overflow: 'hidden',
+        color: '#334155'
       }}>
-        <div className="card" style={{
-          width: '100%',
-          maxWidth: '480px',
-          padding: '2.5rem',
-          borderTop: '4px solid var(--primary-500)',
-          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)'
+        {/* SIDEBAR */}
+        <div style={{
+          width: '260px',
+          backgroundColor: '#1e293b', // Dark Slate/Navy for Sidebar
+          color: '#f1f5f9',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 10,
+          boxShadow: '4px 0 10px rgba(0,0,0,0.05)'
         }}>
-          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <img src="/images/rebinmas.webp" alt="PT Rebinmas Jaya" style={{ height: '64px', marginBottom: '1rem' }} />
-            <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--primary-900)' }}>
-              Sistem Daftar Upah
-            </h2>
-            <div style={{
-              backgroundColor: 'var(--primary-50)',
-              padding: '0.75rem',
-              borderRadius: '6px',
-              marginTop: '1rem',
-              border: '1px solid var(--primary-200)',
-              fontSize: '0.85rem',
-              color: 'var(--primary-800)',
-              textAlign: 'left'
-            }}>
-              <strong>💡 Petunjuk:</strong><br />
-              Pilih <strong>Periode</strong>, <strong>Divisi</strong>, dan <strong>Gang</strong> di bawah ini untuk memulai. Deskripsi gang diambil dari database HR untuk memudahkan identifikasi.
-            </div>
+          {/* Sidebar Header */}
+          <div style={{ padding: '1.5rem', borderBottom: '1px solid #334155' }}>
+            <img src="/images/rebinmas.webp" alt="PT Rebinmas Jaya" style={{ height: '40px', marginBottom: '1rem', display: 'block' }} />
+            <div style={{ fontWeight: '600', fontSize: '0.9rem', letterSpacing: '0.05em', color: '#94a3b8', textTransform: 'uppercase' }}>Payroll System</div>
+            <div style={{ fontWeight: '700', fontSize: '1.1rem', color: '#ffffff' }}>PT Rebinmas Jaya</div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
-            {/* Periode - Calendar Style */}
-            <MonthSelector
-              month={month}
-              year={year}
-              onChange={(m, y) => { setMonth(m); setYear(y); }}
-            />
-
-            {/* Division */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label className="form-label" style={{
-                fontWeight: '600',
-                fontSize: '0.9rem',
-                color: 'var(--text-main)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}>
-                <span style={{ fontSize: '1.1rem' }}>{isLockedMode ? '🔒' : '🏢'}</span>
-                Divisi {isLockedMode && <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>(Terkunci)</span>}
-              </label>
-              <select
-                className="input-field"
-                style={{
-                  height: '48px',
-                  fontSize: '1rem',
-                  borderColor: isLockedMode ? '#fcd34d' : 'var(--neutral-300)',
-                  borderRadius: '8px',
-                  cursor: isLockedMode ? 'not-allowed' : 'pointer',
-                  backgroundColor: isLockedMode ? '#fef3c7' : undefined
-                }}
-                value={division}
-                onChange={e => !isLockedMode && handleDivisionChange(e.target.value)}
-                disabled={isLockedMode}
-              >
-                <option value="">-- Pilih Divisi --</option>
-                {allDivisions.map(d => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-                {/* Show locked division if not in allDivisions */}
-                {isLockedMode && externalLockedDiv && !allDivisions.includes(externalLockedDiv) && (
-                  <option key={externalLockedDiv} value={externalLockedDiv}>{externalLockedDiv}</option>
-                )}
-              </select>
+          {/* Navigation Links */}
+          <div style={{ padding: '1.5rem 1rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{
+              padding: '0.75rem 1rem',
+              backgroundColor: '#334155',
+              color: '#ffffff',
+              borderRadius: '6px',
+              fontWeight: '500',
+              fontSize: '0.9rem',
+              cursor: 'default',
+              borderLeft: '4px solid #3b82f6'
+            }}>
+              Dashboard
             </div>
+            {/* Placeholder for future links */}
+          </div>
 
-            {/* Gang */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label className="form-label" style={{
-                fontWeight: '600',
-                fontSize: '0.9rem',
-                color: 'var(--text-main)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}>
-                <span style={{ fontSize: '1.1rem' }}>👥</span>
-                Gang / Kemandoran
-              </label>
-              <select
-                className="input-field"
-                style={{
-                  height: '48px',
-                  fontSize: '1rem',
-                  borderColor: 'var(--neutral-300)',
-                  borderRadius: '8px',
-                  cursor: gangLoading ? 'not-allowed' : 'pointer',
-                  opacity: gangLoading ? 0.7 : 1
-                }}
-                value={gang}
-                onChange={e => setGang(e.target.value)}
-                disabled={gangLoading}
-              >
-                {gangLoading ? (
-                  <option>Memuat data gang...</option>
-                ) : gangs.length === 0 ? (
-                  <option>Pilih divisi terlebih dahulu</option>
-                ) : (
-                  <>
-                    <option value="">-- Pilih Gang --</option>
-                    <option value="ALL">-- SEMUA GANG --</option>
-                    {gangs.map(g => (
-                      <option key={g.gang_code} value={g.gang_code}>
-                        {g.gang_code} - {g.description || '(Tidak ada deskripsi)'}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
+          {/* User Profile & Logout */}
+          <div style={{ padding: '1.5rem', borderTop: '1px solid #334155', backgroundColor: '#1e293b' }}>
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#ffffff' }}>{user?.username}</div>
+              <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{user?.role || 'Staff'}</div>
             </div>
-
             <button
-              className="btn btn-primary"
+              onClick={logout}
               style={{
-                padding: '1rem',
-                fontSize: '1.1rem',
-                fontWeight: '700',
-                borderRadius: '8px',
-                height: '56px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+                width: '100%',
+                padding: '0.6rem',
+                border: '1px solid #475569',
+                backgroundColor: 'transparent',
+                color: '#cbd5e1',
+                borderRadius: '4px',
+                fontWeight: '500',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                textAlign: 'center'
               }}
-              onClick={handleGenerate}
-              disabled={!division || !gang || gangLoading}
+              onMouseOver={(e) => { e.target.style.borderColor = '#ef4444'; e.target.style.color = '#ef4444'; }}
+              onMouseOut={(e) => { e.target.style.borderColor = '#475569'; e.target.style.color = '#cbd5e1'; }}
             >
-              <span style={{ fontSize: '1.2rem' }}>🚀</span>
-              {gangLoading ? 'Memuat Data...' : 'Tampilkan Laporan'}
+              Logout
             </button>
-
-            {/* Summary Report Button - Only visible for admin in proxy mode or DEV_MODE */}
-            {canAccessReports && division && (
-              <button
-                className="btn btn-secondary"
-                style={{
-                  padding: '0.75rem',
-                  fontSize: '0.95rem',
-                  fontWeight: '600',
-                  borderRadius: '8px',
-                  height: '48px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem',
-                  transition: 'all 0.2s ease',
-                  marginTop: '0.5rem',
-                  border: '2px dashed var(--primary-400)',
-                  background: 'var(--primary-50)',
-                  color: 'var(--primary-700)'
-                }}
-                onClick={handleShowSummaryReport}
-                title="Lihat Summary Report (Grand Total per Gang)"
-              >
-                <span style={{ fontSize: '1rem' }}>📊</span>
-                Generate Summary Report
-              </button>
-            )}
-
-            {/* Wages Rebinmas Report Button - Only visible for admin in proxy mode or DEV_MODE */}
-            {canAccessReports && (
-              <>
-                <button
-                  className="btn btn-secondary"
-                  style={{
-                    padding: '0.75rem',
-                    fontSize: '0.95rem',
-                    fontWeight: '600',
-                    borderRadius: '8px',
-                    height: '48px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    transition: 'all 0.2s ease',
-                    marginTop: '0.5rem',
-                    border: '2px dashed #1a365d',
-                    background: '#eef2f7',
-                    color: '#1a365d'
-                  }}
-                  onClick={handleShowWagesRebinmas}
-                  title="Lihat Wages Rebinmas Report (Total Premi per Divisi)"
-                >
-                  <span style={{ fontSize: '1rem' }}>💰</span>
-                  Wages Rebinmas Report
-                </button>
-
-                {/* Wages IJL Report Button */}
-                <button
-                  className="btn btn-secondary"
-                  style={{
-                    padding: '0.75rem',
-                    fontSize: '0.95rem',
-                    fontWeight: '600',
-                    borderRadius: '8px',
-                    height: '48px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    transition: 'all 0.2s ease',
-                    marginTop: '0.5rem',
-                    border: '2px dashed #065f46',
-                    background: '#ecfdf5',
-                    color: '#065f46'
-                  }}
-                  onClick={handleShowWagesIJL}
-                  title="Lihat Wages Report - PT. Impian Jaya Lestari"
-                >
-                  <span style={{ fontSize: '1rem' }}>🌴</span>
-                  Wages Report (IJL)
-                </button>
-
-                {/* Analysis Report Button */}
-                <button
-                  className="btn btn-secondary"
-                  style={{
-                    padding: '0.75rem',
-                    fontSize: '0.95rem',
-                    fontWeight: '600',
-                    borderRadius: '8px',
-                    height: '48px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    transition: 'all 0.2s ease',
-                    marginTop: '0.5rem',
-                    border: '2px dashed #7c3aed',
-                    background: '#f5f3ff',
-                    color: '#7c3aed'
-                  }}
-                  onClick={handleShowAnalysisReport}
-                  title="Lihat Analysis OT & Premi Report"
-                >
-                  <span style={{ fontSize: '1rem' }}>📈</span>
-                  Analysis OT & Premi
-                </button>
-              </>
-            )}
           </div>
         </div>
 
-        <div style={{ marginTop: '2rem', fontSize: '0.85rem', color: 'var(--neutral-500)' }}>
-          Logged in as <strong style={{ color: 'var(--neutral-700)' }}>{user?.username}</strong> •
-          <button onClick={logout} style={{ background: 'none', border: 'none', color: 'var(--danger-700)', cursor: 'pointer', marginLeft: '0.5rem', textDecoration: 'underline' }}>Logout</button>
+        {/* MAIN CONTENT AREA */}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          
+          {/* Header / Hero Section */}
+          <div style={{
+            height: '160px',
+            width: '100%',
+            backgroundImage: 'url("/images/wallpaper_loading_screen.webp")',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'flex-end'
+          }}>
+            {/* Dark Overlay for Text Readability */}
+            <div style={{
+              position: 'absolute',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.6)' // Darker overlay for formality
+            }} />
+            <div style={{ position: 'relative', padding: '2rem', width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
+              <h1 style={{ fontSize: '1.75rem', fontWeight: '600', margin: 0, color: '#ffffff', letterSpacing: '-0.025em' }}>
+                Selamat Datang, {user?.username}
+              </h1>
+              <p style={{ margin: '0.5rem 0 0', color: '#e2e8f0', fontSize: '0.95rem', fontWeight: '400' }}>
+                Sistem Manajemen Data Upah dan Laporan Operasional
+              </p>
+            </div>
+          </div>
+
+          <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+            
+            {/* FILTER SECTION CARD */}
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '2.5rem',
+              border: '1px solid #cbd5e1',
+              borderTop: '5px solid #1e3a8a', // Navy Accent
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+              marginBottom: '2.5rem',
+              position: 'relative'
+            }}>
+              <h2 style={{ 
+                fontSize: '1rem', 
+                fontWeight: '700', 
+                color: '#1e3a8a', 
+                marginBottom: '2rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                borderBottom: '2px solid #f1f5f9',
+                paddingBottom: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <span style={{ fontSize: '1.25rem' }}>⚙️</span> FILTER PARAMETER
+              </h2>
+              
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2.5rem', alignItems: 'flex-start' }}>
+                {/* Left Column: Calendar (Fixed Width) */}
+                <div style={{ flex: '0 0 320px', minWidth: '280px' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.75rem', letterSpacing: '0.025em' }}>
+                    PERIODE LAPORAN
+                  </label>
+                  <MonthSelector
+                    month={month}
+                    year={year}
+                    onChange={(m, y) => { setMonth(m); setYear(y); }}
+                  />
+                </div>
+
+                {/* Right Column: Division & Gang (Flexible) */}
+                <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  
+                  {/* Division Selection */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem', letterSpacing: '0.025em' }}>
+                      DIVISI {isLockedMode && <span style={{ color: '#d97706', fontSize: '0.75rem', marginLeft: '4px' }}>(LOCKED)</span>}
+                    </label>
+                    <select
+                      className="input-field"
+                      style={{
+                        width: '100%',
+                        height: '48px', // Slightly taller for better click area
+                        padding: '0 1rem',
+                        fontSize: '0.95rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        backgroundColor: isLockedMode ? '#fffbeb' : 'white',
+                        cursor: isLockedMode ? 'not-allowed' : 'pointer',
+                        color: '#334155',
+                        outline: 'none',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }}
+                      value={division}
+                      onChange={e => !isLockedMode && handleDivisionChange(e.target.value)}
+                      disabled={isLockedMode}
+                      onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
+                      onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
+                    >
+                      <option value="">Pilih Divisi</option>
+                      {allDivisions.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                      {isLockedMode && externalLockedDiv && !allDivisions.includes(externalLockedDiv) && (
+                        <option key={externalLockedDiv} value={externalLockedDiv}>{externalLockedDiv}</option>
+                      )}
+                    </select>
+                  </div>
+
+                  {/* Gang Selection */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem', letterSpacing: '0.025em' }}>
+                      GANG / KEMANDORAN
+                    </label>
+                    <select
+                      className="input-field"
+                      style={{
+                        width: '100%',
+                        height: '48px',
+                        padding: '0 1rem',
+                        fontSize: '0.95rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        cursor: gangLoading ? 'wait' : 'pointer',
+                        backgroundColor: gangLoading ? '#f8fafc' : 'white',
+                        color: '#334155',
+                        outline: 'none',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }}
+                      value={gang}
+                      onChange={e => setGang(e.target.value)}
+                      disabled={gangLoading}
+                      onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
+                      onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
+                    >
+                      {gangLoading ? (
+                        <option>Memuat data...</option>
+                      ) : gangs.length === 0 ? (
+                        <option>Menunggu pemilihan divisi...</option>
+                      ) : (
+                        <>
+                          <option value="">Pilih Gang</option>
+                          <option value="ALL">SEMUA GANG</option>
+                          {gangs.map(g => (
+                            <option key={g.gang_code} value={g.gang_code}>
+                              {g.gang_code} - {g.description || '-'}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            {/* REPORTS SECTION */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
+              
+              {/* Primary Report Card */}
+              <div style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '2rem',
+                border: '1px solid #cbd5e1',
+                borderTop: '5px solid #0ea5e9', // Sky Blue Accent
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                height: '100%',
+                transition: 'all 0.3s ease',
+                cursor: 'default'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: '#0ea5e9' }}>📋</span> Laporan Operasional
+                  </h3>
+                  <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '2rem' }}>
+                    Akses detail upah harian, perhitungan premi, lembur, dan potongan per karyawan. Data ditampilkan dalam format grid interaktif.
+                  </p>
+                </div>
+                <button
+                  onClick={handleGenerate}
+                  disabled={!division || !gang || gangLoading}
+                  style={{
+                    width: '100%',
+                    padding: '1rem',
+                    backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#0ea5e9', // Sky Blue Button
+                    color: (!division || !gang || gangLoading) ? '#94a3b8' : 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontWeight: '700',
+                    fontSize: '0.95rem',
+                    cursor: (!division || !gang || gangLoading) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(14, 165, 233, 0.3)'
+                  }}
+                >
+                  {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DATA UPAH'}
+                </button>
+              </div>
+
+              {/* Secondary Reports Card */}
+              {canAccessReports && (
+                <div style={{
+                  backgroundColor: 'white',
+                  borderRadius: '12px',
+                  padding: '2rem',
+                  border: '1px solid #cbd5e1',
+                  borderTop: '5px solid #8b5cf6', // Violet Accent
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                  height: '100%',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: '#8b5cf6' }}>📊</span> Laporan Analisis & Summary
+                  </h3>
+                  <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '2rem' }}>
+                    Rekapitulasi total upah, laporan financial wages (Rebinmas & IJL), dan analisis komparatif overtime/premi.
+                  </p>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                    {division && (
+                      <button
+                         onClick={handleShowSummaryReport}
+                         style={{
+                           padding: '0.9rem',
+                           backgroundColor: '#ffffff',
+                           color: '#475569',
+                           border: '1px solid #cbd5e1',
+                           borderRadius: '6px',
+                           fontWeight: '600',
+                           fontSize: '0.9rem',
+                           cursor: 'pointer',
+                           textAlign: 'left',
+                           transition: 'all 0.2s',
+                           display: 'flex',
+                           alignItems: 'center',
+                           justifyContent: 'space-between'
+                         }}
+                         onMouseOver={(e) => { e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#7c3aed'; e.currentTarget.style.backgroundColor = '#f5f3ff'; }}
+                         onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                      >
+                        Summary Report (Per Gang)
+                        <span style={{ fontSize: '1.2em' }}>›</span>
+                      </button>
+                    )}
+                    
+                    <button
+                       onClick={handleShowWagesRebinmas}
+                       style={{
+                         padding: '0.9rem',
+                         backgroundColor: '#ffffff',
+                         color: '#475569',
+                         border: '1px solid #cbd5e1',
+                         borderRadius: '6px',
+                         fontWeight: '600',
+                         fontSize: '0.9rem',
+                         cursor: 'pointer',
+                         textAlign: 'left',
+                         transition: 'all 0.2s',
+                         display: 'flex',
+                         alignItems: 'center',
+                         justifyContent: 'space-between'
+                       }}
+                       onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.backgroundColor = '#eff6ff'; }}
+                       onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                    >
+                      Wages Rebinmas Report
+                      <span style={{ fontSize: '1.2em' }}>›</span>
+                    </button>
+
+                    <button
+                       onClick={handleShowWagesIJL}
+                       style={{
+                         padding: '0.9rem',
+                         backgroundColor: '#ffffff',
+                         color: '#475569',
+                         border: '1px solid #cbd5e1',
+                         borderRadius: '6px',
+                         fontWeight: '600',
+                         fontSize: '0.9rem',
+                         cursor: 'pointer',
+                         textAlign: 'left',
+                         transition: 'all 0.2s',
+                         display: 'flex',
+                         alignItems: 'center',
+                         justifyContent: 'space-between'
+                       }}
+                       onMouseOver={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#059669'; e.currentTarget.style.backgroundColor = '#ecfdf5'; }}
+                       onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                    >
+                      Wages Report (IJL)
+                      <span style={{ fontSize: '1.2em' }}>›</span>
+                    </button>
+
+                    <button
+                       onClick={handleShowAnalysisReport}
+                       style={{
+                         padding: '0.9rem',
+                         backgroundColor: '#ffffff',
+                         color: '#475569',
+                         border: '1px solid #cbd5e1',
+                         borderRadius: '6px',
+                         fontWeight: '600',
+                         fontSize: '0.9rem',
+                         cursor: 'pointer',
+                         textAlign: 'left',
+                         transition: 'all 0.2s',
+                         display: 'flex',
+                         alignItems: 'center',
+                         justifyContent: 'space-between'
+                       }}
+                       onMouseOver={(e) => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#ea580c'; e.currentTarget.style.backgroundColor = '#fff7ed'; }}
+                       onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                    >
+                      Analysis OT & Premi
+                      <span style={{ fontSize: '1.2em' }}>›</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+          </div>
         </div>
       </div>
     )

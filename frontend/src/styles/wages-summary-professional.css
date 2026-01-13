@@ -729,7 +729,6 @@
     /* Table cells - ALL CENTERED with bold values */
     .wsp-table td,
     .wsp-table td.text-right,
-    .wsp-table td.text-left,
     .wsp-table td.text-center {
         padding: 0.15rem 0.1rem !important;
         font-size: 0.55rem !important;
@@ -739,14 +738,17 @@
         text-align: center !important;
     }
 
-    /* Division/Estate name column - left align only */
+    /* Division/Estate name column - left align with wrapping */
+    .wsp-table td.text-left,
     .wsp-table td.division-name,
     .wsp-table td.sticky-col {
         text-align: left !important;
         white-space: normal !important;
-        min-width: 60px !important;
-        max-width: 80px !important;
+        word-wrap: break-word !important;
+        min-width: 80px !important;
+        max-width: 150px !important;
         font-weight: 700 !important;
+        line-height: 1.2 !important;
     }
 
     .div-code {
@@ -848,9 +850,224 @@
     .print-hide-detail {
         display: none !important;
     }
+}
 
-    /* Show only during print (hidden on screen) */
-    .print-show-only {
-        display: table-cell !important;
-    }
+/* =============================================
+   PDF GENERATION STYLES (Simulate Print Mode)
+   ============================================= */
+.pdf-mode {
+    background-color: #fff !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    overflow: visible !important;
+}
+
+.pdf-mode .no-print,
+.pdf-mode .wsp-action-bar {
+    display: none !important;
+}
+
+.pdf-mode .wsp-document {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0.5cm !important;
+    width: 100% !important;
+    min-width: auto !important;
+    max-width: 100% !important;
+}
+
+.pdf-mode .wsp-letterhead {
+    margin-bottom: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+}
+
+.pdf-mode .wsp-logo {
+    width: 80px !important;
+}
+
+.pdf-mode .wsp-company-name {
+    font-size: 1.2rem !important;
+}
+
+.pdf-mode .wsp-report-title {
+    font-size: 0.7rem !important;
+}
+
+.pdf-mode .wsp-report-period {
+    font-size: 0.65rem !important;
+}
+
+.pdf-mode .wsp-kpi-grid {
+    margin-bottom: 0.5rem !important;
+    gap: 0.3rem !important;
+}
+
+.pdf-mode .wsp-kpi-card {
+    padding: 0.3rem !important;
+    box-shadow: none !important;
+    border: 1px solid #94a3b8 !important;
+}
+
+.pdf-mode .wsp-kpi-card.highlight {
+    background: #f1f5f9 !important;
+    border: 1px solid #000 !important;
+}
+
+.pdf-mode .wsp-kpi-card.highlight .wsp-kpi-value {
+    color: #000 !important;
+}
+
+.pdf-mode .wsp-kpi-label {
+    font-size: 0.5rem !important;
+    margin-bottom: 0.1rem !important;
+}
+
+.pdf-mode .wsp-kpi-value {
+    font-size: 0.8rem !important;
+}
+
+.pdf-mode .wsp-table-wrapper {
+    overflow: visible !important;
+    border: 1px solid #333 !important;
+    margin-bottom: 0.3rem !important;
+    width: 100% !important;
+}
+
+.pdf-mode .wsp-table {
+    font-size: 0.55rem !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    transform: scale(0.95) !important;
+    transform-origin: top left !important;
+}
+
+.pdf-mode .wsp-table thead th {
+    padding: 0.2rem 0.1rem !important;
+    font-size: 0.5rem !important;
+    font-weight: 700 !important;
+    border: 1px solid #666 !important;
+    text-align: center !important;
+}
+
+.pdf-mode .wsp-table thead tr.wsp-header-master th {
+    font-size: 0.5rem !important;
+    font-weight: 800 !important;
+}
+
+.pdf-mode .wsp-table td {
+    padding: 0.15rem 0.1rem !important;
+    font-size: 0.55rem !important;
+    font-weight: 600 !important;
+    border: 1px solid #999 !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+}
+
+.pdf-mode .wsp-table td.text-left,
+.pdf-mode .wsp-table td.division-name,
+.pdf-mode .wsp-table td.sticky-col {
+    text-align: left !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    min-width: 80px !important;
+    max-width: 150px !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+}
+
+.pdf-mode .div-code {
+    font-size: 0.55rem !important;
+    font-weight: 700 !important;
+}
+
+.pdf-mode .div-desc {
+    display: none !important;
+}
+
+.pdf-mode .sticky-col,
+.pdf-mode .th-sticky-col {
+    position: static !important;
+    box-shadow: none !important;
+}
+
+.pdf-mode .wsp-table tfoot tr.wsp-grand-total td {
+    padding: 0.2rem !important;
+    font-size: 0.6rem !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+    background-color: #1e293b !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+.pdf-mode .wsp-table tfoot tr.wsp-grand-total td.sticky-col,
+.pdf-mode .wsp-table tfoot tr.wsp-grand-total td:first-child {
+    text-align: left !important;
+}
+
+.pdf-mode .wsp-table tr.estate-header td {
+    padding: 0.2rem !important;
+    font-size: 0.5rem !important;
+    font-weight: 800 !important;
+    text-align: left !important;
+    background-color: #e2e8f0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+.pdf-mode .wsp-table tr.subtotal td {
+    padding: 0.15rem !important;
+    font-size: 0.5rem !important;
+    text-align: center !important;
+    background-color: #f1f5f9 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+.pdf-mode .wsp-table tr.subtotal td:first-child {
+    text-align: left !important;
+}
+
+.pdf-mode .wsp-signature-section {
+    margin-top: 0.5rem !important;
+    gap: 0.3rem !important;
+}
+
+.pdf-mode .wsp-signature-block {
+    min-width: 80px !important;
+    max-width: 120px !important;
+}
+
+.pdf-mode .wsp-signature-title {
+    font-size: 0.45rem !important;
+    margin-bottom: 2rem !important;
+}
+
+.pdf-mode .wsp-signature-name {
+    font-size: 0.5rem !important;
+}
+
+.pdf-mode .wsp-footer {
+    margin-top: 0.3rem !important;
+    padding-top: 0.2rem !important;
+    font-size: 0.45rem !important;
+}
+
+.pdf-mode * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+.pdf-mode .trend-indicator {
+    display: none !important;
+}
+
+.pdf-mode .print-hide,
+.pdf-mode .print-hide-detail {
+    display: none !important;
+}
+
+.pdf-mode .print-show-only {
+    display: table-cell !important;
 }

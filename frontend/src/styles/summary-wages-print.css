@@ -182,7 +182,16 @@
     border: 1px solid #cbd5e1;
     padding: 0.5rem 0.75rem;
     text-align: left;
-    white-space: nowrap;
+    white-space: nowrap; /* Default for numeric/code cells */
+}
+
+/* Allow description cells to wrap */
+.sw-table td.text-left, 
+.sw-table th.text-left {
+    white-space: normal !important;
+    word-wrap: break-word;
+    min-width: 150px;
+    line-height: 1.4;
 }
 
 /* Column Group Headers (Level 1) */

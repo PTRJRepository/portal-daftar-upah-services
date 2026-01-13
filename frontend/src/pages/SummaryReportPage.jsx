@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData } from '../services/summaryReportService';
+import { generatePDF } from '../utils/pdfGenerator';
 import '../styles/wages-summary-professional.css';
 
 export default function SummaryReportPage({ onBack, initialDivision, initialMonth, initialYear }) {
@@ -177,6 +178,13 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return total;
     }, [summaryData, premiKeys]);
 
+    // Handle Save PDF
+    const handleSavePDF = () => {
+        const element = document.getElementById('summary-report-content');
+        const filename = `Summary_Report_${division || 'ALL'}_${month}_${year}.pdf`;
+        generatePDF(element, filename);
+    };
+
     // Handle Print
     const handlePrint = () => window.print();
 
@@ -255,6 +263,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 <div className="right-section">
                     <button onClick={fetchData} className="wsp-btn" disabled={loading}>Refresh</button>
                     <button onClick={handlePrint} className="wsp-btn">Print</button>
+                    <button onClick={handleSavePDF} className="wsp-btn" title="Download Report as PDF">Save PDF</button>
                     <button onClick={handleExport} className="wsp-btn wsp-btn-primary" disabled={loading || summaryData.length === 0}>Export CSV</button>
                 </div>
             </div>
@@ -265,7 +274,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             ) : error ? (
                 <div className="wsp-error">! {error}</div>
             ) : (
-                <div className="wsp-document">
+                <div className="wsp-document" id="summary-report-content">
                     {/* Letterhead */}
                     <div className="wsp-letterhead">
                         <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />

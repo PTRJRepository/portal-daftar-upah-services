@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary } from '../services/summaryReportService';
+import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import '../styles/wages-summary-professional.css';
 
@@ -499,6 +500,13 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         );
     };
 
+    // Handle Save PDF
+    const handleSavePDF = () => {
+        const element = document.getElementById('wsp-report-content');
+        const filename = `Wages_Summary_Rebinmas_${month}_${year}.pdf`;
+        generatePDF(element, filename);
+    };
+
     // Handle print
     const handlePrint = () => {
         window.print();
@@ -646,6 +654,9 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     <button onClick={handlePrint} className="wsp-btn" title="Print this report">
                         Print
                     </button>
+                    <button onClick={handleSavePDF} className="wsp-btn" title="Download Report as PDF">
+                        Save PDF
+                    </button>
                     <button
                         onClick={handleExport}
                         className="wsp-btn wsp-btn-primary"
@@ -696,7 +707,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         </div>
                     ) : (
                         /* Paper Document */
-                        <div className="wsp-document">
+                        <div className="wsp-document" id="wsp-report-content">
                             {/* Letterhead */}
                             <div className="wsp-letterhead">
                                 <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />

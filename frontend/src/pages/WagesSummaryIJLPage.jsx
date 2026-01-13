@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary } from '../services/summaryReportService';
+import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import '../styles/wages-summary-professional.css';
 
@@ -237,6 +238,12 @@ export default function WagesSummaryIJLPage({ onBack }) {
     }, [ijlSummaryData, ijlGrandTotal]);
 
     // --- ACTIONS ---
+
+    const handleSavePDF = () => {
+        const element = document.getElementById('wsp-ijl-report-content');
+        const filename = `Wages_Summary_IJL_${month}_${year}.pdf`;
+        generatePDF(element, filename);
+    };
 
     const handlePrint = () => {
         window.print();
@@ -481,6 +488,7 @@ export default function WagesSummaryIJLPage({ onBack }) {
                 <div className="right-section">
                     <button onClick={fetchData} className="wsp-btn" disabled={loading} title="Refresh Data">Refresh</button>
                     <button onClick={handlePrint} className="wsp-btn" title="Print this report">Print</button>
+                    <button onClick={handleSavePDF} className="wsp-btn" title="Download Report as PDF">Save PDF</button>
                     <button onClick={handleExport} className="wsp-btn wsp-btn-primary" disabled={loading || ijlSummaryData.length === 0} title="Download CSV">Export CSV</button>
                     <button onClick={() => setComparisonMode(!comparisonMode)} className={`wsp-btn ${comparisonMode ? 'wsp-btn-primary' : ''}`} style={{ marginLeft: '0.5rem' }}>
                         {comparisonMode ? 'Report Mode' : 'Comparison Mode'}
@@ -501,7 +509,7 @@ export default function WagesSummaryIJLPage({ onBack }) {
                     ) : error ? (
                         <div className="wsp-error"><div className="wsp-error-title">Gagal Memuat Data</div><div className="wsp-error-message">{error}</div><button onClick={fetchData} className="wsp-btn" style={{ marginTop: '1rem' }}>Coba Lagi</button></div>
                     ) : (
-                        <div className="wsp-document">
+                        <div className="wsp-document" id="wsp-ijl-report-content">
                             <div className="wsp-letterhead">
                                 <img src="/images/rebinmas.webp" alt="PT IMPIAN JAYA LESTARI" className="wsp-logo" />
                                 <h1 className="wsp-company-name">PT. IMPIAN JAYA LESTARI</h1>

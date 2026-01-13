@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAnalysisReport } from '../services/summaryReportService';
+import { generatePDF } from '../utils/pdfGenerator';
 import MonthSelector from '../components/common/MonthSelector';
 import LoadingScreen from '../components/common/LoadingScreen';
 import '../styles/analysis-report-print.css';
@@ -59,6 +60,12 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     // Month names for display
     const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'July', 'Agustus', 'september', 'Oktober', 'November', 'Desember'];
     const shortMonthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+    const handleSavePDF = () => {
+        const element = document.getElementById('analysis-report-content');
+        const filename = `Analysis_OT_Premi_${month}_${year}.pdf`;
+        generatePDF(element, filename);
+    };
 
     const handlePrint = () => {
         window.print();
@@ -125,6 +132,9 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                 </div>
 
                 <div className="btn-group">
+                    <button onClick={handleSavePDF} className="sw-btn sw-btn-primary" title="Download Report as PDF">
+                        SAVE PDF
+                    </button>
                     <button onClick={handlePrint} className="sw-btn sw-btn-primary">
                         PRINT REPORT
                     </button>
@@ -133,7 +143,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
 
             {/* Document (Paper) */}
             {reportData && (
-                <div className="sw-document">
+                <div className="sw-document" id="analysis-report-content">
                     {/* Letterhead */}
                     <header className="sw-letterhead" style={{ position: 'relative' }}>
                         <img 
