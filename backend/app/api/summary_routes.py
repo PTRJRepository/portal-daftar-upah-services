@@ -29,6 +29,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/access-check")
+async def check_report_access(
+    user: User = Depends(get_current_user_from_token)
+) -> Dict[str, Any]:
+    """
+    Check if user can access reports in proxy mode.
+    Returns admin status and proxy mode status.
+    """
+    from app.services.unified_auth import is_admin_in_proxy_mode, is_proxy_mode
+    
+    can_access = is_admin_in_proxy_mode(user)
+    
+    return {
+        "success": True,
+        "can_access_reports": can_access,
+        "is_proxy_mode": is_proxy_mode(),
+        "is_admin": getattr(user, 'is_admin', False),
+        "auth_mode": getattr(user, 'auth_mode', 'unknown')
+    }
+
+
+
 @router.get("/division")
 async def get_summary_by_division(
     division: Optional[str] = Query(None, description="Division code filter (e.g., PG1A)"),

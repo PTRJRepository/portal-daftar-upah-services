@@ -21,15 +21,21 @@ def _get_db_ptrj():
 
 
 def _get_extend_db():
-    """Get Database instance for extend_db_ptrj (aggregation database)"""
+    """
+    Get Database instance for extend_db_ptrj (aggregation database).
+    ALWAYS uses SERVER_PROFILE_1 (dev server) for reports, regardless of backend RUN_MODE.
+    """
     from database.services.database import Database
-    return Database.for_database('extend_db_ptrj')
+    return Database.for_reports('extend_db_ptrj')
 
 
 def _get_venus_hr_db():
-    """Get Database instance for VenusHR14 (Mill payroll database)"""
+    """
+    Get Database instance for VenusHR14 (Mill payroll database).
+    ALWAYS uses SERVER_PROFILE_1 (dev server) for reports, regardless of backend RUN_MODE.
+    """
     from database.services.database import Database
-    return Database.for_database('VenusHR14')
+    return Database.for_reports('VenusHR14')
 
 
 def _load_november_2025_override_data() -> List[Dict[str, Any]]:

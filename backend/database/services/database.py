@@ -293,6 +293,33 @@ class Database:
                 db = Database(database=database)
                 cls._database_instances[database] = db
             return cls._database_instances[database]
+    
+    @classmethod
+    def for_reports(cls, database: str) -> 'Database':
+        """
+        Get a Database instance for reports that ALWAYS uses DEV server profile (SERVER_PROFILE_1).
+        
+        This ensures reports access the dev server (10.0.0.110:1433) regardless
+        of the backend RUN_MODE setting. This is used when running backend in PROD mode
+        but wanting reports to still query the dev database.
+        
+        Args:
+            database: The database name (e.g., 'extend_db_ptrj')
+            
+        Returns:
+            Database instance configured with forced SERVER_PROFILE_1
+        """
+        with cls._lock:
+            cache_key = f"{database}_reports"
+            if cache_key not in cls._database_instances:
+                # Create instance with database name
+                db = Database(database=database)
+                # Force SERVER_PROFILE_1 for reports (dev server)
+                db._server_profile = 'SERVER_PROFILE_1'
+                db._client._server_profile = 'SERVER_PROFILE_1'
+                db._logger.info(f"📊 Reports Database: Forced SERVER_PROFILE_1 (dev server) for {database}")
+                cls._database_instances[cache_key] = db
+            return cls._database_instances[cache_key]
 
     def query_all(self, sql: str, params: Optional[Iterable[Any]] = None) -> List[Tuple]:
         """Execute query and return all rows"""

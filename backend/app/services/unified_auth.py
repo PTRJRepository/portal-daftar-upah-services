@@ -131,5 +131,25 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
 
 
+
+
 # Alias for backward compatibility with existing endpoints
 get_unified_user = get_current_user
+
+
+def is_admin_in_proxy_mode(user: 'AuthUser') -> bool:
+    """
+    Check if user is admin and in proxy mode.
+    Returns True only if both conditions are met:
+    - Backend is running in proxy mode (external auth)
+    - User has admin role (role='ADMIN' or divisi='ALL')
+    """
+    if not is_proxy_mode():
+        return False
+    
+    # Check if user is admin
+    return (
+        getattr(user, 'is_admin', False) or
+        (getattr(user, 'role', '').upper() == 'ADMIN') or
+        (getattr(user, 'divisi', None) and str(getattr(user, 'divisi', '')).upper() == 'ALL')
+    )
