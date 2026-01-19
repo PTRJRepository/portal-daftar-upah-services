@@ -1,0 +1,17 @@
+Probing http://10.0.0.110:3001
+
+Testing http://10.0.0.110:3001/query
+Status: 404
+Body: {"message":"Route POST:/ not found","error":"Not Found","statusCode":404}
+
+Testing http://10.0.0.110:3001/v1/query
+Status: 404
+Body: {"error":"Not Found","message":"No route configured for this path","path":"/v1/query","availableRoutes":[{"path":"/backend/upah","target":"http://localhost:8002","description":"Backend API untuk Siste
+
+Testing http://10.0.0.110:3001/api/query
+Status: 404
+Body: {"error":"Not Found","message":"No route configured for this path","path":"/api/query","availableRoutes":[{"path":"/backend/upah","target":"http://localhost:8002","description":"Backend API untuk Sist
+
+Testing http://10.0.0.110:3001/api/v1/query
+Status: 404
+Body: {"error":"Not Found","message":"No route configured for this path","path":"/api/v1/query","availableRoutes":[{"path":"/backend/upah","target":"http://localhost:8002","description":"Backend API untuk S

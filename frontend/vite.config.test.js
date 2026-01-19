@@ -100,21 +100,14 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5175,  // Ganti ke port 5175 agar sesuai dengan URL Anda
     strictPort: false, // Allow other ports if 5175 is occupied
-    proxy: isDev ? {
+    // Always enable proxy for backend routes
+    proxy: {
+      '/api': { target: backendUrl, changeOrigin: true },
       '/auth': { target: backendUrl, changeOrigin: true },
       '/employees': { target: backendUrl, changeOrigin: true },
       '/payroll': { target: backendUrl, changeOrigin: true },
-      '/reports': { target: backendUrl, changeOrigin: true }
-    } : {
-      '/api/login': {
-        target: backendUrl,
-        changeOrigin: true,
-        rewrite: () => '/auth/login'
-      },
-      '/auth': { target: backendUrl, changeOrigin: true },
-      '/employees': { target: backendUrl, changeOrigin: true },
-      '/payroll': { target: backendUrl, changeOrigin: true },
-      '/reports': { target: backendUrl, changeOrigin: true }
+      '/reports': { target: backendUrl, changeOrigin: true },
+      '/health': { target: backendUrl, changeOrigin: true }
     }
   }
 })

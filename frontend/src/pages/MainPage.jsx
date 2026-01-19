@@ -121,6 +121,13 @@ export default function MainPage({ lockedDiv = null }) {
         return
       }
 
+      // STRICT PROD CHECK: If in Prod Mode, ONLY Admin can access reports
+      if (inProdMode && !isAdminUser) {
+        console.log('[MainPage] Report access denied: Non-admin in Production Mode')
+        setCanAccessReports(false)
+        return
+      }
+
       try {
         const result = await checkReportAccess(token)
         if (result.success) {
@@ -136,7 +143,7 @@ export default function MainPage({ lockedDiv = null }) {
     }
 
     checkAccess()
-  }, [token])
+  }, [token, inProdMode, isAdminUser])
 
 
   // Initialize Division from User or first available

@@ -1,0 +1,26 @@
+{
+    "name": "payroll-backend-bun",
+    "version": "1.0.0",
+    "module": "src/index.ts",
+    "scripts": {
+        "dev": "bun run --watch src/index.ts",
+        "start": "bun run src/index.ts",
+        "test": "bun test"
+    },
+    "dependencies": {
+        "@elysiajs/cors": "^1.4.1",
+        "@types/bcryptjs": "^2.4.6",
+        "@types/cors": "^2.8.17",
+        "bcryptjs": "^2.4.3",
+        "cors": "^2.8.5",
+        "date-fns": "^3.3.1",
+        "dotenv": "^16.3.1",
+        "elysia": "latest",
+        "jose": "^5.2.0",
+        "mssql": "^10.0.1"
+    },
+    "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.0.0"
+    }
+}
