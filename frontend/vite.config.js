@@ -38,9 +38,10 @@ const getLocalIP = () => {
 
 // Get backend host from environment variables or use default
 const getBackendHost = () => {
-  // Check for custom backend host in environment variables
+  // Check for custom backend host and port in environment variables
   const customHost = process.env.VITE_BACKEND_HOST || process.env.BACKEND_HOST
-  const customPort = process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || '8002'
+  // Backend typically uses PORT in its .env, check that as well
+  const customPort = process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || process.env.PORT || '8002'
 
   if (customHost && customHost !== 'localhost') {
     return `http://${customHost}:${customPort}`
@@ -58,12 +59,7 @@ const getBackendHost = () => {
     return `http://${localIP}:${customPort}`
   }
 
-  // For development, use localhost
-  if (isDev) {
-    return `http://localhost:${customPort}`
-  }
-
-  // Default to localhost with current backend port
+  // For development, use localhost with the detected port
   return `http://localhost:${customPort}`
 }
 

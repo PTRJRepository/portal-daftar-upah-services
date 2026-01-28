@@ -1,6 +1,8 @@
 import { Database } from "../db/client";
+import { dataExtractorService } from "./dataExtractorService";
+import { lemburCalculator, getDayTypeDisplayName } from "./lemburCalculator";
 
-interface AttendanceDay {
+export interface AttendanceDay {
     date: string;
     status: string;
     is_present: boolean;
@@ -12,15 +14,16 @@ interface AttendanceDay {
     has_data: boolean;
 }
 
-interface OvertimeDay {
+export interface OvertimeDay {
     date: string;
     has_overtime: boolean;
     hours: number;
     amount: number;
+    amount_formula?: number;
     details: any[];
 }
 
-interface EmployeeInfo {
+export interface EmployeeInfo {
     nik: string;
     nama: string;
     jenis_kelamin: string;
@@ -29,7 +32,7 @@ interface EmployeeInfo {
     upah_dasar: number;
 }
 
-interface AttendanceSummary {
+export interface AttendanceSummary {
     total_hadir: number;
     total_tidak_hadir: number;
     cuti_tahunan: number;
@@ -117,9 +120,9 @@ export class EmployeeDetailService {
                     g.GangCode,
                     p.PayRate
                 FROM HR_EMPLOYEE e
-                LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
-                LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
-                WHERE e.EmpCode = ?
+                LEFT JOIN HR_GANGLN g ON RTRIM(g.GangMember) = RTRIM(e.EmpCode)
+                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                WHERE RTRIM(e.EmpCode) = RTRIM(?)
             `, [empCode]);
             const row = rows[0];
 
@@ -194,18 +197,31 @@ export class EmployeeDetailService {
                 Hours: number;
             }>(`
                 SELECT 
-                    DAY(trl.TrxDate) as day_of_month,
-                    trl.TrxDate,
-                    trl.TaskCode,
-                    trl.Hours
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC tm ON trl.MasterID = tm.ID
-                WHERE trl.EmpCode = ?
-                  AND trl.TrxDate >= ?
-                  AND trl.TrxDate <= ?
-                  AND trl.OT = 0
-                ORDER BY trl.TrxDate
-            `, [empCode, startDate, endDate]);
+                    DAY(TrxDate) as day_of_month,
+                    TrxDate,
+                    TaskCode,
+                    Hours
+                FROM (
+                    SELECT trl.TrxDate, trl.TaskCode, trl.Hours
+                    FROM PR_TASKREGLN trl
+                    JOIN PR_TASKREG tm ON trl.MasterID = tm.ID
+                    WHERE RTRIM(trl.EmpCode) = RTRIM(?)
+                      AND trl.TrxDate >= ?
+                      AND trl.TrxDate <= ?
+                      AND trl.OT = 0
+                    
+                    UNION ALL
+                    
+                    SELECT trl.TrxDate, trl.TaskCode, trl.Hours
+                    FROM PR_TASKREGLN_ARC trl
+                    JOIN PR_TASKREG_ARC tm ON trl.MasterID = tm.ID
+                    WHERE RTRIM(trl.EmpCode) = RTRIM(?)
+                      AND trl.TrxDate >= ?
+                      AND trl.TrxDate <= ?
+                      AND trl.OT = 0
+                ) combined
+                ORDER BY TrxDate
+            `, [empCode, startDate, endDate, empCode, startDate, endDate]);
 
             const daysWithData = new Set<number>();
             let maxDataDay = 0;
@@ -330,56 +346,46 @@ export class EmployeeDetailService {
         const overtimeList: any[] = [];
 
         try {
-            const rows = await this.db.query<{
-                day_of_month: number;
-                TrxDate: string;
-                Hours: number;
-                Amount: number;
-                Rate: number;
-                TaskCode: string;
-            }>(`
-                SELECT 
-                    DAY(trl.TrxDate) as day_of_month,
-                    trl.TrxDate,
-                    trl.Hours,
-                    trl.Amount,
-                    trl.Rate,
-                    trl.TaskCode
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC t ON t.ID = trl.MasterID
-                WHERE trl.EmpCode = ?
-                  AND trl.TrxDate >= ?
-                  AND trl.TrxDate <= ?
-                  AND trl.OT = 1
-                ORDER BY trl.TrxDate
-            `, [empCode, startDate, endDate]);
+            // Use LemburCalculator for robust fetching (UNION ALL) and detailed breakdown
+            const lemburResult = await lemburCalculator.calculate(empCode, month, year);
 
-            for (const row of rows) {
-                const day = row.day_of_month;
-                const hours = row.Hours || 0;
-                const amount = row.Amount || 0;
+            for (const record of lemburResult.records) {
+                const day = record.trx_date.getDate();
+                const hours = record.hours;
+                const dbAmount = record.raw_amount || 0;
+                const formulaAmount = record.breakdown?.total_amount || 0;
 
                 matrix[day].has_overtime = true;
                 matrix[day].hours += hours;
-                matrix[day].amount += amount;
-                matrix[day].details.push({
+                matrix[day].amount += dbAmount;
+                matrix[day].amount_formula = (matrix[day].amount_formula || 0) + formulaAmount;
+
+                const detailObj = {
                     hours,
-                    amount,
-                    rate: row.Rate || 0,
-                    task_code: row.TaskCode || ""
-                });
+                    amount: dbAmount,
+                    rate: record.raw_rate || 0,
+                    task_code: record.task_code || "",
+                    day_type: record.day_type ? getDayTypeDisplayName(record.day_type) : "-",
+                    formula_amount: formulaAmount,
+                    shift_code: record.shift_code || ""
+                };
+
+                matrix[day].details.push(detailObj);
 
                 overtimeList.push({
-                    date: row.TrxDate?.substring(0, 10),
+                    date: record.trx_date.toISOString().substring(0, 10),
                     day,
                     hours,
-                    amount,
-                    rate: row.Rate || 0,
-                    task_code: row.TaskCode || ""
+                    amount: dbAmount,
+                    amount_server: dbAmount,
+                    amount_formula: formulaAmount,
+                    rate: record.raw_rate || 0,
+                    task_code: record.task_code || "",
+                    day_type: detailObj.day_type
                 });
 
                 totalHours += hours;
-                totalAmount += amount;
+                totalAmount += dbAmount;
             }
         } catch (e) {
             console.error("[EmployeeDetailService] Failed to get daily overtime:", e);
@@ -395,7 +401,10 @@ export class EmployeeDetailService {
     }
 
     // --- Complete Checkroll ---
-    public async getEmployeeCheckroll(empCode: string, month: number, year: number): Promise<any> {
+    public async getEmployeeCheckroll(rawEmpCode: string, month: number, year: number): Promise<any> {
+        const empCode = (rawEmpCode || '').trim().toUpperCase();
+        console.log(`[EmployeeDetailService] getEmployeeCheckroll request for '${rawEmpCode}' -> Normalized: '${empCode}'`);
+
         const employeeInfo = await this.getEmployeeInfo(empCode);
         if (!employeeInfo) {
             return { emp_code: empCode, error: "Employee not found" };
@@ -404,13 +413,49 @@ export class EmployeeDetailService {
         const attendanceData = await this.getDailyAttendance(empCode, month, year);
         const overtimeData = await this.getDailyOvertime(empCode, month, year);
 
+        // Fetch calculated payroll data
+        let payrollData = null;
+        let debugInfo: any = { error: "Not attempted" };
+
+        try {
+            // Pass empCode as specificEmpCode (5th argument) to use optimized single-employee fetch
+            const payrollResult = await dataExtractorService.extractPayrollData(month, year, "ALL", undefined, empCode);
+            // Filter for this specific employee (handle whitespace)
+            const targetNik = empCode.trim().toUpperCase();
+
+            debugInfo = {
+                target_nik: targetNik,
+                rows_fetched: payrollResult?.data_rows?.length || 0,
+                available_niks: payrollResult?.data_rows?.map(r => r.nik || 'N/A').slice(0, 5)
+            };
+
+            const empPayroll = payrollResult.data_rows.find(row =>
+                (row.nik || '').trim().toUpperCase() === targetNik
+            );
+            if (empPayroll) {
+                payrollData = empPayroll;
+                console.log(`[EmployeeDetailService] Payroll Data Found for '${empCode}' (Rows: ${payrollResult.data_rows.length})`);
+                debugInfo.found = true;
+            } else {
+                const availableNiks = payrollResult.data_rows.map(r => `'${r.nik}'`).join(", ");
+                console.warn(`[EmployeeDetailService] Payroll row not found for ${empCode}. Target: '${targetNik}'. Available: [${availableNiks}]`);
+                console.warn(`[EmployeeDetailService] ExtractPayrollData returned ${payrollResult.data_rows.length} rows.`);
+                debugInfo.found = false;
+            }
+        } catch (e: any) {
+            console.error("[EmployeeDetailService] Failed to extract payroll data:", e);
+            debugInfo.error = e.message || String(e);
+        }
+
         return {
             emp_code: empCode,
             month,
             year,
             employee: employeeInfo,
             attendance: attendanceData,
-            overtime: overtimeData
+            overtime: overtimeData,
+            payroll_data: payrollData,
+            debug_info: debugInfo
         };
     }
 }

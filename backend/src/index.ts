@@ -9,10 +9,13 @@ import { employeeRoutes } from "./api/employee";
 import { reportsRoutes } from "./api/reports";
 import { devConfigRoutes } from "./api/devConfig";
 import { Database } from "./db/client";
+import { staticPlugin } from "@elysiajs/static";
+
 
 // Initialize Database access
 Database.getInstance();
 
+console.log("\n\n!!! BACKEND STARTUP - DEBUG VERSION A0374 (Step 830) !!!\n\n");
 const app = new Elysia()
     // CORS Configuration
     .use(cors({
@@ -52,7 +55,25 @@ const app = new Elysia()
         }
     })
     // Root endpoints
-    .get("/", () => ({
+    // Serve Frontend Static Files
+    // Serve Frontend Static Files explicitly
+    .get("/", () => {
+        console.log("!!! ROOT HANDLER HIT !!! Serving index.html...");
+        return Bun.file("../frontend/dist/index.html");
+    })
+    .get("/index.html", () => Bun.file("../frontend/dist/index.html"))
+
+    // Serve assets (JS/CSS) - Handle /upah prefix from Vite production build
+    .use(staticPlugin({
+        assets: "../frontend/dist",
+        prefix: "/upah"
+    }))
+    // Also serve at root /assets just in case
+    .use(staticPlugin({
+        assets: "../frontend/dist/assets",
+        prefix: "/assets"
+    }))
+    .get("/api-info", () => ({
         message: "Payroll Backend (Bun/Elysia) is running",
         version: "2.0.0",
         mode: Config.RUN_MODE
@@ -77,6 +98,11 @@ const app = new Elysia()
     .use(employeeRoutes)
     // Summary routes already have /payroll/summary prefix in their definition
     .use(summaryRoutes)
+    // SPA Fallback: Serve index.html for any unknown routes (excluding API)
+    .get("*", async ({ request }) => { // Added async param
+        console.log(`!!! CATCH-ALL HIT for ${new URL(request.url).pathname} !!! Serving index.html...`);
+        return Bun.file("../frontend/dist/index.html");
+    })
     // Start server
     .listen({
         port: Config.PORT,

@@ -6,9 +6,7 @@ import { isProdMode } from '../utils/prodModeUtils'
 
 // Base URL changes based on mode - use locked endpoint for proxy/prod mode (RS256 auth)
 const getBaseUrl = () => {
-    if (isProdMode() || window.location.pathname.startsWith('/upah')) {
-        return '/payroll/locked/employee'
-    }
+    // UPDATED: Bun backend uses standard routes for all modes
     return '/payroll/employee'
 }
 
@@ -20,7 +18,12 @@ const getBaseUrl = () => {
  * @param {number} year - Year
  * @param {string} division - Division code (optional)
  * @returns {Promise<Object>} Checkroll data with attendance and overtime matrices
+ * 
+ * 
  */
+
+
+
 export async function getEmployeeCheckroll(token, empCode, month, year, division = null) {
     try {
         const params = { month, year }

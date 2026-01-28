@@ -64,6 +64,7 @@ export default function EmployeeDetailPage({
 
             try {
                 const data = await getEmployeeCheckroll(token, empCode, month, year, division)
+                console.log('[EmployeeDetailPage] Received Checkroll Data:', data)
                 setCheckrollData(data)
             } catch (e) {
                 console.error('Failed to load checkroll data:', e)
@@ -213,7 +214,7 @@ export default function EmployeeDetailPage({
                     </div>
                     <div className="company-info">
                         <h2>PT REBINMAS JAYA</h2>
-                        <h3>SLIP GAJI KARYAWAN</h3>
+                        <h3>SLIP GAJI KARYAWAN <span style={{ fontSize: '0.8rem', color: '#999' }}>(Rev 2)</span></h3>
                         <p className="period">Periode: {getMonthName(month)} {year}</p>
                     </div>
                     <div className="payslip-id">

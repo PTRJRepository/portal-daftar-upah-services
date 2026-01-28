@@ -34,6 +34,12 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             const year = parseInt(query.year);
 
             const result = await employeeDetailService.getEmployeeCheckroll(empCode, month, year);
+            console.log("[API DEBUG] Checkroll Result Keys:", Object.keys(result));
+            if (result.debug_info) {
+                console.log("[API DEBUG] Debug Info:", JSON.stringify(result.debug_info));
+            } else {
+                console.log("[API DEBUG] WARNING: debug_info MISSING in result!");
+            }
 
             if (result.error) {
                 set.status = 404;

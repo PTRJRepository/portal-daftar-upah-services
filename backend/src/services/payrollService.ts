@@ -251,7 +251,7 @@ export class PayrollService {
         const chunks = this.chunk(empCodes, 200);
 
         for (const chunk of chunks) {
-            const placeholders = chunk.map((_, i) => `@p${i}`).join(",");
+            const placeholders = chunk.map(() => `?`).join(",");
             const rows = await this.db.query<{ EmpCode: string; PayRate: number }>(`
                 SELECT EmpCode, PayRate FROM HR_PAYROLL WHERE EmpCode IN (${placeholders})
             `, chunk);

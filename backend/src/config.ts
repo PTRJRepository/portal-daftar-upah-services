@@ -4,7 +4,7 @@ export type RunMode = "dev" | "prod";
 
 export class Config {
     // Server Configuration
-    public static readonly PORT: number = parseInt(env.PORT || "8002");
+    public static readonly PORT: number = parseInt(env.PORT || "8002", 10);
     public static readonly HOST: string = env.HOST || "0.0.0.0";
     public static readonly RUN_MODE: RunMode = (env.RUN_MODE as RunMode) || "dev";
 

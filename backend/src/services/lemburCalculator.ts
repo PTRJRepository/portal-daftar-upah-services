@@ -1,5 +1,6 @@
 import { Database } from "../db/client";
 import { cacheService } from "./cacheService";
+import { payrollService } from "./payrollService";
 
 // Day Type Classification
 export enum DayType {
@@ -62,6 +63,8 @@ export interface OvertimeRecord {
     breakdown?: OvertimeBreakdown;
     task_code?: string;
     shift_code?: string;
+    raw_amount?: number;
+    raw_rate?: number;
 }
 
 export interface LemburResult {
@@ -226,10 +229,27 @@ export class LemburCalculator {
     }
 
     // --- Calculate for Employee ---
-    public async calculate(empCode: string, month: number, year: number): Promise<LemburResult> {
+    public async calculate(empCode: string, month: number, year: number, manualUpj?: number): Promise<LemburResult> {
         const daysInMonth = new Date(year, month, 0).getDate();
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const endDate = `${year}-${month.toString().padStart(2, "0")}-${daysInMonth}`;
+
+        // Deterined UPJ: manual > employee basic wage / 173 > default
+        let upj = manualUpj;
+        if (upj === undefined) {
+            try {
+                const payRates = await payrollService.getPayratesMap([empCode]);
+                const payRate = payRates[empCode] || 0;
+                if (payRate > 0) {
+                    upj = payRate / 173;
+                } else {
+                    upj = this.upjValue; // Fallback to default
+                }
+            } catch (e) {
+                console.error("[LemburCalculator] Failed to fetch payrate, using fallback:", e);
+                upj = this.upjValue;
+            }
+        }
 
         const records: OvertimeRecord[] = [];
         let empName = empCode;
@@ -241,9 +261,13 @@ export class LemburCalculator {
                 EmpName: string;
                 TrxDate: string;
                 Hours: number;
+
                 TaskCode: string;
                 ShiftCode: string;
+                Amount: number;
+                Rate: number;
             }>(`
+
                 SELECT 
                     trl.ID,
                     trl.EmpCode,
@@ -251,16 +275,27 @@ export class LemburCalculator {
                     trl.TrxDate,
                     trl.Hours,
                     trl.TaskCode,
-                    trl.ShiftCode
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC t ON t.ID = trl.MasterID
+                    trl.ShiftCode,
+                    trl.Amount,
+                    trl.Rate
+                FROM (
+                    -- Active Table
+                    SELECT l.ID, l.EmpCode, l.TrxDate, l.Hours, l.TaskCode, l.ShiftCode, l.Amount, l.Rate
+                    FROM PR_TASKREGLN l
+                    JOIN PR_TASKREG m ON l.MasterID = m.ID
+                    WHERE l.EmpCode = ? AND l.TrxDate >= ? AND l.TrxDate <= ? AND l.OT = 1
+                    
+                    UNION ALL
+                    
+                    -- Archive Table
+                    SELECT l.ID, l.EmpCode, l.TrxDate, l.Hours, l.TaskCode, l.ShiftCode, l.Amount, l.Rate
+                    FROM PR_TASKREGLN_ARC l
+                    JOIN PR_TASKREG_ARC m ON l.MasterID = m.ID
+                    WHERE l.EmpCode = ? AND l.TrxDate >= ? AND l.TrxDate <= ? AND l.OT = 1
+                ) trl
                 LEFT JOIN HR_EMPLOYEE e ON e.EmpCode = trl.EmpCode
-                WHERE trl.EmpCode = ?
-                  AND trl.TrxDate >= ?
-                  AND trl.TrxDate <= ?
-                  AND trl.OT = 1
                 ORDER BY trl.TrxDate
-            `, [empCode, startDate, endDate]);
+            `, [empCode, startDate, endDate, empCode, startDate, endDate]);
 
             for (const row of rows) {
                 empName = row.EmpName || empCode;
@@ -271,7 +306,7 @@ export class LemburCalculator {
                 const dayType = await this.classifyDay(trxDate, year);
 
                 // Calculate breakdown
-                const breakdown = this.calculateOvertimePayment(row.Hours, dayType, this.upjValue, isFriday);
+                const breakdown = this.calculateOvertimePayment(row.Hours, dayType, upj || this.upjValue, isFriday);
 
                 records.push({
                     id: row.ID,
@@ -282,7 +317,9 @@ export class LemburCalculator {
                     day_type: dayType,
                     breakdown,
                     task_code: row.TaskCode,
-                    shift_code: row.ShiftCode
+                    shift_code: row.ShiftCode,
+                    raw_amount: row.Amount || 0,
+                    raw_rate: row.Rate || 0
                 });
             }
         } catch (e) {
@@ -297,7 +334,7 @@ export class LemburCalculator {
             emp_name: empName,
             month,
             year,
-            upj: this.upjValue,
+            upj: upj || this.upjValue,
             records,
             total_hours: totalHours,
             total_payment: totalPayment,
@@ -315,9 +352,21 @@ export class LemburCalculator {
     public async calculateBatchAmounts(empCodes: string[], month: number, year: number): Promise<Record<string, number>> {
         const result: Record<string, number> = {};
 
+        // Batch fetch payratess
+        let payRates: Record<string, number> = {};
+        try {
+            payRates = await payrollService.getPayratesMap(empCodes);
+        } catch (e) {
+            console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
+        }
+
         for (const empCode of empCodes) {
             try {
-                const lemburResult = await this.calculate(empCode, month, year);
+                const payRate = payRates[empCode] || 0;
+                // Calculate UPJ: Basic Wage / 173
+                const upj = payRate > 0 ? payRate / 173 : this.upjValue;
+
+                const lemburResult = await this.calculate(empCode, month, year, upj);
                 result[empCode] = lemburResult.total_payment;
             } catch (e) {
                 result[empCode] = 0;

@@ -101,7 +101,8 @@ export class DataExtractorService {
         month: number,
         year: number,
         gangCode: string = "ALL",
-        divisionCode?: string
+        divisionCode?: string,
+        specificEmpCode: string | null = null
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -115,7 +116,10 @@ export class DataExtractorService {
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`;
 
         let gangCondition = "";
-        if (gangCode && gangCode !== "ALL") {
+        if (specificEmpCode) {
+            // If specific employee is requested, ignore gang/division filters for safety/speed
+            gangCondition = `RTRIM(e.EmpCode) = '${specificEmpCode.trim()}'`;
+        } else if (gangCode && gangCode !== "ALL") {
             // Match Python: RTRIM(LTRIM(gl.GangCode)) = ?
             gangCondition = `RTRIM(LTRIM(gl.GangCode)) = '${gangCode.trim()}'`;
         } else if (divisionCode) {
@@ -347,7 +351,7 @@ export class DataExtractorService {
                 COALESCE(p.RiceRation, 0) as beras_rate,
                 em.AppJoinGrpDate as join_date
             FROM HR_EMPLOYEE e
-            JOIN HR_GANGLN gl ON gl.GangMember = e.EmpCode
+            LEFT JOIN HR_GANGLN gl ON gl.GangMember = e.EmpCode
             LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
             LEFT JOIN HR_EMPLOYMENT em ON em.EmpCode = e.EmpCode
             ${whereClause}
@@ -368,27 +372,26 @@ export class DataExtractorService {
     private async getAttendance(empCodes: string[], startDate: string, endDate: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
         const empList = empCodes.map(e => `'${e}'`).join(",");
+        // Use UNION ALL to combine Active and Archive
         let rows = await this.db.query<{ emp_code: string; hk: number }>(`
-            SELECT trl.EmpCode as emp_code, COUNT(*) as hk
+            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk
             FROM PR_TASKREGLN trl
             JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-            WHERE trl.EmpCode IN (${empList})
+            WHERE RTRIM(trl.EmpCode) IN (${empList})
               AND trl.TrxDate >= ? AND trl.TrxDate < ?
               AND trl.OT = 0
-            GROUP BY trl.EmpCode
-        `, [startDate, endDate]);
+            GROUP BY RTRIM(trl.EmpCode)
+            
+            UNION ALL
 
-        if (rows.length === 0) {
-            rows = await this.db.query<{ emp_code: string; hk: number }>(`
-                SELECT trl.EmpCode as emp_code, COUNT(*) as hk
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-                WHERE trl.EmpCode IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
-                  AND trl.OT = 0
-                GROUP BY trl.EmpCode
-            `, [startDate, endDate]);
-        }
+            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk
+            FROM PR_TASKREGLN_ARC trl
+            JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+            WHERE RTRIM(trl.EmpCode) IN (${empList})
+              AND trl.TrxDate >= ? AND trl.TrxDate < ?
+              AND trl.OT = 0
+            GROUP BY RTRIM(trl.EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, number> = {};
         for (const r of rows) {
@@ -408,35 +411,39 @@ export class DataExtractorService {
         }
 
         // Query cuti tahunan and sakit (by TaskCode)
+        // Use UNION ALL for Cuti
         let cutiTaskRows = await this.db.query<{ emp_code: string; cuti_tahunan: number; cuti_sakit_haid: number }>(`
             SELECT
-                trl.EmpCode as emp_code,
-                SUM(CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END) as cuti_tahunan,
-                SUM(CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END) as cuti_sakit_haid
-            FROM PR_TASKREGLN trl
-            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-            WHERE trl.EmpCode IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-              AND (trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%')
-            GROUP BY trl.EmpCode
-        `, [startDate, endDate]);
-
-        if (cutiTaskRows.length === 0) {
-            cutiTaskRows = await this.db.query<{ emp_code: string; cuti_tahunan: number; cuti_sakit_haid: number }>(`
+                RTRIM(EmpCode) as emp_code,
+                SUM(cuti_tahunan) as cuti_tahunan,
+                SUM(cuti_sakit_haid) as cuti_sakit_haid
+            FROM (
                 SELECT
-                    trl.EmpCode as emp_code,
-                    SUM(CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END) as cuti_tahunan,
-                    SUM(CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END) as cuti_sakit_haid
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-                WHERE trl.EmpCode IN (${empList})
+                    trl.EmpCode,
+                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
+                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
                   AND (trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%')
-                GROUP BY trl.EmpCode
-            `, [startDate, endDate]);
-        }
+                
+                UNION ALL
+
+                SELECT
+                    trl.EmpCode,
+                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
+                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid
+                FROM PR_TASKREGLN_ARC trl
+                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                  AND (trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%')
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
 
         for (const r of cutiTaskRows) {
             const emp = r.emp_code?.trim() || "";
@@ -446,30 +453,30 @@ export class DataExtractorService {
             }
         }
 
-        // Query cuti minggu (Sundays - DATEPART weekday = 1)
+        // Query cuti minggu (Sundays - DATEPART weekday = 1) - UNION ALL
         let cutiMingguRows = await this.db.query<{ emp_code: string; cuti_minggu: number }>(`
-            SELECT trl.EmpCode as emp_code, COUNT(DISTINCT trl.TrxDate) as cuti_minggu
-            FROM PR_TASKREGLN trl
-            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-            WHERE trl.EmpCode IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-              AND DATEPART(weekday, trl.TrxDate) = 1
-            GROUP BY trl.EmpCode
-        `, [startDate, endDate]);
-
-        if (cutiMingguRows.length === 0) {
-            cutiMingguRows = await this.db.query<{ emp_code: string; cuti_minggu: number }>(`
-                SELECT trl.EmpCode as emp_code, COUNT(DISTINCT trl.TrxDate) as cuti_minggu
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-                WHERE trl.EmpCode IN (${empList})
+            SELECT RTRIM(EmpCode) as emp_code, COUNT(DISTINCT TrxDate) as cuti_minggu
+            FROM (
+                SELECT trl.EmpCode, trl.TrxDate
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
                   AND DATEPART(weekday, trl.TrxDate) = 1
-                GROUP BY trl.EmpCode
-            `, [startDate, endDate]);
-        }
+                
+                UNION ALL
+
+                SELECT trl.EmpCode, trl.TrxDate
+                FROM PR_TASKREGLN_ARC trl
+                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                  AND DATEPART(weekday, trl.TrxDate) = 1
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
 
         for (const r of cutiMingguRows) {
             const emp = r.emp_code?.trim() || "";
@@ -478,30 +485,30 @@ export class DataExtractorService {
             }
         }
 
-        // Query cuti nasional (National holidays - join HR_GPH)
+        // Query cuti nasional (National holidays - join HR_GPH) - UNION ALL
         let cutiNasionalRows = await this.db.query<{ emp_code: string; cuti_nasional: number }>(`
-            SELECT trl.EmpCode as emp_code, COUNT(DISTINCT trl.TrxDate) as cuti_nasional
-            FROM PR_TASKREGLN trl
-            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-            JOIN HR_GPH h ON h.HolidayDate = trl.TrxDate
-            WHERE trl.EmpCode IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-            GROUP BY trl.EmpCode
-        `, [startDate, endDate]);
+            SELECT RTRIM(EmpCode) as emp_code, COUNT(DISTINCT TrxDate) as cuti_nasional
+            FROM (
+                SELECT trl.EmpCode, trl.TrxDate
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                JOIN HR_GPH h ON h.HolidayDate = trl.TrxDate
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                
+                UNION ALL
 
-        if (cutiNasionalRows.length === 0) {
-            cutiNasionalRows = await this.db.query<{ emp_code: string; cuti_nasional: number }>(`
-                SELECT trl.EmpCode as emp_code, COUNT(DISTINCT trl.TrxDate) as cuti_nasional
+                SELECT trl.EmpCode, trl.TrxDate
                 FROM PR_TASKREGLN_ARC trl
                 JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
                 JOIN HR_GPH h ON h.HolidayDate = trl.TrxDate
-                WHERE trl.EmpCode IN (${empList})
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
-                GROUP BY trl.EmpCode
-            `, [startDate, endDate]);
-        }
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
 
         for (const r of cutiNasionalRows) {
             const emp = r.emp_code?.trim() || "";
@@ -517,28 +524,28 @@ export class DataExtractorService {
         if (!empCodes.length) return {};
         const empList = empCodes.map(e => `'${e}'`).join(",");
         let rows = await this.db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-            SELECT t.EmpCode as emp_code, t.DocDesc as doc_desc, SUM(ln.Amount) as amount
-            FROM PR_ADTRANS t
-            JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-            WHERE t.EmpCode IN (${empList})
-              AND t.DocDate >= ? AND t.DocDate < ?
-              AND UPPER(t.DocDesc) LIKE 'PREMI%'
-              AND ln.Amount > 0
-            GROUP BY t.EmpCode, t.DocDesc
-        `, [startDate, endDate]);
-
-        if (rows.length === 0) {
-            rows = await this.db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-                SELECT t.EmpCode as emp_code, t.DocDesc as doc_desc, SUM(ln.Amount) as amount
-                FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-                WHERE t.EmpCode IN (${empList})
+            SELECT RTRIM(EmpCode) as emp_code, DocDesc as doc_desc, SUM(Amount) as amount
+            FROM (
+                SELECT t.EmpCode, t.DocDesc, ln.Amount
+                FROM PR_ADTRANS t
+                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
                   AND UPPER(t.DocDesc) LIKE 'PREMI%'
                   AND ln.Amount > 0
-                GROUP BY t.EmpCode, t.DocDesc
-            `, [startDate, endDate]);
-        }
+                
+                UNION ALL
+
+                SELECT t.EmpCode, t.DocDesc, ln.Amount
+                FROM PR_ADTRANS_ARC t
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND UPPER(t.DocDesc) LIKE 'PREMI%'
+                  AND ln.Amount > 0
+            ) combined
+            GROUP BY RTRIM(EmpCode), DocDesc
+        `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, Record<string, number>> = {};
         for (const r of rows) {
@@ -555,33 +562,14 @@ export class DataExtractorService {
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         // Query based on DocDesc patterns matching Python backend implementation
+        // Query based on DocDesc patterns matching Python backend implementation - UNION ALL
         let rows = await this.db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-            SELECT t.EmpCode as emp_code, t.DocDesc as doc_desc, SUM(COALESCE(ln.Amount, 0)) as amount
-            FROM PR_ADTRANS t
-            JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-            WHERE t.EmpCode IN (${empList})
-              AND t.DocDate >= ? AND t.DocDate < ?
-              AND (UPPER(t.DocDesc) LIKE '%POT%'
-                   OR UPPER(t.DocDesc) LIKE '%PPH%'
-                   OR UPPER(t.DocDesc) LIKE '%BPJS%'
-                   OR UPPER(t.DocDesc) LIKE '%PINJAM%'
-                   OR UPPER(t.DocDesc) LIKE '%KL%'
-                   OR UPPER(t.DocDesc) LIKE '%SPSI%'
-                   OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
-                   OR UPPER(t.DocDesc) LIKE '%TOTAL%'
-                   OR UPPER(t.DocDesc) LIKE '%TIKET%'
-                   OR UPPER(t.DocDesc) LIKE '%KONTAN%'
-                   OR UPPER(t.DocDesc) LIKE '%ALAT%'
-                   OR UPPER(t.DocDesc) LIKE '%THR%')
-            GROUP BY t.EmpCode, t.DocDesc
-        `, [startDate, endDate]);
-
-        if (rows.length === 0) {
-            rows = await this.db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-                SELECT t.EmpCode as emp_code, t.DocDesc as doc_desc, SUM(COALESCE(ln.Amount, 0)) as amount
-                FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-                WHERE t.EmpCode IN (${empList})
+            SELECT RTRIM(EmpCode) as emp_code, DocDesc as doc_desc, SUM(COALESCE(Amount, 0)) as amount
+            FROM (
+                SELECT t.EmpCode, t.DocDesc, ln.Amount
+                FROM PR_ADTRANS t
+                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
                   AND (UPPER(t.DocDesc) LIKE '%POT%'
                        OR UPPER(t.DocDesc) LIKE '%PPH%'
@@ -595,9 +583,29 @@ export class DataExtractorService {
                        OR UPPER(t.DocDesc) LIKE '%KONTAN%'
                        OR UPPER(t.DocDesc) LIKE '%ALAT%'
                        OR UPPER(t.DocDesc) LIKE '%THR%')
-                GROUP BY t.EmpCode, t.DocDesc
-            `, [startDate, endDate]);
-        }
+
+                UNION ALL
+
+                SELECT t.EmpCode, t.DocDesc, ln.Amount
+                FROM PR_ADTRANS_ARC t
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND (UPPER(t.DocDesc) LIKE '%POT%'
+                       OR UPPER(t.DocDesc) LIKE '%PPH%'
+                       OR UPPER(t.DocDesc) LIKE '%BPJS%'
+                       OR UPPER(t.DocDesc) LIKE '%PINJAM%'
+                       OR UPPER(t.DocDesc) LIKE '%KL%'
+                       OR UPPER(t.DocDesc) LIKE '%SPSI%'
+                       OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
+                       OR UPPER(t.DocDesc) LIKE '%TOTAL%'
+                       OR UPPER(t.DocDesc) LIKE '%TIKET%'
+                       OR UPPER(t.DocDesc) LIKE '%KONTAN%'
+                       OR UPPER(t.DocDesc) LIKE '%ALAT%'
+                       OR UPPER(t.DocDesc) LIKE '%THR%')
+            ) combined
+            GROUP BY RTRIM(EmpCode), DocDesc
+        `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, Record<string, number>> = {};
         for (const r of rows) {
@@ -614,26 +622,26 @@ export class DataExtractorService {
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         let rows = await this.db.query<{ emp_code: string; total_hours: number; total_amount: number }>(`
-            SELECT trl.EmpCode as emp_code, SUM(trl.Hours) as total_hours, SUM(trl.Amount) as total_amount
-            FROM PR_TASKREGLN trl
-            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-            WHERE trl.EmpCode IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 1
-            GROUP BY trl.EmpCode
-        `, [startDate, endDate]);
-
-        if (rows.length === 0) {
-            rows = await this.db.query<{ emp_code: string; total_hours: number; total_amount: number }>(`
-                SELECT trl.EmpCode as emp_code, SUM(trl.Hours) as total_hours, SUM(trl.Amount) as total_amount
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-                WHERE trl.EmpCode IN (${empList})
+            SELECT RTRIM(EmpCode) as emp_code, SUM(Hours) as total_hours, SUM(Amount) as total_amount
+            FROM (
+                SELECT trl.EmpCode, trl.Hours, trl.Amount
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 1
-                GROUP BY trl.EmpCode
-            `, [startDate, endDate]);
-        }
+                
+                UNION ALL
+
+                SELECT trl.EmpCode, trl.Hours, trl.Amount
+                FROM PR_TASKREGLN_ARC trl
+                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 1
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, LemburData> = {};
         for (const r of rows) {
@@ -650,28 +658,28 @@ export class DataExtractorService {
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         let rows = await this.db.query<{ emp_code: string; total: number }>(`
-            SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total
-            FROM PR_ADTRANS t
-            JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-            WHERE t.EmpCode IN (${empList})
-              AND t.DocDate >= ? AND t.DocDate < ?
-              AND UPPER(t.DocDesc) LIKE '%${tunjanganType}%'
-              AND ln.Amount > 0
-            GROUP BY t.EmpCode
-        `, [startDate, endDate]);
-
-        if (rows.length === 0) {
-            rows = await this.db.query<{ emp_code: string; total: number }>(`
-                SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total
-                FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-                WHERE t.EmpCode IN (${empList})
+            SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
+            FROM (
+                SELECT t.EmpCode, ln.Amount
+                FROM PR_ADTRANS t
+                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
                   AND UPPER(t.DocDesc) LIKE '%${tunjanganType}%'
                   AND ln.Amount > 0
-                GROUP BY t.EmpCode
-            `, [startDate, endDate]);
-        }
+                
+                UNION ALL
+
+                SELECT t.EmpCode, ln.Amount
+                FROM PR_ADTRANS_ARC t
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND UPPER(t.DocDesc) LIKE '%${tunjanganType}%'
+                  AND ln.Amount > 0
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, number> = {};
         for (const r of rows) {
@@ -689,10 +697,10 @@ export class DataExtractorService {
                 SELECT EmpCode, NewRate, ROW_NUMBER() OVER (PARTITION BY EmpCode ORDER BY UpdateDate DESC) as rn
                 FROM HR_CPTRX
             )
-            SELECT e.EmpCode as emp_code, COALESCE(lc.NewRate, 0) as upah_dasar
+            SELECT RTRIM(e.EmpCode) as emp_code, COALESCE(lc.NewRate, 0) as upah_dasar
             FROM HR_EMPLOYEE e
-            LEFT JOIN LatestCPTRX lc ON lc.EmpCode = e.EmpCode AND lc.rn = 1
-            WHERE e.EmpCode IN (${empList})
+            LEFT JOIN LatestCPTRX lc ON RTRIM(lc.EmpCode) = RTRIM(e.EmpCode) AND lc.rn = 1
+            WHERE RTRIM(e.EmpCode) IN (${empList})
         `);
 
         const result: Record<string, number> = {};
@@ -726,24 +734,24 @@ export class DataExtractorService {
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         let rows = await this.db.query<{ emp_code: string; total: number }>(`
-            SELECT LFLN.EmpCode as emp_code, SUM(LFLN.Amount) as total
-            FROM PR_LOOSEFRUIT LF
-            JOIN PR_LOOSEFRUITLN LFLN ON LF.ID = LFLN.MasterID
-            WHERE LFLN.EmpCode IN (${empList})
-              AND LF.DocDate >= ? AND LF.DocDate < ?
-            GROUP BY LFLN.EmpCode
-        `, [startDate, endDate]);
+            SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
+            FROM (
+                SELECT LFLN.EmpCode, LFLN.Amount
+                FROM PR_LOOSEFRUIT LF
+                JOIN PR_LOOSEFRUITLN LFLN ON LF.ID = LFLN.MasterID
+                WHERE RTRIM(LFLN.EmpCode) IN (${empList})
+                  AND LF.DocDate >= ? AND LF.DocDate < ?
+                
+                UNION ALL
 
-        if (rows.length === 0) {
-            rows = await this.db.query<{ emp_code: string; total: number }>(`
-                SELECT LFLN.EmpCode as emp_code, SUM(LFLN.Amount) as total
+                SELECT LFLN.EmpCode, LFLN.Amount
                 FROM PR_LOOSEFRUIT_ARC LF
                 JOIN PR_LOOSEFRUITLN_ARC LFLN ON LF.ID = LFLN.MasterID
-                WHERE LFLN.EmpCode IN (${empList})
+                WHERE RTRIM(LFLN.EmpCode) IN (${empList})
                   AND LF.DocDate >= ? AND LF.DocDate < ?
-                GROUP BY LFLN.EmpCode
-            `, [startDate, endDate]);
-        }
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, number> = {};
         for (const r of rows) {
