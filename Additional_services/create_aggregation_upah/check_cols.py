@@ -1,5 +1,7 @@
 
 from db_connection import get_extend_db_connection
+from datetime import datetime
+
 
 try:
     conn = get_extend_db_connection()
@@ -12,4 +14,6 @@ try:
     
     conn.close()
 except Exception as e:
+    print("Failed to connect to the database or execute the query.")
     print(f"ERROR: {e}")
+

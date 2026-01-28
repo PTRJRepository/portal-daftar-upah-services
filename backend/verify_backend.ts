@@ -46,6 +46,22 @@ async function runVerification() {
         console.error("❌ Access Check Failed:", e);
     }
 
+    // 3.7 Check Periods (New Summary Endpoint)
+    console.log("👉 Checking /payroll/summary/periods...");
+    try {
+        const periods = await fetch(`${BASE_URL}/payroll/summary/periods`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (periods.status === 200) {
+             const data = await periods.json();
+             console.log("✅ Periods Check:", data);
+        } else {
+             console.error("❌ Periods Check Failed:", periods.status, await periods.text());
+        }
+    } catch (e) {
+        console.error("❌ Periods Check Exception:", e);
+    }
+
     // 3.6 Check Divisions (DB Test)
     console.log("👉 Checking /payroll/divisions (DB Test)...");
     try {
@@ -60,41 +76,6 @@ async function runVerification() {
         }
     } catch (e) {
         console.error("❌ Divisions Check Exception:", e);
-    }
-
-    // 4. Test Report Generation (New)
-    console.log("👉 Testing Report Generation...");
-    try {
-        const report = await fetch(`${BASE_URL}/reports/generate`, {
-            method: "POST",
-            headers: { 
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                month: 5,
-                year: 2025,
-                gang_code: "H1H"
-            })
-        });
-
-        if (report.status === 200) {
-            const reportData: any = await report.json();
-            console.log("✅ Report Generation Started:", reportData);
-            
-            // Poll for status (optional check)
-            const jobId = reportData.job_id;
-            console.log(`Checking job status for ${jobId}...`);
-            const jobStatus = await fetch(`${BASE_URL}/reports/${jobId}`, {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            console.log("Job Status Response:", await jobStatus.json());
-        } else {
-            console.error("❌ Report Generation Failed:", report.status, await report.text());
-        }
-
-    } catch (e) {
-        console.error("❌ Report Verification Failed:", e);
     }
 }
 

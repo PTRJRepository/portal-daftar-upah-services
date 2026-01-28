@@ -1,0 +1,31 @@
+{
+  "found": false,
+  "total_gangs": 6,
+  "first_5_gangs": [
+    {
+      "gang_code": "G1H",
+      "description": "HARVESTING TIMUR",
+      "loc_code": "AB1"
+    },
+    {
+      "gang_code": "G1M",
+      "description": "MAINTENANCE TIMUR",
+      "loc_code": "AB1"
+    },
+    {
+      "gang_code": "G1T",
+      "description": "TRANSPORT TIMUR",
+      "loc_code": "AB1"
+    },
+    {
+      "gang_code": "G2H",
+      "description": "HARVESTING BARAT",
+      "loc_code": "AB1"
+    },
+    {
+      "gang_code": "G2M",
+      "description": "MAINTENANCE BARAT",
+      "loc_code": "AB1"
+    }
+  ]
+}

@@ -18,15 +18,15 @@ interface BatchQuery {
 }
 
 export class Database {
-    private static instance: Database;
+    private static instances: Map<string, Database> = new Map();
     private serverProfile: string;
     private databaseName: string;
     private baseUrl: string;
     private apiKey: string;
     private timeout: number;
 
-    private constructor(database?: string) {
-        this.serverProfile = Config.DB_PROFILE;
+    private constructor(database?: string, profile?: string) {
+        this.serverProfile = profile || Config.DB_PROFILE;
         this.databaseName = database || Config.DEFAULT_DATABASE;
         this.apiKey = Config.DB_API_KEY;
         this.timeout = Config.DB_CONN_TIMEOUT;
@@ -43,14 +43,33 @@ export class Database {
         console.log(`[DB] Query Target: ${this.baseUrl}/v1/query`);
     }
 
-    public static getInstance(database?: string): Database {
-        if (database) {
-            return new Database(database);
+    /**
+     * Get database instance. Supports multiple database configurations:
+     * - Default: db_ptrj with SERVER_PROFILE_1
+     * - Extended: extend_db_ptrj with SERVER_PROFILE_1
+     * - Venus: VenusHR14 with SERVER_PROFILE_3 (for Mill PKS data)
+     */
+    public static getInstance(database?: string, profile?: string): Database {
+        const key = `${database || Config.DEFAULT_DATABASE}:${profile || Config.DB_PROFILE}`;
+
+        if (!Database.instances.has(key)) {
+            Database.instances.set(key, new Database(database, profile));
         }
-        if (!Database.instance) {
-            Database.instance = new Database();
-        }
-        return Database.instance;
+        return Database.instances.get(key)!;
+    }
+
+    /**
+     * Get VenusHR14 database instance (for Mill PKS data)
+     */
+    public static getVenusInstance(): Database {
+        return Database.getInstance(Config.DB_VENUS_DATABASE, Config.DB_VENUS_PROFILE);
+    }
+
+    /**
+     * Get Extended database instance (for aggregation history)
+     */
+    public static getExtendedInstance(): Database {
+        return Database.getInstance(Config.DB_EXTEND_DATABASE);
     }
 
     private prepareParams(sql: string, params?: any[] | Record<string, any>): { sql: string; params: any[] | Record<string, any> } {
@@ -159,5 +178,21 @@ export class Database {
             console.error("[DB] Transaction request failed:", e);
             return false;
         }
+    }
+
+    /**
+     * Execute a query and return the first result only
+     */
+    public async queryOne<T = any>(sql: string, params?: any[] | Record<string, any>): Promise<T | null> {
+        const results = await this.query<T>(sql, params);
+        return results.length > 0 ? results[0] : null;
+    }
+
+    /**
+     * Execute a query and return count
+     */
+    public async count(sql: string, params?: any[] | Record<string, any>): Promise<number> {
+        const result = await this.queryOne<{ count: number }>(sql, params);
+        return result?.count || 0;
     }
 }
