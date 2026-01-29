@@ -119,40 +119,31 @@ export default defineConfig({
           proxy.on('error', (err, _req, _res) => {
             console.log('proxy error', err);
           });
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('Sending Request to the Target:', req.method, req.url);
-          });
-          proxy.on('proxyRes', (proxyRes, req, _res) => {
-            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
-          });
         },
       },
       '/employees': {
         target: backendTarget,
         changeOrigin: true,
-        configure: (proxy, _options) => {
-          proxy.on('error', (err, _req, _res) => {
-            console.log('proxy error', err);
-          });
-        },
       },
       '/payroll': {
         target: backendTarget,
         changeOrigin: true,
-        configure: (proxy, _options) => {
-          proxy.on('error', (err, _req, _res) => {
-            console.log('proxy error', err);
-          });
-        },
       },
       '/reports': {
         target: backendTarget,
         changeOrigin: true,
-        configure: (proxy, _options) => {
-          proxy.on('error', (err, _req, _res) => {
-            console.log('proxy error', err);
-          });
-        },
+      },
+      '/dev-mode': {
+        target: backendTarget,
+        changeOrigin: true,
+      },
+      '/backend': {
+        target: backendTarget,
+        changeOrigin: true,
+      },
+      '/api': {
+        target: backendTarget,
+        changeOrigin: true,
       }
     }
   }
