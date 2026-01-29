@@ -6,7 +6,16 @@ import { isProdMode } from '../utils/prodModeUtils'
 
 // Base URL changes based on mode - use locked endpoint for proxy/prod mode (RS256 auth)
 const getBaseUrl = () => {
-    // UPDATED: Bun backend uses standard routes for all modes
+    // Check for explicit backend URL in environment variables
+    const backendHost = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL
+
+    if (backendHost) {
+        // Remove trailing slash if present
+        const host = backendHost.endsWith('/') ? backendHost.slice(0, -1) : backendHost
+        return `${host}/payroll/employee`
+    }
+
+    // Default: Bun backend uses standard routes relative to current origin
     return '/payroll/employee'
 }
 
