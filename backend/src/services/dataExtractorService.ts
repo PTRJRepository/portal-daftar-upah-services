@@ -89,8 +89,7 @@ export class DataExtractorService {
     private db: Database;
 
     private constructor() {
-        // Enforce SERVER_PROFILE_1 for report generation as requested
-        this.db = Database.getInstance(undefined, "SERVER_PROFILE_1");
+        this.db = Database.getInstance();
     }
 
     public static getInstance(): DataExtractorService {
@@ -105,7 +104,8 @@ export class DataExtractorService {
         year: number,
         gangCode: string = "ALL",
         divisionCode?: string,
-        specificEmpCode: string | null = null
+        specificEmpCode: string | null = null,
+        serverProfile?: string
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -136,7 +136,7 @@ export class DataExtractorService {
             }
         }
 
-        const employees = await this.getEmployees(gangCondition);
+        const employees = await this.getEmployees(gangCondition, serverProfile);
         if (employees.length === 0) {
             return {
                 data_rows: [],
@@ -149,16 +149,16 @@ export class DataExtractorService {
         const empCodes = employees.map(e => e.emp_code);
 
         const [attendance, cuti, premi, potongan, lembur, beras, jabatan, masaKerja, upahPokok, brondol] = await Promise.all([
-            this.getAttendance(empCodes, startDate, endDate),
-            this.getCuti(empCodes, startDate, endDate),
-            this.getPremi(empCodes, startDate, endDate),
-            this.getPotongan(empCodes, startDate, endDate),
-            this.getLemburDetailsFromCalculator(empCodes, month, year),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS"),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN"),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA"),
-            this.getUpahPokok(empCodes),
-            this.getBrondol(empCodes, startDate, endDate)
+            this.getAttendance(empCodes, startDate, endDate, serverProfile),
+            this.getCuti(empCodes, startDate, endDate, serverProfile),
+            this.getPremi(empCodes, startDate, endDate, serverProfile),
+            this.getPotongan(empCodes, startDate, endDate, serverProfile),
+            this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS", serverProfile),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
+            this.getUpahPokok(empCodes, serverProfile),
+            this.getBrondol(empCodes, startDate, endDate, serverProfile)
         ]);
 
         const dataRows: PayrollRow[] = [];
@@ -354,9 +354,10 @@ export class DataExtractorService {
         };
     }
 
-    private async getEmployees(gangCondition: string): Promise<EmployeeRow[]> {
+    private async getEmployees(gangCondition: string, serverProfile?: string): Promise<EmployeeRow[]> {
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const whereClause = gangCondition ? `WHERE ${gangCondition}` : "";
-        const rows = await this.db.query<any>(`
+        const rows = await db.query<any>(`
             SELECT DISTINCT
                 e.EmpCode as emp_code,
                 e.EmpName as emp_name,
@@ -385,11 +386,12 @@ export class DataExtractorService {
         }));
     }
 
-    private async getAttendance(empCodes: string[], startDate: string, endDate: string): Promise<Record<string, number>> {
+    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
         // Use UNION ALL to combine Active and Archive
-        let rows = await this.db.query<{ emp_code: string; hk: number }>(`
+        let rows = await db.query<{ emp_code: string; hk: number }>(`
             SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk
             FROM PR_TASKREGLN trl
             JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
@@ -416,8 +418,9 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getCuti(empCodes: string[], startDate: string, endDate: string): Promise<Record<string, CutiData>> {
+    private async getCuti(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, CutiData>> {
         if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         // Initialize result
@@ -428,7 +431,7 @@ export class DataExtractorService {
 
         // Query cuti tahunan and sakit (by TaskCode)
         // Use UNION ALL for Cuti
-        let cutiTaskRows = await this.db.query<{ emp_code: string; cuti_tahunan: number; cuti_sakit_haid: number }>(`
+        let cutiTaskRows = await db.query<{ emp_code: string; cuti_tahunan: number; cuti_sakit_haid: number }>(`
             SELECT
                 RTRIM(EmpCode) as emp_code,
                 SUM(cuti_tahunan) as cuti_tahunan,
@@ -470,7 +473,7 @@ export class DataExtractorService {
         }
 
         // Query cuti minggu (Sundays - DATEPART weekday = 1) - UNION ALL
-        let cutiMingguRows = await this.db.query<{ emp_code: string; cuti_minggu: number }>(`
+        let cutiMingguRows = await db.query<{ emp_code: string; cuti_minggu: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, COUNT(DISTINCT TrxDate) as cuti_minggu
             FROM (
                 SELECT trl.EmpCode, trl.TrxDate
@@ -502,7 +505,7 @@ export class DataExtractorService {
         }
 
         // Query cuti nasional (National holidays - join HR_GPH) - UNION ALL
-        let cutiNasionalRows = await this.db.query<{ emp_code: string; cuti_nasional: number }>(`
+        let cutiNasionalRows = await db.query<{ emp_code: string; cuti_nasional: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, COUNT(DISTINCT TrxDate) as cuti_nasional
             FROM (
                 SELECT trl.EmpCode, trl.TrxDate
@@ -536,10 +539,11 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getPremi(empCodes: string[], startDate: string, endDate: string): Promise<Record<string, Record<string, number>>> {
+    private async getPremi(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, Record<string, number>>> {
         if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
-        let rows = await this.db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
+        let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, DocDesc as doc_desc, SUM(Amount) as amount
             FROM (
                 SELECT t.EmpCode, t.DocDesc, ln.Amount
@@ -573,13 +577,14 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getPotongan(empCodes: string[], startDate: string, endDate: string): Promise<Record<string, Record<string, number>>> {
+    private async getPotongan(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, Record<string, number>>> {
         if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         // Query based on DocDesc patterns matching Python backend implementation
         // Query based on DocDesc patterns matching Python backend implementation - UNION ALL
-        let rows = await this.db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
+        let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, DocDesc as doc_desc, SUM(COALESCE(Amount, 0)) as amount
             FROM (
                 SELECT t.EmpCode, t.DocDesc, ln.Amount
@@ -633,9 +638,8 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getLemburDetailsFromCalculator(empCodes: string[], month: number, year: number): Promise<Record<string, LemburData>> {
-        // Force SERVER_PROFILE_1 for report generation
-        const data = await lemburCalculator.calculateBatchData(empCodes, month, year, "SERVER_PROFILE_1");
+    private async getLemburDetailsFromCalculator(empCodes: string[], month: number, year: number, serverProfile?: string): Promise<Record<string, LemburData>> {
+        const data = await lemburCalculator.calculateBatchData(empCodes, month, year, serverProfile);
         const result: Record<string, LemburData> = {};
         for (const k in data) {
             result[k] = {
@@ -646,11 +650,12 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getLemburDetails(empCodes: string[], startDate: string, endDate: string): Promise<Record<string, LemburData>> {
+    private async getLemburDetails(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, LemburData>> {
         if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        let rows = await this.db.query<{ emp_code: string; total_hours: number; total_amount: number }>(`
+        let rows = await db.query<{ emp_code: string; total_hours: number; total_amount: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, SUM(Hours) as total_hours, SUM(Amount) as total_amount
             FROM (
                 SELECT trl.EmpCode, trl.Hours, trl.Amount
@@ -682,11 +687,12 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getTunjanganAmount(empCodes: string[], startDate: string, endDate: string, tunjanganType: string): Promise<Record<string, number>> {
+    private async getTunjanganAmount(empCodes: string[], startDate: string, endDate: string, tunjanganType: string, serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        let rows = await this.db.query<{ emp_code: string; total: number }>(`
+        let rows = await db.query<{ emp_code: string; total: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
             FROM (
                 SELECT t.EmpCode, ln.Amount
@@ -717,11 +723,12 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getUpahPokok(empCodes: string[]): Promise<Record<string, number>> {
+    private async getUpahPokok(empCodes: string[], serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        const rows = await this.db.query<{ emp_code: string; upah_dasar: number }>(`
+        const rows = await db.query<{ emp_code: string; upah_dasar: number }>(`
             WITH LatestCPTRX AS (
                 SELECT EmpCode, NewRate, ROW_NUMBER() OVER (PARTITION BY EmpCode ORDER BY UpdateDate DESC) as rn
                 FROM HR_CPTRX
@@ -766,11 +773,12 @@ export class DataExtractorService {
         return upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
     }
 
-    private async getBrondol(empCodes: string[], startDate: string, endDate: string): Promise<Record<string, number>> {
+    private async getBrondol(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        let rows = await this.db.query<{ emp_code: string; total: number }>(`
+        let rows = await db.query<{ emp_code: string; total: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
             FROM (
                 SELECT LFLN.EmpCode, LFLN.Amount

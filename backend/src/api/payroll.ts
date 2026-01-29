@@ -173,7 +173,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "division_code, month, and year are required" };
             }
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_1");
 
             // Group by gang
             const gangsMap: Record<string, any[]> = {};
