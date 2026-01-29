@@ -76,9 +76,11 @@ axios.interceptors.response.use(
       const status = error?.response?.status
       console.error(`[HTTP] !! ${m} ${u} ${status || 'ERR'} ${dur}ms`, { message: error.message })
 
-      // Auto-Logout on 401/403 (Invalid Token)
-      if (status === 401 || status === 403) {
-        console.warn('[HTTP] Auth Error detected. Clearing session and redirecting to login.')
+      // Auto-Logout on 401 (Invalid Token) ONLY. 
+      // Do NOT logout on 403 (Forbidden permissions)
+      // Do NOT logout if request was to /auth/login (just a failed login attempt)
+      if (status === 401 && !u.includes('/auth/login')) {
+        console.warn('[HTTP] 401 Unauthorized. Clearing session and redirecting to login.')
 
         // Clear Storage
         localStorage.removeItem('auth-token')
@@ -86,7 +88,6 @@ axios.interceptors.response.use(
         localStorage.removeItem('payroll_remember_me')
 
         // Force Redirect to Login (unless already there)
-        // Use window.location to strictly reload the page and clear any in-memory state
         if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login'
         }

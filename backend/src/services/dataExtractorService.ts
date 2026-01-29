@@ -136,30 +136,37 @@ export class DataExtractorService {
             }
         }
 
+        const startTotal = performance.now();
         const employees = await this.getEmployees(gangCondition, serverProfile);
+        console.log(`[Perf] GetEmployees: ${employees.length} rows in ${(performance.now() - startTotal).toFixed(2)}ms`);
+
         if (employees.length === 0) {
             return {
                 data_rows: [],
                 dynamic_premi_headers: [],
                 dynamic_potongan_headers: [],
-                meta: { execution_time_ms: Date.now() - startTime, row_count: 0 }
+                meta: { execution_time_ms: 0, row_count: 0 }
             };
         }
 
         const empCodes = employees.map(e => e.emp_code);
 
+        const startParallel = performance.now();
         const [attendance, cuti, premi, potongan, lembur, beras, jabatan, masaKerja, upahPokok, brondol] = await Promise.all([
-            this.getAttendance(empCodes, startDate, endDate, serverProfile),
-            this.getCuti(empCodes, startDate, endDate, serverProfile),
-            this.getPremi(empCodes, startDate, endDate, serverProfile),
-            this.getPotongan(empCodes, startDate, endDate, serverProfile),
-            this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS", serverProfile),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
-            this.getUpahPokok(empCodes, serverProfile),
-            this.getBrondol(empCodes, startDate, endDate, serverProfile)
+            this.getAttendance(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Attendance: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getCuti(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Cuti: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getPremi(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Premi: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getPotongan(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Potongan: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile).then(res => { console.log(`[Perf] LemburCalc: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+
+            // Fixed Values / Master Data
+            this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS", serverProfile).then(res => { console.log(`[Perf] Beras: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile).then(res => { console.log(`[Perf] Jabatan: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile).then(res => { console.log(`[Perf] MasaKerja: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getUpahPokok(empCodes, serverProfile).then(res => { console.log(`[Perf] UpahPokok: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getBrondol(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Brondol: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; })
         ]);
+        console.log(`[Perf] ParallelFetch Total: ${(performance.now() - startParallel).toFixed(2)}ms`);
 
         const dataRows: PayrollRow[] = [];
         const dynamicPremiSet = new Set<string>();
