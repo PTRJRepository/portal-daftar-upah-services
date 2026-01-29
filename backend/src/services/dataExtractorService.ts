@@ -54,6 +54,7 @@ interface PayrollRow {
     total_tunjangan: number;
     premi_brondol: number;
     total_premi: number;
+    premi: Record<string, number>;
     jumlah_upah_kotor: number;
     // Caruman ASTEK
     pot_astek_pekerja: number;
@@ -207,10 +208,21 @@ export class DataExtractorService {
             const gaji_pokok = payrollService.calculateGajiPokok(empUpahDasar, hk);
             const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah;
 
+            // Merge Brondol into empPremi matches Python logic
+            // (Python: employee_data[emp_code]['premi']['brondol'] = val)
+            empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
+
             let total_premi = 0;
             for (const [key, val] of Object.entries(empPremi)) {
-                total_premi += val as number;
-                dynamicPremiSet.add(key);
+                // Exclude koreksi from total_premi (Python logic)
+                if (key !== "koreksi") {
+                    total_premi += val as number;
+                }
+                // Only add true dynamic keys to the header set
+                // Brondol is typically a static column, and Koreksi is special
+                if (key !== "brondol" && key !== "koreksi") {
+                    dynamicPremiSet.add(key);
+                }
             }
 
             // Calculate total potongan (only pekerja portions + other deductions)
@@ -319,6 +331,8 @@ export class DataExtractorService {
                 total_potongan,
                 total_potongan_bersih: total_potongan, // Frontend expects this field name
                 upah_bersih,
+                // Nested premi structure as requested
+                premi: empPremi,
                 // Frontend compatibility aliases
                 pot_astek: pot_astek_pekerja,
                 pot_astek_maj: pot_astek_majikan,
@@ -726,9 +740,17 @@ export class DataExtractorService {
     }
 
     private normalizePremiName(docDesc: string): string {
-        let name = docDesc.trim().toUpperCase()
+        let name = docDesc.trim().toUpperCase();
+
+        // Match Python manual handling
+        if (name.includes("KOREKSI")) return "koreksi";
+        if (name.includes("BRONDOL")) return "brondol";
+
+        // Standard normalization
+        name = name
             .replace(/^TUNJANGAN\s*PREMI\s*/i, "")
             .replace(/^PREMI\s*/i, "");
+
         return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")}`;
     }
 
