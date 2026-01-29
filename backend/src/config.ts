@@ -41,8 +41,8 @@ export class Config {
     public static readonly ACCESS_TOKEN_EXPIRE_MINUTES: number = parseInt(env.ACCESS_TOKEN_EXPIRE_MINUTES || "60");
 
     // External Auth Keys (if needed)
-    public static readonly PUBLIC_KEY_PATH: string = "keys/public_key.pem";
-    public static readonly PRIVATE_KEY_PATH: string = "keys/private_key.pem";
+    public static readonly PUBLIC_KEY_PATH: string = "keys/public.pem";
+    public static readonly PRIVATE_KEY_PATH: string = "keys/private.pem";
 
     // Payroll Constants
     public static readonly UPAH_MINIMUM_DASAR: number = parseFloat(env.CONSTANTS_UPAH_MINIMUM_DASAR || "3876600");

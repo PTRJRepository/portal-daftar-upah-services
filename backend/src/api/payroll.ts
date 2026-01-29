@@ -208,6 +208,130 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             year: t.String()
         })
     })
+    // --- Locked Report: Raw Tree (Alias for Proxy/Frontend Compat) ---
+    .get("/locked/report/raw-tree", async ({ query, set, currentUser }) => {
+        try {
+            const { dataExtractorService } = await import("../services/dataExtractorService");
+
+            // Frontend sends 'div' instead of 'division_code' for this endpoint
+            const divisionCode = query.div;
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+
+            if (!divisionCode || !month || !year) {
+                set.status = 400;
+                return { error: "div, month, and year are required" };
+            }
+
+            // PERMISSION CHECK
+            if (!currentUser) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            if (currentUser.role !== UserRole.ADMIN) {
+                // If user is not admin, they MUST have the requested division in their list
+                if (!currentUser.divisions.includes(divisionCode)) {
+                    console.warn(`[PayrollRoutes] User ${currentUser.username} attempted to access unauthorized division: ${divisionCode}`);
+                    set.status = 403;
+                    return { error: `Access refused: You do not have permission for division ${divisionCode}` };
+                }
+            }
+
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode);
+
+            // Group by gang
+            const gangsMap: Record<string, any[]> = {};
+            for (const row of result.data_rows) {
+                const gang = row.gang_code || "UNKNOWN";
+                if (!gangsMap[gang]) gangsMap[gang] = [];
+                gangsMap[gang].push(row);
+            }
+
+            const gangsList = Object.entries(gangsMap)
+                .map(([gang_code, employees]) => ({ gang_code, employees }))
+                .sort((a, b) => a.gang_code.localeCompare(b.gang_code));
+
+            return {
+                division: divisionCode,
+                month,
+                year,
+                gangs: gangsList,
+                dynamic_premi_headers: result.dynamic_premi_headers,
+                dynamic_potongan_headers: result.dynamic_potongan_headers,
+                meta: result.meta
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] locked/report/raw-tree error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            div: t.String(),
+            month: t.String(),
+            year: t.String()
+        })
+    })
+    // --- Locked Gangs List ---
+    .get("/locked/gangs", async ({ query, set, currentUser }) => {
+        try {
+            // Frontend service likely sends 'div' based on previous pattern, 
+            // but let's support 'division' too just in case.
+            const divisionCode = query.div || query.division;
+
+            if (!divisionCode) {
+                set.status = 400;
+                return { error: "Division code is required" };
+            }
+
+            // PERMISSION CHECK
+            if (!currentUser) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            if (currentUser.role !== UserRole.ADMIN) {
+                console.log(`[PayrollRoutes DEBUG] Permission Check for User: ${currentUser.username}, Requested: '${divisionCode}', UserDivs: ${JSON.stringify(currentUser.divisions)}`);
+
+                // Normalize for comparison
+                const requestedDiv = String(divisionCode).trim().toUpperCase();
+
+                // Check if ANY user division (or its alias) matches the requests
+                // This handles P1A vs PG1A mismatches
+                const hasPermission = currentUser.divisions.some(d => {
+                    const div = String(d).trim().toUpperCase();
+                    if (div === requestedDiv) return true;
+
+                    // Helper: Convert P1A -> PG1A and vice versa is tricky if GangService only does one way.
+                    // But GangService has convertDivisionToLocCode (PG1A -> P1A).
+                    // So if User has PG1A, convert to P1A and check.
+                    const alias = gangService.convertDivisionToLocCode(div);
+                    if (alias === requestedDiv) return true;
+
+                    return false;
+                });
+
+                if (!hasPermission) {
+                    console.warn(`[PayrollRoutes] User ${currentUser.username} attempted to access unauthorized gangs for division: ${divisionCode}`);
+                    set.status = 403;
+                    return { error: `Access denied. You have ${JSON.stringify(currentUser.divisions)}, but requested ${divisionCode}` };
+                }
+            }
+
+            const gangs = await gangService.fetchGangs(divisionCode);
+            return gangs;
+        } catch (e: any) {
+            console.error("[PayrollRoutes] locked/gangs error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            div: t.Optional(t.String()),
+            division: t.Optional(t.String())
+        })
+    })
     // --- Report: Gang Grid ---
     .get("/report", async ({ query, set }) => {
         try {
@@ -242,4 +366,3 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             limit: t.Optional(t.String())
         })
     });
-

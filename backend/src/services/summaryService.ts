@@ -32,8 +32,9 @@ export class SummaryService {
     private extendDb: Database;
 
     private constructor() {
-        this.db = Database.getInstance();
-        this.extendDb = Database.getInstance("extend_db_ptrj");
+        // Enforce SERVER_PROFILE_1 for summary reports
+        this.db = Database.getInstance(undefined, "SERVER_PROFILE_1");
+        this.extendDb = Database.getInstance("extend_db_ptrj", "SERVER_PROFILE_1");
     }
 
     public static getInstance(): SummaryService {

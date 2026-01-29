@@ -3,6 +3,7 @@ import { summaryService } from "../services/summaryService";
 import { divisionDefinition } from "../services/divisionDefinition";
 import { AuthService } from "../services/authService";
 import { UserRole } from "../types/user";
+import { Config } from "../config";
 
 const authService = AuthService.getInstance();
 
@@ -26,10 +27,10 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     .get("/access-check", async ({ user }) => {
         return {
             success: true,
-            can_access_reports: true, // Simplified
-            is_proxy_mode: false,
+            can_access_reports: true,
+            is_proxy_mode: Config.USE_PROXY,
             is_admin: user?.role === UserRole.ADMIN,
-            auth_mode: "internal"
+            auth_mode: Config.AUTH_MODE
         };
     })
     // --- Periods ---

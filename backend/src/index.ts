@@ -62,6 +62,7 @@ const app = new Elysia()
         return Bun.file("../frontend/dist/index.html");
     })
     .get("/index.html", () => Bun.file("../frontend/dist/index.html"))
+    .get("/vite.svg", () => Bun.file("../frontend/dist/vite.svg"))
 
     // Serve assets (JS/CSS) - Handle /upah prefix from Vite production build
     .use(staticPlugin({
@@ -98,9 +99,35 @@ const app = new Elysia()
     .use(employeeRoutes)
     // Summary routes already have /payroll/summary prefix in their definition
     .use(summaryRoutes)
+
+    // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
+    // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
+    // Explicitly using the string literal to ensure matching
+    .group("/backend/upah", app => app
+        .use(authRoutes)
+        .use(usersRoutes)
+        .use(reportsRoutes)
+        .use(payrollRoutes)
+        .use(employeeRoutes)
+        .use(summaryRoutes)
+        .use(devConfigRoutes)
+    )
+
     // SPA Fallback: Serve index.html for any unknown routes (excluding API)
-    .get("*", async ({ request }) => { // Added async param
-        console.log(`!!! CATCH-ALL HIT for ${new URL(request.url).pathname} !!! Serving index.html...`);
+    .get("*", async ({ request, set }) => {
+        const url = new URL(request.url);
+        const pathname = url.pathname;
+        console.log(`!!! CATCH-ALL HIT for ${pathname} !!!`);
+
+        // Critical Fix: Do NOT serve HTML for API request failures.
+        // If it looks like an API call (starts with /backend, /api, or common API segments), return JSON 404.
+        if (pathname.startsWith("/backend") || pathname.startsWith("/api") || pathname.includes("/payroll/")) {
+            console.log("-> Returning 404 JSON for likely API path (preventing HTML injection)");
+            set.status = 404;
+            return { error: "Route not found", path: pathname, hint: "Check proxy routing or URL prefix" };
+        }
+
+        console.log("-> Serving index.html...");
         return Bun.file("../frontend/dist/index.html");
     })
     // Start server

@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { Config } from "../config";
 import { User, UserCreate, UserRole, UserWithHash } from "../types/user";
 import * as bcrypt from "bcryptjs";
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, jwtVerify, importSPKI, decodeProtectedHeader } from "jose";
 import { join } from "path";
 
 export class AuthService {
@@ -130,16 +130,147 @@ export class AuthService {
 
     public async verifyToken(token: string): Promise<User | null> {
         try {
-            const { payload } = await jwtVerify(token, this.secret);
-            const username = payload.sub;
-            if (!username) return null;
+            console.log(`[AuthService] Verifying token. Token starts with: ${token.substring(0, 10)}...`);
 
+            let payload;
+            let header;
+            try {
+                header = decodeProtectedHeader(token);
+            } catch (e) {
+                console.error("[AuthService] Invalid token header:", e);
+                return null;
+            }
+
+            if (header.alg === "HS256") {
+                // Internal Token (always trusted verified by SECRET)
+                try {
+                    const result = await jwtVerify(token, this.secret);
+                    payload = result.payload;
+                } catch (e) {
+                    console.error("[AuthService] Internal HS256 verification failed:", e);
+                    return null;
+                }
+            } else if (header.alg === "RS256") {
+                // External Token (verify with PUBLIC KEY)
+                try {
+                    const pem = await Bun.file(Config.PUBLIC_KEY_PATH).text();
+                    const publicKey = await importSPKI(pem, "RS256");
+                    const result = await jwtVerify(token, publicKey, {
+                        algorithms: ["RS256"]
+                    });
+                    payload = result.payload;
+                    console.log("[AuthService] External token verified.");
+                } catch (e) {
+                    console.error("[AuthService] External RS256 verification failed:", e);
+                    return null;
+                }
+            } else {
+                console.error(`[AuthService] Unsupported token algorithm: ${header.alg}`);
+                return null;
+            }
+
+            // Normalization and Mapping
+            const username = payload.sub || (payload as any).preferred_username || (payload as any).username || (payload as any).email;
+
+            if (!username) {
+                console.log("[AuthService] No username found in token payload");
+                // Optional debug log
+                // console.log("Payload keys:", Object.keys(payload));
+                return null;
+            }
+
+            // Normalize Role
+            let roleStr = (payload as any).role || "user";
+            if (typeof roleStr === "string") roleStr = roleStr.toLowerCase();
+            const role = (roleStr === "admin" ? UserRole.ADMIN : UserRole.USER);
+
+            // Try to find user locally
             const user = await this.getUser(username);
-            if (!user) return null;
 
-            const { password_hash, ...safeUser } = user;
-            return safeUser;
+            if (user) {
+                // console.log(`[AuthService] User '${username}' found locally.`);
+                const { password_hash, ...safeUser } = user;
+                return safeUser;
+            }
+
+            // If not found locally, allow transient if External Token (RS256)
+            // MODIFIED: Allow transient creation for ANY valid RS256 token, regardless of Config.AUTH_MODE
+            // This enables hybrid mode where Internal server can still accept External tokens.
+            if (header.alg === "RS256") {
+                const externalId = (payload as any).userId || 0;
+
+                // Extract divisions from various possible payload keys
+                let rawDivs = (payload as any).divisions || (payload as any).division || (payload as any).divisi || (payload as any).div || (payload as any).DIV || [];
+
+                // Normalize to string array
+                let divisions: string[] = [];
+                if (Array.isArray(rawDivs)) {
+                    divisions = rawDivs.map(d => String(d));
+                } else if (typeof rawDivs === 'string') {
+                    // Handle comma-separated or single value
+                    if (rawDivs.includes(',')) {
+                        divisions = rawDivs.split(',').map(d => d.trim());
+                    } else if (rawDivs.trim() !== '') {
+                        divisions = [rawDivs.trim()];
+                    }
+                }
+
+                // FALLBACK: Infer from Username or Name
+                if (divisions.length === 0) {
+                    const targetStr = (username || "") + " " + ((payload as any).name || "");
+                    console.log(`[AuthService] Attempting division inference from: '${targetStr}'`);
+
+                    // Regex to find things like PG1A, PGE 1A, DIV 1, ARB 1, etc.
+                    const patterns = [
+                        /\b(PGE?\s*\d+[A-Z]?)\b/i,
+                        /\b(DIV\s*\d+[A-Z]?)\b/i,
+                        /\b(PG\d+[A-Z]?)\b/i,
+                        /\b(ARB?\s*\d+[A-Z]?)\b/i,
+                        /\b([A-Z]{2,3}\d+[A-Z]?)\b/i
+                    ];
+
+                    for (const pat of patterns) {
+                        const match = targetStr.match(pat);
+                        if (match) {
+                            let inferred = match[1].toUpperCase().replace(/\s+/g, "");
+
+                            // ALIAS NORMALIZATION for compatibility with GangService/DB
+                            // PG1A -> P1A, PG1B -> P1B, PG2A -> P2A, PG2B -> P2B
+                            // Only apply if it looks like PG1A (PG + digit + letter)
+                            if (/^PG\d[A-Z]$/.test(inferred)) {
+                                inferred = inferred.replace("PG", "P");
+                            }
+                            // ARB1 -> AB1, ARB2 -> AB2
+                            if (inferred.startsWith("ARB")) {
+                                inferred = inferred.replace("ARB", "AB");
+                            }
+
+                            divisions.push(inferred);
+                            console.log(`[AuthService] Inferred division '${inferred}' from string '${targetStr}'`);
+                            break;
+                        }
+                    }
+                }
+
+                console.log(`[AuthService] Creating transient user from external token. ID: ${externalId}, Role: ${role}`);
+                console.log(`[AuthService] Transient Divisions extracted: ${JSON.stringify(divisions)}`);
+
+                return {
+                    id: externalId,
+                    username: username,
+                    email: (payload as any).email || "external@remote",
+                    full_name: (payload as any).name || (payload as any).full_name || username,
+                    role: role,
+                    divisions: divisions,
+                    is_active: true,
+                    created_at: new Date(),
+                    updated_at: new Date()
+                };
+            }
+
+            return null;
         } catch (e) {
+            console.error("[AuthService] verifyToken exception:", e);
             return null;
         }
     }

@@ -240,19 +240,22 @@ export class PayrollService {
     }
 
     // --- Payrate Map ---
-    public async getPayratesMap(empCodes: string[]): Promise<Record<string, number>> {
+    public async getPayratesMap(empCodes: string[], serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
 
-        const cacheKey = `payrates:${empCodes.sort().join(",")}`;
+        const cacheKey = `payrates:${serverProfile || "default"}:${empCodes.sort().join(",")}`;
         const cached = cacheService.get<Record<string, number>>(cacheKey);
         if (cached) return cached;
 
         const map: Record<string, number> = {};
         const chunks = this.chunk(empCodes, 200);
 
+        // Use specific profile if requested, otherwise default
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+
         for (const chunk of chunks) {
             const placeholders = chunk.map(() => `?`).join(",");
-            const rows = await this.db.query<{ EmpCode: string; PayRate: number }>(`
+            const rows = await db.query<{ EmpCode: string; PayRate: number }>(`
                 SELECT EmpCode, PayRate FROM HR_PAYROLL WHERE EmpCode IN (${placeholders})
             `, chunk);
 

@@ -241,7 +241,7 @@ export class LemburCalculator {
                 const payRates = await payrollService.getPayratesMap([empCode]);
                 const payRate = payRates[empCode] || 0;
                 if (payRate > 0) {
-                    upj = payRate / 173;
+                    upj = (payRate * 30) / 173;
                 } else {
                     upj = this.upjValue; // Fallback to default
                 }
@@ -348,32 +348,127 @@ export class LemburCalculator {
         return this.calculateOvertimePayment(hours, dayType, this.upjValue, isShortDay);
     }
 
-    // --- Batch Amounts (for payroll integration) ---
-    public async calculateBatchAmounts(empCodes: string[], month: number, year: number): Promise<Record<string, number>> {
-        const result: Record<string, number> = {};
+    // --- Batch Amounts (Optimized) ---
+    public async calculateBatchData(empCodes: string[], month: number, year: number, serverProfile?: string): Promise<Record<string, { total_hours: number, total_payment: number }>> {
+        if (!empCodes.length) return {};
 
-        // Batch fetch payratess
+        const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${month.toString().padStart(2, "0")}-${daysInMonth}`;
+
+        const result: Record<string, { total_hours: number, total_payment: number }> = {};
+
+        // Use specific profile if requested, otherwise default
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+
+        // 1. Batch fetch PayRates (pass profile)
         let payRates: Record<string, number> = {};
         try {
-            payRates = await payrollService.getPayratesMap(empCodes);
+            payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
         } catch (e) {
             console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
         }
 
-        for (const empCode of empCodes) {
-            try {
-                const payRate = payRates[empCode] || 0;
-                // Calculate UPJ: Basic Wage / 173
-                const upj = payRate > 0 ? payRate / 173 : this.upjValue;
+        // 2. Batch fetch Overtime Records (use db instance)
+        const empList = empCodes.map(e => `'${e}'`).join(",");
+        let rows: any[] = [];
+        try {
+            rows = await db.query<{
+                EmpCode: string;
+                Hours: number;
+                TrxDate: string;
+            }>(`
+                SELECT 
+                    trl.EmpCode,
+                    trl.Hours,
+                    trl.TrxDate
+                FROM (
+                    -- Active Table
+                    SELECT l.EmpCode, l.TrxDate, l.Hours
+                    FROM PR_TASKREGLN l
+                    WHERE l.EmpCode IN (${empList}) 
+                      AND l.TrxDate >= ? AND l.TrxDate <= ? 
+                      AND l.OT = 1
+                    
+                    UNION ALL
+                    
+                    -- Archive Table
+                    SELECT l.EmpCode, l.TrxDate, l.Hours
+                    FROM PR_TASKREGLN_ARC l
+                    WHERE l.EmpCode IN (${empList}) 
+                      AND l.TrxDate >= ? AND l.TrxDate <= ? 
+                      AND l.OT = 1
+                ) trl
+                ORDER BY trl.EmpCode, trl.TrxDate
+            `, [startDate, endDate, startDate, endDate]);
+        } catch (e) {
+            console.error("[LemburCalculator] Batch query failed:", e);
+            return {};
+        }
 
-                const lemburResult = await this.calculate(empCode, month, year, upj);
-                result[empCode] = lemburResult.total_payment;
-            } catch (e) {
-                result[empCode] = 0;
+        // 3. Process Records
+        // Need to cache holidays for the year once
+        const holidays = await this.getHolidays(year);
+
+        // Group by Employee
+        const empRecords: Record<string, typeof rows> = {};
+        for (const row of rows) {
+            const ec = row.EmpCode;
+            if (!empRecords[ec]) empRecords[ec] = [];
+            empRecords[ec].push(row);
+        }
+
+        for (const empCode of empCodes) {
+            const myRows = empRecords[empCode] || [];
+            if (myRows.length === 0) {
+                result[empCode] = { total_hours: 0, total_payment: 0 };
+                continue;
             }
+
+            const payRate = payRates[empCode] || 0;
+            const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
+
+            let totalHours = 0;
+            let totalPayment = 0;
+
+            for (const row of myRows) {
+                const trxDate = new Date(row.TrxDate);
+                const dayOfWeek = trxDate.getDay();
+                const dateKey = row.TrxDate.substring(0, 10); // Assuming YYYY-MM-DD
+
+                // Classify Day (Client-side logic to avoid N calls)
+                let dayType = dayOfWeek === 0 ? DayType.SUNDAY : (dayOfWeek === 5 ? DayType.WORKDAY_SHORT : DayType.WORKDAY_LONG);
+
+                // Check holiday
+                // Note: getHolidays returns Record<string, ...>. Keys might need strict formatting.
+                // The getHolidays implementation uses ISO substring(0,10).
+                // We should ensure consistency.
+                const holiday = holidays[trxDate.toISOString().substring(0, 10)];
+                if (holiday) {
+                    dayType = holiday.is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
+                }
+
+                const breakdown = this.calculateOvertimePayment(row.Hours, dayType, upj, dayOfWeek === 5);
+
+                totalHours += row.Hours;
+                totalPayment += breakdown.total_amount;
+            }
+
+            result[empCode] = {
+                total_hours: totalHours,
+                total_payment: Math.round(totalPayment * 100) / 100
+            };
         }
 
         return result;
+    }
+
+    // --- Batch Amounts (Legacy Wrapper) ---
+    public async calculateBatchAmounts(empCodes: string[], month: number, year: number): Promise<Record<string, number>> {
+        const data = await this.calculateBatchData(empCodes, month, year);
+        const res: Record<string, number> = {};
+        for (const k in data) res[k] = data[k].total_payment;
+        return res;
     }
 }
 

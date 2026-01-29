@@ -160,23 +160,29 @@ export default function MainPage({ lockedDiv = null }) {
       console.log(`[MainPage] Prod mode: Using locked division = ${prodDivision}`)
       initialDivision = prodDivision
     }
-    // Priority 3: Try first division from API list
+    // Priority 3: Non-Admin User - Auto-select from Token/Profile (New Rule)
+    else if (!isAdminUser && (user?.divisions?.length > 0 || user?.divisi)) {
+      const userDiv = user?.divisions?.[0] || user?.divisi
+      console.log(`[MainPage] Non-Admin: Auto-selecting user division = ${userDiv}`)
+      initialDivision = userDiv
+    }
+    // Priority 4: Try first division from API list (Fallback for Admins)
     else if (allDivisions.length > 0) {
       initialDivision = allDivisions[0]
     }
-    // Priority 4: Fallback to user divisions if API not loaded yet
+    // Priority 5: General Fallback
     else if (user?.divisions?.length > 0) {
       initialDivision = user.divisions[0]
     }
-    // Priority 5: Try from user prop (divisi string - single division)
     else if (user?.divisi) {
       initialDivision = user.divisi
     }
 
+    // Only set if we have a value and it's different (or initial load)
     if (initialDivision && !division) {
       setDivision(initialDivision)
     }
-  }, [user, inProdMode, prodDivision, externalLockedDiv, allDivisions])
+  }, [user, inProdMode, prodDivision, externalLockedDiv, allDivisions, isAdminUser, division])
 
   // Load Gangs when Division changes
   useEffect(() => {
@@ -403,7 +409,7 @@ export default function MainPage({ lockedDiv = null }) {
 
         {/* MAIN CONTENT AREA */}
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          
+
           {/* Header / Hero Section */}
           <div style={{
             height: '160px',
@@ -432,7 +438,7 @@ export default function MainPage({ lockedDiv = null }) {
           </div>
 
           <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-            
+
             {/* FILTER SECTION CARD */}
             <div style={{
               backgroundColor: 'white',
@@ -444,12 +450,12 @@ export default function MainPage({ lockedDiv = null }) {
               marginBottom: '2.5rem',
               position: 'relative'
             }}>
-              <h2 style={{ 
-                fontSize: '1rem', 
-                fontWeight: '700', 
-                color: '#1e3a8a', 
-                marginBottom: '2rem', 
-                textTransform: 'uppercase', 
+              <h2 style={{
+                fontSize: '1rem',
+                fontWeight: '700',
+                color: '#1e3a8a',
+                marginBottom: '2rem',
+                textTransform: 'uppercase',
                 letterSpacing: '0.05em',
                 borderBottom: '2px solid #f1f5f9',
                 paddingBottom: '0.75rem',
@@ -459,7 +465,7 @@ export default function MainPage({ lockedDiv = null }) {
               }}>
                 <span style={{ fontSize: '1.25rem' }}>⚙️</span> FILTER PARAMETER
               </h2>
-              
+
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2.5rem', alignItems: 'flex-start' }}>
                 {/* Left Column: Calendar (Fixed Width) */}
                 <div style={{ flex: '0 0 320px', minWidth: '280px' }}>
@@ -475,7 +481,7 @@ export default function MainPage({ lockedDiv = null }) {
 
                 {/* Right Column: Division & Gang (Flexible) */}
                 <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  
+
                   {/* Division Selection */}
                   <div>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem', letterSpacing: '0.025em' }}>
@@ -562,7 +568,7 @@ export default function MainPage({ lockedDiv = null }) {
 
             {/* REPORTS SECTION */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
-              
+
               {/* Primary Report Card */}
               <div style={{
                 backgroundColor: 'white',
@@ -578,8 +584,8 @@ export default function MainPage({ lockedDiv = null }) {
                 transition: 'all 0.3s ease',
                 cursor: 'default'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
               >
                 <div>
                   <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -624,8 +630,8 @@ export default function MainPage({ lockedDiv = null }) {
                   height: '100%',
                   transition: 'all 0.3s ease'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
-                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                  onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                  onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                 >
                   <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span style={{ color: '#8b5cf6' }}>📊</span> Laporan Analisis & Summary
@@ -633,101 +639,101 @@ export default function MainPage({ lockedDiv = null }) {
                   <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '2rem' }}>
                     Rekapitulasi total upah, laporan financial wages (Rebinmas & IJL), dan analisis komparatif overtime/premi.
                   </p>
-                  
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
                     {division && (
                       <button
-                         onClick={handleShowSummaryReport}
-                         style={{
-                           padding: '0.9rem',
-                           backgroundColor: '#ffffff',
-                           color: '#475569',
-                           border: '1px solid #cbd5e1',
-                           borderRadius: '6px',
-                           fontWeight: '600',
-                           fontSize: '0.9rem',
-                           cursor: 'pointer',
-                           textAlign: 'left',
-                           transition: 'all 0.2s',
-                           display: 'flex',
-                           alignItems: 'center',
-                           justifyContent: 'space-between'
-                         }}
-                         onMouseOver={(e) => { e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#7c3aed'; e.currentTarget.style.backgroundColor = '#f5f3ff'; }}
-                         onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                        onClick={handleShowSummaryReport}
+                        style={{
+                          padding: '0.9rem',
+                          backgroundColor: '#ffffff',
+                          color: '#475569',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          fontWeight: '600',
+                          fontSize: '0.9rem',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                        onMouseOver={(e) => { e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#7c3aed'; e.currentTarget.style.backgroundColor = '#f5f3ff'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
                       >
                         Summary Report (Per Gang)
                         <span style={{ fontSize: '1.2em' }}>›</span>
                       </button>
                     )}
-                    
+
                     <button
-                       onClick={handleShowWagesRebinmas}
-                       style={{
-                         padding: '0.9rem',
-                         backgroundColor: '#ffffff',
-                         color: '#475569',
-                         border: '1px solid #cbd5e1',
-                         borderRadius: '6px',
-                         fontWeight: '600',
-                         fontSize: '0.9rem',
-                         cursor: 'pointer',
-                         textAlign: 'left',
-                         transition: 'all 0.2s',
-                         display: 'flex',
-                         alignItems: 'center',
-                         justifyContent: 'space-between'
-                       }}
-                       onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.backgroundColor = '#eff6ff'; }}
-                       onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                      onClick={handleShowWagesRebinmas}
+                      style={{
+                        padding: '0.9rem',
+                        backgroundColor: '#ffffff',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.backgroundColor = '#eff6ff'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
                     >
                       Wages Rebinmas Report
                       <span style={{ fontSize: '1.2em' }}>›</span>
                     </button>
 
                     <button
-                       onClick={handleShowWagesIJL}
-                       style={{
-                         padding: '0.9rem',
-                         backgroundColor: '#ffffff',
-                         color: '#475569',
-                         border: '1px solid #cbd5e1',
-                         borderRadius: '6px',
-                         fontWeight: '600',
-                         fontSize: '0.9rem',
-                         cursor: 'pointer',
-                         textAlign: 'left',
-                         transition: 'all 0.2s',
-                         display: 'flex',
-                         alignItems: 'center',
-                         justifyContent: 'space-between'
-                       }}
-                       onMouseOver={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#059669'; e.currentTarget.style.backgroundColor = '#ecfdf5'; }}
-                       onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                      onClick={handleShowWagesIJL}
+                      style={{
+                        padding: '0.9rem',
+                        backgroundColor: '#ffffff',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#059669'; e.currentTarget.style.backgroundColor = '#ecfdf5'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
                     >
                       Wages Report (IJL)
                       <span style={{ fontSize: '1.2em' }}>›</span>
                     </button>
 
                     <button
-                       onClick={handleShowAnalysisReport}
-                       style={{
-                         padding: '0.9rem',
-                         backgroundColor: '#ffffff',
-                         color: '#475569',
-                         border: '1px solid #cbd5e1',
-                         borderRadius: '6px',
-                         fontWeight: '600',
-                         fontSize: '0.9rem',
-                         cursor: 'pointer',
-                         textAlign: 'left',
-                         transition: 'all 0.2s',
-                         display: 'flex',
-                         alignItems: 'center',
-                         justifyContent: 'space-between'
-                       }}
-                       onMouseOver={(e) => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#ea580c'; e.currentTarget.style.backgroundColor = '#fff7ed'; }}
-                       onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                      onClick={handleShowAnalysisReport}
+                      style={{
+                        padding: '0.9rem',
+                        backgroundColor: '#ffffff',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#ea580c'; e.currentTarget.style.backgroundColor = '#fff7ed'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
                     >
                       Analysis OT & Premi
                       <span style={{ fontSize: '1.2em' }}>›</span>
@@ -736,7 +742,7 @@ export default function MainPage({ lockedDiv = null }) {
                 </div>
               )}
             </div>
-            
+
           </div>
         </div>
       </div>

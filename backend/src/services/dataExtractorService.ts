@@ -1,6 +1,7 @@
 import { Database } from "../db/client";
 import { payrollService } from "./payrollService";
 import { gangService } from "./gangService";
+import { lemburCalculator } from "./lemburCalculator";
 
 interface EmployeeRow {
     emp_code: string;
@@ -87,7 +88,8 @@ export class DataExtractorService {
     private db: Database;
 
     private constructor() {
-        this.db = Database.getInstance();
+        // Enforce SERVER_PROFILE_1 for report generation as requested
+        this.db = Database.getInstance(undefined, "SERVER_PROFILE_1");
     }
 
     public static getInstance(): DataExtractorService {
@@ -150,7 +152,7 @@ export class DataExtractorService {
             this.getCuti(empCodes, startDate, endDate),
             this.getPremi(empCodes, startDate, endDate),
             this.getPotongan(empCodes, startDate, endDate),
-            this.getLemburDetails(empCodes, startDate, endDate),
+            this.getLemburDetailsFromCalculator(empCodes, month, year),
             this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS"),
             this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN"),
             this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA"),
@@ -613,6 +615,19 @@ export class DataExtractorService {
             if (!result[emp]) result[emp] = {};
             const key = this.normalizePotonganName(r.doc_desc || "");
             result[emp][key] = (result[emp][key] || 0) + Math.abs(r.amount || 0);
+        }
+        return result;
+    }
+
+    private async getLemburDetailsFromCalculator(empCodes: string[], month: number, year: number): Promise<Record<string, LemburData>> {
+        // Force SERVER_PROFILE_1 for report generation
+        const data = await lemburCalculator.calculateBatchData(empCodes, month, year, "SERVER_PROFILE_1");
+        const result: Record<string, LemburData> = {};
+        for (const k in data) {
+            result[k] = {
+                jam: data[k].total_hours || 0,
+                jumlah: data[k].total_payment || 0
+            };
         }
         return result;
     }

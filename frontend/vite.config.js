@@ -90,8 +90,8 @@ export default defineConfig({
     'process.env.VITE_DISABLE_CACHE': JSON.stringify('true'),
     'process.env.VITE_DEV_MODE': JSON.stringify('true')
   },
-  // Base path: /upah/ for production build (proxy mode), / for development
-  base: process.env.NODE_ENV === 'production' ? '/upah/' : '/',
+  // Base path: Use relative path so it works under any proxy prefix (e.g. /backend/upah/) or root
+  base: process.env.NODE_ENV === 'production' ? './' : '/',
   server: {
     host: '0.0.0.0', // Allow access from any IP
     port: 5175,
