@@ -1,0 +1,6 @@
+Starting Debug
+DEBUG: Checking Database State Directly
+Using DB: extend_db_ptrj Profile: SERVER_PROFILE_2
+Gateway URL: http://10.0.0.110:8001
+DB Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"extend_db_ptrj","server":"SERVER_PROFILE_2","execution_ms":3.5437999963760376,"data":null,"error":"Database error: Database 'extend_db_ptrj' does not exist. Make sure that the name is entered correctly."}
+{}

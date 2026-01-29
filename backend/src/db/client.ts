@@ -69,7 +69,7 @@ export class Database {
      * Get Extended database instance (for aggregation history)
      */
     public static getExtendedInstance(): Database {
-        return Database.getInstance(Config.DB_EXTEND_DATABASE);
+        return Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
     }
 
     private prepareParams(sql: string, params?: any[] | Record<string, any>): { sql: string; params: any[] | Record<string, any> } {
@@ -146,7 +146,7 @@ export class Database {
         return [];
     }
 
-    public async transaction(queries: { sql: string; params?: any[] }[]): Promise<boolean> {
+    public async transaction(queries: { sql: string; params?: any[] | Record<string, any> }[]): Promise<boolean> {
         const batchQueries: BatchQuery[] = queries.map(q => {
             const { sql, params } = this.prepareParams(q.sql, q.params);
             return { sql, params, database: this.databaseName };

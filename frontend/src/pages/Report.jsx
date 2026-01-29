@@ -91,6 +91,69 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [gangInfo, setGangInfo] = useState(null)
   const [selectionStats, setSelectionStats] = useState({ count: 0, sum: 0, average: 0 })
 
+  // --- JOB TITLE FEATURE STATE ---
+  const [jobTitles, setJobTitles] = useState({})
+  const [unsavedJobs, setUnsavedJobs] = useState({})
+  const [isSavingJobs, setIsSavingJobs] = useState(false)
+
+  // Fetch job titles
+  useEffect(() => {
+    async function loadJobTitles() {
+      try {
+        // Construct dynamic backend URL based on current hostname
+        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+        const res = await fetch(`${backendUrl}/employee-estate`)
+        const json = await res.json()
+        if (json.success) {
+          setJobTitles(json.data || {})
+        }
+      } catch (e) {
+        console.error("Failed to load job titles", e)
+      }
+    }
+    loadJobTitles()
+  }, [])
+
+  const handleJobChange = useCallback((empcode, newVal, rowData) => {
+    setJobTitles(prev => ({ ...prev, [empcode]: newVal }))
+    setUnsavedJobs(prev => ({
+      ...prev,
+      [empcode]: {
+        empcode: empcode,
+        employee_name: rowData.nama,
+        gang: rowData.gang_code || finalGangCode, // Fallback if gang not in row
+        divisi_id: rowData.divisi_id || finalDivision, // Fallback
+        jabatan: newVal
+      }
+    }))
+  }, [finalGangCode, finalDivision])
+
+  const handleSaveJobs = async () => {
+    if (Object.keys(unsavedJobs).length === 0) return
+    setIsSavingJobs(true)
+    try {
+      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+      const payload = { jobs: Object.values(unsavedJobs) }
+
+      const res = await fetch(`${backendUrl}/employee-estate/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      const json = await res.json()
+      if (json.success) {
+        setUnsavedJobs({})
+        alert(`Successfully saved ${json.count} job titles!`)
+      } else {
+        alert('Failed to save: ' + json.error)
+      }
+    } catch (e) {
+      alert('Error saving jobs: ' + e.message)
+    } finally {
+      setIsSavingJobs(false)
+    }
+  }
+
   const useInfinite = String(finalGangCode).toUpperCase() !== 'ALL'
   const INFINITE_BATCH_SIZE = 200
 
@@ -436,6 +499,58 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             }
             return col
           })
+
+          // --- INJECT JABATAN COLUMN ---
+          console.log("Starting Column Injection...");
+          let injected = false;
+          const injectJabatanRecursive = (colsList) => {
+            for (let i = 0; i < colsList.length; i++) {
+              const c = colsList[i];
+              console.log("Checking col:", c.field, c.headerName);
+              if (c.children) {
+                injectJabatanRecursive(c.children);
+              } else if (c.field === 'beras_jumlah' || c.field === 'beras_rate' || c.field === 'tunjangan_beras') {
+                console.log("Found injection point at:", c.field);
+                // Found injection point
+                colsList.splice(i, 0, {
+                  headerName: 'JABATAN',
+                  field: 'jabatan_frontend', // Virtual field
+                  width: 110,
+                  editable: true,
+                  cellEditor: 'agSelectCellEditor',
+                  cellEditorParams: {
+                    values: ['Karyawan', 'Operator', 'Helper', 'Kerani', 'Mandor']
+                  },
+                  cellStyle: (params) => {
+                    return {
+                      backgroundColor: '#fffbeb', // Light yellow to indicate editable
+                      border: '1px solid #e2e8f0',
+                      cursor: 'pointer'
+                    }
+                  },
+                  valueGetter: (params) => {
+                    // Get from local state via context, or default 'Karyawan'
+                    if (!params.data || !params.data.nik) return '';
+                    return params.context.jobTitles[params.data.nik] || 'Karyawan';
+                  },
+                  valueSetter: (params) => {
+                    const newVal = params.newValue;
+                    if (newVal) {
+                      params.context.onJobChange(params.data.nik, newVal, params.data);
+                      return true;
+                    }
+                    return false;
+                  }
+                });
+                injected = true;
+                // Move index forward to skip the newly added col
+                i++;
+              }
+            }
+          }
+          injectJabatanRecursive(finalCols);
+          if (!injected) console.warn("WARNING: Jabatan Column NOT injected! target field not found.");
+
 
           setColumnDefs(finalCols)
         } catch (colErr) {
@@ -1052,6 +1167,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
         <AgGridReact
           ref={gridRef}
+          context={{ jobTitles, onJobChange: handleJobChange }}
           columnDefs={columnDefs}
           rowData={rows}
           columnTypes={columnTypes}
@@ -1116,6 +1232,26 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           }}
         />
       </div>
+
+      {/* Save Button for Jabatan */}
+      {Object.keys(unsavedJobs).length > 0 && (
+        <div style={{ padding: '10px', display: 'flex', justifyContent: 'flex-end', backgroundColor: '#f0f9ff', borderTop: '1px solid #bae6fd' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ color: '#0369a1', fontWeight: 'bold' }}>
+              {Object.keys(unsavedJobs).length} changes to save
+            </span>
+            <button
+              className="btn btn-primary"
+              onClick={handleSaveJobs}
+              disabled={isSavingJobs}
+              style={{ backgroundColor: '#0284c7', color: 'white' }}
+            >
+              {isSavingJobs ? 'Saving...' : '💾 SAVE JABATAN'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <SelectionStats selection={selectionStats} />
     </DashboardLayout>
   )

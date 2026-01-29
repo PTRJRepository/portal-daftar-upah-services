@@ -146,5 +146,18 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-libs': ['axios', 'date-fns', 'clsx', 'tailwind-merge'],
+          'vendor-ui': ['@headlessui/react', '@heroicons/react', 'framer-motion'],
+          'data-processing': ['xlsx', 'recharts']
+        }
+      }
+    }
   }
 })

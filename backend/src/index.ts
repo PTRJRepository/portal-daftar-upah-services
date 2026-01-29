@@ -7,6 +7,7 @@ import { usersRoutes } from "./api/users";
 import { payrollRoutes } from "./api/payroll";
 import { employeeRoutes } from "./api/employee";
 import { reportsRoutes } from "./api/reports";
+import { employeeEstateRoutes } from "./api/employeeEstate";
 import { devConfigRoutes } from "./api/devConfig";
 import { Database } from "./db/client";
 import { staticPlugin } from "@elysiajs/static";
@@ -97,6 +98,8 @@ const app = new Elysia()
     .use(payrollRoutes)
     // Employee details: /payroll/employee/...
     .use(employeeRoutes)
+    // Job Title / Estate Management
+    .use(employeeEstateRoutes)
     // Summary routes already have /payroll/summary prefix in their definition
     .use(summaryRoutes)
 
@@ -109,6 +112,7 @@ const app = new Elysia()
         .use(reportsRoutes)
         .use(payrollRoutes)
         .use(employeeRoutes)
+        .use(employeeEstateRoutes)
         .use(summaryRoutes)
         .use(devConfigRoutes)
     )
