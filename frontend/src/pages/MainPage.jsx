@@ -114,36 +114,16 @@ export default function MainPage({ lockedDiv = null }) {
   }, [token])
 
   // Check report access for proxy mode
+  // simplified report access check (no API call)
   useEffect(() => {
-    async function checkAccess() {
-      if (!token) {
-        setCanAccessReports(DEV_MODE)
-        return
-      }
-
-      // STRICT PROD CHECK: If in Prod Mode, ONLY Admin can access reports
-      if (inProdMode && !isAdminUser) {
-        console.log('[MainPage] Report access denied: Non-admin in Production Mode')
-        setCanAccessReports(false)
-        return
-      }
-
-      try {
-        const result = await checkReportAccess(token)
-        if (result.success) {
-          setCanAccessReports(result.can_access_reports || DEV_MODE)
-          console.log('[MainPage] Report access check:', result)
-        } else {
-          setCanAccessReports(DEV_MODE)
-        }
-      } catch (error) {
-        console.error('[MainPage] Failed to check report access:', error)
-        setCanAccessReports(DEV_MODE) // Fallback to DEV_MODE
-      }
+    // In Prod Mode, only admins can access additional reports
+    if (inProdMode) {
+      setCanAccessReports(isAdminUser)
+    } else {
+      // In Dev Mode, allow access by default
+      setCanAccessReports(true)
     }
-
-    checkAccess()
-  }, [token, inProdMode, isAdminUser])
+  }, [inProdMode, isAdminUser])
 
 
   // Initialize Division from User or first available
