@@ -1,9 +1,11 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, lazy, Suspense } from 'react'
 import axios from 'axios'
-import MainPage from './pages/MainPage'
-import LockedMainPage from './pages/LockedMainPage'
-import LoginPage from './pages/LoginPage'
-import EmployeeDetailRoute from './pages/EmployeeDetailRoute'
+// Lazy load pages for better startup performance
+const MainPage = lazy(() => import('./pages/MainPage'))
+const LockedMainPage = lazy(() => import('./pages/LockedMainPage'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const EmployeeDetailRoute = lazy(() => import('./pages/EmployeeDetailRoute'))
+
 import { AuthProvider, useAuth } from './context/AuthContext'
 import LoadingScreen from './components/common/LoadingScreen'
 import { isProdMode, getUserDivision, redirectToExternalLogin } from './utils/prodModeUtils'
@@ -66,16 +68,8 @@ function AppInner() {
     return urlParams.div || lockedDivision || null
   }, [inProdMode, urlParams.div, lockedDivision, isAdminUser])
 
-  // Check backend connection on mount
-  useEffect(() => {
-    ; (async () => {
-      try {
-        await axios.get('/dev-mode', { timeout: 5000 })
-      } catch (e) {
-        console.warn('Backend connection check failed:', e)
-      }
-    })()
-  }, [])
+  // REMOVED: Backend connection check to speed up initial load
+  // Connection issues will be caught by individual API calls
 
   // URL Path Management - Different behavior for prod mode
   useEffect(() => {
@@ -113,41 +107,51 @@ function AppInner() {
 
   // Not authenticated
   if (!isAuthenticated) {
-    // In prod mode, we've already redirected to external login
-    // Show a loading screen while redirecting
-    if (inProdMode) {
-      return <LoadingScreen isLoading={true} message="Mengalihkan ke halaman login..." />
-    }
-    // Dev mode: show internal login page
-    return <LoginPage />
+    // Show login page
+    // In prod mode, the useEffect above handles redirection if not at /login
+    // If we receive no token and are at /login, we render the login UI
+    return (
+      <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat halaman login..." />}>
+        <LoginPage />
+      </Suspense>
+    )
   }
 
   // Check for specific routes (after authentication)
   // Normalize pathname by removing /upah prefix for consistent route matching
   const rawPathname = window.location.pathname
-  const pathname = rawPathname.startsWith('/upah') ? rawPathname.replace('/upah', '') : rawPathname
-
   // Handle employee detail route
-  if (pathname.startsWith('/employee/detail')) {
-    return <EmployeeDetailRoute />
+  const isEmployeeDetail = rawPathname.includes('/employee/detail')
+
+  if (isEmployeeDetail) {
+    return (
+      <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat detail karyawan..." />}>
+        <EmployeeDetailRoute />
+      </Suspense>
+    )
   }
 
-  // Admin users: ALWAYS use MainPage (not locked) even in prod mode
+  // Decide which MainPage to render
+  let MainContent
   if (isAdminUser) {
-    console.log('[App] Admin user: Rendering MainPage with full access')
-    return <MainPage />
-  }
-
-  // Production mode OR authenticated with locked division
-  // In prod mode, ALWAYS use LockedMainPage regardless of lockedDiv value
-  if (inProdMode || lockedDiv) {
+    // Admin users: ALWAYS use MainPage (not locked) even in prod mode
+    console.log('[App] Rendering MainPage for Admin')
+    MainContent = <MainPage />
+  } else if (inProdMode || lockedDiv) {
+    // Production mode OR authenticated with locked division
     const divToUse = lockedDiv || getUserDivision() || ''
-    console.log(`[App] Rendering LockedMainPage with division: ${divToUse} (Prod Mode: ${inProdMode})`)
-    return <LockedMainPage lockedDiv={divToUse} />
+    console.log(`[App] Rendering LockedMainPage with division: ${divToUse}`)
+    MainContent = <LockedMainPage lockedDiv={divToUse} />
+  } else {
+    // Dev mode: Normal authenticated user with no locked division
+    MainContent = <MainPage />
   }
 
-  // Dev mode: Normal authenticated user with no locked division
-  return <MainPage />
+  return (
+    <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat modul dashboard..." />}>
+      {MainContent}
+    </Suspense>
+  )
 }
 
 export default function App() {

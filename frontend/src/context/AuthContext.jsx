@@ -11,16 +11,58 @@ import { isProdMode, getProdToken, getProdUser, getUserDivision, hasProdToken, r
 const AuthCtx = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState('')
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true) // Start with true to show loading while checking auth
+  // Synchronous Initialization for Prod Mode
+  const _inProdMode = isProdMode()
+  let _initialToken = ''
+  let _initialUser = null
+  let _initialLoading = true
+  let _initialLockedDiv = null
+
+  // Try to load synchronously from localStorage
+  if (_inProdMode && hasProdToken()) {
+    const t = getProdToken()
+    const u = getProdUser()
+
+    if (t && u) {
+      _initialToken = t
+
+      const prodDivision = getUserDivision()
+      const userRole = (u.role || '').toUpperCase()
+      const isAdmin = userRole === 'ADMIN' || (u.divisi || '').toUpperCase() === 'ALL'
+
+      _initialUser = {
+        ...u,
+        divisi: isAdmin ? null : prodDivision,
+        divisions: isAdmin ? [] : (prodDivision ? [prodDivision] : []),
+        isExternal: true,
+        isProdMode: true,
+        isAdmin: isAdmin
+      }
+
+      _initialLockedDiv = isAdmin ? null : prodDivision
+
+      // Set default header immediately 
+      axios.defaults.headers.common['Authorization'] = `Bearer ${t}`
+      _initialLoading = false // Ready to go!
+      console.log('[AuthContext] Synchronously restored Prod session', { user: _initialUser.username, isAdmin })
+    }
+  }
+
+  const [token, setToken] = useState(_initialToken)
+  const [user, setUser] = useState(_initialUser)
+  const [loading, setLoading] = useState(_initialLoading)
   const [error, setError] = useState('')
   const [loginInProgress, setLoginInProgress] = useState(false) // Prevent multiple login attempts
-  const [isExternalAuth, setIsExternalAuth] = useState(false) // Track if using external token
-  const [lockedDivision, setLockedDivision] = useState(null) // Division locked from external token
+  const [isExternalAuth, setIsExternalAuth] = useState(!!_initialToken) // Track if using external token
+  const [lockedDivision, setLockedDivision] = useState(_initialLockedDiv) // Division locked from external token
 
   const checkAuth = async () => {
     try {
+      // If we already loaded synchronously in prod mode, don't flicker loading state
+      if (isProdMode() && token) {
+        return true
+      }
+
       setLoading(true)
       const inProdMode = isProdMode()
       console.log(`[AuthContext] Checking for authentication... (Prod Mode: ${inProdMode})`)
@@ -34,26 +76,17 @@ export function AuthProvider({ children }) {
           const prodToken = getProdToken()
           const prodUser = getProdUser()
           const prodDivision = getUserDivision()
+          // ... rest of logic kept for re-checks if needed ...
 
           // Check if user is admin (role is ADMIN or divisi is ALL)
           const userRole = (prodUser?.role || '').toUpperCase()
           const userDivisi = (prodUser?.divisi || '').toUpperCase()
           const isAdmin = userRole === 'ADMIN' || userDivisi === 'ALL'
 
-          console.log('[AuthContext] Prod mode auth data:', {
-            hasToken: !!prodToken,
-            hasUser: !!prodUser,
-            division: prodDivision,
-            role: userRole,
-            divisi: userDivisi,
-            isAdmin: isAdmin
-          })
-
           // Set auth state from localStorage
           setToken(prodToken)
           setUser({
             ...prodUser,
-            // For admin users, divisions should come from API, not just locked division
             divisi: isAdmin ? null : prodDivision,
             divisions: isAdmin ? [] : (prodDivision ? [prodDivision] : []),
             isExternal: true,
@@ -61,15 +94,13 @@ export function AuthProvider({ children }) {
             isAdmin: isAdmin
           })
           setIsExternalAuth(true)
-          // Admin users don't have locked division
           setLockedDivision(isAdmin ? null : prodDivision)
           axios.defaults.headers.common['Authorization'] = `Bearer ${prodToken}`
           setLoading(false)
           return true
         }
 
-        // No token in prod mode - will redirect to external login (handled by App.jsx)
-        console.log('[AuthContext] Prod mode: No auth token found in localStorage')
+        // ... fail case ...
         setToken('')
         setUser(null)
         setIsExternalAuth(false)
