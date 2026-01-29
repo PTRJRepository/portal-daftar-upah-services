@@ -41,6 +41,11 @@ export class GangService {
         "ARB1": "AB1",
         "ARB2": "AB2",
         "IJL": "IJL",
+        "INFRA": "INF",
+        "NURSERY": "NRS",
+        "WORKSHOP": "WORKSHOP",
+        "WKS_PG": "WKS_PG",
+        "WKS_AR": "WKS_AR"
     };
 
     private constructor() {

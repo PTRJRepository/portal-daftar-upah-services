@@ -220,6 +220,18 @@ export class AuthService {
                     const targetStr = (username || "") + " " + ((payload as any).name || "");
                     console.log(`[AuthService] Attempting division inference from: '${targetStr}'`);
 
+                    // NEW: Explicit checks for named divisions
+                    const upperTarget = targetStr.toUpperCase();
+                    if (upperTarget.includes("INFRA") || upperTarget.includes("INF")) {
+                        divisions.push("INFRA");
+                    }
+                    if (upperTarget.includes("NURSERY") || upperTarget.includes("BIBITAN") || upperTarget.includes("NRS")) {
+                        divisions.push("NURSERY");
+                    }
+                    if (upperTarget.includes("WORKSHOP") || upperTarget.includes("BENGKEL") || upperTarget.includes("WKS")) {
+                        divisions.push("WORKSHOP");
+                    }
+
                     // Regex to find things like PG1A, PGE 1A, DIV 1, ARB 1, etc.
                     const patterns = [
                         /\b(PGE?\s*\d+[A-Z]?)\b/i,
@@ -250,6 +262,9 @@ export class AuthService {
                             break;
                         }
                     }
+
+                    // Deduplicate
+                    divisions = [...new Set(divisions)];
                 }
 
                 console.log(`[AuthService] Creating transient user from external token. ID: ${externalId}, Role: ${role}`);

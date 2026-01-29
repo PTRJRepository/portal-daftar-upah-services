@@ -230,8 +230,24 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
 
             if (currentUser.role !== UserRole.ADMIN) {
-                // If user is not admin, they MUST have the requested division in their list
-                if (!currentUser.divisions.includes(divisionCode)) {
+                console.log(`[PayrollRoutes DEBUG Report] Permission Check for User: ${currentUser.username}, Requested: '${divisionCode}', UserDivs: ${JSON.stringify(currentUser.divisions)}`);
+
+                // Normalize for comparison
+                const requestedDiv = String(divisionCode).trim().toUpperCase();
+
+                // Check if ANY user division (or its alias) matches the requests
+                const hasPermission = currentUser.divisions.some(d => {
+                    const div = String(d).trim().toUpperCase();
+                    if (div === requestedDiv) return true;
+
+                    // Helper: Convert P1A -> PG1A and vice versa via alias mapping
+                    const alias = gangService.convertDivisionToLocCode(div);
+                    if (alias === requestedDiv) return true;
+
+                    return false;
+                });
+
+                if (!hasPermission) {
                     console.warn(`[PayrollRoutes] User ${currentUser.username} attempted to access unauthorized division: ${divisionCode}`);
                     set.status = 403;
                     return { error: `Access refused: You do not have permission for division ${divisionCode}` };

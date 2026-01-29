@@ -49,10 +49,23 @@ export class DivisionDefinition {
             "description_pattern": "workshop.*(air\\s*ruak|are|a\\.r)",
             "exclude_from_source": true,
             "description": "Divisi Workshop Air Ruak - Gang dengan Description mengandung 'workshop' DAN 'air ruak/ARE'"
+        },
+        "WORKSHOP": {
+            "name": "Workshop All",
+            "source_division": null,
+            "pattern": null,
+            "description_pattern": "workshop.*(parit|pge|p\\.g|air\\s*ruak|are|a\\.r)",
+            "exclude_from_source": false,
+            "description": "Gabungan Workshop Parit Gunung dan Air Ruak"
         }
     };
 
-    public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "MILL"];
+    private readonly DIVISION_ALIASES: Record<string, string> = {
+        "INFRA": "INF",
+        "NURSERY": "NRS"
+    };
+
+    public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "WORKSHOP", "MILL"];
 
     private constructor() { }
 
@@ -63,13 +76,20 @@ export class DivisionDefinition {
         return DivisionDefinition.instance;
     }
 
+    public resolveDivisionCode(code: string): string {
+        const upper = code.trim().toUpperCase();
+        return this.DIVISION_ALIASES[upper] || upper;
+    }
+
     public isVirtualDivision(divisionCode: string): boolean {
-        if (divisionCode.toUpperCase() === "MILL") return false;
-        return !!this.getVirtualDivisionConfig(divisionCode);
+        const resolved = this.resolveDivisionCode(divisionCode);
+        if (resolved === "MILL") return false;
+        return !!this.getVirtualDivisionConfig(resolved);
     }
 
     public getVirtualDivisionConfig(divisionCode: string): VirtualDivisionConfig | undefined {
-        return this.VIRTUAL_DIVISIONS[divisionCode.toUpperCase()];
+        const resolved = this.resolveDivisionCode(divisionCode);
+        return this.VIRTUAL_DIVISIONS[resolved];
     }
 
     public async getAllDivisions(includeVirtual: boolean = true): Promise<string[]> {
@@ -96,12 +116,12 @@ export class DivisionDefinition {
     }
 
     public async getGangsForDivision(divisionCode: string, excludeVirtualGangs: boolean = true): Promise<Gang[]> {
-        const divUpper = divisionCode.trim().toUpperCase();
+        const resolved = this.resolveDivisionCode(divisionCode);
 
-        if (this.isVirtualDivision(divUpper)) {
-            return this.getVirtualDivisionGangs(divUpper);
+        if (this.isVirtualDivision(resolved)) {
+            return this.getVirtualDivisionGangs(resolved);
         } else {
-            return this.getRealDivisionGangs(divUpper, excludeVirtualGangs);
+            return this.getRealDivisionGangs(resolved, excludeVirtualGangs);
         }
     }
 
