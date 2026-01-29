@@ -153,9 +153,10 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
-          'vendor-libs': ['axios', 'date-fns', 'clsx', 'tailwind-merge'],
-          'vendor-ui': ['@headlessui/react', '@heroicons/react', 'framer-motion'],
-          'data-processing': ['xlsx', 'recharts']
+          'vendor-ag-grid': ['ag-grid-community', 'ag-grid-react', 'ag-grid-enterprise'],
+          'vendor-excel': ['exceljs', 'file-saver'],
+          'vendor-pdf': ['html2pdf.js'],
+          'vendor-utils': ['axios', 'js-cookie']
         }
       }
     }
