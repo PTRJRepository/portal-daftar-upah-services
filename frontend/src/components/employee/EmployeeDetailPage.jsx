@@ -446,8 +446,7 @@ export default function EmployeeDetailPage({
                                 const dayData = attendance.matrix?.[day] || { status: 'no_data' }
                                 const statusStyle = statusColors[dayData.status] || statusColors.no_data
 
-                                const [y, m, d] = day.split('-').map(Number)
-                                const dateObj = new Date(y, m - 1, d)
+                                const dateObj = new Date(year, month - 1, day)
                                 const isFriday = dateObj.getDay() === 5
                                 const hours = dayData.hours || 0
                                 const isShort = hours > 0 && ((isFriday && hours < 5) || (!isFriday && hours < 7))
