@@ -445,18 +445,29 @@ export default function EmployeeDetailPage({
                             {days.map(day => {
                                 const dayData = attendance.matrix?.[day] || { status: 'no_data' }
                                 const statusStyle = statusColors[dayData.status] || statusColors.no_data
+
+                                const [y, m, d] = day.split('-').map(Number)
+                                const dateObj = new Date(y, m - 1, d)
+                                const isFriday = dateObj.getDay() === 5
+                                const hours = dayData.hours || 0
+                                const isShort = hours > 0 && ((isFriday && hours < 5) || (!isFriday && hours < 7))
+
                                 return (
                                     <div
                                         key={`cell-${day}`}
                                         className="calendar-cell"
-                                        style={{ background: statusStyle.bg, color: statusStyle.text }}
-                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''} (${dayData.hours || 0} Jam)`}
+                                        style={{
+                                            background: isShort ? '#fee2e2' : statusStyle.bg,
+                                            color: isShort ? '#b91c1c' : statusStyle.text,
+                                            border: isShort ? '1px solid #ef4444' : '1px solid #e5e7eb'
+                                        }}
+                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''} (${hours} Jam)${isShort ? ' - Warning: Jam Kerja Kurang' : ''}`}
                                     >
                                         <div className="calendar-date">{day}</div>
                                         <div className="calendar-status">{statusStyle.label}</div>
-                                        {dayData.hours > 0 && (
+                                        {hours > 0 && (
                                             <div style={{ fontSize: '0.6rem', marginTop: '1px', fontWeight: 'bold' }}>
-                                                {dayData.hours} Jam
+                                                {hours} Jam {isShort && '⚠️'}
                                             </div>
                                         )}
                                     </div>

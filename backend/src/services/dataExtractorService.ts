@@ -37,6 +37,7 @@ interface PayrollRow {
     upah_dasar: number;
     jumlah_hk: number;
     total_jam_kerja: number; // [NEW] Total hours for the period
+    has_shortage?: boolean; // [NEW] Flag for short working hours
     hari_kerja: number;
     gaji_pokok: number;
     kehadiran: number;
@@ -123,19 +124,16 @@ export class DataExtractorService {
 
         let gangCondition = "";
         if (specificEmpCode) {
-            // If specific employee is requested, ignore gang/division filters for safety/speed
             gangCondition = `RTRIM(e.EmpCode) = '${specificEmpCode.trim()}'`;
         } else if (gangCode && gangCode !== "ALL") {
-            // Match Python: RTRIM(LTRIM(gl.GangCode)) = ?
             gangCondition = `RTRIM(LTRIM(gl.GangCode)) = '${gangCode.trim()}'`;
         } else if (divisionCode) {
-            // Get all gang codes for this division from gangService (matches Python approach)
             const gangs = await gangService.fetchGangs(divisionCode);
             if (gangs.length > 0) {
                 const conditions = gangs.map((gang: { gang_code: string }) => `RTRIM(LTRIM(gl.GangCode)) = '${gang.gang_code}'`).join(' OR ');
                 gangCondition = `(${conditions})`;
             } else {
-                gangCondition = "1=0"; // No gangs found, return no employees
+                gangCondition = "1=0";
             }
         }
 
@@ -162,14 +160,12 @@ export class DataExtractorService {
             this.getPotongan(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Potongan: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile).then(res => { console.log(`[Perf] LemburCalc: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
 
-            // Fixed Values / Master Data
             this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS", serverProfile).then(res => { console.log(`[Perf] Beras: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile).then(res => { console.log(`[Perf] Jabatan: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile).then(res => { console.log(`[Perf] MasaKerja: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getUpahPokok(empCodes, serverProfile).then(res => { console.log(`[Perf] UpahPokok: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getBrondol(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Brondol: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
 
-            // [NEW] Job Titles
             EmployeeEstateService.getEmployeeJobs().then(res => { console.log(`[Perf] JobTitles: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; })
         ]);
         console.log(`[Perf] ParallelFetch Total: ${(performance.now() - startParallel).toFixed(2)}ms`);
@@ -179,7 +175,7 @@ export class DataExtractorService {
         const dynamicPotonganSet = new Set<string>();
 
         for (const emp of employees) {
-            const attData = attendanceMap[emp.emp_code] || { hk: 0, total_hours: 0 };
+            const attData = attendanceMap[emp.emp_code] || { hk: 0, total_hours: 0, shortage_count: 0 };
             const hk = attData.hk;
             if (hk === 0) continue;
 
@@ -193,13 +189,11 @@ export class DataExtractorService {
             const empUpahDasar = upahPokok[emp.emp_code] || emp.pay_rate || 0;
             const empJobTitle = jobTitles[emp.emp_code] || "";
 
+            // ... (Rest of existing logic mostly unchanged until row creation)
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
             const hari_kerja = Math.max(0, hk - totalCuti);
 
-            // Calculate upah_pokok = hari_kerja × upah_dasar
             const upah_pokok = hari_kerja * empUpahDasar;
-
-            // Get brondol amount
             const empBrondol = brondol[emp.emp_code] || 0;
 
             let masaKerjaLama = 0;
@@ -212,11 +206,9 @@ export class DataExtractorService {
                 }
             }
 
-            // Calculate beras
             const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
             const berasJumlah = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
 
-            // Calculate jabatan and masa kerja rates
             const jabatanRate = hk > 0 && empJabatan > 0 ? empJabatan / hk : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
 
@@ -287,7 +279,8 @@ export class DataExtractorService {
                 gang_code: emp.gang_code,
                 upah_dasar: empUpahDasar,
                 jumlah_hk: hk,
-                total_jam_kerja: attData.total_hours, // [NEW] Added total hours
+                total_jam_kerja: attData.total_hours,
+                has_shortage: attData.shortage_count > 0, // [NEW] Map to boolean
                 hari_kerja,
                 gaji_pokok,
                 kehadiran: hari_kerja,
@@ -380,13 +373,27 @@ export class DataExtractorService {
         }));
     }
 
-    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, { hk: number; total_hours: number }>> {
+    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, { hk: number; total_hours: number; shortage_count: number }>> {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
-        // Use UNION ALL to combine Active and Archive, now selecting SUM(Hours) as well
-        let rows = await db.query<{ emp_code: string; hk: number; total_hours: number }>(`
-            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours
+
+        // SQL to calculate shortage:
+        // Friday (5 days from 1900-01-05 mod 7 = 0) requires >= 5 hours
+        // Other days require >= 7 hours
+        // Only count if Hours > 0
+        const shortageSql = `
+            SUM(CASE 
+                WHEN (DATEDIFF(day, '1900-01-05', trl.TrxDate) % 7 = 0) THEN 
+                    CASE WHEN trl.Hours < 5 AND trl.Hours > 0 THEN 1 ELSE 0 END
+                ELSE 
+                    CASE WHEN trl.Hours < 7 AND trl.Hours > 0 THEN 1 ELSE 0 END
+            END) as shortage_count
+        `;
+
+        let rows = await db.query<{ emp_code: string; hk: number; total_hours: number; shortage_count: number }>(`
+            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours,
+                   ${shortageSql}
             FROM PR_TASKREGLN trl
             JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
             WHERE RTRIM(trl.EmpCode) IN (${empList})
@@ -396,7 +403,8 @@ export class DataExtractorService {
             
             UNION ALL
 
-            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours
+            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours,
+                   ${shortageSql}
             FROM PR_TASKREGLN_ARC trl
             JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
             WHERE RTRIM(trl.EmpCode) IN (${empList})
@@ -405,14 +413,15 @@ export class DataExtractorService {
             GROUP BY RTRIM(trl.EmpCode)
         `, [startDate, endDate, startDate, endDate]);
 
-        const result: Record<string, { hk: number; total_hours: number }> = {};
+        const result: Record<string, { hk: number; total_hours: number; shortage_count: number }> = {};
         for (const r of rows) {
             const empCode = r.emp_code?.trim() || "";
             if (!result[empCode]) {
-                result[empCode] = { hk: 0, total_hours: 0 };
+                result[empCode] = { hk: 0, total_hours: 0, shortage_count: 0 };
             }
             result[empCode].hk += r.hk || 0;
             result[empCode].total_hours += r.total_hours || 0;
+            result[empCode].shortage_count += r.shortage_count || 0;
         }
         return result;
     }

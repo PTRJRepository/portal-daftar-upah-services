@@ -212,7 +212,17 @@ export default function CustomPayrollTable({
             // ABSENSI > JUMLAH HK
             { field: 'jumlah_hk', headers: ['ABSENSI', null, null, 'JUMLAH HK'], w: 60, className: 'text-center cell-absensi font-bold' },
             // ABSENSI > TOTAL JAM [NEW]
-            { field: 'total_jam_kerja', headers: ['ABSENSI', null, null, 'TOTAL JAM'], w: 60, className: 'text-center cell-absensi' },
+            {
+                field: 'total_jam_kerja',
+                headers: ['ABSENSI', null, null, 'TOTAL JAM'],
+                w: 60,
+                className: 'text-center cell-absensi',
+                render: (row) => (
+                    <div className={`w-full h-full flex items-center justify-center ${row.has_shortage ? 'bg-red-100 text-red-600 font-bold' : ''}`}>
+                        {row.total_jam_kerja}
+                    </div>
+                )
+            },
             // PENGGAJIAN
             { field: 'upah_dasar', headers: ['PENGGAJIAN', null, null, 'UPAH DASAR'], w: 85, className: 'text-right' },
             { field: 'upah_pokok', headers: ['PENGGAJIAN', null, null, 'UPAH POKOK'], w: 85, className: 'text-right' },
