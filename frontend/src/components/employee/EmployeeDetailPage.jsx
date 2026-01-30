@@ -450,10 +450,15 @@ export default function EmployeeDetailPage({
                                         key={`cell-${day}`}
                                         className="calendar-cell"
                                         style={{ background: statusStyle.bg, color: statusStyle.text }}
-                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''}`}
+                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''} (${dayData.hours || 0} Jam)`}
                                     >
                                         <div className="calendar-date">{day}</div>
                                         <div className="calendar-status">{statusStyle.label}</div>
+                                        {dayData.hours > 0 && (
+                                            <div style={{ fontSize: '0.6rem', marginTop: '1px', fontWeight: 'bold' }}>
+                                                {dayData.hours} Jam
+                                            </div>
+                                        )}
                                     </div>
                                 )
                             })}

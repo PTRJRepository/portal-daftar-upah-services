@@ -36,6 +36,7 @@ interface PayrollRow {
     gang_code: string;
     upah_dasar: number;
     jumlah_hk: number;
+    total_jam_kerja: number; // [NEW] Total hours for the period
     hari_kerja: number;
     gaji_pokok: number;
     kehadiran: number;
@@ -154,7 +155,7 @@ export class DataExtractorService {
         const empCodes = employees.map(e => e.emp_code);
 
         const startParallel = performance.now();
-        const [attendance, cuti, premi, potongan, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
+        const [attendanceMap, cuti, premi, potongan, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Attendance: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getCuti(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Cuti: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getPremi(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Premi: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
@@ -178,7 +179,8 @@ export class DataExtractorService {
         const dynamicPotonganSet = new Set<string>();
 
         for (const emp of employees) {
-            const hk = attendance[emp.emp_code] || 0;
+            const attData = attendanceMap[emp.emp_code] || { hk: 0, total_hours: 0 };
+            const hk = attData.hk;
             if (hk === 0) continue;
 
             const empCuti = cuti[emp.emp_code] || { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
@@ -189,7 +191,7 @@ export class DataExtractorService {
             const empJabatan = jabatan[emp.emp_code] || 0;
             const empMasaKerjaJumlah = masaKerja[emp.emp_code] || 0;
             const empUpahDasar = upahPokok[emp.emp_code] || emp.pay_rate || 0;
-            const empJobTitle = jobTitles[emp.emp_code] || ""; // Default empty, frontend/backend logic handles default
+            const empJobTitle = jobTitles[emp.emp_code] || "";
 
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
             const hari_kerja = Math.max(0, hk - totalCuti);
@@ -210,7 +212,7 @@ export class DataExtractorService {
                 }
             }
 
-            // Calculate beras: Always use rate × HK formula
+            // Calculate beras
             const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
             const berasJumlah = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
 
@@ -221,72 +223,55 @@ export class DataExtractorService {
             const gaji_pokok = payrollService.calculateGajiPokok(empUpahDasar, hk);
             const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah;
 
-            // Merge Brondol into empPremi matches Python logic
-            // (Python: employee_data[emp_code]['premi']['brondol'] = val)
             empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
 
             let total_premi = 0;
             for (const [key, val] of Object.entries(empPremi)) {
-                // Exclude koreksi from total_premi (Python logic)
                 if (key !== "koreksi") {
                     total_premi += val as number;
                 }
-                // Only add true dynamic keys to the header set
-                // Brondol is typically a static column, and Koreksi is special
                 if (key !== "brondol" && key !== "koreksi") {
                     dynamicPremiSet.add(key);
                 }
             }
 
-            // Calculate total potongan (only pekerja portions + other deductions)
             const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
             const pot_koreksi = Math.abs(empPotongan["KOREKSI"] || 0);
 
-            // Sum other dynamic potongan
             let other_potongan = 0;
-            let db_bpjs_kes = 0; // Accumulated BPJS from DocDesc (transaction data)
+            let db_bpjs_kes = 0;
 
             for (const [key, val] of Object.entries(empPotongan)) {
-                // Skip static columns
                 if (key === "SPSI" || key === "PPH21" || key === "KOREKSI") continue;
 
-                // Handle BPJS from transactions (DocDesc)
-                // Logic matches Python: Add to BPJS Kesehatan Pekerja, exclude from 'other'
                 if (key.includes("BPJS")) {
-                    // Exclude Majikan portions from this manual addition (formula only)
                     if (!key.includes("MAJIKAN") && !key.includes("MAJ")) {
                         db_bpjs_kes += Math.abs(val as number);
                     }
-                    continue; // Skip adding to other_potongan
+                    continue;
                 }
 
                 other_potongan += Math.abs(val as number);
                 dynamicPotonganSet.add(key);
             }
 
-            // Calculate BPJS/ASTEK based on formula
-            // Base = (upah_dasar × 30) + masa_kerja_jumlah
             const carumanBase = (empUpahDasar * 30) + empMasaKerjaJumlah;
 
-            // Caruman ASTEK: Pekerja 2%, Majikan 4.54%
             const pot_astek_pekerja = Math.round(carumanBase * 0.02 * 100) / 100;
             const pot_astek_majikan = Math.round(carumanBase * 0.0454 * 100) / 100;
             const pot_astek_jumlah = Math.round((pot_astek_pekerja + pot_astek_majikan) * 100) / 100;
 
-            // BPJS Kesehatan: Pekerja 1%, Majikan 4%
             const pot_bpjs_kesehatan_pekerja_formula = Math.round(carumanBase * 0.01 * 100) / 100;
             const pot_bpjs_kesehatan_pekerja = pot_bpjs_kesehatan_pekerja_formula + db_bpjs_kes;
 
             const pot_bpjs_kesehatan_majikan = Math.round(carumanBase * 0.04 * 100) / 100;
             const pot_bpjs_kesehatan_jumlah = Math.round((pot_bpjs_kesehatan_pekerja + pot_bpjs_kesehatan_majikan) * 100) / 100;
 
-            // BPJS Pensiun: Pekerja 1%, Majikan 2%
             const pot_bpjs_pensiun_pekerja = Math.round(carumanBase * 0.01 * 100) / 100;
             const pot_bpjs_pensiun_majikan = Math.round(carumanBase * 0.02 * 100) / 100;
             const pot_bpjs_pensiun_jumlah = Math.round((pot_bpjs_pensiun_pekerja + pot_bpjs_pensiun_majikan) * 100) / 100;
 
-            // Total potongan = ASTEK pekerja + BPJS Kesehatan pekerja (updated) + BPJS Pensiun pekerja + SPSI + PPH21 + other
             const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
                 pot_spsi + pot_pph21 + other_potongan + pot_koreksi;
 
@@ -302,6 +287,7 @@ export class DataExtractorService {
                 gang_code: emp.gang_code,
                 upah_dasar: empUpahDasar,
                 jumlah_hk: hk,
+                total_jam_kerja: attData.total_hours, // [NEW] Added total hours
                 hari_kerja,
                 gaji_pokok,
                 kehadiran: hari_kerja,
@@ -324,30 +310,24 @@ export class DataExtractorService {
                 upah_pokok,
                 total_premi,
                 jumlah_upah_kotor,
-                // Caruman ASTEK
                 pot_astek_pekerja,
                 pot_astek_majikan,
                 pot_astek_jumlah,
-                // BPJS Kesehatan
                 pot_bpjs_kesehatan_pekerja,
                 pot_bpjs_kesehatan_majikan,
                 pot_bpjs_kesehatan_jumlah,
-                // BPJS Pensiun
                 pot_bpjs_pensiun_pekerja,
                 pot_bpjs_pensiun_majikan,
                 pot_bpjs_pensiun_jumlah,
-                // Other deductions
                 pot_spsi,
                 pot_pph21,
                 pot_koreksi,
                 premi_koreksi: pot_koreksi,
                 potongan_upah_kotor_total: pot_koreksi,
                 total_potongan,
-                total_potongan_bersih: total_potongan, // Frontend expects this field name
+                total_potongan_bersih: total_potongan,
                 upah_bersih,
-                // Nested premi structure as requested
                 premi: empPremi,
-                // Frontend compatibility aliases
                 pot_astek: pot_astek_pekerja,
                 pot_astek_maj: pot_astek_majikan,
                 pot_bpjs_pekerja_total: pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja,
@@ -400,13 +380,13 @@ export class DataExtractorService {
         }));
     }
 
-    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
+    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, { hk: number; total_hours: number }>> {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
-        // Use UNION ALL to combine Active and Archive
-        let rows = await db.query<{ emp_code: string; hk: number }>(`
-            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk
+        // Use UNION ALL to combine Active and Archive, now selecting SUM(Hours) as well
+        let rows = await db.query<{ emp_code: string; hk: number; total_hours: number }>(`
+            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours
             FROM PR_TASKREGLN trl
             JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
             WHERE RTRIM(trl.EmpCode) IN (${empList})
@@ -416,7 +396,7 @@ export class DataExtractorService {
             
             UNION ALL
 
-            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk
+            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours
             FROM PR_TASKREGLN_ARC trl
             JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
             WHERE RTRIM(trl.EmpCode) IN (${empList})
@@ -425,9 +405,14 @@ export class DataExtractorService {
             GROUP BY RTRIM(trl.EmpCode)
         `, [startDate, endDate, startDate, endDate]);
 
-        const result: Record<string, number> = {};
+        const result: Record<string, { hk: number; total_hours: number }> = {};
         for (const r of rows) {
-            result[r.emp_code?.trim() || ""] = r.hk || 0;
+            const empCode = r.emp_code?.trim() || "";
+            if (!result[empCode]) {
+                result[empCode] = { hk: 0, total_hours: 0 };
+            }
+            result[empCode].hk += r.hk || 0;
+            result[empCode].total_hours += r.total_hours || 0;
         }
         return result;
     }

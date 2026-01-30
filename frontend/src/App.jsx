@@ -3,8 +3,8 @@ import axios from 'axios'
 // Lazy load pages for better startup performance
 const MainPage = lazy(() => import('./pages/MainPage'))
 const LockedMainPage = lazy(() => import('./pages/LockedMainPage'))
-const LoginPage = lazy(() => import('./pages/LoginPage'))
 const EmployeeDetailRoute = lazy(() => import('./pages/EmployeeDetailRoute'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
 
 import { AuthProvider, useAuth } from './context/AuthContext'
 import LoadingScreen from './components/common/LoadingScreen'
@@ -77,19 +77,14 @@ function AppInner() {
       const currentPath = window.location.pathname
 
       if (!isAuthenticated) {
-        // In Prod Mode: Redirect to external login (relative path on same origin)
-        if (inProdMode) {
-          console.log('[App] Prod mode: Not authenticated, redirecting to external login')
-          // Use relative path /login which will be handled by the proxy gateway
-          if (!currentPath.includes('/login')) {
-            redirectToExternalLogin()
-          }
-          return
-        }
+        // ALWAYS Redirect to external login (relative path on same origin)
+        // We no longer use the internal LoginPage.jsx
+        console.log('[App] Not authenticated, redirecting to external login')
 
-        // Dev mode: Show internal login page
+        // Prevent infinite loop if we are already at the root /login
+        // Note: In prod (/upah base), currentPath will be /upah/..., so this check passes and we redirect.
         if (currentPath !== '/login') {
-          window.history.replaceState(null, '', '/login' + window.location.search)
+          redirectToExternalLogin()
         }
       } else {
         if (currentPath === '/login') {
@@ -107,14 +102,19 @@ function AppInner() {
 
   // Not authenticated
   if (!isAuthenticated) {
-    // Show login page
-    // In prod mode, the useEffect above handles redirection if not at /login
-    // If we receive no token and are at /login, we render the login UI
-    return (
-      <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat halaman login..." />}>
-        <LoginPage />
-      </Suspense>
-    )
+    // If we are explicitly at the login page, render it!
+    const isLoginPath = window.location.pathname === '/login' || window.location.pathname === '/upah/login'
+
+    if (isLoginPath) {
+      return (
+        <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat halaman login..." />}>
+          <LoginPage />
+        </Suspense>
+      )
+    }
+
+    // Show loading while redirecting
+    return <LoadingScreen isLoading={true} message="Mengalihkan ke halaman login..." />
   }
 
   // Check for specific routes (after authentication)

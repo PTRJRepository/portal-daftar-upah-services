@@ -211,34 +211,36 @@ export default function CustomPayrollTable({
             { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'NASIONAL'], w: 60, className: 'text-center cell-absensi' },
             // ABSENSI > JUMLAH HK
             { field: 'jumlah_hk', headers: ['ABSENSI', null, null, 'JUMLAH HK'], w: 60, className: 'text-center cell-absensi font-bold' },
+            // ABSENSI > TOTAL JAM [NEW]
+            { field: 'total_jam_kerja', headers: ['ABSENSI', null, null, 'TOTAL JAM'], w: 60, className: 'text-center cell-absensi' },
             // PENGGAJIAN
             { field: 'upah_dasar', headers: ['PENGGAJIAN', null, null, 'UPAH DASAR'], w: 85, className: 'text-right' },
             { field: 'upah_pokok', headers: ['PENGGAJIAN', null, null, 'UPAH POKOK'], w: 85, className: 'text-right' },
             { field: 'gaji_pokok', headers: ['PENGGAJIAN', null, null, 'GAJI POKOK'], w: 85, className: 'text-right' },
 
-            // JABATAN [NEW]
-            {
-                field: 'jabatan_estate',
-                headers: ['IDENTITAS', null, null, 'JABATAN'],
-                w: 110,
-                className: 'text-left p-0', // p-0 to allow select to fill
-                render: (row) => (
-                    <select
-                        className="w-full h-full border-none bg-transparent text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                        value={row.jabatan_estate || 'Karyawan'}
-                        onChange={(e) => handleJobTitleChange(row.nik, e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        style={{ padding: '0 4px', height: '100%' }}
-                    >
-                        <option value="Karyawan">Karyawan</option>
-                        <option value="Mandor">Mandor</option>
-                        <option value="Kerani">Kerani</option>
-                        <option value="Helper">Helper</option>
-                        <option value="Operator">Operator</option>
-                    </select>
-                )
-            },
+            // JABATAN [NEW] - HIDDEN TEMPORARILY
+            // {
+            //     field: 'jabatan_estate',
+            //     headers: ['IDENTITAS', null, null, 'JABATAN'],
+            //     w: 110,
+            //     className: 'text-left p-0', // p-0 to allow select to fill
+            //     render: (row) => (
+            //         <select
+            //             className="w-full h-full border-none bg-transparent text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            //             value={row.jabatan_estate || 'Karyawan'}
+            //             onChange={(e) => handleJobTitleChange(row.nik, e.target.value)}
+            //             onClick={(e) => e.stopPropagation()}
+            //             onMouseDown={(e) => e.stopPropagation()}
+            //             style={{ padding: '0 4px', height: '100%' }}
+            //         >
+            //             <option value="Karyawan">Karyawan</option>
+            //             <option value="Mandor">Mandor</option>
+            //             <option value="Kerani">Kerani</option>
+            //             <option value="Helper">Helper</option>
+            //             <option value="Operator">Operator</option>
+            //         </select>
+            //     )
+            // },
 
             // TUNJANGAN > BERAS
             { field: 'beras_rate', headers: ['TUNJANGAN', 'BERAS', null, 'RATE'], w: 60, className: 'text-right' },
@@ -250,26 +252,14 @@ export default function CustomPayrollTable({
                 headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, 'RATE'],
                 w: 60,
                 className: 'text-right',
-                render: (row) => {
-                    if (tunjanganMode === 'CALC') {
-                        const rate = tunjanganRates[row.jabatan_estate] || 0;
-                        return formatNumber(rate);
-                    }
-                    return formatNumber(row.jabatan_rate);
-                }
+                render: (row) => formatNumber(row.jabatan_rate)
             },
             {
                 field: 'jabatan_jumlah',
-                headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, '%TOGGLE_JUMLAH%'],
+                headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, 'JUMLAH'],
                 w: 80,
                 className: 'text-right',
-                render: (row) => {
-                    if (tunjanganMode === 'CALC') {
-                        const rate = tunjanganRates[row.jabatan_estate] || 0;
-                        return formatNumber(rate * (row.jumlah_hk || 0));
-                    }
-                    return formatNumber(row.jabatan_jumlah);
-                }
+                render: (row) => formatNumber(row.jabatan_jumlah)
             },
             // TUNJANGAN > MASA KERJA
             { field: 'masa_kerja_tahun', headers: ['TUNJANGAN', 'MASA KERJA', null, 'LAMA'], w: 45, className: 'text-center' },
@@ -600,7 +590,7 @@ export default function CustomPayrollTable({
                                         <div className="flex flex-col items-center justify-center gap-0.5 w-full h-full">
                                             <span>JUMLAH</span>
                                             <div
-                                                className={`cursor-pointer select-none text-[9px] px-2 py-0.5 rounded-full border flex items-center gap-1 transition-colors shadow-sm ${tunjanganMode === 'CALC' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-600'}`}
+                                                className={`cursor-pointer select-none text-[9px] px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors ${tunjanganMode === 'CALC' ? 'bg-green-100 text-green-700 font-bold' : 'bg-transparent text-gray-400 hover:bg-gray-100'}`}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setTunjanganMode(prev => prev === 'DB' ? 'CALC' : 'DB');

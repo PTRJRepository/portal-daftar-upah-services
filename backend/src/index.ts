@@ -76,6 +76,11 @@ const app = new Elysia()
         assets: "../frontend/dist/assets",
         prefix: "/assets"
     }))
+    // Serve images at root /images to match frontend hardcoded paths
+    .use(staticPlugin({
+        assets: "../frontend/dist/images",
+        prefix: "/images"
+    }))
     .get("/api-info", () => ({
         message: "Payroll Backend (Bun/Elysia) is running",
         version: "2.0.0",
