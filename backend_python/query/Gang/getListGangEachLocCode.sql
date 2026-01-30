@@ -1,2 +1,0 @@
-SELECT *FROM "HR_GANG"
-WHERE locCode = 'AB2'

@@ -175,7 +175,7 @@ export class DataExtractorService {
         const dynamicPotonganSet = new Set<string>();
 
         for (const emp of employees) {
-            const attData = attendanceMap[emp.emp_code] || { hk: 0, total_hours: 0, shortage_count: 0 };
+            const attData = attendanceMap[emp.emp_code] || { hk: 0, total_hours: 0, shortage_count: 0, total_amount_rp: 0 };
             const hk = attData.hk;
             if (hk === 0) continue;
 
@@ -193,7 +193,8 @@ export class DataExtractorService {
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
             const hari_kerja = Math.max(0, hk - totalCuti);
 
-            const upah_pokok = hari_kerja * empUpahDasar;
+            // [MODIFIED] Use database amount for basic salary
+            const upah_pokok = attData.total_amount_rp || 0;
             const empBrondol = brondol[emp.emp_code] || 0;
 
             let masaKerjaLama = 0;
@@ -212,7 +213,7 @@ export class DataExtractorService {
             const jabatanRate = hk > 0 && empJabatan > 0 ? empJabatan / hk : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
 
-            const gaji_pokok = payrollService.calculateGajiPokok(empUpahDasar, hk);
+            const gaji_pokok = upah_pokok;
             const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah;
 
             empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
@@ -373,7 +374,7 @@ export class DataExtractorService {
         }));
     }
 
-    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, { hk: number; total_hours: number; shortage_count: number }>> {
+    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, { hk: number; total_hours: number; shortage_count: number; total_amount_rp: number }>> {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
@@ -391,9 +392,10 @@ export class DataExtractorService {
             END) as shortage_count
         `;
 
-        let rows = await db.query<{ emp_code: string; hk: number; total_hours: number; shortage_count: number }>(`
+        let rows = await db.query<{ emp_code: string; hk: number; total_hours: number; shortage_count: number; total_amount_rp: number }>(`
             SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours,
-                   ${shortageSql}
+                   ${shortageSql},
+                   SUM(trl.Amount) as total_amount_rp
             FROM PR_TASKREGLN trl
             JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
             WHERE RTRIM(trl.EmpCode) IN (${empList})
@@ -404,7 +406,8 @@ export class DataExtractorService {
             UNION ALL
 
             SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours,
-                   ${shortageSql}
+                   ${shortageSql},
+                   SUM(trl.Amount) as total_amount_rp
             FROM PR_TASKREGLN_ARC trl
             JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
             WHERE RTRIM(trl.EmpCode) IN (${empList})
@@ -413,15 +416,16 @@ export class DataExtractorService {
             GROUP BY RTRIM(trl.EmpCode)
         `, [startDate, endDate, startDate, endDate]);
 
-        const result: Record<string, { hk: number; total_hours: number; shortage_count: number }> = {};
+        const result: Record<string, { hk: number; total_hours: number; shortage_count: number; total_amount_rp: number }> = {};
         for (const r of rows) {
             const empCode = r.emp_code?.trim() || "";
             if (!result[empCode]) {
-                result[empCode] = { hk: 0, total_hours: 0, shortage_count: 0 };
+                result[empCode] = { hk: 0, total_hours: 0, shortage_count: 0, total_amount_rp: 0 };
             }
             result[empCode].hk += r.hk || 0;
             result[empCode].total_hours += r.total_hours || 0;
             result[empCode].shortage_count += r.shortage_count || 0;
+            result[empCode].total_amount_rp += r.total_amount_rp || 0;
         }
         return result;
     }
