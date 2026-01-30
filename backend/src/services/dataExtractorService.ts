@@ -360,7 +360,7 @@ export class DataExtractorService {
             LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
             LEFT JOIN HR_EMPLOYMENT em ON em.EmpCode = e.EmpCode
             ${whereClause}
-            ORDER BY e.EmpName
+            ORDER BY e.EmpCode
         `);
         return rows.map((r: any) => ({
             emp_code: r.emp_code?.trim() || "",

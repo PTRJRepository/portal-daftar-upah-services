@@ -147,6 +147,13 @@ export default function CustomPayrollTable({
 
             gangKeys.forEach(gCode => {
                 const employees = gangsMap[gCode];
+                // Explicitly sort employees by NIK (EmpCode) ascending
+                employees.sort((a, b) => {
+                    const nikA = (a.nik || '').trim();
+                    const nikB = (b.nik || '').trim();
+                    return nikA.localeCompare(nikB, undefined, { numeric: true, sensitivity: 'base' });
+                });
+
                 processedRows.push({ type: 'gang_header', gang_code: gCode, id: `HEADER_${gCode}` });
                 employees.forEach(emp => {
                     emp.no = globalNo++;
@@ -201,7 +208,8 @@ export default function CustomPayrollTable({
         const cols = [
             // IDENTITAS
             { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 40, className: 'text-center sticky-col', left: 0 },
-            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 170, className: 'text-left sticky-col', left: 40 },
+            { field: 'nik', headers: ['IDENTITAS', null, null, 'NI'], w: 60, className: 'text-center sticky-col', left: 40 },
+            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 170, className: 'text-left sticky-col', left: 100 },
             // ABSENSI > KEHADIRAN
             { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'], w: 40, className: 'text-center cell-absensi' },
             // ABSENSI > KETIDAKHADIRAN

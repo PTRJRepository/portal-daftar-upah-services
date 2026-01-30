@@ -1,0 +1,42 @@
+[
+  {
+    "TaskCode": "ALJKK",
+    "TaskDesc": "(ME) JKK - WORKERS (EMPLOYER)"
+  },
+  {
+    "TaskCode": "ALJP",
+    "TaskDesc": "(ME) JP - WORKERS (EMPLOYER)"
+  },
+  {
+    "TaskCode": "ALJHT",
+    "TaskDesc": "(ME) JHT - WORKERS (EMPLOYER)"
+  },
+  {
+    "TaskCode": "ALBPJS",
+    "TaskDesc": "(ME) BPJS - WORKERS (EMPLOYER)"
+  },
+  {
+    "TaskCode": "ALJK",
+    "TaskDesc": "(ME) JK - WORKERS (EMPLOYER)"
+  },
+  {
+    "TaskCode": "AL0001",
+    "TaskDesc": "(AL) BENEFIT IN KIND - ACCOMMODATION"
+  },
+  {
+    "TaskCode": "AL0002",
+    "TaskDesc": "(AL) BENEFIT IN KIND - VEHICLE"
+  },
+  {
+    "TaskCode": "AL0003",
+    "TaskDesc": "(AL) BENEFIT IN KIND - MOBILE PHONE"
+  },
+  {
+    "TaskCode": "AL0004",
+    "TaskDesc": "(AL) GRATUITY"
+  },
+  {
+    "TaskCode": "AL0005",
+    "TaskDesc": "(AL) TUNJANGAN BONUS"
+  }
+]

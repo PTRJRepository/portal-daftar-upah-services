@@ -1,0 +1,4 @@
+Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_1","execution_ms":4.5733999609947205,"data":null,"error":"Database error: Invalid column name 'Description'."}
+Stack: Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_1","execution_ms":4.5733999609947205,"data":null,"error":"Database error: Invalid column name 'Description'."}
+    at query (D:\Gawean Rebinmas\Monitoring Database\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:127:31)
+    at async main (D:\Gawean Rebinmas\Monitoring Database\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\debug_search_desc.ts:25:37)
