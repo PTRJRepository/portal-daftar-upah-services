@@ -229,6 +229,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "Unauthorized" };
             }
 
+            // PERMISSION CHECK - RELAXED TO MATCH PYTHON BACKEND
+            /*
             if (currentUser.role !== UserRole.ADMIN) {
                 console.log(`[PayrollRoutes DEBUG Report] Permission Check for User: ${currentUser.username}, Requested: '${divisionCode}', UserDivs: ${JSON.stringify(currentUser.divisions)}`);
 
@@ -252,7 +254,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     set.status = 403;
                     return { error: `Access refused: You do not have permission for division ${divisionCode}` };
                 }
-            }
+            */
 
             const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode);
 
@@ -313,25 +315,25 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             /*
             if (currentUser.role !== UserRole.ADMIN) {
                 console.log(`[PayrollRoutes DEBUG] Permission Check for User: ${currentUser.username}, Requested: '${divisionCode}', UserDivs: ${JSON.stringify(currentUser.divisions)}`);
-
+    
                 // Normalize for comparison
                 const requestedDiv = String(divisionCode).trim().toUpperCase();
-
+    
                 // Check if ANY user division (or its alias) matches the requests
                 // This handles P1A vs PG1A mismatches
                 const hasPermission = currentUser.divisions.some(d => {
                     const div = String(d).trim().toUpperCase();
                     if (div === requestedDiv) return true;
-
+    
                     // Helper: Convert P1A -> PG1A and vice versa is tricky if GangService only does one way.
                     // But GangService has convertDivisionToLocCode (PG1A -> P1A).
                     // So if User has PG1A, convert to P1A and check.
                     const alias = gangService.convertDivisionToLocCode(div);
                     if (alias === requestedDiv) return true;
-
+    
                     return false;
                 });
-
+    
                 if (!hasPermission) {
                     console.warn(`[PayrollRoutes] User ${currentUser.username} attempted to access unauthorized gangs for division: ${divisionCode}`);
                     set.status = 403;
