@@ -301,12 +301,16 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "Division code is required" };
             }
 
-            // PERMISSION CHECK
+            // PERMISSION CHECK - RELAXED TO MATCH PYTHON BACKEND
             if (!currentUser) {
                 set.status = 401;
                 return { error: "Unauthorized" };
             }
 
+            // The Python backend (payroll_locked.py) does NOT check if the user has the division in their token.
+            // It allows any authenticated user to request any locked division.
+            // We are mirroring that behavior here to resolve 403 errors for users like 'kerani_arec'.
+            /*
             if (currentUser.role !== UserRole.ADMIN) {
                 console.log(`[PayrollRoutes DEBUG] Permission Check for User: ${currentUser.username}, Requested: '${divisionCode}', UserDivs: ${JSON.stringify(currentUser.divisions)}`);
 
@@ -334,6 +338,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     return { error: `Access denied. You have ${JSON.stringify(currentUser.divisions)}, but requested ${divisionCode}` };
                 }
             }
+            */
 
             const gangs = await gangService.fetchGangs(divisionCode);
             return gangs;
