@@ -114,6 +114,7 @@ export class DataExtractorService {
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
         dynamic_potongan_headers: string[];
+        potongan_title_map: Record<string, string>;
         meta: { execution_time_ms: number; row_count: number }
     }> {
         const startTime = Date.now();
@@ -146,6 +147,7 @@ export class DataExtractorService {
                 data_rows: [],
                 dynamic_premi_headers: [],
                 dynamic_potongan_headers: [],
+                potongan_title_map: {},
                 meta: { execution_time_ms: 0, row_count: 0 }
             };
         }
@@ -153,7 +155,7 @@ export class DataExtractorService {
         const empCodes = employees.map(e => e.emp_code);
 
         const startParallel = performance.now();
-        const [attendanceMap, cuti, premi, potongan, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
+        const [attendanceMap, cuti, premi, potonganResult, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Attendance: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getCuti(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Cuti: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getPremi(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Premi: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
@@ -169,6 +171,9 @@ export class DataExtractorService {
             EmployeeEstateService.getEmployeeJobs().then(res => { console.log(`[Perf] JobTitles: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; })
         ]);
         console.log(`[Perf] ParallelFetch Total: ${(performance.now() - startParallel).toFixed(2)}ms`);
+
+        // Destructure potongan result
+        const { amounts: potongan, titleMap: potonganTitleMap } = potonganResult;
 
         const dataRows: PayrollRow[] = [];
         const dynamicPremiSet = new Set<string>();
@@ -335,6 +340,7 @@ export class DataExtractorService {
             data_rows: dataRows,
             dynamic_premi_headers: Array.from(dynamicPremiSet),
             dynamic_potongan_headers: Array.from(dynamicPotonganSet),
+            potongan_title_map: potonganTitleMap,
             meta: {
                 execution_time_ms: Date.now() - startTime,
                 row_count: dataRows.length
@@ -589,65 +595,58 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getPotongan(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, Record<string, number>>> {
-        if (!empCodes.length) return {};
+    private async getPotongan(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string> }> {
+        if (!empCodes.length) return { amounts: {}, titleMap: {} };
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // Query based on DocDesc patterns matching Python backend implementation
-        // Query based on DocDesc patterns matching Python backend implementation - UNION ALL
-        let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-            SELECT RTRIM(EmpCode) as emp_code, DocDesc as doc_desc, SUM(COALESCE(Amount, 0)) as amount
+        // [REFACTORED] Query based on TaskDesc from PR_TASKCODE instead of DocDesc
+        // Static: PPH, SPSI
+        // Dynamic: POTONGAN (excluding PPH/SPSI)
+        let rows = await db.query<{ emp_code: string; task_desc: string; amount: number }>(`
+            SELECT RTRIM(t.EmpCode) as emp_code, mt.TaskDesc as task_desc, SUM(COALESCE(ln.Amount, 0)) as amount
             FROM (
-                SELECT t.EmpCode, t.DocDesc, ln.Amount
+                SELECT t.EmpCode, t.ID, t.DocDate
                 FROM PR_ADTRANS t
-                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
-                  AND (UPPER(t.DocDesc) LIKE '%POT%'
-                       OR UPPER(t.DocDesc) LIKE '%PPH%'
-                       OR UPPER(t.DocDesc) LIKE '%BPJS%'
-                       OR UPPER(t.DocDesc) LIKE '%PINJAM%'
-                       OR UPPER(t.DocDesc) LIKE '%KL%'
-                       OR UPPER(t.DocDesc) LIKE '%SPSI%'
-                       OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
-                       OR UPPER(t.DocDesc) LIKE '%TOTAL%'
-                       OR UPPER(t.DocDesc) LIKE '%TIKET%'
-                       OR UPPER(t.DocDesc) LIKE '%KONTAN%'
-                       OR UPPER(t.DocDesc) LIKE '%ALAT%'
-                       OR UPPER(t.DocDesc) LIKE '%THR%')
-
+                
                 UNION ALL
 
-                SELECT t.EmpCode, t.DocDesc, ln.Amount
+                SELECT t.EmpCode, t.ID, t.DocDate
                 FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
-                  AND (UPPER(t.DocDesc) LIKE '%POT%'
-                       OR UPPER(t.DocDesc) LIKE '%PPH%'
-                       OR UPPER(t.DocDesc) LIKE '%BPJS%'
-                       OR UPPER(t.DocDesc) LIKE '%PINJAM%'
-                       OR UPPER(t.DocDesc) LIKE '%KL%'
-                       OR UPPER(t.DocDesc) LIKE '%SPSI%'
-                       OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
-                       OR UPPER(t.DocDesc) LIKE '%TOTAL%'
-                       OR UPPER(t.DocDesc) LIKE '%TIKET%'
-                       OR UPPER(t.DocDesc) LIKE '%KONTAN%'
-                       OR UPPER(t.DocDesc) LIKE '%ALAT%'
-                       OR UPPER(t.DocDesc) LIKE '%THR%')
-            ) combined
-            GROUP BY RTRIM(EmpCode), DocDesc
+            ) t
+            JOIN (
+                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN
+                UNION ALL
+                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
+            ) ln ON t.ID = ln.MasterID
+            LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
+            WHERE mt.TaskDesc IS NOT NULL
+              AND (
+                UPPER(mt.TaskDesc) LIKE '%PPH%'
+                OR UPPER(mt.TaskDesc) LIKE '%SPSI%'
+                OR UPPER(mt.TaskDesc) LIKE '%POTONGAN%'
+              )
+            GROUP BY RTRIM(t.EmpCode), mt.TaskDesc
         `, [startDate, endDate, startDate, endDate]);
 
-        const result: Record<string, Record<string, number>> = {};
+        const amounts: Record<string, Record<string, number>> = {};
+        const titleMap: Record<string, string> = {};
+
         for (const r of rows) {
             const emp = r.emp_code?.trim() || "";
-            if (!result[emp]) result[emp] = {};
-            const key = this.normalizePotonganName(r.doc_desc || "");
-            result[emp][key] = (result[emp][key] || 0) + Math.abs(r.amount || 0);
+            if (!amounts[emp]) amounts[emp] = {};
+            const { key, title } = this.normalizePotonganName(r.task_desc || "");
+            amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
+            // Store title mapping for dynamic headers
+            if (!titleMap[key]) {
+                titleMap[key] = title;
+            }
         }
-        return result;
+        return { amounts, titleMap };
     }
 
     private async getLemburDetailsFromCalculator(empCodes: string[], month: number, year: number, serverProfile?: string): Promise<Record<string, LemburData>> {
@@ -773,16 +772,25 @@ export class DataExtractorService {
         return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")}`;
     }
 
-    private normalizePotonganName(docDesc: string): string {
-        const upper = docDesc.toUpperCase().trim();
-        // Check PPH first (most critical)
-        if (upper.includes("PPH") || upper.includes("PAJAK")) return "PPH21";
-        // Check SPSI
-        if (upper.includes("SPSI")) return "SPSI";
-        // Check KOREKSI
-        if (upper.includes("KOREKSI")) return "KOREKSI";
-        // Return normalized name for dynamic potongan
-        return upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+    private normalizePotonganName(taskDesc: string): { key: string; title: string } {
+        const upper = taskDesc.toUpperCase().trim();
+        const cleanTitle = taskDesc.trim();
+
+        // Static: PPH
+        if (upper.includes("PPH") || upper.includes("PAJAK")) {
+            return { key: "PPH21", title: "PPH21" };
+        }
+        // Static: SPSI
+        if (upper.includes("SPSI")) {
+            return { key: "SPSI", title: "SPSI" };
+        }
+        // Static: KOREKSI (should not happen with TaskDesc, but keep for safety)
+        if (upper.includes("KOREKSI")) {
+            return { key: "KOREKSI", title: "KOREKSI" };
+        }
+        // Dynamic: Use TaskDesc as title, normalized key for field name
+        const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+        return { key, title: cleanTitle };
     }
 
     private async getBrondol(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {

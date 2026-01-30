@@ -122,9 +122,19 @@ export default function CustomPayrollTable({
             }
             const dynPot = data.dynamic_potongan_headers || {};
             const dynPrem = data.dynamic_premi_headers || {};
-            setDynamicHeaders({ premi: dynPrem, potongan: dynPot });
+            const potTitleMap = data.potongan_title_map || {};
 
-            let flatRows = PayrollAggregator.flattenData(data, dynPot);
+            // Build potongan headers using title from titleMap where available
+            const potWithTitles = {};
+            Object.entries(dynPot).forEach(([key, field]) => {
+                // Use title from titleMap if available, otherwise use key
+                const title = potTitleMap[key] || key;
+                potWithTitles[title] = field;
+            });
+
+            setDynamicHeaders({ premi: dynPrem, potongan: potWithTitles });
+
+            let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
 
             // Calculate grand total based on FILTERED rows (selected gang only)
             const filteredFlat = gangCode && gangCode !== 'ALL'
