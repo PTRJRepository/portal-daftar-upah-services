@@ -2,6 +2,7 @@ import { Database } from "../db/client";
 import { payrollService } from "./payrollService";
 import { gangService } from "./gangService";
 import { lemburCalculator } from "./lemburCalculator";
+import { EmployeeEstateService } from "./employeeEstateService";
 
 interface EmployeeRow {
     emp_code: string;
@@ -29,6 +30,7 @@ interface LemburData {
 interface PayrollRow {
     nik: string;
     nama: string;
+    jabatan_estate?: string; // [NEW] Job Title from auxiliary table
     jenis_kelamin: string;
     loc_code: string;
     gang_code: string;
@@ -152,7 +154,7 @@ export class DataExtractorService {
         const empCodes = employees.map(e => e.emp_code);
 
         const startParallel = performance.now();
-        const [attendance, cuti, premi, potongan, lembur, beras, jabatan, masaKerja, upahPokok, brondol] = await Promise.all([
+        const [attendance, cuti, premi, potongan, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Attendance: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getCuti(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Cuti: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getPremi(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Premi: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
@@ -164,7 +166,10 @@ export class DataExtractorService {
             this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile).then(res => { console.log(`[Perf] Jabatan: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile).then(res => { console.log(`[Perf] MasaKerja: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getUpahPokok(empCodes, serverProfile).then(res => { console.log(`[Perf] UpahPokok: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getBrondol(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Brondol: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; })
+            this.getBrondol(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Brondol: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+
+            // [NEW] Job Titles
+            EmployeeEstateService.getEmployeeJobs().then(res => { console.log(`[Perf] JobTitles: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; })
         ]);
         console.log(`[Perf] ParallelFetch Total: ${(performance.now() - startParallel).toFixed(2)}ms`);
 
@@ -184,6 +189,7 @@ export class DataExtractorService {
             const empJabatan = jabatan[emp.emp_code] || 0;
             const empMasaKerjaJumlah = masaKerja[emp.emp_code] || 0;
             const empUpahDasar = upahPokok[emp.emp_code] || emp.pay_rate || 0;
+            const empJobTitle = jobTitles[emp.emp_code] || ""; // Default empty, frontend/backend logic handles default
 
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
             const hari_kerja = Math.max(0, hk - totalCuti);
@@ -290,6 +296,7 @@ export class DataExtractorService {
             const row: PayrollRow = {
                 nik: emp.emp_code,
                 nama: emp.emp_name,
+                jabatan_estate: empJobTitle,
                 jenis_kelamin: emp.gender === "2" || emp.gender === "P" ? "P" : "L",
                 loc_code: emp.loc_code,
                 gang_code: emp.gang_code,

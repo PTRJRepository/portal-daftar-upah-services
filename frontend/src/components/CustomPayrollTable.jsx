@@ -37,9 +37,76 @@ export default function CustomPayrollTable({
     const [highlightedRowId, setHighlightedRowId] = useState(null);
     const [activePremiFields, setActivePremiFields] = useState([]);
     const [activePotFields, setActivePotFields] = useState([]);
+
+    // Tunjangan Mode & Rates
+    const [tunjanganMode, setTunjanganMode] = useState('DB'); // 'DB' or 'CALC'
+    const [tunjanganRates, setTunjanganRates] = useState({});
+
     const tableRef = useRef(null);
 
+    useEffect(() => {
+        fetch('/tunjangan/rates?category=JABATAN')
+            .then(res => res.json())
+            .then(json => {
+                if (json.success) setTunjanganRates(json.data);
+            })
+            .catch(console.error);
+    }, []);
+
     // --- DATA FETCHING ---
+    const handleJobTitleChange = async (empCode, newTitle) => {
+        // Optimistic update
+        setRows(prev => prev.map(r => r.nik === empCode ? { ...r, jabatan_estate: newTitle } : r));
+        try {
+            const res = await fetch('/employee-estate/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ empCode, jobTitle: newTitle })
+            });
+            if (!res.ok) throw new Error('Failed to save');
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error);
+        } catch (e) {
+            console.error(e);
+            alert('Gagal menyimpan jabatan: ' + e.message);
+        }
+    };
+
+    const handleBulkSave = async () => {
+        if (!confirm('Simpan/Seed semua jabatan yang tampil ke database?')) return;
+        setLoading(true);
+        try {
+            const employees = rows.filter(r => r.type === 'employee');
+            const payload = employees.map(r => ({
+                empcode: r.nik,
+                employee_name: r.nama,
+                gang: r.gang_code,
+                divisi_id: division,
+                jabatan: r.jabatan_estate || 'Karyawan'
+            }));
+
+            const res = await fetch('/employee-estate/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ jobs: payload })
+            });
+
+            if (!res.ok) throw new Error(await res.text());
+            const json = await res.json();
+
+            if (json.success) {
+                alert(`Berhasil menyimpan ${json.count} data jabatan.`);
+            } else {
+                throw new Error(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Gagal seed data: ' + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const loadData = async () => {
         setLoading(true);
         setError('');
@@ -148,12 +215,62 @@ export default function CustomPayrollTable({
             { field: 'upah_dasar', headers: ['PENGGAJIAN', null, null, 'UPAH DASAR'], w: 85, className: 'text-right' },
             { field: 'upah_pokok', headers: ['PENGGAJIAN', null, null, 'UPAH POKOK'], w: 85, className: 'text-right' },
             { field: 'gaji_pokok', headers: ['PENGGAJIAN', null, null, 'GAJI POKOK'], w: 85, className: 'text-right' },
+
+            // JABATAN [NEW]
+            {
+                field: 'jabatan_estate',
+                headers: ['IDENTITAS', null, null, 'JABATAN'],
+                w: 110,
+                className: 'text-left p-0', // p-0 to allow select to fill
+                render: (row) => (
+                    <select
+                        className="w-full h-full border-none bg-transparent text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                        value={row.jabatan_estate || 'Karyawan'}
+                        onChange={(e) => handleJobTitleChange(row.nik, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        style={{ padding: '0 4px', height: '100%' }}
+                    >
+                        <option value="Karyawan">Karyawan</option>
+                        <option value="Mandor">Mandor</option>
+                        <option value="Kerani">Kerani</option>
+                        <option value="Helper">Helper</option>
+                        <option value="Operator">Operator</option>
+                    </select>
+                )
+            },
+
             // TUNJANGAN > BERAS
             { field: 'beras_rate', headers: ['TUNJANGAN', 'BERAS', null, 'RATE'], w: 60, className: 'text-right' },
             { field: 'beras_jumlah', headers: ['TUNJANGAN', 'BERAS', null, 'JUMLAH'], w: 80, className: 'text-right' },
-            // TUNJANGAN > JABATAN
-            { field: 'jabatan_rate', headers: ['TUNJANGAN', 'JABATAN', null, 'RATE'], w: 60, className: 'text-right' },
-            { field: 'jabatan_jumlah', headers: ['TUNJANGAN', 'JABATAN', null, 'JUMLAH'], w: 80, className: 'text-right' },
+            // TUNJANGAN > JABATAN (This is allowance amount, not title)
+            // TUNJANGAN > JABATAN (This is allowance amount, not title)
+            {
+                field: 'jabatan_rate',
+                headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, 'RATE'],
+                w: 60,
+                className: 'text-right',
+                render: (row) => {
+                    if (tunjanganMode === 'CALC') {
+                        const rate = tunjanganRates[row.jabatan_estate] || 0;
+                        return formatNumber(rate);
+                    }
+                    return formatNumber(row.jabatan_rate);
+                }
+            },
+            {
+                field: 'jabatan_jumlah',
+                headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, '%TOGGLE_JUMLAH%'],
+                w: 80,
+                className: 'text-right',
+                render: (row) => {
+                    if (tunjanganMode === 'CALC') {
+                        const rate = tunjanganRates[row.jabatan_estate] || 0;
+                        return formatNumber(rate * (row.jumlah_hk || 0));
+                    }
+                    return formatNumber(row.jabatan_jumlah);
+                }
+            },
             // TUNJANGAN > MASA KERJA
             { field: 'masa_kerja_tahun', headers: ['TUNJANGAN', 'MASA KERJA', null, 'LAMA'], w: 45, className: 'text-center' },
             { field: 'masa_kerja_jumlah', headers: ['TUNJANGAN', 'MASA KERJA', null, 'JUMLAH'], w: 80, className: 'text-right' },
@@ -227,7 +344,7 @@ export default function CustomPayrollTable({
         cols.push({ field: 'upah_bersih', headers: ['UPAH BERSIH', null, null, 'JUMLAH'], w: 115, className: 'text-right font-bold cell-net-salary' });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates]);
 
     // === EXPORT TO EXCEL HANDLER ===
     const handleExportToExcel = useCallback(async () => {
@@ -468,7 +585,32 @@ export default function CustomPayrollTable({
                                         height: cell.rowSpan * rowHeight
                                     }}
                                 >
-                                    {cell.label}
+                                    {cell.label === 'JABATAN' ? (
+                                        <div className="flex items-center justify-center gap-1">
+                                            <span>JABATAN</span>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleBulkSave(); }}
+                                                className="text-xs bg-gray-200 hover:bg-gray-300 rounded px-1 pb-0.5 border border-gray-400"
+                                                title="Simpan Semua ke Database"
+                                            >
+                                                💾
+                                            </button>
+                                        </div>
+                                    ) : cell.label === '%TOGGLE_JUMLAH%' ? (
+                                        <div className="flex flex-col items-center justify-center gap-0.5 w-full h-full">
+                                            <span>JUMLAH</span>
+                                            <div
+                                                className={`cursor-pointer select-none text-[9px] px-2 py-0.5 rounded-full border flex items-center gap-1 transition-colors shadow-sm ${tunjanganMode === 'CALC' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-600'}`}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setTunjanganMode(prev => prev === 'DB' ? 'CALC' : 'DB');
+                                                }}
+                                                title="Switch Mode: DB Actual vs Calculated Guidance"
+                                            >
+                                                {tunjanganMode === 'CALC' ? 'GUIDE' : 'DB'}
+                                            </div>
+                                        </div>
+                                    ) : cell.label}
                                 </th>
                             ))}
                         </tr>
@@ -500,6 +642,21 @@ export default function CustomPayrollTable({
                                         displayVal = col.field === 'lembur_jam' ? formatDecimal(displayVal) : formatNumber(displayVal);
                                     }
                                     const selected = isCellSelected(rIdx, cIdx);
+
+                                    if (col.render) {
+                                        return (
+                                            <td
+                                                key={cIdx}
+                                                className={`${col.className} ${selected ? 'cell-selected' : ''}`}
+                                                style={{ left: col.left, width: col.w, minWidth: col.w }}
+                                                onMouseDown={(e) => { e.preventDefault(); handleMouseDown(e, rIdx, cIdx, row.id); }}
+                                                onMouseOver={() => handleMouseOver(rIdx, cIdx)}
+                                            >
+                                                {col.render(row)}
+                                            </td>
+                                        );
+                                    }
+
                                     return (
                                         <td
                                             key={cIdx}
@@ -541,3 +698,4 @@ export default function CustomPayrollTable({
         </div>
     );
 }
+

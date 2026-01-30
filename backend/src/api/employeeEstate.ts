@@ -29,4 +29,18 @@ export const employeeEstateRoutes = new Elysia({ prefix: '/employee-estate' })
                 jabatan: t.String()
             }))
         })
+    })
+    .post('/update', async ({ body }) => {
+        try {
+            const { empCode, jobTitle } = body as { empCode: string, jobTitle: string };
+            const success = await EmployeeEstateService.updateJobTitle(empCode, jobTitle);
+            return { success };
+        } catch (e: any) {
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            empCode: t.String(),
+            jobTitle: t.String()
+        })
     });

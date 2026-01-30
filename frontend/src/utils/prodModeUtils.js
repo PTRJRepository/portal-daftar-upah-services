@@ -146,7 +146,11 @@ export const getUserDivision = () => {
 export const redirectToExternalLogin = () => {
     const loginUrl = getExternalLoginUrl()
     console.log('[ProdMode] Redirecting to external login:', loginUrl)
-    window.location.href = loginUrl
+
+    // Add return URL to guide the user back after login
+    // We need to encode the current path so the login page can handle it
+    const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
+    window.location.href = `${loginUrl}?returnUrl=${returnUrl}`
 }
 
 /**
