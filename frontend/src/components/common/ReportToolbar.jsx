@@ -11,6 +11,7 @@ export default function ReportToolbar({
     onMonthYearChange,
     onGangChange,
     onBack,
+    onRefresh,
     disableControls = false
 }) {
     // Helper to format month-year for input type="month"
@@ -69,6 +70,32 @@ export default function ReportToolbar({
                         }}
                     >
                         <span>⬅️</span> Back
+                    </button>
+                </div>
+            )}
+
+            {onRefresh && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', visibility: 'hidden' }}>
+                        Aksi
+                    </label>
+                    <button
+                        className="btn btn-secondary"
+                        onClick={onRefresh}
+                        disabled={disableControls}
+                        title="Refresh Data"
+                        style={{
+                            borderColor: 'var(--neutral-300)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            height: '36px',
+                            minWidth: '36px',
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        <span>🔄</span>
                     </button>
                 </div>
             )}

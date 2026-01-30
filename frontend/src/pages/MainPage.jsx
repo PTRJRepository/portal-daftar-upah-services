@@ -54,6 +54,12 @@ export default function MainPage({ lockedDiv = null }) {
   const [exportHandler, setExportHandler] = useState(null) // Export function from CustomPayrollTable
   const [exportLoading, setExportLoading] = useState(false)
   const [canAccessReports, setCanAccessReports] = useState(DEV_MODE) // Default to DEV_MODE, will be checked via API
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  // Refresh handler
+  const handleRefresh = () => {
+    setRefreshTrigger(prev => prev + 1)
+  }
 
   // Font Size handlers (relative adjustment)
   const handleFontIncrease = () => setFontSize(prev => Math.min(prev + 10, 150))
@@ -771,6 +777,7 @@ export default function MainPage({ lockedDiv = null }) {
             onGangChange={(g) => setGang(g)}
             disableControls={gridLoading || gangLoading}
             divisionLocked={isLockedMode}
+            onRefresh={handleRefresh}
           />
         </div>
 
@@ -913,6 +920,7 @@ export default function MainPage({ lockedDiv = null }) {
               onViewEmployeeDetail={handleViewEmployeeDetail}
               fontSize={fontSize}
               onExportReady={(handler) => setExportHandler(() => handler)}
+              refreshTrigger={refreshTrigger}
             />
           </div>
         ) : (

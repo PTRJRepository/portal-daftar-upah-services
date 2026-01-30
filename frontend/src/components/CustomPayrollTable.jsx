@@ -23,7 +23,7 @@ const formatDecimal = (value) => {
 };
 
 export default function CustomPayrollTable({
-    token, month, year, division, gangCode, onViewEmployeeDetail, fontSize = 100, onExportReady = null
+    token, month, year, division, gangCode, onViewEmployeeDetail, fontSize = 100, onExportReady = null, refreshTrigger = 0
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -192,7 +192,7 @@ export default function CustomPayrollTable({
 
     useEffect(() => {
         if (month && year && division) loadData();
-    }, [month, year, division, gangCode, token]);
+    }, [month, year, division, gangCode, token, refreshTrigger]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
