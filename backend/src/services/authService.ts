@@ -10,6 +10,14 @@ export class AuthService {
     private db: Database;
     private secret: Uint8Array;
 
+    // List of all available divisions (Source of Truth)
+    public static readonly ALL_DIVISIONS = [
+        "PG1A", "PG1B", "PG2A", "PG2B", "DME", "ARA", "ARB1", "ARB2",
+        "INFRA", "AREC", "IJL", "STF-OFFICE", "SECURITY",
+        "ARC", "P1A", "P1B", "P2A", "P2B", "AB1", "AB2",
+        "NRS", "WKS_PG", "WKS_AR", "WORKSHOP", "MILL"
+    ];
+
     private constructor() {
         // DB Path: backend/data/users.db
         const dbPath = join(process.cwd(), "data", "users.db");
@@ -60,7 +68,7 @@ export class AuthService {
         if (!admin) {
             console.log("[AuthService] Creating default admin user");
             const hash = bcrypt.hashSync("admin", 10);
-            const allDivisions = JSON.stringify(["PG1A", "PG1B", "PG2A", "PG2B", "DME", "ARA", "ARB1", "ARB2", "INFRA", "AREC", "IJL", "STF-OFFICE", "SECURITY"]);
+            const allDivisions = JSON.stringify(AuthService.ALL_DIVISIONS);
             this.db.run(
                 `INSERT INTO users (username, email, password_hash, full_name, role, divisions, is_active)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -182,7 +190,7 @@ export class AuthService {
             // Normalize Role
             let roleStr = (payload as any).role || "user";
             if (typeof roleStr === "string") roleStr = roleStr.toLowerCase();
-            const role = (roleStr === "admin" ? UserRole.ADMIN : UserRole.USER);
+            let role = (roleStr === "admin" ? UserRole.ADMIN : UserRole.USER);
 
             // Try to find user locally
             const user = await this.getUser(username);
@@ -200,7 +208,17 @@ export class AuthService {
                 const externalId = (payload as any).userId || 0;
 
                 // Extract divisions from various possible payload keys
-                let rawDivs = (payload as any).divisions || (payload as any).division || (payload as any).divisi || (payload as any).div || (payload as any).DIV || [];
+                // PRIORITY: divisions > division > unit > location > loc_code
+                let rawDivs = (payload as any).divisions ||
+                    (payload as any).division ||
+                    (payload as any).divisi ||
+                    (payload as any).div ||
+                    (payload as any).DIV ||
+                    (payload as any).unit ||
+                    (payload as any).kode_lokasi ||
+                    (payload as any).location ||
+                    (payload as any).loc_code ||
+                    [];
 
                 // Normalize to string array
                 let divisions: string[] = [];
@@ -215,54 +233,35 @@ export class AuthService {
                     }
                 }
 
-                // FALLBACK: Infer from Username or Name
-                if (divisions.length === 0) {
-                    const targetStr = (username || "") + " " + ((payload as any).name || "");
-                    console.log(`[AuthService] Attempting division inference from: '${targetStr}'`);
-
-                    // NEW: Explicit checks for named divisions
-                    const upperTarget = targetStr.toUpperCase();
-                    if (upperTarget.includes("INFRA") || upperTarget.includes("INF")) {
-                        divisions.push("INFRA");
-                    }
-                    if (upperTarget.includes("NURSERY") || upperTarget.includes("BIBITAN") || upperTarget.includes("NRS")) {
-                        divisions.push("NURSERY");
-                    }
-                    if (upperTarget.includes("WORKSHOP") || upperTarget.includes("BENGKEL") || upperTarget.includes("WKS")) {
-                        divisions.push("WORKSHOP");
-                    }
-
-                    // Regex to find things like PG1A, PGE 1A, DIV 1, ARB 1, etc.
-                    const patterns = [
-                        /\b(PGE?\s*\d+[A-Z]?)\b/i,
-                        /\b(DIV\s*\d+[A-Z]?)\b/i,
-                        /\b(PG\d+[A-Z]?)\b/i,
-                        /\b(ARB?\s*\d+[A-Z]?)\b/i,
-                        /\b([A-Z]{2,3}\d+[A-Z]?)\b/i
-                    ];
-
-                    for (const pat of patterns) {
-                        const match = targetStr.match(pat);
-                        if (match) {
-                            let inferred = match[1].toUpperCase().replace(/\s+/g, "");
-
-                            // ALIAS NORMALIZATION for compatibility with GangService/DB
-                            // PG1A -> P1A, PG1B -> P1B, PG2A -> P2A, PG2B -> P2B
-                            // Only apply if it looks like PG1A (PG + digit + letter)
-                            if (/^PG\d[A-Z]$/.test(inferred)) {
-                                inferred = inferred.replace("PG", "P");
+                // Logic to handle JSON stringified arrays (e.g. "[\"ARC\"]")
+                // Check if the FIRST element looks like a JSON array string
+                if (divisions.length === 1 && typeof divisions[0] === 'string') {
+                    const first = divisions[0].trim();
+                    if (first.startsWith("[") && first.endsWith("]")) {
+                        try {
+                            const parsed = JSON.parse(first);
+                            if (Array.isArray(parsed)) {
+                                divisions = parsed.map(d => String(d));
                             }
-                            // ARB1 -> AB1, ARB2 -> AB2
-                            if (inferred.startsWith("ARB")) {
-                                inferred = inferred.replace("ARB", "AB");
-                            }
-
-                            divisions.push(inferred);
-                            console.log(`[AuthService] Inferred division '${inferred}' from string '${targetStr}'`);
-                            break;
+                        } catch (e) {
+                            console.warn("[AuthService] Failed to parse stringified divisions array:", first);
                         }
                     }
+                }
 
+                if (divisions.length === 0) {
+                    console.warn(`[AuthService] No divisions found in token for user ${username}. Payload keys: ${Object.keys(payload).join(", ")}`);
+                    // USER REQUEST: Do NOT infer from username.
+                }
+
+                // CHECK FOR ADMIN / ALL ACCESS
+                // If role is ADMIN or if divisions contains "ALL", grant full access
+                const isAdminOrAll = role === UserRole.ADMIN || divisions.some(d => d.toUpperCase() === "ALL");
+
+                if (isAdminOrAll) {
+                    role = UserRole.ADMIN;
+                    divisions = AuthService.ALL_DIVISIONS;
+                } else {
                     // Deduplicate
                     divisions = [...new Set(divisions)];
                 }
@@ -303,7 +302,7 @@ export class AuthService {
 
     public getAccessibleDivisions(user: User): string[] {
         if (user.role === UserRole.ADMIN) {
-            return ["PG1A", "PG1B", "PG2A", "PG2B", "DME", "ARA", "ARB1", "ARB2", "INFRA", "AREC", "IJL", "STF-OFFICE", "SECURITY"];
+            return AuthService.ALL_DIVISIONS;
         }
         return user.divisions;
     }

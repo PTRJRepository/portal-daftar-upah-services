@@ -53,10 +53,10 @@ async function runVerification() {
             headers: { "Authorization": `Bearer ${token}` }
         });
         if (periods.status === 200) {
-             const data = await periods.json();
-             console.log("✅ Periods Check:", data);
+            const data = await periods.json();
+            console.log("✅ Periods Check:", data);
         } else {
-             console.error("❌ Periods Check Failed:", periods.status, await periods.text());
+            console.error("❌ Periods Check Failed:", periods.status, await periods.text());
         }
     } catch (e) {
         console.error("❌ Periods Check Exception:", e);
@@ -69,13 +69,37 @@ async function runVerification() {
             headers: { "Authorization": `Bearer ${token}` }
         });
         if (divisions.status === 200) {
-             const divData: any = await divisions.json();
-             console.log("✅ Divisions Check (DB): OK, Count:", Array.isArray(divData) ? divData.length : 'Unknown');
+            const divData: any = await divisions.json();
+            const count = Array.isArray(divData) ? divData.length : 0;
+            console.log(`✅ Divisions Check (DB): OK, Count: ${count}`);
+            if (count < 20) {
+                console.warn("⚠️ Warning: Admin should have access to ALL divisions (>20), but only got " + count);
+            } else {
+                console.log("✅ Admin has access to ALL divisions.");
+            }
         } else {
-             console.error("❌ Divisions Check Failed:", divisions.status, await divisions.text());
+            console.error("❌ Divisions Check Failed:", divisions.status, await divisions.text());
         }
     } catch (e) {
         console.error("❌ Divisions Check Exception:", e);
+    }
+
+    // 4. Locked Gangs Check (Fix Verification)
+    console.log("👉 Checking /payroll/locked/gangs?div=ARC...");
+    try {
+        const locked = await fetch(`${BASE_URL}/payroll/locked/gangs?div=ARC`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (locked.status === 200) {
+            const data: any = await locked.json();
+            console.log("✅ Locked Gangs Check: OK, Count:", Array.isArray(data) ? data.length : 'Unknown');
+        } else {
+            // 403 would mean fix failed (assuming admin has access to ARC now)
+            console.error("❌ Locked Gangs Check Failed:", locked.status, await locked.text());
+        }
+    } catch (e) {
+        console.error("❌ Locked Gangs Check Exception:", e);
     }
 }
 
