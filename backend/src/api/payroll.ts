@@ -187,6 +187,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 .map(([gang_code, employees]) => ({ gang_code, employees }))
                 .sort((a, b) => a.gang_code.localeCompare(b.gang_code));
 
+            // DEBUG: Log response data
+            console.log("[DEBUG] dynamic_potongan_headers:", result.dynamic_potongan_headers);
+            console.log("[DEBUG] potongan_title_map:", result.potongan_title_map);
+            console.log("[DEBUG] First row keys:", result.data_rows.length > 0 ? Object.keys(result.data_rows[0]).slice(0, 50) : []);
+            // Check if any row has PREMI_PPH
+            const hasPremiPph = result.data_rows.some((row: any) => row.PREMI_PPH !== undefined && row.PREMI_PPH !== 0);
+            console.log("[DEBUG] Has PREMI_PPH in rows:", hasPremiPph);
+            if (hasPremiPph) {
+                const premiPphRows = result.data_rows.filter((r: any) => r.PREMI_PPH && r.PREMI_PPH > 0);
+                console.log("[DEBUG] Rows with PREMI_PPH:", premiPphRows.length);
+                if (premiPphRows.length > 0) {
+                    console.log("[DEBUG] Sample PREMI_PPH row:", premiPphRows[0].nama, premiPphRows[0].PREMI_PPH);
+                }
+            }
+
             return {
                 division: divisionCode,
                 month,
@@ -194,6 +209,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 gangs: gangsList,
                 dynamic_premi_headers: result.dynamic_premi_headers,
                 dynamic_potongan_headers: result.dynamic_potongan_headers,
+                premi_title_map: result.premi_title_map,
+                potongan_title_map: result.potongan_title_map,
                 meta: result.meta
             };
         } catch (e: any) {
@@ -270,6 +287,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 .map(([gang_code, employees]) => ({ gang_code, employees }))
                 .sort((a, b) => a.gang_code.localeCompare(b.gang_code));
 
+            // DEBUG: Log response data
+            console.log("[DEBUG] dynamic_potongan_headers:", result.dynamic_potongan_headers);
+            console.log("[DEBUG] potongan_title_map:", result.potongan_title_map);
+            console.log("[DEBUG] First row keys:", result.data_rows.length > 0 ? Object.keys(result.data_rows[0]).slice(0, 50) : []);
+            // Check if any row has PREMI_PPH
+            const hasPremiPph = result.data_rows.some((row: any) => row.PREMI_PPH !== undefined && row.PREMI_PPH !== 0);
+            console.log("[DEBUG] Has PREMI_PPH in rows:", hasPremiPph);
+            if (hasPremiPph) {
+                const premiPphRows = result.data_rows.filter((r: any) => r.PREMI_PPH && r.PREMI_PPH > 0);
+                console.log("[DEBUG] Rows with PREMI_PPH:", premiPphRows.length);
+                if (premiPphRows.length > 0) {
+                    console.log("[DEBUG] Sample PREMI_PPH row:", premiPphRows[0].nama, premiPphRows[0].PREMI_PPH);
+                }
+            }
+
             return {
                 division: divisionCode,
                 month,
@@ -277,6 +309,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 gangs: gangsList,
                 dynamic_premi_headers: result.dynamic_premi_headers,
                 dynamic_potongan_headers: result.dynamic_potongan_headers,
+                premi_title_map: result.premi_title_map,
+                potongan_title_map: result.potongan_title_map,
                 meta: result.meta
             };
         } catch (e: any) {

@@ -127,6 +127,11 @@ export default function CustomPayrollTable({
             const potTitleMap = data.potongan_title_map || {};
             const premTitleMap = data.premi_title_map || {};
 
+            // DEBUG: Log received data
+            console.log("[FRONTEND DEBUG] dynPot (dynamic_potongan_headers):", dynPot);
+            console.log("[FRONTEND DEBUG] potTitleMap:", potTitleMap);
+            console.log("[FRONTEND DEBUG] premTitleMap:", premTitleMap);
+
             // Build premi headers: { DocDesc_Title → field_name }
             // Field is the normalized key (e.g., "premi_pupuk"), titleMap gives DocDesc (e.g., "PREMI PUPUK")
             const premWithTitles = {};
@@ -143,6 +148,8 @@ export default function CustomPayrollTable({
                 const title = potTitleMap[field] || field;
                 potWithTitles[title] = field;
             });
+
+            console.log("[FRONTEND DEBUG] potWithTitles built:", potWithTitles);
 
             setDynamicHeaders({ premi: premWithTitles, potongan: potWithTitles });
 
@@ -211,6 +218,15 @@ export default function CustomPayrollTable({
                     });
                 }).map(([label, field]) => field);
             setActivePotFields(activePot);
+
+            console.log("[FRONTEND DEBUG] activePotFields:", activePot);
+            console.log("[FRONTEND DEBUG] employeeRows count:", employeeRows.length);
+            if (employeeRows.length > 0) {
+                console.log("[FRONTEND DEBUG] First employee row keys:", Object.keys(employeeRows[0]).slice(0, 60));
+                // Check if PREMI_PPH exists in any row
+                const hasPremiPph = employeeRows.some(r => r.PREMI_PPH !== undefined && r.PREMI_PPH !== 0);
+                console.log("[FRONTEND DEBUG] Has PREMI_PPH in employee rows:", hasPremiPph);
+            }
         } catch (err) {
             console.error(err);
             setError(err.message);
@@ -425,20 +441,54 @@ export default function CustomPayrollTable({
         cols.push({ field: 'pot_bpjs_pekerja_total', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', null, 'JUMLAH'], w: 80, className: 'text-right font-bold' });
         // Other deductions
         cols.push({ field: 'pot_spsi', headers: ['POTONGAN UPAH BERSIH', null, null, 'IURAN SPSI'], w: 80, className: 'text-right' });
-        cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', null, null, 'PPH21'], w: 80, className: 'text-right' });
+        cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', null, null, 'PPH21 (-)'], w: 80, className: 'text-right' });
 
-        // Dynamic Potongan Bersih - show POTONGAN variations (excluding PPH and SPSI)
+        // [NEW] PREMI PPH - This is an ADDITION (+), not a deduction
+        // Display with + sign to indicate it's added to upah_bersih
+        cols.push({
+            field: 'premi_pph',
+            headers: ['POTONGAN UPAH BERSIH', null, null, 'PREMI PPH (+)'],
+            w: 90,
+            className: 'text-right cell-premi-pph',
+            render: (row) => {
+                const val = row.premi_pph || 0;
+                if (val === 0) return '-';
+                // Show with a + sign and green color to indicate addition
+                return (
+                    <span style={{ color: '#059669', fontWeight: 'bold' }}>
+                        +{formatNumber(val)}
+                    </span>
+                );
+            }
+        });
+
+        // Dynamic Potongan Bersih - show POTONGAN variations, PREMI_PPH, and PREMI items from TaskDesc
         const potonganBersihFields = Object.entries(dynamicHeaders.potongan)
             .filter(([label, field]) => {
                 const upperLabel = label.toUpperCase();
+                const upperField = field.toUpperCase();
+
                 // Exclude KOREKSI (shown in POTONGAN UPAH KOTOR)
-                // Exclude PPH and SPSI (static columns already exist)
-                return !upperLabel.startsWith('KOREKSI')
-                    && !upperLabel.includes('PPH')
-                    && !upperLabel.includes('SPSI');
+                if (upperLabel.startsWith('KOREKSI') || upperField.startsWith('KOREKSI')) return false;
+
+                // Exclude SPSI (static column already exists)
+                if (upperLabel.includes('SPSI') || upperField === 'SPSI') return false;
+
+                // Exclude PPH21 (static column already exists)
+                if (upperField === 'PPH21') return false;
+
+                // Exclude PREMI_PPH (static column already exists with + sign)
+                if (upperField === 'PREMI_PPH') return false;
+
+                // INCLUDE: POTONGAN X, and other dynamic items
+                return true;
             })
             .filter(([label, field]) => activePotFields.includes(field))
             .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
+
+        console.log("[DEBUG] potonganBersihFields:", potonganBersihFields);
+        console.log("[DEBUG] dynamicHeaders.potongan:", dynamicHeaders.potongan);
+        console.log("[DEBUG] activePotFields:", activePotFields);
 
         for (const [label, field] of potonganBersihFields) {
             // Clean up the label for display

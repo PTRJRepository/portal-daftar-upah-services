@@ -553,8 +553,6 @@ class PayrollService:
             pph_raw = f.read()
         with (base / "potongan" / "potong_koreksi.sql").open('r', encoding='utf-8') as f:
             koreksi_raw = f.read()
-        with (base / "potongan" / "Premi_PPH.sql").open('r', encoding='utf-8') as f:
-            premi_pph_raw = f.read()
         with (base / "get_cuti_tahunan.sql").open('r', encoding='utf-8') as f:
             cuti_tah_raw = f.read()
         with (base / "get_cuti_sakit.sql").open('r', encoding='utf-8') as f:
@@ -757,8 +755,7 @@ class PayrollService:
             # matching reference engine logic (lines 1036-1100)
             pot_spsi = 0.0
             pot_pph21 = 0.0
-            premi_pph = 0.0  # NEW: Premi PPH that gets ADDED to net salary (not subtracted)
-
+            
             # SPSI calculation - matching reference engine get_employee_spsi_amount logic
             spsi_q, spsi_params = self._paramify(spsi_raw, nik, s, e)
             try:
@@ -794,24 +791,6 @@ class PayrollService:
                                 continue
             except Exception as e:
                 pot_pph21 = 0.0
-
-            # Premi PPH calculation - NEW: This is a special deduction that gets ADDED to net salary
-            premi_pph_q, premi_pph_params = self._paramify(premi_pph_raw, nik, s, e)
-            try:
-                premi_pph_res = db.query_one(premi_pph_q, premi_pph_params)
-                if premi_pph_res and len(premi_pph_res) > 0:
-                    # Try multiple positions for the Amount column
-                    for col_idx in [len(premi_pph_res)-1, len(premi_pph_res)-2, 7, 8]:
-                        if col_idx >= 0 and col_idx < len(premi_pph_res):
-                            try:
-                                amount_val = premi_pph_res[col_idx]
-                                if amount_val is not None:
-                                    premi_pph = float(amount_val)
-                                    break
-                            except (ValueError, TypeError):
-                                continue
-            except Exception as e:
-                premi_pph = 0.0
 
             # Correct calculation sesuai business rule:
             # Correct calculation sesuai business rule dari backend lama:
@@ -990,26 +969,27 @@ class PayrollService:
             # Iuran SPSI (pot_spsi)
             # PPh21 (pot_pph21)
             # Plus new optional columns
+            
+            total_potongan_bersih = 0.0 # MOVED TO FRONTEND
+            
+            # NOTE: potongan_upah_kotor_total is already calculated above.
+                                    
+            # For backward compatibility, keep total_potongan as the FULL sum of all deductions
+            total_potongan = 0.0 # MOVED TO FRONTEND
 
-            # NEW: Premi PPH is a special deduction that gets ADDED to net salary (not subtracted)
-            # So we calculate it separately and handle it differently in the final calculation
+            # Simplified for the predefined fields
             pot_total_1 = pot_bpjs_kesehatan_pekerja  # BPJS Kesehatan Pekerja
             pot_total_2 = pot_bpjs_pensiun_pekerja      # BPJS Pensiun Pekerja
             pot_total_3 = pot_bpjs_pensiun_majikan      # BPJS Pensiun Majikan
             # pot_total_4 excluding employer BPJS contribution
-            pot_total_4 = pot_pph21 + pot_kontan + pot_thr + pot_pinjam + pot_kl + pot_tiket + pot_alat + pot_spsi + pot_koreksi + pot_bpjs_pek
-
-            # Calculate total deductions (these are subtracted from gross)
-            total_potongan_bersih = pot_total_1 + pot_total_2 + pot_spsi + pot_pph21
-            total_potongan = total_potongan_bersih  # Standard deductions that reduce net pay
+            pot_total_4 = 0.0 # MOVED TO FRONTEND: pot_pph21 + pot_kontan + pot_thr + pot_pinjam + pot_kl + pot_tiket + pot_alat + pot_spsi + pot_koreksi + pot_bpjs_pek
 
             # Upah Kotor (Premi) matches jumlah_upah_kotor (which is Gross - Potongan Upah Kotor)
-            upah_kotor_premi = jumlah_upah_kotor
+            upah_kotor_premi = 0.0 # MOVED TO FRONTEND
 
             # Upah Bersih calculation
             # User Requirement: "Upah Bersih didaptkan dari Upah Kotor - Total Potongan (Bersih)"
-            # BUT: Premi PPH is special - it gets ADDED to net salary (not subtracted)
-            upah_bersih = upah_kotor_premi - total_potongan + premi_pph  # Add premi_pph instead of subtracting
+            upah_bersih = 0.0 # MOVED TO FRONTEND
 
             # Prepare nested premi dictionary
             premi_dict = {}
@@ -1071,7 +1051,6 @@ class PayrollService:
 
                 jumlah_upah_kotor=jumlah_upah_kotor,
                 pot_pph21=pot_pph21,
-                premi_pph=premi_pph,  # NEW: Premi PPH that gets ADDED to net salary
                 pot_kontan=float(emp.get('pot_kontan', 0.0)),
                 pot_thr=pot_thr,
                 pot_pinjam=pot_pinjam,
@@ -1097,11 +1076,11 @@ class PayrollService:
                 total_potongan=total_potongan,
                 pot_spsi=pot_spsi,
                 pot_koreksi=pot_koreksi,
-
+                                
                 # New fields
                 potongan_upah_kotor_total=potongan_upah_kotor_total,
                 upah_kotor_premi=upah_kotor_premi,
-
+                
                 upah_bersih=upah_bersih
             )
 

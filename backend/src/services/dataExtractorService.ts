@@ -67,6 +67,7 @@ interface PayrollRow {
     lembur_jumlah: number;
     total_tunjangan: number;
     premi_brondol: number;
+    premi_pph: number; // PREMI PPH - ADDED (+) to upah_bersih, not subtracted
     total_premi: number;
     premi: Record<string, number>;
     jumlah_upah_kotor: number;
@@ -248,6 +249,7 @@ export class DataExtractorService {
 
             let total_premi = 0;
             for (const [key, val] of Object.entries(empPremi)) {
+                // Exclude koreksi from total_premi (koreksi handled in potongan)
                 if (key !== "koreksi") {
                     total_premi += val as number;
                 }
@@ -258,6 +260,14 @@ export class DataExtractorService {
 
             const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
+            // [NEW] Premi PPH from TaskDesc = 'ACCRUALS-CHECKROLL' (treated as potongan upah bersih)
+            const pot_premi_pph = Math.abs(empPotongan["PREMI_PPH"] || 0);
+
+            // [CRITICAL FIX] Add PREMI_PPH to dynamicPotonganSet if it has a value
+            if (pot_premi_pph > 0) {
+                dynamicPotonganSet.add("PREMI_PPH");
+                console.log(`[PREMI_PPH_SET] Added PREMI_PPH to dynamic headers for ${emp.emp_code}: ${pot_premi_pph.toLocaleString('id-ID')}`);
+            }
 
             // [NEW] Handle KOREKSI variations separately
             // Collect all keys that start with "KOREKSI" (KOREKSI, KOREKSI_A, KOREKSI_PANEN, etc.)
@@ -277,8 +287,8 @@ export class DataExtractorService {
             let db_bpjs_kes = 0;
 
             for (const [key, val] of Object.entries(empPotongan)) {
-                // Skip static fields and KOREKSI (handled above)
-                if (key === "SPSI" || key === "PPH21" || key.startsWith("KOREKSI")) continue;
+                // Skip static fields and KOREKSI, PREMI_PPH (handled above)
+                if (key === "SPSI" || key === "PPH21" || key.startsWith("KOREKSI") || key === "PREMI_PPH") continue;
 
                 if (key.includes("BPJS")) {
                     if (!key.includes("MAJIKAN") && !key.includes("MAJ")) {
@@ -307,11 +317,23 @@ export class DataExtractorService {
             const pot_bpjs_pensiun_majikan = Math.round(carumanBase * 0.02 * 100) / 100;
             const pot_bpjs_pensiun_jumlah = Math.round((pot_bpjs_pensiun_pekerja + pot_bpjs_pensiun_majikan) * 100) / 100;
 
+            // [FIXED] PREMI_PPH is an ADDITION (penambah), NOT a deduction
+            // total_potongan should NOT include premi_pph
+            // total_potongan = astek + bpjs_pekerja + spsi + pph21 (filtered by PREMI)
             const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
                 pot_spsi + pot_pph21 + other_potongan + pot_koreksi;
 
+            // [FIXED] jumlah_upah_kotor does NOT include premi_pph
             const jumlah_upah_kotor = (gaji_pokok + total_tunjangan + total_premi) - pot_koreksi;
-            const upah_bersih = jumlah_upah_kotor - total_potongan;
+
+            // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
+            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
+            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph;
+
+            // Log PREMI_PPH if non-zero
+            if (pot_premi_pph > 0) {
+                console.log(`[PREMI_PPH] Employee ${emp.emp_code}: PREMI_PPH (ADDED) = +${pot_premi_pph.toLocaleString('id-ID')}`);
+            }
 
             const row: PayrollRow = {
                 nik: emp.emp_code,
@@ -348,7 +370,6 @@ export class DataExtractorService {
                 upah_pokok,
                 total_premi,
                 jumlah_upah_kotor,
-                pot_astek_pekerja,
                 pot_astek_majikan,
                 pot_astek_jumlah,
                 pot_bpjs_kesehatan_pekerja,
@@ -367,7 +388,12 @@ export class DataExtractorService {
                     total: pot_koreksi
                 },
                 total_potongan,
-                total_potongan_bersih: total_potongan,
+                // [FIXED] total_potongan_bersih = total_potongan - premi_pph
+                // Because premi_pph is ADDED (+), not deducted
+                // So: Jumlah Potongan Bersih = BPJS + ASTEK + SPSI + PPH21 - PREMI_PPH
+                total_potongan_bersih: total_potongan - pot_premi_pph,
+                // [NEW] premi_pph is separate field for display with + sign
+                premi_pph: pot_premi_pph,
                 upah_bersih,
                 premi: empPremi,
                 pot_astek: pot_astek_pekerja,
@@ -375,6 +401,12 @@ export class DataExtractorService {
                 pot_bpjs_pekerja_total: pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja,
                 // Add individual koreksi variations as separate fields
                 ...koreksiVariations,
+                // Add dynamic potongan fields (PREMI_PPH, POTONGAN X, etc.) excluding static fields
+                ...Object.fromEntries(
+                    Object.entries(empPotongan).filter(([key]) =>
+                        key !== "SPSI" && key !== "PPH21" && !key.startsWith("KOREKSI")
+                    )
+                ),
                 ...empPremi
             };
 
@@ -717,7 +749,7 @@ export class DataExtractorService {
 
         // Query DocDesc containing 'PREMI' but EXCLUDE those containing 'PPH'
         // DocDesc will be used as column header
-        // Also EXCLUDE TaskDesc = 'ACCRUALS-CHECKROLL' (Premi PPH indicator)
+        // Also EXCLUDE TaskDesc = 'ACCRUALS-CHECKROLL' (Premi PPH diambil dari query terpisah)
         let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
             SELECT RTRIM(t.EmpCode) as emp_code, t.DocDesc as doc_desc, SUM(ln.Amount) as amount
             FROM (
@@ -760,6 +792,7 @@ export class DataExtractorService {
                 titleMap[key] = r.doc_desc?.trim() || key;
             }
         }
+
         return { amounts, titleMap };
     }
 
@@ -769,15 +802,21 @@ export class DataExtractorService {
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         // [PYTHON COMPATIBILITY] Query using DocDesc directly from PR_ADTRANS/PR_ADTRANS_ARC
-        // NOT using TaskDesc from PR_TASKCODE!
-        // - POTONGAN UPAH KOTOR: KOREKSI (any DocDesc containing 'KOREKSI')
-        // - POTONGAN UPAH BERSIH: PPH, SPSI, POTONGAN, TIKET, KONTAN, THR, PINJAM, KL, ALAT (excluding PPH for specific handling)
+        //
+        // 1. PPH21 (dipotong/minus) - DocDesc mengandung "PPH" TAPI BUKAN "PREMI PPH"
+        // 2. KOREKSI (potongan upah kotor) - DocDesc mengandung "KOREKSI"
+        // 3. POTONGAN lainnya (potongan upah bersih) - DocDesc mengandung "POT", dll
+        //
+        // NOTE: Premi PPH (ditambah/plus) diambil dari query terpisah menggunakan TaskDesc
         const koreksiLog: Array<{ emp_code: string; doc_desc: string; amount: number }> = [];
+        const pph21Log: Array<{ emp_code: string; doc_desc: string; amount: number }> = [];
 
-        let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
+        // [UPDATED] Add LEFT JOIN for TaskDesc to filter PPH items where TaskDesc contains PREMI
+        let rows = await db.query<{ emp_code: string; doc_desc: string; task_desc: string | null; amount: number }>(`
             SELECT
                 RTRIM(t.EmpCode) as emp_code,
                 t.DocDesc as doc_desc,
+                mt.TaskDesc as task_desc,
                 SUM(COALESCE(ln.Amount, 0)) as amount
             FROM (
                 SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
@@ -797,9 +836,11 @@ export class DataExtractorService {
                 UNION ALL
                 SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
             ) ln ON t.ID = ln.MasterID
+            LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
             WHERE (
-                UPPER(t.DocDesc) LIKE '%POT%'
-                OR UPPER(t.DocDesc) LIKE '%PPH%'
+                -- PPH21: DocDesc mengandung PPH TAPI bukan PREMI PPH (baik di DocDesc maupun TaskDesc)
+                (UPPER(t.DocDesc) LIKE '%PPH%' AND UPPER(t.DocDesc) NOT LIKE '%PREMI%')
+                OR UPPER(t.DocDesc) LIKE '%POT%'
                 OR UPPER(t.DocDesc) LIKE '%BPJS%'
                 OR UPPER(t.DocDesc) LIKE '%PINJAM%'
                 OR UPPER(t.DocDesc) LIKE '%KL%'
@@ -811,7 +852,7 @@ export class DataExtractorService {
                 OR UPPER(t.DocDesc) LIKE '%ALAT%'
                 OR UPPER(t.DocDesc) LIKE '%THR%'
             )
-            GROUP BY RTRIM(t.EmpCode), t.DocDesc
+            GROUP BY RTRIM(t.EmpCode), t.DocDesc, mt.TaskDesc
         `, [startDate, endDate, startDate, endDate]);
 
         const amounts: Record<string, Record<string, number>> = {};
@@ -827,6 +868,24 @@ export class DataExtractorService {
         for (const r of rows) {
             const emp = r.emp_code?.trim() || "";
             if (!amounts[emp]) amounts[emp] = {};
+
+            // [NEW] Check if TaskDesc contains PREMI - if so, this is NOT PPH pengurang
+            // Items with PREMI in TaskDesc should go to Potongan Upah Bersih as separate category
+            const taskDescUpper = (r.task_desc || "").toUpperCase();
+            const docDescUpper = (r.doc_desc || "").toUpperCase();
+
+            // If TaskDesc contains PREMI, treat this as PREMI category (not PPH)
+            if (taskDescUpper.includes("PREMI")) {
+                // Create dynamic key based on DocDesc for PREMI items
+                const premiKey = docDescUpper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+                amounts[emp][premiKey] = (amounts[emp][premiKey] || 0) + Math.abs(r.amount || 0);
+                if (!titleMap[premiKey]) {
+                    titleMap[premiKey] = r.doc_desc?.trim() || premiKey;
+                }
+                console.log(`[PREMI_FROM_TASKDESC] Emp=${emp}, DocDesc='${r.doc_desc}', TaskDesc='${r.task_desc}', Key=${premiKey}, Amount=${Math.abs(r.amount || 0).toLocaleString('id-ID')}`);
+                continue; // Skip normal processing
+            }
+
             const { key, title } = this.normalizePotonganName(r.doc_desc || "");
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
             // Store title mapping for dynamic headers
@@ -835,12 +894,40 @@ export class DataExtractorService {
             }
 
             // Log koreksi entries for debugging
-            if (key === "KOREKSI") {
+            if (key.includes("KOREKSI")) {
                 koreksiLog.push({
                     emp_code: emp,
                     doc_desc: r.doc_desc || "",
                     amount: Math.abs(r.amount || 0)
                 });
+            }
+
+            // Log PPH21 entries for debugging
+            if (key === "PPH21") {
+                pph21Log.push({
+                    emp_code: emp,
+                    doc_desc: r.doc_desc || "",
+                    amount: Math.abs(r.amount || 0)
+                });
+            }
+        }
+
+        // Log PPH21 summary
+        if (pph21Log.length > 0) {
+            const totalPph21 = pph21Log.reduce((sum, entry) => sum + entry.amount, 0);
+            const affectedEmployees = new Set(pph21Log.map(e => e.emp_code)).size;
+            console.log(`[PPH21] Potongan Upah Bersih (${startDate} to ${endDate}):`);
+            console.log(`[PPH21] Total entries: ${pph21Log.length}, Total amount: ${totalPph21.toLocaleString('id-ID')}, Employees affected: ${affectedEmployees}`);
+            // Group by DocDesc type
+            const groupedByDocDesc = pph21Log.reduce((acc, entry) => {
+                const docType = entry.doc_desc;
+                if (!acc[docType]) acc[docType] = { total: 0, count: 0 };
+                acc[docType].total += entry.amount;
+                acc[docType].count += 1;
+                return acc;
+            }, {} as Record<string, { total: number; count: number }>);
+            for (const [docType, data] of Object.entries(groupedByDocDesc)) {
+                console.log(`[PPH21]   ${docType}: ${data.total.toLocaleString('id-ID')} (${data.count} entries)`);
             }
         }
 
@@ -850,16 +937,24 @@ export class DataExtractorService {
             const affectedEmployees = new Set(koreksiLog.map(e => e.emp_code)).size;
             console.log(`[KOREKSI] Potongan Upah Kotor (${startDate} to ${endDate}):`);
             console.log(`[KOREKSI] Total entries: ${koreksiLog.length}, Total amount: ${totalKoreksi.toLocaleString('id-ID')}, Employees affected: ${affectedEmployees}`);
-            // Log individual entries for debugging
-            for (const entry of koreksiLog) {
-                console.log(`[KOREKSI]   Emp: ${entry.emp_code}, DocDesc: '${entry.doc_desc}', Amount: ${entry.amount.toLocaleString('id-ID')}`);
+            // Group by DocDesc type
+            const groupedByDocDesc = koreksiLog.reduce((acc, entry) => {
+                const docType = entry.doc_desc;
+                if (!acc[docType]) acc[docType] = { total: 0, count: 0 };
+                acc[docType].total += entry.amount;
+                acc[docType].count += 1;
+                return acc;
+            }, {} as Record<string, { total: number; count: number }>);
+            for (const [docType, data] of Object.entries(groupedByDocDesc)) {
+                console.log(`[KOREKSI]   ${docType}: ${data.total.toLocaleString('id-ID')} (${data.count} entries)`);
             }
         } else {
             console.log(`[KOREKSI] No KOREKSI entries found for ${empCodes.length} employees between ${startDate} and ${endDate}`);
         }
 
-        // [PYTHON COMPATIBILITY] Query for Premi PPH (DocDesc containing 'PPH' with TaskDesc 'ACCRUALS-CHECKROLL')
-        // This appears in potongan section with positive value (+)
+        // [NEW] Query for Premi PPH from TaskDesc = 'ACCRUALS-CHECKROLL'
+        // Ini masuk ke kategori POTONGAN UPAH BERSIH (ditambah lalu dipotong)
+        // Bukan bagian dari premi, meskipun namanya "PREMI PPH"
         const premiPphRows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
             SELECT
                 RTRIM(t.EmpCode) as emp_code,
@@ -888,15 +983,26 @@ export class DataExtractorService {
             GROUP BY RTRIM(t.EmpCode), t.DocDesc
         `, [startDate, endDate, startDate, endDate]);
 
-        // Add Premi PPH to potongan with positive value
+        // Log Premi PPH for debugging
+        if (premiPphRows.length > 0) {
+            const totalPremiPph = premiPphRows.reduce((sum, r) => sum + Math.abs(r.amount || 0), 0);
+            const affectedEmployees = new Set(premiPphRows.map(e => e.emp_code)).size;
+            console.log(`[PREMI_PPH] Potongan Upah Bersih (${startDate} to ${endDate}):`);
+            console.log(`[PREMI_PPH] Total entries: ${premiPphRows.length}, Amount: ${totalPremiPph.toLocaleString('id-ID')}, Employees: ${affectedEmployees}`);
+            for (const r of premiPphRows) {
+                console.log(`[PREMI_PPH]   Emp: ${r.emp_code}, DocDesc: '${r.doc_desc}', Amount: ${Math.abs(r.amount || 0).toLocaleString('id-ID')}`);
+            }
+        }
+
+        // Add Premi PPH to amounts with key "PREMI_PPH"
+        // Ini akan muncul sebagai kolom di POTONGAN UPAH BERSIH
         for (const r of premiPphRows) {
             const emp = r.emp_code?.trim() || "";
             if (!amounts[emp]) amounts[emp] = {};
-            // Use positive value (+) - this adds to total potongan (reduces net pay)
             amounts[emp]["PREMI_PPH"] = (amounts[emp]["PREMI_PPH"] || 0) + Math.abs(r.amount || 0);
             // Store title mapping
             if (!titleMap["PREMI_PPH"]) {
-                titleMap["PREMI_PPH"] = "Premi PPH";
+                titleMap["PREMI_PPH"] = "PREMI PPH";
             }
         }
 
@@ -1030,26 +1136,39 @@ export class DataExtractorService {
         const upper = docDesc.toUpperCase().trim();
         const cleanTitle = docDesc.trim();
 
-        // [NEW RULE] Handle KOREKSI variations separately
+        // [RULE 1] Handle KOREKSI variations separately
         // Pattern: KOREKSI, KOREKSI A, KOREKSI PANEN, KOREKSI X, etc.
-        // Each variation becomes a separate key for display
+        // Each variation becomes a separate key for display in POTONGAN UPAH KOTOR
         if (upper.includes("KOREKSI")) {
             // Use the full DocDesc as the key, normalized
             const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
             return { key, title: cleanTitle };
         }
 
-        // Static: PPH
+        // [RULE 2] Static: PPH (but NOT if it contains PREMI - handled earlier)
         if (upper.includes("PPH") || upper.includes("PAJAK")) {
+            // Double check: if contains PREMI, don't treat as PPH21
+            if (upper.includes("PREMI")) {
+                const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+                return { key, title: cleanTitle };
+            }
             return { key: "PPH21", title: "PPH21" };
         }
-        // Static: SPSI
+
+        // [RULE 3] Static: SPSI
         if (upper.includes("SPSI")) {
             return { key: "SPSI", title: "SPSI" };
         }
 
-        // Dynamic: Use DocDesc as title, normalized key for field name
-        // Pattern: POTONGAN, POTONGAN A, POTONGAN X, etc.
+        // [RULE 4] Dynamic POTONGAN X patterns
+        // Pattern: POTONGAN, POTONGAN A, POTONGAN BERAS, POT X, etc.
+        // Each variation becomes a separate column in POTONGAN UPAH BERSIH
+        if (upper.startsWith("POTONGAN") || upper.startsWith("POT ") || upper.startsWith("POT_")) {
+            const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+            return { key, title: cleanTitle };
+        }
+
+        // [RULE 5] Default: Use DocDesc as title, normalized key for field name
         const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
         return { key, title: cleanTitle };
     }

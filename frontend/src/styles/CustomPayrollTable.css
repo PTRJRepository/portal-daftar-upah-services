@@ -187,6 +187,11 @@
     background-color: #fefce8;
 }
 
+.cell-premi-pph {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
 .cell-total-premi {
     background-color: #f0fff4;
     font-weight: bold;
