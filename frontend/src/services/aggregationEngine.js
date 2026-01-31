@@ -267,6 +267,7 @@ const safeValue = isNaN(numValue) ? 0 : numValue
 
       // Deduction breakdown
       total_pph21: agg('pot_pph21', 'sum'),
+      total_premi_pph: agg('premi_pph', 'sum'),  // NEW: Premi PPH that gets ADDED to net salary
       total_koreksi: agg('pot_koreksi', 'sum'),
       total_bpjs_pekerja: agg('pot_bpjs_kesehatan_pekerja', 'sum'),
       total_bpjs_majikan: agg('pot_bpjs_kesehatan_majikan', 'sum'),

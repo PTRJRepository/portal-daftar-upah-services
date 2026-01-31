@@ -216,6 +216,11 @@
     color: #92400e;
 }
 
+.cell-potongan-dynamic {
+    background-color: #f3e8ff;
+    color: #6b21a8;
+}
+
 /* --- Context Menu --- */
 .context-menu {
     position: fixed;

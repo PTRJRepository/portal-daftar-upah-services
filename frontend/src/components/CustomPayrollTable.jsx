@@ -202,6 +202,7 @@ export default function CustomPayrollTable({
             setActivePremiFields(activePremi);
 
             // Determine which dynamic potongan fields have values
+            // Include ALL fields that have values (KOREKSI, POTONGAN, etc.)
             const activePot = Object.entries(potWithTitles)
                 .filter(([label, field]) => {
                     return employeeRows.some(row => {
@@ -376,14 +377,33 @@ export default function CustomPayrollTable({
             });
         cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold cell-total-premi' });
 
-        // POTONGAN UPAH KOTOR - KOREKSI column
-        // ALWAYS show pot_koreksi column - matches Python backend behavior
-        cols.push({
-            field: 'pot_koreksi',
-            headers: ['POTONGAN UPAH KOTOR', null, null, 'KOREKSI'],
-            w: 80,
-            className: 'text-right cell-koreksi'
-        });
+        // POTONGAN UPAH KOTOR - KOREKSI columns (all variations)
+        // Display each KOREKSI variation as a separate column
+        const koreksiFields = Object.entries(dynamicHeaders.potongan)
+            .filter(([label, field]) => field.toUpperCase().startsWith('KOREKSI') && activePotFields.includes(field))
+            .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
+
+        // If no KOREKSI variations found but koreksi data exists, show main column
+        if (koreksiFields.length === 0) {
+            cols.push({
+                field: 'pot_koreksi',
+                headers: ['POTONGAN UPAH KOTOR', null, null, 'KOREKSI'],
+                w: 80,
+                className: 'text-right cell-koreksi'
+            });
+        } else {
+            // Show each KOREKSI variation as separate column
+            for (const [label, field] of koreksiFields) {
+                // Clean up the label for display
+                const displayLabel = label.replace(/^KOREKSI\s*/i, 'KOREKSI ') || label;
+                cols.push({
+                    field,
+                    headers: ['POTONGAN UPAH KOTOR', null, null, displayLabel],
+                    w: 80,
+                    className: 'text-right cell-koreksi'
+                });
+            }
+        }
 
         // Total Koreksi
         cols.push({ field: 'potongan_upah_kotor_total', headers: ['POTONGAN UPAH KOTOR', null, null, 'TOTAL KOREKSI'], w: 95, className: 'text-right font-bold' });
@@ -407,13 +427,29 @@ export default function CustomPayrollTable({
         cols.push({ field: 'pot_spsi', headers: ['POTONGAN UPAH BERSIH', null, null, 'IURAN SPSI'], w: 80, className: 'text-right' });
         cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', null, null, 'PPH21'], w: 80, className: 'text-right' });
 
-        // Dynamic Potongan Bersih - only show if has values in current gang
-        Object.entries(dynamicHeaders.potongan)
-            .filter(([k]) => !k.toUpperCase().startsWith('KOREKSI'))
+        // Dynamic Potongan Bersih - show POTONGAN variations (excluding PPH and SPSI)
+        const potonganBersihFields = Object.entries(dynamicHeaders.potongan)
+            .filter(([label, field]) => {
+                const upperLabel = label.toUpperCase();
+                // Exclude KOREKSI (shown in POTONGAN UPAH KOTOR)
+                // Exclude PPH and SPSI (static columns already exist)
+                return !upperLabel.startsWith('KOREKSI')
+                    && !upperLabel.includes('PPH')
+                    && !upperLabel.includes('SPSI');
+            })
             .filter(([label, field]) => activePotFields.includes(field))
-            .forEach(([label, field]) => {
-                cols.push({ field, headers: ['POTONGAN UPAH BERSIH', null, null, label.replace(/^(POTONGAN\s*|POT\s*)/i, '')], w: 80, className: 'text-right' });
+            .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
+
+        for (const [label, field] of potonganBersihFields) {
+            // Clean up the label for display
+            const displayLabel = label.replace(/^(POTONGAN\s*|POT\s*)/i, '') || label;
+            cols.push({
+                field,
+                headers: ['POTONGAN UPAH BERSIH', null, null, displayLabel],
+                w: 80,
+                className: 'text-right cell-potongan-dynamic'
             });
+        }
         cols.push({ field: 'total_potongan_bersih', headers: ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'], w: 100, className: 'text-right font-bold cell-deduction' });
 
         // TOTAL UPAH (Summary group) - only Upah Bersih since Upah Kotor is now separate

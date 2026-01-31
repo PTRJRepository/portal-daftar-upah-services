@@ -259,17 +259,26 @@ export class DataExtractorService {
             const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
 
-            // [PYTHON COMPATIBILITY] Handle KOREKSI - ALL variations (KOREKSI, KOREKSI A, etc.)
-            // are now normalized to the same "KOREKSI" key in normalizePotonganName
-            // So empPotongan["KOREKSI"] already contains the sum of ALL KOREKSI items
-            const pot_koreksi = Math.abs(empPotongan["KOREKSI"] || 0);
+            // [NEW] Handle KOREKSI variations separately
+            // Collect all keys that start with "KOREKSI" (KOREKSI, KOREKSI_A, KOREKSI_PANEN, etc.)
+            const koreksiVariations: { [key: string]: number } = {};
+            let pot_koreksi = 0;
+
+            for (const [key, val] of Object.entries(empPotongan)) {
+                if (key.startsWith("KOREKSI")) {
+                    const amount = Math.abs(val as number);
+                    koreksiVariations[key] = amount;
+                    pot_koreksi += amount;
+                    dynamicPotonganSet.add(key);
+                }
+            }
 
             let other_potongan = 0;
             let db_bpjs_kes = 0;
 
             for (const [key, val] of Object.entries(empPotongan)) {
-                // Skip static fields that are handled separately
-                if (key === "SPSI" || key === "PPH21" || key === "KOREKSI") continue;
+                // Skip static fields and KOREKSI (handled above)
+                if (key === "SPSI" || key === "PPH21" || key.startsWith("KOREKSI")) continue;
 
                 if (key.includes("BPJS")) {
                     if (!key.includes("MAJIKAN") && !key.includes("MAJ")) {
@@ -354,7 +363,7 @@ export class DataExtractorService {
                 premi_koreksi: pot_koreksi,
                 potongan_upah_kotor_total: pot_koreksi,
                 potongan_upah_kotor_details: {
-                    koreksi: pot_koreksi,
+                    ...koreksiVariations,
                     total: pot_koreksi
                 },
                 total_potongan,
@@ -364,12 +373,20 @@ export class DataExtractorService {
                 pot_astek: pot_astek_pekerja,
                 pot_astek_maj: pot_astek_majikan,
                 pot_bpjs_pekerja_total: pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja,
+                // Add individual koreksi variations as separate fields
+                ...koreksiVariations,
                 ...empPremi
             };
 
             // Log per employee if has koreksi
             if (pot_koreksi > 0) {
-                console.log(`[KOREKSI] Employee ${emp.emp_code} (${emp.emp_name}): pot_koreksi = ${pot_koreksi.toLocaleString('id-ID')}`);
+                console.log(`[KOREKSI] Employee ${emp.emp_code} (${emp.emp_name}): Total koreksi = ${pot_koreksi.toLocaleString('id-ID')}`);
+                const variationKeys = Object.keys(koreksiVariations);
+                if (variationKeys.length > 0) {
+                    for (const key of variationKeys) {
+                        console.log(`[KOREKSI]   - ${key}: ${koreksiVariations[key].toLocaleString('id-ID')}`);
+                    }
+                }
             }
 
             dataRows.push(row);

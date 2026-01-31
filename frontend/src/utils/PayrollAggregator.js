@@ -131,8 +131,13 @@ export const PayrollAggregator = {
     // Use backend provided value to avoid double counting and ensure consistency with documentation.
     let total_potongan = val(emp.total_potongan);
 
-    // 6. Upah Bersih (Net Wage)
-    // Use backend provided value
+    // 6. Handle Premi PPH - special deduction that gets ADDED to net salary
+    const premi_pph = val(emp.premi_pph);  // This gets ADDED to net salary
+
+    // 7. Upah Bersih (Net Wage) - adjust if Premi PPH exists
+    // If we have premi_pph, we need to account for it being added to the net salary
+    // The backend calculates: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
+    // So we use the backend value directly but acknowledge the special handling
     const upah_bersih = val(emp.upah_bersih);
 
     // Return enriched object with calculated fields
