@@ -286,9 +286,22 @@ export class DataExtractorService {
             let other_potongan = 0;
             let db_bpjs_kes = 0;
 
+            // DEBUG: Log all empPotongan keys before processing
+            if (emp.emp_code === 'D0051') {
+                console.log(`[DEBUG D0051] empPotongan ALL keys:`, Object.keys(empPotongan));
+                console.log(`[DEBUG D0051] empPotongan ALL values:`, empPotongan);
+            }
+
             for (const [key, val] of Object.entries(empPotongan)) {
                 // Skip static fields and KOREKSI, PREMI_PPH (handled above)
-                if (key === "SPSI" || key === "PPH21" || key.startsWith("KOREKSI") || key === "PREMI_PPH") continue;
+                // Use case-insensitive check for KOREKSI to be safe
+                const keyUpper = key.toUpperCase();
+                if (key === "SPSI" || key === "PPH21" || keyUpper.startsWith("KOREKSI") || key === "PREMI_PPH") {
+                    if (emp.emp_code === 'D0051') {
+                        console.log(`[DEBUG D0051] SKIPPED key: ${key}, value: ${val}`);
+                    }
+                    continue;
+                }
 
                 if (key.includes("BPJS")) {
                     if (!key.includes("MAJIKAN") && !key.includes("MAJ")) {
@@ -318,12 +331,30 @@ export class DataExtractorService {
             const pot_bpjs_pensiun_jumlah = Math.round((pot_bpjs_pensiun_pekerja + pot_bpjs_pensiun_majikan) * 100) / 100;
 
             // [FIXED] PREMI_PPH is an ADDITION (penambah), NOT a deduction
-            // total_potongan should NOT include premi_pph
-            // total_potongan = astek + bpjs_pekerja + spsi + pph21 (filtered by PREMI)
+            // [FIXED] pot_koreksi is ONLY in Potongan Upah Kotor, NOT in total_potongan
+            // total_potongan = astek + bpjs_pekerja + spsi + pph21 + other (no koreksi)
             const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
-                pot_spsi + pot_pph21 + other_potongan + pot_koreksi;
+                pot_spsi + pot_pph21 + other_potongan;
 
-            // [FIXED] jumlah_upah_kotor does NOT include premi_pph
+            // [DEBUG] Log calculation breakdown for specific employee
+            if (emp.emp_code === 'D0051') {
+                console.log(`\n[DEBUG D0051] ===== TOTAL POTONGAN BREAKDOWN =====`);
+                console.log(`[DEBUG D0051] pot_astek_pekerja: ${pot_astek_pekerja.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] pot_bpjs_kesehatan_pekerja: ${pot_bpjs_kesehatan_pekerja.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] pot_bpjs_pensiun_pekerja: ${pot_bpjs_pensiun_pekerja.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] pot_spsi: ${pot_spsi.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] pot_pph21: ${pot_pph21.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] other_potongan: ${other_potongan.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] pot_koreksi (ONLY in Potongan Upah Kotor): ${pot_koreksi.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] ----------------------------------------`);
+                console.log(`[DEBUG D0051] TOTAL_POTONGAN (Potongan Bersih): ${total_potongan.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] pot_premi_pph (ADDED): +${pot_premi_pph.toLocaleString('id-ID')}`);
+                console.log(`[DEBUG D0051] empPotongan keys:`, Object.keys(empPotongan));
+                console.log(`[DEBUG D0051] empPotongan values:`, empPotongan);
+                console.log(`[DEBUG D0051] =====================================\n`);
+            }
+
+            // [FIXED] KOREKSI is deducted from jumlah_upah_kotor (Potongan Upah Kotor section)
             const jumlah_upah_kotor = (gaji_pokok + total_tunjangan + total_premi) - pot_koreksi;
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
@@ -869,22 +900,9 @@ export class DataExtractorService {
             const emp = r.emp_code?.trim() || "";
             if (!amounts[emp]) amounts[emp] = {};
 
-            // [NEW] Check if TaskDesc contains PREMI - if so, this is NOT PPH pengurang
-            // Items with PREMI in TaskDesc should go to Potongan Upah Bersih as separate category
-            const taskDescUpper = (r.task_desc || "").toUpperCase();
-            const docDescUpper = (r.doc_desc || "").toUpperCase();
-
-            // If TaskDesc contains PREMI, treat this as PREMI category (not PPH)
-            if (taskDescUpper.includes("PREMI")) {
-                // Create dynamic key based on DocDesc for PREMI items
-                const premiKey = docDescUpper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
-                amounts[emp][premiKey] = (amounts[emp][premiKey] || 0) + Math.abs(r.amount || 0);
-                if (!titleMap[premiKey]) {
-                    titleMap[premiKey] = r.doc_desc?.trim() || premiKey;
-                }
-                console.log(`[PREMI_FROM_TASKDESC] Emp=${emp}, DocDesc='${r.doc_desc}', TaskDesc='${r.task_desc}', Key=${premiKey}, Amount=${Math.abs(r.amount || 0).toLocaleString('id-ID')}`);
-                continue; // Skip normal processing
-            }
+            // [REMOVED] The check for PREMI in TaskDesc was incorrect
+            // Real PREMI_PPH items (TaskDesc='ACCRUALS-CHECKROLL') are handled by separate query below
+            // Items with TaskDesc like '(DE) POTONGAN PREMI' should be processed normally based on DocDesc
 
             const { key, title } = this.normalizePotonganName(r.doc_desc || "");
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
