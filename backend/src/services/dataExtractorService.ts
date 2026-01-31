@@ -38,16 +38,16 @@ interface ShortageDetail {
 interface PayrollRow {
     nik: string;
     nama: string;
-    jabatan_estate?: string; // [NEW] Job Title from auxiliary table
+    jabatan_estate?: string;
     jenis_kelamin: string;
     loc_code: string;
     gang_code: string;
     upah_dasar: number;
     jumlah_hk: number;
-    total_jam_kerja: number; // [NEW] Total hours for the period
-    has_shortage?: boolean; // [NEW] Flag for short working hours
-    shortage_details?: ShortageDetail[]; // [NEW] Details of shortage days
-    shortage_total_hours?: number; // [NEW] Total shortage hours
+    total_jam_kerja: number;
+    has_shortage?: boolean;
+    shortage_details?: ShortageDetail[];
+    shortage_total_hours?: number;
     hari_kerja: number;
     gaji_pokok: number;
     kehadiran: number;
@@ -87,8 +87,17 @@ interface PayrollRow {
     pot_pph21: number;
     pot_koreksi: number;
     premi_koreksi: number;
+    potongan_upah_kotor_total: number;
+    potongan_upah_kotor_details?: {
+        koreksi: number;
+        total: number;
+    };
     total_potongan: number;
+    total_potongan_bersih: number;
     upah_bersih: number;
+    pot_astek: number;
+    pot_astek_maj: number;
+    pot_bpjs_pekerja_total: number;
     [key: string]: any;
 }
 
@@ -249,12 +258,17 @@ export class DataExtractorService {
 
             const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
+
+            // [PYTHON COMPATIBILITY] Handle KOREKSI - ALL variations (KOREKSI, KOREKSI A, etc.)
+            // are now normalized to the same "KOREKSI" key in normalizePotonganName
+            // So empPotongan["KOREKSI"] already contains the sum of ALL KOREKSI items
             const pot_koreksi = Math.abs(empPotongan["KOREKSI"] || 0);
 
             let other_potongan = 0;
             let db_bpjs_kes = 0;
 
             for (const [key, val] of Object.entries(empPotongan)) {
+                // Skip static fields that are handled separately
                 if (key === "SPSI" || key === "PPH21" || key === "KOREKSI") continue;
 
                 if (key.includes("BPJS")) {
@@ -300,9 +314,9 @@ export class DataExtractorService {
                 upah_dasar: empUpahDasar,
                 jumlah_hk: hk,
                 total_jam_kerja: attData.total_hours,
-                has_shortage: attData.shortage_count > 0, // [NEW] Map to boolean
-                shortage_details: attData.shortage_details || [], // [NEW] Detailed shortage info
-                shortage_total_hours: attData.shortage_total_hours || 0, // [NEW] Total shortage hours
+                has_shortage: attData.shortage_count > 0,
+                shortage_details: attData.shortage_details || [],
+                shortage_total_hours: attData.shortage_total_hours || 0,
                 hari_kerja,
                 gaji_pokok,
                 kehadiran: hari_kerja,
@@ -339,6 +353,10 @@ export class DataExtractorService {
                 pot_koreksi,
                 premi_koreksi: pot_koreksi,
                 potongan_upah_kotor_total: pot_koreksi,
+                potongan_upah_kotor_details: {
+                    koreksi: pot_koreksi,
+                    total: pot_koreksi
+                },
                 total_potongan,
                 total_potongan_bersih: total_potongan,
                 upah_bersih,
@@ -348,6 +366,11 @@ export class DataExtractorService {
                 pot_bpjs_pekerja_total: pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja,
                 ...empPremi
             };
+
+            // Log per employee if has koreksi
+            if (pot_koreksi > 0) {
+                console.log(`[KOREKSI] Employee ${emp.emp_code} (${emp.emp_name}): pot_koreksi = ${pot_koreksi.toLocaleString('id-ID')}`);
+            }
 
             dataRows.push(row);
         }
@@ -669,34 +692,41 @@ export class DataExtractorService {
     }
 
     // [PREMI] Uses DocDesc containing 'PREMI' as column header title
+    // [RULE] Exclude premi containing 'PPH' - those should go to potongan instead
     private async getPremi(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string> }> {
         if (!empCodes.length) return { amounts: {}, titleMap: {} };
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // Query DocDesc containing 'PREMI' - DocDesc will be used as column header
+        // Query DocDesc containing 'PREMI' but EXCLUDE those containing 'PPH'
+        // DocDesc will be used as column header
+        // Also EXCLUDE TaskDesc = 'ACCRUALS-CHECKROLL' (Premi PPH indicator)
         let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-            SELECT RTRIM(EmpCode) as emp_code, DocDesc as doc_desc, SUM(Amount) as amount
+            SELECT RTRIM(t.EmpCode) as emp_code, t.DocDesc as doc_desc, SUM(ln.Amount) as amount
             FROM (
-                SELECT t.EmpCode, t.DocDesc, ln.Amount
+                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
                 FROM PR_ADTRANS t
-                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
-                  AND UPPER(t.DocDesc) LIKE 'PREMI%'
-                  AND ln.Amount > 0
-                
+
                 UNION ALL
 
-                SELECT t.EmpCode, t.DocDesc, ln.Amount
+                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
                 FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
-                  AND UPPER(t.DocDesc) LIKE 'PREMI%'
-                  AND ln.Amount > 0
-            ) combined
-            GROUP BY RTRIM(EmpCode), DocDesc
+            ) t
+            JOIN (
+                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN
+                UNION ALL
+                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
+            ) ln ON t.ID = ln.MasterID
+            LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
+            WHERE UPPER(t.DocDesc) LIKE '%PREMI%'
+              AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
+              AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
+              AND ln.Amount > 0
+            GROUP BY RTRIM(t.EmpCode), t.DocDesc
         `, [startDate, endDate, startDate, endDate]);
 
         const amounts: Record<string, Record<string, number>> = {};
@@ -721,20 +751,26 @@ export class DataExtractorService {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // [REFACTORED] Query based on TaskDesc from PR_TASKCODE instead of DocDesc
-        // Static: PPH, SPSI
-        // Dynamic: POTONGAN (excluding PPH/SPSI)
-        let rows = await db.query<{ emp_code: string; task_desc: string; amount: number }>(`
-            SELECT RTRIM(t.EmpCode) as emp_code, mt.TaskDesc as task_desc, SUM(COALESCE(ln.Amount, 0)) as amount
+        // [PYTHON COMPATIBILITY] Query using DocDesc directly from PR_ADTRANS/PR_ADTRANS_ARC
+        // NOT using TaskDesc from PR_TASKCODE!
+        // - POTONGAN UPAH KOTOR: KOREKSI (any DocDesc containing 'KOREKSI')
+        // - POTONGAN UPAH BERSIH: PPH, SPSI, POTONGAN, TIKET, KONTAN, THR, PINJAM, KL, ALAT (excluding PPH for specific handling)
+        const koreksiLog: Array<{ emp_code: string; doc_desc: string; amount: number }> = [];
+
+        let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
+            SELECT
+                RTRIM(t.EmpCode) as emp_code,
+                t.DocDesc as doc_desc,
+                SUM(COALESCE(ln.Amount, 0)) as amount
             FROM (
-                SELECT t.EmpCode, t.ID, t.DocDate
+                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
                 FROM PR_ADTRANS t
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
-                
+
                 UNION ALL
 
-                SELECT t.EmpCode, t.ID, t.DocDate
+                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
                 FROM PR_ADTRANS_ARC t
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
@@ -744,29 +780,109 @@ export class DataExtractorService {
                 UNION ALL
                 SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
             ) ln ON t.ID = ln.MasterID
-            LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
-            WHERE mt.TaskDesc IS NOT NULL
-              AND (
-                UPPER(mt.TaskDesc) LIKE '%PPH%'
-                OR UPPER(mt.TaskDesc) LIKE '%SPSI%'
-                OR UPPER(mt.TaskDesc) LIKE '%POTONGAN%'
-              )
-            GROUP BY RTRIM(t.EmpCode), mt.TaskDesc
+            WHERE (
+                UPPER(t.DocDesc) LIKE '%POT%'
+                OR UPPER(t.DocDesc) LIKE '%PPH%'
+                OR UPPER(t.DocDesc) LIKE '%BPJS%'
+                OR UPPER(t.DocDesc) LIKE '%PINJAM%'
+                OR UPPER(t.DocDesc) LIKE '%KL%'
+                OR UPPER(t.DocDesc) LIKE '%SPSI%'
+                OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
+                OR UPPER(t.DocDesc) LIKE '%TOTAL%'
+                OR UPPER(t.DocDesc) LIKE '%TIKET%'
+                OR UPPER(t.DocDesc) LIKE '%KONTAN%'
+                OR UPPER(t.DocDesc) LIKE '%ALAT%'
+                OR UPPER(t.DocDesc) LIKE '%THR%'
+            )
+            GROUP BY RTRIM(t.EmpCode), t.DocDesc
         `, [startDate, endDate, startDate, endDate]);
 
         const amounts: Record<string, Record<string, number>> = {};
         const titleMap: Record<string, string> = {};
 
+        // Log first few rows for debugging
+        console.log(`[POTONGAN DEBUG] Total rows returned: ${rows.length}`);
+        const sampleRows = rows.slice(0, 5);
+        for (const r of sampleRows) {
+            console.log(`[POTONGAN DEBUG] Sample row: Emp=${r.emp_code}, DocDesc='${r.doc_desc}', Amount=${r.amount}`);
+        }
+
         for (const r of rows) {
             const emp = r.emp_code?.trim() || "";
             if (!amounts[emp]) amounts[emp] = {};
-            const { key, title } = this.normalizePotonganName(r.task_desc || "");
+            const { key, title } = this.normalizePotonganName(r.doc_desc || "");
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
             // Store title mapping for dynamic headers
             if (!titleMap[key]) {
                 titleMap[key] = title;
             }
+
+            // Log koreksi entries for debugging
+            if (key === "KOREKSI") {
+                koreksiLog.push({
+                    emp_code: emp,
+                    doc_desc: r.doc_desc || "",
+                    amount: Math.abs(r.amount || 0)
+                });
+            }
         }
+
+        // Log koreksi summary
+        if (koreksiLog.length > 0) {
+            const totalKoreksi = koreksiLog.reduce((sum, entry) => sum + entry.amount, 0);
+            const affectedEmployees = new Set(koreksiLog.map(e => e.emp_code)).size;
+            console.log(`[KOREKSI] Potongan Upah Kotor (${startDate} to ${endDate}):`);
+            console.log(`[KOREKSI] Total entries: ${koreksiLog.length}, Total amount: ${totalKoreksi.toLocaleString('id-ID')}, Employees affected: ${affectedEmployees}`);
+            // Log individual entries for debugging
+            for (const entry of koreksiLog) {
+                console.log(`[KOREKSI]   Emp: ${entry.emp_code}, DocDesc: '${entry.doc_desc}', Amount: ${entry.amount.toLocaleString('id-ID')}`);
+            }
+        } else {
+            console.log(`[KOREKSI] No KOREKSI entries found for ${empCodes.length} employees between ${startDate} and ${endDate}`);
+        }
+
+        // [PYTHON COMPATIBILITY] Query for Premi PPH (DocDesc containing 'PPH' with TaskDesc 'ACCRUALS-CHECKROLL')
+        // This appears in potongan section with positive value (+)
+        const premiPphRows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
+            SELECT
+                RTRIM(t.EmpCode) as emp_code,
+                t.DocDesc as doc_desc,
+                SUM(ln.Amount) as amount
+            FROM (
+                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
+                FROM PR_ADTRANS t
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+
+                UNION ALL
+
+                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
+                FROM PR_ADTRANS_ARC t
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+            ) t
+            JOIN (
+                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN
+                UNION ALL
+                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
+            ) ln ON t.ID = ln.MasterID
+            JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
+            WHERE mt.TaskDesc = 'ACCRUALS-CHECKROLL'
+            GROUP BY RTRIM(t.EmpCode), t.DocDesc
+        `, [startDate, endDate, startDate, endDate]);
+
+        // Add Premi PPH to potongan with positive value
+        for (const r of premiPphRows) {
+            const emp = r.emp_code?.trim() || "";
+            if (!amounts[emp]) amounts[emp] = {};
+            // Use positive value (+) - this adds to total potongan (reduces net pay)
+            amounts[emp]["PREMI_PPH"] = (amounts[emp]["PREMI_PPH"] || 0) + Math.abs(r.amount || 0);
+            // Store title mapping
+            if (!titleMap["PREMI_PPH"]) {
+                titleMap["PREMI_PPH"] = "Premi PPH";
+            }
+        }
+
         return { amounts, titleMap };
     }
 
@@ -893,9 +1009,18 @@ export class DataExtractorService {
         return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")}`;
     }
 
-    private normalizePotonganName(taskDesc: string): { key: string; title: string } {
-        const upper = taskDesc.toUpperCase().trim();
-        const cleanTitle = taskDesc.trim();
+    private normalizePotonganName(docDesc: string): { key: string; title: string } {
+        const upper = docDesc.toUpperCase().trim();
+        const cleanTitle = docDesc.trim();
+
+        // [NEW RULE] Handle KOREKSI variations separately
+        // Pattern: KOREKSI, KOREKSI A, KOREKSI PANEN, KOREKSI X, etc.
+        // Each variation becomes a separate key for display
+        if (upper.includes("KOREKSI")) {
+            // Use the full DocDesc as the key, normalized
+            const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+            return { key, title: cleanTitle };
+        }
 
         // Static: PPH
         if (upper.includes("PPH") || upper.includes("PAJAK")) {
@@ -905,11 +1030,9 @@ export class DataExtractorService {
         if (upper.includes("SPSI")) {
             return { key: "SPSI", title: "SPSI" };
         }
-        // Static: KOREKSI (should not happen with TaskDesc, but keep for safety)
-        if (upper.includes("KOREKSI")) {
-            return { key: "KOREKSI", title: "KOREKSI" };
-        }
-        // Dynamic: Use TaskDesc as title, normalized key for field name
+
+        // Dynamic: Use DocDesc as title, normalized key for field name
+        // Pattern: POTONGAN, POTONGAN A, POTONGAN X, etc.
         const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
         return { key, title: cleanTitle };
     }

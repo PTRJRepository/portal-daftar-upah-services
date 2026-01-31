@@ -203,7 +203,6 @@ export default function CustomPayrollTable({
 
             // Determine which dynamic potongan fields have values
             const activePot = Object.entries(potWithTitles)
-                .filter(([k]) => !k.toUpperCase().startsWith('KOREKSI'))
                 .filter(([label, field]) => {
                     return employeeRows.some(row => {
                         const val = row[field];
@@ -378,19 +377,12 @@ export default function CustomPayrollTable({
         cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold cell-total-premi' });
 
         // POTONGAN UPAH KOTOR - KOREKSI column
-        // ALWAYS show pot_koreksi column - this field is populated by backend from DocDesc='KOREKSI'
-        // The pot_koreksi value comes from the employee data, not from dynamic headers
+        // ALWAYS show pot_koreksi column - matches Python backend behavior
         cols.push({
             field: 'pot_koreksi',
             headers: ['POTONGAN UPAH KOTOR', null, null, 'KOREKSI'],
             w: 80,
-            className: 'text-right',
-            // Custom getter for debugging - can remove later
-            getValue: (row) => {
-                const val = row.pot_koreksi ?? row.potongan_upah_kotor?.koreksi ?? 0;
-                if (val > 0) console.log('[CustomTable DEBUG] pot_koreksi for', row.nama, '=', val);
-                return val;
-            }
+            className: 'text-right cell-koreksi'
         });
 
         // Total Koreksi

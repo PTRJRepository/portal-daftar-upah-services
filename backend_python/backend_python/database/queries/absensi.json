@@ -1,0 +1,47 @@
+{
+  "jumlah_hk": {
+    "description": "Total Hari Kerja (hari dengan data OT=0 dan Hours > 5 jam, termasuk cuti/minggu/libur)",
+    "sql": "SELECT COUNT(DISTINCT TrxDate) as hk_count FROM \"PR_TASKREGLN_ARC\" WHERE EmpCode = ? AND TrxDate >= ? AND TrxDate < ? AND OT = 0 AND Hours > 5"
+  },
+  "kehadiran_detail": {
+    "description": "Get detailed daily attendance matrix for each employee using PR_TASKREGLN",
+    "sql": "SELECT DAY(TrxDate) as day_of_month, TrxDate, TaskCode, Hours, Amount, CASE WHEN TaskCode LIKE 'GA9129%' THEN 'cuti_tahunan' WHEN TaskCode LIKE 'GA9126%' THEN 'sakit' WHEN TaskCode LIKE 'GA9127%' THEN 'cuti_minggu' WHEN TaskCode LIKE 'GA9128%' THEN 'cuti_nasional' WHEN TaskCode LIKE 'GA%' THEN 'cuti_lain' WHEN DATEPART(weekday, TrxDate) = 1 THEN 'minggu' ELSE 'hadir' END as status FROM \"PR_TASKREGLN_ARC\" WHERE EmpCode = ? AND TrxDate >= ? AND TrxDate <= ? AND OT = 0 ORDER BY TrxDate"
+  },
+  "kehadiran_detail_byleave": {
+    "description": "Get detailed attendance data from leave records (PR_TASKREGLN)",
+    "sql": "SELECT DAY(trl.TrxDate) as day_of_month, trl.TrxDate as date, trl.TaskCode as leave_code, '' as leave_description, trl.Hours as hours, trl.Amount as amount, CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 'cuti_tahunan' WHEN trl.TaskCode LIKE 'GA9126%' THEN 'sakit' WHEN trl.TaskCode LIKE 'GA9127%' THEN 'cuti_minggu' WHEN trl.TaskCode LIKE 'GA9128%' THEN 'cuti_nasional' ELSE 'cuti_lain' END as leave_type FROM \"PR_TASKREGLN_ARC\" trl WHERE trl.EmpCode = ? AND trl.TrxDate >= ? AND trl.TrxDate <= ? AND (trl.TaskCode LIKE 'GA912%' OR trl.TaskCode LIKE 'GA913%') ORDER BY trl.TrxDate"
+  },
+  "cuti_tahunan": {
+    "sql": "SELECT COUNT(DISTINCT TrxDate) as total_hari_cuti FROM \"PR_TASKREGLN_ARC\" WHERE \"EmpCode\" = ? AND \"TrxDate\" >= ? AND \"TrxDate\" < ? AND \"TaskCode\" LIKE 'GA9129%' AND OT = 0"
+  },
+  "cuti_tahunan_detail": {
+    "description": "Get detailed annual leave records",
+    "sql": "SELECT DAY(trl.TrxDate) as day_of_month, trl.TrxDate as date, trl.TaskCode, '' as Description, trl.Hours, trl.Amount FROM \"PR_TASKREGLN_ARC\" trl WHERE trl.EmpCode = ? AND trl.TrxDate >= ? AND trl.TrxDate <= ? AND trl.TaskCode LIKE 'GA9129%' AND trl.OT = 0 ORDER BY trl.TrxDate"
+  },
+  "cuti_sakit": {
+    "sql": "SELECT COUNT(DISTINCT TrxDate) as total_cuti FROM \"PR_TASKREGLN_ARC\" WHERE \"EmpCode\" = ? AND \"TrxDate\" >= ? AND \"TrxDate\" < ? AND \"TaskCode\" LIKE 'GA9126%' AND OT = 0"
+  },
+  "cuti_sakit_detail": {
+    "description": "Get detailed sick leave records",
+    "sql": "SELECT DAY(trl.TrxDate) as day_of_month, trl.TrxDate as date, trl.TaskCode, '' as Description, trl.Hours, trl.Amount FROM \"PR_TASKREGLN_ARC\" trl WHERE trl.EmpCode = ? AND trl.TrxDate >= ? AND trl.TrxDate <= ? AND trl.TaskCode LIKE 'GA9126%' AND trl.OT = 0 ORDER BY trl.TrxDate"
+  },
+  "cuti_minggu": {
+    "sql": "SELECT COUNT(DISTINCT TrxDate) as total_cuti_minggu FROM \"PR_TASKREGLN_ARC\" WHERE \"EmpCode\" = ? AND \"TrxDate\" >= ? AND \"TrxDate\" < ? AND DATEPART(weekday, TrxDate) = 1 AND OT = 0"
+  },
+  "cuti_minggu_detail": {
+    "description": "Get detailed Sunday records",
+    "sql": "SELECT DAY(trl.TrxDate) as day_of_month, trl.TrxDate as date, trl.TaskCode, '' as Description, trl.Hours, trl.Amount FROM \"PR_TASKREGLN_ARC\" trl WHERE trl.EmpCode = ? AND trl.TrxDate >= ? AND trl.TrxDate <= ? AND DATEPART(weekday, trl.TrxDate) = 1 AND trl.OT = 0 ORDER BY trl.TrxDate"
+  },
+  "cuti_nasional": {
+    "description": "Get count of national holiday days from PR_TASKREGLN joined with HR_GPH",
+    "sql": "SELECT COUNT(DISTINCT trl.TrxDate) as total_cuti_nasional FROM \"PR_TASKREGLN_ARC\" trl INNER JOIN \"HR_GPH\" gph ON trl.TrxDate = gph.HolidayDate AND gph.Status = 1 WHERE trl.EmpCode = ? AND trl.TrxDate >= ? AND trl.TrxDate < ? AND trl.OT = 0"
+  },
+  "cuti_nasional_detail": {
+    "description": "Get detailed national holiday leave records",
+    "sql": "SELECT DAY(trl.TrxDate) as day_of_month, trl.TrxDate as date, trl.TaskCode, gph.Description as Description, trl.Hours, trl.Amount, gph.IsRegionPH FROM \"PR_TASKREGLN_ARC\" trl INNER JOIN \"HR_GPH\" gph ON trl.TrxDate = gph.HolidayDate AND gph.Status = 1 WHERE trl.EmpCode = ? AND trl.TrxDate >= ? AND trl.TrxDate <= ? AND trl.OT = 0 ORDER BY trl.TrxDate"
+  },
+  "kehadiran_hadir": {
+    "description": "Get count of regular working days (non-GA TaskCode, non-Sunday, non-Holiday)",
+    "sql": "SELECT COUNT(DISTINCT trl.TrxDate) as total_hadir FROM \"PR_TASKREGLN_ARC\" trl WHERE trl.EmpCode = ? AND trl.TrxDate >= ? AND trl.TrxDate < ? AND trl.OT = 0 AND trl.TaskCode NOT LIKE 'GA%' AND DATEPART(weekday, trl.TrxDate) != 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH gph WHERE gph.HolidayDate = trl.TrxDate AND gph.Status = 1)"
+  }
+}

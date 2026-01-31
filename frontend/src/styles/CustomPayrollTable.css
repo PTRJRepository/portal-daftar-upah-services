@@ -211,6 +211,11 @@
     color: #1e40af;
 }
 
+.cell-koreksi {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
 /* --- Context Menu --- */
 .context-menu {
     position: fixed;

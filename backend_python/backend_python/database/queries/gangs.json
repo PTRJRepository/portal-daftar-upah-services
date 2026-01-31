@@ -1,0 +1,22 @@
+{
+  "gangs_all": {
+    "sql": "SELECT DISTINCT \"GangCode\" FROM \"HR_GANGLN\" ORDER BY \"GangCode\"",
+    "description": "List all available gang codes"
+  },
+  "gangs_by_prefix": {
+    "sql": "SELECT DISTINCT \"GangCode\" FROM \"HR_GANGLN\" WHERE \"GangCode\" LIKE ? ORDER BY \"GangCode\"",
+    "description": "List gang codes filtered by code prefix"
+  },
+  "gangs_with_desc_by_prefix": {
+    "sql": "SELECT g.\"GangCode\", g.\"Description\" FROM \"HR_GANG\" g WHERE g.\"GangCode\" LIKE ? ORDER BY g.\"GangCode\"",
+    "description": "List gang code and description filtered by code prefix from HR_GANG"
+  },
+  "gangs_all_with_desc": {
+    "sql": "SELECT TOP (1000) g.\"GangCode\", g.\"Description\" FROM \"HR_GANG\" g WHERE g.\"GangCode\" IS NOT NULL ORDER BY g.\"GangCode\"",
+    "description": "List all gang codes with descriptions from HR_GANG table"
+  },
+  "gangs_by_loc_code": {
+    "sql": "SELECT g.\"GangCode\", g.\"Description\" FROM \"HR_GANG\" g WHERE UPPER(g.\"LocCode\") = UPPER(?) ORDER BY g.\"GangCode\"",
+    "description": "List gang codes by exact LocCode from HR_GANG"
+  }
+}

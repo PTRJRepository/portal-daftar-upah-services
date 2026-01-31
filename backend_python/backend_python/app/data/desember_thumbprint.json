@@ -1,0 +1,77 @@
+[
+    {
+        "estate_division": "Parit Gunung 1 A",
+        "estate_division_code": "P1A",
+        "total_upah_bersih": 905291196
+    },
+    {
+        "estate_division": "Parit Gunung 1 B",
+        "estate_division_code": "P1B",
+        "total_upah_bersih": 723339428
+    },
+    {
+        "estate_division": "Parit Gunung 2 A",
+        "estate_division_code": "P2A",
+        "total_upah_bersih": 806366093
+    },
+    {
+        "estate_division": "Parit Gunung 2 B",
+        "estate_division_code": "P2B",
+        "total_upah_bersih": 668258892
+    },
+    {
+        "estate_division": "Darur Makmur Estate",
+        "estate_division_code": "DME",
+        "total_upah_bersih": 894769537
+    },
+    {
+        "estate_division": "WORKSHOP PGE",
+        "estate_division_code": "WPGE",
+        "total_upah_bersih": 86007292
+    },
+    {
+        "estate_division": "INFRASTUKTUR",
+        "estate_division_code": "INF",
+        "total_upah_bersih": 146170663
+    },
+    {
+        "estate_division": "NURSERY ( BIBITAN )",
+        "estate_division_code": "NRS",
+        "total_upah_bersih": 82266622
+    },
+    {
+        "estate_division": "MILL PKS",
+        "estate_division_code": "MILL",
+        "total_upah_bersih": 1051548452
+    },
+    {
+        "estate_division": "ARE - A",
+        "estate_division_code": "ARA",
+        "total_upah_bersih": 644622197
+    },
+    {
+        "estate_division": "ARE - B1",
+        "estate_division_code": "AB1",
+        "total_upah_bersih": 650338746
+    },
+    {
+        "estate_division": "ARE - B2",
+        "estate_division_code": "AB2",
+        "total_upah_bersih": 583762453
+    },
+    {
+        "estate_division": "ARE - C",
+        "estate_division_code": "ARC",
+        "total_upah_bersih": 1257712961
+    },
+    {
+        "estate_division": "WORKSHOP ARE",
+        "estate_division_code": "WKS_AR",
+        "total_upah_bersih": 24421222
+    },
+    {
+        "estate_division": "Impian Jaya Lestari",
+        "estate_division_code": "IJL",
+        "total_upah_bersih": 239032789
+    }
+]
