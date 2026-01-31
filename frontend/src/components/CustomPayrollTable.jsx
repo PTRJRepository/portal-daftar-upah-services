@@ -120,19 +120,31 @@ export default function CustomPayrollTable({
                 if (!response.ok) throw new Error(await response.text());
                 data = await response.json();
             }
-            const dynPot = data.dynamic_potongan_headers || {};
-            const dynPrem = data.dynamic_premi_headers || {};
-            const potTitleMap = data.potongan_title_map || {};
 
-            // Build potongan headers using title from titleMap where available
+            // dynamic_premi_headers and dynamic_potongan_headers are ARRAYS of field names
+            const dynPot = data.dynamic_potongan_headers || [];
+            const dynPrem = data.dynamic_premi_headers || [];
+            const potTitleMap = data.potongan_title_map || {};
+            const premTitleMap = data.premi_title_map || {};
+
+            // Build premi headers: { DocDesc_Title → field_name }
+            // Field is the normalized key (e.g., "premi_pupuk"), titleMap gives DocDesc (e.g., "PREMI PUPUK")
+            const premWithTitles = {};
+            dynPrem.forEach(field => {
+                // Get DocDesc from titleMap, or use field as fallback
+                const title = premTitleMap[field] || field;
+                premWithTitles[title] = field;
+            });
+
+            // Build potongan headers: { TaskDesc_Title → field_name }
             const potWithTitles = {};
-            Object.entries(dynPot).forEach(([key, field]) => {
-                // Use title from titleMap if available, otherwise use key
-                const title = potTitleMap[key] || key;
+            dynPot.forEach(field => {
+                // Get TaskDesc from titleMap, or use field as fallback
+                const title = potTitleMap[field] || field;
                 potWithTitles[title] = field;
             });
 
-            setDynamicHeaders({ premi: dynPrem, potongan: potWithTitles });
+            setDynamicHeaders({ premi: premWithTitles, potongan: potWithTitles });
 
             let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
 
@@ -181,7 +193,7 @@ export default function CustomPayrollTable({
 
             // Determine which dynamic premi fields have values in current gang
             const employeeRows = processedRows.filter(r => r.type === 'employee');
-            const activePremi = Object.entries(dynPrem).filter(([label, field]) => {
+            const activePremi = Object.entries(premWithTitles).filter(([label, field]) => {
                 return employeeRows.some(row => {
                     const val = row[field];
                     return val !== null && val !== undefined && val !== 0 && val !== '';
@@ -190,7 +202,7 @@ export default function CustomPayrollTable({
             setActivePremiFields(activePremi);
 
             // Determine which dynamic potongan fields have values
-            const activePot = Object.entries(dynPot)
+            const activePot = Object.entries(potWithTitles)
                 .filter(([k]) => !k.toUpperCase().startsWith('KOREKSI'))
                 .filter(([label, field]) => {
                     return employeeRows.some(row => {
@@ -229,14 +241,32 @@ export default function CustomPayrollTable({
             { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'NASIONAL'], w: 60, className: 'text-center cell-absensi' },
             // ABSENSI > JUMLAH HK
             { field: 'jumlah_hk', headers: ['ABSENSI', null, null, 'JUMLAH HK'], w: 60, className: 'text-center cell-absensi font-bold' },
-            // ABSENSI > TOTAL JAM [NEW]
+            // ABSENSI > TOTAL JAM [NEW] - Marks employees with shortage hours (kurang jam)
             {
                 field: 'total_jam_kerja',
                 headers: ['ABSENSI', null, null, 'TOTAL JAM'],
                 w: 60,
                 className: 'text-center cell-absensi',
                 render: (row) => (
-                    <div className={`w-full h-full flex items-center justify-center ${row.has_shortage ? 'bg-red-100 text-red-600 font-bold' : ''}`}>
+                    <div
+                        style={row.has_shortage ? {
+                            backgroundColor: '#fee2e2',
+                            color: '#dc2626',
+                            fontWeight: 'bold',
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        } : {
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                        title={row.has_shortage ? 'Kurang Jam: Jam kerja di bawah target (7 jam/hari, 5 jam/Jumat)' : ''}
+                    >
                         {row.total_jam_kerja}
                     </div>
                 )

@@ -114,6 +114,7 @@ export class DataExtractorService {
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
         dynamic_potongan_headers: string[];
+        premi_title_map: Record<string, string>;
         potongan_title_map: Record<string, string>;
         meta: { execution_time_ms: number; row_count: number }
     }> {
@@ -147,6 +148,7 @@ export class DataExtractorService {
                 data_rows: [],
                 dynamic_premi_headers: [],
                 dynamic_potongan_headers: [],
+                premi_title_map: {},
                 potongan_title_map: {},
                 meta: { execution_time_ms: 0, row_count: 0 }
             };
@@ -155,7 +157,7 @@ export class DataExtractorService {
         const empCodes = employees.map(e => e.emp_code);
 
         const startParallel = performance.now();
-        const [attendanceMap, cuti, premi, potonganResult, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
+        const [attendanceMap, cuti, premiResult, potonganResult, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Attendance: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getCuti(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Cuti: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
             this.getPremi(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Premi: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
@@ -172,7 +174,9 @@ export class DataExtractorService {
         ]);
         console.log(`[Perf] ParallelFetch Total: ${(performance.now() - startParallel).toFixed(2)}ms`);
 
-        // Destructure potongan result
+        // Destructure premi result - uses DocDesc as title
+        const { amounts: premi, titleMap: premiTitleMap } = premiResult;
+        // Destructure potongan result - uses TaskDesc as title
         const { amounts: potongan, titleMap: potonganTitleMap } = potonganResult;
 
         const dataRows: PayrollRow[] = [];
@@ -340,6 +344,7 @@ export class DataExtractorService {
             data_rows: dataRows,
             dynamic_premi_headers: Array.from(dynamicPremiSet),
             dynamic_potongan_headers: Array.from(dynamicPotonganSet),
+            premi_title_map: premiTitleMap,
             potongan_title_map: potonganTitleMap,
             meta: {
                 execution_time_ms: Date.now() - startTime,
@@ -557,10 +562,13 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getPremi(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, Record<string, number>>> {
-        if (!empCodes.length) return {};
+    // [PREMI] Uses DocDesc containing 'PREMI' as column header title
+    private async getPremi(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string> }> {
+        if (!empCodes.length) return { amounts: {}, titleMap: {} };
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
+
+        // Query DocDesc containing 'PREMI' - DocDesc will be used as column header
         let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, DocDesc as doc_desc, SUM(Amount) as amount
             FROM (
@@ -585,14 +593,21 @@ export class DataExtractorService {
             GROUP BY RTRIM(EmpCode), DocDesc
         `, [startDate, endDate, startDate, endDate]);
 
-        const result: Record<string, Record<string, number>> = {};
+        const amounts: Record<string, Record<string, number>> = {};
+        const titleMap: Record<string, string> = {}; // key (normalized) -> DocDesc (original)
+
         for (const r of rows) {
             const emp = r.emp_code?.trim() || "";
-            if (!result[emp]) result[emp] = {};
+            if (!amounts[emp]) amounts[emp] = {};
             const key = this.normalizePremiName(r.doc_desc || "");
-            result[emp][key] = (result[emp][key] || 0) + (r.amount || 0);
+            amounts[emp][key] = (amounts[emp][key] || 0) + (r.amount || 0);
+
+            // Store DocDesc as title for dynamic headers
+            if (!titleMap[key]) {
+                titleMap[key] = r.doc_desc?.trim() || key;
+            }
         }
-        return result;
+        return { amounts, titleMap };
     }
 
     private async getPotongan(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string> }> {
