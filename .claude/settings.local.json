@@ -84,7 +84,8 @@
       "Bash(start http://localhost:5181)",
       "Bash(VITE_BACKEND_URL=http://localhost:8002 VITE_DEV_MODE=true npm run dev:test:*)",
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsImRpdmlzaW9ucyI6WyJQRzFBIiwiUEcxQiIsIlBHMkEiLCJQRjJCIiwiRE1FIiwiQVJBIiwiQVJCMSIsIkFSQjIiLCJJTkZSQSIsIkFSRUMiLCJJSkwiLCJTVEYtT0ZGSUNFIiwiU0VDVVJJVFkiXSwiZXhwIjoxNzY0ODM4OTI1fQ.k4suSWwwkM2hk5Tkcv2bcICUY2RM_9sFFa9pg6_jJjw\")",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(bun run:*)"
     ],
     "deny": [],
     "ask": []

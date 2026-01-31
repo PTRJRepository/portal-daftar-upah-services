@@ -245,31 +245,67 @@ export default function CustomPayrollTable({
             {
                 field: 'total_jam_kerja',
                 headers: ['ABSENSI', null, null, 'TOTAL JAM'],
-                w: 60,
+                w: 80,
                 className: 'text-center cell-absensi',
-                render: (row) => (
-                    <div
-                        style={row.has_shortage ? {
-                            backgroundColor: '#fee2e2',
-                            color: '#dc2626',
-                            fontWeight: 'bold',
-                            width: '100%',
-                            height: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        } : {
-                            width: '100%',
-                            height: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}
-                        title={row.has_shortage ? 'Kurang Jam: Jam kerja di bawah target (7 jam/hari, 5 jam/Jumat)' : ''}
-                    >
-                        {row.total_jam_kerja}
-                    </div>
-                )
+                render: (row) => {
+                    if (!row.has_shortage) {
+                        return (
+                            <div style={{
+                                width: '100%',
+                                height: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                {row.total_jam_kerja}
+                            </div>
+                        );
+                    }
+
+                    // Build tooltip with detailed shortage info
+                    const shortageInfo = row.shortage_details || [];
+                    const shortageCount = shortageInfo.length;
+                    const shortageTotalHours = row.shortage_total_hours || 0;
+
+                    let tooltipText = `⚠️ KURANG JAM KERJA\n`;
+                    tooltipText += `Total Selisih: ${shortageTotalHours.toFixed(1)} jam\n`;
+                    tooltipText += `Jumlah Hari: ${shortageCount} hari\n\n`;
+                    tooltipText += `Rincian:\n`;
+                    shortageInfo.forEach((detail, idx) => {
+                        tooltipText += `${idx + 1}. ${detail.date} (${detail.day_name})\n`;
+                        tooltipText += `   Actual: ${detail.actual_hours} jam, Target: ${detail.target_hours} jam\n`;
+                        tooltipText += `   Kurang: ${detail.shortage_hours.toFixed(1)} jam\n`;
+                    });
+
+                    return (
+                        <div
+                            style={{
+                                backgroundColor: '#fecaca',
+                                color: '#991b1b',
+                                fontWeight: 'bold',
+                                width: '100%',
+                                height: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '11px',
+                                border: '2px solid #ef4444',
+                                borderRadius: '4px',
+                                animation: 'pulse-warning 2s infinite',
+                                gap: '2px'
+                            }}
+                            title={tooltipText}
+                        >
+                            <span style={{ fontSize: '14px' }}>⚠️</span>
+                            <span>{row.total_jam_kerja}</span>
+                            {shortageTotalHours > 0 && (
+                                <span style={{ fontSize: '9px', color: '#7f1d1d' }}>
+                                    (-{shortageTotalHours.toFixed(1)}j)
+                                </span>
+                            )}
+                        </div>
+                    );
+                }
             },
             // PENGGAJIAN
             { field: 'upah_dasar', headers: ['PENGGAJIAN', null, null, 'UPAH DASAR'], w: 85, className: 'text-right' },

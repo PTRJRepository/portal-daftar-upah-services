@@ -27,6 +27,14 @@ interface LemburData {
     jumlah: number;
 }
 
+interface ShortageDetail {
+    date: string;
+    day_name: string;
+    actual_hours: number;
+    target_hours: number;
+    shortage_hours: number;
+}
+
 interface PayrollRow {
     nik: string;
     nama: string;
@@ -38,6 +46,8 @@ interface PayrollRow {
     jumlah_hk: number;
     total_jam_kerja: number; // [NEW] Total hours for the period
     has_shortage?: boolean; // [NEW] Flag for short working hours
+    shortage_details?: ShortageDetail[]; // [NEW] Details of shortage days
+    shortage_total_hours?: number; // [NEW] Total shortage hours
     hari_kerja: number;
     gaji_pokok: number;
     kehadiran: number;
@@ -291,6 +301,8 @@ export class DataExtractorService {
                 jumlah_hk: hk,
                 total_jam_kerja: attData.total_hours,
                 has_shortage: attData.shortage_count > 0, // [NEW] Map to boolean
+                shortage_details: attData.shortage_details || [], // [NEW] Detailed shortage info
+                shortage_total_hours: attData.shortage_total_hours || 0, // [NEW] Total shortage hours
                 hari_kerja,
                 gaji_pokok,
                 kehadiran: hari_kerja,
@@ -385,20 +397,26 @@ export class DataExtractorService {
         }));
     }
 
-    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, { hk: number; total_hours: number; shortage_count: number; total_amount_rp: number }>> {
+    private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, {
+        hk: number;
+        total_hours: number;
+        shortage_count: number;
+        total_amount_rp: number;
+        shortage_details: Array<{ date: string; day_name: string; actual_hours: number; target_hours: number; shortage_hours: number }>;
+        shortage_total_hours: number;
+    }>> {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // SQL to calculate shortage:
-        // Friday (5 days from 1900-01-05 mod 7 = 0) requires >= 5 hours
-        // Other days require >= 7 hours
+        // SQL to calculate shortage with more accurate Friday detection using DATENAME
+        // Friday requires >= 5 hours, Other days require >= 7 hours
         // Only count if Hours > 0
         const shortageSql = `
-            SUM(CASE 
-                WHEN (DATEDIFF(day, '1900-01-05', trl.TrxDate) % 7 = 0) THEN 
+            SUM(CASE
+                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN
                     CASE WHEN trl.Hours < 5 AND trl.Hours > 0 THEN 1 ELSE 0 END
-                ELSE 
+                ELSE
                     CASE WHEN trl.Hours < 7 AND trl.Hours > 0 THEN 1 ELSE 0 END
             END) as shortage_count
         `;
@@ -413,7 +431,7 @@ export class DataExtractorService {
               AND trl.TrxDate >= ? AND trl.TrxDate < ?
               AND trl.OT = 0
             GROUP BY RTRIM(trl.EmpCode)
-            
+
             UNION ALL
 
             SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours,
@@ -427,17 +445,105 @@ export class DataExtractorService {
             GROUP BY RTRIM(trl.EmpCode)
         `, [startDate, endDate, startDate, endDate]);
 
-        const result: Record<string, { hk: number; total_hours: number; shortage_count: number; total_amount_rp: number }> = {};
+        // Query to get detailed shortage records (individual days with shortage)
+        const shortageDetailsQuery = `
+            SELECT
+                RTRIM(trl.EmpCode) as emp_code,
+                CONVERT(varchar, trl.TrxDate, 23) as date,
+                DATENAME(weekday, trl.TrxDate) as day_name,
+                SUM(trl.Hours) as actual_hours,
+                CASE
+                    WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
+                    ELSE 7
+                END as target_hours
+            FROM PR_TASKREGLN trl
+            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+            WHERE RTRIM(trl.EmpCode) IN (${empList})
+              AND trl.TrxDate >= ? AND trl.TrxDate < ?
+              AND trl.OT = 0
+            GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
+            HAVING SUM(trl.Hours) < CASE
+                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
+                ELSE 7
+            END
+            AND SUM(trl.Hours) > 0
+
+            UNION ALL
+
+            SELECT
+                RTRIM(trl.EmpCode) as emp_code,
+                CONVERT(varchar, trl.TrxDate, 23) as date,
+                DATENAME(weekday, trl.TrxDate) as day_name,
+                SUM(trl.Hours) as actual_hours,
+                CASE
+                    WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
+                    ELSE 7
+                END as target_hours
+            FROM PR_TASKREGLN_ARC trl
+            JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+            WHERE RTRIM(trl.EmpCode) IN (${empList})
+              AND trl.TrxDate >= ? AND trl.TrxDate < ?
+              AND trl.OT = 0
+            GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
+            HAVING SUM(trl.Hours) < CASE
+                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
+                ELSE 7
+            END
+            AND SUM(trl.Hours) > 0
+        `;
+
+        const shortageRows = await db.query<{
+            emp_code: string;
+            date: string;
+            day_name: string;
+            actual_hours: number;
+            target_hours: number;
+        }>(shortageDetailsQuery, [startDate, endDate, startDate, endDate]);
+
+        const result: Record<string, {
+            hk: number;
+            total_hours: number;
+            shortage_count: number;
+            total_amount_rp: number;
+            shortage_details: Array<{ date: string; day_name: string; actual_hours: number; target_hours: number; shortage_hours: number }>;
+            shortage_total_hours: number;
+        }> = {};
+
+        // Initialize result with aggregated data
         for (const r of rows) {
             const empCode = r.emp_code?.trim() || "";
             if (!result[empCode]) {
-                result[empCode] = { hk: 0, total_hours: 0, shortage_count: 0, total_amount_rp: 0 };
+                result[empCode] = {
+                    hk: 0,
+                    total_hours: 0,
+                    shortage_count: 0,
+                    total_amount_rp: 0,
+                    shortage_details: [],
+                    shortage_total_hours: 0
+                };
             }
             result[empCode].hk += r.hk || 0;
             result[empCode].total_hours += r.total_hours || 0;
             result[empCode].shortage_count += r.shortage_count || 0;
             result[empCode].total_amount_rp += r.total_amount_rp || 0;
         }
+
+        // Add shortage details
+        for (const r of shortageRows) {
+            const empCode = r.emp_code?.trim() || "";
+            if (result[empCode]) {
+                const shortage_hours = r.target_hours - r.actual_hours;
+                result[empCode].shortage_details.push({
+                    date: r.date,
+                    day_name: r.day_name,
+                    actual_hours: r.actual_hours,
+                    target_hours: r.target_hours,
+                    shortage_hours: shortage_hours
+                });
+                result[empCode].shortage_total_hours += shortage_hours;
+            }
+        }
+
         return result;
     }
 

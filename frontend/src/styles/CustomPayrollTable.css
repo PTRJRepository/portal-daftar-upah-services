@@ -260,3 +260,28 @@
     color: #1a365d;
     margin-right: 4px;
 }
+
+/* --- Shortage Warning Animation --- */
+@keyframes pulse-warning {
+    0% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+    50% {
+        opacity: 0.85;
+    }
+    100% {
+        opacity: 1;
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
+    }
+}
+
+/* --- Shortage Warning Cell Styles --- */
+.cell-shortage-warning {
+    background-color: #fecaca !important;
+    color: #991b1b !important;
+    font-weight: bold !important;
+    border: 2px solid #ef4444 !important;
+    border-radius: 4px;
+    animation: pulse-warning 2s infinite;
+}
