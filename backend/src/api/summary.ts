@@ -36,7 +36,8 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     // --- Periods ---
     .get("/periods", async ({ query }) => {
         const periods = await summaryService.getAvailablePeriods(query.division);
-        return { success: true, count: periods.length, periods };
+        const defaultPeriod = await summaryService.getLatestBaseDataPeriod();
+        return { success: true, count: periods.length, periods, default_period: defaultPeriod };
     }, {
         query: t.Object({
             division: t.Optional(t.String())

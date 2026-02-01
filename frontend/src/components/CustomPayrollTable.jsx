@@ -245,9 +245,12 @@ export default function CustomPayrollTable({
     const columnDefs = useMemo(() => {
         const cols = [
             // IDENTITAS
-            { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 40, className: 'text-center sticky-col', left: 0 },
-            { field: 'nik', headers: ['IDENTITAS', null, null, 'NI'], w: 60, className: 'text-center sticky-col', left: 40 },
-            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 170, className: 'text-left sticky-col', left: 100 },
+            { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 40, className: 'text-center' },
+            { field: 'nik', headers: ['IDENTITAS', null, null, 'NI'], w: 60, className: 'text-center sticky-col', left: 0 },
+            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 170, className: 'text-left sticky-col', left: 60 },
+            // PAJAK [NEW]
+            { field: 'status_ptkp', headers: ['PAJAK', null, null, 'PTKP'], w: 55, className: 'text-center' },
+            { field: 'kategori_ter', headers: ['PAJAK', null, null, 'TER'], w: 55, className: 'text-center' },
             // ABSENSI > KEHADIRAN
             { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'], w: 40, className: 'text-center cell-absensi' },
             // ABSENSI > KETIDAKHADIRAN

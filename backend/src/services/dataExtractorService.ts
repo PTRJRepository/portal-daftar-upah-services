@@ -40,6 +40,8 @@ interface PayrollRow {
     nama: string;
     jabatan_estate?: string;
     jenis_kelamin: string;
+    status_ptkp: string;
+    kategori_ter: string;
     loc_code: string;
     gang_code: string;
     upah_dasar: number;
@@ -100,6 +102,39 @@ interface PayrollRow {
     pot_astek_maj: number;
     pot_bpjs_pekerja_total: number;
     [key: string]: any;
+}
+
+/**
+ * Map beras_rate (RiceRation) to PTKP status
+ * PTKP = Penghasilan Tidak Kena Pajak (Non-Taxable Income Status)
+ * Based on RiceRation values from HR_PAYROLL
+ */
+function mapBerasRateToPTKP(berasRate: number): string {
+    const mapping: Record<number, string> = {
+        2250: 'TK/0',
+        3250: 'TK/1',
+        4200: 'TK/2',
+        3750: 'K/0',
+        4650: 'K/1',
+        5550: 'K/2',
+        6450: 'K/3'  // K/3 → TER C
+    };
+    return mapping[berasRate] || '-';
+}
+
+/**
+ * Map PTKP status to TER (Tarif Efektif Rata-rata) category
+ * Based on formula: IF(OR(PTKP="TK/0",PTKP="TK/1",PTKP="K/0"),"TER A",IF(PTKP="K/3","TER C","TER B"))
+ */
+function mapPTKPToTER(statusPTKP: string): string {
+    if (!statusPTKP || statusPTKP === '-') return '-';
+    if (statusPTKP === 'TK/0' || statusPTKP === 'TK/1' || statusPTKP === 'K/0') {
+        return 'TER A';
+    }
+    if (statusPTKP === 'K/3') {
+        return 'TER C';
+    }
+    return 'TER B';
 }
 
 const DIVISION_TO_LOCCODE: Record<string, string> = {
@@ -366,11 +401,14 @@ export class DataExtractorService {
                 console.log(`[PREMI_PPH] Employee ${emp.emp_code}: PREMI_PPH (ADDED) = +${pot_premi_pph.toLocaleString('id-ID')}`);
             }
 
+            const statusPtkp = mapBerasRateToPTKP(berasRate);
             const row: PayrollRow = {
                 nik: emp.emp_code,
                 nama: emp.emp_name,
                 jabatan_estate: empJobTitle,
                 jenis_kelamin: emp.gender === "2" || emp.gender === "P" ? "P" : "L",
+                status_ptkp: statusPtkp,
+                kategori_ter: mapPTKPToTER(statusPtkp),
                 loc_code: emp.loc_code,
                 gang_code: emp.gang_code,
                 upah_dasar: empUpahDasar,

@@ -81,6 +81,12 @@ export default function WagesSummaryIJLPage({ onBack }) {
             try {
                 const result = await fetchAvailablePeriods(token);
                 setPeriods(result.periods || []);
+
+                // Set default period from server (latest base data)
+                if (result.default_period && result.default_period.month && result.default_period.year) {
+                    setMonth(result.default_period.month);
+                    setYear(result.default_period.year);
+                }
             } catch (e) {
                 console.error('Failed to load periods:', e);
             }
