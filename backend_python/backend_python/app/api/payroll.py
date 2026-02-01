@@ -241,6 +241,9 @@ async def report_grid(
                         pot_koreksi=float(row_dict.get('pot_koreksi', 0.0)),
                         potongan_upah_kotor_total=float(row_dict.get('potongan_upah_kotor_total', 0.0)),
                         upah_kotor_premi=float(row_dict.get('upah_kotor_premi', 0.0)),
+                        gaji_pokok_ideal=float(row_dict.get('gaji_pokok_ideal', 0.0)),
+                        gaji_pokok_dibayarkan=float(row_dict.get('gaji_pokok_dibayarkan', 0.0)),
+                        koreksi_hk=float(row_dict.get('koreksi_hk', 0.0)),
                         upah_bersih=float(row_dict.get('upah_bersih', 0.0)),
                         tidak_hadir_cth=int(row_dict.get('tidak_hadir_cth', 0)),
                         tidak_hadir_alpa=int(row_dict.get('tidak_hadir_alpa', 0))

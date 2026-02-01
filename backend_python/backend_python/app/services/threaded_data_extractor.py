@@ -521,11 +521,7 @@ class ThreadedDataExtractor:
         Get HK (hari kerja) count from PR_TASKREGLN.
         Total HK = count of ALL records where OT=0 (excluding alfa where there's no data).
         
-        This matches the detail activity page logic which counts total records with data.
-        Includes: hadir, cuti, sakit, minggu, libur - basically any day that has a record.
-        
-        VALIDATION: JOIN to PR_TASKREG ensures only records with valid master are counted.
-        This filters out orphan records in PR_TASKREGLN that don't have a corresponding PR_TASKREG entry.
+        Also fetches Total Amount (Upah Pokok) from DB.
         """
         condition_sql, condition_params = self._get_gang_condition_sql(gang_code, division_code)
         
@@ -533,7 +529,8 @@ class ThreadedDataExtractor:
             'sql': f"""
                 SELECT
                     tr.EmpCode,
-                    COUNT(*) as hk_count
+                    COUNT(*) as hk_count,
+                    SUM(tr.Amount) as total_amount_rp
                 FROM PR_TASKREGLN_ARC tr
                 JOIN PR_TASKREG_ARC tm ON tr.MasterID = tm.ID
                 JOIN HR_GANGLN g ON g.GangMember = tr.EmpCode
@@ -1347,11 +1344,12 @@ class ThreadedDataExtractor:
         # Set HK for all employees from actual attendance data
         # Based on reference code: hk_count = COUNT(*) WHERE IsPresent = 'true'
         for att_row in (results.get('attendance_data') or []):
-            emp_code, hk_count = att_row
+            emp_code, hk_count, total_amount_rp = att_row
             emp_code = str(emp_code).strip()
             if emp_code in employee_data:
                 employee_data[emp_code].update({
                     'jumlah_hk': hk_count or 0,  # This is the actual HK count (days present)
+                    'total_amount_rp': float(total_amount_rp or 0), # Store real amount from DB
                     # 'hari_kerja' will be calculated later after cuti data is merged
                 })
 
@@ -1728,6 +1726,9 @@ class ThreadedDataExtractor:
         logger.info(f"[KOREKSI DEBUG] Total KOREKSI items found in potongan_data: {koreksi_count}")
 
         
+        # Calculate days in month for ideal salary
+        days_in_month = calendar.monthrange(year, month)[1]
+
         # Perform Calculations for each employee
         logger.info(f"[DEBUG] Starting calculations loop for {len(employee_data)} employees")
         for emp_code, data in employee_data.items():
@@ -1738,11 +1739,25 @@ class ThreadedDataExtractor:
             hari_kerja = int(data.get('hari_kerja', 0) or 0)
             payrate = float(data.get('upah_dasar', 0) or 0)
             
-            gaji_pokok = float(hk_count * payrate)
-            upah_pokok = float(hari_kerja * payrate)
+            # Use total_amount_rp from DB if available (Gaji Pokok Dibayarkan)
+            db_amount = float(data.get('total_amount_rp', 0) or 0)
             
-            data['gaji_pokok'] = gaji_pokok
-            data['upah_pokok'] = upah_pokok
+            gaji_pokok_calc = float(hk_count * payrate)
+            upah_pokok_calc = float(hari_kerja * payrate)
+            
+            data['gaji_pokok'] = gaji_pokok_calc
+            # Use DB amount if available (preferred), else calculated
+            # This matches TypeScript backend behavior
+            data['upah_pokok'] = db_amount if db_amount > 0 else upah_pokok_calc
+
+            # NEW: Ideal Salary & Koreksi HK
+            gaji_pokok_ideal = payrate * days_in_month
+            gaji_pokok_dibayarkan = data['upah_pokok']
+            koreksi_hk = gaji_pokok_ideal - gaji_pokok_dibayarkan
+            
+            data['gaji_pokok_ideal'] = gaji_pokok_ideal
+            data['gaji_pokok_dibayarkan'] = gaji_pokok_dibayarkan
+            data['koreksi_hk'] = koreksi_hk
 
             # --- 1. Calculate Total Tunjangan & Total Premi ---
             # Total Tunjangan = Beras + Jabatan + Masa Kerja + Lembur

@@ -251,6 +251,9 @@ export default function CustomPayrollTable({
             // PAJAK [NEW]
             { field: 'status_ptkp', headers: ['PAJAK', null, null, 'PTKP'], w: 55, className: 'text-center' },
             { field: 'kategori_ter', headers: ['PAJAK', null, null, 'TER'], w: 55, className: 'text-center' },
+            { field: 'gaji_pokok_ideal', headers: ['PAJAK', null, null, 'GP IDEAL'], w: 85, className: 'text-right' },
+            { field: 'gaji_pokok_dibayarkan', headers: ['PAJAK', null, null, 'GP BAYAR'], w: 85, className: 'text-right' },
+            { field: 'koreksi_hk', headers: ['PAJAK', null, null, 'KOREKSI HK'], w: 85, className: 'text-right' },
             // ABSENSI > KEHADIRAN
             { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'], w: 40, className: 'text-center cell-absensi' },
             // ABSENSI > KETIDAKHADIRAN

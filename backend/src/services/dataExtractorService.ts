@@ -85,6 +85,10 @@ interface PayrollRow {
     pot_bpjs_pensiun_pekerja: number;
     pot_bpjs_pensiun_majikan: number;
     pot_bpjs_pensiun_jumlah: number;
+    // New fields for Tax Group
+    gaji_pokok_ideal: number;
+    gaji_pokok_dibayarkan: number;
+    koreksi_hk: number;
     // Other deductions
     pot_spsi: number;
     pot_pph21: number;
@@ -179,6 +183,9 @@ export class DataExtractorService {
         const nextYear = month === 12 ? year + 1 : year;
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`;
 
+        // Calculate days in the selected month for ideal salary calculation
+        const daysInMonth = new Date(year, month, 0).getDate();
+
         let gangCondition = "";
         if (specificEmpCode) {
             gangCondition = `RTRIM(e.EmpCode) = '${specificEmpCode.trim()}'`;
@@ -250,6 +257,7 @@ export class DataExtractorService {
             const empBeras = beras[emp.emp_code] || 0;
             const empJabatan = jabatan[emp.emp_code] || 0;
             const empMasaKerjaJumlah = masaKerja[emp.emp_code] || 0;
+            const daysInMonth = new Date(year, month, 0).getDate();
             const empUpahDasar = upahPokok[emp.emp_code] || emp.pay_rate || 0;
             const empJobTitle = jobTitles[emp.emp_code] || "";
 
@@ -401,6 +409,16 @@ export class DataExtractorService {
                 console.log(`[PREMI_PPH] Employee ${emp.emp_code}: PREMI_PPH (ADDED) = +${pot_premi_pph.toLocaleString('id-ID')}`);
             }
 
+            // [NEW] Calculate Ideal Salary and Koreksi HK for Tax Group
+            const gaji_pokok_ideal = empUpahDasar * daysInMonth;
+
+            // [UPDATED] Use total_amount_rp from PR_TASKREGLN (sum amount) instead of calculated upah_pokok
+            // User Request: "Gaji pokok (dibayarkan) yang diambil dari sum amount plantware"
+            // If attData.total_amount_rp is undefined, fallback to upah_pokok or 0
+            const gaji_pokok_dibayarkan = attData.total_amount_rp ?? upah_pokok;
+
+            const koreksi_hk = gaji_pokok_ideal - gaji_pokok_dibayarkan;
+
             const statusPtkp = mapBerasRateToPTKP(berasRate);
             const row: PayrollRow = {
                 nik: emp.emp_code,
@@ -447,12 +465,16 @@ export class DataExtractorService {
                 pot_bpjs_pensiun_pekerja,
                 pot_bpjs_pensiun_majikan,
                 pot_bpjs_pensiun_jumlah,
+                gaji_pokok_ideal,
+                gaji_pokok_dibayarkan,
+                koreksi_hk,
                 pot_spsi,
                 pot_pph21,
                 pot_koreksi,
                 premi_koreksi: pot_koreksi,
                 potongan_upah_kotor_total: pot_koreksi,
                 potongan_upah_kotor_details: {
+                    koreksi: pot_koreksi,
                     ...koreksiVariations,
                     total: pot_koreksi
                 },
@@ -466,6 +488,7 @@ export class DataExtractorService {
                 upah_bersih,
                 premi: empPremi,
                 pot_astek: pot_astek_pekerja,
+                pot_astek_pekerja: pot_astek_pekerja,
                 pot_astek_maj: pot_astek_majikan,
                 pot_bpjs_pekerja_total: pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja,
                 // Add individual koreksi variations as separate fields

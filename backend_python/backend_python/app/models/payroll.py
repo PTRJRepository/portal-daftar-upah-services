@@ -81,6 +81,11 @@ class PayrollRow(BaseModel):
     potongan_upah_kotor_total: float = 0.0  # Sum of dynamic potongan + koreksi
     upah_kotor_premi: float = 0.0  # Total Premi - Potongan Upah Kotor Total
     
+    # New Tax Group fields
+    gaji_pokok_ideal: float = 0.0
+    gaji_pokok_dibayarkan: float = 0.0
+    koreksi_hk: float = 0.0
+
     upah_bersih: float = 0.0
     tidak_hadir_cth: int = 0
     tidak_hadir_alpa: int = 0

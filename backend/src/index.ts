@@ -67,10 +67,10 @@ const app = new Elysia()
     .get("/vite.svg", () => Bun.file("../frontend/dist/vite.svg"))
 
     // Serve assets (JS/CSS) - Handle /upah prefix from Vite production build
-    .use(staticPlugin({
-        assets: "../frontend/dist",
-        prefix: "/upah"
-    }))
+    // .use(staticPlugin({
+    //     assets: "../frontend/dist",
+    //     prefix: "/upah"
+    // }))
     // Also serve at root /assets just in case
     .use(staticPlugin({
         assets: "../frontend/dist/assets",
