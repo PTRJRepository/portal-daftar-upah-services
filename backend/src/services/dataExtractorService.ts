@@ -197,11 +197,13 @@ export class DataExtractorService {
         if (specificEmpCode) {
             gangCondition = `RTRIM(e.EmpCode) = '${specificEmpCode.trim()}'`;
         } else if (gangCode && gangCode !== "ALL") {
-            gangCondition = `RTRIM(LTRIM(gl.GangCode)) = '${gangCode.trim()}'`;
+            // Use UPPER for case-insensitive comparison and RTRIM to handle trailing spaces
+            gangCondition = `UPPER(RTRIM(gl.GangCode)) = UPPER('${gangCode.trim()}')`;
         } else if (divisionCode) {
             const gangs = await gangService.fetchGangs(divisionCode);
             if (gangs.length > 0) {
-                const conditions = gangs.map((gang: { gang_code: string }) => `RTRIM(LTRIM(gl.GangCode)) = '${gang.gang_code}'`).join(' OR ');
+                // Use UPPER for case-insensitive comparison and RTRIM for trailing spaces
+                const conditions = gangs.map((gang: { gang_code: string }) => `UPPER(RTRIM(gl.GangCode)) = UPPER('${gang.gang_code.trim()}')`).join(' OR ');
                 gangCondition = `(${conditions})`;
             } else {
                 gangCondition = "1=0";
@@ -376,8 +378,13 @@ export class DataExtractorService {
             const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
                 pot_spsi + pot_pph21 + other_potongan;
 
+            // [UPDATED] gaji_pokok_aktual calculated early for use in jumlah_upah_kotor
+            // gaji_pokok_aktual = total_amount_rp dari PR_TASKREGLN (sum amount plantware)
+            const gaji_pokok_aktual = attData.total_amount_rp ?? 0;
+
             // [FIXED] KOREKSI is deducted from jumlah_upah_kotor (Potongan Upah Kotor section)
-            const jumlah_upah_kotor = (gaji_pokok + total_tunjangan + total_premi) - pot_koreksi;
+            // [CHANGED] Use gaji_pokok_aktual instead of gaji_pokok_ideal for gross wage calculation
+            const jumlah_upah_kotor = (gaji_pokok_aktual + total_tunjangan + total_premi) - pot_koreksi;
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
             // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
@@ -387,9 +394,7 @@ export class DataExtractorService {
             // gaji_pokok_ideal = upah_dasar × jumlah_hk (HK aktual yang dijalani karyawan)
             const gaji_pokok_ideal = empUpahDasar * hk;
 
-            // gaji_pokok_aktual = total_amount_rp dari PR_TASKREGLN (sum amount plantware)
-            // Ini adalah gaji yang sebenarnya dibayarkan berdasarkan jam kerja
-            const gaji_pokok_aktual = attData.total_amount_rp ?? 0;
+            // gaji_pokok_aktual is already calculated above for jumlah_upah_kotor
 
             // koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal
             const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal;
@@ -518,20 +523,20 @@ export class DataExtractorService {
         const whereClause = gangCondition ? `WHERE ${gangCondition}` : "";
         const rows = await db.query<any>(`
             SELECT DISTINCT
-                e.EmpCode as emp_code,
+                RTRIM(e.EmpCode) as emp_code,
                 e.EmpName as emp_name,
                 e.Gender as gender,
-                e.LocCode as loc_code,
-                gl.GangCode as gang_code,
+                RTRIM(e.LocCode) as loc_code,
+                RTRIM(gl.GangCode) as gang_code,
                 COALESCE(p.PayRate, 0) as pay_rate,
                 COALESCE(p.RiceRation, 0) as beras_rate,
                 em.AppJoinGrpDate as join_date
             FROM HR_EMPLOYEE e
-            LEFT JOIN HR_GANGLN gl ON gl.GangMember = e.EmpCode
-            LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
-            LEFT JOIN HR_EMPLOYMENT em ON em.EmpCode = e.EmpCode
+            LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+            LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+            LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
             ${whereClause}
-            ORDER BY e.EmpCode
+            ORDER BY emp_code
         `);
         return rows.map((r: any) => ({
             emp_code: r.emp_code?.trim() || "",
