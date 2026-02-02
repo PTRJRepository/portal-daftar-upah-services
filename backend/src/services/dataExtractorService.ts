@@ -210,7 +210,6 @@ export class DataExtractorService {
 
         const startTotal = performance.now();
         const employees = await this.getEmployees(gangCondition, serverProfile);
-        console.log(`[Perf] GetEmployees: ${employees.length} rows in ${(performance.now() - startTotal).toFixed(2)}ms`);
 
         if (employees.length === 0) {
             return {
@@ -227,21 +226,20 @@ export class DataExtractorService {
 
         const startParallel = performance.now();
         const [attendanceMap, cuti, premiResult, potonganResult, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
-            this.getAttendance(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Attendance: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getCuti(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Cuti: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getPremi(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Premi: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getPotongan(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Potongan: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile).then(res => { console.log(`[Perf] LemburCalc: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getAttendance(empCodes, startDate, endDate, serverProfile),
+            this.getCuti(empCodes, startDate, endDate, serverProfile),
+            this.getPremi(empCodes, startDate, endDate, serverProfile),
+            this.getPotongan(empCodes, startDate, endDate, serverProfile),
+            this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
 
-            this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS", serverProfile).then(res => { console.log(`[Perf] Beras: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile).then(res => { console.log(`[Perf] Jabatan: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile).then(res => { console.log(`[Perf] MasaKerja: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getUpahPokok(empCodes, serverProfile).then(res => { console.log(`[Perf] UpahPokok: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
-            this.getBrondol(empCodes, startDate, endDate, serverProfile).then(res => { console.log(`[Perf] Brondol: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; }),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS", serverProfile),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
+            this.getUpahPokok(empCodes, serverProfile),
+            this.getBrondol(empCodes, startDate, endDate, serverProfile),
 
-            EmployeeEstateService.getEmployeeJobs().then(res => { console.log(`[Perf] JobTitles: ${(performance.now() - startParallel).toFixed(2)}ms`); return res; })
+            EmployeeEstateService.getEmployeeJobs()
         ]);
-        console.log(`[Perf] ParallelFetch Total: ${(performance.now() - startParallel).toFixed(2)}ms`);
 
         // Destructure premi result - uses DocDesc as title
         const { amounts: premi, titleMap: premiTitleMap } = premiResult;
@@ -316,7 +314,6 @@ export class DataExtractorService {
             // [CRITICAL FIX] Add PREMI_PPH to dynamicPotonganSet if it has a value
             if (pot_premi_pph > 0) {
                 dynamicPotonganSet.add("PREMI_PPH");
-                console.log(`[PREMI_PPH_SET] Added PREMI_PPH to dynamic headers for ${emp.emp_code}: ${pot_premi_pph.toLocaleString('id-ID')}`);
             }
 
             // [NEW] Handle KOREKSI variations separately
@@ -336,20 +333,11 @@ export class DataExtractorService {
             let other_potongan = 0;
             let db_bpjs_kes = 0;
 
-            // DEBUG: Log all empPotongan keys before processing
-            if (emp.emp_code === 'D0051') {
-                console.log(`[DEBUG D0051] empPotongan ALL keys:`, Object.keys(empPotongan));
-                console.log(`[DEBUG D0051] empPotongan ALL values:`, empPotongan);
-            }
-
             for (const [key, val] of Object.entries(empPotongan)) {
                 // Skip static fields and KOREKSI, PREMI_PPH (handled above)
                 // Use case-insensitive check for KOREKSI to be safe
                 const keyUpper = key.toUpperCase();
                 if (key === "SPSI" || key === "PPH21" || keyUpper.startsWith("KOREKSI") || key === "PREMI_PPH") {
-                    if (emp.emp_code === 'D0051') {
-                        console.log(`[DEBUG D0051] SKIPPED key: ${key}, value: ${val}`);
-                    }
                     continue;
                 }
 
@@ -386,35 +374,12 @@ export class DataExtractorService {
             const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
                 pot_spsi + pot_pph21 + other_potongan;
 
-            // [DEBUG] Log calculation breakdown for specific employee
-            if (emp.emp_code === 'D0051') {
-                console.log(`\n[DEBUG D0051] ===== TOTAL POTONGAN BREAKDOWN =====`);
-                console.log(`[DEBUG D0051] pot_astek_pekerja: ${pot_astek_pekerja.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] pot_bpjs_kesehatan_pekerja: ${pot_bpjs_kesehatan_pekerja.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] pot_bpjs_pensiun_pekerja: ${pot_bpjs_pensiun_pekerja.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] pot_spsi: ${pot_spsi.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] pot_pph21: ${pot_pph21.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] other_potongan: ${other_potongan.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] pot_koreksi (ONLY in Potongan Upah Kotor): ${pot_koreksi.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] ----------------------------------------`);
-                console.log(`[DEBUG D0051] TOTAL_POTONGAN (Potongan Bersih): ${total_potongan.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] pot_premi_pph (ADDED): +${pot_premi_pph.toLocaleString('id-ID')}`);
-                console.log(`[DEBUG D0051] empPotongan keys:`, Object.keys(empPotongan));
-                console.log(`[DEBUG D0051] empPotongan values:`, empPotongan);
-                console.log(`[DEBUG D0051] =====================================\n`);
-            }
-
             // [FIXED] KOREKSI is deducted from jumlah_upah_kotor (Potongan Upah Kotor section)
             const jumlah_upah_kotor = (gaji_pokok + total_tunjangan + total_premi) - pot_koreksi;
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
             // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
             const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph;
-
-            // Log PREMI_PPH if non-zero
-            if (pot_premi_pph > 0) {
-                console.log(`[PREMI_PPH] Employee ${emp.emp_code}: PREMI_PPH (ADDED) = +${pot_premi_pph.toLocaleString('id-ID')}`);
-            }
 
             // [NEW] Calculate Ideal Salary and Koreksi HK for Tax Group
             const gaji_pokok_ideal = empUpahDasar * daysInMonth;
@@ -527,17 +492,6 @@ export class DataExtractorService {
                 ),
                 ...empPremi
             };
-
-            // Log per employee if has koreksi
-            if (pot_koreksi > 0) {
-                console.log(`[KOREKSI] Employee ${emp.emp_code} (${emp.emp_name}): Total koreksi = ${pot_koreksi.toLocaleString('id-ID')}`);
-                const variationKeys = Object.keys(koreksiVariations);
-                if (variationKeys.length > 0) {
-                    for (const key of variationKeys) {
-                        console.log(`[KOREKSI]   - ${key}: ${koreksiVariations[key].toLocaleString('id-ID')}`);
-                    }
-                }
-            }
 
             dataRows.push(row);
         }
@@ -926,8 +880,6 @@ export class DataExtractorService {
         // 3. POTONGAN lainnya (potongan upah bersih) - DocDesc mengandung "POT", dll
         //
         // NOTE: Premi PPH (ditambah/plus) diambil dari query terpisah menggunakan TaskDesc
-        const koreksiLog: Array<{ emp_code: string; doc_desc: string; amount: number }> = [];
-        const pph21Log: Array<{ emp_code: string; doc_desc: string; amount: number }> = [];
 
         // [UPDATED] Add LEFT JOIN for TaskDesc to filter PPH items where TaskDesc contains PREMI
         let rows = await db.query<{ emp_code: string; doc_desc: string; task_desc: string | null; amount: number }>(`
@@ -977,13 +929,6 @@ export class DataExtractorService {
         const amounts: Record<string, Record<string, number>> = {};
         const titleMap: Record<string, string> = {};
 
-        // Log first few rows for debugging
-        console.log(`[POTONGAN DEBUG] Total rows returned: ${rows.length}`);
-        const sampleRows = rows.slice(0, 5);
-        for (const r of sampleRows) {
-            console.log(`[POTONGAN DEBUG] Sample row: Emp=${r.emp_code}, DocDesc='${r.doc_desc}', Amount=${r.amount}`);
-        }
-
         for (const r of rows) {
             const emp = r.emp_code?.trim() || "";
             if (!amounts[emp]) amounts[emp] = {};
@@ -998,64 +943,6 @@ export class DataExtractorService {
             if (!titleMap[key]) {
                 titleMap[key] = title;
             }
-
-            // Log koreksi entries for debugging
-            if (key.includes("KOREKSI")) {
-                koreksiLog.push({
-                    emp_code: emp,
-                    doc_desc: r.doc_desc || "",
-                    amount: Math.abs(r.amount || 0)
-                });
-            }
-
-            // Log PPH21 entries for debugging
-            if (key === "PPH21") {
-                pph21Log.push({
-                    emp_code: emp,
-                    doc_desc: r.doc_desc || "",
-                    amount: Math.abs(r.amount || 0)
-                });
-            }
-        }
-
-        // Log PPH21 summary
-        if (pph21Log.length > 0) {
-            const totalPph21 = pph21Log.reduce((sum, entry) => sum + entry.amount, 0);
-            const affectedEmployees = new Set(pph21Log.map(e => e.emp_code)).size;
-            console.log(`[PPH21] Potongan Upah Bersih (${startDate} to ${endDate}):`);
-            console.log(`[PPH21] Total entries: ${pph21Log.length}, Total amount: ${totalPph21.toLocaleString('id-ID')}, Employees affected: ${affectedEmployees}`);
-            // Group by DocDesc type
-            const groupedByDocDesc = pph21Log.reduce((acc, entry) => {
-                const docType = entry.doc_desc;
-                if (!acc[docType]) acc[docType] = { total: 0, count: 0 };
-                acc[docType].total += entry.amount;
-                acc[docType].count += 1;
-                return acc;
-            }, {} as Record<string, { total: number; count: number }>);
-            for (const [docType, data] of Object.entries(groupedByDocDesc)) {
-                console.log(`[PPH21]   ${docType}: ${data.total.toLocaleString('id-ID')} (${data.count} entries)`);
-            }
-        }
-
-        // Log koreksi summary
-        if (koreksiLog.length > 0) {
-            const totalKoreksi = koreksiLog.reduce((sum, entry) => sum + entry.amount, 0);
-            const affectedEmployees = new Set(koreksiLog.map(e => e.emp_code)).size;
-            console.log(`[KOREKSI] Potongan Upah Kotor (${startDate} to ${endDate}):`);
-            console.log(`[KOREKSI] Total entries: ${koreksiLog.length}, Total amount: ${totalKoreksi.toLocaleString('id-ID')}, Employees affected: ${affectedEmployees}`);
-            // Group by DocDesc type
-            const groupedByDocDesc = koreksiLog.reduce((acc, entry) => {
-                const docType = entry.doc_desc;
-                if (!acc[docType]) acc[docType] = { total: 0, count: 0 };
-                acc[docType].total += entry.amount;
-                acc[docType].count += 1;
-                return acc;
-            }, {} as Record<string, { total: number; count: number }>);
-            for (const [docType, data] of Object.entries(groupedByDocDesc)) {
-                console.log(`[KOREKSI]   ${docType}: ${data.total.toLocaleString('id-ID')} (${data.count} entries)`);
-            }
-        } else {
-            console.log(`[KOREKSI] No KOREKSI entries found for ${empCodes.length} employees between ${startDate} and ${endDate}`);
         }
 
         // [NEW] Query for Premi PPH from TaskDesc = 'ACCRUALS-CHECKROLL'
@@ -1088,17 +975,6 @@ export class DataExtractorService {
             WHERE mt.TaskDesc = 'ACCRUALS-CHECKROLL'
             GROUP BY RTRIM(t.EmpCode), t.DocDesc
         `, [startDate, endDate, startDate, endDate]);
-
-        // Log Premi PPH for debugging
-        if (premiPphRows.length > 0) {
-            const totalPremiPph = premiPphRows.reduce((sum, r) => sum + Math.abs(r.amount || 0), 0);
-            const affectedEmployees = new Set(premiPphRows.map(e => e.emp_code)).size;
-            console.log(`[PREMI_PPH] Potongan Upah Bersih (${startDate} to ${endDate}):`);
-            console.log(`[PREMI_PPH] Total entries: ${premiPphRows.length}, Amount: ${totalPremiPph.toLocaleString('id-ID')}, Employees: ${affectedEmployees}`);
-            for (const r of premiPphRows) {
-                console.log(`[PREMI_PPH]   Emp: ${r.emp_code}, DocDesc: '${r.doc_desc}', Amount: ${Math.abs(r.amount || 0).toLocaleString('id-ID')}`);
-            }
-        }
 
         // Add Premi PPH to amounts with key "PREMI_PPH"
         // Ini akan muncul sebagai kolom di POTONGAN UPAH BERSIH

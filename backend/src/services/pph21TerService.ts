@@ -78,12 +78,9 @@ class Pph21TerService {
                 throw new Error(`Rules file not found. Tried: ${possiblePaths.join(', ')}`);
             }
 
-            console.log(`[Pph21TerService] Loading tax rules from: ${jsonPath}`);
-
             const rawData = fs.readFileSync(jsonPath, 'utf-8');
             this.rules = JSON.parse(rawData);
             this.buildPtkpMap();
-            console.log(`[Pph21TerService] Rules loaded successfully. Found ${Object.keys(this.ptkpMap).length} PTKP mappings.`);
         } catch (error) {
             console.error(`[Pph21TerService] Failed to load rules:`, error);
             // Don't crash immediately, but subsequent calls will fail or need fallback
