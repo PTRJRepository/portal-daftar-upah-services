@@ -965,7 +965,8 @@ export class DataExtractorService {
                 OR UPPER(t.DocDesc) LIKE '%SPSI%'
                 OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
                 OR UPPER(t.DocDesc) LIKE '%TOTAL%'
-                OR UPPER(t.DocDesc) LIKE '%TIKET%'
+                -- REMOVED: %TIKET% - Premi Tiket adalah TUNJANGAN/PREMI, bukan POTONGAN
+                -- OR UPPER(t.DocDesc) LIKE '%TIKET%'
                 OR UPPER(t.DocDesc) LIKE '%KONTAN%'
                 OR UPPER(t.DocDesc) LIKE '%ALAT%'
                 OR UPPER(t.DocDesc) LIKE '%THR%'
