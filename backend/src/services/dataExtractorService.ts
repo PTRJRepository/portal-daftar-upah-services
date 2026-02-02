@@ -105,6 +105,7 @@ interface PayrollRow {
     // New calculated tax fields
     astek_084: number;
     penghasilan_bruto: number; // Sum of: gaji_pokok_aktual + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
+    upah_kotor_pajak: number; // Jumlah Upah Kotor + Astek + BPJS Kesehatan (untuk header/pajak)
     // PPH21 TER fields
     tarif_pajak_ter: number; // TER rate as percentage (e.g., 5 for 5%)
     pph21_ter: number; // Calculated PPH21 amount using TER method
@@ -255,7 +256,7 @@ export class DataExtractorService {
         for (const emp of employees) {
             const attData = attendanceMap[emp.emp_code] || { hk: 0, total_hours: 0, shortage_count: 0, total_amount_rp: 0 };
             const hk = attData.hk;
-            if (hk === 0) continue;
+            // REMOVED: Skip employees with HK=0 - now we display all employees even with no attendance
 
             const empCuti = cuti[emp.emp_code] || { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
             const empPremi = premi[emp.emp_code] || {};
@@ -293,8 +294,12 @@ export class DataExtractorService {
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
 
             // [UPDATED] Gaji Pokok untuk Grup Penggajian
-            // gaji_pokok = gaji_pokok_ideal untuk perhitungan jumlah_upah_kotor
-            const gaji_pokok = empUpahDasar * hk;
+            // gaji_pokok_ideal = upah_dasar × jumlah_hk (untuk referensi)
+            // gaji_pokok_aktual = total_amount_rp dari PR_TASKREGLN (amount plantware) - untuk display dan perhitungan
+            // koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal
+            const gaji_pokok_ideal = empUpahDasar * hk;
+            const gaji_pokok_aktual = attData.total_amount_rp ?? 0;
+            const gaji_pokok = gaji_pokok_aktual;  // Use actual for display and calculation
             const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah;
 
             empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
@@ -378,13 +383,12 @@ export class DataExtractorService {
             const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
                 pot_spsi + pot_pph21 + other_potongan;
 
-            // [UPDATED] gaji_pokok_aktual calculated early for use in jumlah_upah_kotor
-            // gaji_pokok_aktual = total_amount_rp dari PR_TASKREGLN (sum amount plantware)
-            const gaji_pokok_aktual = attData.total_amount_rp ?? 0;
-
             // [FIXED] KOREKSI is deducted from jumlah_upah_kotor (Potongan Upah Kotor section)
-            // [CHANGED] Use gaji_pokok_aktual instead of gaji_pokok_ideal for gross wage calculation
+            // Use gaji_pokok_aktual (calculated earlier) for gross wage calculation
             const jumlah_upah_kotor = (gaji_pokok_aktual + total_tunjangan + total_premi) - pot_koreksi;
+
+            // [NEW] Upah Kotor Pajak = Jumlah Upah Kotor + Astek + BPJS Kesehatan (untuk header/pajak)
+            const upah_kotor_pajak = jumlah_upah_kotor + pot_astek_pekerja + pot_bpjs_kesehatan_pekerja;
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
             // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
@@ -392,9 +396,7 @@ export class DataExtractorService {
 
             // [UPDATED] Calculate Ideal and Actual Salary for Penggajian Group
             // gaji_pokok_ideal = upah_dasar × jumlah_hk (HK aktual yang dijalani karyawan)
-            const gaji_pokok_ideal = empUpahDasar * hk;
-
-            // gaji_pokok_aktual is already calculated above for jumlah_upah_kotor
+            // gaji_pokok_ideal already calculated above
 
             // koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal
             const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal;
@@ -452,6 +454,7 @@ export class DataExtractorService {
                 upah_pokok,
                 total_premi,
                 jumlah_upah_kotor,
+                upah_kotor_pajak,
                 pot_astek_majikan,
                 pot_astek_jumlah,
                 pot_bpjs_kesehatan_pekerja,

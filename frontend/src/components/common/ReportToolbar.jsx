@@ -142,7 +142,8 @@ export default function ReportToolbar({
                     onChange={(e) => onGangChange(e.target.value)}
                     disabled={disableControls}
                 >
-                    {String(gangCode).toUpperCase() === 'ALL' && <option value="ALL">SEMUA GANG</option>}
+                    {/* Always show "SEMUA GANG" option at the top */}
+                    <option value="ALL">🌐 SEMUA GANG</option>
                     {gangs && gangs.length > 0 ? (
                         gangs.map(g => (
                             <option key={g.gang_code} value={g.gang_code}>
@@ -150,7 +151,7 @@ export default function ReportToolbar({
                             </option>
                         ))
                     ) : (
-                        <option value={gangCode}>{gangCode}</option>
+                        gangCode && gangCode !== 'ALL' && <option value={gangCode}>{gangCode}</option>
                     )}
                 </select>
             </div>
