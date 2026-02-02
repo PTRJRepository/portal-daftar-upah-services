@@ -1,0 +1,783 @@
+{
+    "tarif_pph21_ter": {
+        "ter_a": {
+            "kategori": "TER A",
+            "ptkp_status": [
+                "TK/0",
+                "TK/1",
+                "K/0"
+            ],
+            "layers": [
+                {
+                    "no": 1,
+                    "min_bruto": 0,
+                    "max_bruto": 5400000,
+                    "tarif": 0.0
+                },
+                {
+                    "no": 2,
+                    "min_bruto": 5400001,
+                    "max_bruto": 5650000,
+                    "tarif": 0.25
+                },
+                {
+                    "no": 3,
+                    "min_bruto": 5650001,
+                    "max_bruto": 5950000,
+                    "tarif": 0.50
+                },
+                {
+                    "no": 4,
+                    "min_bruto": 5950001,
+                    "max_bruto": 6300000,
+                    "tarif": 0.75
+                },
+                {
+                    "no": 5,
+                    "min_bruto": 6300001,
+                    "max_bruto": 6750000,
+                    "tarif": 1.00
+                },
+                {
+                    "no": 6,
+                    "min_bruto": 6750001,
+                    "max_bruto": 7500000,
+                    "tarif": 1.25
+                },
+                {
+                    "no": 7,
+                    "min_bruto": 7500001,
+                    "max_bruto": 8550000,
+                    "tarif": 1.50
+                },
+                {
+                    "no": 8,
+                    "min_bruto": 8550001,
+                    "max_bruto": 9650000,
+                    "tarif": 1.75
+                },
+                {
+                    "no": 9,
+                    "min_bruto": 9650001,
+                    "max_bruto": 10050000,
+                    "tarif": 2.00
+                },
+                {
+                    "no": 10,
+                    "min_bruto": 10050001,
+                    "max_bruto": 10350000,
+                    "tarif": 2.25
+                },
+                {
+                    "no": 11,
+                    "min_bruto": 10350001,
+                    "max_bruto": 10700000,
+                    "tarif": 2.50
+                },
+                {
+                    "no": 12,
+                    "min_bruto": 10700001,
+                    "max_bruto": 11050000,
+                    "tarif": 3.00
+                },
+                {
+                    "no": 13,
+                    "min_bruto": 11050001,
+                    "max_bruto": 11600000,
+                    "tarif": 3.50
+                },
+                {
+                    "no": 14,
+                    "min_bruto": 11600001,
+                    "max_bruto": 12500000,
+                    "tarif": 4.00
+                },
+                {
+                    "no": 15,
+                    "min_bruto": 12500001,
+                    "max_bruto": 13750000,
+                    "tarif": 5.00
+                },
+                {
+                    "no": 16,
+                    "min_bruto": 13750001,
+                    "max_bruto": 15100000,
+                    "tarif": 6.00
+                },
+                {
+                    "no": 17,
+                    "min_bruto": 15100001,
+                    "max_bruto": 16950000,
+                    "tarif": 7.00
+                },
+                {
+                    "no": 18,
+                    "min_bruto": 16950001,
+                    "max_bruto": 19750000,
+                    "tarif": 8.00
+                },
+                {
+                    "no": 19,
+                    "min_bruto": 19750001,
+                    "max_bruto": 24150000,
+                    "tarif": 9.00
+                },
+                {
+                    "no": 20,
+                    "min_bruto": 24150001,
+                    "max_bruto": 26450000,
+                    "tarif": 10.00
+                },
+                {
+                    "no": 21,
+                    "min_bruto": 26450001,
+                    "max_bruto": 28000000,
+                    "tarif": 11.00
+                },
+                {
+                    "no": 22,
+                    "min_bruto": 28000001,
+                    "max_bruto": 30050000,
+                    "tarif": 12.00
+                },
+                {
+                    "no": 23,
+                    "min_bruto": 30050001,
+                    "max_bruto": 32400000,
+                    "tarif": 13.00
+                },
+                {
+                    "no": 24,
+                    "min_bruto": 32400001,
+                    "max_bruto": 35400000,
+                    "tarif": 14.00
+                },
+                {
+                    "no": 25,
+                    "min_bruto": 35400001,
+                    "max_bruto": 39100000,
+                    "tarif": 15.00
+                },
+                {
+                    "no": 26,
+                    "min_bruto": 39100001,
+                    "max_bruto": 43850000,
+                    "tarif": 16.00
+                },
+                {
+                    "no": 27,
+                    "min_bruto": 43850001,
+                    "max_bruto": 47800000,
+                    "tarif": 17.00
+                },
+                {
+                    "no": 28,
+                    "min_bruto": 47800001,
+                    "max_bruto": 51400000,
+                    "tarif": 18.00
+                },
+                {
+                    "no": 29,
+                    "min_bruto": 51400001,
+                    "max_bruto": 56300000,
+                    "tarif": 19.00
+                },
+                {
+                    "no": 30,
+                    "min_bruto": 56300001,
+                    "max_bruto": 62200000,
+                    "tarif": 20.00
+                },
+                {
+                    "no": 31,
+                    "min_bruto": 62200001,
+                    "max_bruto": 68600000,
+                    "tarif": 21.00
+                },
+                {
+                    "no": 32,
+                    "min_bruto": 68600001,
+                    "max_bruto": 77500000,
+                    "tarif": 22.00
+                },
+                {
+                    "no": 33,
+                    "min_bruto": 77500001,
+                    "max_bruto": 89000000,
+                    "tarif": 23.00
+                },
+                {
+                    "no": 34,
+                    "min_bruto": 89000001,
+                    "max_bruto": 103000000,
+                    "tarif": 24.00
+                },
+                {
+                    "no": 35,
+                    "min_bruto": 103000001,
+                    "max_bruto": 125000000,
+                    "tarif": 25.00
+                },
+                {
+                    "no": 36,
+                    "min_bruto": 125000001,
+                    "max_bruto": 157000000,
+                    "tarif": 26.00
+                },
+                {
+                    "no": 37,
+                    "min_bruto": 157000001,
+                    "max_bruto": 206000000,
+                    "tarif": 27.00
+                },
+                {
+                    "no": 38,
+                    "min_bruto": 206000001,
+                    "max_bruto": 337000000,
+                    "tarif": 28.00
+                },
+                {
+                    "no": 39,
+                    "min_bruto": 337000001,
+                    "max_bruto": 454000000,
+                    "tarif": 29.00
+                },
+                {
+                    "no": 40,
+                    "min_bruto": 454000001,
+                    "max_bruto": 550000000,
+                    "tarif": 30.00
+                },
+                {
+                    "no": 41,
+                    "min_bruto": 550000001,
+                    "max_bruto": 695000000,
+                    "tarif": 31.00
+                },
+                {
+                    "no": 42,
+                    "min_bruto": 695000001,
+                    "max_bruto": 910000000,
+                    "tarif": 32.00
+                },
+                {
+                    "no": 43,
+                    "min_bruto": 910000001,
+                    "max_bruto": 1400000000,
+                    "tarif": 33.00
+                },
+                {
+                    "no": 44,
+                    "min_bruto": 1400000001,
+                    "max_bruto": null,
+                    "tarif": 34.00
+                }
+            ]
+        },
+        "ter_b": {
+            "kategori": "TER B",
+            "ptkp_status": [
+                "TK/2",
+                "TK/3",
+                "K/1",
+                "K/2"
+            ],
+            "layers": [
+                {
+                    "no": 1,
+                    "min_bruto": 0,
+                    "max_bruto": 6200000,
+                    "tarif": 0.0
+                },
+                {
+                    "no": 2,
+                    "min_bruto": 6200001,
+                    "max_bruto": 6500000,
+                    "tarif": 0.25
+                },
+                {
+                    "no": 3,
+                    "min_bruto": 6500001,
+                    "max_bruto": 6850000,
+                    "tarif": 0.50
+                },
+                {
+                    "no": 4,
+                    "min_bruto": 6850001,
+                    "max_bruto": 7300000,
+                    "tarif": 0.75
+                },
+                {
+                    "no": 5,
+                    "min_bruto": 7300001,
+                    "max_bruto": 9200000,
+                    "tarif": 1.00
+                },
+                {
+                    "no": 6,
+                    "min_bruto": 9200001,
+                    "max_bruto": 10750000,
+                    "tarif": 1.50
+                },
+                {
+                    "no": 7,
+                    "min_bruto": 10750001,
+                    "max_bruto": 11250000,
+                    "tarif": 2.00
+                },
+                {
+                    "no": 8,
+                    "min_bruto": 11250001,
+                    "max_bruto": 11600000,
+                    "tarif": 2.50
+                },
+                {
+                    "no": 9,
+                    "min_bruto": 11600001,
+                    "max_bruto": 12600000,
+                    "tarif": 3.00
+                },
+                {
+                    "no": 10,
+                    "min_bruto": 12600001,
+                    "max_bruto": 13600000,
+                    "tarif": 4.00
+                },
+                {
+                    "no": 11,
+                    "min_bruto": 13600001,
+                    "max_bruto": 14950000,
+                    "tarif": 5.00
+                },
+                {
+                    "no": 12,
+                    "min_bruto": 14950001,
+                    "max_bruto": 16400000,
+                    "tarif": 6.00
+                },
+                {
+                    "no": 13,
+                    "min_bruto": 16400001,
+                    "max_bruto": 18450000,
+                    "tarif": 7.00
+                },
+                {
+                    "no": 14,
+                    "min_bruto": 18450001,
+                    "max_bruto": 21850000,
+                    "tarif": 8.00
+                },
+                {
+                    "no": 15,
+                    "min_bruto": 21850001,
+                    "max_bruto": 26000000,
+                    "tarif": 9.00
+                },
+                {
+                    "no": 16,
+                    "min_bruto": 26000001,
+                    "max_bruto": 27700000,
+                    "tarif": 10.00
+                },
+                {
+                    "no": 17,
+                    "min_bruto": 27700001,
+                    "max_bruto": 29350000,
+                    "tarif": 11.00
+                },
+                {
+                    "no": 18,
+                    "min_bruto": 29350001,
+                    "max_bruto": 31450000,
+                    "tarif": 12.00
+                },
+                {
+                    "no": 19,
+                    "min_bruto": 31450001,
+                    "max_bruto": 33950000,
+                    "tarif": 13.00
+                },
+                {
+                    "no": 20,
+                    "min_bruto": 33950001,
+                    "max_bruto": 37100000,
+                    "tarif": 14.00
+                },
+                {
+                    "no": 21,
+                    "min_bruto": 37100001,
+                    "max_bruto": 41100000,
+                    "tarif": 15.00
+                },
+                {
+                    "no": 22,
+                    "min_bruto": 41100001,
+                    "max_bruto": 45800000,
+                    "tarif": 16.00
+                },
+                {
+                    "no": 23,
+                    "min_bruto": 45800001,
+                    "max_bruto": 49500000,
+                    "tarif": 17.00
+                },
+                {
+                    "no": 24,
+                    "min_bruto": 49500001,
+                    "max_bruto": 53800000,
+                    "tarif": 18.00
+                },
+                {
+                    "no": 25,
+                    "min_bruto": 53800001,
+                    "max_bruto": 58500000,
+                    "tarif": 19.00
+                },
+                {
+                    "no": 26,
+                    "min_bruto": 58500001,
+                    "max_bruto": 64000000,
+                    "tarif": 20.00
+                },
+                {
+                    "no": 27,
+                    "min_bruto": 64000001,
+                    "max_bruto": 71000000,
+                    "tarif": 21.00
+                },
+                {
+                    "no": 28,
+                    "min_bruto": 71000001,
+                    "max_bruto": 80000000,
+                    "tarif": 22.00
+                },
+                {
+                    "no": 29,
+                    "min_bruto": 80000001,
+                    "max_bruto": 93000000,
+                    "tarif": 23.00
+                },
+                {
+                    "no": 30,
+                    "min_bruto": 93000001,
+                    "max_bruto": 109000000,
+                    "tarif": 24.00
+                },
+                {
+                    "no": 31,
+                    "min_bruto": 109000001,
+                    "max_bruto": 129000000,
+                    "tarif": 25.00
+                },
+                {
+                    "no": 32,
+                    "min_bruto": 129000001,
+                    "max_bruto": 163000000,
+                    "tarif": 26.00
+                },
+                {
+                    "no": 33,
+                    "min_bruto": 163000001,
+                    "max_bruto": 211000000,
+                    "tarif": 27.00
+                },
+                {
+                    "no": 34,
+                    "min_bruto": 211000001,
+                    "max_bruto": 374000000,
+                    "tarif": 28.00
+                },
+                {
+                    "no": 35,
+                    "min_bruto": 374000001,
+                    "max_bruto": 459000000,
+                    "tarif": 29.00
+                },
+                {
+                    "no": 36,
+                    "min_bruto": 459000001,
+                    "max_bruto": 555000000,
+                    "tarif": 30.00
+                },
+                {
+                    "no": 37,
+                    "min_bruto": 555000001,
+                    "max_bruto": 704000000,
+                    "tarif": 31.00
+                },
+                {
+                    "no": 38,
+                    "min_bruto": 704000001,
+                    "max_bruto": 957000000,
+                    "tarif": 32.00
+                },
+                {
+                    "no": 39,
+                    "min_bruto": 957000001,
+                    "max_bruto": 1405000000,
+                    "tarif": 33.00
+                },
+                {
+                    "no": 40,
+                    "min_bruto": 1405000001,
+                    "max_bruto": null,
+                    "tarif": 34.00
+                }
+            ]
+        },
+        "ter_c": {
+            "kategori": "TER C",
+            "ptkp_status": [
+                "K/3"
+            ],
+            "layers": [
+                {
+                    "no": 1,
+                    "min_bruto": 0,
+                    "max_bruto": 6600000,
+                    "tarif": 0.0
+                },
+                {
+                    "no": 2,
+                    "min_bruto": 6600001,
+                    "max_bruto": 6950000,
+                    "tarif": 0.25
+                },
+                {
+                    "no": 3,
+                    "min_bruto": 6950001,
+                    "max_bruto": 7350000,
+                    "tarif": 0.50
+                },
+                {
+                    "no": 4,
+                    "min_bruto": 7350001,
+                    "max_bruto": 7800000,
+                    "tarif": 0.75
+                },
+                {
+                    "no": 5,
+                    "min_bruto": 7800001,
+                    "max_bruto": 8850000,
+                    "tarif": 1.00
+                },
+                {
+                    "no": 6,
+                    "min_bruto": 8850001,
+                    "max_bruto": 9800000,
+                    "tarif": 1.25
+                },
+                {
+                    "no": 7,
+                    "min_bruto": 9800001,
+                    "max_bruto": 10950000,
+                    "tarif": 1.50
+                },
+                {
+                    "no": 8,
+                    "min_bruto": 10950001,
+                    "max_bruto": 11200000,
+                    "tarif": 1.75
+                },
+                {
+                    "no": 9,
+                    "min_bruto": 11200001,
+                    "max_bruto": 12050000,
+                    "tarif": 2.00
+                },
+                {
+                    "no": 10,
+                    "min_bruto": 12050001,
+                    "max_bruto": 12950000,
+                    "tarif": 3.00
+                },
+                {
+                    "no": 11,
+                    "min_bruto": 12950001,
+                    "max_bruto": 14150000,
+                    "tarif": 4.00
+                },
+                {
+                    "no": 12,
+                    "min_bruto": 14150001,
+                    "max_bruto": 15500000,
+                    "tarif": 5.00
+                },
+                {
+                    "no": 13,
+                    "min_bruto": 15500001,
+                    "max_bruto": 17050000,
+                    "tarif": 6.00
+                },
+                {
+                    "no": 14,
+                    "min_bruto": 17050001,
+                    "max_bruto": 19500000,
+                    "tarif": 7.00
+                },
+                {
+                    "no": 15,
+                    "min_bruto": 19500001,
+                    "max_bruto": 22700000,
+                    "tarif": 8.00
+                },
+                {
+                    "no": 16,
+                    "min_bruto": 22700001,
+                    "max_bruto": 26600000,
+                    "tarif": 9.00
+                },
+                {
+                    "no": 17,
+                    "min_bruto": 26600001,
+                    "max_bruto": 28100000,
+                    "tarif": 10.00
+                },
+                {
+                    "no": 18,
+                    "min_bruto": 28100001,
+                    "max_bruto": 30100000,
+                    "tarif": 11.00
+                },
+                {
+                    "no": 19,
+                    "min_bruto": 30100001,
+                    "max_bruto": 32600000,
+                    "tarif": 12.00
+                },
+                {
+                    "no": 20,
+                    "min_bruto": 32600001,
+                    "max_bruto": 35400000,
+                    "tarif": 13.00
+                },
+                {
+                    "no": 21,
+                    "min_bruto": 35400001,
+                    "max_bruto": 38900000,
+                    "tarif": 14.00
+                },
+                {
+                    "no": 22,
+                    "min_bruto": 38900001,
+                    "max_bruto": 43000000,
+                    "tarif": 15.00
+                },
+                {
+                    "no": 23,
+                    "min_bruto": 43000001,
+                    "max_bruto": 47400000,
+                    "tarif": 16.00
+                },
+                {
+                    "no": 24,
+                    "min_bruto": 47400001,
+                    "max_bruto": 51200000,
+                    "tarif": 17.00
+                },
+                {
+                    "no": 25,
+                    "min_bruto": 51200001,
+                    "max_bruto": 55800000,
+                    "tarif": 18.00
+                },
+                {
+                    "no": 26,
+                    "min_bruto": 55800001,
+                    "max_bruto": 60400000,
+                    "tarif": 19.00
+                },
+                {
+                    "no": 27,
+                    "min_bruto": 60400001,
+                    "max_bruto": 66700000,
+                    "tarif": 20.00
+                },
+                {
+                    "no": 28,
+                    "min_bruto": 66700001,
+                    "max_bruto": 74500000,
+                    "tarif": 21.00
+                },
+                {
+                    "no": 29,
+                    "min_bruto": 74500001,
+                    "max_bruto": 83200000,
+                    "tarif": 22.00
+                },
+                {
+                    "no": 30,
+                    "min_bruto": 83200001,
+                    "max_bruto": 95600000,
+                    "tarif": 23.00
+                },
+                {
+                    "no": 31,
+                    "min_bruto": 95600001,
+                    "max_bruto": 110000000,
+                    "tarif": 24.00
+                },
+                {
+                    "no": 32,
+                    "min_bruto": 110000001,
+                    "max_bruto": 134000000,
+                    "tarif": 25.00
+                },
+                {
+                    "no": 33,
+                    "min_bruto": 134000001,
+                    "max_bruto": 169000000,
+                    "tarif": 26.00
+                },
+                {
+                    "no": 34,
+                    "min_bruto": 169000001,
+                    "max_bruto": 221000000,
+                    "tarif": 27.00
+                },
+                {
+                    "no": 35,
+                    "min_bruto": 221000001,
+                    "max_bruto": 390000000,
+                    "tarif": 28.00
+                },
+                {
+                    "no": 36,
+                    "min_bruto": 390000001,
+                    "max_bruto": 463000000,
+                    "tarif": 29.00
+                },
+                {
+                    "no": 37,
+                    "min_bruto": 463000001,
+                    "max_bruto": 561000000,
+                    "tarif": 30.00
+                },
+                {
+                    "no": 38,
+                    "min_bruto": 561000001,
+                    "max_bruto": 709000000,
+                    "tarif": 31.00
+                },
+                {
+                    "no": 39,
+                    "min_bruto": 709000001,
+                    "max_bruto": 965000000,
+                    "tarif": 32.00
+                },
+                {
+                    "no": 40,
+                    "min_bruto": 965000001,
+                    "max_bruto": 1419000000,
+                    "tarif": 33.00
+                },
+                {
+                    "no": 41,
+                    "min_bruto": 1419000001,
+                    "max_bruto": null,
+                    "tarif": 34.00
+                }
+            ]
+        }
+    }
+}

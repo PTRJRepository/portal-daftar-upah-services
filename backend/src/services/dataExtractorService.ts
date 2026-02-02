@@ -3,6 +3,7 @@ import { payrollService } from "./payrollService";
 import { gangService } from "./gangService";
 import { lemburCalculator } from "./lemburCalculator";
 import { EmployeeEstateService } from "./employeeEstateService";
+import { calculatePph21Ter } from "./pph21TerService";
 
 interface EmployeeRow {
     emp_code: string;
@@ -101,6 +102,12 @@ interface PayrollRow {
     };
     total_potongan: number;
     total_potongan_bersih: number;
+    // New calculated tax fields
+    astek_084: number;
+    penghasilan_bruto: number; // Sum of: gaji_pokok_dibayarkan + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
+    // PPH21 TER fields
+    tarif_pajak_ter: number; // TER rate as percentage (e.g., 5 for 5%)
+    pph21_ter: number; // Calculated PPH21 amount using TER method
     upah_bersih: number;
     pot_astek: number;
     pot_astek_maj: number;
@@ -419,7 +426,22 @@ export class DataExtractorService {
 
             const koreksi_hk = gaji_pokok_ideal - gaji_pokok_dibayarkan;
 
+            // [NEW] Astek 0.84% calculation
+            // Formula: (gaji_pokok_ideal + tunjangan_masa_kerja) * 0.84%
+            const astek_084 = Math.round((gaji_pokok_ideal + empMasaKerjaJumlah) * 0.0084);
+
+            // [NEW] Penghasilan Bruto calculation
+            // Sum of: gaji_pokok_dibayarkan + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
+            // Using gaji_pokok_dibayarkan (REAL salary), NOT gaji_pokok_ideal
+            const penghasilan_bruto = gaji_pokok_dibayarkan + berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah + total_premi;
+
             const statusPtkp = mapBerasRateToPTKP(berasRate);
+
+            // [NEW] PPH21 TER calculation
+            // Calculate TER rate and PPH21 amount based on penghasilan_bruto and status_ptkp
+            const pph21TerResult = calculatePph21Ter(penghasilan_bruto, statusPtkp);
+            const tarif_pajak_ter = pph21TerResult.rate_percent; // Rate as percentage (e.g., 5 for 5%)
+            const pph21_ter = pph21TerResult.tax_amount;
             const row: PayrollRow = {
                 nik: emp.emp_code,
                 nama: emp.emp_name,
@@ -478,6 +500,10 @@ export class DataExtractorService {
                     ...koreksiVariations,
                     total: pot_koreksi
                 },
+                astek_084,
+                penghasilan_bruto,
+                tarif_pajak_ter,
+                pph21_ter,
                 total_potongan,
                 // [FIXED] total_potongan_bersih = total_potongan - premi_pph
                 // Because premi_pph is ADDED (+), not deducted

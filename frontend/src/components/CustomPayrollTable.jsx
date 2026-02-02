@@ -254,6 +254,45 @@ export default function CustomPayrollTable({
             { field: 'gaji_pokok_ideal', headers: ['PAJAK', null, null, 'GP IDEAL'], w: 85, className: 'text-right' },
             { field: 'gaji_pokok_dibayarkan', headers: ['PAJAK', null, null, 'GP BAYAR'], w: 85, className: 'text-right' },
             { field: 'koreksi_hk', headers: ['PAJAK', null, null, 'KOREKSI HK'], w: 85, className: 'text-right' },
+            // Additional Tax Group Columns
+            { field: 'astek_084', headers: ['PAJAK', null, null, 'ASTEK 0.84%'], w: 85, className: 'text-right' },
+            { field: 'pot_bpjs_kesehatan_majikan', colId: 'pajak_bpjs_kes_maj', headers: ['PAJAK', null, null, 'BPJS KES 4%'], w: 85, className: 'text-right' },
+            { field: 'beras_jumlah', colId: 'pajak_beras_jumlah', headers: ['PAJAK', null, null, 'TUNJ BERAS'], w: 85, className: 'text-right' },
+            { field: 'jabatan_jumlah', colId: 'pajak_jabatan_jumlah', headers: ['PAJAK', null, null, 'TUNJ JABATAN'], w: 85, className: 'text-right' },
+            { field: 'masa_kerja_jumlah', colId: 'pajak_masa_kerja', headers: ['PAJAK', null, null, 'MASA KERJA'], w: 85, className: 'text-right' },
+            { field: 'lembur_jumlah', colId: 'pajak_lembur_jumlah', headers: ['PAJAK', null, null, 'LEMBUR'], w: 85, className: 'text-right' },
+            { field: 'total_premi', colId: 'pajak_total_premi', headers: ['PAJAK', null, null, 'TOTAL PREMI'], w: 85, className: 'text-right' },
+            {
+                field: 'pot_koreksi',
+                colId: 'pajak_pot_koreksi',
+                headers: ['PAJAK', null, null, 'KOREKSI'],
+                w: 85,
+                className: 'text-right',
+                render: (row) => {
+                    const val = row.pot_koreksi || 0;
+                    if (val === 0) return '-';
+                    // Show red color for positive values (koreksi reduces upah kotor)
+                    const colorStyle = val > 0 ? { color: '#dc2626', fontWeight: 'bold' } : {};
+                    return (
+                        <span style={colorStyle}>
+                            {formatNumber(val)}
+                        </span>
+                    );
+                }
+            },
+            { field: 'penghasilan_bruto', headers: ['PAJAK', null, null, 'PENGHASILAN BRUTO'], w: 110, className: 'text-right font-bold' },
+            {
+                field: 'tarif_pajak_ter',
+                headers: ['PAJAK', null, null, 'TARIF TER (%)'],
+                w: 80,
+                className: 'text-center',
+                render: (row) => {
+                    const val = row.tarif_pajak_ter || 0;
+                    if (val === 0) return '0%';
+                    return `${val}%`;
+                }
+            },
+            { field: 'pph21_ter', headers: ['PAJAK', null, null, 'PPH21 TER'], w: 95, className: 'text-right' },
             // ABSENSI > KEHADIRAN
             { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'], w: 40, className: 'text-center cell-absensi' },
             // ABSENSI > KETIDAKHADIRAN

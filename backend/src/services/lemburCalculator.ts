@@ -139,9 +139,11 @@ export class LemburCalculator {
 
             for (const row of rows) {
                 const dateKey = new Date(row.HolidayDate).toISOString().substring(0, 10);
+                // IsRegionPH may be returned as string from database, convert to number for comparison
+                const isRegionPH = typeof row.IsRegionPH === 'string' ? parseInt(row.IsRegionPH, 10) : row.IsRegionPH;
                 holidays[dateKey] = {
                     description: row.Description?.trim() || "",
-                    is_religious: row.IsRegionPH === 1
+                    is_religious: isRegionPH === 1
                 };
             }
         } catch (e) {
@@ -199,9 +201,16 @@ export class LemburCalculator {
         let tier3Hours: number;
 
         if (dayType === DayType.WORKDAY_LONG || dayType === DayType.WORKDAY_SHORT) {
+            // Workdays: 2-tier system
+            tier2Hours = remainingAfterT1;
+            tier3Hours = 0;
+        } else if (dayType === DayType.HOLIDAY_RELIGIOUS) {
+            // Religious holidays: 2-tier system (3-4-4 pattern)
+            // All remaining hours go to tier 2 (4x rate)
             tier2Hours = remainingAfterT1;
             tier3Hours = 0;
         } else {
+            // Sunday and Regular holidays: 3-tier system (2-3-4 or 2-3-4 pattern)
             tier2Hours = Math.min(remainingAfterT1, 1);
             tier3Hours = Math.max(0, remainingAfterT1 - 1);
         }
