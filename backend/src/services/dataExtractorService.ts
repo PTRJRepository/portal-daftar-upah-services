@@ -480,7 +480,8 @@ export class DataExtractorService {
                 // [NEW] premi_pph is separate field for display with + sign
                 premi_pph: pot_premi_pph,
                 upah_bersih,
-                premi: empPremi,
+                // REMOVED: premi: empPremi - causes double-counting in frontend
+                // Individual premi fields are already added via ...empPremi below
                 pot_astek: pot_astek_pekerja,
                 pot_astek_pekerja: pot_astek_pekerja,
                 pot_astek_maj: pot_astek_majikan,

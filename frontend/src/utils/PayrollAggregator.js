@@ -19,46 +19,57 @@ export const PayrollAggregator = {
 
     // Flatten nested 'premi' object if it exists
     // Add 'premi_' prefix to each key so it matches column field names (e.g., premi_brondol, premi_tbs)
+    // IMPORTANT: Do NOT create duplicate keys (with and without prefix) to avoid double-counting in totals
     if (emp.premi && typeof emp.premi === 'object') {
       Object.entries(emp.premi).forEach(([key, value]) => {
         // Create flat field with 'premi_' prefix if not already present
         const flatKey = key.startsWith('premi_') ? key : `premi_${key}`;
         emp[flatKey] = val(value);
-        // Also keep the original key for backward compatibility
-        emp[key] = val(value);
+        // REMOVED: Also keep the original key for backward compatibility
+        // This causes double-counting because _sumRows sums ALL numeric fields
+        // We now use dynamic headers with 'premi_*' pattern, so we only need the prefixed version
       });
     }
 
-    // Flatten 'potongan_upah_kotor'
+    // Flatten 'potongan_upah_kotor' if it exists as a nested object
+    // IMPORTANT: Only add fields that don't already exist at root level to avoid double-counting
     if (emp.potongan_upah_kotor && typeof emp.potongan_upah_kotor === 'object') {
-      // Flatten 'dynamic' sub-object if it exists
+      // Flatten 'dynamic' sub-object if it exists (only add missing keys)
       if (emp.potongan_upah_kotor.dynamic && typeof emp.potongan_upah_kotor.dynamic === 'object') {
-        Object.assign(emp, emp.potongan_upah_kotor.dynamic);
+        Object.entries(emp.potongan_upah_kotor.dynamic).forEach(([key, value]) => {
+          // Only add if key doesn't already exist at root level
+          if (emp[key] === undefined || emp[key] === null) {
+            emp[key] = val(value);
+          }
+        });
       }
-      // Flatten direct properties of potongan_upah_kotor (like 'koreksi', 'total')
-      // Be careful not to overwrite root fields if they already exist with better values
+      // Flatten direct properties (only add missing keys)
       Object.entries(emp.potongan_upah_kotor).forEach(([k, v]) => {
-        if (k !== 'dynamic' && typeof v !== 'object') {
-          // For 'koreksi', check if pot_koreksi already exists at root level (from backend)
-          // Use root value first, only fallback to nested if root is missing/zero
-          if (k === 'koreksi') {
-            // If pot_koreksi doesn't exist at root or is 0, use nested value
+        if (k !== 'dynamic' && typeof v !== 'object' && (emp[k] === undefined || emp[k] === null)) {
+          // Only add if the key doesn't already exist at root level
+          if (k !== 'koreksi') {
+            // For non-koreksi fields, add directly if missing
+            emp[k] = val(v);
+          } else {
+            // For koreksi, only add if pot_koreksi is missing or zero
             if (!emp.pot_koreksi || emp.pot_koreksi === 0) {
               emp.pot_koreksi = val(v);
             }
           }
         }
       });
-      // DEBUG: Log pot_koreksi value after flattening
-      if (emp.pot_koreksi > 0) {
-        console.log(`[KOREKSI DEBUG] ${emp.nik}: pot_koreksi=${emp.pot_koreksi}, nested.koreksi=${emp.potongan_upah_kotor?.koreksi}`);
-      }
     }
 
-    // Flatten 'potongan_upah_bersih'
+    // Flatten 'potongan_upah_bersih' if it exists as a nested object
+    // IMPORTANT: Only add fields that don't already exist at root level to avoid double-counting
     if (emp.potongan_upah_bersih && typeof emp.potongan_upah_bersih === 'object') {
       if (emp.potongan_upah_bersih.dynamic && typeof emp.potongan_upah_bersih.dynamic === 'object') {
-        Object.assign(emp, emp.potongan_upah_bersih.dynamic);
+        Object.entries(emp.potongan_upah_bersih.dynamic).forEach(([key, value]) => {
+          // Only add if key doesn't already exist at root level
+          if (emp[key] === undefined || emp[key] === null) {
+            emp[key] = val(value);
+          }
+        });
       }
     }
 
