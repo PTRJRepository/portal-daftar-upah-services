@@ -86,9 +86,9 @@ interface PayrollRow {
     pot_bpjs_pensiun_pekerja: number;
     pot_bpjs_pensiun_majikan: number;
     pot_bpjs_pensiun_jumlah: number;
-    // New fields for Tax Group
+    // New fields for Penggajian Group
     gaji_pokok_ideal: number;
-    gaji_pokok_dibayarkan: number;
+    gaji_pokok_aktual: number;
     koreksi_hk: number;
     // Other deductions
     pot_spsi: number;
@@ -104,7 +104,7 @@ interface PayrollRow {
     total_potongan_bersih: number;
     // New calculated tax fields
     astek_084: number;
-    penghasilan_bruto: number; // Sum of: gaji_pokok_dibayarkan + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
+    penghasilan_bruto: number; // Sum of: gaji_pokok_aktual + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
     // PPH21 TER fields
     tarif_pajak_ter: number; // TER rate as percentage (e.g., 5 for 5%)
     pph21_ter: number; // Calculated PPH21 amount using TER method
@@ -290,7 +290,9 @@ export class DataExtractorService {
             const jabatanRate = hk > 0 && empJabatan > 0 ? empJabatan / hk : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
 
-            const gaji_pokok = upah_pokok;
+            // [UPDATED] Gaji Pokok untuk Grup Penggajian
+            // gaji_pokok = gaji_pokok_ideal untuk perhitungan jumlah_upah_kotor
+            const gaji_pokok = empUpahDasar * hk;
             const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah;
 
             empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
@@ -381,24 +383,25 @@ export class DataExtractorService {
             // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
             const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph;
 
-            // [NEW] Calculate Ideal Salary and Koreksi HK for Tax Group
-            const gaji_pokok_ideal = empUpahDasar * daysInMonth;
+            // [UPDATED] Calculate Ideal and Actual Salary for Penggajian Group
+            // gaji_pokok_ideal = upah_dasar × jumlah_hk (HK aktual yang dijalani karyawan)
+            const gaji_pokok_ideal = empUpahDasar * hk;
 
-            // [UPDATED] Use total_amount_rp from PR_TASKREGLN (sum amount) instead of calculated upah_pokok
-            // User Request: "Gaji pokok (dibayarkan) yang diambil dari sum amount plantware"
-            // If attData.total_amount_rp is undefined, fallback to upah_pokok or 0
-            const gaji_pokok_dibayarkan = attData.total_amount_rp ?? upah_pokok;
+            // gaji_pokok_aktual = total_amount_rp dari PR_TASKREGLN (sum amount plantware)
+            // Ini adalah gaji yang sebenarnya dibayarkan berdasarkan jam kerja
+            const gaji_pokok_aktual = attData.total_amount_rp ?? 0;
 
-            const koreksi_hk = gaji_pokok_ideal - gaji_pokok_dibayarkan;
+            // koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal
+            const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal;
 
             // [NEW] Astek 0.84% calculation
             // Formula: (gaji_pokok_ideal + tunjangan_masa_kerja) * 0.84%
             const astek_084 = Math.round((gaji_pokok_ideal + empMasaKerjaJumlah) * 0.0084);
 
             // [NEW] Penghasilan Bruto calculation
-            // Sum of: gaji_pokok_dibayarkan + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
-            // Using gaji_pokok_dibayarkan (REAL salary), NOT gaji_pokok_ideal
-            const penghasilan_bruto = gaji_pokok_dibayarkan + berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah + total_premi;
+            // Sum of: gaji_pokok_aktual + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
+            // Using gaji_pokok_aktual (REAL salary), NOT gaji_pokok_ideal
+            const penghasilan_bruto = gaji_pokok_aktual + berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah + total_premi;
 
             const statusPtkp = mapBerasRateToPTKP(berasRate);
 
@@ -453,7 +456,7 @@ export class DataExtractorService {
                 pot_bpjs_pensiun_majikan,
                 pot_bpjs_pensiun_jumlah,
                 gaji_pokok_ideal,
-                gaji_pokok_dibayarkan,
+                gaji_pokok_aktual,
                 koreksi_hk,
                 pot_spsi,
                 pot_pph21,
@@ -566,7 +569,7 @@ export class DataExtractorService {
         `;
 
         let rows = await db.query<{ emp_code: string; hk: number; total_hours: number; shortage_count: number; total_amount_rp: number }>(`
-            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours,
+            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(DISTINCT trl.TrxDate) as hk, SUM(trl.Hours) as total_hours,
                    ${shortageSql},
                    SUM(trl.Amount) as total_amount_rp
             FROM PR_TASKREGLN trl
@@ -578,7 +581,7 @@ export class DataExtractorService {
 
             UNION ALL
 
-            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(*) as hk, SUM(trl.Hours) as total_hours,
+            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(DISTINCT trl.TrxDate) as hk, SUM(trl.Hours) as total_hours,
                    ${shortageSql},
                    SUM(trl.Amount) as total_amount_rp
             FROM PR_TASKREGLN_ARC trl

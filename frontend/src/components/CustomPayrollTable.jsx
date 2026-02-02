@@ -379,8 +379,26 @@ export default function CustomPayrollTable({
             },
             // PENGGAJIAN
             { field: 'upah_dasar', headers: ['PENGGAJIAN', null, null, 'UPAH DASAR'], w: 85, className: 'text-right' },
-            { field: 'upah_pokok', headers: ['PENGGAJIAN', null, null, 'UPAH POKOK'], w: 85, className: 'text-right' },
-            { field: 'gaji_pokok', headers: ['PENGGAJIAN', null, null, 'GAJI POKOK'], w: 85, className: 'text-right' },
+            { field: 'gaji_pokok_ideal', headers: ['PENGGAJIAN', null, null, 'GP IDEAL'], w: 85, className: 'text-right' },
+            { field: 'gaji_pokok_aktual', headers: ['PENGGAJIAN', null, null, 'GP AKTUAL'], w: 85, className: 'text-right' },
+            {
+                field: 'koreksi_hk',
+                headers: ['PENGGAJIAN', null, null, 'KOREKSI HK'],
+                w: 85,
+                className: 'text-right',
+                render: (row) => {
+                    const val = row.koreksi_hk;
+                    if (val === null || val === undefined || val === 0) return '-';
+                    const colorStyle = val < 0
+                        ? { color: '#dc2626' }  // merah untuk negatif
+                        : { color: '#059669' }; // hijau untuk positif
+                    return (
+                        <span style={colorStyle}>
+                            {val < 0 ? '-' : '+'}{formatNumber(Math.abs(val))}
+                        </span>
+                    );
+                }
+            },
 
             // JABATAN [NEW] - HIDDEN TEMPORARILY
             // {
