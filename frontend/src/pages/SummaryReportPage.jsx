@@ -7,6 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAuth } from '../context/AuthContext';
 import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
+import AggregationSeederModal from '../components/AggregationSeederModal';
 import '../styles/wages-summary-professional.css';
 
 export default function SummaryReportPage({ onBack, initialDivision, initialMonth, initialYear }) {
@@ -25,6 +26,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     // State
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [showSeederModal, setShowSeederModal] = useState(false);
 
     // Load available divisions
     useEffect(() => {
@@ -261,6 +263,9 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     </div>
                 </div>
                 <div className="right-section">
+                    <button onClick={() => setShowSeederModal(true)} className="wsp-btn" style={{ background: '#fbbf24', color: '#78350f' }}>
+                        Seed Aggregation
+                    </button>
                     <button onClick={fetchData} className="wsp-btn" disabled={loading}>Refresh</button>
                     <button onClick={handlePrint} className="wsp-btn">Print</button>
                     <button onClick={handleSavePDF} className="wsp-btn" title="Download Report as PDF">Save PDF</button>
@@ -457,6 +462,15 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     </footer>
                 </div>
             )}
+
+            {/* Aggregation Seeder Modal */}
+            <AggregationSeederModal
+                isOpen={showSeederModal}
+                onClose={() => setShowSeederModal(false)}
+                month={month}
+                year={year}
+                division={division}
+            />
         </div>
     );
 }

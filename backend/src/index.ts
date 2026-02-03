@@ -10,6 +10,7 @@ import { reportsRoutes } from "./api/reports";
 import { employeeEstateRoutes } from "./api/employeeEstate";
 import { tunjanganRoutes } from "./api/tunjangan";
 import { devConfigRoutes } from "./api/devConfig";
+import { aggregationSeederRoutes } from "./api/aggregationSeederRoutes";
 import { Database } from "./db/client";
 import { staticPlugin } from "@elysiajs/static";
 
@@ -107,6 +108,8 @@ const app = new Elysia()
     // Job Title / Estate Management
     .use(employeeEstateRoutes)
     .use(tunjanganRoutes)
+    // Aggregation seeding routes
+    .use(aggregationSeederRoutes)
     // Summary routes already have /payroll/summary prefix in their definition
     .use(summaryRoutes)
 
@@ -121,6 +124,7 @@ const app = new Elysia()
         .use(employeeRoutes)
         .use(employeeEstateRoutes)
         .use(tunjanganRoutes)
+        .use(aggregationSeederRoutes)
         .use(summaryRoutes)
         .use(devConfigRoutes)
     )

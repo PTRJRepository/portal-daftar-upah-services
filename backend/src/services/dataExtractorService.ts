@@ -855,7 +855,14 @@ export class DataExtractorService {
                 SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
             ) ln ON t.ID = ln.MasterID
             LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
-            WHERE UPPER(t.DocDesc) LIKE '%PREMI%'
+            WHERE (
+                  UPPER(t.DocDesc) LIKE '%PREMI%' OR
+                  UPPER(t.DocDesc) LIKE '%PRUN%' OR
+                  UPPER(t.DocDesc) LIKE '%INSENTIF%' OR
+                  UPPER(t.DocDesc) LIKE '%PANEN%' OR
+                  UPPER(t.DocDesc) LIKE '%KINERJA%' OR
+                  UPPER(t.DocDesc) LIKE '%RAWAT%'
+              )
               AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
               AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
               AND ln.Amount > 0

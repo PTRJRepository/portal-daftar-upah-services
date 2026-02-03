@@ -72,6 +72,13 @@ export class Database {
         return Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
     }
 
+    /**
+     * Get Mill database instance (for WM_TICKET / FFB weight data)
+     */
+    public static getMillInstance(): Database {
+        return Database.getInstance(Config.DB_MILL_DATABASE, Config.DB_MILL_PROFILE);
+    }
+
     private prepareParams(sql: string, params?: any[] | Record<string, any>): { sql: string; params: any[] | Record<string, any> } {
         if (!params) return { sql, params: {} };
 

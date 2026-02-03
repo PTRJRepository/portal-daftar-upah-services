@@ -4,6 +4,7 @@ import { fetchAnalysisReport } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import MonthSelector from '../components/common/MonthSelector';
 import LoadingScreen from '../components/common/LoadingScreen';
+import AggregationSeederModal from '../components/AggregationSeederModal';
 import '../styles/analysis-report-print.css';
 
 export default function AnalysisReportPage({ onBack, initialMonth, initialYear }) {
@@ -14,6 +15,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     const [loading, setLoading] = useState(false);
     const [reportData, setReportData] = useState(null);
     const [error, setError] = useState(null);
+    const [showSeederModal, setShowSeederModal] = useState(false);
 
     // Fetch data
     useEffect(() => {
@@ -132,6 +134,9 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                 </div>
 
                 <div className="btn-group">
+                    <button onClick={() => setShowSeederModal(true)} className="sw-btn" style={{ background: '#fbbf24', color: '#78350f' }}>
+                        SEED AGGREGATION
+                    </button>
                     <button onClick={handleSavePDF} className="sw-btn sw-btn-primary" title="Download Report as PDF">
                         SAVE PDF
                     </button>
@@ -338,6 +343,15 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                     </footer>
                 </div>
             )}
+
+            {/* Aggregation Seeder Modal */}
+            <AggregationSeederModal
+                isOpen={showSeederModal}
+                onClose={() => setShowSeederModal(false)}
+                month={month}
+                year={year}
+                division={null}
+            />
         </div>
     );
 }

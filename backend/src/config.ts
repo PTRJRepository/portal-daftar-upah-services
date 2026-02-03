@@ -38,6 +38,10 @@ export class Config {
     public static readonly DB_VENUS_PROFILE: string = env.DB_VENUS_PROFILE || "SERVER_PROFILE_3";
     public static readonly DB_VENUS_DATABASE: string = env.DB_VENUS_DATABASE || "VenusHR14";
 
+    // Mill Database (for WM_TICKET / FFB weight data)
+    public static readonly DB_MILL_PROFILE: string = env.DB_MILL_PROFILE || "SERVER_PROFILE_3";
+    public static readonly DB_MILL_DATABASE: string = env.DB_MILL_DATABASE || "db_ptrj_mill";
+
     // Authentication Configuration
     public static readonly JWT_SECRET: string = env.JWT_SECRET || "default_debug_secret";
     public static readonly ACCESS_TOKEN_EXPIRE_MINUTES: number = parseInt(env.ACCESS_TOKEN_EXPIRE_MINUTES || "60");

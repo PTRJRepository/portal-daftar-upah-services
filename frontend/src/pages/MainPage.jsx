@@ -10,6 +10,7 @@ import SummaryReportPage from './SummaryReportPage'
 import WagesSummaryRebinmasPage from './WagesSummaryRebinmasPage'
 import WagesSummaryIJLPage from './WagesSummaryIJLPage'
 import AnalysisReportPage from './AnalysisReportPage'
+import AggregationSeederPage from './AggregationSeederPage'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
 
@@ -49,6 +50,7 @@ export default function MainPage({ lockedDiv = null }) {
   const [showWagesRebinmas, setShowWagesRebinmas] = useState(false)
   const [showWagesIJL, setShowWagesIJL] = useState(false)
   const [showAnalysisReport, setShowAnalysisReport] = useState(false)
+  const [showAggregationSeeder, setShowAggregationSeeder] = useState(false)
   const [rowCount, setRowCount] = useState(0)
   const [fontSize, setFontSize] = useState(100) // Default 100% font size
   const [exportHandler, setExportHandler] = useState(null) // Export function from CustomPayrollTable
@@ -273,6 +275,15 @@ export default function MainPage({ lockedDiv = null }) {
     setShowAnalysisReport(false)
   }
 
+  // Handler for Aggregation Seeder
+  const handleShowAggregationSeeder = () => {
+    setShowAggregationSeeder(true)
+  }
+
+  const handleBackFromAggregationSeeder = () => {
+    setShowAggregationSeeder(false)
+  }
+
   // -- SHOW WAGES IJL REPORT PAGE --
   if (showWagesIJL) {
     return (
@@ -291,6 +302,15 @@ export default function MainPage({ lockedDiv = null }) {
         onBack={handleBackFromAnalysis}
         initialMonth={month}
         initialYear={year}
+      />
+    )
+  }
+
+  // -- SHOW AGGREGATION SEEDER PAGE --
+  if (showAggregationSeeder) {
+    return (
+      <AggregationSeederPage
+        onBack={handleBackFromAggregationSeeder}
       />
     )
   }
@@ -722,6 +742,30 @@ export default function MainPage({ lockedDiv = null }) {
                       onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
                     >
                       Analysis OT & Premi
+                      <span style={{ fontSize: '1.2em' }}>›</span>
+                    </button>
+
+                    <button
+                      onClick={handleShowAggregationSeeder}
+                      style={{
+                        padding: '0.9rem',
+                        backgroundColor: '#ffffff',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = '#4f46e5'; e.currentTarget.style.backgroundColor = '#eef2ff'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                    >
+                      Aggregation Seeder
                       <span style={{ fontSize: '1.2em' }}>›</span>
                     </button>
                   </div>

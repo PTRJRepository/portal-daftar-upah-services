@@ -86,7 +86,8 @@
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsImRpdmlzaW9ucyI6WyJQRzFBIiwiUEcxQiIsIlBHMkEiLCJQRjJCIiwiRE1FIiwiQVJBIiwiQVJCMSIsIkFSQjIiLCJJTkZSQSIsIkFSRUMiLCJJSkwiLCJTVEYtT0ZGSUNFIiwiU0VDVVJJVFkiXSwiZXhwIjoxNzY0ODM4OTI1fQ.k4suSWwwkM2hk5Tkcv2bcICUY2RM_9sFFa9pg6_jJjw\")",
       "Bash(echo:*)",
       "Bash(bun run:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(if exist node_modules.vite rmdir /s /q node_modules.vite:*)"
     ],
     "deny": [],
     "ask": []
