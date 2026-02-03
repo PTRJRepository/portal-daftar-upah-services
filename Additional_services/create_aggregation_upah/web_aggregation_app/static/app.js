@@ -1,5 +1,6 @@
 /**
  * Aggregation Table Editor - Frontend Application
+ * Server Profile 1 Edition
  */
 
 // ==================== CONFIGURATION ====================
@@ -40,26 +41,54 @@ let currentMonth = new Date().getMonth() + 1;
 let currentYear = new Date().getFullYear();
 let seederInterval = null;
 let selectedRowId = null;
+let currentView = 'dashboard';
 
 // ==================== DOM ELEMENTS ====================
 const elements = {
     statusDot: document.getElementById('statusDot'),
     statusText: document.getElementById('statusText'),
+    viewSelect: document.getElementById('viewSelect'),
     divisionSelect: document.getElementById('divisionSelect'),
+    divisionGroup: document.getElementById('divisionGroup'),
     monthSelect: document.getElementById('monthSelect'),
     yearSelect: document.getElementById('yearSelect'),
     loadBtn: document.getElementById('loadBtn'),
     exportBtn: document.getElementById('exportBtn'),
     summaryBtn: document.getElementById('summaryBtn'),
     seederBtn: document.getElementById('seederBtn'),
+    dashboardSection: document.getElementById('dashboardSection'),
+    dataSection: document.getElementById('dataSection'),
+    analysisSection: document.getElementById('analysisSection'),
+    // Dashboard elements
+    dashboardTitle: document.getElementById('dashboardTitle'),
+    refreshDashboardBtn: document.getElementById('refreshDashboardBtn'),
+    statDivisions: document.getElementById('statDivisions'),
+    statGangs: document.getElementById('statGangs'),
+    statEmployees: document.getElementById('statEmployees'),
+    statHK: document.getElementById('statHK'),
+    statUpah: document.getElementById('statUpah'),
+    statFFB: document.getElementById('statFFB'),
+    metricAvgHK: document.getElementById('metricAvgHK'),
+    metricAvgUpah: document.getElementById('metricAvgUpah'),
+    metricUpahHK: document.getElementById('metricUpahHK'),
+    metricUpahTon: document.getElementById('metricUpahTon'),
+    topDivisionsList: document.getElementById('topDivisionsList'),
+    topGangsList: document.getElementById('topGangsList'),
+    // Table elements
     tableTitle: document.getElementById('tableTitle'),
     recordCount: document.getElementById('recordCount'),
     emptyState: document.getElementById('emptyState'),
     dataTable: document.getElementById('dataTable'),
     tableHead: document.getElementById('tableHead'),
     tableBody: document.getElementById('tableBody'),
-    summarySection: document.getElementById('summarySection'),
-    summaryGrid: document.getElementById('summaryGrid'),
+    // Analysis elements
+    compareMonth1: document.getElementById('compareMonth1'),
+    compareYear1: document.getElementById('compareYear1'),
+    compareMonth2: document.getElementById('compareMonth2'),
+    compareYear2: document.getElementById('compareYear2'),
+    runComparisonBtn: document.getElementById('runComparisonBtn'),
+    comparisonResults: document.getElementById('comparisonResults'),
+    // Seeder modal
     seederModal: document.getElementById('seederModal'),
     closeSeederModal: document.getElementById('closeSeederModal'),
     seederDivision: document.getElementById('seederDivision'),
@@ -92,22 +121,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check health and load divisions
     await checkHealth();
     await loadDivisions();
+
+    // Load dashboard by default
+    await loadDashboard();
 });
 
 function bindEvents() {
-    elements.loadBtn.addEventListener('click', loadData);
+    elements.viewSelect.addEventListener('change', handleViewChange);
+    elements.loadBtn.addEventListener('click', handleLoadData);
     elements.exportBtn.addEventListener('click', exportCSV);
-    elements.summaryBtn.addEventListener('click', toggleSummary);
     elements.seederBtn.addEventListener('click', openSeederModal);
     elements.closeSeederModal.addEventListener('click', closeSeederModal);
     elements.cancelSeederBtn.addEventListener('click', closeSeederModal);
     elements.startSeederBtn.addEventListener('click', startSeeder);
     elements.stopSeederBtn.addEventListener('click', stopSeeder);
+    elements.refreshDashboardBtn.addEventListener('click', loadDashboard);
+    elements.runComparisonBtn.addEventListener('click', runComparison);
 
     // Close modal on overlay click
     elements.seederModal.addEventListener('click', (e) => {
         if (e.target === elements.seederModal) closeSeederModal();
     });
+}
+
+function handleViewChange(e) {
+    currentView = e.target.value;
+
+    // Hide all sections
+    elements.dashboardSection.style.display = 'none';
+    elements.dataSection.style.display = 'none';
+    elements.analysisSection.style.display = 'none';
+
+    // Show selected section
+    switch (currentView) {
+        case 'dashboard':
+            elements.dashboardSection.style.display = 'block';
+            elements.divisionGroup.style.display = 'none';
+            elements.loadBtn.style.display = 'none';
+            elements.exportBtn.style.display = 'none';
+            elements.summaryBtn.style.display = 'none';
+            loadDashboard();
+            break;
+        case 'table':
+            elements.dataSection.style.display = 'block';
+            elements.divisionGroup.style.display = 'flex';
+            elements.loadBtn.style.display = 'inline-flex';
+            elements.exportBtn.style.display = 'inline-flex';
+            elements.summaryBtn.style.display = 'none';
+            break;
+        case 'analysis':
+            elements.analysisSection.style.display = 'block';
+            elements.divisionGroup.style.display = 'none';
+            elements.loadBtn.style.display = 'none';
+            elements.exportBtn.style.display = 'none';
+            elements.summaryBtn.style.display = 'none';
+            break;
+    }
+}
+
+function handleLoadData() {
+    if (currentView === 'table') {
+        loadData();
+    } else {
+        loadDashboard();
+    }
 }
 
 function initSeederModal() {
@@ -153,7 +230,7 @@ async function checkHealth() {
     try {
         const data = await apiRequest('/api/health');
         if (data.status === 'healthy') {
-            setStatus('connected', 'Database Connected');
+            setStatus('connected', `Connected (${data.profile})`);
         } else {
             setStatus('disconnected', 'Database Error');
         }
@@ -220,25 +297,134 @@ async function loadData() {
     }
 }
 
-async function updateRecord(recordId, field, value) {
+// ==================== DASHBOARD ====================
+async function loadDashboard() {
+    const month = parseInt(elements.monthSelect.value);
+    const year = parseInt(elements.yearSelect.value);
+
+    currentMonth = month;
+    currentYear = year;
+
+    elements.dashboardTitle.textContent = `Dashboard - ${getMonthName(month)} ${year}`;
+
     try {
-        await apiRequest(`/api/aggregations/${recordId}`, {
-            method: 'PUT',
-            body: JSON.stringify({ [field]: value })
-        });
-
-        // Update local record
-        const record = currentRecords.find(r => r.id === recordId);
-        if (record) {
-            record[field] = value;
-        }
-
-        showToast('Saved', 'success');
-        return true;
+        const data = await apiRequest(`/api/analysis/dashboard?month=${month}&year=${year}`);
+        renderDashboard(data);
     } catch (error) {
-        showToast(`Failed to save: ${error.message}`, 'error');
-        return false;
+        showToast(`Failed to load dashboard: ${error.message}`, 'error');
     }
+}
+
+function renderDashboard(data) {
+    const { overall, metrics, top_divisions, top_gangs } = data;
+
+    // Update stats cards
+    elements.statDivisions.textContent = overall.total_divisions;
+    elements.statGangs.textContent = overall.total_gangs;
+    elements.statEmployees.textContent = formatNumber(overall.total_employees, 0);
+    elements.statHK.textContent = formatNumber(overall.total_hk, 1);
+    elements.statUpah.textContent = formatCurrency(overall.total_upah_bersih);
+    elements.statFFB.textContent = formatNumber(overall.total_ffb_weight, 2) + ' ton';
+
+    // Update metrics
+    elements.metricAvgHK.textContent = metrics.avg_hk_per_employee.toFixed(2);
+    elements.metricAvgUpah.textContent = formatCurrency(metrics.avg_upah_per_employee);
+    elements.metricUpahHK.textContent = formatCurrency(metrics.avg_upah_per_hk);
+    elements.metricUpahTon.textContent = formatCurrency(metrics.upah_per_ton_ffb);
+
+    // Update top divisions
+    if (top_divisions.length > 0) {
+        elements.topDivisionsList.innerHTML = top_divisions.map((d, i) => `
+            <div class="top-item">
+                <span class="top-rank">${i + 1}</span>
+                <span class="top-name">${d.division}</span>
+                <span class="top-value">${formatCurrency(d.upah)}</span>
+            </div>
+        `).join('');
+    } else {
+        elements.topDivisionsList.innerHTML = '<div class="empty-state-mini">No data available</div>';
+    }
+
+    // Update top gangs
+    if (top_gangs.length > 0) {
+        elements.topGangsList.innerHTML = top_gangs.map((g, i) => `
+            <div class="top-item">
+                <span class="top-rank">${i + 1}</span>
+                <div class="top-name-wrapper">
+                    <span class="top-name">${g.gang}</span>
+                    <span class="top-desc">${g.description}</span>
+                </div>
+                <span class="top-value">${formatCurrency(g.upah)}</span>
+            </div>
+        `).join('');
+    } else {
+        elements.topGangsList.innerHTML = '<div class="empty-state-mini">No data available</div>';
+    }
+}
+
+// ==================== ANALYSIS ====================
+async function runComparison() {
+    const month1 = parseInt(elements.compareMonth1.value);
+    const year1 = parseInt(elements.compareYear1.value);
+    const month2 = parseInt(elements.compareMonth2.value);
+    const year2 = parseInt(elements.compareYear2.value);
+
+    try {
+        const data = await apiRequest(
+            `/api/analysis/comparison?month1=${month1}&year1=${year1}&month2=${month2}&year2=${year2}`
+        );
+        renderComparison(data);
+    } catch (error) {
+        showToast(`Failed to load comparison: ${error.message}`, 'error');
+    }
+}
+
+function renderComparison(data) {
+    const { comparison } = data;
+
+    if (comparison.length === 0) {
+        elements.comparisonResults.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">📊</div>
+                <h3>No Data Available</h3>
+                <p>There is no data to compare for the selected periods.</p>
+            </div>
+        `;
+        return;
+    }
+
+    elements.comparisonResults.innerHTML = `
+        <table class="data-table" style="display: table;">
+            <thead>
+                <tr>
+                    <th>Division</th>
+                    <th>${getMonthName(comparison[0].period1.month)} ${comparison[0].period1.year}</th>
+                    <th>${getMonthName(comparison[0].period2.month)} ${comparison[0].period2.year}</th>
+                    <th>Change (Employees)</th>
+                    <th>Change (HK)</th>
+                    <th>Change (Upah)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${comparison.map(c => `
+                    <tr>
+                        <td class="gang-code">${c.division_code}</td>
+                        <td class="number-cell">${formatNumber(c.period1.upah, 0)}</td>
+                        <td class="number-cell">${formatNumber(c.period2.upah, 0)}</td>
+                        <td class="number-cell ${c.changes.employees.percent >= 0 ? 'positive' : 'negative'}">
+                            ${c.changes.employees.percent > 0 ? '+' : ''}${c.changes.employees.percent}%
+                        </td>
+                        <td class="number-cell ${c.changes.hk.percent >= 0 ? 'positive' : 'negative'}">
+                            ${c.changes.hk.percent > 0 ? '+' : ''}${c.changes.hk.percent}%
+                        </td>
+                        <td class="number-cell ${c.changes.upah_bersih.percent >= 0 ? 'positive' : 'negative'}">
+                            ${c.changes.upah_bersih.percent > 0 ? '+' : ''}${c.changes.upah_bersih.percent}%
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
 }
 
 // ==================== TABLE RENDERING ====================
@@ -325,8 +511,6 @@ function handleCellEdit(event) {
         let newValue = input.value.trim();
 
         // Parse based on type - handle Indonesian number format
-        // Indonesian format: dots as thousand separator, comma as decimal
-        // Also handle Excel paste with spaces
         newValue = parseInputNumber(newValue);
 
         if (type === 'int') {
@@ -363,83 +547,24 @@ function handleCellEdit(event) {
     });
 }
 
-// ==================== SUMMARY ====================
-async function toggleSummary() {
-    const section = elements.summarySection;
-
-    if (section.style.display === 'none') {
-        await loadSummary();
-        section.style.display = 'block';
-        elements.summaryBtn.innerHTML = '<span class="btn-icon">📊</span> Hide Summary';
-    } else {
-        section.style.display = 'none';
-        elements.summaryBtn.innerHTML = '<span class="btn-icon">📈</span> Summary';
-    }
-}
-
-async function loadSummary() {
-    const month = parseInt(elements.monthSelect.value);
-    const year = parseInt(elements.yearSelect.value);
-
+async function updateRecord(recordId, field, value) {
     try {
-        const data = await apiRequest(`/api/summary?month=${month}&year=${year}`);
-        renderSummary(data);
+        await apiRequest(`/api/aggregations/${recordId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ [field]: value })
+        });
+
+        // Update local record
+        const record = currentRecords.find(r => r.id === recordId);
+        if (record) {
+            record[field] = value;
+        }
+
+        showToast('Saved', 'success');
+        return true;
     } catch (error) {
-        showToast(`Failed to load summary: ${error.message}`, 'error');
-    }
-}
-
-function renderSummary(data) {
-    const { summary, grand_total } = data;
-
-    // Summary cards
-    const cards = [
-        { label: 'Total Divisions', value: summary.length, unit: 'divisions' },
-        { label: 'Total Gangs', value: grand_total.gang_count, unit: 'gangs' },
-        { label: 'Total Employees', value: grand_total.total_emp, unit: 'employees' },
-        { label: 'Total HK', value: formatNumber(grand_total.total_hk, 1), unit: 'hari kerja' },
-        { label: 'Total Upah Bersih', value: formatCurrency(grand_total.total_upah), unit: 'Rupiah' },
-        { label: 'Total FFB Weight', value: formatNumber(grand_total.total_ffb, 2), unit: 'tons' },
-    ];
-
-    elements.summaryGrid.innerHTML = cards.map(card => `
-        <div class="summary-card">
-            <div class="label">${card.label}</div>
-            <div class="value">${card.value}</div>
-            <div class="unit">${card.unit}</div>
-        </div>
-    `).join('');
-
-    // Add division breakdown table
-    if (summary.length > 0) {
-        elements.summaryGrid.innerHTML += `
-            <div style="grid-column: 1 / -1; margin-top: 16px;">
-                <table class="data-table" style="display: table;">
-                    <thead>
-                        <tr>
-                            <th>Division</th>
-                            <th>Gangs</th>
-                            <th>Employees</th>
-                            <th>HK</th>
-                            <th>Upah Bersih</th>
-                            <th>FFB (Ton)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${summary.map(row => `
-                            <tr>
-                                <td class="gang-code">${row.division_code}</td>
-                                <td class="number-cell">${row.gang_count}</td>
-                                <td class="number-cell">${row.total_emp}</td>
-                                <td class="number-cell">${formatNumber(row.total_hk, 1)}</td>
-                                <td class="number-cell currency">${formatCurrency(row.total_upah)}</td>
-                                <td class="number-cell">${formatNumber(row.total_ffb || 0, 2)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
+        showToast(`Failed to save: ${error.message}`, 'error');
+        return false;
     }
 }
 
@@ -558,7 +683,14 @@ async function pollSeederStatus() {
             elements.startSeederBtn.disabled = false;
 
             if (status.completed) {
-                showToast('Seeding completed!', 'success');
+                showToast('Seeding completed! Refreshing data...', 'success');
+                // Refresh current view
+                if (currentView === 'dashboard') {
+                    loadDashboard();
+                } else if (currentView === 'table' && currentDivision) {
+                    loadData();
+                }
+                loadDivisions(); // Refresh division list
             } else if (status.error) {
                 showToast(`Seeder error: ${status.error}`, 'error');
             }
@@ -596,7 +728,6 @@ function parseInputNumber(value) {
     str = str.replace(/\s/g, '');
 
     // Check if it's Indonesian format (has dots and ends with comma for decimal)
-    // e.g., "1.234.567,89" or "1.234,56"
     const hasCommaDecimal = /,\d{1,2}$/.test(str);
     const hasDotThousand = /\.\d{3}/.test(str);
 

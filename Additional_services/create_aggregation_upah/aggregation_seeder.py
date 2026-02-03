@@ -307,10 +307,11 @@ def seed_mill_division(token: str, month: int, year: int):
 def fetch_raw_tree(token: str, division: str, month: int, year: int) -> Dict[str, Any]:
     """Fetch raw tree data from backend API"""
     headers = {"Authorization": f"Bearer {token}"}
-    
+
     # Try locked endpoint first (requires proper auth)
+    # Uses /payroll/report/division-raw-tree with division_code parameter
     response = requests.get(
-        f"{BASE_URL}/payroll/locked/report/division-raw-tree",
+        f"{BASE_URL}/payroll/report/division-raw-tree",
         params={"division_code": division, "month": month, "year": year},
         headers=headers,
         timeout=120

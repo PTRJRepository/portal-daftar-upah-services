@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aggregation Table Editor</title>
-    <meta name="description" content="Web-based editor for payroll aggregation data">
-    
+    <title>Aggregation Editor - Server Profile 1</title>
+    <meta name="description" content="Web-based editor for payroll aggregation data using server_profile_1">
+
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    
+
     <!-- Styles -->
     <link rel="stylesheet" href="/static/styles.css">
 </head>
@@ -22,13 +22,17 @@
                 <div class="logo-icon">📊</div>
                 <div class="logo-text">
                     <h1>Aggregation Editor</h1>
-                    <span>Payroll Data Management</span>
+                    <span>Payroll Data Management (server_profile_1)</span>
                 </div>
             </div>
             <div class="header-status">
                 <div class="status-indicator">
                     <span id="statusDot" class="status-dot loading"></span>
                     <span id="statusText">Connecting...</span>
+                </div>
+                <div class="profile-badge">
+                    <span class="profile-icon">🔗</span>
+                    <span class="profile-text">server_profile_1</span>
                 </div>
             </div>
         </div>
@@ -39,12 +43,21 @@
         <!-- Controls Bar -->
         <div class="controls-bar">
             <div class="control-group">
+                <label>View</label>
+                <select id="viewSelect">
+                    <option value="dashboard">📈 Dashboard</option>
+                    <option value="table">📋 Data Table</option>
+                    <option value="analysis">📊 Analysis</option>
+                </select>
+            </div>
+
+            <div class="control-group" id="divisionGroup">
                 <label>Division</label>
                 <select id="divisionSelect">
                     <option value="">Loading...</option>
                 </select>
             </div>
-            
+
             <div class="control-group">
                 <label>Month</label>
                 <select id="monthSelect">
@@ -62,7 +75,7 @@
                     <option value="12">December</option>
                 </select>
             </div>
-            
+
             <div class="control-group">
                 <label>Year</label>
                 <select id="yearSelect">
@@ -72,7 +85,7 @@
                     <option value="2027">2027</option>
                 </select>
             </div>
-            
+
             <div class="control-actions">
                 <button id="loadBtn" class="btn btn-primary">
                     <span class="btn-icon">📥</span>
@@ -82,7 +95,7 @@
                     <span class="btn-icon">📁</span>
                     Export CSV
                 </button>
-                <button id="summaryBtn" class="btn btn-secondary">
+                <button id="summaryBtn" class="btn btn-secondary" style="display: none;">
                     <span class="btn-icon">📈</span>
                     Summary
                 </button>
@@ -93,8 +106,107 @@
             </div>
         </div>
 
+        <!-- Dashboard Section -->
+        <section class="dashboard-section" id="dashboardSection">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span>📈</span>
+                    <span id="dashboardTitle">Dashboard</span>
+                </h2>
+                <button class="btn btn-secondary btn-sm" id="refreshDashboardBtn">
+                    <span class="btn-icon">🔄</span>
+                </button>
+            </div>
+
+            <!-- Overall Stats Cards -->
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-card stat-primary">
+                    <div class="stat-icon">🏢</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Divisions</div>
+                        <div class="stat-value" id="statDivisions">-</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-secondary">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Gangs</div>
+                        <div class="stat-value" id="statGangs">-</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-success">
+                    <div class="stat-icon">👷</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Employees</div>
+                        <div class="stat-value" id="statEmployees">-</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-info">
+                    <div class="stat-icon">⏰</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total HK</div>
+                        <div class="stat-value" id="statHK">-</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-warning">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Upah Bersih</div>
+                        <div class="stat-value" id="statUpah">-</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-purple">
+                    <div class="stat-icon">🌴</div>
+                    <div class="stat-content">
+                        <div class="stat-label">FFB Weight</div>
+                        <div class="stat-value" id="statFFB">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metrics Row -->
+            <div class="metrics-row">
+                <div class="metric-card">
+                    <div class="metric-label">Avg HK / Employee</div>
+                    <div class="metric-value" id="metricAvgHK">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Avg Upah / Employee</div>
+                    <div class="metric-value" id="metricAvgUpah">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Avg Upah / HK</div>
+                    <div class="metric-value" id="metricUpahHK">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Upah / Ton FFB</div>
+                    <div class="metric-value" id="metricUpahTon">-</div>
+                </div>
+            </div>
+
+            <!-- Top Divisions and Gangs -->
+            <div class="top-section">
+                <div class="top-card">
+                    <div class="top-header">
+                        <h3>🏆 Top Divisions by Upah Bersih</h3>
+                    </div>
+                    <div class="top-list" id="topDivisionsList">
+                        <div class="empty-state-mini">Loading...</div>
+                    </div>
+                </div>
+                <div class="top-card">
+                    <div class="top-header">
+                        <h3>⭐ Top Gangs by Upah Bersih</h3>
+                    </div>
+                    <div class="top-list" id="topGangsList">
+                        <div class="empty-state-mini">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Data Table Section -->
-        <section class="data-section" id="dataSection">
+        <section class="data-section" id="dataSection" style="display: none;">
             <div class="section-header">
                 <h2 class="section-title">
                     <span>📋</span>
@@ -102,14 +214,14 @@
                 </h2>
                 <span class="record-count" id="recordCount">0 records</span>
             </div>
-            
+
             <div class="table-wrapper" id="tableWrapper">
                 <div class="empty-state" id="emptyState">
                     <div class="icon">📊</div>
                     <h3>No Data Loaded</h3>
                     <p>Select a division and period, then click "Load Data" to view aggregation records.</p>
                 </div>
-                
+
                 <table class="data-table" id="dataTable" style="display: none;">
                     <thead id="tableHead">
                         <!-- Headers will be inserted here -->
@@ -121,16 +233,63 @@
             </div>
         </section>
 
-        <!-- Summary Section -->
-        <section class="summary-section" id="summarySection" style="display: none;">
+        <!-- Analysis Section -->
+        <section class="analysis-section" id="analysisSection" style="display: none;">
             <div class="section-header">
                 <h2 class="section-title">
-                    <span>📈</span>
-                    Division Summary
+                    <span>📊</span>
+                    Period Comparison Analysis
                 </h2>
+                <div class="comparison-controls">
+                    <select id="compareMonth1" class="compare-select">
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                    <select id="compareYear1" class="compare-select">
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                    <span class="vs-badge">VS</span>
+                    <select id="compareMonth2" class="compare-select">
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                    <select id="compareYear2" class="compare-select">
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                    <button id="runComparisonBtn" class="btn btn-primary">Compare</button>
+                </div>
             </div>
-            <div class="summary-grid" id="summaryGrid">
-                <!-- Summary cards will be inserted here -->
+
+            <div class="comparison-results" id="comparisonResults">
+                <div class="empty-state">
+                    <div class="icon">📊</div>
+                    <h3>Select Periods to Compare</h3>
+                    <p>Choose two periods and click "Compare" to see the analysis.</p>
+                </div>
             </div>
         </section>
     </main>
@@ -149,7 +308,7 @@
                         <option value="ALL">ALL Divisions</option>
                     </select>
                 </div>
-                
+
                 <div style="display: flex; gap: 16px; margin-bottom: 16px;">
                     <div class="control-group" style="flex: 1;">
                         <label>Month</label>
@@ -160,7 +319,7 @@
                         <select id="seederYear" style="width: 100%;"></select>
                     </div>
                 </div>
-                
+
                 <div class="progress-bar" id="seederProgress" style="display: none;">
                     <div class="progress" id="progressBar" style="width: 0%;"></div>
                 </div>
@@ -168,7 +327,7 @@
                     <span id="progressCurrent">Processing...</span>
                     <span id="progressPercent">0%</span>
                 </div>
-                
+
                 <div class="seeder-log" id="seederLog">
                     <div class="log-entry info">Ready to seed. Click "Start Seeder" to begin.</div>
                 </div>
