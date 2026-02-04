@@ -229,7 +229,7 @@ export class DataExtractorService {
 
         const startParallel = performance.now();
         // Fetch all required data in parallel
-        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
+        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
             this.getPremi(empCodes, startDate, endDate, serverProfile),
@@ -237,7 +237,7 @@ export class DataExtractorService {
             this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
 
             this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile),
-            // REMOVED: this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile),
+            this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile), // RESTORED
             this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
             this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
             this.getUpahPokok(empCodes, serverProfile),
@@ -268,7 +268,7 @@ export class DataExtractorService {
             const empPotongan = potongan[emp.emp_code] || {};
             const empLembur = lembur[emp.emp_code] || { jam: 0, jumlah: 0 };
             const empLemburDocDesc = lemburDocDesc[emp.emp_code] || 0;
-            // const empBerasDocDesc = berasDocDesc[emp.emp_code] || 0; // REMOVED
+            const empBerasDocDesc = berasDocDesc[emp.emp_code] || 0;
             const empJabatan = jabatan[emp.emp_code] || 0;
             const empMasaKerjaJumlah = masaKerja[emp.emp_code] || 0;
 
@@ -313,9 +313,14 @@ export class DataExtractorService {
             }
 
             const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
-            // [UPDATED] Beras jumlah = (berasRate * HK) ONLY. Removed docDesc addition to avoid duplication.
+            // [UPDATED] Beras jumlah = (berasRate * HK) + amounts from DocDesc containing 'BERAS'
             const berasJumlahBase = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
-            const berasJumlah = berasJumlahBase;
+
+            // [F2H_SPECIFIC] Implementasi penambahan tunjangan beras dari docDesc, khusus untuk f2h
+            const isF2H = emp.gang_code === 'F2H';
+            const additionalBeras = isF2H ? empBerasDocDesc : 0;
+
+            const berasJumlah = berasJumlahBase + additionalBeras;
 
             const jabatanRate = hk > 0 && empJabatan > 0 ? empJabatan / hk : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
