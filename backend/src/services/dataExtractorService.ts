@@ -404,7 +404,10 @@ export class DataExtractorService {
             // gaji_pokok_ideal already calculated above
 
             // koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal
-            const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal;
+            // [FIXED] koreksi_hk should ALWAYS be minus or zero (never positive)
+            // If aktual > ideal, koreksi_hk = 0 (no correction needed)
+            // If aktual < ideal, koreksi_hk = negative value (deduction)
+            const koreksi_hk = Math.min(0, gaji_pokok_aktual - gaji_pokok_ideal);
 
             // [NEW] Astek 0.84% calculation
             // Formula: (gaji_pokok_ideal + tunjangan_masa_kerja) * 0.84%
