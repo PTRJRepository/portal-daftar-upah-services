@@ -458,7 +458,7 @@ export class DataExtractorService {
                 loc_code: emp.loc_code,
                 gang_code: emp.gang_code,
                 upah_dasar: empUpahDasar,
-                jumlah_hk: hk,
+                jumlah_hk: effective_hk,
                 total_jam_kerja: attData.total_hours,
                 has_shortage: attData.shortage_count > 0,
                 shortage_details: attData.shortage_details || [],
@@ -802,6 +802,7 @@ export class DataExtractorService {
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
                   AND DATEPART(weekday, trl.TrxDate) = 1
+                  AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate)
                 
                 UNION ALL
 
@@ -812,6 +813,7 @@ export class DataExtractorService {
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
                   AND DATEPART(weekday, trl.TrxDate) = 1
+                  AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate)
             ) combined
             GROUP BY RTRIM(EmpCode)
         `, [startDate, endDate, startDate, endDate]);
