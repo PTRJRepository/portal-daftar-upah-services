@@ -28,6 +28,8 @@ interface AggregationRecord {
     total_tunjangan: number;
     total_premi_brondol: number;
     total_premi_prunning: number;
+    total_premi_insentif: number;  // Extracted from dynamic_premi with "INSENTIF" header
+    total_premi_kinerja: number;   // Extracted from dynamic_premi with "KINERJA" header
     total_premi: number;
     total_potongan: number;
     total_pph21: number;
@@ -37,8 +39,10 @@ interface AggregationRecord {
     total_upah_kotor: number;
     total_upah_bersih: number;
     total_ffb_weight: number;
-    dynamic_premi_data: string;  // JSON string of all dynamic premi
-    total_koreksi: number;       // Total corrections (koreksi HK + pot_koreksi)
+    total_weight_tbs: number;      // TBS weight
+    dynamic_premi_data: string;    // JSON string of all dynamic premi
+    informasi_tambahan: string;    // Additional information
+    total_koreksi: number;         // Extracted from dynamic_premi with "KOREKSI" header (except KOREKSI_HK)
 }
 
 interface SeedResult {
@@ -118,9 +122,11 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                     total_employees, total_hk, total_hari_kerja,
                     total_upah_dasar, total_upah_pokok, total_gaji_pokok,
                     total_beras, total_jabatan, total_masa_kerja, total_lembur, total_tunjangan,
-                    total_premi_brondol, total_premi_prunning, total_premi,
+                    total_premi_brondol, total_premi_prunning, total_premi_insentif, total_premi_kinerja,
+                    total_premi, dynamic_premi_data, informasi_tambahan, total_koreksi,
                     total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
-                    total_upah_kotor, total_upah_bersih, total_ffb_weight, created_at, updated_at, source_endpoint
+                    total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
+                    created_at, updated_at, source_endpoint
                 FROM dbo.daftar_upah_aggregation_history
                 WHERE 1=1
             `;
@@ -451,6 +457,9 @@ async function insertOrUpdateAggregation(
 ) {
     const db = Database.getExtendedInstance();
 
+    // Map internal division code to DB standardized code (e.g. PG1A -> P1A)
+    const dbDivisionCode = DIVISION_CODE_MAP[division] || division;
+
     try {
         // Check if record exists
         const existing = await db.queryOne<{ id: number }>(`
@@ -481,6 +490,8 @@ async function insertOrUpdateAggregation(
                     total_tunjangan = ?,
                     total_premi_brondol = ?,
                     total_premi_prunning = ?,
+                    total_premi_insentif = ?,
+                    total_premi_kinerja = ?,
                     total_premi = ?,
                     total_potongan = ?,
                     total_pph21 = ?,
@@ -490,13 +501,15 @@ async function insertOrUpdateAggregation(
                     total_upah_kotor = ?,
                     total_upah_bersih = ?,
                     total_ffb_weight = ?,
+                    total_weight_tbs = ?,
                     dynamic_premi_data = ?,
+                    informasi_tambahan = ?,
                     total_koreksi = ?,
                     updated_at = GETDATE(),
                     source_endpoint = ?
                 WHERE id = ?
             `, [
-                division,
+                dbDivisionCode, // Use mapped code
                 aggregation.gang_description,
                 aggregation.total_employees,
                 aggregation.total_hk,
@@ -515,6 +528,8 @@ async function insertOrUpdateAggregation(
                 aggregation.total_tunjangan,
                 aggregation.total_premi_brondol,
                 aggregation.total_premi_prunning,
+                aggregation.total_premi_insentif,
+                aggregation.total_premi_kinerja,
                 aggregation.total_premi,
                 aggregation.total_potongan,
                 aggregation.total_pph21,
@@ -524,13 +539,15 @@ async function insertOrUpdateAggregation(
                 aggregation.total_upah_kotor,
                 aggregation.total_upah_bersih,
                 aggregation.total_ffb_weight,
+                aggregation.total_weight_tbs,
                 aggregation.dynamic_premi_data,
+                aggregation.informasi_tambahan,
                 aggregation.total_koreksi,
                 sourceEndpoint,
                 existing.id
             ]);
         } else {
-            // Insert new record - using explicit named parameters
+            // Insert new record - using ? placeholders for consistency
             await db.query(`
                 INSERT INTO dbo.daftar_upah_aggregation_history (
                     period_month, period_year, division_code, gang_code, gang_description,
@@ -538,54 +555,56 @@ async function insertOrUpdateAggregation(
                     total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu, total_cuti_nasional,
                     total_upah_dasar, total_upah_pokok, total_gaji_pokok,
                     total_beras, total_jabatan, total_masa_kerja, total_lembur, total_tunjangan,
-                    total_premi_brondol, total_premi_prunning, total_premi,
+                    total_premi_brondol, total_premi_prunning, total_premi_insentif, total_premi_kinerja, total_premi,
                     total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
-                    total_upah_kotor, total_upah_bersih, total_ffb_weight,
-                    dynamic_premi_data, total_koreksi,
+                    total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
+                    dynamic_premi_data, informasi_tambahan, total_koreksi,
                     created_at, updated_at, source_endpoint
                 ) VALUES (
-                    @p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11,
-                    @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22,
-                    @p23, @p24, @p25, @p26, @p27, @p28, @p29, @p30,
-                    @p31, @p32,
-                    GETDATE(), GETDATE(), @p33
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
-            `, {
-                p0: month,
-                p1: year,
-                p2: division,
-                p3: aggregation.gang_code,
-                p4: aggregation.gang_description,
-                p5: aggregation.total_employees,
-                p6: aggregation.total_hk,
-                p7: aggregation.total_hari_kerja,
-                p8: aggregation.total_cuti_tahunan,
-                p9: aggregation.total_cuti_sakit,
-                p10: aggregation.total_cuti_minggu,
-                p11: aggregation.total_cuti_nasional,
-                p12: aggregation.total_upah_dasar,
-                p13: aggregation.total_upah_pokok,
-                p14: aggregation.total_gaji_pokok,
-                p15: aggregation.total_beras,
-                p16: aggregation.total_jabatan,
-                p17: aggregation.total_masa_kerja,
-                p18: aggregation.total_lembur,
-                p19: aggregation.total_tunjangan,
-                p20: aggregation.total_premi_brondol,
-                p21: aggregation.total_premi_prunning,
-                p22: aggregation.total_premi,
-                p23: aggregation.total_potongan,
-                p24: aggregation.total_pph21,
-                p25: aggregation.total_bpjs_pekerja,
-                p26: aggregation.total_bpjs_majikan,
-                p27: aggregation.total_spsi,
-                p28: aggregation.total_upah_kotor,
-                p29: aggregation.total_upah_bersih,
-                p30: aggregation.total_ffb_weight,
-                p31: aggregation.dynamic_premi_data,
-                p32: aggregation.total_koreksi,
-                p33: sourceEndpoint
-            });
+            `, [
+                month,
+                year,
+                dbDivisionCode, // Use mapped code
+                aggregation.gang_code,
+                aggregation.gang_description,
+                aggregation.total_employees,
+                aggregation.total_hk,
+                aggregation.total_hari_kerja,
+                aggregation.total_cuti_tahunan,
+                aggregation.total_cuti_sakit,
+                aggregation.total_cuti_minggu,
+                aggregation.total_cuti_nasional,
+                aggregation.total_upah_dasar,
+                aggregation.total_upah_pokok,
+                aggregation.total_gaji_pokok,
+                aggregation.total_beras,
+                aggregation.total_jabatan,
+                aggregation.total_masa_kerja,
+                aggregation.total_lembur,
+                aggregation.total_tunjangan,
+                aggregation.total_premi_brondol,
+                aggregation.total_premi_prunning,
+                aggregation.total_premi_insentif,
+                aggregation.total_premi_kinerja,
+                aggregation.total_premi,
+                aggregation.total_potongan,
+                aggregation.total_pph21,
+                aggregation.total_bpjs_pekerja,
+                aggregation.total_bpjs_majikan,
+                aggregation.total_spsi,
+                aggregation.total_upah_kotor,
+                aggregation.total_upah_bersih,
+                aggregation.total_ffb_weight,
+                aggregation.total_weight_tbs,
+                aggregation.dynamic_premi_data,
+                aggregation.informasi_tambahan,
+                aggregation.total_koreksi,
+                sourceEndpoint
+            ]);
         }
     } catch (error) {
         console.error("[InsertAggregation] Error:", error);
@@ -593,27 +612,39 @@ async function insertOrUpdateAggregation(
     }
 }
 
+// Division mapping for standardization (Internal -> DB/Mill)
+const DIVISION_CODE_MAP: Record<string, string> = {
+    "PG1A": "P1A", "PG1B": "P1B", "PG2A": "P2A", "PG2B": "P2B",
+    "ARB1": "AB1", "ARB2": "AB2",
+    "INFRA": "INF", "AREC": "ARC",
+    // Ensure 3-letter codes map to themselves or remain as is if not in list
+    "DME": "DME", "ARA": "ARA", "IJL": "IJL", "MILL": "MILL"
+};
+
 async function fetchFfbWeightForDivision(divisionCode: string, month: number, year: number): Promise<number> {
     try {
         const db = Database.getMillInstance();
 
+        // Use mapped code if available, otherwise original
+        const searchCode = DIVISION_CODE_MAP[divisionCode] || divisionCode;
+
         // Use fuzzy match for division code in both SupplierName and CustomerCode
-        const matchPattern = `%${divisionCode}%`;
+        const matchPattern = `%${searchCode}%`;
 
         const result = await db.queryOne<{ total_weight: string }>(`
             SELECT SUM(CAST(T.[NetWeight] AS DECIMAL(18,2))) / 1000.0 AS total_weight
             FROM [dbo].[WM_TICKET] T
             LEFT JOIN [dbo].[PU_SUPPLIER] S ON T.[CustomerCode] = S.[SupplierCode]
             WHERE T.[CustomerCode] LIKE 'PTRJ%'
-              AND MONTH(T.[DateReceived]) = @p1
-              AND YEAR(T.[DateReceived]) = @p2
+              AND MONTH(T.[DateReceived]) = ?
+              AND YEAR(T.[DateReceived]) = ?
               AND T.[ProductCode] = 'FFB'
-              AND (S.[Name] LIKE @p0 OR T.[CustomerCode] LIKE @p0)
-        `, { p0: matchPattern, p1: month, p2: year });
+              AND (S.[Name] LIKE ? OR T.[CustomerCode] LIKE ?)
+        `, [month, year, matchPattern, matchPattern]);
 
         if (result && result.total_weight) {
             const weight = parseFloat(result.total_weight);
-            console.log(`[FFB] ${divisionCode}: ${weight.toFixed(2)} tons`);
+            console.log(`[FFB] ${divisionCode} (mapped: ${searchCode}): ${weight.toFixed(2)} tons`);
             return weight;
         }
 
@@ -624,9 +655,9 @@ async function fetchFfbWeightForDivision(divisionCode: string, month: number, ye
             FROM [dbo].[WM_TICKET] T
             LEFT JOIN [dbo].[PU_SUPPLIER] S ON T.[CustomerCode] = S.[SupplierCode]
             WHERE T.[CustomerCode] LIKE 'PTRJ%'
-              AND MONTH(T.[DateReceived]) = @p1
-              AND YEAR(T.[DateReceived]) = @p2
-        `, { p1: month, p2: year });
+              AND MONTH(T.[DateReceived]) = ?
+              AND YEAR(T.[DateReceived]) = ?
+        `, [month, year]);
 
         const available = debugCheck.map(r => `${r.Code} (${r.Name})`).join(", ");
         console.log(`[FFB] ${divisionCode}: No data found. Available PTRJ suppliers: [${available || 'NONE'}]`);
@@ -690,12 +721,15 @@ function calculateGangAggregation(employees: any[], gangCode: string, gangDesc: 
     }
 
     // Calculate total_premi (excluding certain types) and build dynamic premi data
-    const excludePatterns = ['prun', 'pruning', 'prunning', 'insentif panen', 'insentif_panen', 'panen', 'tiket', 'koreksi'];
+    const excludePatterns = ['prun', 'pruning', 'prunning', 'insentif panen', 'insentif_panen', 'panen', 'kinerja', 'tiket', 'koreksi'];
 
     function extractTotalPremi(): {
         total_premi_calculated: number;
         premi_brondol: number;
         premi_prunning: number;
+        premi_insentif: number;
+        premi_kinerja: number;
+        total_koreksi_from_dynamic: number;
         dynamic_premi_data: string;
     } {
         let premi_brondol = 0.0;
@@ -795,10 +829,54 @@ function calculateGangAggregation(employees: any[], gangCode: string, gangDesc: 
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([header, total]) => ({ header, total: Math.round(total * 100) / 100 }));
 
+        // Extract specific values from dynamic_premi for separate tracking
+        let premi_insentif = 0.0;
+        let premi_prunning_from_dynamic = 0.0;
+        let premi_kinerja = 0.0;
+        let total_koreksi_from_dynamic = 0.0;
+
+        // DEBUG: Log all headers to see what we're working with
+        console.log(`[DebugPremi] All dynamic_premi headers for ${gangCode}:`, Object.keys(dynamic_premi));
+
+        for (const [header, total] of Object.entries(dynamic_premi)) {
+            if (total > 0) {
+                const headerUpper = header.toUpperCase().replace(/ /g, '_').replace(/_/g, '_'); // Normalize spaces to underscores
+
+                // Insentif Panen - from headers containing "INSENTIF" and "PANEN" (various formats)
+                // Matches: INSENTIF PANEN, INSENTIF_PANEN, INSENTIFPANEN, PANEN, etc.
+                if (headerUpper.includes("INSENTIF") || headerUpper.includes("PANEN")) {
+                    premi_insentif += total;
+                    console.log(`[DebugPremi] Found INSENTIF/PANEN: ${header} = ${total}`);
+                }
+                // Prunning - from headers containing "PRUN", "PRUNING", or "PRUNNING"
+                if (headerUpper.includes("PRUN") || headerUpper.includes("PRUNING") || headerUpper.includes("PRUNNING")) {
+                    if (!headerUpper.includes("BRONDOL")) { // Exclude if also contains BRONDOL (e.g., PRUN_BRONDOL)
+                        premi_prunning_from_dynamic += total;
+                        console.log(`[DebugPremi] Found PRUNNING: ${header} = ${total}`);
+                    }
+                }
+                // Kinerja - from headers containing "KINERJA"
+                if (headerUpper.includes("KINERJA")) {
+                    premi_kinerja += total;
+                    console.log(`[DebugPremi] Found KINERJA: ${header} = ${total}`);
+                }
+                // Koreksi - from headers containing "KOREKSI" (except "KOREKSI_HK")
+                if (headerUpper.includes("KOREKSI") && !headerUpper.includes("KOREKSI_HK")) {
+                    total_koreksi_from_dynamic += total;
+                    console.log(`[DebugPremi] Found KOREKSI: ${header} = ${total}`);
+                }
+            }
+        }
+
+        console.log(`[DebugPremi] Extracted - Insentif: ${premi_insentif}, Prunning: ${premi_prunning_from_dynamic}, Kinerja: ${premi_kinerja}, Koreksi: ${total_koreksi_from_dynamic}`);
+
         return {
             total_premi_calculated,
             premi_brondol,
-            premi_prunning,
+            premi_prunning: premi_prunning_from_dynamic,
+            premi_insentif,
+            premi_kinerja,
+            total_koreksi_from_dynamic,
             dynamic_premi_data: JSON.stringify(dynamic_premi_list)
         };
     }
@@ -807,13 +885,14 @@ function calculateGangAggregation(employees: any[], gangCode: string, gangDesc: 
         total_premi_calculated: total_premi_calc,
         premi_brondol: total_brondol,
         premi_prunning: total_prunning,
+        premi_insentif: total_insentif,
+        premi_kinerja: total_kinerja,
+        total_koreksi_from_dynamic: total_koreksi,
         dynamic_premi_data
     } = extractTotalPremi();
 
-    // Calculate total_koreksi (koreksi_hk + pot_koreksi + premi_koreksi)
-    const total_koreksi = safeSum("koreksi_hk") + safeSum("pot_koreksi") + safeSum("premi_koreksi");
-
     console.log(`[DebugPremi] Dynamic Data for ${gangCode}:`, dynamic_premi_data);
+    console.log(`[DebugPremi] Final - Insentif: ${total_insentif}, Prunning: ${total_prunning}, Kinerja: ${total_kinerja}, Koreksi: ${total_koreksi}`);
 
     return {
         gang_code: gangCode,
@@ -835,6 +914,8 @@ function calculateGangAggregation(employees: any[], gangCode: string, gangDesc: 
         total_tunjangan: safeSum("total_tunjangan"),
         total_premi_brondol: total_brondol,
         total_premi_prunning: total_prunning,
+        total_premi_insentif: total_insentif,
+        total_premi_kinerja: total_kinerja,
         total_premi: total_premi_calc,
         total_potongan: safeSum("total_potongan"),
         total_pph21: safeSum("pot_pph21"),
@@ -844,7 +925,9 @@ function calculateGangAggregation(employees: any[], gangCode: string, gangDesc: 
         total_upah_kotor: safeSum("jumlah_upah_kotor"),
         total_upah_bersih: safeSum("upah_bersih"),
         total_ffb_weight: 0,
+        total_weight_tbs: 0,
         dynamic_premi_data,
+        informasi_tambahan: '',
         total_koreksi
     };
 }

@@ -15,8 +15,14 @@ export interface DivisionSummary {
     total_spsi: number;
     total_lembur: number;
     total_gangs: number;
+    total_premi_brondol: number;
     total_premi_prunning: number;
+    total_premi_insentif: number;  // Insentif Panen from dynamic_premi
+    total_premi_kinerja: number;   // Kinerja from dynamic_premi
+    total_koreksi: number;         // Koreksi from dynamic_premi
     total_ffb_weight: number;
+    total_weight_tbs: number;      // TBS weight from database
+    informasi_tambahan: string;    // Additional info from database
     thumb_print: number;
     total_manual: number;
     selisih: number;
@@ -111,7 +117,7 @@ export class SummaryService {
         const descriptions = await this.getDivisionDescriptions();
 
         const query = `
-            SELECT 
+            SELECT
                 division_code,
                 SUM(ISNULL(total_premi, 0)) as total_premi,
                 SUM(ISNULL(total_employees, 0)) as total_employees,
@@ -121,10 +127,15 @@ export class SummaryService {
                 SUM(ISNULL(total_spsi, 0)) as total_spsi,
                 SUM(ISNULL(total_lembur, 0)) as total_lembur,
                 COUNT(DISTINCT gang_code) as total_gangs,
+                SUM(ISNULL(total_premi_brondol, 0)) as total_premi_brondol,
                 SUM(ISNULL(total_premi_prunning, 0)) as total_premi_prunning,
-                MAX(ISNULL(total_ffb_weight, 0)) as total_ffb_weight
+                SUM(ISNULL(total_premi_insentif, 0)) as total_premi_insentif,
+                SUM(ISNULL(total_premi_kinerja, 0)) as total_premi_kinerja,
+                SUM(ISNULL(total_koreksi, 0)) as total_koreksi,
+                MAX(ISNULL(total_ffb_weight, 0)) as total_ffb_weight,
+                MAX(ISNULL(total_weight_tbs, 0)) as total_weight_tbs
             FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = @p0 AND period_year = @p1 AND division_code IS NOT NULL
+            WHERE period_month = ? AND period_year = ? AND division_code IS NOT NULL
             GROUP BY division_code ORDER BY division_code
         `;
 
@@ -152,8 +163,14 @@ export class SummaryService {
                 total_spsi: parseFloat(row.total_spsi || 0),
                 total_lembur: parseFloat(row.total_lembur || 0),
                 total_gangs: parseInt(row.total_gangs || 0),
+                total_premi_brondol: parseFloat(row.total_premi_brondol || 0),
                 total_premi_prunning: parseFloat(row.total_premi_prunning || 0),
+                total_premi_insentif: parseFloat(row.total_premi_insentif || 0),
+                total_premi_kinerja: parseFloat(row.total_premi_kinerja || 0),
+                total_koreksi: parseFloat(row.total_koreksi || 0),
                 total_ffb_weight: parseFloat(row.total_ffb_weight || 0),
+                total_weight_tbs: parseFloat(row.total_weight_tbs || 0),
+                informasi_tambahan: row.informasi_tambahan || '',
                 thumb_print: thumbValue,
                 total_manual: upah,
                 selisih: selisih,
@@ -170,7 +187,7 @@ export class SummaryService {
         let query = "SELECT DISTINCT period_year, period_month FROM dbo.daftar_upah_aggregation_history WHERE 1=1";
         const params: any[] = [];
         if (divisionCode) {
-            query += " AND division_code = @p0";
+            query += " AND division_code = ?";
             params.push(divisionCode);
         }
         query += " ORDER BY period_year DESC, period_month DESC";
@@ -325,9 +342,9 @@ export class SummaryService {
 
     private async getDynamicPremiInsentifPanen(month: number, year: number): Promise<Record<string, { insentif_panen: number }>> {
         const rows = await this.extendDb.query<any>(`
-            SELECT division_code, dynamic_premi_data 
-            FROM dbo.daftar_upah_aggregation_history 
-            WHERE period_month = @p0 AND period_year = @p1 AND division_code IS NOT NULL
+            SELECT division_code, dynamic_premi_data
+            FROM dbo.daftar_upah_aggregation_history
+            WHERE period_month = ? AND period_year = ? AND division_code IS NOT NULL
         `, [month, year]);
 
         const result: Record<string, any> = {};
@@ -503,14 +520,14 @@ export class SummaryService {
 
             // Query Mill PKS data from VenusHR14
             const rows = await venusDb.query<any>(`
-                SELECT 
+                SELECT
                     COUNT(DISTINCT e.EmpCode) as total_employees,
                     SUM(ISNULL(p.PayRate, 0)) as total_upah_dasar,
                     SUM(ISNULL(trl.Hours, 0)) as total_hk
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
                 LEFT JOIN PR_TASKREGLN trl ON trl.EmpCode = e.EmpCode
-                    AND trl.TrxDate >= @p0 AND trl.TrxDate < @p1
+                    AND trl.TrxDate >= ? AND trl.TrxDate < ?
                     AND trl.OT = 0
                 WHERE e.LocCode = 'MILL' OR e.LocCode = 'PKS'
             `, [startDate, endDate]);
@@ -562,8 +579,8 @@ export class SummaryService {
                 JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
                 JOIN HR_GANGLN g ON t.EmpCode = g.GangMember
                 JOIN HR_GANG hg ON hg.GangCode = g.GangCode
-                WHERE hg.LocCode = @p0
-                  AND t.DocDate >= @p1 AND t.DocDate < @p2
+                WHERE hg.LocCode = ?
+                  AND t.DocDate >= ? AND t.DocDate < ?
                   AND UPPER(t.DocDesc) LIKE '%PREMI%'
                   AND ln.Amount > 0
                 ORDER BY t.DocDesc
@@ -578,18 +595,19 @@ export class SummaryService {
 
     public async getDivisionSummary(divisionCode?: string, month?: number, year?: number) {
         let query = `
-            SELECT 
+            SELECT
                 id, period_month, period_year, division_code, gang_code,
                 gang_description, total_employees, total_hk, total_hari_kerja,
                 total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu,
                 total_cuti_nasional, total_upah_dasar, total_upah_pokok,
                 total_gaji_pokok, total_beras, total_jabatan, total_masa_kerja,
                 total_lembur, total_tunjangan, total_premi_brondol,
-                total_premi_prunning, total_premi, dynamic_premi_data,
+                total_premi_prunning, total_premi_insentif, total_premi_kinerja,
+                total_premi, dynamic_premi_data, informasi_tambahan,
                 total_koreksi, total_potongan, total_pph21,
                 total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
-                total_upah_kotor, total_upah_bersih, created_at, updated_at,
-                source_endpoint
+                total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
+                created_at, updated_at, source_endpoint
             FROM dbo.daftar_upah_aggregation_history
             WHERE 1=1
         `;
@@ -599,17 +617,17 @@ export class SummaryService {
         if (divisionCode) {
             const gangs = await divisionDefinition.getGangsForDivision(divisionCode);
             // Simplified logic: filter by division_code
-            query += ` AND division_code = @p${params.length}`;
+            query += ` AND division_code = ?`;
             params.push(divisionCode);
         }
 
         if (month) {
-            query += ` AND period_month = @p${params.length}`;
+            query += ` AND period_month = ?`;
             params.push(month);
         }
 
         if (year) {
-            query += ` AND period_year = @p${params.length}`;
+            query += ` AND period_year = ?`;
             params.push(year);
         }
 
@@ -617,21 +635,77 @@ export class SummaryService {
 
         const rows = await this.extendDb.query<any>(query, params);
 
-        return rows.map(row => {
+        const results = rows.map(row => {
             let dynamicPremi: any[] = [];
+            let backfill = {
+                insentif: 0,
+                kinerja: 0,
+                prunning: 0,
+                koreksi: 0
+            };
+
             try {
                 if (row.dynamic_premi_data) {
                     dynamicPremi = typeof row.dynamic_premi_data === 'string'
                         ? JSON.parse(row.dynamic_premi_data)
                         : row.dynamic_premi_data;
+
+                    // Backfill logic for old data
+                    if (Array.isArray(dynamicPremi)) {
+                        for (const item of dynamicPremi) {
+                            const val = parseFloat(item.total || 0);
+                            const header = (item.header || "").toUpperCase().replace(/ /g, '_');
+
+                            if (header.includes("INSENTIF") || header.includes("PANEN")) backfill.insentif += val;
+                            if (header.includes("KINERJA")) backfill.kinerja += val;
+                            if ((header.includes("PRUN") || header.includes("PRUNING")) && !header.includes("BRONDOL")) backfill.prunning += val;
+                            if (header.includes("KOREKSI") && !header.includes("KOREKSI_HK")) backfill.koreksi += val;
+                        }
+                    }
                 }
             } catch (e) { }
 
+            // Use DB value if present (new data), else use backfilled (old data)
+            // Actually, for consistency, if DB is 0 and backfill > 0, use backfill.
+            const t_insentif = parseFloat(row.total_premi_insentif || 0) || backfill.insentif;
+            const t_kinerja = parseFloat(row.total_premi_kinerja || 0) || backfill.kinerja;
+            const t_prunning = parseFloat(row.total_premi_prunning || 0) || backfill.prunning;
+            const t_koreksi = parseFloat(row.total_koreksi || 0) || backfill.koreksi;
+
             return {
                 ...row,
+                total_premi_insentif: t_insentif,
+                total_premi_kinerja: t_kinerja,
+                total_premi_prunning: t_prunning,
+                total_koreksi: t_koreksi,
                 _dynamic_premi_list: dynamicPremi
             };
         });
+
+        // Collect all unique headers for frontend (excluding the ones we separated)
+        const allHeaders = new Set<string>();
+        const excludePatterns = ['PRUN', 'PRUNING', 'INSENTIF', 'PANEN', 'KINERJA', 'KOREKSI'];
+
+        results.forEach(row => {
+            if (Array.isArray(row._dynamic_premi_list)) {
+                row._dynamic_premi_list.forEach((item: any) => {
+                    const header = (item.header || "").toUpperCase();
+                    // Just collect everything, frontend filters. 
+                    // But to be cleaner, we can pre-filter? 
+                    // Frontend uses `_premi_headers` list.
+                    allHeaders.add(item.header);
+                });
+            }
+        });
+
+        const headerList = Array.from(allHeaders).sort();
+
+        // Attach headers to first row (convention used by frontend)
+        if (results.length > 0) {
+            results[0]._premi_headers = headerList;
+        }
+
+        return results;
     }
 }
 

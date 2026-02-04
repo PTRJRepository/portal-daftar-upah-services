@@ -100,7 +100,16 @@ export class Database {
             return { sql: newSql, params: newParams };
         }
 
-        return { sql, params };
+        // For object parameters, ensure keys have @ prefix for the Python gateway
+        // If SQL uses @p0, @p1 and params object has p0, p1 (without @), add @ prefix
+        const newParams: Record<string, any> = {};
+        for (const [key, value] of Object.entries(params)) {
+            // Add @ prefix if not already present
+            const newKey = key.startsWith('@') ? key : `@${key}`;
+            newParams[newKey] = value;
+        }
+
+        return { sql, params: newParams };
     }
 
     public async query<T = any>(sql: string, params?: any[] | Record<string, any>): Promise<T[]> {

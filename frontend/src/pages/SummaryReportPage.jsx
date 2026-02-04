@@ -115,9 +115,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         if (summaryData.length === 0) return [];
         const allHeaders = summaryData[0]?._premi_headers || [];
 
-        // Patterns to EXCLUDE from display (including KOREKSI to exclude from total_premi calculation)
-        // Also excludes PANEN to normalize to INSENTIF PANEN in informasi tambahan
-        const excludePatterns = ['prun', 'pruning', 'prunning', 'insentif_panen', 'insentif panen', 'tiket', 'koreksi', 'panen'];
+        // Patterns to EXCLUDE from display
+        const excludePatterns = ['prun', 'pruning', 'prunning', 'insentif_panen', 'insentif panen', 'tiket', 'koreksi', 'panen', 'kinerja', 'insentif'];
 
         // Filter out excluded patterns
         return allHeaders.filter(header => {
@@ -126,12 +125,14 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         });
     }, [summaryData]);
 
-    // Dynamic Header Keys
-    const premiKeys = useMemo(() => {
-        return dynamicPremiHeaders.map(h =>
-            `premi_${h.toLowerCase().replace(/ /g, '_').replace(/-/g, '_')}`
+    // Helper function to get dynamic premi value from a row
+    const getDynamicPremiValue = useCallback((row, headerName) => {
+        if (!row._dynamic_premi_list || !Array.isArray(row._dynamic_premi_list)) return 0;
+        const item = row._dynamic_premi_list.find(
+            p => p.header && p.header.toLowerCase() === headerName.toLowerCase()
         );
-    }, [dynamicPremiHeaders]);
+        return item ? parseFloat(item.total || 0) : 0;
+    }, []);
 
     // Calculate Grand Total - using total_premi from database
     const grandTotal = useMemo(() => {
@@ -145,14 +146,12 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             total_spsi: 0,
             total_upah_bersih: 0,
             total_premi: 0,  // Will be summed from database column total_premi
-            // Informasi Tambahan
-            total_insentif_panen: 0,
-            total_prunning: 0,
+            // Separated Components
+            total_premi_insentif: 0,
+            total_premi_kinerja: 0,
+            total_premi_prunning: 0,
             total_koreksi: 0
         };
-
-        // Initialize dynamic premi totals
-        premiKeys.forEach(key => total[key] = 0);
 
         summaryData.forEach(row => {
             total.total_employees += Number(row.total_employees) || 0;
@@ -162,23 +161,18 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             total.total_spsi += Number(row.total_spsi) || 0;
             total.total_upah_bersih += Number(row.total_upah_bersih) || 0;
 
-            // Use total_premi directly from database, not calculated
+            // Use total_premi directly from database (already excludes insentif/kinerja/pruning)
             total.total_premi += Number(row.total_premi) || 0;
 
-            // Still sum individual premi columns for display breakdown
-            premiKeys.forEach(key => {
-                const val = Number(row[key]) || 0;
-                total[key] += val;
-            });
-
-            // Informasi Tambahan totals
-            total.total_insentif_panen += Number(row.premi_insentif_panen) || 0;
-            total.total_prunning += Number(row.premi_prunning || row.premi_pruning) || 0;
+            // Separated Components totals (Use snake_case DB keys)
+            total.total_premi_insentif += Number(row.total_premi_insentif) || 0;
+            total.total_premi_kinerja += Number(row.total_premi_kinerja) || 0;
+            total.total_premi_prunning += Number(row.total_premi_prunning) || 0;
             total.total_koreksi += Number(row.total_koreksi) || 0;
         });
 
         return total;
-    }, [summaryData, premiKeys]);
+    }, [summaryData]);
 
     // Handle Save PDF
     const handleSavePDF = () => {
@@ -192,11 +186,11 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
     // Handle Export CSV
     const handleExport = () => {
-        let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Total Upah Bersih\n`;
+        let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Insentif,Kinerja,Pruning,Koreksi,Total Upah Bersih\n`;
         let csv = header;
 
         summaryData.forEach(row => {
-            const premis = premiKeys.map(k => row[k] || 0).join(',');
+            const premis = dynamicPremiHeaders.map(h => getDynamicPremiValue(row, h) || 0).join(',');
 
             csv += `"${row.gang_description || row.gang_code}",` +
                 `${row.total_employees || 0},` +
@@ -206,11 +200,17 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 `${row.total_lembur || 0},` +
                 `${row.total_pph21 || 0},` +
                 `${row.total_spsi || 0},` +
+                `${row.total_premi_insentif || 0},` +
+                `${row.total_premi_kinerja || 0},` +
+                `${row.total_premi_prunning || 0},` +
+                `${row.total_koreksi || 0},` +
                 `${row.total_upah_bersih || 0}\n`;
         });
 
         if (grandTotal) {
-            const premis = premiKeys.map(k => grandTotal[k] || 0).join(',');
+            const premis = dynamicPremiHeaders.map(h =>
+                summaryData.reduce((sum, row) => sum + getDynamicPremiValue(row, h), 0) || 0
+            ).join(',');
             csv += `"GRAND TOTAL",` +
                 `${grandTotal.total_employees},` +
                 `${grandTotal.total_hk},` +
@@ -219,6 +219,10 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 `${grandTotal.total_lembur},` +
                 `${grandTotal.total_pph21},` +
                 `${grandTotal.total_spsi},` +
+                `${grandTotal.total_premi_insentif},` +
+                `${grandTotal.total_premi_kinerja},` +
+                `${grandTotal.total_premi_prunning},` +
+                `${grandTotal.total_koreksi},` +
                 `${grandTotal.total_upah_bersih}\n`;
         }
 
@@ -319,36 +323,36 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 <tr className="wsp-header-master">
                                     <th rowSpan="2" style={{ minWidth: '200px' }}>ESTATE / GANG</th>
                                     <th colSpan="2">MANPOWER</th>
-                                    {dynamicPremiHeaders.length > 0 && (
-                                        <th colSpan={dynamicPremiHeaders.length + 1} className="print-hide-detail">PREMI INCOME</th>
-                                    )}
-                                    <th rowSpan="2" style={{ width: '120px' }} className="print-show-only">TOTAL PREMI</th>
+                                    {/* Screen: Show full PREMI INCOME with all dynamic columns */}
+                                    <th colSpan={dynamicPremiHeaders.length + 1} className="print-hide-detail">PREMI INCOME</th>
+                                    {/* Print: Show only PREMI INCOME with 1 column (Total Premi) */}
+                                    <th className="print-show-only">PREMI INCOME</th>
                                     <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
                                     <th colSpan="2">DEDUCTIONS</th>
+                                    <th colSpan="4">ADDITIONAL INFO</th>
                                     <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
-                                    <th colSpan="3" style={{ background: '#475569' }} className="print-hide">INFORMASI TAMBAHAN</th>
                                 </tr>
                                 <tr className="wsp-header-sub">
                                     {/* Manpower */}
-                                    <th style={{ width: '80px' }}>WORKERS</th>
-                                    <th style={{ width: '80px' }}>HK</th>
+                                    <th style={{ width: '60px' }}>WORKERS</th>
+                                    <th style={{ width: '60px' }}>HK</th>
 
                                     {/* Premi Dynamic - Hidden on Print */}
                                     {dynamicPremiHeaders.map((h, i) => (
-                                        <th key={i} style={{ minWidth: '100px' }} className="print-hide-detail">{h}</th>
+                                        <th key={i} style={{ minWidth: '90px' }} className="print-hide-detail">{h}</th>
                                     ))}
-                                    {dynamicPremiHeaders.length > 0 && (
-                                        <th style={{ width: '120px', background: '#334155' }} className="print-hide-detail">TOTAL PREMI</th>
-                                    )}
+
+                                    <th style={{ width: '100px', background: '#334155' }}>TOTAL PREMI</th>
 
                                     {/* Deductions */}
-                                    <th style={{ width: '100px' }}>PPH 21</th>
-                                    <th style={{ width: '100px' }}>SPSI</th>
+                                    <th style={{ width: '90px' }}>PPH 21</th>
+                                    <th style={{ width: '90px' }}>SPSI</th>
 
-                                    {/* Informasi Tambahan - Hidden on Print */}
-                                    <th style={{ width: '110px', background: '#475569' }} className="print-hide">INSENTIF PANEN</th>
-                                    <th style={{ width: '100px', background: '#475569' }} className="print-hide">PRUNING</th>
-                                    <th style={{ width: '100px', background: '#475569' }} className="print-hide">KOREKSI</th>
+                                    {/* Additional Info / Specifics */}
+                                    <th style={{ minWidth: '90px' }}>INSENTIF</th>
+                                    <th style={{ minWidth: '90px' }}>KINERJA</th>
+                                    <th style={{ minWidth: '90px' }}>PRUNING</th>
+                                    <th style={{ minWidth: '90px' }}>KOREKSI</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -361,20 +365,18 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`}>{formatNumber(row.total_employees)}</td>
                                             <td className={`text-right ${!Number(row.total_hk) && 'val-zero'}`}>{formatNumber(row.total_hk)}</td>
 
-                                            {/* Premi Cols - Hidden on Print */}
-                                            {premiKeys.map(key => (
-                                                <td key={key} className={`text-right print-hide-detail ${!Number(row[key]) && 'val-zero'}`}>
-                                                    {formatNumber(row[key])}
-                                                </td>
-                                            ))}
-                                            {/* Total Premi in PREMI INCOME group - hidden on print */}
-                                            {premiKeys.length > 0 && (
-                                                <td className={`text-right print-hide-detail ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
-                                                    {formatNumber(row.total_premi)}
-                                                </td>
-                                            )}
-                                            {/* Total Premi - shown only during print */}
-                                            <td className={`text-right print-show-only ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
+                                            {/* Dynamic Premi Cols */}
+                                            {dynamicPremiHeaders.map(header => {
+                                                const val = getDynamicPremiValue(row, header);
+                                                return (
+                                                    <td key={header} className={`text-right print-hide-detail ${!val && 'val-zero'}`}>
+                                                        {formatNumber(val)}
+                                                    </td>
+                                                );
+                                            })}
+
+                                            {/* Total Premi */}
+                                            <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
                                                 {formatNumber(row.total_premi)}
                                             </td>
 
@@ -382,19 +384,14 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <td className={`text-right ${!Number(row.total_pph21) && 'val-zero'}`}>{formatNumber(row.total_pph21)}</td>
                                             <td className={`text-right ${!Number(row.total_spsi) && 'val-zero'}`}>{formatNumber(row.total_spsi)}</td>
 
+                                            {/* Additional Info / Specifics */}
+                                            <td className={`text-right ${!Number(row.total_premi_insentif) && 'val-zero'}`}>{formatNumber(row.total_premi_insentif)}</td>
+                                            <td className={`text-right ${!Number(row.total_premi_kinerja) && 'val-zero'}`}>{formatNumber(row.total_premi_kinerja)}</td>
+                                            <td className={`text-right ${!Number(row.total_premi_prunning) && 'val-zero'}`}>{formatNumber(row.total_premi_prunning)}</td>
+                                            <td className={`text-right ${!Number(row.total_koreksi) && 'val-zero'}`}>{formatNumber(row.total_koreksi)}</td>
+
                                             <td className={`text-right ${!Number(row.total_upah_bersih) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 600 }}>
                                                 {formatNumber(row.total_upah_bersih)}
-                                            </td>
-
-                                            {/* Informasi Tambahan Columns - Hidden on Print */}
-                                            <td className={`text-right print-hide ${!Number(row.premi_insentif_panen) && 'val-zero'}`} style={{ background: 'rgba(71, 85, 105, 0.1)' }}>
-                                                {formatNumber(row.premi_insentif_panen)}
-                                            </td>
-                                            <td className={`text-right print-hide ${!Number(row.premi_prunning || row.premi_pruning) && 'val-zero'}`} style={{ background: 'rgba(71, 85, 105, 0.1)' }}>
-                                                {formatNumber(row.premi_prunning || row.premi_pruning)}
-                                            </td>
-                                            <td className={`text-right print-hide ${!Number(row.total_koreksi) && 'val-zero'}`} style={{ background: 'rgba(71, 85, 105, 0.1)' }}>
-                                                {formatNumber(row.total_koreksi)}
                                             </td>
                                         </tr>
                                     ))
@@ -408,26 +405,28 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                         <td className="text-right">{formatNumber(grandTotal.total_employees)}</td>
                                         <td className="text-right">{formatNumber(grandTotal.total_hk)}</td>
 
-                                        {/* Premi Totals - Hidden on Print */}
-                                        {premiKeys.map(key => (
-                                            <td key={key} className="text-right print-hide-detail">{formatNumber(grandTotal[key])}</td>
-                                        ))}
-                                        {/* Total Premi in PREMI INCOME group - hidden on print */}
-                                        {premiKeys.length > 0 && (
-                                            <td className="text-right print-hide-detail">{formatNumber(grandTotal.total_premi)}</td>
-                                        )}
-                                        {/* Total Premi - shown only during print */}
-                                        <td className="text-right print-show-only">{formatNumber(grandTotal.total_premi)}</td>
+                                        {/* Dynamic Premi Totals - Hidden on Print */}
+                                        {dynamicPremiHeaders.map(header => {
+                                            const total = summaryData.reduce((sum, row) => sum + getDynamicPremiValue(row, header), 0);
+                                            return (
+                                                <td key={header} className="text-right print-hide-detail">{formatNumber(total)}</td>
+                                            );
+                                        })}
+
+                                        {/* Total Premi */}
+                                        <td className="text-right">{formatNumber(grandTotal.total_premi)}</td>
 
                                         <td className="text-right">{formatNumber(grandTotal.total_lembur)}</td>
                                         <td className="text-right">{formatNumber(grandTotal.total_pph21)}</td>
                                         <td className="text-right">{formatNumber(grandTotal.total_spsi)}</td>
-                                        <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(grandTotal.total_upah_bersih)}</td>
 
-                                        {/* Informasi Tambahan Totals - Hidden on Print */}
-                                        <td className="text-right print-hide">{formatNumber(grandTotal.total_insentif_panen)}</td>
-                                        <td className="text-right print-hide">{formatNumber(grandTotal.total_prunning)}</td>
-                                        <td className="text-right print-hide">{formatNumber(grandTotal.total_koreksi)}</td>
+                                        {/* Additional Info Totals */}
+                                        <td className="text-right">{formatNumber(grandTotal.total_premi_insentif)}</td>
+                                        <td className="text-right">{formatNumber(grandTotal.total_premi_kinerja)}</td>
+                                        <td className="text-right">{formatNumber(grandTotal.total_premi_prunning)}</td>
+                                        <td className="text-right">{formatNumber(grandTotal.total_koreksi)}</td>
+
+                                        <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(grandTotal.total_upah_bersih)}</td>
                                     </tr>
                                 </tfoot>
                             )}
@@ -461,7 +460,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         </div>
                     </footer>
                 </div>
-            )}
+            )
+            }
 
             {/* Aggregation Seeder Modal */}
             <AggregationSeederModal
@@ -471,6 +471,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 year={year}
                 division={division}
             />
-        </div>
+        </div >
     );
 }

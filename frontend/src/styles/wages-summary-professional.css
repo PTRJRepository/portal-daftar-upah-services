@@ -850,6 +850,11 @@
     .print-hide-detail {
         display: none !important;
     }
+
+    /* Show simplified headers on print */
+    .print-show-only {
+        display: table-cell !important;
+    }
 }
 
 /* =============================================

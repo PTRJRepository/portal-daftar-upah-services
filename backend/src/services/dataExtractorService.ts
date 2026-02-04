@@ -228,7 +228,7 @@ export class DataExtractorService {
         const empCodes = employees.map(e => e.emp_code);
 
         const startParallel = performance.now();
-        const [attendanceMap, cuti, premiResult, potonganResult, lembur, beras, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
+        const [attendanceMap, cuti, premiResult, potonganResult, lembur, beras, berasDocDesc, lemburDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
             this.getPremi(empCodes, startDate, endDate, serverProfile),
@@ -236,6 +236,8 @@ export class DataExtractorService {
             this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
 
             this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS", serverProfile),
+            this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile),
+            this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile),
             this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
             this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
             this.getUpahPokok(empCodes, serverProfile),
@@ -262,7 +264,9 @@ export class DataExtractorService {
             const empPremi = premi[emp.emp_code] || {};
             const empPotongan = potongan[emp.emp_code] || {};
             const empLembur = lembur[emp.emp_code] || { jam: 0, jumlah: 0 };
+            const empLemburDocDesc = lemburDocDesc[emp.emp_code] || 0;
             const empBeras = beras[emp.emp_code] || 0;
+            const empBerasDocDesc = berasDocDesc[emp.emp_code] || 0;
             const empJabatan = jabatan[emp.emp_code] || 0;
             const empMasaKerjaJumlah = masaKerja[emp.emp_code] || 0;
             const daysInMonth = new Date(year, month, 0).getDate();
@@ -288,10 +292,11 @@ export class DataExtractorService {
             }
 
             const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
-            const berasJumlah = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
+            const berasJumlah = (berasRate > 0 && hk > 0 ? berasRate * hk : 0) + empBerasDocDesc;
 
             const jabatanRate = hk > 0 && empJabatan > 0 ? empJabatan / hk : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
+            const empLemburJumlah = empLembur.jumlah + empLemburDocDesc;
 
             // [UPDATED] Gaji Pokok untuk Grup Penggajian
             // gaji_pokok_ideal = upah_dasar × jumlah_hk (untuk referensi)
@@ -300,7 +305,7 @@ export class DataExtractorService {
             const gaji_pokok_ideal = empUpahDasar * hk;
             const gaji_pokok_aktual = attData.total_amount_rp ?? 0;
             const gaji_pokok = gaji_pokok_aktual;  // Use actual for display and calculation
-            const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah;
+            const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlah;
 
             empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
 
@@ -447,8 +452,8 @@ export class DataExtractorService {
                 masa_kerja_rate: masaKerjaRate,
                 masa_kerja_jumlah: empMasaKerjaJumlah,
                 lembur_jam: empLembur.jam,
-                lembur_rate: empLembur.jumlah > 0 && empLembur.jam > 0 ? empLembur.jumlah / empLembur.jam : 0,
-                lembur_jumlah: empLembur.jumlah,
+                lembur_rate: empLemburJumlah > 0 && empLembur.jam > 0 ? empLemburJumlah / empLembur.jam : 0,
+                lembur_jumlah: empLemburJumlah,
                 total_tunjangan,
                 premi_brondol: empBrondol,
                 upah_pokok,
@@ -502,7 +507,9 @@ export class DataExtractorService {
                         key !== "SPSI" && key !== "PPH21" && !key.startsWith("KOREKSI")
                     )
                 ),
-                ...empPremi
+                ...empPremi,
+                // [RESTORED] premi object for aggregation seeder compatibility
+                premi: empPremi
             };
 
             dataRows.push(row);
@@ -1083,6 +1090,86 @@ export class DataExtractorService {
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
                   AND UPPER(t.DocDesc) LIKE '%${tunjanganType}%'
+                  AND ln.Amount > 0
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
+
+        const result: Record<string, number> = {};
+        for (const r of rows) {
+            result[r.emp_code?.trim() || ""] = r.total || 0;
+        }
+        return result;
+    }
+
+    /**
+     * Get additional beras amount from DocDesc containing 'BERAS'
+     * This is added on top of the standard beras_rate * HK calculation
+     */
+    private async getBerasFromDocDesc(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
+        if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        const empList = empCodes.map(e => `'${e}'`).join(",");
+
+        let rows = await db.query<{ emp_code: string; total: number }>(`
+            SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
+            FROM (
+                SELECT t.EmpCode, ln.Amount
+                FROM PR_ADTRANS t
+                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND UPPER(t.DocDesc) LIKE '%BERAS%'
+                  AND ln.Amount > 0
+
+                UNION ALL
+
+                SELECT t.EmpCode, ln.Amount
+                FROM PR_ADTRANS_ARC t
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND UPPER(t.DocDesc) LIKE '%BERAS%'
+                  AND ln.Amount > 0
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
+
+        const result: Record<string, number> = {};
+        for (const r of rows) {
+            result[r.emp_code?.trim() || ""] = r.total || 0;
+        }
+        return result;
+    }
+
+    /**
+     * Get additional lembur amount from DocDesc containing 'LEMBUR'
+     * This is added on top of the standard lembur calculation from OT records
+     */
+    private async getLemburFromDocDesc(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
+        if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        const empList = empCodes.map(e => `'${e}'`).join(",");
+
+        let rows = await db.query<{ emp_code: string; total: number }>(`
+            SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
+            FROM (
+                SELECT t.EmpCode, ln.Amount
+                FROM PR_ADTRANS t
+                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND UPPER(t.DocDesc) LIKE '%LEMBUR%'
+                  AND ln.Amount > 0
+
+                UNION ALL
+
+                SELECT t.EmpCode, ln.Amount
+                FROM PR_ADTRANS_ARC t
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND UPPER(t.DocDesc) LIKE '%LEMBUR%'
                   AND ln.Amount > 0
             ) combined
             GROUP BY RTRIM(EmpCode)
