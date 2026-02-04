@@ -158,12 +158,28 @@ export default function CustomPayrollTable({
 
             let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
 
-            // Calculate grand total based on FILTERED rows (selected gang only)
-            const filteredFlat = gangCode && gangCode !== 'ALL'
-                ? flatRows.filter(r => r.gang_code === gangCode)
-                : flatRows;
-            const gt = PayrollAggregator.calculateGrandTotal(filteredFlat);
-            setGrandTotal(gt);
+            // Use backend-provided grand_total if available, otherwise calculate
+            const backendGrandTotal = data.grand_total;
+            if (backendGrandTotal) {
+                setGrandTotal(backendGrandTotal);
+            } else {
+                // Fallback: Calculate grand total based on FILTERED rows (selected gang only)
+                const filteredFlat = gangCode && gangCode !== 'ALL'
+                    ? flatRows.filter(r => r.gang_code === gangCode)
+                    : flatRows;
+                const gt = PayrollAggregator.calculateGrandTotal(filteredFlat);
+                setGrandTotal(gt);
+            }
+
+            // Build a map of gang_code -> gang_totals from backend
+            const backendGangTotalsMap = {};
+            if (data.gangs) {
+                data.gangs.forEach(gang => {
+                    if (gang.gang_totals) {
+                        backendGangTotalsMap[gang.gang_code] = gang.gang_totals;
+                    }
+                });
+            }
 
             const gangsMap = {};
             flatRows.forEach(row => {
@@ -193,7 +209,14 @@ export default function CustomPayrollTable({
                     emp.id = emp.nik || `EMP_${emp.no}`;
                     processedRows.push(emp);
                 });
-                const gangTotal = PayrollAggregator.calculateGangTotals(gCode, flatRows);
+
+                // Use backend-provided gang_totals if available, otherwise calculate
+                let gangTotal;
+                if (backendGangTotalsMap[gCode]) {
+                    gangTotal = { ...backendGangTotalsMap[gCode] };
+                } else {
+                    gangTotal = PayrollAggregator.calculateGangTotals(gCode, flatRows);
+                }
                 gangTotal.type = 'gang_total';
                 gangTotal.id = `TOTAL_${gCode}`;
                 gangTotal.gang_code = gCode;

@@ -416,8 +416,10 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
                 ? `${divisiDescription} - ${gangDesc}`
                 : divisiDescription;
 
-            // Calculate gang aggregation
-            const aggregation = calculateGangAggregation(employees, gangCode, gangDescription);
+            // Calculate gang aggregation using active employees
+            // Note: calculateGangAggregation also filters HK > 0 internally, but we pass
+            // activeEmployees here for consistency and to avoid redundant processing
+            const aggregation = calculateGangAggregation(activeEmployees, gangCode, gangDescription);
 
             // Add division-specific FFB weight
             aggregation.total_ffb_weight = await fetchFfbWeightForDivision(div, month, year);
@@ -428,7 +430,7 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
             results.push({
                 division: div,
                 gang: gangCode,
-                employees_processed: employees.length,
+                employees_processed: activeEmployees.length,
                 status: "success"
             });
         }

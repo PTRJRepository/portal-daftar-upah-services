@@ -227,32 +227,31 @@ export class AggregationService {
         }
 
         // Rule 2: Calculate upah_bersih if missing
+        // Formula matches dataExtractorService.ts:400
+        // upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
         let calculatedCount = 0;
         for (const row of filteredRows) {
             const upahBersih = this.getNumericValue(row, 'upah_bersih');
             if (upahBersih === 0) {
                 const jumlahUpahKotor = this.getNumericValue(row, 'jumlah_upah_kotor');
                 const totalPotonganBersih = this.calculateRowTotalPotonganBersih(row);
-                
-                let potDynamic = 0.0;
-                if (row.potongan_upah_kotor && typeof row.potongan_upah_kotor === 'object' && row.potongan_upah_kotor.dynamic) {
-                    potDynamic = Object.values(row.potongan_upah_kotor.dynamic).reduce((sum: number, val: any) => sum + (parseFloat(val) || 0), 0);
-                }
-                const potKoreksi = this.getNumericValue(row, 'koreksi');
-                const potonganUpahKotor = potKoreksi + potDynamic;
+                const potPremiPph = this.getNumericValue(row, 'premi_pph');
 
                 let calculatedUpahBersih = 0;
                 if (jumlahUpahKotor > 0) {
-                    const baseEarnings = jumlahUpahKotor + potonganUpahKotor;
-                    calculatedUpahBersih = baseEarnings - totalPotonganBersih;
+                    // Use the standard formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
+                    calculatedUpahBersih = jumlahUpahKotor - totalPotonganBersih + potPremiPph;
                 } else {
+                    // Fallback: calculate from scratch if jumlah_upah_kotor is not available
                     const gajiPokok = this.getNumericValue(row, 'gaji_pokok');
                     const totalTunjangan = this.calculateRowTotalTunjangan(row);
                     const totalPremi = this.calculateRowTotalPremi(row);
-                    const baseEarnings = gajiPokok + totalTunjangan + totalPremi;
-                    calculatedUpahBersih = baseEarnings - totalPotonganBersih;
+                    const potKoreksi = this.getNumericValue(row, 'koreksi');
+                    // jumlah_upah_kotor = (gaji_pokok + total_tunjangan + total_premi) - pot_koreksi
+                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi) - potKoreksi;
+                    calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph;
                 }
-                
+
                 row['upah_bersih'] = calculatedUpahBersih;
                 calculatedCount++;
             }

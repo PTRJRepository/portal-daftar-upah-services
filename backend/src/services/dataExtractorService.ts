@@ -228,15 +228,14 @@ export class DataExtractorService {
         const empCodes = employees.map(e => e.emp_code);
 
         const startParallel = performance.now();
-        const [attendanceMap, cuti, premiResult, potonganResult, lembur, beras, berasDocDesc, lemburDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
+        // Tunjangan beras now calculated purely from berasRate * HK (no DocDesc additions)
+        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
             this.getPremi(empCodes, startDate, endDate, serverProfile),
             this.getPotongan(empCodes, startDate, endDate, serverProfile),
             this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
 
-            this.getTunjanganAmount(empCodes, startDate, endDate, "BERAS", serverProfile),
-            this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile),
             this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile),
             this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
             this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
@@ -265,8 +264,6 @@ export class DataExtractorService {
             const empPotongan = potongan[emp.emp_code] || {};
             const empLembur = lembur[emp.emp_code] || { jam: 0, jumlah: 0 };
             const empLemburDocDesc = lemburDocDesc[emp.emp_code] || 0;
-            const empBeras = beras[emp.emp_code] || 0;
-            const empBerasDocDesc = berasDocDesc[emp.emp_code] || 0;
             const empJabatan = jabatan[emp.emp_code] || 0;
             const empMasaKerjaJumlah = masaKerja[emp.emp_code] || 0;
             const daysInMonth = new Date(year, month, 0).getDate();
@@ -292,7 +289,8 @@ export class DataExtractorService {
             }
 
             const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
-            const berasJumlah = (berasRate > 0 && hk > 0 ? berasRate * hk : 0) + empBerasDocDesc;
+            // [SIMPLIFIED] Beras jumlah now purely from berasRate * HK
+            const berasJumlah = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
 
             const jabatanRate = hk > 0 && empJabatan > 0 ? empJabatan / hk : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
@@ -1105,45 +1103,6 @@ export class DataExtractorService {
         return result;
     }
 
-    /**
-     * Get additional beras amount from DocDesc containing 'BERAS'
-     * This is added on top of the standard beras_rate * HK calculation
-     */
-    private async getBerasFromDocDesc(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
-        if (!empCodes.length) return {};
-        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
-        const empList = empCodes.map(e => `'${e}'`).join(",");
-
-        let rows = await db.query<{ emp_code: string; total: number }>(`
-            SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
-            FROM (
-                SELECT t.EmpCode, ln.Amount
-                FROM PR_ADTRANS t
-                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-                WHERE RTRIM(t.EmpCode) IN (${empList})
-                  AND t.DocDate >= ? AND t.DocDate < ?
-                  AND UPPER(t.DocDesc) LIKE '%BERAS%'
-                  AND ln.Amount > 0
-
-                UNION ALL
-
-                SELECT t.EmpCode, ln.Amount
-                FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-                WHERE RTRIM(t.EmpCode) IN (${empList})
-                  AND t.DocDate >= ? AND t.DocDate < ?
-                  AND UPPER(t.DocDesc) LIKE '%BERAS%'
-                  AND ln.Amount > 0
-            ) combined
-            GROUP BY RTRIM(EmpCode)
-        `, [startDate, endDate, startDate, endDate]);
-
-        const result: Record<string, number> = {};
-        for (const r of rows) {
-            result[r.emp_code?.trim() || ""] = r.total || 0;
-        }
-        return result;
-    }
 
     /**
      * Get additional lembur amount from DocDesc containing 'LEMBUR'
