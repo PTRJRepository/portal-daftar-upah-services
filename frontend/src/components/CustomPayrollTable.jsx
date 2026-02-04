@@ -389,12 +389,11 @@ export default function CustomPayrollTable({
                 render: (row) => {
                     const val = row.koreksi_hk;
                     if (val === null || val === undefined || val === 0) return '-';
-                    const colorStyle = val < 0
-                        ? { color: '#dc2626' }  // merah untuk negatif
-                        : { color: '#059669' }; // hijau untuk positif
+                    // [FIXED] koreksi_hk is ALWAYS minus or zero (never positive)
+                    // No need to check for positive values, only display as negative/red
                     return (
-                        <span style={colorStyle}>
-                            {val < 0 ? '-' : '+'}{formatNumber(Math.abs(val))}
+                        <span style={{ color: '#dc2626' }}>
+                            -{formatNumber(Math.abs(val))}
                         </span>
                     );
                 }
