@@ -3,6 +3,7 @@ import { divisionDefinition } from "./divisionDefinition";
 import { join } from "path";
 import { file } from "bun";
 import { Config } from "../config";
+import { thumbprintService } from "./thumbprintService";
 
 export interface DivisionSummary {
     division_code: string;
@@ -67,31 +68,7 @@ export class SummaryService {
 
 
     private async loadThumbprintData(month: number, year: number): Promise<Record<string, number>> {
-        if (month !== 12 || year !== 2025) return {};
-
-        const data = await this.loadJsonData("desember_thumbprint.json");
-        if (!data) return {};
-
-        const thumbprintToSystem: Record<string, string> = {
-            "P1A": "P1A", "P1B": "P1B", "P2A": "P2A", "P2B": "P2B",
-            "DME": "DME", "ARA": "ARA", "AB1": "AB1", "AB2": "AB2",
-            "ARC": "ARC", "MILL": "MILL", "NRS": "NRS", "INF": "INF",
-            "WKS_AR": "WKS_AR", "IJL": "IJL", "WPGE": "WKS_PG"
-        };
-
-        const result: Record<string, number> = {};
-        for (const item of data) {
-            const thumbCode = item.estate_division_code || "";
-            const systemCode = thumbprintToSystem[thumbCode] || thumbCode;
-            const upah = parseFloat(item.total_upah_bersih || 0);
-
-            if (result[systemCode]) {
-                result[systemCode] += upah;
-            } else {
-                result[systemCode] = upah;
-            }
-        }
-        return result;
+        return await thumbprintService.getThumbprintData(month, year);
     }
 
     private async getDivisionDescriptions(): Promise<Record<string, string>> {
@@ -796,6 +773,11 @@ export class SummaryService {
             console.error("[SummaryService] Failed to get gang descriptions:", error);
             return {};
         }
+    }
+
+
+    public async updateThumbprint(month: number, year: number, divisionCode: string, value: number): Promise<boolean> {
+        return await thumbprintService.updateThumbprintValue(month, year, divisionCode, value);
     }
 }
 

@@ -201,4 +201,21 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             month: t.String(),
             year: t.String()
         })
+    })
+    // --- Update Thumbprint Data ---
+    .post("/thumbprint", async ({ body }) => {
+        const { month, year, division_code, value } = body;
+
+        // Ensure thumbprintService is available (imported from service, ideally should be exported via summaryService or used directly)
+        // Since we didn't export it in summaryService, we'll import it here.
+        // Assuming we add the import at the top of this file.
+        const success = await summaryService.updateThumbprint(month, year, division_code, value);
+        return { success };
+    }, {
+        body: t.Object({
+            month: t.Number(),
+            year: t.Number(),
+            division_code: t.String(),
+            value: t.Number()
+        })
     });

@@ -30,6 +30,10 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     // Impact Report State
     const [impactReportMode, setImpactReportMode] = useState(false);
 
+    // Edit Mode State
+    const [editMode, setEditMode] = useState(false);
+    const [editingValues, setEditingValues] = useState({});
+
     // State
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -85,6 +89,34 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             setLoading(false);
         }
     }, [token, month, year, comparisonMode]);
+
+    // Handle Thumbprint Change
+    const handleThumbprintChange = (divisionKey, value) => {
+        setEditingValues(prev => ({
+            ...prev,
+            [divisionKey]: value
+        }));
+    };
+
+    // Handle Save Thumbprint
+    const handleSaveThumbprint = async (divisionCode, value) => {
+        try {
+            await import('../services/summaryReportService').then(mod =>
+                mod.updateThumbprint(token, {
+                    month,
+                    year,
+                    division: divisionCode,
+                    value: parseFloat(value) || 0
+                })
+            );
+            // Refresh data to show updated totals/selisih
+            await fetchData();
+        } catch (err) {
+            console.error('Failed to save thumbprint:', err);
+            alert('Failed to save value');
+        }
+    };
+
 
     // Fetch data when filters change
     useEffect(() => {
@@ -583,12 +615,34 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         </td>
                         {/* Thumb Print */}
                         <td className={`text-right ${Number(div.thumb_print) === 0 ? 'val-zero' : ''}`}>
-                            {formatNumber(div.thumb_print)}
+                            {editMode ? (
+                                <input
+                                    type="number"
+                                    className="wsp-input-edit"
+                                    value={editingValues[`${div.division_code}`] !== undefined ? editingValues[`${div.division_code}`] : div.thumb_print}
+                                    onChange={(e) => handleThumbprintChange(div.division_code, e.target.value)}
+                                    style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                />
+                            ) : (
+                                formatNumber(div.thumb_print)
+                            )}
                         </td>
                         {/* Selisih */}
                         <td className={`text-center font-semibold ${div.selisih > 0 ? 'text-diff-neg' : div.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
                             {formatNumber(div.selisih)}
                         </td>
+                        {editMode && (
+                            <td className="text-center">
+                                <button
+                                    onClick={() => handleSaveThumbprint(div.division_code, editingValues[div.division_code])}
+                                    className="wsp-btn-sm"
+                                    style={{ fontSize: '0.7rem', padding: '2px 6px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                    disabled={editingValues[div.division_code] === undefined}
+                                >
+                                    Save
+                                </button>
+                            </td>
+                        )}
                     </tr>
                 ))}
 
@@ -688,6 +742,15 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     >
                         {impactReportMode ? 'Back to Summary' : 'Impact Report'}
                     </button>
+                    <button
+                        onClick={() => setEditMode(!editMode)}
+                        className={`wsp-btn ${editMode ? 'wsp-btn-warning' : ''}`}
+                        title="Toggle Edit Mode"
+                        style={{ marginLeft: '0.5rem', backgroundColor: editMode ? '#f59e0b' : '' }}
+                        disabled={comparisonMode || impactReportMode}
+                    >
+                        {editMode ? 'Exit Edit' : 'Edit Mode'}
+                    </button>
                 </div>
             </div>
 
@@ -776,6 +839,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                                 {/* Comparison Group */}
                                                 <th className="th-group-compare" style={{ minWidth: '130px' }}>THUMB PRINT</th>
                                                 <th className="th-group-compare" style={{ minWidth: '120px' }}>SELISIH</th>
+                                                {editMode && <th className="th-group-compare" style={{ minWidth: '80px' }}>ACTION</th>}
                                             </tr>
                                         </thead>
 

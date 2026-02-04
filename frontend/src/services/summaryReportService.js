@@ -180,6 +180,35 @@ export async function fetchImpactReport(token, { month, year }) {
     return response.data;
 }
 
+
+/**
+ * Update thumbprint value for a specific division and period
+ * @param {string} token - Auth token
+ * @param {Object} params - parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @param {string} params.division - Division code
+ * @param {number} params.value - New thumbprint value
+ * @returns {Promise<Object>} Result
+ */
+export async function updateThumbprint(token, { month, year, division, value }) {
+    const url = `${BACKEND_BASE}/payroll/summary/thumbprint`;
+
+    const response = await axios.post(url, {
+        month,
+        year,
+        division_code: division,
+        value
+    }, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
 export default {
     fetchDivisionSummary,
     fetchAvailablePeriods,
@@ -189,8 +218,10 @@ export default {
     fetchAllDivisionsTotals,
     fetchComparisonSummary,
     fetchImpactReport,
-    fetchAnalysisReport
+    fetchAnalysisReport,
+    updateThumbprint
 };
+
 
 /**
  * Fetch Analysis Report data (Premi & OT, Progressive Pruning)

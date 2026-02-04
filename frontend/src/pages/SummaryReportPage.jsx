@@ -345,7 +345,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     <th className="print-show-only">PREMI INCOME</th>
                                     <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
                                     <th colSpan="2">DEDUCTIONS</th>
-                                    <th colSpan="4">ADDITIONAL INFO</th>
+                                    <th colSpan="4" className="print-hide-additional">ADDITIONAL INFO</th>
                                     <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
                                 </tr>
                                 <tr className="wsp-header-sub">
@@ -365,10 +365,10 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     <th style={{ width: '90px' }}>SPSI</th>
 
                                     {/* Additional Info / Specifics */}
-                                    <th style={{ minWidth: '90px' }}>INSENTIF</th>
-                                    <th style={{ minWidth: '90px' }}>KINERJA</th>
-                                    <th style={{ minWidth: '90px' }}>PRUNING</th>
-                                    <th style={{ minWidth: '90px' }}>KOREKSI</th>
+                                    <th style={{ minWidth: '90px' }} className="print-hide-additional">INSENTIF</th>
+                                    <th style={{ minWidth: '90px' }} className="print-hide-additional">KINERJA</th>
+                                    <th style={{ minWidth: '90px' }} className="print-hide-additional">PRUNING</th>
+                                    <th style={{ minWidth: '90px' }} className="print-hide-additional">KOREKSI</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -401,10 +401,10 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <td className={`text-right ${!Number(row.total_spsi) && 'val-zero'}`}>{formatNumber(row.total_spsi)}</td>
 
                                             {/* Additional Info / Specifics */}
-                                            <td className={`text-right ${!Number(row.total_premi_insentif) && 'val-zero'}`}>{formatNumber(row.total_premi_insentif)}</td>
-                                            <td className={`text-right ${!Number(row.total_premi_kinerja) && 'val-zero'}`}>{formatNumber(row.total_premi_kinerja)}</td>
-                                            <td className={`text-right ${!Number(row.total_premi_prunning) && 'val-zero'}`}>{formatNumber(row.total_premi_prunning)}</td>
-                                            <td className={`text-right ${!Number(row.total_koreksi) && 'val-zero'}`}>{formatNumber(row.total_koreksi)}</td>
+                                            <td className={`text-right print-hide-additional ${!Number(row.total_premi_insentif) && 'val-zero'}`}>{formatNumber(row.total_premi_insentif)}</td>
+                                            <td className={`text-right print-hide-additional ${!Number(row.total_premi_kinerja) && 'val-zero'}`}>{formatNumber(row.total_premi_kinerja)}</td>
+                                            <td className={`text-right print-hide-additional ${!Number(row.total_premi_prunning) && 'val-zero'}`}>{formatNumber(row.total_premi_prunning)}</td>
+                                            <td className={`text-right print-hide-additional ${!Number(row.total_koreksi) && 'val-zero'}`}>{formatNumber(row.total_koreksi)}</td>
 
                                             <td className={`text-right ${!Number(row.total_upah_bersih) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 600 }}>
                                                 {formatNumber(row.total_upah_bersih)}
@@ -437,10 +437,10 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                         <td className="text-right">{formatNumber(grandTotal.total_spsi)}</td>
 
                                         {/* Additional Info Totals */}
-                                        <td className="text-right">{formatNumber(grandTotal.total_premi_insentif)}</td>
-                                        <td className="text-right">{formatNumber(grandTotal.total_premi_kinerja)}</td>
-                                        <td className="text-right">{formatNumber(grandTotal.total_premi_prunning)}</td>
-                                        <td className="text-right">{formatNumber(grandTotal.total_koreksi)}</td>
+                                        <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_insentif)}</td>
+                                        <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_kinerja)}</td>
+                                        <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_prunning)}</td>
+                                        <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_koreksi)}</td>
 
                                         <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(grandTotal.total_upah_bersih)}</td>
                                     </tr>
