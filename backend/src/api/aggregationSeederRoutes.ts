@@ -405,8 +405,19 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
                 continue;
             }
 
+            // Fetch divisi description from extend_db_ptrj
+            const divisiDescription = await getGangDescriptionFromDivisi(gangCode);
+
+            // Fetch gang description from HR_GANG (db_ptrj)
+            const gangDesc = await getGangDescriptionFromHR_GANG(gangCode);
+
+            // Combine descriptions: "Divisi Description - Gang Description"
+            const gangDescription = gangDesc
+                ? `${divisiDescription} - ${gangDesc}`
+                : divisiDescription;
+
             // Calculate gang aggregation
-            const aggregation = calculateGangAggregation(employees, gangCode, "");
+            const aggregation = calculateGangAggregation(employees, gangCode, gangDescription);
 
             // Add division-specific FFB weight
             aggregation.total_ffb_weight = await fetchFfbWeightForDivision(div, month, year);
@@ -674,6 +685,65 @@ async function fetchFfbWeightForDivision(divisionCode: string, month: number, ye
     }
 }
 
+async function getGangDescriptionFromDivisi(gangCode: string): Promise<string> {
+    try {
+        const db = Database.getExtendedInstance();
+
+        // Use mapped code if available, otherwise original
+        const searchCode = DIVISION_CODE_MAP[gangCode] || gangCode;
+
+        const result = await db.queryOne<{ Description: string, Luas_Hektar: number | null }>(`
+            SELECT [Description], [Luas_Hektar]
+            FROM [dbo].[Divisi_Description]
+            WHERE [Divisi] = ?
+        `, [searchCode]);
+
+        if (result && result.Description) {
+            // Add Luas_Hektar to description if available
+            let description = result.Description;
+            if (result.Luas_Hektar !== null && result.Luas_Hektar !== undefined) {
+                description += ` (${result.Luas_Hektar} Ha)`;
+            }
+            console.log(`[GangDesc] ${gangCode}: ${description}`);
+            return description;
+        }
+
+        console.log(`[GangDesc] ${gangCode}: No description found`);
+        return gangCode; // Return gang code as fallback
+    } catch (error: any) {
+        // If table doesn't exist or other error, log and return gang code
+        if (error.message?.includes('Invalid object name') || error.message?.includes('does not exist')) {
+            console.warn(`[GangDesc] Divisi_Description table not found in extend_db_ptrj, using gang code`);
+        } else {
+            console.error(`[GangDesc] Failed to fetch description for ${gangCode}:`, error.message);
+        }
+        return gangCode; // Return gang code as fallback
+    }
+}
+
+async function getGangDescriptionFromHR_GANG(gangCode: string): Promise<string> {
+    try {
+        const db = Database.getInstance(); // Use main db_ptrj where HR_GANG table exists
+
+        const result = await db.queryOne<{ Description: string }>(`
+            SELECT Description
+            FROM dbo.HR_GANG
+            WHERE RTRIM(GangCode) = ?
+        `, [gangCode.trim()]);
+
+        if (result && result.Description) {
+            console.log(`[GangDesc] HR_GANG ${gangCode}: ${result.Description}`);
+            return result.Description.trim();
+        }
+
+        console.log(`[GangDesc] HR_GANG ${gangCode}: No description found`);
+        return "";
+    } catch (error: any) {
+        console.error(`[GangDesc] Failed to fetch HR_GANG description for ${gangCode}:`, error.message);
+        return "";
+    }
+}
+
 function calculateGangAggregation(employees: any[], gangCode: string, gangDesc: string): AggregationRecord {
     // Filter employees: only include those with HK > 0
     const activeEmployees = employees.filter((emp: any) => {
@@ -701,6 +771,14 @@ function calculateGangAggregation(employees: any[], gangCode: string, gangDesc: 
             }
         }, 0);
     }
+
+    // DEBUG: Log upah_bersih calculation for consistency check
+    const debug_upah_bersih_sum = safeSum("upah_bersih");
+    const debug_upah_kotor_sum = safeSum("jumlah_upah_kotor");
+    const debug_potongan_sum = safeSum("total_potongan");
+    const debug_premi_pph_sum = safeSum("premi_pph");
+    console.log(`[AggDebug] ${gangCode}: upah_bersih=${debug_upah_bersih_sum}, upah_kotor=${debug_upah_kotor_sum}, potongan=${debug_potongan_sum}, premi_pph=${debug_premi_pph_sum}`);
+    console.log(`[AggDebug] ${gangCode}: Calculated check = upah_kotor - potongan + premi_pph = ${debug_upah_kotor_sum - debug_potongan_sum + debug_premi_pph_sum}`);
 
     function safeSumPremi(field_name: string): number {
         return activeEmployees.reduce((sum: number, emp: any) => {

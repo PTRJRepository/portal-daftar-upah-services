@@ -707,6 +707,36 @@ export class SummaryService {
 
         return results;
     }
+
+    /**
+     * Get all gang descriptions (real-time from HR_GANG in db_ptrj)
+     * Returns a map: gang_code -> description
+     */
+    public async getAllGangDescriptions(): Promise<Record<string, string>> {
+        try {
+            // Fetch from HR_GANG in db_ptrj (main database)
+            const gangRows = await this.db.query<{ GangCode: string; Description: string | null }>(`
+                SELECT RTRIM(GangCode) as GangCode, Description
+                FROM dbo.HR_GANG
+                WHERE GangCode IS NOT NULL
+            `);
+
+            // Build result map: gang_code -> description
+            const result: Record<string, string> = {};
+            for (const row of gangRows) {
+                const gangCode = row.GangCode?.trim() || "";
+                const gangDesc = row.Description?.trim() || "";
+
+                // Use description if available, otherwise use gang code as fallback
+                result[gangCode] = gangDesc || gangCode;
+            }
+
+            return result;
+        } catch (error: any) {
+            console.error("[SummaryService] Failed to get gang descriptions:", error);
+            return {};
+        }
+    }
 }
 
 export const summaryService = SummaryService.getInstance();

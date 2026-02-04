@@ -22,11 +22,42 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [divisions, setDivisions] = useState([]);
     const [periods, setPeriods] = useState([]);
     const [summaryData, setSummaryData] = useState([]);
+    const [gangDescriptions, setGangDescriptions] = useState({});
 
     // State
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [showSeederModal, setShowSeederModal] = useState(false);
+
+    // Load gang descriptions (real-time from HR_GANG)
+    useEffect(() => {
+        async function loadGangDescriptions() {
+            if (!token) return;
+            try {
+                const response = await fetch('/payroll/summary/gang-descriptions', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    setGangDescriptions(result.descriptions || {});
+                }
+            } catch (e) {
+                console.error('Failed to load gang descriptions:', e);
+            }
+        }
+        loadGangDescriptions();
+    }, [token]);
+
+    // Merge summary data with gang descriptions
+    const mergedSummaryData = useMemo(() => {
+        return summaryData.map(row => ({
+            ...row,
+            // Use real-time gang description if available, otherwise use stored description, fallback to gang_code
+            gang_description: gangDescriptions[row.gang_code] || row.gang_description || row.gang_code
+        }));
+    }, [summaryData, gangDescriptions]);
 
     // Load available divisions
     useEffect(() => {
@@ -189,7 +220,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Insentif,Kinerja,Pruning,Koreksi,Total Upah Bersih\n`;
         let csv = header;
 
-        summaryData.forEach(row => {
+        mergedSummaryData.forEach(row => {
             const premis = dynamicPremiHeaders.map(h => getDynamicPremiValue(row, h) || 0).join(',');
 
             csv += `"${row.gang_description || row.gang_code}",` +
@@ -356,10 +387,10 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 </tr>
                             </thead>
                             <tbody>
-                                {summaryData.length === 0 ? (
+                                {mergedSummaryData.length === 0 ? (
                                     <tr><td colSpan="15" className="text-center" style={{ padding: '3rem' }}>No Data Available</td></tr>
                                 ) : (
-                                    summaryData.map((row, idx) => (
+                                    mergedSummaryData.map((row, idx) => (
                                         <tr key={idx}>
                                             <td className="text-left">{row.gang_description || row.gang_code}</td>
                                             <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`}>{formatNumber(row.total_employees)}</td>

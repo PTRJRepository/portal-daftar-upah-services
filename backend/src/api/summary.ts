@@ -173,6 +173,11 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
         const descriptions = await summaryService.getDivisionDescriptionsMap();
         return { success: true, descriptions };
     })
+    // --- Gang Descriptions (Real-time from HR_GANG + Divisi_Description) ---
+    .get("/gang-descriptions", async () => {
+        const descriptions = await summaryService.getAllGangDescriptions();
+        return { success: true, descriptions };
+    })
     // --- Premi Headers for Division ---
     .get("/premi-headers/:loc_code", async ({ params, query }) => {
         const month = parseInt(query.month);
