@@ -104,17 +104,22 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     // --- Division Detail Summary ---
     .get("/division", async ({ query }) => {
         const { division, month, year } = query;
-        if (!division) throw new Error("Division is required");
-
-        const data = await summaryService.getDivisionSummary(
-            division,
+        // Allow empty division for "ALL" - remove the requirement
+        const result = await summaryService.getDivisionSummary(
+            division || undefined,
             month ? parseInt(month) : undefined,
             year ? parseInt(year) : undefined
         );
-        return { success: true, count: data.length, data };
+        return {
+            success: true,
+            count: result.data.length,
+            data: result.data,
+            grand_total: result.grand_total,
+            filtered_headers: result.filtered_headers
+        };
     }, {
         query: t.Object({
-            division: t.String(),
+            division: t.Optional(t.String()),
             month: t.Optional(t.String()),
             year: t.Optional(t.String())
         })

@@ -11,7 +11,7 @@ import {
     formatCurrency
 } from '../services/aggregationSeederService';
 
-export default function AggregationSeederModal({ isOpen, onClose, month, year, division }) {
+export default function AggregationSeederModal({ isOpen, onClose, month, year, division, token }) {
     const [status, setStatus] = useState(null);
     const [seeding, setSeeding] = useState(false);
     const [seedingProgress, setSeedingProgress] = useState([]);
@@ -20,14 +20,18 @@ export default function AggregationSeederModal({ isOpen, onClose, month, year, d
 
     // Load current status when modal opens
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && token) {
             loadStatus();
         }
-    }, [isOpen, month, year]);
+    }, [isOpen, month, year, token]);
 
     const loadStatus = async () => {
+        if (!token) {
+            console.error('No token available');
+            return;
+        }
         try {
-            const response = await fetchAggregationStatus(month, year);
+            const response = await fetchAggregationStatus(token, month, year);
             setStatus(response);
         } catch (e) {
             console.error('Failed to load status:', e);
@@ -35,12 +39,16 @@ export default function AggregationSeederModal({ isOpen, onClose, month, year, d
     };
 
     const handleSeed = async () => {
+        if (!token) {
+            setError('No authentication token available');
+            return;
+        }
         setSeeding(true);
         setError('');
         setSeedingProgress([{ message: `Starting aggregation for ${formatMonthName(month)} ${year}...`, time: new Date() }]);
 
         try {
-            const response = await seedAggregation(month, year, division, false);
+            const response = await seedAggregation(token, month, year, division, false);
 
             if (response.success) {
                 setResult(response.data);
@@ -68,12 +76,16 @@ export default function AggregationSeederModal({ isOpen, onClose, month, year, d
     };
 
     const handleForceSeed = async () => {
+        if (!token) {
+            setError('No authentication token available');
+            return;
+        }
         setSeeding(true);
         setError('');
         setSeedingProgress([{ message: `Force seeding for ${formatMonthName(month)} ${year}...`, time: new Date() }]);
 
         try {
-            const response = await seedAggregation(month, year, division, true);
+            const response = await seedAggregation(token, month, year, division, true);
 
             if (response.success) {
                 setResult(response.data);

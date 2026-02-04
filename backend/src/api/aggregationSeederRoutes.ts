@@ -72,17 +72,19 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
             };
         }
     })
-    .post("/seed", async ({ body, headers }) => {
+    .post("/seed", async ({ body, headers, set }) => {
         // Verify authentication
         const authHeader = headers["authorization"];
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
 
         const { division, month, year, force } = body;
 
         try {
-            const result = await seedAggregationToDb(division, month, year, force);
+            // Pass authorization header to internal function
+            const result = await seedAggregationToDb(division, month, year, authHeader, force || false);
             return {
                 success: true,
                 data: result
@@ -358,11 +360,349 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 total_gangs: 0
             };
         }
+    })
+    .get("/validate", async ({ query, headers }) => {
+        // Validate aggregation totals against real-time payroll calculations
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const month = parseInt(query.month);
+        const year = parseInt(query.year);
+        const divisionCode = query.division; // Optional: validate specific division only
+
+        try {
+            const db = Database.getExtendedInstance();
+
+            // Get stored aggregation totals
+            let aggQuery = `
+                SELECT division_code, gang_code, gang_description,
+                       total_employees, total_hk, total_upah_bersih, total_premi,
+                       total_lembur, total_pph21, total_spsi, total_potongan,
+                       total_premi_insentif, total_premi_kinerja, total_premi_prunning, total_koreksi
+                FROM dbo.daftar_upah_aggregation_history
+                WHERE period_month = ? AND period_year = ?
+            `;
+            const aggParams: any[] = [month, year];
+
+            if (divisionCode) {
+                aggQuery += ` AND division_code = ?`;
+                aggParams.push(divisionCode);
+            }
+
+            aggQuery += " ORDER BY division_code, gang_code";
+
+            const storedAggregations = await db.query<any>(aggQuery, aggParams);
+
+            // Calculate real-time totals from payroll data
+            const realTimeTotals: Record<string, any> = {};
+
+            // Get divisions to validate
+            const divisionsToValidate = divisionCode
+                ? [divisionCode]
+                : [...new Set(storedAggregations.map(a => a.division_code))];
+
+            for (const div of divisionsToValidate) {
+                // Extract payroll data for this division using the RAW TREE endpoint logic via HTTP
+                // This ensures we validate against the exact same data source as the seeder
+                try {
+                    // Note: validate endpoint doesn't strictly require the same auth token as it is internal dev tool often,
+                    // but we need one to call the API. We can reuse the header from the request.
+                    const authHeader = headers["authorization"] || "";
+
+                    const rawTreeResponse: any = await fetchRawTreeData(div, month, year, authHeader);
+
+                    if (rawTreeResponse.success && rawTreeResponse.data && rawTreeResponse.data.gangs) {
+                        for (const gangData of rawTreeResponse.data.gangs) {
+                            const gangCode = gangData.gang_code;
+                            const gangTotals = gangData.gang_totals;
+
+                            if (!gangCode || !gangTotals) continue;
+
+                            const gangKey = `${div}_${gangCode}`;
+
+                            realTimeTotals[gangKey] = {
+                                division_code: div,
+                                gang_code: gangCode,
+                                total_employees: gangTotals.employee_count || 0,
+                                total_hk: gangTotals.jumlah_hk || 0,
+                                total_upah_bersih: gangTotals.upah_bersih || 0,
+                                total_premi: (gangTotals.premi_brondol || 0) + (gangTotals.total_premi_dynamic || 0), // Note: total_premi in raw-tree might need adjustment if structure differs
+                                total_lembur: gangTotals.lembur_jumlah || 0,
+                                total_pph21: gangTotals.pot_pph21 || 0,
+                                total_spsi: gangTotals.pot_spsi || 0,
+                                total_potongan: gangTotals.total_potongan || 0
+                            };
+
+                            // Adjust total_premi if it's already summed in raw-tree
+                            if (gangTotals.total_premi !== undefined) {
+                                realTimeTotals[gangKey].total_premi = gangTotals.total_premi;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error(`[Validation] Failed to fetch raw-tree for ${div}:`, e);
+                }
+            }
+
+            // Log stored aggregation for comparison
+            console.log(`[Validation] Stored aggregations found: ${storedAggregations.length}`);
+            for (const stored of storedAggregations) {
+                console.log(`[Validation] Stored ${stored.division_code}_${stored.gang_code}: upah_bersih=${stored.total_upah_bersih}, HK=${stored.total_hk}, employees=${stored.total_employees}`);
+            }
+
+            // Compare stored vs real-time totals
+            const discrepancies: any[] = [];
+            const tolerances = {
+                total_employees: 0,      // Must be exact match
+                total_hk: 0.01,          // Small floating point tolerance
+                total_upah_bersih: 1,    // 1 rupiah tolerance
+                total_premi: 1,
+                total_lembur: 1,
+                total_pph21: 1,
+                total_spsi: 1,
+                total_potongan: 1
+            };
+
+            for (const stored of storedAggregations) {
+                const gangKey = `${stored.division_code}_${stored.gang_code}`;
+                const realTime = realTimeTotals[gangKey];
+
+                if (!realTime) {
+                    discrepancies.push({
+                        division_code: stored.division_code,
+                        gang_code: stored.gang_code,
+                        status: "MISSING_IN_REALTIME",
+                        message: "Gang exists in aggregation but not found in real-time payroll data"
+                    });
+                    continue;
+                }
+
+                // Check each field for discrepancies
+                const fieldDiscrepancies: any = {};
+                for (const [field, tolerance] of Object.entries(tolerances)) {
+                    const storedValue = parseFloat(stored[field]) || 0;
+                    const realTimeValue = realTime[field] || 0;
+                    const diff = Math.abs(storedValue - realTimeValue);
+
+                    if (diff > tolerance) {
+                        fieldDiscrepancies[field] = {
+                            stored: storedValue,
+                            real_time: realTimeValue,
+                            difference: diff
+                        };
+                    }
+                }
+
+                if (Object.keys(fieldDiscrepancies).length > 0) {
+                    discrepancies.push({
+                        division_code: stored.division_code,
+                        gang_code: stored.gang_code,
+                        status: "DISCREPANCY_FOUND",
+                        field_discrepancies: fieldDiscrepancies
+                    });
+                }
+            }
+
+            // Check for gangs in real-time but not in aggregation
+            for (const [gangKey, realTime] of Object.entries(realTimeTotals)) {
+                const exists = storedAggregations.some(s =>
+                    s.division_code === realTime.division_code && s.gang_code === realTime.gang_code
+                );
+                if (!exists) {
+                    discrepancies.push({
+                        division_code: realTime.division_code,
+                        gang_code: realTime.gang_code,
+                        status: "MISSING_IN_AGGREGATION",
+                        message: "Gang found in real-time payroll but not in aggregation table"
+                    });
+                }
+            }
+
+            // Calculate division totals summary
+            const divisionSummaries: any[] = [];
+            for (const div of divisionsToValidate) {
+                const divStored = storedAggregations.filter(a => a.division_code === div);
+                const divRealTime = Object.values(realTimeTotals).filter((r: any) => r.division_code === div);
+
+                const storedTotal = divStored.reduce((sum, r) => sum + (parseFloat(r.total_upah_bersih) || 0), 0);
+                const realTimeTotal = divRealTime.reduce((sum: number, r: any) => sum + (r.total_upah_bersih || 0), 0);
+
+                divisionSummaries.push({
+                    division_code: div,
+                    stored_aggregation_total: storedTotal,
+                    real_time_payroll_total: realTimeTotal,
+                    difference: Math.abs(storedTotal - realTimeTotal),
+                    is_match: Math.abs(storedTotal - realTimeTotal) < 1 // Within 1 rupiah tolerance
+                });
+            }
+
+            return {
+                success: true,
+                month,
+                year,
+                division_code: divisionCode || "ALL",
+                validation_timestamp: new Date().toISOString(),
+                division_summaries: divisionSummaries,
+                discrepancies_found: discrepancies.length,
+                discrepancies: discrepancies.slice(0, 100), // Limit to first 100
+                total_gangs_checked: storedAggregations.length
+            };
+        } catch (error: any) {
+            console.error("[AggregationValidation] Error:", error);
+            return {
+                success: false,
+                error: error.message || "Failed to validate aggregation",
+                discrepancies: []
+            };
+        }
     });
 
 // ===================== HELPER FUNCTIONS =====================
 
-async function seedAggregationToDb(division: string | undefined, month: number, year: number, force: boolean = false) {
+/**
+ * Helper function to calculate totals for a list of employees
+ * This is the SAME function used by payroll.ts raw-tree endpoint
+ * to ensure exact consistency
+ */
+// Helper function removed: calculateTotals (no longer needed as we fetch pre-calculated totals from raw-tree endpoint)
+
+import { Config } from "../config";
+
+/**
+ * Fetch payroll data using the raw-tree endpoint via HTTP
+ * This ensures aggregation matches exactly what's displayed in the reports
+ */
+async function fetchRawTreeData(division: string, month: number, year: number, authToken: string) {
+    console.log(`[AggregationSeeder] Fetching raw tree data for ${division} (${month}/${year})...`);
+
+    const url = `http://localhost:${Config.PORT}/backend/upah/payroll/locked/report/raw-tree?div=${division}&month=${month}&year=${year}`;
+
+    try {
+        const response = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Authorization": authToken
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to fetch raw-tree data: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const result: any = await response.json();
+
+        console.log(`[AggregationSeeder] Raw data fetched successfully. Division: ${result.division}`);
+
+        // The endpoint returns { gangs: [ { gang_code, gang_totals, ... } ], ... }
+        // We can use this directly.
+
+        return {
+            success: true,
+            data: result
+        };
+    } catch (error: any) {
+        console.error(`[AggregationSeeder] Fetch error:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Map gang_totals from raw-tree response to AggregationRecord structure
+ */
+function mapGangTotalsToAggregation(
+    gangCode: string,
+    gangDescription: string,
+    totals: any,
+    premiTitleMap: Record<string, string>,
+    potonganTitleMap: Record<string, string>
+): AggregationRecord {
+    // Build dynamic_premi_data from gang_totals
+    const excludePatterns = ['premi_brondol', 'premi_pph', 'premi_koreksi', 'total_premi'];
+    const dynamicPremiList: any[] = [];
+
+    for (const [key, value] of Object.entries(totals)) {
+        if (key.startsWith('premi_') && (value as number) > 0) {
+            // Skip standard premi fields
+            if (excludePatterns.includes(key)) continue;
+
+            // Get header name from title map or use the key
+            const header = premiTitleMap[key] || key.replace('premi_', '').toUpperCase();
+            dynamicPremiList.push({
+                header: header,
+                total: value
+            });
+        }
+    }
+
+    // Calculate total_premi (brondol + dynamic)
+    const totalPremiBrondol = totals.premi_brondol || 0;
+    const totalPremiDynamic = dynamicPremiList.reduce((sum, item) => sum + (item.total || 0), 0);
+    const totalPremi = totalPremiBrondol + totalPremiDynamic;
+
+    // Extract separated premi components from dynamic list
+    let totalPremiInsentif = 0;
+    let totalPremiKinerja = 0;
+    let totalPremiPrunning = 0;
+    let totalKoreksi = 0;
+
+    for (const item of dynamicPremiList) {
+        const headerLower = item.header.toLowerCase();
+        if (headerLower.includes('insentif') || headerLower.includes('panen')) {
+            totalPremiInsentif += item.total;
+        }
+        if (headerLower.includes('kinerja')) {
+            totalPremiKinerja += item.total;
+        }
+        if ((headerLower.includes('prun') || headerLower.includes('pruning')) && !headerLower.includes('brondol')) {
+            totalPremiPrunning += item.total;
+        }
+        if (headerLower.includes('koreksi') && !headerLower.includes('koreksi_hk')) {
+            totalKoreksi += item.total;
+        }
+    }
+
+    return {
+        gang_code: gangCode,
+        gang_description: gangDescription,
+        total_employees: totals.employee_count || 0,
+        total_hk: totals.jumlah_hk || 0,
+        total_hari_kerja: totals.hari_kerja || 0,
+        total_cuti_tahunan: 0,
+        total_cuti_sakit: 0,
+        total_cuti_minggu: 0,
+        total_cuti_nasional: 0,
+        total_upah_dasar: 0,
+        total_upah_pokok: totals.gaji_pokok || 0,  // Using gaji_pokok 
+        total_gaji_pokok: totals.gaji_pokok || 0,
+        total_beras: totals.beras_jumlah || 0,
+        total_jabatan: totals.jabatan_jumlah || 0,
+        total_masa_kerja: totals.masa_kerja_jumlah || 0,
+        total_lembur: totals.lembur_jumlah || 0,
+        total_tunjangan: totals.total_tunjangan || 0,
+        total_premi_brondol: totalPremiBrondol,
+        total_premi_prunning: totalPremiPrunning,
+        total_premi_insentif: totalPremiInsentif,
+        total_premi_kinerja: totalPremiKinerja,
+        total_premi: totalPremi,
+        total_potongan: totals.total_potongan || 0,
+        total_pph21: totals.pot_pph21 || 0,
+        total_bpjs_pekerja: totals.pot_bpjs_pekerja_total || 0,
+        total_bpjs_majikan: totals.pot_astek_maj || 0,
+        total_spsi: totals.pot_spsi || 0,
+        total_upah_kotor: totals.jumlah_upah_kotor || 0,
+        total_upah_bersih: totals.upah_bersih || 0,
+        total_ffb_weight: 0,
+        total_weight_tbs: 0,
+        dynamic_premi_data: JSON.stringify(dynamicPremiList),
+        informasi_tambahan: '',
+        total_koreksi: totalKoreksi
+    };
+}
+
+async function seedAggregationToDb(division: string | undefined, month: number, year: number, authToken: string, force: boolean = false) {
     // Get all divisions from backend if not specified
     const divisions = division ? [division] : await fetchAvailableDivisions();
 
@@ -378,30 +718,35 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
     }
 
     const results: SeedResult[] = [];
-    const sourceEndpoint = "backend-api";
+    // Only difference: sourceEndpoint is now 'raw-tree-endpoint'
+    const sourceEndpoint = "raw-tree-endpoint";
+    const divisionTotals: Record<string, number> = {};
 
     for (const div of divisionsToProcess) {
         console.log(`[AggregationSeeder] Processing division: ${div} (${month}/${year})`);
 
-        // Extract payroll data from backend
-        const extractResult = await dataExtractorService.extractPayrollData(
-            month, year, "ALL", div, null, "SERVER_PROFILE_1"
-        );
+        let divisionTotalUpah = 0;
 
-        // Group by gang
-        const gangsMap: Record<string, any[]> = {};
-        for (const row of extractResult.data_rows) {
-            const gang = row.gang_code || "UNKNOWN";
-            if (!gangsMap[gang]) gangsMap[gang] = [];
-            gangsMap[gang].push(row);
+        // Fetch payroll data from the raw-tree endpoint via HTTP
+        const rawTreeResponse: any = await fetchRawTreeData(div, month, year, authToken);
+
+        if (!rawTreeResponse.success || !rawTreeResponse.data) {
+            console.log(`[AggregationSeeder] Skipping ${div}: No data available`);
+            continue;
         }
 
-        // Insert/update each gang's aggregation
-        for (const [gangCode, employees] of Object.entries(gangsMap)) {
-            // Skip if no employees or all have 0 HK
-            const activeEmployees = employees.filter((emp: any) => (emp.jumlah_hk || 0) > 0);
-            if (activeEmployees.length === 0 && !force) {
-                console.log(`[AggregationSeeder] Skipping ${gangCode}: no active employees`);
+        // Process each gang from the raw-tree response
+        for (const gangData of rawTreeResponse.data.gangs) {
+            const gangCode = gangData.gang_code;
+            const gangTotals = gangData.gang_totals;
+
+            if (!gangCode || !gangTotals) {
+                continue;
+            }
+
+            // Skip if no employees with HK > 0
+            if (gangTotals.jumlah_hk === 0 && !force) {
+                console.log(`[AggregationSeeder] Skipping ${gangCode}: no HK`);
                 continue;
             }
 
@@ -411,15 +756,16 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
             // Fetch gang description from HR_GANG (db_ptrj)
             const gangDesc = await getGangDescriptionFromHR_GANG(gangCode);
 
-            // Combine descriptions: "Divisi Description - Gang Description"
+            // Combine descriptions
             const gangDescription = gangDesc
                 ? `${divisiDescription} - ${gangDesc}`
                 : divisiDescription;
 
-            // Calculate gang aggregation using active employees
-            // Note: calculateGangAggregation also filters HK > 0 internally, but we pass
-            // activeEmployees here for consistency and to avoid redundant processing
-            const aggregation = calculateGangAggregation(activeEmployees, gangCode, gangDescription);
+            // Map gang_totals to aggregation record structure
+            const aggregation = mapGangTotalsToAggregation(gangCode, gangDescription, gangTotals, rawTreeResponse.data.premi_title_map || {}, rawTreeResponse.data.potongan_title_map || {});
+
+            // Accumulate division total upah bersih
+            divisionTotalUpah += (aggregation.total_upah_bersih || 0);
 
             // Add division-specific FFB weight
             aggregation.total_ffb_weight = await fetchFfbWeightForDivision(div, month, year);
@@ -427,17 +773,43 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
             // Insert/update to extend_db_ptrj
             await insertOrUpdateAggregation(div, month, year, aggregation, sourceEndpoint);
 
+            // Log gang totals for verification
+            console.log(`[AggregationSeeder] ${div}_${gangCode}: upah_bersih=${aggregation.total_upah_bersih.toLocaleString('id-ID')}, HK=${aggregation.total_hk}, employees=${aggregation.total_employees}`);
+
             results.push({
                 division: div,
                 gang: gangCode,
-                employees_processed: activeEmployees.length,
+                employees_processed: gangTotals.employee_count || 0,
                 status: "success"
             });
+        }
+
+        divisionTotals[div] = divisionTotalUpah;
+        console.log(`[AggregationSeeder] Completed Division ${div}: Total Upah Bersih = ${divisionTotalUpah.toLocaleString('id-ID')}`);
+
+        // Verification: Compare with raw-tree Grand Total
+        if (rawTreeResponse.data.grand_total) {
+            const rawTotal = rawTreeResponse.data.grand_total.upah_bersih || 0;
+            const diff = Math.abs(divisionTotalUpah - rawTotal);
+            if (diff < 100) { // Tolerance for floating point
+                console.log(`[AggregationSeeder] ✅ CONSISTENCY CHECK PASSED: Seeder Total matches Raw-Tree Total. (${divisionTotalUpah.toLocaleString('id-ID')} vs ${rawTotal.toLocaleString('id-ID')})`);
+            } else {
+                console.warn(`[AggregationSeeder] ⚠️ CONSISTENCY CHECK FAILED: Mismatch detected! Seeder=${divisionTotalUpah}, Raw-Tree=${rawTotal}, Diff=${diff}`);
+            }
+        }
+
+        console.log(`[AggregationSeeder] Gang breakdown for ${div}:`);
+        for (const result of results) {
+            if (result.division === div) {
+                console.log(`  - ${result.gang}: processed ${result.employees_processed} employees`);
+            }
         }
     }
 
     return {
         processed: results,
+        division_totals: divisionTotals,
+
         total_divisions: divisionsToProcess.length,
         month,
         year,
@@ -452,6 +824,7 @@ function fetchAvailableDivisions(): string[] {
 
 async function checkDivisionHasData(division: string, month: number, year: number): Promise<boolean> {
     try {
+        // Use SERVER_PROFILE_1 to match extend_db_ptrj connection
         const result = await dataExtractorService.extractPayrollData(
             month, year, "ALL", division, null, "SERVER_PROFILE_1"
         );

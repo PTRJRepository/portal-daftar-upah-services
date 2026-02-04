@@ -635,6 +635,24 @@ export class SummaryService {
 
         const rows = await this.extendDb.query<any>(query, params);
 
+        // Patterns to EXCLUDE from dynamic premi headers display
+        const excludePatterns = ['prun', 'pruning', 'prunning', 'insentif_panen', 'insentif panen', 'tiket', 'koreksi', 'panen', 'kinerja', 'insentif'];
+
+        // Helper function to check if header should be excluded
+        const shouldExcludeHeader = (header: string): boolean => {
+            const headerLower = header.toLowerCase();
+            return excludePatterns.some(pattern => headerLower.includes(pattern));
+        };
+
+        // Helper function to get dynamic premi value from a row
+        const getDynamicPremiValue = (row: any, headerName: string): number => {
+            if (!row._dynamic_premi_list || !Array.isArray(row._dynamic_premi_list)) return 0;
+            const item = row._dynamic_premi_list.find(
+                (p: any) => p.header && p.header.toLowerCase() === headerName.toLowerCase()
+            );
+            return item ? parseFloat(item.total || 0) : 0;
+        };
+
         const results = rows.map(row => {
             let dynamicPremi: any[] = [];
             let backfill = {
@@ -684,28 +702,70 @@ export class SummaryService {
 
         // Collect all unique headers for frontend (excluding the ones we separated)
         const allHeaders = new Set<string>();
-        const excludePatterns = ['PRUN', 'PRUNING', 'INSENTIF', 'PANEN', 'KINERJA', 'KOREKSI'];
+        const filteredHeaders = new Set<string>();
 
         results.forEach(row => {
             if (Array.isArray(row._dynamic_premi_list)) {
                 row._dynamic_premi_list.forEach((item: any) => {
-                    const header = (item.header || "").toUpperCase();
-                    // Just collect everything, frontend filters. 
-                    // But to be cleaner, we can pre-filter? 
-                    // Frontend uses `_premi_headers` list.
-                    allHeaders.add(item.header);
+                    const header = item.header;
+                    if (header) {
+                        allHeaders.add(header);
+                        // Only add to filtered headers if not excluded
+                        if (!shouldExcludeHeader(header)) {
+                            filteredHeaders.add(header);
+                        }
+                    }
                 });
             }
         });
 
         const headerList = Array.from(allHeaders).sort();
+        const filteredHeaderList = Array.from(filteredHeaders).sort();
 
         // Attach headers to first row (convention used by frontend)
         if (results.length > 0) {
             results[0]._premi_headers = headerList;
+            results[0]._premi_headers_filtered = filteredHeaderList;
         }
 
-        return results;
+        // Calculate Grand Total
+        const grandTotal = results.reduce((acc, row) => ({
+            total_employees: acc.total_employees + (Number(row.total_employees) || 0),
+            total_hk: acc.total_hk + (Number(row.total_hk) || 0),
+            total_lembur: acc.total_lembur + (Number(row.total_lembur) || 0),
+            total_pph21: acc.total_pph21 + (Number(row.total_pph21) || 0),
+            total_spsi: acc.total_spsi + (Number(row.total_spsi) || 0),
+            total_upah_bersih: acc.total_upah_bersih + (Number(row.total_upah_bersih) || 0),
+            total_premi: acc.total_premi + (Number(row.total_premi) || 0),
+            total_premi_insentif: acc.total_premi_insentif + (Number(row.total_premi_insentif) || 0),
+            total_premi_kinerja: acc.total_premi_kinerja + (Number(row.total_premi_kinerja) || 0),
+            total_premi_prunning: acc.total_premi_prunning + (Number(row.total_premi_prunning) || 0),
+            total_koreksi: acc.total_koreksi + (Number(row.total_koreksi) || 0),
+            // Calculate totals for each filtered dynamic premi header
+            dynamic_premi_totals: filteredHeaderList.reduce((dynAcc, header) => {
+                dynAcc[header] = (dynAcc[header] || 0) + getDynamicPremiValue(row, header);
+                return dynAcc;
+            }, {} as Record<string, number>)
+        }), {
+            total_employees: 0,
+            total_hk: 0,
+            total_lembur: 0,
+            total_pph21: 0,
+            total_spsi: 0,
+            total_upah_bersih: 0,
+            total_premi: 0,
+            total_premi_insentif: 0,
+            total_premi_kinerja: 0,
+            total_premi_prunning: 0,
+            total_koreksi: 0,
+            dynamic_premi_totals: {} as Record<string, number>
+        });
+
+        return {
+            data: results,
+            grand_total: grandTotal,
+            filtered_headers: filteredHeaderList
+        };
     }
 
     /**

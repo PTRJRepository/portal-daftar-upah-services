@@ -231,4 +231,31 @@ export async function checkReportAccess(token) {
     return response.data;
 }
 
+/**
+ * Validate aggregation totals against real-time payroll calculations
+ * @param {string} token - Auth token
+ * @param {Object} params - Query parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @param {string} [params.division] - Optional division code
+ * @returns {Promise<Object>} Validation results
+ */
+export async function validateAggregation(token, { month, year, division }) {
+    const params = new URLSearchParams();
+    params.append('month', month);
+    params.append('year', year);
+    if (division) params.append('division', division);
+
+    const url = `${BACKEND_BASE}/payroll/aggregation/validate?${params.toString()}`;
+
+    const response = await axios.get(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
 

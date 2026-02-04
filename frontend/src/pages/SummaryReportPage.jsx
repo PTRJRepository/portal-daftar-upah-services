@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData } from '../services/summaryReportService';
+import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, validateAggregation } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import '../styles/wages-summary-professional.css';
@@ -23,11 +23,16 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [periods, setPeriods] = useState([]);
     const [summaryData, setSummaryData] = useState([]);
     const [gangDescriptions, setGangDescriptions] = useState({});
+    const [grandTotal, setGrandTotal] = useState(null);
+    const [filteredHeaders, setFilteredHeaders] = useState([]);
 
     // State
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [showSeederModal, setShowSeederModal] = useState(false);
+    const [validating, setValidating] = useState(false);
+    const [validationResult, setValidationResult] = useState(null);
+    const [showValidation, setShowValidation] = useState(false);
 
     // Load gang descriptions (real-time from HR_GANG)
     useEffect(() => {
@@ -103,6 +108,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
             if (result.success) {
                 setSummaryData(result.data || []);
+                setGrandTotal(result.grand_total || null);
+                setFilteredHeaders(result.filtered_headers || []);
             } else {
                 setError('Failed to fetch summary data');
             }
@@ -118,6 +125,32 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Handle Validation
+    const handleValidate = async () => {
+        setValidating(true);
+        setShowValidation(true);
+        setValidationResult(null);
+
+        try {
+            const result = await validateAggregation(token, {
+                month,
+                year,
+                division: division || undefined
+            });
+
+            if (result.success) {
+                setValidationResult(result);
+            } else {
+                setError('Failed to validate aggregation: ' + (result.error || 'Unknown error'));
+            }
+        } catch (e) {
+            console.error('Error validating aggregation:', e);
+            setError(e.message || 'Failed to validate aggregation');
+        } finally {
+            setValidating(false);
+        }
+    };
 
     // Formatters
     const formatNumber = (value) => {
@@ -141,20 +174,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         day: 'numeric', month: 'long', year: 'numeric'
     });
 
-    // Extract dynamic premi headers - FILTERED to exclude specific types
-    const dynamicPremiHeaders = useMemo(() => {
-        if (summaryData.length === 0) return [];
-        const allHeaders = summaryData[0]?._premi_headers || [];
-
-        // Patterns to EXCLUDE from display
-        const excludePatterns = ['prun', 'pruning', 'prunning', 'insentif_panen', 'insentif panen', 'tiket', 'koreksi', 'panen', 'kinerja', 'insentif'];
-
-        // Filter out excluded patterns
-        return allHeaders.filter(header => {
-            const headerLower = header.toLowerCase();
-            return !excludePatterns.some(pattern => headerLower.includes(pattern));
-        });
-    }, [summaryData]);
+    // Use filtered headers from backend
+    const dynamicPremiHeaders = filteredHeaders;
 
     // Helper function to get dynamic premi value from a row
     const getDynamicPremiValue = useCallback((row, headerName) => {
@@ -164,46 +185,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         );
         return item ? parseFloat(item.total || 0) : 0;
     }, []);
-
-    // Calculate Grand Total - using total_premi from database
-    const grandTotal = useMemo(() => {
-        if (summaryData.length === 0) return null;
-
-        const total = {
-            total_employees: 0,
-            total_hk: 0,
-            total_lembur: 0,
-            total_pph21: 0,
-            total_spsi: 0,
-            total_upah_bersih: 0,
-            total_premi: 0,  // Will be summed from database column total_premi
-            // Separated Components
-            total_premi_insentif: 0,
-            total_premi_kinerja: 0,
-            total_premi_prunning: 0,
-            total_koreksi: 0
-        };
-
-        summaryData.forEach(row => {
-            total.total_employees += Number(row.total_employees) || 0;
-            total.total_hk += Number(row.total_hk) || 0;
-            total.total_lembur += Number(row.total_lembur) || 0;
-            total.total_pph21 += Number(row.total_pph21) || 0;
-            total.total_spsi += Number(row.total_spsi) || 0;
-            total.total_upah_bersih += Number(row.total_upah_bersih) || 0;
-
-            // Use total_premi directly from database (already excludes insentif/kinerja/pruning)
-            total.total_premi += Number(row.total_premi) || 0;
-
-            // Separated Components totals (Use snake_case DB keys)
-            total.total_premi_insentif += Number(row.total_premi_insentif) || 0;
-            total.total_premi_kinerja += Number(row.total_premi_kinerja) || 0;
-            total.total_premi_prunning += Number(row.total_premi_prunning) || 0;
-            total.total_koreksi += Number(row.total_koreksi) || 0;
-        });
-
-        return total;
-    }, [summaryData]);
 
     // Handle Save PDF
     const handleSavePDF = () => {
@@ -239,8 +220,9 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         });
 
         if (grandTotal) {
+            // Use dynamic_premi_totals from backend grand total
             const premis = dynamicPremiHeaders.map(h =>
-                summaryData.reduce((sum, row) => sum + getDynamicPremiValue(row, h), 0) || 0
+                (grandTotal.dynamic_premi_totals?.[h] || 0)
             ).join(',');
             csv += `"GRAND TOTAL",` +
                 `${grandTotal.total_employees},` +
@@ -300,6 +282,9 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 <div className="right-section">
                     <button onClick={() => setShowSeederModal(true)} className="wsp-btn" style={{ background: '#fbbf24', color: '#78350f' }}>
                         Seed Aggregation
+                    </button>
+                    <button onClick={handleValidate} className="wsp-btn" style={{ background: '#3b82f6', color: 'white' }} disabled={validating || loading}>
+                        {validating ? 'Validating...' : 'Validate'}
                     </button>
                     <button onClick={fetchData} className="wsp-btn" disabled={loading}>Refresh</button>
                     <button onClick={handlePrint} className="wsp-btn">Print</button>
@@ -438,7 +423,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
                                         {/* Dynamic Premi Totals - Hidden on Print */}
                                         {dynamicPremiHeaders.map(header => {
-                                            const total = summaryData.reduce((sum, row) => sum + getDynamicPremiValue(row, header), 0);
+                                            const total = grandTotal.dynamic_premi_totals?.[header] || 0;
                                             return (
                                                 <td key={header} className="text-right print-hide-detail">{formatNumber(total)}</td>
                                             );
@@ -494,6 +479,147 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             )
             }
 
+            {/* Validation Results Modal */}
+            {showValidation && validationResult && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', zIndex: 1000
+                }}>
+                    <div style={{
+                        backgroundColor: 'white', borderRadius: '8px',
+                        maxWidth: '800px', maxHeight: '80vh', overflow: 'auto',
+                        padding: '20px', margin: '20px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h2 style={{ margin: 0 }}>Aggregation Validation Results</h2>
+                            <button onClick={() => setShowValidation(false)} style={{
+                                background: 'none', border: 'none', fontSize: '24px',
+                                cursor: 'pointer', color: '#666'
+                            }}>&times;</button>
+                        </div>
+
+                        <div style={{ marginBottom: '15px', fontSize: '14px', color: '#666' }}>
+                            Period: {getMonthName(month)} {year} | Division: {division || 'ALL'}
+                        </div>
+
+                        {/* Division Summaries */}
+                        {validationResult.division_summaries && validationResult.division_summaries.length > 0 && (
+                            <div style={{ marginBottom: '20px' }}>
+                                <h3 style={{ marginTop: 0 }}>Division Totals Comparison</h3>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ backgroundColor: '#f3f4f6' }}>
+                                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ddd' }}>Division</th>
+                                            <th style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>Stored Aggregation</th>
+                                            <th style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>Real-Time Payroll</th>
+                                            <th style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>Difference</th>
+                                            <th style={{ padding: '10px', textAlign: 'center', border: '1px solid #ddd' }}>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {validationResult.division_summaries.map((div, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ padding: '10px', border: '1px solid #ddd', fontWeight: 'bold' }}>{div.division_code}</td>
+                                                <td style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>
+                                                    {formatNumber(div.stored_aggregation_total)}
+                                                </td>
+                                                <td style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>
+                                                    {formatNumber(div.real_time_payroll_total)}
+                                                </td>
+                                                <td style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd', color: Math.abs(div.difference) > 1 ? '#ef4444' : '#10b981' }}>
+                                                    {formatNumber(div.difference)}
+                                                </td>
+                                                <td style={{ padding: '10px', textAlign: 'center', border: '1px solid #ddd' }}>
+                                                    {div.is_match ? (
+                                                        <span style={{ backgroundColor: '#10b981', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                                                            ✓ MATCH
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ backgroundColor: '#ef4444', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                                                            ✗ MISMATCH
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Discrepancies */}
+                        {validationResult.discrepancies_found > 0 ? (
+                            <div style={{ marginBottom: '20px' }}>
+                                <h3 style={{ marginTop: 0, color: '#ef4444' }}>
+                                    Discrepancies Found ({validationResult.discrepancies_found})
+                                </h3>
+                                <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
+                                    {validationResult.discrepancies.slice(0, 20).map((disc, idx) => (
+                                        <div key={idx} style={{
+                                            padding: '10px', borderBottom: '1px solid #ddd',
+                                            fontSize: '13px'
+                                        }}>
+                                            <div><strong>{disc.division_code} - {disc.gang_code}</strong></div>
+                                            <div style={{ color: '#666', marginTop: '4px' }}>
+                                                Status: <span style={{ color: '#ef4444' }}>{disc.status}</span>
+                                            </div>
+                                            {disc.field_discrepancies && (
+                                                <div style={{ marginTop: '6px', fontSize: '12px' }}>
+                                                    {Object.entries(disc.field_discrepancies).map(([field, values]) => (
+                                                        <div key={field} style={{ marginLeft: '10px', marginTop: '4px' }}>
+                                                            <strong>{field}:</strong> Stored={formatNumber(values.stored)}, Real-Time={formatNumber(values.real_time)}, Diff={formatNumber(values.difference)}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {disc.message && (
+                                                <div style={{ marginTop: '4px', color: '#666', fontStyle: 'italic' }}>
+                                                    {disc.message}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {validationResult.discrepancies.length > 20 && (
+                                        <div style={{ padding: '10px', textAlign: 'center', color: '#666' }}>
+                                            ... and {validationResult.discrepancies_found - 20} more discrepancies
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fef3c7', borderRadius: '4px', fontSize: '13px' }}>
+                                    <strong>⚠️ Recommendation:</strong> If discrepancies are found, click "Seed Aggregation" to refresh the aggregation data with current payroll data.
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#d1fae5', borderRadius: '4px', textAlign: 'center' }}>
+                                <span style={{ fontSize: '18px', marginRight: '10px' }}>✓</span>
+                                <strong>All aggregations match real-time payroll data!</strong>
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button onClick={() => setShowValidation(false)} style={{
+                                padding: '10px 20px', borderRadius: '4px', border: '1px solid #ddd',
+                                backgroundColor: 'white', cursor: 'pointer'
+                            }}>
+                                Close
+                            </button>
+                            {!validationResult.division_summaries?.every(d => d.is_match) && (
+                                <button onClick={() => {
+                                    setShowValidation(false);
+                                    setShowSeederModal(true);
+                                }} style={{
+                                    padding: '10px 20px', borderRadius: '4px', border: 'none',
+                                    backgroundColor: '#fbbf24', color: '#78350f', cursor: 'pointer', fontWeight: 'bold'
+                                }}>
+                                    Re-Seed Aggregation
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Aggregation Seeder Modal */}
             <AggregationSeederModal
                 isOpen={showSeederModal}
@@ -501,6 +627,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 month={month}
                 year={year}
                 division={division}
+                token={token}
             />
         </div >
     );

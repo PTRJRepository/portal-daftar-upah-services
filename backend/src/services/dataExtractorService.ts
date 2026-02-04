@@ -257,15 +257,37 @@ export class DataExtractorService {
         for (const emp of employees) {
             const attData = attendanceMap[emp.emp_code] || { hk: 0, total_hours: 0, shortage_count: 0, total_amount_rp: 0 };
             const hk = attData.hk;
-            // REMOVED: Skip employees with HK=0 - now we display all employees even with no attendance
-
             const empCuti = cuti[emp.emp_code] || { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
+
+            // Calculate Effective HK (excluding Sundays and National Holidays)
+            // This filters out employees who only have auto-generated holiday attendance but no actual work/leave
+            const effective_hk = hk - (empCuti.cuti_minggu + empCuti.cuti_nasional);
+
             const empPremi = premi[emp.emp_code] || {};
             const empPotongan = potongan[emp.emp_code] || {};
             const empLembur = lembur[emp.emp_code] || { jam: 0, jumlah: 0 };
             const empLemburDocDesc = lemburDocDesc[emp.emp_code] || 0;
             const empJabatan = jabatan[emp.emp_code] || 0;
             const empMasaKerjaJumlah = masaKerja[emp.emp_code] || 0;
+
+            // Calculate total earnings potential to check if employee should be kept despite low HK
+            const total_premi_temp = Object.values(empPremi).reduce((a, b) => a + b, 0);
+            const total_earnings = (attData.total_amount_rp || 0) + total_premi_temp + empLembur.jumlah + empLemburDocDesc + empJabatan + empMasaKerjaJumlah;
+
+            if (emp.emp_code.includes('474')) {
+                console.log(`[DEBUG] F0474 Filter Check:
+                    HK: ${hk}
+                    Cuti Minggu: ${empCuti.cuti_minggu}
+                    Cuti Nasional: ${empCuti.cuti_nasional}
+                    Effective HK: ${effective_hk}
+                    Total Earnings: ${total_earnings} (Amount: ${attData.total_amount_rp}, Premi: ${total_premi_temp}, Lembur: ${empLembur.jumlah})
+                    Action: ${effective_hk <= 0 && total_earnings <= 0 ? 'SKIP' : 'KEEP'}
+                `);
+            }
+
+            // Filter: Skip if Effective HK is 0 or less AND Total Earnings is 0 or less
+            // This preserves employees who have generated money (e.g. from Sunday work or allowances) even if Effective HK is calculated as 0
+            if (effective_hk <= 0 && total_earnings <= 0) continue;
             const daysInMonth = new Date(year, month, 0).getDate();
             const empUpahDasar = upahPokok[emp.emp_code] || emp.pay_rate || 0;
             const empJobTitle = jobTitles[emp.emp_code] || "";
@@ -405,7 +427,7 @@ export class DataExtractorService {
             // [FIXED] koreksi_hk should ALWAYS be minus or zero (never positive)
             // If aktual > ideal, koreksi_hk = 0 (no correction needed)
             // If aktual < ideal, koreksi_hk = negative value (deduction)
-            const koreksi_hk = Math.min(0, gaji_pokok_aktual - gaji_pokok_ideal);
+            const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal;
 
             // [NEW] Astek 0.84% calculation
             // Formula: (gaji_pokok_ideal + tunjangan_masa_kerja) * 0.84%
@@ -531,6 +553,7 @@ export class DataExtractorService {
 
     private async getEmployees(gangCondition: string, serverProfile?: string): Promise<EmployeeRow[]> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        console.log(`[DataExtractor] getEmployees: serverProfile=${serverProfile || 'undefined (using this.db)'}`);
         const whereClause = gangCondition ? `WHERE ${gangCondition}` : "";
         const rows = await db.query<any>(`
             SELECT DISTINCT
