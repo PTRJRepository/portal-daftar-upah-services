@@ -321,11 +321,6 @@ export class DataExtractorService {
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
             const empLemburJumlah = empLembur.jumlah + empLemburDocDesc;
 
-            // Debug logging for first few employees
-            if (dataRows.length < 3 || empBerasDocDesc > 0 || empLemburDocDesc > 0) {
-                console.log(`[DataExtractor] ${emp.emp_code}: Beras=(${berasJumlahBase} + ${empBerasDocDesc} = ${berasJumlah}), Lembur=(${empLembur.jumlah} + ${empLemburDocDesc} = ${empLemburJumlah})`);
-            }
-
             // [UPDATED] Gaji Pokok untuk Grup Penggajian
             // gaji_pokok_ideal = upah_dasar × jumlah_hk (untuk referensi)
             // gaji_pokok_aktual = total_amount_rp dari PR_TASKREGLN (amount plantware) - untuk display dan perhitungan
@@ -1144,18 +1139,7 @@ export class DataExtractorService {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // DEBUG: First, let's see ALL DocDesc values that exist
-        const allDocDescRows = await db.query<{ doc_desc: string; count: number }>(`
-            SELECT DISTINCT UPPER(t.DocDesc) as doc_desc, COUNT(*) as count
-            FROM PR_ADTRANS_ARC t
-            WHERE t.EmpCode IN (${empList})
-              AND t.DocDate >= ? AND t.DocDate < ?
-            GROUP BY UPPER(t.DocDesc)
-            ORDER BY count DESC
-        `, [startDate, endDate]);
-        console.log(`[DataExtractor] DEBUG - All DocDesc in PR_ADTRANS_ARC for this period:`, allDocDescRows);
-
-        // Try ARC table first (for archived/locked periods) - WITHOUT RTRIM
+        // Try ARC table first (for archived/locked periods)
         let rows = await db.query<{ emp_code: string; total: number; doc_desc: string }>(`
             SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total, t.DocDesc as doc_desc
             FROM PR_ADTRANS_ARC t
@@ -1173,17 +1157,16 @@ export class DataExtractorService {
                 SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total, t.DocDesc as doc_desc
                 FROM PR_ADTRANS t
                 JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-                WHERE t.EmpCode IN (${empList})
+                WHERE t.EmpCode IN(${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
-                  AND UPPER(t.DocDesc) LIKE '%LEMBUR%'
+            AND UPPER(t.DocDesc) LIKE '%LEMBUR%'
                   AND ln.Amount > 0
                 GROUP BY t.EmpCode, t.DocDesc
             `, [startDate, endDate]);
         }
 
-        console.log(`[DataExtractor] getLemburFromDocDesc: Found ${rows.length} records with LEMBUR in DocDesc`);
         if (rows.length > 0) {
-            console.log(`[DataExtractor] Sample lembur DocDesc records:`, rows.slice(0, 3).map(r => ({ emp: r.emp_code, desc: r.doc_desc, amount: r.total })));
+            // console.log(`[DataExtractor] Sample lembur DocDesc: `, rows.slice(0, 3));
         }
 
         const result: Record<string, number> = {};
@@ -1202,52 +1185,6 @@ export class DataExtractorService {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
-
-        // DEBUG: Sample some employees to see what DocDesc values exist for them
-        const sampleEmpCodes = empCodes.slice(0, 5).map(e => `'${e}'`).join(",");
-        console.log(`[DataExtractor] DEBUG - Employee codes being queried:`, empCodes.slice(0, 5));
-        console.log(`[DataExtractor] DEBUG - Date range: ${startDate} to ${endDate}`);
-
-        // Check ARC table first
-        let sampleDocDescRows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-            SELECT TOP 20 RTRIM(t.EmpCode) as emp_code, t.DocDesc as doc_desc, SUM(ln.Amount) as amount
-            FROM PR_ADTRANS_ARC t
-            JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-            WHERE RTRIM(t.EmpCode) IN (${sampleEmpCodes})
-              AND t.DocDate >= ? AND t.DocDate < ?
-            GROUP BY RTRIM(t.EmpCode), t.DocDesc
-            ORDER BY amount DESC
-        `, [startDate, endDate]);
-
-        console.log(`[DataExtractor] DEBUG - Sample DocDesc from PR_ADTRANS_ARC:`, sampleDocDescRows.map(r => ({ emp: r.emp_code, desc: r.doc_desc, amount: r.amount })));
-
-        // Debug: show which DB we're actually querying
-        console.log(`[DataExtractor] DEBUG - Database info: serverProfile=${serverProfile || 'SERVER_PROFILE_1'}`);
-
-        // Specific check for G0030 with beras
-        const g0030BerasCheck = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-            SELECT t.EmpCode as emp_code, t.DocDesc as doc_desc, ln.Amount as amount, t.DocDate as doc_date
-            FROM PR_ADTRANS_ARC t
-            JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-            WHERE t.EmpCode = 'G0030'
-              AND t.DocDate >= ? AND t.DocDate < ?
-              AND UPPER(t.DocDesc) LIKE '%BERAS%'
-        `, [startDate, endDate]);
-        console.log(`[DataExtractor] DEBUG - G0030 beras check (startDate=${startDate}, endDate=${endDate}):`, g0030BerasCheck);
-
-        // If no data in ARC, check base table
-        if (sampleDocDescRows.length === 0) {
-            sampleDocDescRows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-                SELECT TOP 20 RTRIM(t.EmpCode) as emp_code, t.DocDesc as doc_desc, SUM(ln.Amount) as amount
-                FROM PR_ADTRANS t
-                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-                WHERE RTRIM(t.EmpCode) IN (${sampleEmpCodes})
-                  AND t.DocDate >= ? AND t.DocDate < ?
-                GROUP BY RTRIM(t.EmpCode), t.DocDesc
-                ORDER BY amount DESC
-            `, [startDate, endDate]);
-            console.log(`[DataExtractor] DEBUG - Sample DocDesc from PR_ADTRANS (base table):`, sampleDocDescRows.map(r => ({ emp: r.emp_code, desc: r.doc_desc, amount: r.amount })));
-        }
 
         // Try ARC table first (for archived/locked periods) - WITHOUT RTRIM on EmpCode
         let rows = await db.query<{ emp_code: string; total: number; doc_desc: string }>(`
@@ -1275,9 +1212,8 @@ export class DataExtractorService {
             `, [startDate, endDate]);
         }
 
-        console.log(`[DataExtractor] getBerasFromDocDesc: Found ${rows.length} records with BERAS in DocDesc`);
         if (rows.length > 0) {
-            console.log(`[DataExtractor] Sample beras DocDesc records:`, rows.slice(0, 3).map(r => ({ emp: r.emp_code, desc: r.doc_desc, amount: r.total })));
+            // console.log(`[DataExtractor] Sample beras DocDesc: `, rows.slice(0, 3));
         }
 
         const result: Record<string, number> = {};
@@ -1294,14 +1230,14 @@ export class DataExtractorService {
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         const rows = await db.query<{ emp_code: string; upah_dasar: number }>(`
-            WITH LatestCPTRX AS (
-                SELECT EmpCode, NewRate, ROW_NUMBER() OVER (PARTITION BY EmpCode ORDER BY UpdateDate DESC) as rn
+            WITH LatestCPTRX AS(
+                SELECT EmpCode, NewRate, ROW_NUMBER() OVER(PARTITION BY EmpCode ORDER BY UpdateDate DESC) as rn
                 FROM HR_CPTRX
             )
             SELECT RTRIM(e.EmpCode) as emp_code, COALESCE(lc.NewRate, 0) as upah_dasar
             FROM HR_EMPLOYEE e
             LEFT JOIN LatestCPTRX lc ON RTRIM(lc.EmpCode) = RTRIM(e.EmpCode) AND lc.rn = 1
-            WHERE RTRIM(e.EmpCode) IN (${empList})
+            WHERE RTRIM(e.EmpCode) IN(${empList})
         `);
 
         const result: Record<string, number> = {};
@@ -1323,7 +1259,7 @@ export class DataExtractorService {
             .replace(/^TUNJANGAN\s*PREMI\s*/i, "")
             .replace(/^PREMI\s*/i, "");
 
-        return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")}`;
+        return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")} `;
     }
 
     private normalizePotonganName(docDesc: string): { key: string; title: string } {
@@ -1374,23 +1310,23 @@ export class DataExtractorService {
 
         let rows = await db.query<{ emp_code: string; total: number }>(`
             SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
-            FROM (
-                SELECT LFLN.EmpCode, LFLN.Amount
+        FROM(
+            SELECT LFLN.EmpCode, LFLN.Amount
                 FROM PR_LOOSEFRUIT LF
                 JOIN PR_LOOSEFRUITLN LFLN ON LF.ID = LFLN.MasterID
-                WHERE RTRIM(LFLN.EmpCode) IN (${empList})
+                WHERE RTRIM(LFLN.EmpCode) IN(${empList})
                   AND LF.DocDate >= ? AND LF.DocDate < ?
-                
-                UNION ALL
+
+            UNION ALL
 
                 SELECT LFLN.EmpCode, LFLN.Amount
                 FROM PR_LOOSEFRUIT_ARC LF
                 JOIN PR_LOOSEFRUITLN_ARC LFLN ON LF.ID = LFLN.MasterID
-                WHERE RTRIM(LFLN.EmpCode) IN (${empList})
+                WHERE RTRIM(LFLN.EmpCode) IN(${empList})
                   AND LF.DocDate >= ? AND LF.DocDate < ?
             ) combined
             GROUP BY RTRIM(EmpCode)
-        `, [startDate, endDate, startDate, endDate]);
+            `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, number> = {};
         for (const r of rows) {

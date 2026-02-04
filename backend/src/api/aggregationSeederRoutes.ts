@@ -7,6 +7,7 @@
 import { Elysia, t } from "elysia";
 import { Database } from "../db/client";
 import { dataExtractorService } from "../services/dataExtractorService";
+import { divisionDefinition } from "../services/divisionDefinition";
 
 interface AggregationRecord {
     gang_code: string;
@@ -725,82 +726,113 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
     for (const div of divisionsToProcess) {
         console.log(`[AggregationSeeder] Processing division: ${div} (${month}/${year})`);
 
+        // Check if this is a virtual division
+        const isVirtual = divisionDefinition.isVirtualDivision(div);
+
+        let divisionsToQuery: string[];
+        let targetDivisionCode: string; // The division code to use when inserting to aggregation
+
+        if (isVirtual) {
+            // For virtual divisions, get the source divisions to query
+            divisionsToQuery = await divisionDefinition.getSourceDivisionsForAggregation(div);
+            targetDivisionCode = div; // Use virtual division code for aggregation
+            console.log(`[AggregationSeeder] Virtual division ${div} -> Querying source divisions: ${divisionsToQuery.join(", ")}`);
+        } else {
+            divisionsToQuery = [div];
+            targetDivisionCode = div;
+        }
+
         let divisionTotalUpah = 0;
 
-        // Fetch payroll data from the raw-tree endpoint via HTTP
-        const rawTreeResponse: any = await fetchRawTreeData(div, month, year, authToken);
+        // Process each source division (for virtual divisions, this might be multiple)
+        for (const sourceDiv of divisionsToQuery) {
+            console.log(`[AggregationSeeder] Fetching data for source division: ${sourceDiv}`);
 
-        if (!rawTreeResponse.success || !rawTreeResponse.data) {
-            console.log(`[AggregationSeeder] Skipping ${div}: No data available`);
-            continue;
-        }
+            // Fetch payroll data from the raw-tree endpoint via HTTP
+            const rawTreeResponse: any = await fetchRawTreeData(sourceDiv, month, year, authToken);
 
-        // Process each gang from the raw-tree response
-        for (const gangData of rawTreeResponse.data.gangs) {
-            const gangCode = gangData.gang_code;
-            const gangTotals = gangData.gang_totals;
-
-            if (!gangCode || !gangTotals) {
+            if (!rawTreeResponse.success || !rawTreeResponse.data) {
+                console.log(`[AggregationSeeder] Skipping ${sourceDiv}: No data available`);
                 continue;
             }
 
-            // Skip if no employees with HK > 0
-            if (gangTotals.jumlah_hk === 0 && !force) {
-                console.log(`[AggregationSeeder] Skipping ${gangCode}: no HK`);
-                continue;
+            // Get the list of gangs that belong to this virtual division
+            const virtualGangs = isVirtual ? await divisionDefinition.getGangsForDivision(div) : null;
+            const virtualGangCodes = new Set(virtualGangs?.map(g => g.gang_code) || []);
+
+            // Process each gang from the raw-tree response
+            for (const gangData of rawTreeResponse.data.gangs) {
+                const gangCode = gangData.gang_code;
+                const gangTotals = gangData.gang_totals;
+
+                if (!gangCode || !gangTotals) {
+                    continue;
+                }
+
+                // For virtual divisions, only process gangs that belong to this virtual division
+                if (isVirtual && !virtualGangCodes.has(gangCode)) {
+                    console.log(`[AggregationSeeder] Skipping ${gangCode}: Not in virtual division ${div}`);
+                    continue;
+                }
+
+                // Skip if no employees with HK > 0
+                if (gangTotals.jumlah_hk === 0 && !force) {
+                    console.log(`[AggregationSeeder] Skipping ${gangCode}: no HK`);
+                    continue;
+                }
+
+                // Fetch divisi description from extend_db_ptrj
+                const divisiDescription = await getGangDescriptionFromDivisi(gangCode);
+
+                // Fetch gang description from HR_GANG (db_ptrj)
+                const gangDesc = await getGangDescriptionFromHR_GANG(gangCode);
+
+                // Combine descriptions
+                const gangDescription = gangDesc
+                    ? `${divisiDescription} - ${gangDesc}`
+                    : divisiDescription;
+
+                // Map gang_totals to aggregation record structure
+                const aggregation = mapGangTotalsToAggregation(gangCode, gangDescription, gangTotals, rawTreeResponse.data.premi_title_map || {}, rawTreeResponse.data.potongan_title_map || {});
+
+                // Accumulate division total upah bersih
+                divisionTotalUpah += (aggregation.total_upah_bersih || 0);
+
+                // Add division-specific FFB weight (use source division for FFB query)
+                aggregation.total_ffb_weight = await fetchFfbWeightForDivision(sourceDiv, month, year);
+
+                // Insert/update to extend_db_ptrj using target division code (virtual or real)
+                await insertOrUpdateAggregation(targetDivisionCode, month, year, aggregation, sourceEndpoint);
+
+                // Log gang totals for verification
+                console.log(`[AggregationSeeder] ${targetDivisionCode}_${gangCode}: upah_bersih=${aggregation.total_upah_bersih.toLocaleString('id-ID')}, HK=${aggregation.total_hk}, employees=${aggregation.total_employees}`);
+
+                results.push({
+                    division: targetDivisionCode,
+                    gang: gangCode,
+                    employees_processed: gangTotals.employee_count || 0,
+                    status: "success"
+                });
             }
 
-            // Fetch divisi description from extend_db_ptrj
-            const divisiDescription = await getGangDescriptionFromDivisi(gangCode);
-
-            // Fetch gang description from HR_GANG (db_ptrj)
-            const gangDesc = await getGangDescriptionFromHR_GANG(gangCode);
-
-            // Combine descriptions
-            const gangDescription = gangDesc
-                ? `${divisiDescription} - ${gangDesc}`
-                : divisiDescription;
-
-            // Map gang_totals to aggregation record structure
-            const aggregation = mapGangTotalsToAggregation(gangCode, gangDescription, gangTotals, rawTreeResponse.data.premi_title_map || {}, rawTreeResponse.data.potongan_title_map || {});
-
-            // Accumulate division total upah bersih
-            divisionTotalUpah += (aggregation.total_upah_bersih || 0);
-
-            // Add division-specific FFB weight
-            aggregation.total_ffb_weight = await fetchFfbWeightForDivision(div, month, year);
-
-            // Insert/update to extend_db_ptrj
-            await insertOrUpdateAggregation(div, month, year, aggregation, sourceEndpoint);
-
-            // Log gang totals for verification
-            console.log(`[AggregationSeeder] ${div}_${gangCode}: upah_bersih=${aggregation.total_upah_bersih.toLocaleString('id-ID')}, HK=${aggregation.total_hk}, employees=${aggregation.total_employees}`);
-
-            results.push({
-                division: div,
-                gang: gangCode,
-                employees_processed: gangTotals.employee_count || 0,
-                status: "success"
-            });
-        }
-
-        divisionTotals[div] = divisionTotalUpah;
-        console.log(`[AggregationSeeder] Completed Division ${div}: Total Upah Bersih = ${divisionTotalUpah.toLocaleString('id-ID')}`);
-
-        // Verification: Compare with raw-tree Grand Total
-        if (rawTreeResponse.data.grand_total) {
-            const rawTotal = rawTreeResponse.data.grand_total.upah_bersih || 0;
-            const diff = Math.abs(divisionTotalUpah - rawTotal);
-            if (diff < 100) { // Tolerance for floating point
-                console.log(`[AggregationSeeder] ✅ CONSISTENCY CHECK PASSED: Seeder Total matches Raw-Tree Total. (${divisionTotalUpah.toLocaleString('id-ID')} vs ${rawTotal.toLocaleString('id-ID')})`);
-            } else {
-                console.warn(`[AggregationSeeder] ⚠️ CONSISTENCY CHECK FAILED: Mismatch detected! Seeder=${divisionTotalUpah}, Raw-Tree=${rawTotal}, Diff=${diff}`);
+            // Verification: Compare with raw-tree Grand Total (only for real divisions or single-source virtuals)
+            if (rawTreeResponse.data.grand_total && divisionsToQuery.length === 1) {
+                const rawTotal = rawTreeResponse.data.grand_total.upah_bersih || 0;
+                const diff = Math.abs(divisionTotalUpah - rawTotal);
+                if (diff < 100) { // Tolerance for floating point
+                    console.log(`[AggregationSeeder] ✅ CONSISTENCY CHECK PASSED: Seeder Total matches Raw-Tree Total. (${divisionTotalUpah.toLocaleString('id-ID')} vs ${rawTotal.toLocaleString('id-ID')})`);
+                } else {
+                    console.warn(`[AggregationSeeder] ⚠️ CONSISTENCY CHECK FAILED: Mismatch detected! Seeder=${divisionTotalUpah}, Raw-Tree=${rawTotal}, Diff=${diff}`);
+                }
             }
         }
 
-        console.log(`[AggregationSeeder] Gang breakdown for ${div}:`);
+        divisionTotals[targetDivisionCode] = divisionTotalUpah;
+        console.log(`[AggregationSeeder] Completed Division ${targetDivisionCode}: Total Upah Bersih = ${divisionTotalUpah.toLocaleString('id-ID')}`);
+
+        console.log(`[AggregationSeeder] Gang breakdown for ${targetDivisionCode}:`);
         for (const result of results) {
-            if (result.division === div) {
+            if (result.division === targetDivisionCode) {
                 console.log(`  - ${result.gang}: processed ${result.employees_processed} employees`);
             }
         }
@@ -817,9 +849,9 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
     };
 }
 
-function fetchAvailableDivisions(): string[] {
-    // Known divisions
-    return ["PG1A", "PG1B", "PG2A", "PG2B", "DME", "ARA", "ARB1", "ARB2", "INFRA", "AREC", "IJL", "MILL"];
+async function fetchAvailableDivisions(): Promise<string[]> {
+    // Get all divisions including virtual divisions from divisionDefinition
+    return await divisionDefinition.getAllDivisions(true);
 }
 
 async function checkDivisionHasData(division: string, month: number, year: number): Promise<boolean> {
@@ -934,6 +966,7 @@ async function insertOrUpdateAggregation(
             ]);
         } else {
             // Insert new record - using ? placeholders for consistency
+            // GETDATE() is used directly in SQL for timestamp fields
             await db.query(`
                 INSERT INTO dbo.daftar_upah_aggregation_history (
                     period_month, period_year, division_code, gang_code, gang_description,
@@ -949,7 +982,7 @@ async function insertOrUpdateAggregation(
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?
                 )
             `, [
                 month,

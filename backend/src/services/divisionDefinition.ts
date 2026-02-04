@@ -65,7 +65,7 @@ export class DivisionDefinition {
         "NURSERY": "NRS"
     };
 
-    public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "WORKSHOP", "MILL"];
+    public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "MILL"];
 
     private constructor() { }
 
@@ -123,6 +123,44 @@ export class DivisionDefinition {
         } else {
             return this.getRealDivisionGangs(resolved, excludeVirtualGangs);
         }
+    }
+
+    /**
+     * Get the REAL source division(s) for a virtual division.
+     * This is needed for aggregation to know which actual divisions to query.
+     * Returns array of source division codes (e.g., WKS_PG -> ["P1A"])
+     */
+    public async getSourceDivisionsForAggregation(divisionCode: string): Promise<string[]> {
+        const resolved = this.resolveDivisionCode(divisionCode);
+
+        // If not a virtual division, return as-is
+        if (!this.isVirtualDivision(resolved)) {
+            return [resolved];
+        }
+
+        const config = this.getVirtualDivisionConfig(resolved);
+        if (!config) {
+            return [resolved];
+        }
+
+        // If virtual division has a specific source_division, use that
+        if (config.source_division) {
+            return [config.source_division];
+        }
+
+        // For virtual divisions without source_division (like WKS_PG, WKS_AR),
+        // we need to get the source LocCodes from the matched gangs
+        const gangs = await this.getVirtualDivisionGangs(resolved);
+        const sourceLocCodes = new Set<string>();
+
+        for (const gang of gangs) {
+            // Use source_loc_code if available (from original gang), otherwise skip
+            if (gang.source_loc_code) {
+                sourceLocCodes.add(gang.source_loc_code);
+            }
+        }
+
+        return sourceLocCodes.size > 0 ? Array.from(sourceLocCodes) : [resolved];
     }
 
     private async getRealDivisionGangs(locCode: string, excludeVirtual: boolean = true): Promise<Gang[]> {
