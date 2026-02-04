@@ -173,7 +173,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "division_code, month, and year are required" };
             }
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_1");
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_2");
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -343,10 +343,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 }
             */
 
-            // Use SERVER_PROFILE_1 to match extend_db_ptrj connection (CLAUDE.md requirement)
-            // This ensures consistency with aggregation seeder and summary report
-            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with SERVER_PROFILE_1`);
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_1");
+            // Use SERVER_PROFILE_2 for payroll data (main payroll database)
+            // Changed from SERVER_PROFILE_1 per user requirement: payroll data is on PROFILE_2
+            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with SERVER_PROFILE_2`);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_2");
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -541,8 +541,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
             const year = parseInt(query.year || String(new Date().getFullYear()));
 
-            // Use SERVER_PROFILE_1 to match extend_db_ptrj connection (CLAUDE.md requirement)
-            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, "SERVER_PROFILE_1");
+            // Use SERVER_PROFILE_2 for payroll data
+            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, "SERVER_PROFILE_2");
 
             return {
                 gang_code: gangCode,
