@@ -671,7 +671,7 @@
 @media print {
     @page {
         size: A4 landscape;
-        margin: 0.5cm;
+        margin: 0.3cm;
         /* Reduced margin to maximize space */
     }
 
@@ -697,45 +697,46 @@
         box-shadow: none !important;
         border: none !important;
         margin: 0 !important;
-        padding: 0 !important;
+        padding: 0.2rem 0.3rem !important;
         min-width: auto !important;
         max-width: 100% !important;
 
-        /* SCALE FIX: Zoom 75% needs ~134% width to fill page */
-        width: 134% !important;
-        zoom: 75% !important;
+        /* SCALE FIX: Zoom 72% needs ~139% width to fill page */
+        width: 139% !important;
+        zoom: 72% !important;
         transform-origin: top left;
     }
 
     /* Letterhead - compact */
     .wsp-letterhead {
-        margin-bottom: 0.5rem !important;
-        padding-bottom: 0.25rem !important;
+        margin-bottom: 0.4rem !important;
+        padding-bottom: 0.2rem !important;
         border-bottom: 2px solid #000 !important;
     }
 
     .wsp-logo {
-        width: 60px !important;
+        width: 50px !important;
     }
 
     .wsp-company-name {
-        font-size: 1.2rem !important;
+        font-size: 1rem !important;
+        margin: 0 !important;
     }
 
     .wsp-report-title {
-        font-size: 0.75rem !important;
-        margin-top: 0.2rem !important;
+        font-size: 0.65rem !important;
+        margin-top: 0.15rem !important;
     }
 
     .wsp-report-period {
-        font-size: 0.7rem !important;
+        font-size: 0.6rem !important;
         margin-top: 0.1rem !important;
     }
 
     /* KPI Cards - Compact for Single Page */
     .wsp-kpi-grid {
-        margin-bottom: 0.75rem !important;
-        gap: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+        gap: 0.4rem !important;
         display: grid !important;
         grid-template-columns: repeat(4, 1fr) !important;
     }
@@ -743,34 +744,95 @@
     /* Comparison mode uses 3 columns */
     .wsp-kpi-grid.comparison-grid {
         grid-template-columns: repeat(3, 1fr) !important;
+        gap: 0.5rem !important;
     }
 
     .wsp-kpi-card {
-        padding: 0.5rem !important;
+        padding: 0.4rem !important;
         /* Drastically reduced padding */
         min-height: 0 !important;
-        height: 100% !important;
-        /* Forces equal height */
+        height: auto !important;
+        /* Allow auto height for comparison cards */
         border: 1px solid #000 !important;
-        justify-content: center !important;
+        justify-content: flex-start !important;
+    }
+
+    /* Comparison KPI Cards specific print styles */
+    .wsp-kpi-card.comparison-card {
+        padding: 0.3rem 0.4rem !important;
+        overflow: visible !important;
+    }
+
+    .wsp-kpi-compare-row {
+        display: flex !important;
+        gap: 0.4rem !important;
+        margin-bottom: 0.5rem !important;
+        padding: 0 !important;
+    }
+
+    .wsp-kpi-trend-box {
+        flex: 1 !important;
+        padding: 0.3rem 0.2rem !important;
+        border-radius: 4px !important;
+        border: 1px solid #94a3b8 !important;
+        text-align: center !important;
+    }
+
+    .wsp-kpi-trend-box .trend-label {
+        font-size: 0.55rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        color: #64748b !important;
+        margin-bottom: 0.2rem !important;
+        letter-spacing: 0.03em !important;
+    }
+
+    .wsp-kpi-trend-box .trend-value {
+        font-family: 'Roboto Mono', monospace !important;
+        font-size: 0.85rem !important;
+        font-weight: 700 !important;
+        color: #1e293b !important;
+        line-height: 1.1 !important;
+    }
+
+    /* Diff Footer - Reset margins for print */
+    .wsp-kpi-diff {
+        font-size: 0.75rem !important;
+        font-weight: 700 !important;
+        padding: 0.4rem 0.5rem !important;
+        margin: 0.3rem 0 0 0 !important;
+        /* Reset negative margins */
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        border-top: 1px solid #e2e8f0 !important;
     }
 
     .wsp-kpi-label {
-        font-size: 0.6rem !important;
-        margin-bottom: 0.1rem !important;
+        font-size: 0.55rem !important;
+        margin-bottom: 0.2rem !important;
         font-weight: 700 !important;
         color: #000 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.03em !important;
     }
 
     .wsp-kpi-value {
-        font-size: 1rem !important;
+        font-size: 0.95rem !important;
         /* Reduced font size */
         font-weight: 700 !important;
         line-height: 1.1 !important;
     }
 
     .wsp-kpi-card.highlight .wsp-kpi-value {
-        font-size: 1.1rem !important;
+        font-size: 1rem !important;
+    }
+
+    /* Comparison label specific */
+    .wsp-kpi-card.comparison-card .wsp-kpi-label {
+        font-size: 0.5rem !important;
+        margin-bottom: 0.3rem !important;
+        text-align: center !important;
     }
 
     /* Table wrapper - critical for fitting */
@@ -880,7 +942,7 @@
     .wsp-signature-section {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        margin-top: 2rem !important;
+        margin-top: 1rem !important;
         padding-bottom: 0 !important;
         display: flex !important;
         flex-direction: row !important;
@@ -904,15 +966,15 @@
     }
 
     .wsp-signature-title {
-        font-size: 0.6rem !important;
-        margin-bottom: 4rem !important;
-        /* Space for signature */
+        font-size: 0.55rem !important;
+        margin-bottom: 3rem !important;
+        /* Reduced space for signature */
         white-space: nowrap !important;
     }
 
     .wsp-signature-name {
         white-space: nowrap !important;
-        font-size: 0.7rem !important;
+        font-size: 0.6rem !important;
         border-top: 1px solid #000 !important;
         padding-top: 0.2rem !important;
         width: 80% !important;
@@ -952,9 +1014,9 @@
 
     /* Footer */
     .wsp-footer {
-        margin-top: 0.5rem !important;
-        padding-top: 0.5rem !important;
-        font-size: 0.6rem !important;
+        margin-top: 0.3rem !important;
+        padding-top: 0.3rem !important;
+        font-size: 0.55rem !important;
         border-top: 1px solid #000 !important;
     }
 
