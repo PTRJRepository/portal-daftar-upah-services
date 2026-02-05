@@ -175,6 +175,11 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     const groupedData = useMemo(() => {
         // Label mapping for known estate prefixes
         const LABEL_MAP = {
+            'P': 'ESTATE PARIT GUNUNG',
+            'A': 'ESTATE AIR RUAK',
+            'N': 'NURSERY',
+            'W': 'WORKSHOP',
+            'K': 'ESTATE DME',
             'I': 'ESTATE IMIAN JAYA LESTARI',
         };
 
@@ -187,14 +192,17 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             !d.is_subtotal &&
             !d.is_grand_total &&
             d.division_code !== 'IJL' &&
-            !(d.description || '').toLowerCase().includes('impian jaya lestari')
+            !(d.description || '').toLowerCase().includes('impian jaya lestari') &&
+            !(d.description || '').toLowerCase().includes('total') // Double check to exclude any total rows
         );
-        const subtotals = summaryData.filter(d => d.is_subtotal);
 
         // Group ALL divisions dynamically by first character
         regularData.forEach(div => {
             const desc = div.description || '';
             const prefix = desc.charAt(0).toUpperCase();
+
+            // Special handling for Workshop (WKS) if prefix is 'W' mapping might need adjustment if logic uses first char
+            // User says "Estate W jadi WORKSHOP". Assuming division descriptions start with 'W'.
 
             if (!groups[prefix]) {
                 groups[prefix] = {
@@ -207,20 +215,26 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             groups[prefix].divisions.push(div);
         });
 
-        // Match subtotals to groups
-        subtotals.forEach(st => {
-            const desc = (st.description || '').toUpperCase();
-            Object.keys(groups).forEach(key => {
-                const labelWords = groups[key].label.replace('ESTATE ', '').split(' ');
-                const match = labelWords.some(w => w.length > 2 && desc.includes(w));
-                if (match) {
-                    groups[key].subtotal = st;
-                }
-            });
+        // Calculate Subtotals/Grand Totals for each group LOCALLY
+        Object.keys(groups).forEach(key => {
+            const divisions = groups[key].divisions;
+            const total = {
+                total_employees: divisions.reduce((sum, d) => sum + (d.total_employees || 0), 0),
+                total_hk: divisions.reduce((sum, d) => sum + (d.total_hk || 0), 0),
+                total_pph21: divisions.reduce((sum, d) => sum + (d.total_pph21 || 0), 0),
+                total_spsi: divisions.reduce((sum, d) => sum + (d.total_spsi || 0), 0),
+                total_premi: divisions.reduce((sum, d) => sum + (d.total_premi || 0), 0),
+                total_premi_excluding_special: divisions.reduce((sum, d) => sum + (Number(d.total_premi_excluding_special) || Number(d.total_premi) || 0), 0),
+                total_lembur: divisions.reduce((sum, d) => sum + (d.total_lembur || 0), 0),
+                total_manual: divisions.reduce((sum, d) => sum + (d.total_manual || 0), 0),
+                thumb_print: divisions.reduce((sum, d) => sum + (d.thumb_print || 0), 0),
+                selisih: divisions.reduce((sum, d) => sum + (d.selisih || 0), 0)
+            };
+            groups[key].subtotal = total;
         });
 
-        // Convert to array and sort (P, A, D first, then others alphabetically)
-        const sortOrder = ['P', 'A', 'D', 'I', 'L', 'N', 'W', 'T', 'K', 'S', 'M'];
+        // Convert to array and sort (P, A, N, W, K first, then others alphabetically)
+        const sortOrder = ['P', 'A', 'N', 'W', 'K', 'D', 'I', 'L', 'T', 'S', 'M'];
         const sortedKeys = Object.keys(groups).sort((a, b) => {
             const idxA = sortOrder.indexOf(a);
             const idxB = sortOrder.indexOf(b);
@@ -651,7 +665,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 {/* Subtotal Row */}
                 {group.subtotal && (
                     <tr className="subtotal">
-                        <td className="text-left sticky-col">Sub Total {group.label}</td>
+                        <td className="text-left sticky-col">GRAND TOTAL {group.label.replace('ESTATE ', '')}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_employees)}</td>
                         <td className="text-right border-right-section">{formatNumber(group.subtotal.total_hk)}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_pph21)}</td>

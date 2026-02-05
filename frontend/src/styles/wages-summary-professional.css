@@ -648,7 +648,6 @@
     }
 
     /* Document - fit width */
-    /* Document - fit width with SCALE */
     .wsp-document {
         box-shadow: none !important;
         border: none !important;
@@ -656,12 +655,9 @@
         padding: 0 !important;
         min-width: auto !important;
         max-width: 100% !important;
-
-        /* Force Scale Down */
-        transform: scale(0.85);
-        transform-origin: top left;
-        width: 117% !important;
-        /* 100 / 0.85 approx 117.6% */
+        width: 100% !important;
+        /* Fit to single page using zoom */
+        zoom: 80% !important;
     }
 
     /* Letterhead - compact */
@@ -672,7 +668,7 @@
     }
 
     .wsp-logo {
-        width: 80px !important;
+        width: 60px !important;
     }
 
     .wsp-company-name {
@@ -733,15 +729,25 @@
 
     /* Table - scaled to fit one page */
     .wsp-table {
-        font-size: 0.7rem !important;
+        font-size: 0.65rem !important;
+        /* Slightly smaller to ensure fit */
         width: 100% !important;
         table-layout: auto !important;
     }
 
     /* Table headers - centered and bold */
+    .wsp-table thead {
+        display: table-header-group !important;
+    }
+
+    .wsp-table tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
     .wsp-table thead th {
-        padding: 0.4rem 0.3rem !important;
-        font-size: 0.7rem !important;
+        padding: 0.3rem 0.2rem !important;
+        font-size: 0.65rem !important;
         font-weight: 800 !important;
         border: 1.5px solid #000 !important;
         text-align: center !important;
@@ -749,7 +755,7 @@
     }
 
     .wsp-table thead tr.wsp-header-master th {
-        font-size: 0.75rem !important;
+        font-size: 0.7rem !important;
         font-weight: 900 !important;
         border-bottom: 3px solid #000 !important;
     }
@@ -758,10 +764,10 @@
     .wsp-table td,
     .wsp-table td.text-right,
     .wsp-table td.text-center {
-        padding: 0.35rem 0.3rem !important;
-        font-size: 0.7rem !important;
+        padding: 0.25rem 0.2rem !important;
+        font-size: 0.65rem !important;
         font-weight: 600 !important;
-        border: 1.5px solid #000 !important;
+        border: 1px solid #000 !important;
         white-space: nowrap !important;
         text-align: right !important;
     }
@@ -778,13 +784,13 @@
         text-align: left !important;
         white-space: normal !important;
         word-wrap: break-word !important;
-        min-width: 100px !important;
+        min-width: 80px !important;
         font-weight: 700 !important;
         line-height: 1.2 !important;
     }
 
     .div-code {
-        font-size: 0.65rem !important;
+        font-size: 0.6rem !important;
         font-weight: 700 !important;
     }
 
@@ -800,11 +806,9 @@
     }
 
     /* Grand Total - prominent and centered */
-    /* Grand Total - prominent and centered */
     .wsp-table tfoot tr.wsp-grand-total td {
-        padding: 0.2rem !important;
-        /* Reduced padding further */
-        font-size: 0.7rem !important;
+        padding: 0.3rem !important;
+        font-size: 0.65rem !important;
         font-weight: 800 !important;
         text-align: right !important;
         background-color: #1e293b !important;
@@ -814,15 +818,51 @@
         print-color-adjust: exact !important;
     }
 
+    /* Turn off background for Grand Total to save ink, or keep it if requested? Standard is keep it for readability/emphasis */
+    /* .wsp-table tfoot tr.wsp-grand-total td { background-color: transparent !important; color: #000 !important; border-top: 2px solid #000 !important; } */
 
 
-    /* Signature Section - PREVENT PAGE BREAK */
+    /* Signature Section - PREVENT PAGE BREAK & FIX STACKING */
     .wsp-signature-section {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        margin-top: 1rem !important;
-        /* Reduced margin */
+        margin-top: 2rem !important;
         padding-bottom: 0 !important;
+        display: flex !important;
+        flex-direction: row !important;
+        /* Force row */
+        flex-wrap: nowrap !important;
+        /* Prevent wrapping */
+        justify-content: space-between !important;
+        gap: 0 !important;
+        /* Managed by width */
+        width: 100% !important;
+    }
+
+    .wsp-signature-block {
+        flex: 1 1 0px !important;
+        /* Equal width */
+        width: 30% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        margin: 0 !important;
+        text-align: center !important;
+    }
+
+    .wsp-signature-title {
+        font-size: 0.6rem !important;
+        margin-bottom: 4rem !important;
+        /* Space for signature */
+        white-space: nowrap !important;
+    }
+
+    .wsp-signature-name {
+        white-space: nowrap !important;
+        font-size: 0.7rem !important;
+        border-top: 1px solid #000 !important;
+        padding-top: 0.2rem !important;
+        width: 80% !important;
+        margin: 0 auto !important;
     }
 
     .wsp-table tfoot tr.wsp-grand-total td.sticky-col,
@@ -852,46 +892,8 @@
         print-color-adjust: exact !important;
     }
 
-    /* Print Fix for Signature Stacking */
-    .wsp-signature-block {
-        max-width: none !important;
-        min-width: 180px !important;
-        margin-bottom: 0 !important;
-        flex: 1 !important;
-    }
-
-    .wsp-signature-name {
-        white-space: nowrap !important;
-        font-size: 0.7rem !important;
-        border-top: 1px solid #000 !important;
-        padding-top: 0.2rem !important;
-        width: 80% !important;
-        margin: 0 auto !important;
-    }
-
     .wsp-table tr.subtotal td:first-child {
         text-align: left !important;
-    }
-
-    /* Signature Section - compact */
-    .wsp-signature-section {
-        margin-top: 1rem !important;
-        gap: 1rem !important;
-        page-break-inside: avoid !important;
-    }
-
-    .wsp-signature-block {
-        min-width: 120px !important;
-        max-width: 150px !important;
-    }
-
-    .wsp-signature-title {
-        font-size: 0.6rem !important;
-        margin-bottom: 4rem !important;
-    }
-
-    .wsp-signature-name {
-        font-size: 0.7rem !important;
     }
 
     /* Footer */
