@@ -122,6 +122,9 @@ export class SummaryService {
         const rows = await this.extendDb.query<any>(query, [month, year]);
         const thumbprintData = await this.loadThumbprintData(month, year);
 
+        // Fetch backfill data (from JSON columns)
+        const backfillData = await this.getBackfillData(month, year);
+
         const results: DivisionSummary[] = [];
 
         for (const row of rows) {
@@ -134,64 +137,18 @@ export class SummaryService {
             let totalPremiInsentif = parseFloat(row.total_premi_insentif || 0);
             let totalLembur = parseFloat(row.total_lembur || 0);
 
-            // Helper function to parse JSON from various sources
-            const parsePremiData = (data: any) => {
-                if (!data) return null;
-                if (typeof data === 'string') {
-                    try {
-                        return JSON.parse(data);
-                    } catch {
-                        return null;
-                    }
-                }
-                return data;
-            };
+            // Apply Backfill if main columns are zero
+            const backfill = backfillData[div];
+            if (backfill) {
+                if (totalPremiPrunning === 0 && backfill.pruning > 0) totalPremiPrunning = backfill.pruning;
+                if (totalPremiInsentif === 0 && backfill.insentif > 0) totalPremiInsentif = backfill.insentif;
+                if (totalPremiKinerja === 0 && backfill.kinerja > 0) totalPremiKinerja = backfill.kinerja;
+                if (totalLembur === 0 && backfill.lembur > 0) totalLembur = backfill.lembur;
 
-            // Try dynamic_premi_data first
-            let dynamicPremi = parsePremiData(row.dynamic_premi_data);
-
-            // If not found or empty, try informasi_tambahan (for December/January data compatibility)
-            if ((!dynamicPremi || (Array.isArray(dynamicPremi) && dynamicPremi.length === 0)) && row.informasi_tambahan) {
-                dynamicPremi = parsePremiData(row.informasi_tambahan);
-            }
-
-            // Backfill logic if columns are 0 (likely due to schema mismatch or aggregation issue in old data)
-            // or if we switched to informasi_tambahan
-            if (dynamicPremi && (totalPremi === 0 || totalPremiPrunning === 0 || totalLembur === 0 || totalPremiInsentif === 0 || totalPremiKinerja === 0)) {
-                try {
-                    if (Array.isArray(dynamicPremi)) {
-                        for (const item of dynamicPremi) {
-                            const header = (item.header || "").toUpperCase();
-                            const val = parseFloat(item.total || 0);
-
-                            // Rebuild Total Premi if currently 0 (exclude Lembur)
-                            if (parseFloat(row.total_premi || 0) === 0 && !header.includes("LEMBUR") && !header.includes("OT ") && !header.includes("OVERTIME")) {
-                                totalPremi += val;
-                            }
-
-                            // Backfill Pruning
-                            if (totalPremiPrunning === 0 && (header.includes("PRUN") || header.includes("PRUNING")) && !header.includes("BRONDOL")) {
-                                totalPremiPrunning += val;
-                            }
-
-                            // Backfill Lembur
-                            if (totalLembur === 0 && (header.includes("LEMBUR") || header.includes("OVERTIME") || header.includes("OT "))) {
-                                totalLembur += val;
-                            }
-
-                            // Backfill Insentif
-                            if (totalPremiInsentif === 0 && (header.includes("INSENTIF") && header.includes("PANEN"))) {
-                                totalPremiInsentif += val;
-                            }
-
-                            // Backfill Kinerja
-                            if (totalPremiKinerja === 0 && header.includes("KINERJA")) {
-                                totalPremiKinerja += val;
-                            }
-                        }
-                    }
-                } catch (e) {
-                    // ignore JSON parse error
+                // Reconstruct Total Premi if it's 0 but we have backfill data (Pruning + Insentif + Kinerja)
+                // NOTE: We do NOT add Lembur to Total Premi usually, as it's separate.
+                if (totalPremi === 0) {
+                    totalPremi = totalPremiPrunning + totalPremiInsentif + totalPremiKinerja;
                 }
             }
 
@@ -286,6 +243,72 @@ export class SummaryService {
     }
 
     // --- Comparison Logic ---
+
+    private async getBackfillData(month: number, year: number): Promise<Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }>> {
+        const query = `
+            SELECT division_code, dynamic_premi_data, informasi_tambahan 
+            FROM dbo.daftar_upah_aggregation_history
+            WHERE period_month = ? AND period_year = ? AND division_code IS NOT NULL
+        `;
+        const rows = await this.extendDb.query<any>(query, [month, year]);
+        const result: Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }> = {};
+
+        for (const row of rows) {
+            const div = row.division_code?.trim();
+            if (!div) continue;
+
+            if (!result[div]) {
+                result[div] = { pruning: 0, insentif: 0, kinerja: 0, lembur: 0 };
+            }
+
+            // Try dynamic_premi_data first
+            let dynamicPremi = null;
+
+            // DEBUG LOG for P1A/AB1
+            if (div === 'P1A' || div === 'AB1') {
+                console.log(`[Backfill] Check ${div}:`, {
+                    hasDynamic: !!row.dynamic_premi_data,
+                    hasInfo: !!row.informasi_tambahan,
+                    infoRaw: row.informasi_tambahan ? (typeof row.informasi_tambahan === 'string' ? row.informasi_tambahan.substring(0, 100) : 'OBJECT') : 'NULL'
+                });
+            }
+
+            if (row.dynamic_premi_data) {
+                try {
+                    dynamicPremi = typeof row.dynamic_premi_data === 'string' ? JSON.parse(row.dynamic_premi_data) : row.dynamic_premi_data;
+                } catch (e) { }
+            }
+
+            // Fallback to informasi_tambahan
+            if ((!dynamicPremi || (Array.isArray(dynamicPremi) && dynamicPremi.length === 0)) && row.informasi_tambahan) {
+                try {
+                    dynamicPremi = typeof row.informasi_tambahan === 'string' ? JSON.parse(row.informasi_tambahan) : row.informasi_tambahan;
+                } catch (e) { }
+            }
+
+            if (!dynamicPremi) continue;
+
+            if (Array.isArray(dynamicPremi)) {
+                for (const item of dynamicPremi) {
+                    const header = (item.header || "").toUpperCase();
+                    const val = parseFloat(item.total || 0);
+
+                    if ((header.includes("PRUN") || header.includes("PRUNING")) && !header.includes("BRONDOL")) result[div].pruning += val;
+                    if ((header.includes("INSENTIF") && header.includes("PANEN"))) result[div].insentif += val;
+                    if (header.includes("KINERJA")) result[div].kinerja += val;
+                    if (header.includes("LEMBUR") || header.includes("OVERTIME") || header.includes("OT ")) result[div].lembur += val;
+                }
+            } else if (typeof dynamicPremi === 'object') {
+                // Object format fallback
+                if (dynamicPremi.premi_prunning) result[div].pruning += parseFloat(dynamicPremi.premi_prunning || 0);
+                if (dynamicPremi.premi_insentif_panen) result[div].insentif += parseFloat(dynamicPremi.premi_insentif_panen || 0);
+                // No lembur/kinerja in known object format yet, but safe to ignore if missing
+            }
+        }
+        return result;
+    }
+
+
 
     private async loadNovember2025OverrideData(): Promise<any[]> {
         const data = await this.loadJsonData("november_summary_report.json");

@@ -332,35 +332,52 @@
 }
 
 /* ===========================================
-   PRINT STYLES
+   PRINT STYLES - Fixed & Proportional
    =========================================== */
+@page {
+    size: A4 landscape;
+    margin: 0.3cm;
+}
+
 @media print {
-    body {
-        background: #fff !important;
+    * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
 
+    body {
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
     .summary-wages-container {
         background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
     }
 
     .sw-action-bar {
         display: none !important;
     }
 
+    /* Document - NO SCALING */
     .sw-document {
-        box-shadow: none;
-        margin: 0;
-        padding: 1.5cm;
-        max-width: 100%;
-        border-radius: 0;
-        border: none;
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0.6rem 0.8rem !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        border: 2px solid #000 !important;
+        border-radius: 0 !important;
     }
 
     .sw-table {
         page-break-inside: auto;
-        font-size: 0.7rem; /* Smaller font for better fit on paper */
+        font-size: 0.5rem !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
     }
 
     .sw-table tr {
@@ -377,12 +394,14 @@
     }
 
     .sw-kpi-grid {
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(4, 1fr) !important;
         page-break-after: avoid;
+        gap: 0.3rem !important;
+        margin-bottom: 0.5rem !important;
     }
 
     .sw-kpi-card {
-        padding: 0.75rem; /* Smaller padding for print */
+        padding: 0.4rem !important;
         border: 1px solid #94a3b8 !important;
     }
 
@@ -391,69 +410,67 @@
         border: 1px solid #000 !important;
     }
 
-    .sw-kpi-card.highlight .sw-kpi-value {
-        color: #000 !important;
-    }
-
     .sw-kpi-label {
-        font-size: 0.6rem; /* Smaller label for print */
+        font-size: 0.45rem !important;
     }
 
     .sw-kpi-value {
-        font-size: 1.2rem; /* Smaller value for print */
+        font-size: 0.7rem !important;
     }
 
     .sw-table thead tr.sw-header-group th {
         background: #e2e8f0 !important;
         color: #000 !important;
-        border-color: #000 !important;
-        padding: 0.3rem 0.5rem; /* Smaller padding */
-        font-size: 0.65rem; /* Smaller header font */
+        border: 1px solid #000 !important;
+        padding: 0.2rem 0.3rem !important;
+        font-size: 0.5rem !important;
     }
 
     .sw-table thead tr.sw-header-cols th {
         background: #f1f5f9 !important;
         color: #000 !important;
-        border-color: #000 !important;
-        padding: 0.3rem 0.5rem; /* Smaller padding */
-        font-size: 0.6rem; /* Smaller sub-header font */
+        border: 1px solid #000 !important;
+        padding: 0.2rem 0.3rem !important;
+        font-size: 0.45rem !important;
     }
 
     .sw-table tbody tr {
         page-break-inside: avoid;
     }
 
+    /* ALL CELLS CENTERED */
     .sw-table td,
-    .sw-table th {
-        padding: 0.25rem 0.4rem; /* Smaller padding for data cells */
-        border: 1px solid #cbd5e1;
-    }
-
+    .sw-table th,
+    .sw-table td.text-left,
+    .sw-table th.text-left,
     .sw-table td.text-right,
-    .sw-table th.text-right {
-        font-size: 0.7rem; /* Consistent font size */
+    .sw-table th.text-right,
+    .sw-table td.text-center,
+    .sw-table th.text-center {
+        padding: 0.15rem 0.2rem !important;
+        border: 1px solid #000 !important;
+        text-align: center !important;
     }
 
     .sw-table tr.gang-header td {
         background: #e2e8f0 !important;
-        font-weight: 800;
+        font-weight: 800 !important;
         color: #000 !important;
-        border-top: 2px solid #000 !important;
-        border-bottom: 1px solid #000 !important;
+        border: 1px solid #000 !important;
     }
 
     .sw-table tr.subtotal td {
         background: #f1f5f9 !important;
-        font-weight: 700;
+        font-weight: 700 !important;
         color: #000 !important;
-        border-top: 1px solid #000 !important;
+        border: 1px solid #000 !important;
     }
 
     .sw-table tr.grand-total td {
         background: #000 !important;
         color: #fff !important;
         font-weight: 800 !important;
-        font-size: 0.8rem !important;
+        font-size: 0.55rem !important;
     }
 
     .sw-footer {
@@ -461,35 +478,31 @@
         bottom: 0;
         left: 0;
         right: 0;
-        padding: 0.5cm 1.5cm;
+        padding: 0.3rem 0.8rem;
         border-top: 1px solid #000;
+        font-size: 0.45rem !important;
     }
 
     .sw-signature-section {
-        margin-top: 2rem; /* Smaller margin for print */
-        padding: 0 1rem; /* Smaller padding */
+        margin-top: 1rem !important;
+        padding: 0 !important;
     }
 
     .sw-signature-block {
-        width: 200px; /* Smaller width for print */
+        width: 180px !important;
     }
 
     .sw-signature-title {
-        font-size: 0.6rem; /* Smaller font for print */
-        margin-bottom: 5rem; /* Adjusted space for signature */
+        font-size: 0.45rem !important;
+        margin-bottom: 3rem !important;
     }
 
     .sw-signature-name {
-        font-size: 0.7rem; /* Smaller font for print */
+        font-size: 0.5rem !important;
     }
-}
 
-@page {
-    size: A4 landscape;
-    margin: 1cm;
-    @top-right {
-        content: "Page " counter(page) " of " counter(pages);
-        font-size: 0.7rem;
-        color: #64748b;
+    /* KPI Cards */
+    .sw-kpi-card {
+        text-align: center !important;
     }
 }
