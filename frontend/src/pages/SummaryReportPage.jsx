@@ -203,12 +203,14 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
         mergedSummaryData.forEach(row => {
             const premis = dynamicPremiHeaders.map(h => getDynamicPremiValue(row, h) || 0).join(',');
+            // Calculate total_premi excluding special (insentif, kinerja, prunning)
+            const totalPremiExcludingSpecial = (row.total_premi || 0) - (row.total_premi_insentif || 0) - (row.total_premi_kinerja || 0) - (row.total_premi_prunning || 0);
 
             csv += `"${row.gang_description || row.gang_code}",` +
                 `${row.total_employees || 0},` +
                 `${row.total_hk || 0},` +
                 `${premis},` +
-                `${row.total_premi || 0},` +
+                `${totalPremiExcludingSpecial},` +
                 `${row.total_lembur || 0},` +
                 `${row.total_pph21 || 0},` +
                 `${row.total_spsi || 0},` +
@@ -228,7 +230,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 `${grandTotal.total_employees},` +
                 `${grandTotal.total_hk},` +
                 `${premis},` +
-                `${grandTotal.total_premi},` +
+                `${grandTotal.total_premi_excluding_special},` +
                 `${grandTotal.total_lembur},` +
                 `${grandTotal.total_pph21},` +
                 `${grandTotal.total_spsi},` +
@@ -323,7 +325,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             </div>
                             <div className="wsp-kpi-card secondary">
                                 <div className="wsp-kpi-label">TOTAL PREMI</div>
-                                <div className="wsp-kpi-value">Rp {formatNumber(grandTotal.total_premi)}</div>
+                                <div className="wsp-kpi-value">Rp {formatNumber(grandTotal.total_premi_excluding_special)}</div>
                             </div>
                             <div className="wsp-kpi-card highlight">
                                 <div className="wsp-kpi-label">TOTAL UPAH BERSIH</div>
@@ -391,9 +393,9 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                 );
                                             })}
 
-                                            {/* Total Premi */}
-                                            <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
-                                                {formatNumber(row.total_premi)}
+                                            {/* Total Premi - Excluding Insentif, Kinerja, Prunning */}
+                                            <td className={`text-right ${!Number(row.total_premi_excluding_special ?? row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
+                                                {formatNumber(row.total_premi_excluding_special ?? row.total_premi)}
                                             </td>
 
                                             <td className={`text-right ${!Number(row.total_lembur) && 'val-zero'}`}>{formatNumber(row.total_lembur)}</td>
@@ -429,8 +431,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             );
                                         })}
 
-                                        {/* Total Premi */}
-                                        <td className="text-right">{formatNumber(grandTotal.total_premi)}</td>
+                                        {/* Total Premi - Excluding Insentif, Kinerja, Prunning */}
+                                        <td className="text-right">{formatNumber(grandTotal.total_premi_excluding_special)}</td>
 
                                         <td className="text-right">{formatNumber(grandTotal.total_lembur)}</td>
                                         <td className="text-right">{formatNumber(grandTotal.total_pph21)}</td>

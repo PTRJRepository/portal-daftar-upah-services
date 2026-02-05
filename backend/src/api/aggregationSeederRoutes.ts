@@ -737,6 +737,66 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
             divisionsToQuery = await divisionDefinition.getSourceDivisionsForAggregation(div);
             targetDivisionCode = div; // Use virtual division code for aggregation
             console.log(`[AggregationSeeder] Virtual division ${div} -> Querying source divisions: ${divisionsToQuery.join(", ")}`);
+        } else if (div === 'MILL') {
+            // MILL SPECIAL LOGIC
+            console.log(`[AggregationSeeder] Processing MILL division using VenusHR data...`);
+            try {
+                const millData = await fetchMillData(month, year);
+
+                // Create a single aggregation record for MILL
+                const millRecord: AggregationRecord = {
+                    gang_code: "MILL_GENERAL",
+                    gang_description: "General Mill Operations",
+                    total_employees: millData.total_employees,
+                    total_hk: millData.total_hk,
+                    total_hari_kerja: millData.total_hk, // Assuming same
+                    total_cuti_tahunan: 0,
+                    total_cuti_sakit: 0,
+                    total_cuti_minggu: 0,
+                    total_cuti_nasional: 0,
+                    total_upah_dasar: 0,
+                    total_upah_pokok: 0,
+                    total_gaji_pokok: 0,
+                    total_beras: 0,
+                    total_jabatan: 0,
+                    total_masa_kerja: 0,
+                    total_lembur: 0,
+                    total_tunjangan: 0,
+                    total_premi_brondol: 0,
+                    total_premi_prunning: 0,
+                    total_premi_insentif: 0,
+                    total_premi_kinerja: 0,
+                    total_premi: 0,
+                    total_potongan: 0,
+                    total_pph21: 0,
+                    total_bpjs_pekerja: 0,
+                    total_bpjs_majikan: 0,
+                    total_spsi: 0,
+                    total_upah_kotor: millData.total_salary, // Assuming take home pay ~ upah kotor for simple report? Or upah bersih? SQL says "IsTakeHomePay"
+                    total_upah_bersih: millData.total_salary, // Treating Take Home Pay as Upah Bersih
+                    total_ffb_weight: 0,
+                    total_weight_tbs: 0,
+                    dynamic_premi_data: "[]",
+                    informasi_tambahan: "Source: VenusHR",
+                    total_koreksi: 0
+                };
+
+                // Use insertOrUpdateAggregation (single record)
+                targetDivisionCode = div;
+                await insertOrUpdateAggregation(targetDivisionCode, month, year, millRecord, sourceEndpoint);
+
+                // Assuming success if no error thrown
+                if (true) {
+                    results.push({ division: div, gang: "MILL_GENERAL", employees_processed: millRecord.total_employees, status: "SUCCESS" });
+                } else {
+                    results.push({ division: div, gang: "MILL_GENERAL", employees_processed: 0, status: "SKIPPED/FAILED" });
+                }
+                continue; // Skip standard processing
+            } catch (e: any) {
+                console.error("[AggregationSeeder] MILL Error:", e);
+                results.push({ division: div, gang: "MILL_GENERAL", employees_processed: 0, status: "ERROR: " + e.message });
+                continue;
+            }
         } else {
             divisionsToQuery = [div];
             targetDivisionCode = div;
@@ -1415,5 +1475,52 @@ function calculateGangAggregation(employees: any[], gangCode: string, gangDesc: 
         dynamic_premi_data,
         informasi_tambahan: '',
         total_koreksi
+    };
+}
+
+/**
+ * Fetch Mill Data from VenusHR database (SERVER_PROFILE_3)
+ */
+async function fetchMillData(month: number, year: number) {
+    const db = Database.getVenusInstance();
+    const monthStr = month.toString().padStart(2, '0');
+    const pyNumberPattern = `PYW/PTRJ/${year}${monthStr}%`;
+
+    console.log(`[AggregationSeeder] Fetching MILL data for pattern: ${pyNumberPattern}`);
+
+    // 1. Get Total HK and Employees
+    // Using provided logic: (Total_Data_Karyawan * DaysInMonth) - (Total_Mangkir + Total_Unpaid_Leave + Total_Sakit_With_Note)
+    const hkQuery = `
+        SELECT 
+            (Total_Data_Karyawan * DaysInMonth) - (Total_Mangkir + Total_Unpaid_Leave + Total_Sakit_With_Note) AS total_HK,
+            Total_Data_Karyawan AS total_employees
+        FROM (
+            SELECT 
+                COUNT([EmployeeID]) AS Total_Data_Karyawan,
+                SUM(ISNULL([TAAbsence], 0)) AS Total_Mangkir,
+                SUM(ISNULL([UnpaidLeave], 0)) AS Total_Unpaid_Leave,
+                SUM(ISNULL([TASick], 0)) AS Total_Sakit_With_Note,
+                DAY(EOMONTH(CAST(SUBSTRING(MAX([PYNumber]), 10, 6) + '01' AS DATE))) AS DaysInMonth
+            FROM [dbo].[HR_T_PYWeekly_M]
+            WHERE [PYNumber] LIKE ? 
+        ) AS Subquery;
+    `;
+
+    const hkResult = await db.queryOne<{ total_HK: number, total_employees: number }>(hkQuery, [pyNumberPattern]);
+
+    // 2. Get Total Salary (Take Home Pay)
+    const salaryQuery = `
+        SELECT CAST(SUM([CompAmount]) AS BIGINT) AS TotalCompAmount
+        FROM [dbo].[HR_T_PYWeekly_DComponent]
+        WHERE [PYNumber] LIKE ?
+          AND [IsTakeHomePay] = 1
+    `;
+
+    const salaryResult = await db.queryOne<{ TotalCompAmount: number }>(salaryQuery, [pyNumberPattern]);
+
+    return {
+        total_hk: hkResult?.total_HK || 0,
+        total_employees: hkResult?.total_employees || 0,
+        total_salary: salaryResult?.TotalCompAmount || 0
     };
 }

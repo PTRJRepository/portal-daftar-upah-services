@@ -50,14 +50,14 @@ export class DivisionDefinition {
             "exclude_from_source": true,
             "description": "Divisi Workshop Air Ruak - Gang dengan Description mengandung 'workshop' DAN 'air ruak/ARE'"
         },
-        "WORKSHOP": {
+        /* "WORKSHOP": {
             "name": "Workshop All",
             "source_division": null,
             "pattern": null,
             "description_pattern": "workshop.*(parit|pge|p\\.g|air\\s*ruak|are|a\\.r)",
             "exclude_from_source": false,
             "description": "Gabungan Workshop Parit Gunung dan Air Ruak"
-        }
+        } */
     };
 
     private readonly DIVISION_ALIASES: Record<string, string> = {

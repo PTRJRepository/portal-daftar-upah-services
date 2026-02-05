@@ -275,7 +275,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             total_hk: filteredData.reduce((sum, d) => sum + (d.total_hk || 0), 0),
             total_pph21: filteredData.reduce((sum, d) => sum + (d.total_pph21 || 0), 0),
             total_spsi: filteredData.reduce((sum, d) => sum + (d.total_spsi || 0), 0),
-            total_premi: filteredData.reduce((sum, d) => sum + (d.total_premi || 0), 0),
+            total_premi: filteredData.reduce((sum, d) => sum + (d.total_premi_excluding_special || d.total_premi || 0), 0),
             total_lembur: filteredData.reduce((sum, d) => sum + (d.total_lembur || 0), 0),
             total_manual: filteredData.reduce((sum, d) => sum + (d.total_manual || 0), 0),
             thumb_print: filteredData.reduce((sum, d) => sum + (d.thumb_print || 0), 0),
@@ -556,12 +556,14 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
 
         summaryData.forEach(row => {
             if (!row.is_grand_total) {
-                csv += `"${row.description || ''}",${row.total_employees || 0},${row.total_hk || 0},${row.total_pph21 || 0},${row.total_spsi || 0},${row.total_premi || 0},${row.total_lembur || 0},${row.total_manual || 0}\n`;
+                const totalPremiExcludingSpecial = (row.total_premi_excluding_special || row.total_premi || 0);
+                csv += `"${row.description || ''}",${row.total_employees || 0},${row.total_hk || 0},${row.total_pph21 || 0},${row.total_spsi || 0},${totalPremiExcludingSpecial},${row.total_lembur || 0},${row.total_manual || 0}\n`;
             }
         });
 
         if (grandTotal) {
-            csv += `"GRAND TOTAL",${grandTotal.total_employees || 0},${grandTotal.total_hk || 0},${grandTotal.total_pph21 || 0},${grandTotal.total_spsi || 0},${grandTotal.total_premi || 0},${grandTotal.total_lembur || 0},${grandTotal.total_manual || 0}\n`;
+            const totalPremiExcludingSpecial = (grandTotal.total_premi_excluding_special || grandTotal.total_premi || 0);
+            csv += `"GRAND TOTAL",${grandTotal.total_employees || 0},${grandTotal.total_hk || 0},${grandTotal.total_pph21 || 0},${grandTotal.total_spsi || 0},${totalPremiExcludingSpecial},${grandTotal.total_lembur || 0},${grandTotal.total_manual || 0}\n`;
         }
 
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -601,9 +603,9 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <td className={`text-right border-right-section ${Number(div.total_spsi) === 0 ? 'val-zero' : ''}`}>
                             {formatNumber(div.total_spsi)}
                         </td>
-                        {/* Premi Column */}
-                        <td className={`text-right ${Number(div.total_premi) === 0 ? 'val-zero' : ''}`}>
-                            {formatNumber(div.total_premi)}
+                        {/* Premi Column - Excluding Insentif, Kinerja, Prunning */}
+                        <td className={`text-right ${Number(div.total_premi_excluding_special) === 0 ? 'val-zero' : ''}`}>
+                            {formatNumber(div.total_premi_excluding_special)}
                         </td>
                         {/* Lembur */}
                         <td className={`text-right ${Number(div.total_lembur) === 0 ? 'val-zero' : ''}`}>
@@ -654,7 +656,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <td className="text-right border-right-section">{formatNumber(group.subtotal.total_hk)}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_pph21)}</td>
                         <td className="text-right border-right-section">{formatNumber(group.subtotal.total_spsi)}</td>
-                        <td className="text-right">{formatNumber(group.subtotal.total_premi)}</td>
+                        <td className="text-right">{formatNumber(group.subtotal.total_premi_excluding_special || group.subtotal.total_premi)}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_lembur)}</td>
                         <td className="text-right border-right-section">{formatNumber(group.subtotal.total_manual)}</td>
                         <td className="text-right">{formatNumber(group.subtotal.thumb_print || 0)}</td>
@@ -867,7 +869,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                                     <td className="text-right border-right-section">{formatNumber(calculatedGrandTotal.total_hk)}</td>
                                                     <td className="text-right">{formatNumber(calculatedGrandTotal.total_pph21)}</td>
                                                     <td className="text-right border-right-section">{formatNumber(calculatedGrandTotal.total_spsi)}</td>
-                                                    <td className="text-right">{formatNumber(calculatedGrandTotal.total_premi)}</td>
+                                                    <td className="text-right">{formatNumber(calculatedGrandTotal.total_premi_excluding_special || calculatedGrandTotal.total_premi)}</td>
                                                     <td className="text-right">{formatNumber(calculatedGrandTotal.total_lembur)}</td>
                                                     <td className="text-right border-right-section">{formatNumber(calculatedGrandTotal.total_manual)}</td>
                                                     <td className="text-right">{formatNumber(calculatedGrandTotal.thumb_print)}</td>

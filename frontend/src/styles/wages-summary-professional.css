@@ -626,11 +626,14 @@
 @media print {
     @page {
         size: A4 landscape;
-        margin: 1cm;
+        margin: 0.5cm;
+        /* Reduced margin to maximize space */
     }
 
     /* Hide non-printable elements */
-    .no-print {
+    .no-print,
+    .print-hide-additional,
+    .print-hide-detail {
         display: none !important;
     }
 
@@ -639,62 +642,85 @@
         background-color: #fff !important;
         padding: 0 !important;
         min-height: auto !important;
-        overflow: visible !important;
+        overflow: hidden !important;
+        /* Prevent scrollbars */
+        height: 100vh !important;
     }
 
-    /* Document - no shadow, fit width */
+    /* Document - fit width */
+    /* Document - fit width with SCALE */
     .wsp-document {
         box-shadow: none !important;
         border: none !important;
         margin: 0 !important;
         padding: 0 !important;
-        width: 100% !important;
         min-width: auto !important;
         max-width: 100% !important;
+
+        /* Force Scale Down */
+        transform: scale(0.85);
+        transform-origin: top left;
+        width: 117% !important;
+        /* 100 / 0.85 approx 117.6% */
     }
 
     /* Letterhead - compact */
     .wsp-letterhead {
         margin-bottom: 0.5rem !important;
-        padding-bottom: 0.5rem !important;
+        padding-bottom: 0.25rem !important;
         border-bottom: 2px solid #000 !important;
     }
 
     .wsp-logo {
-        width: 100px !important;
+        width: 80px !important;
     }
 
     .wsp-company-name {
-        font-size: 1.4rem !important;
+        font-size: 1.2rem !important;
     }
 
     .wsp-report-title {
-        font-size: 0.8rem !important;
+        font-size: 0.75rem !important;
+        margin-top: 0.2rem !important;
     }
 
     .wsp-report-period {
-        font-size: 0.75rem !important;
+        font-size: 0.7rem !important;
+        margin-top: 0.1rem !important;
     }
 
-    /* KPI Cards - Larger */
+    /* KPI Cards - Compact for Single Page */
     .wsp-kpi-grid {
-        margin-bottom: 1rem !important;
-        gap: 1rem !important;
+        margin-bottom: 0.75rem !important;
+        gap: 0.5rem !important;
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
     }
 
     .wsp-kpi-card {
-        padding: 1rem !important;
-        box-shadow: none !important;
+        padding: 0.5rem !important;
+        /* Drastically reduced padding */
+        min-height: auto !important;
         border: 1px solid #000 !important;
+        justify-content: center !important;
     }
 
     .wsp-kpi-label {
-        font-size: 0.7rem !important;
-        margin-bottom: 0.3rem !important;
+        font-size: 0.6rem !important;
+        margin-bottom: 0.1rem !important;
+        font-weight: 700 !important;
+        color: #000 !important;
     }
 
     .wsp-kpi-value {
-        font-size: 1.2rem !important;
+        font-size: 1rem !important;
+        /* Reduced font size */
+        font-weight: 700 !important;
+        line-height: 1.1 !important;
+    }
+
+    .wsp-kpi-card.highlight .wsp-kpi-value {
+        font-size: 1.1rem !important;
     }
 
     /* Table wrapper - critical for fitting */
@@ -707,35 +733,35 @@
 
     /* Table - scaled to fit one page */
     .wsp-table {
-        font-size: 0.65rem !important;
+        font-size: 0.7rem !important;
         width: 100% !important;
         table-layout: auto !important;
     }
 
     /* Table headers - centered and bold */
     .wsp-table thead th {
-        padding: 0.3rem 0.2rem !important;
-        font-size: 0.65rem !important;
-        font-weight: 700 !important;
-        border: 1px solid #000 !important;
+        padding: 0.4rem 0.3rem !important;
+        font-size: 0.7rem !important;
+        font-weight: 800 !important;
+        border: 1.5px solid #000 !important;
         text-align: center !important;
         background-color: #f0f0f0 !important;
     }
 
     .wsp-table thead tr.wsp-header-master th {
-        font-size: 0.7rem !important;
-        font-weight: 800 !important;
-        border-bottom: 2px solid #000 !important;
+        font-size: 0.75rem !important;
+        font-weight: 900 !important;
+        border-bottom: 3px solid #000 !important;
     }
 
     /* Table cells - High Contrast */
     .wsp-table td,
     .wsp-table td.text-right,
     .wsp-table td.text-center {
-        padding: 0.25rem 0.2rem !important;
-        font-size: 0.65rem !important;
+        padding: 0.35rem 0.3rem !important;
+        font-size: 0.7rem !important;
         font-weight: 600 !important;
-        border: 1px solid #000 !important;
+        border: 1.5px solid #000 !important;
         white-space: nowrap !important;
         text-align: right !important;
     }
@@ -774,8 +800,10 @@
     }
 
     /* Grand Total - prominent and centered */
+    /* Grand Total - prominent and centered */
     .wsp-table tfoot tr.wsp-grand-total td {
-        padding: 0.3rem !important;
+        padding: 0.2rem !important;
+        /* Reduced padding further */
         font-size: 0.7rem !important;
         font-weight: 800 !important;
         text-align: right !important;
@@ -784,6 +812,17 @@
         border: 1px solid #000 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+    }
+
+
+
+    /* Signature Section - PREVENT PAGE BREAK */
+    .wsp-signature-section {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        margin-top: 1rem !important;
+        /* Reduced margin */
+        padding-bottom: 0 !important;
     }
 
     .wsp-table tfoot tr.wsp-grand-total td.sticky-col,
@@ -918,19 +957,20 @@
 }
 
 .pdf-mode .wsp-kpi-grid {
-    margin-bottom: 1rem !important;
-    gap: 1rem !important;
+    margin-bottom: 1.5rem !important;
+    gap: 1.5rem !important;
 }
 
 .pdf-mode .wsp-kpi-card {
-    padding: 1rem !important;
+    padding: 1.5rem 1.25rem !important;
     box-shadow: none !important;
-    border: 1px solid #000 !important;
+    border: 2px solid #000 !important;
+    min-height: 100px !important;
 }
 
 .pdf-mode .wsp-kpi-card.highlight {
     background: #f1f5f9 !important;
-    border: 1px solid #000 !important;
+    border: 2px solid #000 !important;
 }
 
 .pdf-mode .wsp-kpi-card.highlight .wsp-kpi-value {
@@ -938,12 +978,19 @@
 }
 
 .pdf-mode .wsp-kpi-label {
-    font-size: 0.7rem !important;
-    margin-bottom: 0.3rem !important;
+    font-size: 0.8rem !important;
+    margin-bottom: 0.5rem !important;
+    font-weight: 700 !important;
 }
 
 .pdf-mode .wsp-kpi-value {
-    font-size: 1.2rem !important;
+    font-size: 1.6rem !important;
+    font-weight: 700 !important;
+}
+
+.pdf-mode .wsp-kpi-card.highlight .wsp-kpi-value {
+    font-size: 1.8rem !important;
+    font-weight: 800 !important;
 }
 
 .pdf-mode .wsp-table-wrapper {
@@ -954,28 +1001,28 @@
 }
 
 .pdf-mode .wsp-table {
-    font-size: 0.65rem !important;
+    font-size: 0.7rem !important;
     width: 100% !important;
     table-layout: auto !important;
 }
 
 .pdf-mode .wsp-table thead th {
-    padding: 0.3rem 0.2rem !important;
-    font-size: 0.65rem !important;
-    font-weight: 700 !important;
-    border: 1px solid #000 !important;
+    padding: 0.4rem 0.3rem !important;
+    font-size: 0.7rem !important;
+    font-weight: 800 !important;
+    border: 2px solid #000 !important;
     text-align: center !important;
 }
 
 .pdf-mode .wsp-table thead tr.wsp-header-master th {
-    font-size: 0.7rem !important;
-    font-weight: 800 !important;
-    border-bottom: 2px solid #000 !important;
+    font-size: 0.75rem !important;
+    font-weight: 900 !important;
+    border-bottom: 3px solid #000 !important;
 }
 
 .pdf-mode .wsp-table td {
-    padding: 0.25rem 0.2rem !important;
-    font-size: 0.65rem !important;
+    padding: 0.35rem 0.3rem !important;
+    font-size: 0.7rem !important;
     font-weight: 600 !important;
     border: 1px solid #000 !important;
     white-space: nowrap !important;

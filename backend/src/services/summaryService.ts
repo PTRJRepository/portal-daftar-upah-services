@@ -9,6 +9,7 @@ export interface DivisionSummary {
     division_code: string;
     description: string;
     total_premi: number;
+    total_premi_excluding_special: number;  // Total premi excluding insentif, kinerja, prunning
     total_employees: number;
     total_hk: number;
     total_upah_bersih: number;
@@ -125,6 +126,14 @@ export class SummaryService {
             const div = row.division_code ? row.division_code.trim() : "";
             if (!div) continue;
 
+            const totalPremi = parseFloat(row.total_premi || 0);
+            const totalPremiInsentif = parseFloat(row.total_premi_insentif || 0);
+            const totalPremiKinerja = parseFloat(row.total_premi_kinerja || 0);
+            const totalPremiPrunning = parseFloat(row.total_premi_prunning || 0);
+
+            // Calculate total_premi_excluding_special (exclude insentif, kinerja, prunning)
+            const totalPremiExcludingSpecial = totalPremi - totalPremiInsentif - totalPremiKinerja - totalPremiPrunning;
+
             const upah = parseFloat(row.total_upah_bersih || 0);
             const thumbValue = thumbprintData[div] || 0;
             const selisih = thumbValue > 0 ? (upah - thumbValue) : 0;
@@ -132,7 +141,8 @@ export class SummaryService {
             results.push({
                 division_code: div,
                 description: descriptions[div] || div,
-                total_premi: parseFloat(row.total_premi || 0),
+                total_premi: totalPremi,
+                total_premi_excluding_special: totalPremiExcludingSpecial,
                 total_employees: parseInt(row.total_employees || 0),
                 total_hk: parseFloat(row.total_hk || 0),
                 total_upah_bersih: upah,
@@ -141,8 +151,8 @@ export class SummaryService {
                 total_lembur: parseFloat(row.total_lembur || 0),
                 total_gangs: parseInt(row.total_gangs || 0),
                 total_premi_brondol: parseFloat(row.total_premi_brondol || 0),
-                total_premi_prunning: parseFloat(row.total_premi_prunning || 0),
-                total_premi_insentif: parseFloat(row.total_premi_insentif || 0),
+                total_premi_prunning: totalPremiPrunning,
+                total_premi_insentif: totalPremiInsentif,
                 total_premi_kinerja: parseFloat(row.total_premi_kinerja || 0),
                 total_koreksi: parseFloat(row.total_koreksi || 0),
                 total_ffb_weight: parseFloat(row.total_ffb_weight || 0),
@@ -159,6 +169,8 @@ export class SummaryService {
 
         return results;
     }
+
+
 
     public async getAvailablePeriods(divisionCode?: string): Promise<any[]> {
         let query = "SELECT DISTINCT period_year, period_month FROM dbo.daftar_upah_aggregation_history WHERE 1=1";
@@ -362,7 +374,7 @@ export class SummaryService {
 
         for (const curr of currentData) {
             const div = curr.division_code;
-            const prev = prevLookup.get(div) || {};
+            const prev = prevLookup.get(div) || {} as Partial<DivisionSummary>;
 
             const insCurr = curInsentif[div]?.insentif_panen || 0;
             const insPrev = prevInsentif[div]?.insentif_panen || 0;
@@ -376,8 +388,8 @@ export class SummaryService {
                 workers_diff: curr.total_employees - (prev.total_employees || 0),
                 hk_prev: prev.total_hk || 0,
                 hk_curr: curr.total_hk,
-                premi_prev: prev.total_premi || 0,
-                premi_curr: curr.total_premi,
+                premi_prev: prev.total_premi_excluding_special || 0,
+                premi_curr: curr.total_premi_excluding_special,
                 lembur_prev: prev.total_lembur || 0,
                 lembur_curr: curr.total_lembur,
                 prunning_prev: prev.total_premi_prunning || 0,
@@ -436,9 +448,9 @@ export class SummaryService {
             premiOtRows.push({
                 division_code: curr.division_code,
                 description: curr.description,
-                prev_premi: prev.total_premi || 0,
-                curr_premi: curr.total_premi,
-                diff_premi: curr.total_premi - (prev.total_premi || 0),
+                prev_premi: prev.total_premi_excluding_special || 0,
+                curr_premi: curr.total_premi_excluding_special,
+                diff_premi: curr.total_premi_excluding_special - (prev.total_premi_excluding_special || 0),
                 prev_lembur: prev.total_lembur || 0,
                 curr_lembur: curr.total_lembur,
                 diff_lembur: curr.total_lembur - (prev.total_lembur || 0)
@@ -667,8 +679,13 @@ export class SummaryService {
             const t_prunning = parseFloat(row.total_premi_prunning || 0) || backfill.prunning;
             const t_koreksi = parseFloat(row.total_koreksi || 0) || backfill.koreksi;
 
+            const rowTotalPremi = parseFloat(row.total_premi || 0);
+            const totalPremiExcludingSpecial = rowTotalPremi - t_insentif - t_kinerja - t_prunning;
+
             return {
                 ...row,
+                total_premi: rowTotalPremi,
+                total_premi_excluding_special: totalPremiExcludingSpecial,
                 total_premi_insentif: t_insentif,
                 total_premi_kinerja: t_kinerja,
                 total_premi_prunning: t_prunning,
@@ -706,24 +723,33 @@ export class SummaryService {
         }
 
         // Calculate Grand Total
-        const grandTotal = results.reduce((acc, row) => ({
-            total_employees: acc.total_employees + (Number(row.total_employees) || 0),
-            total_hk: acc.total_hk + (Number(row.total_hk) || 0),
-            total_lembur: acc.total_lembur + (Number(row.total_lembur) || 0),
-            total_pph21: acc.total_pph21 + (Number(row.total_pph21) || 0),
-            total_spsi: acc.total_spsi + (Number(row.total_spsi) || 0),
-            total_upah_bersih: acc.total_upah_bersih + (Number(row.total_upah_bersih) || 0),
-            total_premi: acc.total_premi + (Number(row.total_premi) || 0),
-            total_premi_insentif: acc.total_premi_insentif + (Number(row.total_premi_insentif) || 0),
-            total_premi_kinerja: acc.total_premi_kinerja + (Number(row.total_premi_kinerja) || 0),
-            total_premi_prunning: acc.total_premi_prunning + (Number(row.total_premi_prunning) || 0),
-            total_koreksi: acc.total_koreksi + (Number(row.total_koreksi) || 0),
-            // Calculate totals for each filtered dynamic premi header
-            dynamic_premi_totals: filteredHeaderList.reduce((dynAcc, header) => {
-                dynAcc[header] = (dynAcc[header] || 0) + getDynamicPremiValue(row, header);
-                return dynAcc;
-            }, {} as Record<string, number>)
-        }), {
+        const grandTotal = results.reduce((acc, row) => {
+            const rowTotalPremi = Number(row.total_premi) || 0;
+            const rowTotalPremiInsentif = Number(row.total_premi_insentif) || 0;
+            const rowTotalPremiKinerja = Number(row.total_premi_kinerja) || 0;
+            const rowTotalPremiPrunning = Number(row.total_premi_prunning) || 0;
+            const rowTotalPremiExcludingSpecial = rowTotalPremi - rowTotalPremiInsentif - rowTotalPremiKinerja - rowTotalPremiPrunning;
+
+            return {
+                total_employees: acc.total_employees + (Number(row.total_employees) || 0),
+                total_hk: acc.total_hk + (Number(row.total_hk) || 0),
+                total_lembur: acc.total_lembur + (Number(row.total_lembur) || 0),
+                total_pph21: acc.total_pph21 + (Number(row.total_pph21) || 0),
+                total_spsi: acc.total_spsi + (Number(row.total_spsi) || 0),
+                total_upah_bersih: acc.total_upah_bersih + (Number(row.total_upah_bersih) || 0),
+                total_premi: acc.total_premi + rowTotalPremi,
+                total_premi_excluding_special: acc.total_premi_excluding_special + rowTotalPremiExcludingSpecial,
+                total_premi_insentif: acc.total_premi_insentif + rowTotalPremiInsentif,
+                total_premi_kinerja: acc.total_premi_kinerja + rowTotalPremiKinerja,
+                total_premi_prunning: acc.total_premi_prunning + rowTotalPremiPrunning,
+                total_koreksi: acc.total_koreksi + (Number(row.total_koreksi) || 0),
+                // Calculate totals for each filtered dynamic premi header
+                dynamic_premi_totals: filteredHeaderList.reduce((dynAcc, header) => {
+                    dynAcc[header] = (dynAcc[header] || 0) + getDynamicPremiValue(row, header);
+                    return dynAcc;
+                }, {} as Record<string, number>)
+            };
+        }, {
             total_employees: 0,
             total_hk: 0,
             total_lembur: 0,
@@ -731,6 +757,7 @@ export class SummaryService {
             total_spsi: 0,
             total_upah_bersih: 0,
             total_premi: 0,
+            total_premi_excluding_special: 0,
             total_premi_insentif: 0,
             total_premi_kinerja: 0,
             total_premi_prunning: 0,
