@@ -128,23 +128,46 @@ export class SummaryService {
             const div = row.division_code ? row.division_code.trim() : "";
             if (!div) continue;
 
-            const totalPremi = parseFloat(row.total_premi || 0);
-            const totalPremiKinerja = parseFloat(row.total_premi_kinerja || 0);
+            let totalPremi = parseFloat(row.total_premi || 0);
+            let totalPremiKinerja = parseFloat(row.total_premi_kinerja || 0);
             let totalPremiPrunning = parseFloat(row.total_premi_prunning || 0);
             let totalPremiInsentif = parseFloat(row.total_premi_insentif || 0);
             let totalLembur = parseFloat(row.total_lembur || 0);
 
-            // Backfill logic if columns are 0 (likely due to schema mismatch or aggregation issue in old data)
-            if (row.dynamic_premi_data && (totalPremiPrunning === 0 || totalLembur === 0 || totalPremiInsentif === 0)) {
-                try {
-                    const dynamicData = typeof row.dynamic_premi_data === 'string'
-                        ? JSON.parse(row.dynamic_premi_data)
-                        : row.dynamic_premi_data;
+            // Helper function to parse JSON from various sources
+            const parsePremiData = (data: any) => {
+                if (!data) return null;
+                if (typeof data === 'string') {
+                    try {
+                        return JSON.parse(data);
+                    } catch {
+                        return null;
+                    }
+                }
+                return data;
+            };
 
-                    if (Array.isArray(dynamicData)) {
-                        for (const item of dynamicData) {
+            // Try dynamic_premi_data first
+            let dynamicPremi = parsePremiData(row.dynamic_premi_data);
+
+            // If not found or empty, try informasi_tambahan (for December/January data compatibility)
+            if ((!dynamicPremi || (Array.isArray(dynamicPremi) && dynamicPremi.length === 0)) && row.informasi_tambahan) {
+                dynamicPremi = parsePremiData(row.informasi_tambahan);
+            }
+
+            // Backfill logic if columns are 0 (likely due to schema mismatch or aggregation issue in old data)
+            // or if we switched to informasi_tambahan
+            if (dynamicPremi && (totalPremi === 0 || totalPremiPrunning === 0 || totalLembur === 0 || totalPremiInsentif === 0 || totalPremiKinerja === 0)) {
+                try {
+                    if (Array.isArray(dynamicPremi)) {
+                        for (const item of dynamicPremi) {
                             const header = (item.header || "").toUpperCase();
                             const val = parseFloat(item.total || 0);
+
+                            // Rebuild Total Premi if currently 0 (exclude Lembur)
+                            if (parseFloat(row.total_premi || 0) === 0 && !header.includes("LEMBUR") && !header.includes("OT ") && !header.includes("OVERTIME")) {
+                                totalPremi += val;
+                            }
 
                             // Backfill Pruning
                             if (totalPremiPrunning === 0 && (header.includes("PRUN") || header.includes("PRUNING")) && !header.includes("BRONDOL")) {
@@ -159,6 +182,11 @@ export class SummaryService {
                             // Backfill Insentif
                             if (totalPremiInsentif === 0 && (header.includes("INSENTIF") && header.includes("PANEN"))) {
                                 totalPremiInsentif += val;
+                            }
+
+                            // Backfill Kinerja
+                            if (totalPremiKinerja === 0 && header.includes("KINERJA")) {
+                                totalPremiKinerja += val;
                             }
                         }
                     }
@@ -389,7 +417,7 @@ export class SummaryService {
 
     private async getDynamicPremiInsentifPanen(month: number, year: number): Promise<Record<string, { insentif_panen: number }>> {
         const rows = await this.extendDb.query<any>(`
-            SELECT division_code, dynamic_premi_data
+            SELECT division_code, dynamic_premi_data, informasi_tambahan
             FROM dbo.daftar_upah_aggregation_history
             WHERE period_month = ? AND period_year = ? AND division_code IS NOT NULL
         `, [month, year]);
@@ -399,7 +427,21 @@ export class SummaryService {
             const div = row.division_code?.trim();
             if (!div) continue;
             try {
-                const data = typeof row.dynamic_premi_data === 'string' ? JSON.parse(row.dynamic_premi_data) : row.dynamic_premi_data;
+                // Try dynamic_premi_data first
+                let data = null;
+                if (row.dynamic_premi_data) {
+                    data = typeof row.dynamic_premi_data === 'string' ? JSON.parse(row.dynamic_premi_data) : row.dynamic_premi_data;
+                }
+
+                // If not found or empty, try informasi_tambahan (for December/January data compatibility)
+                if ((!data || !Array.isArray(data) || data.length === 0) && row.informasi_tambahan) {
+                    try {
+                        data = typeof row.informasi_tambahan === 'string' ? JSON.parse(row.informasi_tambahan) : row.informasi_tambahan;
+                    } catch (e) {
+                        // ignore parse error for informasi_tambahan
+                    }
+                }
+
                 let total = 0;
                 if (Array.isArray(data)) {
                     for (const item of data) {
@@ -527,15 +569,21 @@ export class SummaryService {
             if (filterType === 'ijl' && curr.division_code !== 'IJL') continue;
             if (filterType === 'non_ijl' && curr.division_code === 'IJL') continue;
 
+            const currPremi = curr.total_premi_excluding_special || 0;
+            const prevPremi = prev.total_premi_excluding_special || 0;
+            const currOt = curr.total_lembur || 0;
+            const prevOt = prev.total_lembur || 0;
+
             premiOtRows.push({
                 division_code: curr.division_code,
+                estate: curr.description,
                 description: curr.description,
-                prev_premi: prev.total_premi_excluding_special || 0,
-                curr_premi: curr.total_premi_excluding_special,
-                diff_premi: curr.total_premi_excluding_special - (prev.total_premi_excluding_special || 0),
-                prev_lembur: prev.total_lembur || 0,
-                curr_lembur: curr.total_lembur,
-                diff_lembur: curr.total_lembur - (prev.total_lembur || 0)
+                prev_premi: prevPremi,
+                curr_premi: currPremi,
+                diff_premi: currPremi - prevPremi,
+                prev_ot: prevOt,
+                curr_ot: currOt,
+                diff_ot: currOt - prevOt
             });
         }
 
@@ -546,17 +594,28 @@ export class SummaryService {
             if (filterType === 'ijl' && curr.division_code !== 'IJL') continue;
             if (filterType === 'non_ijl' && curr.division_code === 'IJL') continue;
 
+            const currPruning = curr.total_premi_prunning || 0;
+            const prevPruning = prev.total_premi_prunning || 0;
+
             pruningRows.push({
                 division_code: curr.division_code,
+                estate: curr.description,
                 description: curr.description,
-                prev_prunning: prev.total_premi_prunning || 0,
-                curr_prunning: curr.total_premi_prunning,
-                diff_prunning: curr.total_premi_prunning - (prev.total_premi_prunning || 0)
+                prev_pruning: prevPruning,
+                curr_pruning: currPruning,
+                diff_pruning: currPruning - prevPruning
             });
         }
 
         // Calculate totals
         const sum = (arr: any[], field: string) => arr.reduce((a, b) => a + (b[field] || 0), 0);
+
+        const currPremi = sum(premiOtRows, 'curr_premi');
+        const prevPremi = sum(premiOtRows, 'prev_premi');
+        const currOt = sum(premiOtRows, 'curr_ot');
+        const prevOt = sum(premiOtRows, 'prev_ot');
+        const currPruning = sum(pruningRows, 'curr_pruning');
+        const prevPruning = sum(pruningRows, 'prev_pruning');
 
         return {
             success: true,
@@ -566,12 +625,15 @@ export class SummaryService {
             premi_ot_table: premiOtRows,
             pruning_table: pruningRows,
             totals: {
-                total_curr_premi: sum(premiOtRows, 'curr_premi'),
-                total_prev_premi: sum(premiOtRows, 'prev_premi'),
-                total_curr_lembur: sum(premiOtRows, 'curr_lembur'),
-                total_prev_lembur: sum(premiOtRows, 'prev_lembur'),
-                total_curr_prunning: sum(pruningRows, 'curr_prunning'),
-                total_prev_prunning: sum(pruningRows, 'prev_prunning')
+                prev_premi: prevPremi,
+                curr_premi: currPremi,
+                diff_premi: currPremi - prevPremi,
+                prev_ot: prevOt,
+                curr_ot: currOt,
+                diff_ot: currOt - prevOt,
+                prev_pruning: prevPruning,
+                curr_pruning: currPruning,
+                diff_pruning: currPruning - prevPruning
             }
         };
     }
@@ -734,22 +796,34 @@ export class SummaryService {
             };
 
             try {
+                // Try dynamic_premi_data first
                 if (row.dynamic_premi_data) {
                     dynamicPremi = typeof row.dynamic_premi_data === 'string'
                         ? JSON.parse(row.dynamic_premi_data)
                         : row.dynamic_premi_data;
+                }
 
-                    // Backfill logic for old data
-                    if (Array.isArray(dynamicPremi)) {
-                        for (const item of dynamicPremi) {
-                            const val = parseFloat(item.total || 0);
-                            const header = (item.header || "").toUpperCase().replace(/ /g, '_');
+                // If not found or empty, try informasi_tambahan (for December/January data compatibility)
+                if ((!dynamicPremi || !Array.isArray(dynamicPremi) || dynamicPremi.length === 0) && row.informasi_tambahan) {
+                    try {
+                        dynamicPremi = typeof row.informasi_tambahan === 'string'
+                            ? JSON.parse(row.informasi_tambahan)
+                            : row.informasi_tambahan;
+                    } catch (e) {
+                        // ignore parse error for informasi_tambahan
+                    }
+                }
 
-                            if (header.includes("INSENTIF") || header.includes("PANEN")) backfill.insentif += val;
-                            if (header.includes("KINERJA")) backfill.kinerja += val;
-                            if ((header.includes("PRUN") || header.includes("PRUNING")) && !header.includes("BRONDOL")) backfill.prunning += val;
-                            if (header.includes("KOREKSI") && !header.includes("KOREKSI_HK")) backfill.koreksi += val;
-                        }
+                // Backfill logic for old data
+                if (Array.isArray(dynamicPremi)) {
+                    for (const item of dynamicPremi) {
+                        const val = parseFloat(item.total || 0);
+                        const header = (item.header || "").toUpperCase().replace(/ /g, '_');
+
+                        if (header.includes("INSENTIF") || header.includes("PANEN")) backfill.insentif += val;
+                        if (header.includes("KINERJA")) backfill.kinerja += val;
+                        if ((header.includes("PRUN") || header.includes("PRUNING")) && !header.includes("BRONDOL")) backfill.prunning += val;
+                        if (header.includes("KOREKSI") && !header.includes("KOREKSI_HK")) backfill.koreksi += val;
                     }
                 }
             } catch (e) { }

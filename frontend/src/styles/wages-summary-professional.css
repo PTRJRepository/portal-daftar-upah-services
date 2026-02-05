@@ -389,7 +389,7 @@
 }
 
 .wsp-table td.text-right {
-    text-align: right;
+    text-align: center !important;
     font-family: 'Roboto Mono', monospace;
     font-variant-numeric: tabular-nums;
 }
@@ -752,9 +752,9 @@
         min-width: auto !important;
         max-width: 100% !important;
 
-        /* SCALE FIX: Zoom 72% needs ~139% width to fill page */
-        width: 139% !important;
-        zoom: 72% !important;
+        /* SCALE FIX: Zoom 60% needs ~166% width to fill page, providing more space to prevent cutoff */
+        width: 166% !important;
+        zoom: 60% !important;
         transform-origin: top left;
     }
 

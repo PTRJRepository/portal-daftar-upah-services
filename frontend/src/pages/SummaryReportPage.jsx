@@ -339,7 +339,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         <table className="wsp-table">
                             <thead>
                                 <tr className="wsp-header-master">
-                                    <th rowSpan="2" style={{ minWidth: '200px' }}>ESTATE / GANG</th>
+                                    <th rowSpan="2" style={{ minWidth: '300px', width: '300px' }}>ESTATE / GANG</th>
                                     <th colSpan="2">MANPOWER</th>
                                     {/* Screen: Show full PREMI INCOME with all dynamic columns */}
                                     <th colSpan={dynamicPremiHeaders.length + 1} className="print-hide-detail">PREMI INCOME</th>
