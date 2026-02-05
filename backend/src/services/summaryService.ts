@@ -372,6 +372,12 @@ export class SummaryService {
             previousData = await this.getAllDivisionsPremiTotals(prevMonth, prevYear);
         }
 
+        // Fetch previous month's thumbprint data from JSON file
+        // This will be used for the "previous month gaji" comparison
+        const prevThumbprintData = await thumbprintService.getThumbprintData(prevMonth, prevYear);
+        console.log(`[SummaryService] Loaded previous thumbprint data for ${prevYear}-${prevMonth}:`, Object.keys(prevThumbprintData).length, "entries");
+        console.log(`[SummaryService] Previous thumbprint data:`, prevThumbprintData);
+
         const prevLookup = new Map(previousData.map(d => [d.division_code, d]));
         const comparisonRows = [];
 
@@ -380,9 +386,12 @@ export class SummaryService {
             const prev = prevLookup.get(divCode) || {};
 
             const currGaji = curr.total_upah_bersih;
-            const prevGaji = prev.total_upah_bersih || 0;
+            // IMPORTANT: Previous month's gaji comes from THUMBPRINT JSON, not database
+            const prevGaji = prevThumbprintData[divCode] || 0;
             const selisih = currGaji - prevGaji;
             const trend = selisih > 0 ? "NAIK" : (selisih < 0 ? "TURUN" : "TETAP");
+
+            console.log(`[SummaryService] ${divCode}: current_gaji=${currGaji}, prev_thumbprint=${prevThumbprintData[divCode]}, selisih=${selisih}`);
 
             comparisonRows.push({
                 division_code: divCode,
@@ -395,9 +404,9 @@ export class SummaryService {
                 total_prunning_current: curr.total_premi_prunning,
                 total_lembur_current: curr.total_lembur,
                 previous_month: {
-                    gaji: prevGaji,
+                    gaji: prevGaji, // Using thumbprint data from JSON for previous month's gaji
                     tbs_weight: prev.total_ffb_weight || 0,
-                    thumb_print: prev.thumb_print || 0
+                    thumb_print: prevThumbprintData[divCode] || 0
                 },
                 current_month: {
                     gaji: currGaji,
@@ -524,6 +533,10 @@ export class SummaryService {
         // Ideally should implement full logic if Nov 2025 accuracy is critical
         const previousData = await this.getAllDivisionsPremiTotals(prevMonth, prevYear);
 
+        // IMPORTANT: Load previous month's thumbprint data from JSON for gaji_prev
+        const prevThumbprintData = await thumbprintService.getThumbprintData(prevMonth, prevYear);
+        console.log(`[ImpactReport] Loaded previous thumbprint data for ${prevYear}-${prevMonth}:`, Object.keys(prevThumbprintData).length, "entries");
+
         const luasHektar = await this.getDivisionLuasHektar();
         const curInsentif = await this.getDynamicPremiInsentifPanen(month, year);
         const prevInsentif = await this.getDynamicPremiInsentifPanen(prevMonth, prevYear);
@@ -546,6 +559,13 @@ export class SummaryService {
             const dynamicInsPrev = prevInsentif[div]?.insentif_panen || 0;
             const insPrev = Math.max(dynamicInsPrev, prev.total_premi_insentif || 0);
 
+            // IMPORTANT: Previous month's gaji comes from THUMBPRINT JSON, not database
+            const gajiPrev = prevThumbprintData[div] || 0;
+            const gajiCurr = curr.total_upah_bersih;
+            const gajiDiff = gajiCurr - gajiPrev;
+
+            console.log(`[ImpactReport] ${div}: current_gaji=${gajiCurr}, prev_thumbprint=${gajiPrev}, selisih=${gajiDiff}`);
+
             mainRows.push({
                 estate: curr.description,
                 division_code: div,
@@ -563,14 +583,14 @@ export class SummaryService {
                 prunning_curr: curr.total_premi_prunning,
                 insentif_prev: insPrev,
                 insentif_curr: insCurr,
-                gaji_prev: prev.total_upah_bersih || 0,
-                gaji_curr: curr.total_upah_bersih,
-                gaji_diff: curr.total_upah_bersih - (prev.total_upah_bersih || 0),
+                gaji_prev: gajiPrev, // Using thumbprint data from JSON
+                gaji_curr: gajiCurr,
+                gaji_diff: gajiDiff,
                 tbs_prev: prev.total_ffb_weight || 0,
                 tbs_curr: curr.total_ffb_weight,
                 tbs_diff: curr.total_ffb_weight - (prev.total_ffb_weight || 0),
-                pct_gaji_naik_turun: (prev.total_upah_bersih || 0) !== 0
-                    ? ((curr.total_upah_bersih - (prev.total_upah_bersih || 0)) / (prev.total_upah_bersih || 0)) * 100
+                pct_gaji_naik_turun: gajiPrev !== 0
+                    ? (gajiDiff / gajiPrev) * 100
                     : 0,
             });
 

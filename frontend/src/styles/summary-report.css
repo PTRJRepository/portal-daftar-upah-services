@@ -641,7 +641,7 @@
     }
 
     body {
-        overflow: visible !important; /* Allow content to overflow for borders */
+        overflow: visible !important;
     }
 
     .summary-report-header,
@@ -650,10 +650,25 @@
         display: none !important;
     }
 
+    /* Show print-only elements */
+    .print-show-only,
+    .print-show {
+        display: block !important;
+    }
+
+    /* For table cells */
+    th.print-show-only,
+    td.print-show-only,
+    th.print-show,
+    td.print-show {
+        display: table-cell !important;
+    }
+
     .summary-report-grid-container {
         padding: 0 !important;
         width: 100% !important;
         max-width: none !important;
+        min-width: auto !important;
         overflow: visible !important;
     }
 
@@ -672,6 +687,15 @@
         overflow: visible !important;
         text-overflow: clip !important;
         white-space: nowrap !important;
+    }
+
+    /* Fix AG Grid headers */
+    .summary-report-grid-container .ag-header {
+        overflow: visible !important;
+    }
+
+    .summary-report-grid-container .ag-header-cell {
+        overflow: visible !important;
     }
 }
 

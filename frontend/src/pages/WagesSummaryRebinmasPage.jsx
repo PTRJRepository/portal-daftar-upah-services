@@ -16,18 +16,7 @@ import '../styles/wages-summary-professional.css';
 export default function WagesSummaryRebinmasPage({ onBack }) {
     const { token, user } = useAuth();
 
-    // Print Detection
-    const [isPrinting, setIsPrinting] = useState(false);
-    useEffect(() => {
-        const handleBeforePrint = () => setIsPrinting(true);
-        const handleAfterPrint = () => setIsPrinting(false);
-        window.addEventListener('beforeprint', handleBeforePrint);
-        window.addEventListener('afterprint', handleAfterPrint);
-        return () => {
-            window.removeEventListener('beforeprint', handleBeforePrint);
-            window.removeEventListener('afterprint', handleAfterPrint);
-        };
-    }, []);
+
 
     // Filters - Default to current month
     const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -511,7 +500,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <tr className="wsp-header-master">
                             <th rowSpan="2" className="th-sticky-col">ESTATE/DIVISION</th>
                             <th colSpan="2" className="th-group-workers">WORKERS / PEKERJA</th>
-                            <th colSpan={isPrinting ? 3 : 5} className="th-group-pph">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
+                            <th colSpan="3" className="th-group-pph print-show-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
+                            <th colSpan="5" className="th-group-pph print-hide-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
                             <th colSpan="3" className="th-group-prev">{prevMonthName} {previous_period.year}</th>
                             <th colSpan="3" className="th-group-curr">{currMonthName} {current_period.year}</th>
                             <th rowSpan="2" className="th-group-diff">(Perubahan Gaji)</th>
@@ -525,8 +515,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             {/* Current Month Details */}
                             <th className="th-group-pph">POT SPSI</th>
                             <th className="th-group-pph">TOT PREMI</th>
-                            {!isPrinting && <th className="th-group-pph">TOT PRUNNING</th>}
-                            {!isPrinting && <th className="th-group-pph">TOT LEMBUR</th>}
+                            <th className="th-group-pph print-hide-cell">TOT PRUNNING</th>
+                            <th className="th-group-pph print-hide-cell">TOT LEMBUR</th>
                             <th className="th-group-pph">PPH21</th>
 
                             {/* Previous Month Totals */}
@@ -567,8 +557,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                     {/* Current Details */}
                                     <td className="text-right">{formatNumber(row.total_spsi_current)}</td>
                                     <td className="text-right">{formatNumber(row.total_premi_current)}</td>
-                                    {!isPrinting && <td className="text-right">{formatNumber(row.total_prunning_current)}</td>}
-                                    {!isPrinting && <td className="text-right">{formatNumber(row.total_lembur_current)}</td>}
+                                    <td className="text-right print-hide-cell">{formatNumber(row.total_prunning_current)}</td>
+                                    <td className="text-right print-hide-cell">{formatNumber(row.total_lembur_current)}</td>
                                     <td className="text-right border-right-section">{formatNumber(row.total_pph21_current)}</td>
 
                                     {/* Previous Month */}
@@ -605,8 +595,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             <td className="text-right">{formatNumber(grandTotal.workers_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_spsi_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_premi_current)}</td>
-                            {!isPrinting && <td className="text-right">{formatNumber(grandTotal.total_prunning_current)}</td>}
-                            {!isPrinting && <td className="text-right">{formatNumber(grandTotal.total_lembur_current)}</td>}
+                            <td className="text-right print-hide-cell">{formatNumber(grandTotal.total_prunning_current)}</td>
+                            <td className="text-right print-hide-cell">{formatNumber(grandTotal.total_lembur_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_pph21_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_gaji)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_tbs, 3)}</td>
@@ -636,14 +626,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
 
     // Handle print
     const handlePrint = () => {
-        setIsPrinting(true);
-        // Allow React to render the print view (hide columns, adjust colSpans) before opening print dialog
-        setTimeout(() => {
-            window.print();
-            // Reset after print dialog closes (in most browsers execution pauses, so this runs after close)
-            // But to be safe for non-blocking browsers, we can leave it or toggle back
-            // For better UX, we might want to listen to 'afterprint', but setting it back here is a fallback
-        }, 100);
+        window.print();
     };
 
     // Handle export CSV

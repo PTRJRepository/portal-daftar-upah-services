@@ -10,6 +10,25 @@ import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import '../styles/wages-summary-professional.css';
 
+// Company information by division
+const COMPANY_INFO = {
+    IJL: {
+        name: 'PT. IMPIAN JAYA LESTARI',
+        logo: '/images/ijl-logo.png',
+        logoFallback: '/images/rebinmas.webp'
+    },
+    DEFAULT: {
+        name: 'PT. REBINMAS JAYA',
+        logo: '/images/rebinmas.webp',
+        logoFallback: '/images/rebinmas.webp'
+    }
+};
+
+// Helper function to get company info based on division
+const getCompanyInfo = (division) => {
+    return COMPANY_INFO[division] || COMPANY_INFO.DEFAULT;
+};
+
 export default function SummaryReportPage({ onBack, initialDivision, initialMonth, initialYear }) {
     const { token, user } = useAuth();
 
@@ -17,6 +36,9 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [division, setDivision] = useState(initialDivision || '');
     const [month, setMonth] = useState(initialMonth || 11);  // November
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
+
+    // Get company info for current division
+    const companyInfo = useMemo(() => getCompanyInfo(division), [division]);
 
     // Data
     const [divisions, setDivisions] = useState([]);
@@ -304,8 +326,18 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 <div className="wsp-document" id="summary-report-content">
                     {/* Letterhead */}
                     <div className="wsp-letterhead">
-                        <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />
-                        <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
+                        <img
+                            src={companyInfo.logo}
+                            alt={companyInfo.name}
+                            className="wsp-logo"
+                            onError={(e) => {
+                                // Fallback logo if primary logo not found
+                                if (companyInfo.logoFallback) {
+                                    e.target.src = companyInfo.logoFallback;
+                                }
+                            }}
+                        />
+                        <h1 className="wsp-company-name">{companyInfo.name}</h1>
                         <div className="wsp-report-title">SUMMARY REPORT DETAIL</div>
                         <div className="wsp-report-period">
                             Division: <strong style={{ color: '#0f172a' }}>{division || 'ALL'}</strong> | Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
@@ -474,7 +506,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>User: {user?.username}</div>
                         </div>
                         <div className="wsp-footer-right">
-                            PT. REBINMAS JAYA
+                            {companyInfo.name}
                         </div>
                     </footer>
                 </div>

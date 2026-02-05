@@ -1,1 +1,0 @@
-SELECT RiceRation FROM "HR_PAYROLL" WHERE EmpCode = ?
