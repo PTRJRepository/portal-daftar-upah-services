@@ -4,6 +4,8 @@ import { divisionDefinition } from "../services/divisionDefinition";
 import { AuthService } from "../services/authService";
 import { UserRole } from "../types/user";
 import { Config } from "../config";
+import { deductionAdjustmentService } from "../services/deductionAdjustmentService";
+import { luasAreaService } from "../services/luasAreaService";
 
 const authService = AuthService.getInstance();
 
@@ -217,5 +219,82 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             year: t.Number(),
             division_code: t.String(),
             value: t.Number()
+        })
+    })
+    // --- Update PPH21 Adjustment ---
+    .post("/update-pph21", async ({ body }) => {
+        const { month, year, division_code, value } = body;
+        const success = await deductionAdjustmentService.updatePPH21(month, year, division_code, value);
+        return { success };
+    }, {
+        body: t.Object({
+            month: t.Number(),
+            year: t.Number(),
+            division_code: t.String(),
+            value: t.Number()
+        })
+    })
+    // --- Update SPSI Adjustment ---
+    .post("/update-spsi", async ({ body }) => {
+        const { month, year, division_code, value } = body;
+        const success = await deductionAdjustmentService.updateSPSI(month, year, division_code, value);
+        return { success };
+    }, {
+        body: t.Object({
+            month: t.Number(),
+            year: t.Number(),
+            division_code: t.String(),
+            value: t.Number()
+        })
+    })
+    // --- Update Both Deductions at Once ---
+    .post("/update-deductions", async ({ body }) => {
+        const { month, year, division_code, pph21, spsi } = body;
+        const success = await deductionAdjustmentService.updateDeductions(month, year, division_code, pph21, spsi);
+        return { success };
+    }, {
+        body: t.Object({
+            month: t.Number(),
+            year: t.Number(),
+            division_code: t.String(),
+            pph21: t.Number(),
+            spsi: t.Number()
+        })
+    })
+    // --- Get Deduction Adjustments for Period ---
+    .get("/deduction-adjustments", async ({ query }) => {
+        const month = parseInt(query.month);
+        const year = parseInt(query.year);
+        const adjustments = await deductionAdjustmentService.getAdjustmentData(month, year);
+        return { success: true, adjustments };
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String()
+        })
+    })
+    // --- Update Luas Area Adjustment ---
+    .post("/update-luas-area", async ({ body }) => {
+        const { month, year, division_code, value } = body;
+        const success = await luasAreaService.updateLuasArea(month, year, division_code, value);
+        return { success };
+    }, {
+        body: t.Object({
+            month: t.Number(),
+            year: t.Number(),
+            division_code: t.String(),
+            value: t.Number()
+        })
+    })
+    // --- Get Luas Area Adjustments for Period ---
+    .get("/luas-area-adjustments", async ({ query }) => {
+        const month = parseInt(query.month);
+        const year = parseInt(query.year);
+        const adjustments = await luasAreaService.getLuasAreaData(month, year);
+        return { success: true, adjustments };
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String()
         })
     });

@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary } from '../services/summaryReportService';
+import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary, updatePPH21, updateSPSI } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import '../styles/wages-summary-professional.css';
@@ -33,6 +33,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     // Edit Mode State
     const [editMode, setEditMode] = useState(false);
     const [editingValues, setEditingValues] = useState({});
+    const [editingPPH21, setEditingPPH21] = useState({});
+    const [editingSPSI, setEditingSPSI] = useState({});
 
     // State
     const [loading, setLoading] = useState(false);
@@ -114,6 +116,56 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         } catch (err) {
             console.error('Failed to save thumbprint:', err);
             alert('Failed to save value');
+        }
+    };
+
+    // Handle PPH21 Change
+    const handlePPH21Change = (divisionCode, value) => {
+        setEditingPPH21(prev => ({
+            ...prev,
+            [divisionCode]: value
+        }));
+    };
+
+    // Handle Save PPH21
+    const handleSavePPH21 = async (divisionCode, value) => {
+        try {
+            await updatePPH21(token, {
+                month,
+                year,
+                division: divisionCode,
+                value: parseFloat(value) || 0
+            });
+            // Refresh data to show updated totals
+            await fetchData();
+        } catch (err) {
+            console.error('Failed to save PPH21:', err);
+            alert('Failed to save PPH21 value');
+        }
+    };
+
+    // Handle SPSI Change
+    const handleSPSIChange = (divisionCode, value) => {
+        setEditingSPSI(prev => ({
+            ...prev,
+            [divisionCode]: value
+        }));
+    };
+
+    // Handle Save SPSI
+    const handleSaveSPSI = async (divisionCode, value) => {
+        try {
+            await updateSPSI(token, {
+                month,
+                year,
+                division: divisionCode,
+                value: parseFloat(value) || 0
+            });
+            // Refresh data to show updated totals
+            await fetchData();
+        } catch (err) {
+            console.error('Failed to save SPSI:', err);
+            alert('Failed to save SPSI value');
         }
     };
 
@@ -612,10 +664,50 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             {formatNumber(div.total_hk)}
                         </td>
                         <td className={`text-right ${Number(div.total_pph21) === 0 ? 'val-zero' : ''}`}>
-                            {formatNumber(div.total_pph21)}
+                            {editMode ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <input
+                                        type="number"
+                                        className="wsp-input-edit"
+                                        value={editingPPH21[div.division_code] !== undefined ? editingPPH21[div.division_code] : (div.original_pph21 ?? div.total_pph21)}
+                                        onChange={(e) => handlePPH21Change(div.division_code, e.target.value)}
+                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                    />
+                                    <button
+                                        onClick={() => handleSavePPH21(div.division_code, editingPPH21[div.division_code])}
+                                        className="wsp-btn-sm"
+                                        style={{ fontSize: '0.65rem', padding: '2px 6px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                        disabled={editingPPH21[div.division_code] === undefined}
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                            ) : (
+                                formatNumber(div.total_pph21)
+                            )}
                         </td>
                         <td className={`text-right border-right-section ${Number(div.total_spsi) === 0 ? 'val-zero' : ''}`}>
-                            {formatNumber(div.total_spsi)}
+                            {editMode ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <input
+                                        type="number"
+                                        className="wsp-input-edit"
+                                        value={editingSPSI[div.division_code] !== undefined ? editingSPSI[div.division_code] : (div.original_spsi ?? div.total_spsi)}
+                                        onChange={(e) => handleSPSIChange(div.division_code, e.target.value)}
+                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                    />
+                                    <button
+                                        onClick={() => handleSaveSPSI(div.division_code, editingSPSI[div.division_code])}
+                                        className="wsp-btn-sm"
+                                        style={{ fontSize: '0.65rem', padding: '2px 6px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                        disabled={editingSPSI[div.division_code] === undefined}
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                            ) : (
+                                formatNumber(div.total_spsi)
+                            )}
                         </td>
                         {/* Premi Column - Excluding Insentif, Kinerja, Prunning */}
                         <td className={`text-right ${Number(div.total_premi_excluding_special) === 0 ? 'val-zero' : ''}`}>
@@ -632,13 +724,23 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         {/* Thumb Print */}
                         <td className={`text-right ${Number(div.thumb_print) === 0 ? 'val-zero' : ''}`}>
                             {editMode ? (
-                                <input
-                                    type="number"
-                                    className="wsp-input-edit"
-                                    value={editingValues[`${div.division_code}`] !== undefined ? editingValues[`${div.division_code}`] : div.thumb_print}
-                                    onChange={(e) => handleThumbprintChange(div.division_code, e.target.value)}
-                                    style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
-                                />
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <input
+                                        type="number"
+                                        className="wsp-input-edit"
+                                        value={editingValues[div.division_code] !== undefined ? editingValues[div.division_code] : div.thumb_print}
+                                        onChange={(e) => handleThumbprintChange(div.division_code, e.target.value)}
+                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                    />
+                                    <button
+                                        onClick={() => handleSaveThumbprint(div.division_code, editingValues[div.division_code])}
+                                        className="wsp-btn-sm"
+                                        style={{ fontSize: '0.65rem', padding: '2px 6px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                        disabled={editingValues[div.division_code] === undefined}
+                                    >
+                                        Save
+                                    </button>
+                                </div>
                             ) : (
                                 formatNumber(div.thumb_print)
                             )}
@@ -647,18 +749,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <td className={`text-center font-semibold ${div.selisih > 0 ? 'text-diff-neg' : div.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
                             {formatNumber(div.selisih)}
                         </td>
-                        {editMode && (
-                            <td className="text-center">
-                                <button
-                                    onClick={() => handleSaveThumbprint(div.division_code, editingValues[div.division_code])}
-                                    className="wsp-btn-sm"
-                                    style={{ fontSize: '0.7rem', padding: '2px 6px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                                    disabled={editingValues[div.division_code] === undefined}
-                                >
-                                    Save
-                                </button>
-                            </td>
-                        )}
                     </tr>
                 ))}
 
@@ -855,7 +945,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                                 {/* Comparison Group */}
                                                 <th className="th-group-compare" style={{ minWidth: '130px' }}>THUMB PRINT</th>
                                                 <th className="th-group-compare" style={{ minWidth: '120px' }}>SELISIH</th>
-                                                {editMode && <th className="th-group-compare" style={{ minWidth: '80px' }}>ACTION</th>}
                                             </tr>
                                         </thead>
 

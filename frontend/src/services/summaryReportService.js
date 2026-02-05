@@ -209,6 +209,162 @@ export async function updateThumbprint(token, { month, year, division, value }) 
     return response.data;
 }
 
+/**
+ * Update PPH21 value for a specific division and period
+ * @param {string} token - Auth token
+ * @param {Object} params - parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @param {string} params.division - Division code
+ * @param {number} params.value - New PPH21 value (adjustment amount)
+ * @returns {Promise<Object>} Result
+ */
+export async function updatePPH21(token, { month, year, division, value }) {
+    const url = `${BACKEND_BASE}/payroll/summary/update-pph21`;
+
+    const response = await axios.post(url, {
+        month,
+        year,
+        division_code: division,
+        value
+    }, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
+/**
+ * Update SPSI value for a specific division and period
+ * @param {string} token - Auth token
+ * @param {Object} params - parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @param {string} params.division - Division code
+ * @param {number} params.value - New SPSI value (adjustment amount)
+ * @returns {Promise<Object>} Result
+ */
+export async function updateSPSI(token, { month, year, division, value }) {
+    const url = `${BACKEND_BASE}/payroll/summary/update-spsi`;
+
+    const response = await axios.post(url, {
+        month,
+        year,
+        division_code: division,
+        value
+    }, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
+/**
+ * Update both PPH21 and SPSI at once
+ * @param {string} token - Auth token
+ * @param {Object} params - parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @param {string} params.division - Division code
+ * @param {number} params.pph21 - New PPH21 value
+ * @param {number} params.spsi - New SPSI value
+ * @returns {Promise<Object>} Result
+ */
+export async function updateDeductions(token, { month, year, division, pph21, spsi }) {
+    const url = `${BACKEND_BASE}/payroll/summary/update-deductions`;
+
+    const response = await axios.post(url, {
+        month,
+        year,
+        division_code: division,
+        pph21,
+        spsi
+    }, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
+/**
+ * Fetch deduction adjustments for a period
+ * @param {string} token - Auth token
+ * @param {Object} params - Query parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @returns {Promise<Object>} Deduction adjustments data
+ */
+export async function fetchDeductionAdjustments(token, { month, year }) {
+    const url = `${BACKEND_BASE}/payroll/summary/deduction-adjustments?month=${month}&year=${year}`;
+
+    const response = await axios.get(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
+/**
+ * Update Luas Area (Productive Area in Hectares) for a specific division and period
+ * @param {string} token - Auth token
+ * @param {Object} params - parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @param {string} params.division - Division code
+ * @param {number} params.value - New luas area value (in hectares)
+ * @returns {Promise<Object>} Result
+ */
+export async function updateLuasArea(token, { month, year, division, value }) {
+    const url = `${BACKEND_BASE}/payroll/summary/update-luas-area`;
+
+    const response = await axios.post(url, {
+        month,
+        year,
+        division_code: division,
+        value
+    }, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
+/**
+ * Fetch Luas Area adjustments for a period
+ * @param {string} token - Auth token
+ * @param {Object} params - Query parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @returns {Promise<Object>} Luas area adjustments data
+ */
+export async function fetchLuasAreaAdjustments(token, { month, year }) {
+    const url = `${BACKEND_BASE}/payroll/summary/luas-area-adjustments?month=${month}&year=${year}`;
+
+    const response = await axios.get(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
 export default {
     fetchDivisionSummary,
     fetchAvailablePeriods,
@@ -219,7 +375,13 @@ export default {
     fetchComparisonSummary,
     fetchImpactReport,
     fetchAnalysisReport,
-    updateThumbprint
+    updateThumbprint,
+    updatePPH21,
+    updateSPSI,
+    updateDeductions,
+    fetchDeductionAdjustments,
+    updateLuasArea,
+    fetchLuasAreaAdjustments
 };
 
 

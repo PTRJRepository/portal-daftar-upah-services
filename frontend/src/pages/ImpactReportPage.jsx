@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchImpactReport, fetchAvailablePeriods } from '../services/summaryReportService';
+import { fetchImpactReport, fetchAvailablePeriods, updateLuasArea } from '../services/summaryReportService';
 import '../styles/wages-summary-professional.css';
 
 export default function ImpactReportPage({ onBack }) {
@@ -20,6 +20,10 @@ export default function ImpactReportPage({ onBack }) {
     // Data
     const [reportData, setReportData] = useState(null);
     const [periods, setPeriods] = useState([]);
+
+    // Edit Mode State
+    const [editMode, setEditMode] = useState(false);
+    const [editingLuasArea, setEditingLuasArea] = useState({});
 
     // State
     const [loading, setLoading] = useState(false);
@@ -283,6 +287,31 @@ export default function ImpactReportPage({ onBack }) {
         window.print();
     };
 
+    // Handle Luas Area Change
+    const handleLuasAreaChange = (divisionCode, value) => {
+        setEditingLuasArea(prev => ({
+            ...prev,
+            [divisionCode]: value
+        }));
+    };
+
+    // Handle Save Luas Area
+    const handleSaveLuasArea = async (divisionCode, value) => {
+        try {
+            await updateLuasArea(token, {
+                month,
+                year,
+                division: divisionCode,
+                value: parseFloat(value) || 0
+            });
+            // Refresh data to show updated values
+            await fetchData();
+        } catch (err) {
+            console.error('Failed to save Luas Area:', err);
+            alert('Failed to save Luas Area value');
+        }
+    };
+
     // Get diff color class - mapped to wsp-* classes
     const getDiffClass = (value, inverse = false) => {
         if (value === 0) return 'text-neutral';
@@ -336,7 +365,30 @@ export default function ImpactReportPage({ onBack }) {
                                 <td className="text-left sticky-col">
                                     <div className="div-code">{row.estate}</div>
                                 </td>
-                                <td className="text-right border-right-group">{formatNumber(row.luas_ha, 2)}</td>
+                                <td className="text-right border-right-group">
+                                    {editMode ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                className="wsp-input-edit"
+                                                value={editingLuasArea[row.division_code] !== undefined ? editingLuasArea[row.division_code] : (row.original_luas_ha ?? row.luas_ha)}
+                                                onChange={(e) => handleLuasAreaChange(row.division_code, e.target.value)}
+                                                style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                            />
+                                            <button
+                                                onClick={() => handleSaveLuasArea(row.division_code, editingLuasArea[row.division_code])}
+                                                className="wsp-btn-sm"
+                                                style={{ fontSize: '0.65rem', padding: '2px 6px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                                disabled={editingLuasArea[row.division_code] === undefined}
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        formatNumber(row.luas_ha, 2)
+                                    )}
+                                </td>
                                 <td className="text-right">{formatNumber(row.workers_curr)}</td>
                                 <td className="text-right">{formatNumber(row.workers_prev)}</td>
                                 <td className={`text-right border-right-section ${getDiffClass(row.workers_diff)}`}>{formatNumber(row.workers_diff)}</td>
@@ -570,6 +622,14 @@ export default function ImpactReportPage({ onBack }) {
                     </button>
                     <button onClick={handlePrint} className="wsp-btn" title="Print this report">
                         Print
+                    </button>
+                    <button
+                        onClick={() => setEditMode(!editMode)}
+                        className={`wsp-btn ${editMode ? 'wsp-btn-primary' : ''}`}
+                        title="Toggle Edit Mode"
+                        style={{ marginLeft: '0.5rem' }}
+                    >
+                        {editMode ? 'Exit Edit' : 'Edit Mode'}
                     </button>
                 </div>
             </div>

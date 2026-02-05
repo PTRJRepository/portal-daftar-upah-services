@@ -666,6 +666,55 @@
 }
 
 /* =============================================
+   EDIT MODE INPUTS & BUTTONS
+   ============================================= */
+.wsp-input-edit {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background-color: #fff;
+    color: #0f172a;
+    transition: all 0.2s ease;
+}
+
+.wsp-input-edit:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.wsp-input-edit:hover {
+    border-color: #94a3b8;
+}
+
+.wsp-btn-sm {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.wsp-btn-sm:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.wsp-btn-sm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #e2e8f0 !important;
+    color: #94a3b8 !important;
+}
+
+/* =============================================
    PRINT STYLES - Fit to Paper Width
    ============================================= */
 @media print {
@@ -678,7 +727,8 @@
     /* Hide non-printable elements */
     .no-print,
     .print-hide-additional,
-    .print-hide-detail {
+    .print-hide-detail,
+    .wsp-btn-sm {
         display: none !important;
     }
 
@@ -697,7 +747,8 @@
         box-shadow: none !important;
         border: none !important;
         margin: 0 !important;
-        padding: 0.2rem 0.3rem !important;
+        /* Increased padding as requested */
+        padding: 1rem 2rem !important;
         min-width: auto !important;
         max-width: 100% !important;
 

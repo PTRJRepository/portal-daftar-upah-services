@@ -4,6 +4,8 @@ import { join } from "path";
 import { file } from "bun";
 import { Config } from "../config";
 import { thumbprintService } from "./thumbprintService";
+import { deductionAdjustmentService } from "./deductionAdjustmentService";
+import { luasAreaService } from "./luasAreaService";
 
 export interface DivisionSummary {
     division_code: string;
@@ -127,9 +129,43 @@ export class SummaryService {
             if (!div) continue;
 
             const totalPremi = parseFloat(row.total_premi || 0);
-            const totalPremiInsentif = parseFloat(row.total_premi_insentif || 0);
             const totalPremiKinerja = parseFloat(row.total_premi_kinerja || 0);
-            const totalPremiPrunning = parseFloat(row.total_premi_prunning || 0);
+            let totalPremiPrunning = parseFloat(row.total_premi_prunning || 0);
+            let totalPremiInsentif = parseFloat(row.total_premi_insentif || 0);
+            let totalLembur = parseFloat(row.total_lembur || 0);
+
+            // Backfill logic if columns are 0 (likely due to schema mismatch or aggregation issue in old data)
+            if (row.dynamic_premi_data && (totalPremiPrunning === 0 || totalLembur === 0 || totalPremiInsentif === 0)) {
+                try {
+                    const dynamicData = typeof row.dynamic_premi_data === 'string'
+                        ? JSON.parse(row.dynamic_premi_data)
+                        : row.dynamic_premi_data;
+
+                    if (Array.isArray(dynamicData)) {
+                        for (const item of dynamicData) {
+                            const header = (item.header || "").toUpperCase();
+                            const val = parseFloat(item.total || 0);
+
+                            // Backfill Pruning
+                            if (totalPremiPrunning === 0 && (header.includes("PRUN") || header.includes("PRUNING")) && !header.includes("BRONDOL")) {
+                                totalPremiPrunning += val;
+                            }
+
+                            // Backfill Lembur
+                            if (totalLembur === 0 && (header.includes("LEMBUR") || header.includes("OVERTIME") || header.includes("OT "))) {
+                                totalLembur += val;
+                            }
+
+                            // Backfill Insentif
+                            if (totalPremiInsentif === 0 && (header.includes("INSENTIF") && header.includes("PANEN"))) {
+                                totalPremiInsentif += val;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // ignore JSON parse error
+                }
+            }
 
             // Calculate total_premi_excluding_special (exclude insentif, kinerja, prunning)
             const totalPremiExcludingSpecial = totalPremi - totalPremiInsentif - totalPremiKinerja - totalPremiPrunning;
@@ -148,7 +184,7 @@ export class SummaryService {
                 total_upah_bersih: upah,
                 total_pph21: parseFloat(row.total_pph21 || 0),
                 total_spsi: parseFloat(row.total_spsi || 0),
-                total_lembur: parseFloat(row.total_lembur || 0),
+                total_lembur: totalLembur,
                 total_gangs: parseInt(row.total_gangs || 0),
                 total_premi_brondol: parseFloat(row.total_premi_brondol || 0),
                 total_premi_prunning: totalPremiPrunning,
@@ -167,7 +203,10 @@ export class SummaryService {
             });
         }
 
-        return results;
+        // Apply PPH21 and SPSI adjustments
+        const adjustedResults = await deductionAdjustmentService.applyAdjustmentsToDivisionData(month, year, results);
+
+        return adjustedResults;
     }
 
 
@@ -323,6 +362,25 @@ export class SummaryService {
     // --- Impact Report ---
 
     private async getDivisionLuasHektar(): Promise<Record<string, number>> {
+        try {
+            // Read from area_produktif.json file
+            const areaFile = file(join(process.cwd(), "data", "area_produktif.json"));
+            if (await areaFile.exists()) {
+                const areaData = await areaFile.json<any[]>();
+                const map: Record<string, number> = {};
+                for (const item of areaData) {
+                    const div = (item.divisi || '').trim();
+                    if (div) {
+                        map[div] = parseFloat(item.luas_hektar) || 0;
+                    }
+                }
+                return map;
+            }
+        } catch (e) {
+            console.error("[SummaryService] Failed to load area_produktif.json, falling back to database:", e);
+        }
+
+        // Fallback to database if file doesn't exist
         const rows = await this.extendDb.query<any>("SELECT [Divisi], [Luas_Hektar] FROM [dbo].[Divisi_Description] WHERE [Divisi] IS NOT NULL");
         const map: Record<string, number> = {};
         for (const r of rows) map[r.Divisi.trim()] = r.Luas_Hektar ? parseFloat(r.Luas_Hektar) : 0;
@@ -345,7 +403,8 @@ export class SummaryService {
                 let total = 0;
                 if (Array.isArray(data)) {
                     for (const item of data) {
-                        if (item.header === 'INSENTIF_PANEN') total += parseFloat(item.total || 0);
+                        const h = (item.header || "").toUpperCase();
+                        if (h.includes('INSENTIF') && h.includes('PANEN')) total += parseFloat(item.total || 0);
                     }
                 }
                 if (!result[div]) result[div] = { insentif_panen: 0 };
@@ -371,13 +430,21 @@ export class SummaryService {
 
         const prevLookup = new Map(previousData.map(d => [d.division_code, d]));
         const mainRows = [];
+        const pruningRows = [];
 
         for (const curr of currentData) {
             const div = curr.division_code;
             const prev = prevLookup.get(div) || {} as Partial<DivisionSummary>;
 
-            const insCurr = curInsentif[div]?.insentif_panen || 0;
-            const insPrev = prevInsentif[div]?.insentif_panen || 0;
+            // Insentif: try from helper first (which looks deeply into dynamic), then fallback to main aggregation
+            // Actually main aggregation now backfills it too, so curr.total_premi_insentif should be good.
+            // But let's use the maximum to be safe.
+            const dynamicInsCurr = curInsentif[div]?.insentif_panen || 0;
+            const insCurr = Math.max(dynamicInsCurr, curr.total_premi_insentif || 0);
+
+            // Previous Insentif
+            const dynamicInsPrev = prevInsentif[div]?.insentif_panen || 0;
+            const insPrev = Math.max(dynamicInsPrev, prev.total_premi_insentif || 0);
 
             mainRows.push({
                 estate: curr.description,
@@ -402,27 +469,42 @@ export class SummaryService {
                 tbs_prev: prev.total_ffb_weight || 0,
                 tbs_curr: curr.total_ffb_weight,
                 tbs_diff: curr.total_ffb_weight - (prev.total_ffb_weight || 0),
-                // Percentages would be calc here
+                pct_gaji_naik_turun: (prev.total_upah_bersih || 0) !== 0
+                    ? ((curr.total_upah_bersih - (prev.total_upah_bersih || 0)) / (prev.total_upah_bersih || 0)) * 100
+                    : 0,
+            });
+
+            // Populate Pruning Rows (Current Month Only)
+            pruningRows.push({
+                estate: curr.description,
+                division_code: div,
+                premi_this_month: curr.total_premi_prunning || 0,
+                total: curr.total_premi_prunning || 0 // Assuming Total = Premi for now as discussed
             });
         }
 
-        // Totals & Analysis
-        // ... (Simplified: Skipping grand totals object construction for brevity, assume frontend handles table rendering row by row mostly)
-        // Actually frontend likely needs `main_table_totals` object.
-        // I will implement basic aggregation for totals if needed by frontend.
-        // Looking at Python code, it constructs specific objects.
+        // Calculate Pruning Totals
+        const pruningTotals = {
+            estate: "TOTAL PRUNING",
+            premi_this_month: pruningRows.reduce((a, b) => a + b.premi_this_month, 0),
+            total: pruningRows.reduce((a, b) => a + b.total, 0)
+        };
+
+        // Apply Luas Area adjustments to main_table
+        const adjustedMainRows = await luasAreaService.applyLuasAreaAdjustments(month, year, mainRows);
 
         return {
             success: true,
             current_period: { month, year },
             previous_period: { month: prevMonth, year: prevYear },
             upah_dasar: upahDasar,
-            main_table: mainRows,
-            // main_table_totals: ... (implement if UI breaks)
-            pruning_table: [], // Placeholder
-            pruning_totals: {}, // Placeholder
-            hk_analysis: {}, // Placeholder
-            summary_analysis: {} // Placeholder
+            main_table: adjustedMainRows,
+            pruning_table: pruningRows,
+            pruning_totals: pruningTotals,
+            // hk_analysis and summary_analysis are calculated in frontend (ImpactReportPage.jsx)
+            // But we pass empty objects just in case
+            hk_analysis: {},
+            summary_analysis: {}
         };
     }
 
