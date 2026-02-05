@@ -49,7 +49,7 @@ export class GangService {
     };
 
     private constructor() {
-        this.db = Database.getInstance();
+        this.db = Database.getInstance(undefined, "SERVER_PROFILE_2");
     }
 
     public static getInstance(): GangService {

@@ -798,6 +798,14 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     )}
 
                     <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={() => window.location.href = '/report/high-earners'}
+                            className="wsp-btn"
+                            title="Report Gaji > 6 Juta"
+                            style={{ backgroundColor: '#4f46e5', color: 'white' }}
+                        >
+                            High Earners
+                        </button>
                         <select
                             value={month}
                             onChange={(e) => setMonth(parseInt(e.target.value))}

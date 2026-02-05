@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { fetchGangs, fetchDivisions } from '../services/gangService'
 import { getLockedGangs } from '../services/lockedDivisionService'
+import { useCurrentPeriod } from '../hooks/useCurrentPeriod'
 import CustomPayrollTable from '../components/CustomPayrollTable'
 import LoadingScreen from '../components/common/LoadingScreen'
 import MonthSelector from '../components/common/MonthSelector'
@@ -35,8 +36,8 @@ export default function MainPage({ lockedDiv = null }) {
   const externalLockedDiv = isAdminUser ? null : (lockedDiv || lockedDivision || null)
   const isLockedMode = !isAdminUser && !!(externalLockedDiv || prodDivision)
 
-  const [month, setMonth] = useState(new Date().getMonth() + 1)
-  const [year, setYear] = useState(new Date().getFullYear())
+  // Use current period from API (calculated from PR_TASKREGLN_ARC latest date)
+  const { month, setMonth, year, setYear } = useCurrentPeriod()
   const [division, setDivision] = useState('')
   const [gang, setGang] = useState('')
 

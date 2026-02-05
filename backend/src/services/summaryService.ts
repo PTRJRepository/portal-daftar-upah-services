@@ -6,6 +6,7 @@ import { Config } from "../config";
 import { thumbprintService } from "./thumbprintService";
 import { deductionAdjustmentService } from "./deductionAdjustmentService";
 import { luasAreaService } from "./luasAreaService";
+import { currentPeriodService } from "./currentPeriodService";
 
 export interface DivisionSummary {
     division_code: string;
@@ -217,33 +218,22 @@ export class SummaryService {
         return rows.map(r => ({ period_year: r.period_year, period_month: r.period_month }));
     }
 
-    /**
-     * Get the latest period available in the base PR_TASKREGLN table (ignoring ARC)
-     * This defines the default period for the report.
-     */
     public async getLatestBaseDataPeriod(): Promise<{ month: number, year: number } | null> {
         try {
-            // Check PR_TASKREGLN for the latest TrxDate
-            const rows = await this.db.query<any>(`
-                SELECT TOP 1 TrxDate
-                FROM PR_TASKREGLN
-                ORDER BY TrxDate DESC
-            `);
-
-            if (rows && rows.length > 0 && rows[0].TrxDate) {
-                const date = new Date(rows[0].TrxDate);
-                // Ensure date is valid
-                if (!isNaN(date.getTime())) {
-                    return {
-                        month: date.getMonth() + 1, // getMonth is 0-indexed
-                        year: date.getFullYear()
-                    };
-                }
-            }
-            return null;
+            // Use CurrentPeriodService to get the "Current Period" logic
+            // (Latest TrxDate in ARC + 1 Month)
+            const currentPeriod = await currentPeriodService.getCurrentPeriod();
+            return {
+                month: currentPeriod.month,
+                year: currentPeriod.year
+            };
         } catch (e) {
             console.error("[SummaryService] Failed to get latest base data period:", e);
-            return null;
+            // Fallback to config default if service fails
+            return {
+                month: Config.DEFAULT_MONTH,
+                year: Config.DEFAULT_YEAR
+            };
         }
     }
 

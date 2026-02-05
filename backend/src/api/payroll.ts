@@ -3,6 +3,7 @@ import { gangService } from "../services/gangService";
 import { headerService } from "../services/headerService";
 import { payrollService } from "../services/payrollService";
 import { AuthService } from "../services/authService";
+import { currentPeriodService } from "../services/currentPeriodService";
 import { User, UserRole } from "../types/user";
 
 const authService = AuthService.getInstance();
@@ -38,6 +39,16 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         } catch (e) {
             set.status = 500;
             return { message: "Failed to fetch sub-divisions" };
+        }
+    })
+    // --- Current Period ---
+    .get("/current-period", async ({ set }) => {
+        try {
+            const period = await currentPeriodService.getCurrentPeriod();
+            return period;
+        } catch (e: any) {
+            set.status = 500;
+            return { message: `Failed to get current period: ${e.message}` };
         }
     })
     // --- Gangs ---
@@ -567,6 +578,83 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             month: t.Optional(t.String()),
             year: t.Optional(t.String()),
             skip: t.Optional(t.String()),
+            limit: t.Optional(t.String())
+        })
+    })
+    // --- High Earners Report ---
+    .get("/report/high-earners", async ({ query, set, currentUser }) => {
+        try {
+            const { dataExtractorService } = await import("../services/dataExtractorService");
+            const month = parseInt(query.month || String(new Date().getMonth() + 1));
+            const year = parseInt(query.year || String(new Date().getFullYear()));
+            const minWage = parseInt(query.limit || "6000000");
+
+            // PERMISSION CHECK
+            if (!currentUser) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            // Get all divisions first
+            const divisions = await gangService.getAllDivisions();
+
+            // Fetch data for all divisions in parallel (with concurrency limit to avoid DB overload)
+            // Using a simple chunking approach
+            const allHighEarners: any[] = [];
+            const BATCH_SIZE = 3;
+
+            for (let i = 0; i < divisions.length; i += BATCH_SIZE) {
+                const chunk = divisions.slice(i, i + BATCH_SIZE);
+                const promises = chunk.map(async (div) => {
+                    try {
+                        const result = await dataExtractorService.extractPayrollData(
+                            month,
+                            year,
+                            "ALL",
+                            div,
+                            null,
+                            "SERVER_PROFILE_2"
+                        );
+                        // Filter immediately to save memory
+                        return result.data_rows.filter((row: any) => row.upah_bersih >= minWage);
+                    } catch (err) {
+                        console.error(`Error fetching high earners for div ${div}:`, err);
+                        return [];
+                    }
+                });
+
+                const results = await Promise.all(promises);
+                results.forEach(rows => allHighEarners.push(...rows));
+            }
+
+            // Sort by Upah Bersih descending
+            allHighEarners.sort((a, b) => b.upah_bersih - a.upah_bersih);
+
+            // Add rank
+            const ranked = allHighEarners.map((row, index) => ({
+                ...row,
+                rank: index + 1
+            }));
+
+            return {
+                data: ranked,
+                meta: {
+                    month,
+                    year,
+                    limit: minWage,
+                    count: ranked.length
+                }
+            };
+
+        } catch (e: any) {
+            console.error("[PayrollRoutes] high-earners error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.Optional(t.String()),
+            year: t.Optional(t.String()),
             limit: t.Optional(t.String())
         })
     });
