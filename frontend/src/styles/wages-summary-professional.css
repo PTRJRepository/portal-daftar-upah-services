@@ -723,6 +723,7 @@
 }
 
 @media print {
+
     /* Hide non-printable elements */
     .no-print,
     .print-hide-additional,
@@ -755,6 +756,8 @@
         height: auto !important;
         overflow: visible !important;
         position: relative !important;
+        zoom: 65%;
+        /* Scale down to fit A4 Landscape */
     }
 
     /* Letterhead */

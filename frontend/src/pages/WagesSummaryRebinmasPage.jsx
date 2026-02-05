@@ -232,7 +232,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             'N': 'NURSERY',
             'W': 'WORKSHOP',
             'K': 'ESTATE DME',
-            'I': 'ESTATE IMIAN JAYA LESTARI',
+            'I': 'DIVISI INFRASTRUKTUR',
+            'M': 'OPERASI MILL',
         };
 
 

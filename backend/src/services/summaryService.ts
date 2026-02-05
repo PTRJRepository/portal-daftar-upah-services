@@ -150,6 +150,15 @@ export class SummaryService {
                 if (totalPremi === 0) {
                     totalPremi = totalPremiPrunning + totalPremiInsentif + totalPremiKinerja;
                 }
+
+                if (div === 'P1A' || div === 'AB1') {
+                    console.log(`[SummaryService] Final Values for ${div}:`, {
+                        backfill,
+                        totalPremiPrunning,
+                        totalPremiInsentif,
+                        totalPremi
+                    });
+                }
             }
 
             // Calculate total_premi_excluding_special (exclude insentif, kinerja, prunning)
@@ -246,7 +255,7 @@ export class SummaryService {
 
     private async getBackfillData(month: number, year: number): Promise<Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }>> {
         const query = `
-            SELECT division_code, dynamic_premi_data, informasi_tambahan 
+            SELECT division_code, dynamic_premi_data, informasi_tambahan
             FROM dbo.daftar_upah_aggregation_history
             WHERE period_month = ? AND period_year = ? AND division_code IS NOT NULL
         `;
@@ -257,6 +266,7 @@ export class SummaryService {
             const div = row.division_code?.trim();
             if (!div) continue;
 
+            // Initialize only if not exists - don't overwrite!
             if (!result[div]) {
                 result[div] = { pruning: 0, insentif: 0, kinerja: 0, lembur: 0 };
             }
@@ -264,29 +274,40 @@ export class SummaryService {
             // Try dynamic_premi_data first
             let dynamicPremi = null;
 
-            // DEBUG LOG for P1A/AB1
-            if (div === 'P1A' || div === 'AB1') {
-                console.log(`[Backfill] Check ${div}:`, {
-                    hasDynamic: !!row.dynamic_premi_data,
-                    hasInfo: !!row.informasi_tambahan,
-                    infoRaw: row.informasi_tambahan ? (typeof row.informasi_tambahan === 'string' ? row.informasi_tambahan.substring(0, 100) : 'OBJECT') : 'NULL'
-                });
-            }
-
             if (row.dynamic_premi_data) {
                 try {
                     dynamicPremi = typeof row.dynamic_premi_data === 'string' ? JSON.parse(row.dynamic_premi_data) : row.dynamic_premi_data;
-                } catch (e) { }
+                } catch (e) {
+                    console.error(`[SummaryService] Failed to parse dynamic_premi_data for ${div}:`, e);
+                }
             }
 
-            // Fallback to informasi_tambahan
-            if ((!dynamicPremi || (Array.isArray(dynamicPremi) && dynamicPremi.length === 0)) && row.informasi_tambahan) {
+            // Fallback to informasi_tambahan if dynamicPremi is empty (null, empty array, or empty object)
+            let shouldUseFallback = !dynamicPremi;
+            if (dynamicPremi) {
+                if (Array.isArray(dynamicPremi) && dynamicPremi.length === 0) shouldUseFallback = true;
+                else if (typeof dynamicPremi === 'object' && Object.keys(dynamicPremi).length === 0) shouldUseFallback = true;
+            }
+
+            if (shouldUseFallback && row.informasi_tambahan) {
                 try {
                     dynamicPremi = typeof row.informasi_tambahan === 'string' ? JSON.parse(row.informasi_tambahan) : row.informasi_tambahan;
-                } catch (e) { }
+                } catch (e) {
+                    console.error(`[SummaryService] Failed to parse informasi_tambahan for ${div}:`, e);
+                }
             }
 
             if (!dynamicPremi) continue;
+
+            // Add debug logging for AB1 and P1A
+            if (div === 'AB1' || div === 'P1A') {
+                console.log(`[SummaryService] getBackfillData processing ${div}:`, {
+                    hasDynamicPremiData: !!row.dynamic_premi_data,
+                    hasInformasiTambahan: !!row.informasi_tambahan,
+                    dynamicPremiKeys: Array.isArray(dynamicPremi) ? dynamicPremi.map((d: any) => d.header) : Object.keys(dynamicPremi || {}),
+                    resultBefore: result[div]
+                });
+            }
 
             if (Array.isArray(dynamicPremi)) {
                 for (const item of dynamicPremi) {
@@ -303,6 +324,13 @@ export class SummaryService {
                 if (dynamicPremi.premi_prunning) result[div].pruning += parseFloat(dynamicPremi.premi_prunning || 0);
                 if (dynamicPremi.premi_insentif_panen) result[div].insentif += parseFloat(dynamicPremi.premi_insentif_panen || 0);
                 // No lembur/kinerja in known object format yet, but safe to ignore if missing
+            }
+
+            // Add debug logging after processing
+            if (div === 'AB1' || div === 'P1A') {
+                console.log(`[SummaryService] getBackfillData after processing ${div}:`, {
+                    resultAfter: result[div]
+                });
             }
         }
         return result;

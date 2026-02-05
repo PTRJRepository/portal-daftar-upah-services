@@ -136,7 +136,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     const groupedData = useMemo(() => {
         // Label mapping for known estate prefixes
         const LABEL_MAP = {
-            'I': 'ESTATE IMIAN JAYA LESTARI',
+            'I': 'DIVISI INFRASTRUKTUR',
+            'M': 'OPERASI MILL',
         };
 
 
