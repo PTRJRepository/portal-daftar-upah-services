@@ -273,3 +273,62 @@ body {
     /* Ensure cells inherit the bold weight */
     font-weight: bold !important;
 }
+
+
+/* =============================================
+   GLOBAL PRINT FIX - Prevent Right-Side Cutoff
+   ============================================= */
+@media print {
+  /* Set consistent page margins for all reports */
+  @page {
+    size: A4 landscape;
+    margin: 10mm 10mm 10mm 10mm; /* Consistent margins to prevent cutoff */
+  }
+
+  /* Prevent scrollbars and overflow */
+  body {
+    overflow: hidden !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Ensure all containers fit within printable area */
+  * {
+    box-sizing: border-box !important;
+  }
+
+  /* Fix for AG Grid in print mode */
+  .ag-theme-alpine,
+  .ag-root-wrapper {
+    width: fit-content !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* Ensure document containers do not overflow */
+  .sw-document,
+  .wsp-document,
+  .ir-document,
+  .summary-report-grid-container {
+    width: fit-content !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Fix for tables */
+  table {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+  }
+
+  /* Ensure cells do not overflow */
+  td,
+  th {
+    overflow: hidden !important;
+    word-wrap: break-word !important;
+  }
+}
+

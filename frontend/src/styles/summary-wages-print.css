@@ -336,7 +336,7 @@
    =========================================== */
 @page {
     size: A4 landscape;
-    margin: 0.3cm;
+    margin: 10mm 10mm 10mm 10mm; /* Increased margins to prevent cutoff */
 }
 
 @media print {
@@ -349,6 +349,7 @@
         background: #fff !important;
         margin: 0 !important;
         padding: 0 !important;
+        overflow: hidden !important; /* Prevent scrollbars */
     }
 
     .summary-wages-container {
@@ -356,21 +357,28 @@
         margin: 0 !important;
         padding: 0 !important;
         width: 100% !important;
+        max-width: none !important;
+        overflow: visible !important;
     }
 
     .sw-action-bar {
         display: none !important;
     }
 
-    /* Document - NO SCALING */
+    /* Document - Prevent right-side cutoff */
     .sw-document {
         box-shadow: none !important;
         margin: 0 !important;
-        padding: 0.6rem 0.8rem !important;
+        padding: 0.5rem 0.6rem !important; /* Reduced right padding */
         max-width: 100% !important;
-        width: 100% !important;
+        width: fit-content !important; /* Use fit-content instead of 100% */
         border: 2px solid #000 !important;
         border-radius: 0 !important;
+        box-sizing: border-box !important;
+        overflow: visible !important;
+        position: relative !important;
+        left: 0 !important;
+        right: 0 !important;
     }
 
     .sw-table {

@@ -719,7 +719,7 @@
    ============================================= */
 @page {
     size: A4 landscape;
-    margin: 0.3cm;
+    margin: 10mm 10mm 10mm 10mm; /* Consistent margins to prevent cutoff */
 }
 
 @media print {
@@ -732,6 +732,10 @@
         display: none !important;
     }
 
+    body {
+        overflow: hidden !important; /* Prevent scrollbars */
+    }
+
     /* Reset container */
     .wsp-container {
         background-color: #fff !important;
@@ -742,6 +746,7 @@
         overflow: visible !important;
         height: auto !important;
         width: 100% !important;
+        max-width: none !important;
     }
 
     /* Document - NO SCALING, natural size */
@@ -749,15 +754,16 @@
         box-shadow: none !important;
         border: 2px solid #000 !important;
         margin: 0 !important;
-        padding: 0.6rem 0.8rem !important;
-        width: 100% !important;
+        padding: 0.5rem 0.6rem !important; /* Reduced right padding */
+        width: fit-content !important; /* Use fit-content instead of 100% */
         max-width: 100% !important;
         min-width: auto !important;
         height: auto !important;
         overflow: visible !important;
         position: relative !important;
-        zoom: 65%;
-        /* Scale down to fit A4 Landscape */
+        box-sizing: border-box !important;
+        left: 0 !important;
+        right: 0 !important;
     }
 
     /* Letterhead */

@@ -635,20 +635,34 @@
 
 /* Print Styles */
 @media print {
+    @page {
+        size: A4 landscape;
+        margin: 10mm 10mm 10mm 10mm; /* Consistent margins to prevent cutoff */
+    }
+
+    body {
+        overflow: hidden !important; /* Prevent scrollbars */
+    }
 
     .summary-report-header,
     .summary-report-toolbar,
     .summary-selection-status-bar {
-        display: none;
+        display: none !important;
     }
 
     .summary-report-grid-container {
-        padding: 0;
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        overflow: visible !important;
     }
 
     .summary-report-grid-container .ag-theme-alpine {
-        border: none;
-        box-shadow: none;
+        border: 2px solid #000 !important;
+        box-shadow: none !important;
+        width: fit-content !important; /* Use fit-content to prevent cutoff */
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
 }
 
