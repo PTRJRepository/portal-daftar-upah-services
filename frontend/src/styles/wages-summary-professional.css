@@ -6,6 +6,7 @@
  */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700&family=Roboto+Mono:wght@400;500;600;700&display=swap');
+@import url('./print-optimization.css');
 
 /* =============================================
    ROOT CONTAINER
@@ -719,7 +720,8 @@
    ============================================= */
 @page {
     size: A4 landscape;
-    margin: 10mm 10mm 10mm 10mm; /* Consistent margins to prevent cutoff */
+    margin: 8mm 8mm 8mm 8mm;
+    /* Optimized margins to prevent border cutoff */
 }
 
 @media print {
@@ -733,7 +735,9 @@
     }
 
     body {
-        overflow: hidden !important; /* Prevent scrollbars */
+        overflow: visible !important;
+        /* Changed from hidden to visible for border */
+        width: 100% !important;
     }
 
     /* Reset container */
@@ -746,20 +750,22 @@
         overflow: visible !important;
         height: auto !important;
         width: 100% !important;
-        max-width: none !important;
+        max-width: 100% !important;
     }
 
-    /* Document - NO SCALING, natural size */
+    /* Document - FIXED: Proper border rendering */
     .wsp-document {
         box-shadow: none !important;
         border: 2px solid #000 !important;
-        margin: 0 !important;
-        padding: 0.5rem 0.6rem !important; /* Reduced right padding */
-        width: fit-content !important; /* Use fit-content instead of 100% */
+        margin: 0 auto !important;
+        padding: 0.2rem !important;
+        width: auto !important;
+        /* Changed from 100% to auto */
         max-width: 100% !important;
         min-width: auto !important;
         height: auto !important;
         overflow: visible !important;
+        /* Changed from hidden to visible */
         position: relative !important;
         box-sizing: border-box !important;
         left: 0 !important;
@@ -817,7 +823,8 @@
     }
 
     .wsp-kpi-label {
-        font-size: 0.5rem !important;
+        font-size: 0.55rem !important;
+        /* Increased for better readability */
         margin-bottom: 0.15rem !important;
         font-weight: 700 !important;
         color: #000 !important;
@@ -826,7 +833,8 @@
     }
 
     .wsp-kpi-value {
-        font-size: 0.75rem !important;
+        font-size: 0.8rem !important;
+        /* Increased for better readability */
         font-weight: 700 !important;
         line-height: 1.1 !important;
         text-align: center !important;
@@ -841,9 +849,11 @@
     }
 
     .wsp-table {
-        font-size: 0.55rem !important;
+        font-size: 0.7rem !important;
+        /* Increased for better readability */
         width: 100% !important;
-        table-layout: auto !important;
+        table-layout: fixed !important;
+        /* Critical for equal column widths */
         border-collapse: collapse !important;
     }
 
@@ -852,8 +862,9 @@
     }
 
     .wsp-table thead th {
-        padding: 0.25rem 0.15rem !important;
-        font-size: 0.55rem !important;
+        padding: 0.25rem 0.18rem !important;
+        font-size: 0.65rem !important;
+        /* Increased for better readability */
         font-weight: 800 !important;
         border: 1px solid #000 !important;
         text-align: center !important;
@@ -861,7 +872,8 @@
     }
 
     .wsp-table thead tr.wsp-header-master th {
-        font-size: 0.6rem !important;
+        font-size: 0.7rem !important;
+        /* Increased for better readability */
         font-weight: 900 !important;
         border-bottom: 2px solid #000 !important;
     }
@@ -872,7 +884,8 @@
     .wsp-table td.text-center,
     .wsp-table td.text-left {
         padding: 0.2rem 0.15rem !important;
-        font-size: 0.55rem !important;
+        font-size: 0.65rem !important;
+        /* Increased for better readability */
         font-weight: 600 !important;
         border: 1px solid #000 !important;
         text-align: center !important;

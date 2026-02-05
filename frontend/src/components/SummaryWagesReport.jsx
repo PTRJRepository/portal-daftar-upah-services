@@ -34,7 +34,7 @@ export default function SummaryWagesReport({
 
     const IjlReport = useMemo(() => {
         const ijlRows = rows.filter((row) => row.divisionName === 'IJL');
-        
+
         return ijlRows;
     }, []);
 
@@ -141,16 +141,16 @@ export default function SummaryWagesReport({
                             </tr>
                             {/* Level 2: Column Names */}
                             <tr className="sw-header-cols">
-                                <th style={{ width: '40px' }}>No</th>
-                                <th style={{ width: '200px' }}>Nama</th>
-                                <th style={{ width: '80px' }}>NIK</th>
-                                <th className="text-right" style={{ width: '60px' }}>HK</th>
-                                <th className="text-right" style={{ width: '60px' }}>Lembur</th>
-                                <th className="text-right" style={{ width: '120px' }}>Gaji Pokok</th>
-                                <th className="text-right" style={{ width: '120px' }}>Total Tunj.</th>
-                                <th className="text-right" style={{ width: '120px' }}>Total Premi</th>
-                                <th className="text-right" style={{ width: '120px' }}>Total Pot.</th>
-                                <th className="text-right" style={{ width: '140px' }}>Upah Bersih</th>
+                                <th style={{ width: '30px' }}>No</th>
+                                <th style={{ width: 'auto' }}>Nama</th>
+                                <th style={{ width: '65px' }}>NIK</th>
+                                <th className="text-right" style={{ width: '40px' }}>HK</th>
+                                <th className="text-right" style={{ width: '40px' }}>Lembur</th>
+                                <th className="text-right" style={{ width: '90px' }}>Gaji Pokok</th>
+                                <th className="text-right" style={{ width: '90px' }}>Total Tunj.</th>
+                                <th className="text-right" style={{ width: '90px' }}>Total Premi</th>
+                                <th className="text-right" style={{ width: '90px' }}>Total Pot.</th>
+                                <th className="text-right" style={{ width: '100px' }}>Upah Bersih</th>
                             </tr>
                         </thead>
                         <tbody>

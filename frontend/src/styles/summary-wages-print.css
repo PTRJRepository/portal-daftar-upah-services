@@ -5,11 +5,13 @@
  */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;700&display=swap');
+@import url('./print-optimization.css');
 
 /* --- ROOT CONTAINER --- */
 .summary-wages-container {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    background-color: #cbd5e1; /* Darker slate for contrast */
+    background-color: #cbd5e1;
+    /* Darker slate for contrast */
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -74,7 +76,8 @@
     /* Deep shadow for clear separation */
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     border: 1px solid #cbd5e1;
-    border-radius: 0; /* Sharp edges */
+    border-radius: 0;
+    /* Sharp edges */
 }
 
 /* --- LETTERHEAD --- */
@@ -182,11 +185,12 @@
     border: 1px solid #cbd5e1;
     padding: 0.5rem 0.75rem;
     text-align: left;
-    white-space: nowrap; /* Default for numeric/code cells */
+    white-space: nowrap;
+    /* Default for numeric/code cells */
 }
 
 /* Allow description cells to wrap */
-.sw-table td.text-left, 
+.sw-table td.text-left,
 .sw-table th.text-left {
     white-space: normal !important;
     word-wrap: break-word;
@@ -318,7 +322,8 @@
     font-weight: 700;
     color: #000;
     text-transform: uppercase;
-    margin-bottom: 7rem; /* Increased space for signature */
+    margin-bottom: 7rem;
+    /* Increased space for signature */
 }
 
 .sw-signature-name {
@@ -336,20 +341,24 @@
    =========================================== */
 @page {
     size: A4 landscape;
-    margin: 10mm 10mm 10mm 10mm; /* Increased margins to prevent cutoff */
+    margin: 8mm 8mm 8mm 8mm;
+    /* Optimized margins to prevent border cutoff */
 }
 
 @media print {
     * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        box-sizing: border-box !important;
     }
 
     body {
         background: #fff !important;
         margin: 0 !important;
         padding: 0 !important;
-        overflow: hidden !important; /* Prevent scrollbars */
+        overflow: visible !important;
+        /* Changed from hidden to visible for border */
+        width: 100% !important;
     }
 
     .summary-wages-container {
@@ -357,7 +366,7 @@
         margin: 0 !important;
         padding: 0 !important;
         width: 100% !important;
-        max-width: none !important;
+        max-width: 100% !important;
         overflow: visible !important;
     }
 
@@ -365,17 +374,20 @@
         display: none !important;
     }
 
-    /* Document - Prevent right-side cutoff */
+    /* Document - FIXED: Prevent right-side cutoff */
     .sw-document {
         box-shadow: none !important;
-        margin: 0 !important;
-        padding: 0.5rem 0.6rem !important; /* Reduced right padding */
+        margin: 0 auto !important;
+        padding: 0.2rem !important;
+        /* Minimal padding for border space */
+        width: auto !important;
+        /* Changed from 100% to auto for proper border rendering */
         max-width: 100% !important;
-        width: fit-content !important; /* Use fit-content instead of 100% */
         border: 2px solid #000 !important;
         border-radius: 0 !important;
         box-sizing: border-box !important;
         overflow: visible !important;
+        /* Changed from hidden to visible */
         position: relative !important;
         left: 0 !important;
         right: 0 !important;
@@ -383,9 +395,13 @@
 
     .sw-table {
         page-break-inside: auto;
-        font-size: 0.5rem !important;
+        font-size: 0.7rem !important;
+        /* Increased for better readability */
         width: 100% !important;
+        max-width: 100% !important;
         border-collapse: collapse !important;
+        table-layout: fixed !important;
+        /* Critical for equal column widths */
     }
 
     .sw-table tr {
@@ -404,13 +420,13 @@
     .sw-kpi-grid {
         grid-template-columns: repeat(4, 1fr) !important;
         page-break-after: avoid;
-        gap: 0.3rem !important;
-        margin-bottom: 0.5rem !important;
+        gap: 0.4rem !important;
+        margin-bottom: 0.6rem !important;
     }
 
     .sw-kpi-card {
-        padding: 0.4rem !important;
-        border: 1px solid #94a3b8 !important;
+        padding: 0.5rem !important;
+        border: 1px solid #000 !important;
     }
 
     .sw-kpi-card.highlight {
@@ -419,34 +435,38 @@
     }
 
     .sw-kpi-label {
-        font-size: 0.45rem !important;
+        font-size: 0.6rem !important;
+        /* Increased for readability */
     }
 
     .sw-kpi-value {
-        font-size: 0.7rem !important;
+        font-size: 0.8rem !important;
+        /* Increased for readability */
     }
 
     .sw-table thead tr.sw-header-group th {
         background: #e2e8f0 !important;
         color: #000 !important;
         border: 1px solid #000 !important;
-        padding: 0.2rem 0.3rem !important;
-        font-size: 0.5rem !important;
+        padding: 0.2rem 0.15rem !important;
+        font-size: 0.7rem !important;
+        /* Increased for readability */
     }
 
     .sw-table thead tr.sw-header-cols th {
         background: #f1f5f9 !important;
         color: #000 !important;
         border: 1px solid #000 !important;
-        padding: 0.2rem 0.3rem !important;
-        font-size: 0.45rem !important;
+        padding: 0.2rem 0.15rem !important;
+        font-size: 0.65rem !important;
+        /* Increased for readability */
     }
 
     .sw-table tbody tr {
         page-break-inside: avoid;
     }
 
-    /* ALL CELLS CENTERED */
+    /* ALL CELLS - Better padding for readability */
     .sw-table td,
     .sw-table th,
     .sw-table td.text-left,
@@ -455,9 +475,19 @@
     .sw-table th.text-right,
     .sw-table td.text-center,
     .sw-table th.text-center {
-        padding: 0.15rem 0.2rem !important;
+        padding: 0.15rem 0.12rem !important;
+        /* Increased padding for readability */
         border: 1px solid #000 !important;
         text-align: center !important;
+        font-size: 0.65rem !important;
+        /* Increased for readability */
+    }
+
+    /* First column - left aligned */
+    .sw-table td:first-child,
+    .sw-table td.sticky-col {
+        text-align: left !important;
+        white-space: normal !important;
     }
 
     .sw-table tr.gang-header td {
@@ -478,7 +508,8 @@
         background: #000 !important;
         color: #fff !important;
         font-weight: 800 !important;
-        font-size: 0.55rem !important;
+        font-size: 0.75rem !important;
+        /* Increased for readability */
     }
 
     .sw-footer {
@@ -488,11 +519,12 @@
         right: 0;
         padding: 0.3rem 0.8rem;
         border-top: 1px solid #000;
-        font-size: 0.45rem !important;
+        font-size: 0.5rem !important;
+        /* Increased for readability */
     }
 
     .sw-signature-section {
-        margin-top: 1rem !important;
+        margin-top: 1.5rem !important;
         padding: 0 !important;
     }
 
@@ -501,12 +533,12 @@
     }
 
     .sw-signature-title {
-        font-size: 0.45rem !important;
+        font-size: 0.5rem !important;
         margin-bottom: 3rem !important;
     }
 
     .sw-signature-name {
-        font-size: 0.5rem !important;
+        font-size: 0.55rem !important;
     }
 
     /* KPI Cards */

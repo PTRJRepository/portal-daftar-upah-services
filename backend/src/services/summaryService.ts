@@ -510,7 +510,13 @@ export class SummaryService {
     public async getImpactReportData(month: number, year: number): Promise<any> {
         const prevMonth = month === 1 ? 12 : month - 1;
         const prevYear = month === 1 ? year - 1 : year;
-        const upahDasar = 129220; // Default
+        const prevYear = month === 1 ? year - 1 : year;
+
+        // Load payrates
+        const payrates = await this.loadJsonData('payrate.json') || {};
+        const upahDasarCurr = payrates[year.toString()] || 129220;
+        const upahDasarPrev = payrates[prevYear.toString()] || 129220;
+
 
         const currentData = await this.getAllDivisionsPremiTotals(month, year);
         // Simplified: skipping Nov 2025 JSON override logic for now to keep code concise, falling back to DB
@@ -590,7 +596,13 @@ export class SummaryService {
             success: true,
             current_period: { month, year },
             previous_period: { month: prevMonth, year: prevYear },
-            upah_dasar: upahDasar,
+            success: true,
+            current_period: { month, year },
+            previous_period: { month: prevMonth, year: prevYear },
+            upah_dasar: upahDasarCurr, // Kept for compatibility
+            upah_dasar_curr: upahDasarCurr,
+            upah_dasar_prev: upahDasarPrev,
+
             main_table: adjustedMainRows,
             pruning_table: pruningRows,
             pruning_totals: pruningTotals,

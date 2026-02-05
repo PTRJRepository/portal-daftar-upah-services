@@ -141,15 +141,17 @@ export default function ImpactReportPage({ onBack }) {
         };
 
         // Recalculate HK Analysis based on filtered data
-        const upahDasar = reportData.upah_dasar || 129220;
+        const upahDasarCurr = reportData.upah_dasar_curr || reportData.upah_dasar || 129220;
+        const upahDasarPrev = reportData.upah_dasar_prev || reportData.upah_dasar || 129220;
 
         // Calculate HK from main table using real HK columns
         const total_hk_curr = filteredMainTable.reduce((sum, r) => sum + (r.hk_curr || 0), 0);
         const total_hk_prev = filteredMainTable.reduce((sum, r) => sum + (r.hk_prev || 0), 0);
         const hk_diff = total_hk_curr - total_hk_prev;
 
-        const gaji_hk_curr = total_hk_curr * upahDasar;
-        const gaji_hk_prev = total_hk_prev * upahDasar;
+        const gaji_hk_curr = total_hk_curr * upahDasarCurr;
+        const gaji_hk_prev = total_hk_prev * upahDasarPrev;
+
         const gaji_hk_diff = gaji_hk_curr - gaji_hk_prev;
 
         // Calculate Insentif Panen from main table using real insentif columns
@@ -158,7 +160,8 @@ export default function ImpactReportPage({ onBack }) {
         const insentif_diff = insentif_curr_total - insentif_prev_total;
 
         const hkAnalysis = {
-            upah_dasar: upahDasar,
+            upah_dasar_curr: upahDasarCurr,
+            upah_dasar_prev: upahDasarPrev,
             hk_prev: total_hk_prev,
             hk_curr: total_hk_curr,
             hk_diff: hk_diff,
@@ -488,19 +491,19 @@ export default function ImpactReportPage({ onBack }) {
                         <tr className="wsp-header-sub">
                             <th style={{ textAlign: 'left', paddingLeft: '1rem' }}>Description</th>
                             <th>HK</th>
-                            <th>Gaji (HK × {formatNumber(hk.upah_dasar)})</th>
+                            <th>Gaji (HK × Rate)</th>
                             <th>Insentif Panen</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td className="text-left" style={{ paddingLeft: '1rem' }}>HK {prevLabel}</td>
+                            <td className="text-left" style={{ paddingLeft: '1rem' }}>HK {prevLabel} (x {formatNumber(hk.upah_dasar_prev)})</td>
                             <td className="text-right">{formatNumber(hk.hk_prev)}</td>
                             <td className="text-right">{formatNumber(hk.gaji_hk_prev)}</td>
                             <td className="text-right">{formatNumber(hk.insentif_panen_prev)}</td>
                         </tr>
                         <tr>
-                            <td className="text-left" style={{ paddingLeft: '1rem' }}>HK {currLabel}</td>
+                            <td className="text-left" style={{ paddingLeft: '1rem' }}>HK {currLabel} (x {formatNumber(hk.upah_dasar_curr)})</td>
                             <td className="text-right">{formatNumber(hk.hk_curr)}</td>
                             <td className="text-right">{formatNumber(hk.gaji_hk_curr)}</td>
                             <td className="text-right">{formatNumber(hk.insentif_panen_curr)}</td>
