@@ -218,60 +218,105 @@
     color: #0f172a;
 }
 
-/* Comparison KPI styles */
+/* Comparison KPI styles - Enhanced */
 .wsp-kpi-grid.comparison-grid {
     grid-template-columns: repeat(3, 1fr);
     gap: 1.5rem;
 }
 
 .wsp-kpi-card.comparison-card {
-    background: linear-gradient(to bottom, #ffffff, #f8fafc);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border-radius: 8px;
+    padding-bottom: 0;
+    /* Remove padding bottom for full-width footer */
+    overflow: hidden;
+    /* Clip the footer */
 }
 
 .wsp-kpi-compare-row {
     display: flex;
     gap: 1rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
+    padding: 0 0.5rem;
 }
 
 .wsp-kpi-trend-box {
     flex: 1;
-    padding: 0.5rem;
-    border-radius: 4px;
-    border: 1px solid #e2e8f0;
+    padding: 0.75rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid #f1f5f9;
+    text-align: center;
 }
 
 .wsp-kpi-trend-box.prev {
     background-color: #f8fafc;
+    color: #64748b;
 }
 
 .wsp-kpi-trend-box.curr {
-    background-color: #fff;
+    background-color: #ffffff;
     border-color: #cbd5e1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .wsp-kpi-trend-box .trend-label {
     font-size: 0.65rem;
+    font-weight: 700;
     text-transform: uppercase;
-    color: #64748b;
-    margin-bottom: 0.25rem;
+    color: #94a3b8;
+    margin-bottom: 0.4rem;
+    letter-spacing: 0.05em;
 }
 
 .wsp-kpi-trend-box .trend-value {
     font-family: 'Roboto Mono', monospace;
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 1.1rem;
+    font-weight: 700;
     color: #1e293b;
 }
 
+/* Diff Footer - Full Width Pill */
 .wsp-kpi-diff {
-    font-size: 0.8rem;
-    font-weight: 600;
-    padding-top: 0.75rem;
-    border-top: 1px solid #e2e8f0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 0.75rem 1rem;
+    margin-top: 0.5rem;
+    /* Full width bleed */
+    margin-left: -1.25rem;
+    margin-right: -1.25rem;
+    margin-bottom: 0;
+
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: space-between;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Logic: Pos=Red(Bad for Cost), Neg=Green(Good for Cost) */
+.wsp-kpi-diff.pos,
+.wsp-kpi-diff.pos-invert {
+    background-color: #fef2f2;
+    color: #dc2626;
+    border-top-color: #fecaca;
+}
+
+.wsp-kpi-diff.neg,
+.wsp-kpi-diff.neg-invert {
+    background-color: #f0fdf4;
+    color: #16a34a;
+    border-top-color: #bbf7d0;
+}
+
+.wsp-kpi-diff.neutral {
+    background-color: #f8fafc;
+    color: #64748b;
+}
+
+.wsp-kpi-diff span {
+    font-size: 1.25em;
+    /* Larger arrow */
 }
 
 /* =============================================
@@ -471,37 +516,37 @@
     white-space: pre-wrap;
 }
 
-/* Trend Indicators - Clean Badges */
+/* Trend Indicators - Clean Arrows */
 .trend-indicator {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-left: 6px;
-    font-size: 0.7em;
-    width: 1.4em;
-    height: 1.4em;
-    border-radius: 50%;
-    vertical-align: middle;
+    margin-left: 4px;
+    font-size: 0.9em;
+    width: auto;
+    height: auto;
+    background: transparent;
+    font-weight: 800;
 }
 
 .trend-up {
     color: #dc2626;
-    background: #fef2f2;
+    /* Red for Cost Increase */
 }
 
 .trend-down {
     color: #16a34a;
-    background: #f0fdf4;
+    /* Green for Cost Saving */
 }
 
 .trend-up-green {
     color: #16a34a;
-    background: #f0fdf4;
+    /* Green for Yield Increase */
 }
 
 .trend-down-red {
     color: #dc2626;
-    background: #fef2f2;
+    /* Red for Yield Decrease */
 }
 
 .text-diff-pos {
@@ -655,9 +700,11 @@
         padding: 0 !important;
         min-width: auto !important;
         max-width: 100% !important;
-        width: 100% !important;
-        /* Fit to single page using zoom */
-        zoom: 80% !important;
+
+        /* SCALE FIX: Zoom 75% needs ~134% width to fill page */
+        width: 134% !important;
+        zoom: 75% !important;
+        transform-origin: top left;
     }
 
     /* Letterhead - compact */
@@ -693,10 +740,17 @@
         grid-template-columns: repeat(4, 1fr) !important;
     }
 
+    /* Comparison mode uses 3 columns */
+    .wsp-kpi-grid.comparison-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
+
     .wsp-kpi-card {
         padding: 0.5rem !important;
         /* Drastically reduced padding */
-        min-height: auto !important;
+        min-height: 0 !important;
+        height: 100% !important;
+        /* Forces equal height */
         border: 1px solid #000 !important;
         justify-content: center !important;
     }
@@ -729,8 +783,8 @@
 
     /* Table - scaled to fit one page */
     .wsp-table {
-        font-size: 0.65rem !important;
-        /* Slightly smaller to ensure fit */
+        font-size: 0.6rem !important;
+        /* Smaller font to ensure no cropping */
         width: 100% !important;
         table-layout: auto !important;
     }
