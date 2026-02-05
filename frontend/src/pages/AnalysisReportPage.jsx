@@ -5,6 +5,8 @@ import { generatePDF } from '../utils/pdfGenerator';
 import MonthSelector from '../components/common/MonthSelector';
 import LoadingScreen from '../components/common/LoadingScreen';
 import AggregationSeederModal from '../components/AggregationSeederModal';
+import PrintModeSelector from '../components/common/PrintModeSelector';
+import { initPrintMode } from '../utils/printOptimizer';
 import '../styles/analysis-report-print.css';
 
 export default function AnalysisReportPage({ onBack, initialMonth, initialYear }) {
@@ -17,7 +19,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     const [error, setError] = useState(null);
     const [showSeederModal, setShowSeederModal] = useState(false);
 
-    // Fetch data
+    // Fetch data & Initialize print mode
     useEffect(() => {
         async function loadData() {
             if (!token) return;
@@ -38,6 +40,9 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
             }
         }
         loadData();
+
+        // Initialize print mode for optimized printing
+        initPrintMode();
     }, [token, month, year, filterType]);
 
     // Format currency
@@ -137,6 +142,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                     <button onClick={() => setShowSeederModal(true)} className="sw-btn" style={{ background: '#fbbf24', color: '#78350f' }}>
                         SEED AGGREGATION
                     </button>
+                    <PrintModeSelector onPrint={handlePrint} />
                     <button onClick={handleSavePDF} className="sw-btn sw-btn-primary" title="Download Report as PDF">
                         SAVE PDF
                     </button>

@@ -1,0 +1,913 @@
+import threading
+import concurrent.futures
+import time
+import calendar
+import re
+from typing import List, Dict, Any, Optional, Tuple
+from database.services.database import Database
+from database.services.queries import Queries
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class ThreadedDataExtractor:
+    """Optimized data extractor with threading and parallel query processing"""
+
+    def __init__(self, max_workers: int = 4):
+        self.max_workers = max_workers
+        self.db = Database.instance(pool_size=20)
+        self.queries = Queries()
+    
+    def _normalize_premi_field_name(self, doc_desc: str) -> str:
+        """Normalize DocDesc to valid Python field name for dynamic premi fields"""
+        if not doc_desc:
+            return ""
+        
+        name = doc_desc.strip().upper()
+        prefixes_to_remove = ['TUNJANGAN PREMI', 'TUNJANGAN', 'PREMI']
+        original_name = name
+        for prefix in prefixes_to_remove:
+            if name.startswith(prefix):
+                name = name[len(prefix):].strip()
+                break
+        
+        if not name:
+            if "TUNJANGAN PREMI" in original_name:
+                name = "TUNJANGAN_PREMI"
+            else:
+                return ""
+        
+        name = name.lower().replace(' ', '_')
+        name = re.sub(r'[^a-z0-9_]', '', name)
+        name = re.sub(r'_+', '_', name)
+        name = name.strip('_')
+        
+        if not name:
+            return ""
+            
+        if not name.startswith('premi_'):
+            name = f'premi_{name}'
+            
+        return name
+
+    def extract_all_payroll_data_parallel(self, month: int, year: int, gang_code: str) -> Dict[str, Any]:
+        """
+        Extract all payroll data using parallel queries for maximum performance.
+        This replaces sequential query execution with concurrent processing.
+        No fallback - always uses real database data.
+        """
+        start_time = time.perf_counter()
+
+        # Prepare query parameters
+        start_date = f"{year}-{str(month).zfill(2)}-01"
+        if month == 12:
+            end_date = f"{year+1}-01-01"
+        else:
+            end_date = f"{year}-{str(month+1).zfill(2)}-01"
+
+        # Define all query tasks that can be executed in parallel
+        query_tasks = {
+            'employee_data': self._get_employees_query(gang_code),
+            'attendance_data': self._get_attendance_query(gang_code, start_date, end_date),
+            'premi_headers': self._get_dynamic_premi_headers_query(gang_code, start_date, end_date),
+            'premi_amounts': self._get_premi_amounts_query(gang_code, start_date, end_date),
+            'brondol_data': self._get_brondol_query(gang_code, start_date, end_date),
+            'tunjangan_data': self._get_tunjangan_query(gang_code, start_date, end_date),
+            'potongan_data': self._get_potongan_query(gang_code, start_date, end_date),
+            'cuti_data': self._get_cuti_query(gang_code, start_date, end_date),
+            'hk_data': self._get_hk_query(gang_code, start_date, end_date),
+            'upah_pokok_data': self._get_upah_pokok_query(gang_code, start_date, end_date),
+            # Re-enable individual allowance queries with corrected field names
+            'beras_rate_data': self._get_individual_beras_rate_query(gang_code, start_date, end_date),
+            'jabatan_data': self._get_individual_jabatan_query(gang_code, start_date, end_date, month, year),
+            'masa_kerja_data': self._get_masa_kerja_data_query(gang_code),
+            'masa_kerja_amount_data': self._get_individual_masa_kerja_amount_query(gang_code, start_date, end_date, month, year),
+            'lembur_data': self._get_lembur_data_query(gang_code, start_date, end_date)
+        }
+
+        results = {}
+        query_times = {}
+
+        # Execute queries in parallel using ThreadPoolExecutor
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all queries to the thread pool
+            future_to_name = {
+                executor.submit(self._execute_query_with_timing, name, query_def): name
+                for name, query_def in query_tasks.items()
+            }
+
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(future_to_name):
+                task_name = future_to_name[future]
+                try:
+                    result_data, execution_time = future.result(timeout=30)  # 30 second timeout per query
+                    results[task_name] = result_data
+                    query_times[task_name] = execution_time
+                    logger.info(f"Completed query: {task_name} in {execution_time:.2f}ms")
+                except Exception as e:
+                    logger.error(f"Query {task_name} failed: {e}")
+                    raise RuntimeError(f"Database query failed for {task_name}: {e}") from e
+
+        # Process and merge results - no fallback, always process what we get from database
+        merged_data = self._process_parallel_results(results, gang_code, month, year)
+        merged_data['query_performance'] = query_times
+
+        total_time = time.perf_counter() - start_time
+        logger.info(f"Parallel data extraction completed in {total_time:.2f} seconds")
+
+        return merged_data
+
+    def _execute_query_with_timing(self, task_name: str, query_def: Dict[str, Any]) -> Tuple[List[Tuple], float]:
+        """Execute a single query with timing and error handling"""
+        start_time = time.perf_counter()
+        try:
+            if isinstance(query_def, str):
+                # Simple query string
+                result = self.db.query_all(query_def)
+            elif isinstance(query_def, dict):
+                # Query with parameters
+                sql = query_def.get('sql', '')
+                params = query_def.get('params', [])
+                result = self.db.query_all(sql, params)
+            else:
+                raise ValueError(f"Invalid query definition for {task_name}")
+
+            execution_time = (time.perf_counter() - start_time) * 1000
+            return result, execution_time
+        except Exception as e:
+            execution_time = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Error executing query {task_name} in {execution_time:.2f}ms: {e}")
+            raise
+
+    def _execute_query(self, task_name: str, query_def: Dict[str, Any]) -> List[Tuple]:
+        """Execute a single query with error handling"""
+        result, _ = self._execute_query_with_timing(task_name, query_def)
+        return result
+
+    def _get_employees_query(self, gang_code: str) -> Dict[str, Any]:
+        """Get employees by gang code"""
+        return {
+            'sql': """
+                SELECT DISTINCT
+                    e.EmpCode as nik,
+                    e.EmpName as nama,
+                    e.Gender as jenis_kelamin,
+                    '' as tanggal_join,
+                    '' as departemen,
+                    '' as jabatan,
+                    g.GangCode as gang
+                FROM HR_EMPLOYEE e
+                LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+                WHERE g.GangCode = ? OR ? = 'ALL'
+                ORDER BY e.EmpCode
+            """,
+            'params': [gang_code, gang_code.upper()]
+        }
+
+    def _get_attendance_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """
+        Get HK (hari kerja) count based on reference code daftar_upah_engine_real_database.py
+        This should match the get_employee_hk_count method exactly
+        """
+        return {
+            'sql': """
+                SELECT
+                    e.EmpCode,
+                    COUNT(*) as hk_count  -- Only count days where IsPresent = 'true'
+                FROM PR_EMP_ATTN_ARC d
+                JOIN HR_EMPLOYEE e ON e.EmpCode = d.EmpCode
+                JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+                WHERE d.AttnDate >= ?
+                  AND d.AttnDate < ?
+                  AND d.IsPresent = 'true'
+                  AND (g.GangCode = ? OR ? = 'ALL')
+                GROUP BY e.EmpCode
+                ORDER BY e.EmpCode
+            """,
+            'params': [start_date, end_date, gang_code, gang_code.upper()]
+        }
+
+    def _get_dynamic_premi_headers_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """Get dynamic premi headers with optimized query"""
+        return {
+            'sql': """
+                SELECT DISTINCT t.DocDesc
+                FROM PR_ADTRANS_ARC AS t
+                JOIN PR_ADTRANSLN_ARC AS ln ON t.ID = ln.MasterID
+                JOIN HR_GANGLN AS g ON g.GangMember = t.EmpCode
+                WHERE g.GangCode = ?
+                    AND t.DocDate >= ?
+                    AND t.DocDate < ?
+                    AND COALESCE(ln.Amount,0) > 0
+                    AND t.DocDesc IS NOT NULL
+                    AND UPPER(t.DocDesc) NOT IN ('KOREKSI','POTONGAN PPH21','POTONGAN SPSI','TUNJANGAN JABATAN','TUNJANGAN MASA KERJA','PPH 21','PPH21','SPSI')
+                    AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
+                    AND UPPER(t.DocDesc) NOT LIKE '%KOR%'
+                ORDER BY t.DocDesc
+            """,
+            'params': [gang_code, start_date, end_date]
+        }
+
+    def _get_premi_amounts_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """Get premi amounts for all employees"""
+        return {
+            'sql': """
+                SELECT
+                    t.EmpCode,
+                    t.DocDesc,
+                    SUM(COALESCE(ln.Amount,0)) as TotalAmount
+                FROM PR_ADTRANS_ARC AS t
+                JOIN PR_ADTRANSLN_ARC AS ln ON t.ID = ln.MasterID
+                JOIN HR_GANGLN AS g ON g.GangMember = t.EmpCode
+                WHERE g.GangCode = ?
+                    AND t.DocDate >= ?
+                    AND t.DocDate < ?
+                    AND COALESCE(ln.Amount,0) > 0
+                GROUP BY t.EmpCode, t.DocDesc
+            """,
+            'params': [gang_code, start_date, end_date]
+        }
+
+    def _get_brondol_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """Get brondol amounts from PR_LOOSEFRUIT_ARC using reference query"""
+        return {
+            'sql': """
+                SELECT
+                    LFLN.EmpCode,
+                    SUM(LFLN.Amount) AS TotalAmount
+                FROM "PR_LOOSEFRUIT_ARC" LF
+                JOIN "PR_LOOSEFRUITLN_ARC" LFLN ON LF.ID = LFLN.MasterID
+                JOIN HR_GANGLN g ON g.GangMember = LFLN.EmpCode
+                WHERE g.GangCode = ?
+                  AND LF.DocDate >= ?
+                  AND LF.DocDate < ?
+                GROUP BY LFLN.EmpCode
+            """,
+            'params': [gang_code, start_date, end_date]
+        }
+
+    def _get_tunjangan_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """Get tunjangan data"""
+        return {
+            'sql': """
+                SELECT
+                    t.EmpCode,
+                    t.DocDesc,
+                    SUM(COALESCE(ln.Amount,0)) as TotalAmount
+                FROM PR_ADTRANS_ARC AS t
+                JOIN PR_ADTRANSLN_ARC AS ln ON t.ID = ln.MasterID
+                JOIN HR_GANGLN AS g ON g.GangMember = t.EmpCode
+                WHERE g.GangCode = ?
+                    AND t.DocDate >= ?
+                    AND t.DocDate < ?
+                    AND UPPER(t.DocDesc) LIKE '%TUNJANGAN%'
+                GROUP BY t.EmpCode, t.DocDesc
+            """,
+            'params': [gang_code, start_date, end_date]
+        }
+
+    def _get_potongan_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """Get potongan data"""
+        return {
+            'sql': """
+                SELECT
+                    t.EmpCode,
+                    t.DocDesc,
+                    SUM(COALESCE(ln.Amount,0)) as TotalAmount
+                FROM PR_ADTRANS_ARC AS t
+                JOIN PR_ADTRANSLN_ARC AS ln ON t.ID = ln.MasterID
+                JOIN HR_GANGLN AS g ON g.GangMember = t.EmpCode
+                WHERE g.GangCode = ?
+                    AND t.DocDate >= ?
+                    AND t.DocDate < ?
+                    AND (UPPER(t.DocDesc) LIKE '%POTONGAN%'
+                         OR UPPER(t.DocDesc) LIKE '%PPH%'
+                         OR UPPER(t.DocDesc) LIKE '%BPJS%'
+                         OR UPPER(t.DocDesc) LIKE '%PINJAM%'
+                         OR UPPER(t.DocDesc) LIKE '%KL%'
+                         OR UPPER(t.DocDesc) LIKE '%SPSI%'
+                         OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
+                         OR UPPER(t.DocDesc) LIKE '%TOTAL%')
+                GROUP BY t.EmpCode, t.DocDesc
+            """,
+            'params': [gang_code, start_date, end_date]
+        }
+
+    def _get_cuti_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """
+        Get real cuti data from database using TaskCode classification with ARC tables
+        Based on reference queries: get_cuti_tahunan.sql, get_cuti_sakit.sql, get_HK_minggu.sql, get_HK_national_holiday.sql
+        """
+        return {
+            'sql': """
+                WITH cuti_tahunan AS (
+                    SELECT
+                        tr.EmpCode,
+                        COUNT(*) as cuti_tahunan_hari
+                    FROM PR_TASKREGLN_ARC tr
+                    WHERE tr.TaskCode LIKE 'GA9129%'
+                      AND tr.CreatedDate >= ?
+                      AND tr.CreatedDate < ?
+                      AND tr.EmpCode IN (
+                          SELECT g.GangMember
+                          FROM HR_GANGLN g
+                          WHERE g.GangCode = ? OR ? = 'ALL'
+                      )
+                    GROUP BY tr.EmpCode
+                ),
+                cuti_sakit AS (
+                    SELECT
+                        tr.EmpCode,
+                        COUNT(*) as cuti_sakit_haid_hari
+                    FROM PR_TASKREGLN_ARC tr
+                    WHERE tr.TaskCode LIKE 'GA9126%'
+                      AND tr.CreatedDate >= ?
+                      AND tr.CreatedDate < ?
+                      AND tr.EmpCode IN (
+                          SELECT g.GangMember
+                          FROM HR_GANGLN g
+                          WHERE g.GangCode = ? OR ? = 'ALL'
+                      )
+                    GROUP BY tr.EmpCode
+                ),
+                cuti_minggu AS (
+                    SELECT
+                        a.EmpCode,
+                        COUNT(*) as cuti_minggu_hari
+                    FROM PR_EMP_ATTN_ARC a
+                    JOIN HR_GANGLN g ON g.GangMember = a.EmpCode
+                    WHERE a.AttnDate >= ?
+                      AND a.AttnDate < ?
+                      AND a."TodayIsRestDay" = 'true'
+                      AND (g.GangCode = ? OR ? = 'ALL')
+                    GROUP BY a.EmpCode
+                ),
+                cuti_nasional AS (
+                    SELECT
+                        tr.EmpCode,
+                        COUNT(*) as cuti_nasional_hari
+                    FROM PR_TASKREGLN_ARC tr
+                    WHERE tr.TaskCode LIKE 'GA9128%'  -- National holiday task codes
+                      AND tr.CreatedDate >= ?
+                      AND tr.CreatedDate < ?
+                      AND tr.EmpCode IN (
+                          SELECT g.GangMember
+                          FROM HR_GANGLN g
+                          WHERE g.GangCode = ? OR ? = 'ALL'
+                      )
+                    GROUP BY tr.EmpCode
+                )
+                SELECT DISTINCT
+                    e.EmpCode,
+                    COALESCE(ct.cuti_tahunan_hari, 0) as cuti_tahunan_hari,
+                    COALESCE(cs.cuti_sakit_haid_hari, 0) as cuti_sakit_haid_hari,
+                    0 as cuti_haid_hari,
+                    COALESCE(cm.cuti_minggu_hari, 0) as cuti_minggu_hari,
+                    COALESCE(cn.cuti_nasional_hari, 0) as cuti_nasional_hari,
+                    0 as cuti_izin_hari
+                FROM HR_EMPLOYEE e
+                JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+                LEFT JOIN cuti_tahunan ct ON ct.EmpCode = e.EmpCode
+                LEFT JOIN cuti_sakit cs ON cs.EmpCode = e.EmpCode
+                LEFT JOIN cuti_minggu cm ON cm.EmpCode = e.EmpCode
+                LEFT JOIN cuti_nasional cn ON cn.EmpCode = e.EmpCode
+                WHERE (g.GangCode = ? OR ? = 'ALL')
+                ORDER BY e.EmpCode
+            """,
+            'params': [start_date, end_date, gang_code, gang_code.upper(),
+                      start_date, end_date, gang_code, gang_code.upper(),
+                      start_date, end_date, gang_code, gang_code.upper(),
+                      start_date, end_date, gang_code, gang_code.upper(),
+                      gang_code, gang_code.upper()]
+        }
+
+    def _get_hk_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """
+        Get real HK (Hari Kerja) data from PR_EMP_ATTN_ARC table
+        Based on reference code get_monthly_hk_count method
+        """
+        return {
+            'sql': """
+                SELECT DISTINCT
+                    e.EmpCode,
+                    COUNT(CASE WHEN a.IsPresent = 'true' THEN 1 END) as hari_kerja,
+                    COUNT(CASE WHEN a.IsPresent = 'false' AND a.TodayIsRestDay = 'false' AND a.TodayIsHoliday = 'false' THEN 1 END) as tidak_hadir_cth,
+                    COUNT(CASE WHEN a.IsPresent = 'false' AND (a.TodayIsRestDay = 'true' OR a.TodayIsHoliday = 'true') THEN 1 END) as tidak_hadir_alpa
+                FROM HR_EMPLOYEE e
+                JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+                LEFT JOIN PR_EMP_ATTN_ARC a ON a.EmpCode = e.EmpCode
+                    AND a.AttnDate >= ?
+                    AND a.AttnDate < ?
+                WHERE (g.GangCode = ? OR ? = 'ALL')
+                GROUP BY e.EmpCode
+                ORDER BY e.EmpCode
+            """,
+            'params': [start_date, end_date, gang_code, gang_code.upper()]
+        }
+
+    def _get_upah_pokok_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """Get upah pokok and upah dasar data from database using reference engine logic"""
+        return {
+            'sql': """
+                SELECT DISTINCT
+                    e.EmpCode,
+                    p."PayRate" as upah_dasar,
+                    p."PayRate" as upah_harian  -- Use PayRate as fallback
+                FROM HR_EMPLOYEE e
+                LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+                LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
+                WHERE g.GangCode = ? OR ? = 'ALL'
+            """,
+            'params': [gang_code, gang_code.upper()]
+        }
+
+    def _get_individual_beras_rate_query(self, gang_code: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """Get beras rate from HR_PAYROLL using actual field names"""
+        return {
+            'sql': """
+                SELECT DISTINCT
+                    e.EmpCode,
+                    COALESCE(p.RiceRation, 0) as beras_rate
+                FROM HR_EMPLOYEE e
+                LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+                LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
+            'sql': """
+                SELECT
+                    trl.EmpCode,
+                    SUM(trl.Hours) as TotalHours,
+                    SUM(trl.Amount) as TotalAmount
+                FROM PR_TASKREG_ARC tr
+                JOIN PR_TASKREGLN_ARC trl ON tr.id = trl.masterId
+                JOIN HR_GANGLN g ON g.GangMember = trl.EmpCode
+                WHERE (g.GangCode = ? OR ? = 'ALL')
+                  AND tr.DocDate >= ?
+                  AND tr.DocDate < ?
+                  AND trl.OT = 1
+                GROUP BY trl.EmpCode
+            """,
+            'params': [gang_code, gang_code.upper(), start_date, end_date]
+        }
+
+    def _process_parallel_results(self, results: Dict[str, List[Tuple]], gang_code: str, month: int, year: int) -> Dict[str, Any]:
+        """Process and merge results from parallel queries"""
+
+        # Build dynamic header map
+        raw_headers = [str(row[0]).strip() for row in results.get('premi_headers', []) if row and row[0]]
+        dynamic_header_map = {}
+        for idx, header_text in enumerate(raw_headers[:7]):  # Limit to 7 dynamic fields
+            dynamic_header_map[header_text] = f"premi_dynamic_{idx+1}"
+
+        # Build employee base data with ALL required fields for PayrollRow
+        employee_data = {}
+        for emp_row in results.get('employee_data', []):
+            nik, nama, jenis_kelamin, tanggal_join, departemen, jabatan, gang = emp_row
+            employee_data[nik] = {
+                'nik': str(nik or ''),
+                'nama': str(nama or ''),
+                'jenis_kelamin': str(jenis_kelamin or 'L'),
+                'phone': '-',  # Default phone
+                'tanggal_join': str(tanggal_join or ''),
+                'departemen': str(departemen or ''),
+                'jabatan': str(jabatan or ''),
+                'gang_code': str(gang or gang_code),
+                'no': 0,  # Will be set later
+                'upah_dasar': 0.0,
+                'hari_kerja': 0,
+                'upah_pokok': 0.0,
+                'jumlah_hk': 0,
+                'gaji_pokok': 0.0,
+                'cuti_tahunan_hari': 0,
+                'cuti_sakit_haid_hari': 0,
+                'cuti_haid_hari': 0,
+                'cuti_minggu_hari': 0,
+                'cuti_nasional_hari': 0,
+                'cuti_izin_hari': 0,
+                'total_ketidakhadiran': 0,
+                'beras_rate': 0.0,
+                'beras_jumlah': 0.0,
+                'jabatan_rate': 0.0,
+                'jabatan_jumlah': 0.0,
+                'masa_kerja_tahun': 0,
+                'masa_kerja_jumlah': 0.0,
+                'masa_kerja_amount': 0.0,
+                'lembur_jam': 0,
+                'lembur_jumlah': 0.0,
+                'total_tunjangan': 0.0,
+                'premi_brondol': 0.0,
+                'premi': {}, # Initialize premi dict for nested structure
+                'total_premi': 0.0,
+                'jumlah_upah_kotor': 0.0,
+                'pot_pph21': 0.0,
+                'pot_kontan': 0.0,
+                'pot_thr': 0.0,
+                'pot_pinjam': 0.0,
+                'pot_kl': 0.0,
+                'pot_bpjs_kes': 0.0,
+                'pot_bpjs_pek': 0.0,
+                'pot_bpjs_maj': 0.0,
+                # Additional BPJS fields required by PayrollRow
+                'pot_bpjs_kesehatan_pekerja': 0.0,
+                'pot_bpjs_kesehatan_majikan': 0.0,
+                'pot_bpjs_pensiun_pekerja': 0.0,
+                'pot_bpjs_pensiun_majikan': 0.0,
+                'pot_bpjs_jumlah': 0.0,
+                'pot_bpjs_pekerja_total': 0.0,
+                'pot_bpjs_kesehatan_total': 0.0,
+                'pot_bpjs_pensiun_total': 0.0,
+                'pot_total_1': 0.0,
+                'pot_total_2': 0.0,
+                'pot_total_3': 0.0,
+                'pot_total_4': 0.0,
+                'total_potongan': 0.0,
+                'pot_spsi': 0.0,
+                'premi_koreksi': 0.0,
+                'pot_koreksi': 0.0,
+                # Dynamic potongan fields
+                'pot_dynamic_1': 0.0,
+                'pot_dynamic_2': 0.0,
+                'pot_dynamic_3': 0.0,
+                'pot_dynamic_4': 0.0,
+                'pot_dynamic_5': 0.0,
+                'pot_dynamic_6': 0.0,
+                'pot_dynamic_7': 0.0,
+                'upah_bersih': 0.0,  # Ensure float type for Pydantic model
+                'tidak_hadir_cth': 0,
+                'tidak_hadir_alpa': 0
+            }
+
+        # Merge upah pokok data
+        for upah_row in results.get('upah_pokok_data', []):
+            emp_code, upah_dasar, upah_harian = upah_row
+            if emp_code in employee_data:
+                employee_data[emp_code].update({
+                    'upah_dasar': upah_dasar or 0,
+                    'gaji_pokok': upah_dasar or 0,  # Use upah_dasar as gaji_pokok
+                    'upah_pokok': upah_harian or 0
+                })
+
+        # Merge beras rate data
+        for beras_row in results.get('beras_rate_data', []):
+            emp_code, beras_rate = beras_row
+            if emp_code in employee_data:
+                employee_data[emp_code].update({
+                    'beras_rate': float(beras_rate or 0)
+                })
+
+        # Merge jabatan data
+        for jabatan_row in results.get('jabatan_data', []):
+            emp_code, jabatan_rate = jabatan_row
+            if emp_code in employee_data:
+                employee_data[emp_code].update({
+                    'jabatan_rate': float(jabatan_rate or 0)
+                })
+
+        # Merge masa kerja data (calculate years)
+        from datetime import datetime
+        current_date = datetime.now()
+        
+        for mk_row in results.get('masa_kerja_data', []):
+            emp_code, join_date_str = mk_row
+            if emp_code in employee_data and join_date_str:
+                try:
+                    # Parse join date (format might vary, assuming YYYY-MM-DD or similar)
+                    # If it's already a datetime object from driver, use it directly
+                    if isinstance(join_date_str, str):
+                        # Try common formats
+                        try:
+                            join_date = datetime.strptime(join_date_str, '%Y-%m-%d')
+                        except ValueError:
+                            try:
+                                join_date = datetime.strptime(join_date_str, '%Y-%m-%d %H:%M:%S')
+                            except ValueError:
+                                join_date = None
+                    else:
+                        join_date = join_date_str
+                        
+                    if join_date:
+                        # Calculate years difference
+                        years = current_date.year - join_date.year
+                        # Adjust if anniversary hasn't passed yet this year
+                        if (current_date.month, current_date.day) < (join_date.month, join_date.day):
+                            years -= 1
+                        
+                        employee_data[emp_code]['masa_kerja_tahun'] = max(0, years)
+                except Exception as e:
+                    print(f"Error calculating masa kerja for {emp_code}: {e}")
+                    employee_data[emp_code]['masa_kerja_tahun'] = 0
+
+        # Merge masa kerja amount data
+        for masa_kerja_amount_row in results.get('masa_kerja_amount_data', []):
+            emp_code, masa_kerja_jumlah = masa_kerja_amount_row
+            if emp_code in employee_data:
+                employee_data[emp_code].update({
+                    'masa_kerja_jumlah': float(masa_kerja_jumlah or 0)
+                })
+                # Calculate masa_kerja_amount based on standard rate
+                employee_data[emp_code]['masa_kerja_amount'] = masa_kerja_jumlah or 0.0
+
+        # Set HK and hari kerja for all employees from actual attendance data
+        # Based on reference code: hk_count = COUNT(*) WHERE IsPresent = 'true'
+        for att_row in results.get('attendance_data', []):
+            emp_code, hk_count = att_row
+            if emp_code in employee_data:
+                employee_data[emp_code].update({
+                    'jumlah_hk': hk_count or 0,  # This is the actual HK count (days present)
+                    'hari_kerja': hk_count or 0  # Same as hk_count in reference code
+                })
+
+        # Merge HK data (real attendance data)
+        for hk_row in results.get('hk_data', []):
+            emp_code, hari_kerja, cth, alpa = hk_row
+            if emp_code in employee_data:
+                employee_data[emp_code].update({
+                    'hari_kerja': hari_kerja or 0,
+                    'tidak_hadir_cth': cth or 0,
+                    'tidak_hadir_alpa': alpa or 0
+                })
+
+        # Merge cuti data
+        for cuti_row in results.get('cuti_data', []):
+            emp_code, tahunan, sakit_haid, haid, minggu, nasional, izin = cuti_row
+            if emp_code in employee_data:
+                employee_data[emp_code].update({
+                    'cuti_tahunan_hari': tahunan or 0,
+                    'cuti_sakit_haid_hari': sakit_haid or 0,
+                    'cuti_haid_hari': haid or 0,
+                    'cuti_minggu_hari': minggu or 0,
+                    'cuti_nasional_hari': nasional or 0,
+                    'cuti_izin_hari': izin or 0
+                })
+
+        # Calculate hari kerja (HK - Total Cuti) for all employees
+        # Based on reference code: hari_kerja = hk_count - (cuti_tahunan + cuti_sakit + hk_minggu + hk_nasional)
+        for emp_code, emp_data in employee_data.items():
+            hk_count = emp_data.get('jumlah_hk', 0)
+            total_cuti = (
+                (emp_data.get('cuti_tahunan_hari') or 0) +
+                (emp_data.get('cuti_sakit_haid_hari') or 0) +
+                (emp_data.get('cuti_minggu_hari') or 0) +
+                (emp_data.get('cuti_nasional_hari') or 0)
+            )
+            calculated_hari_kerja = max(0, hk_count - total_cuti)
+
+            # Use HK data if available, otherwise use calculated hari kerja
+            if emp_data.get('hari_kerja', 0) == 0:
+                emp_data['hari_kerja'] = calculated_hari_kerja
+
+        # Calculate total ketidakhadiran for all employees
+        for emp_code, emp_data in employee_data.items():
+            total_ketidakhadiran = (
+                (emp_data.get('cuti_tahunan_hari') or 0) +
+                (emp_data.get('cuti_sakit_haid_hari') or 0) +
+                (emp_data.get('cuti_minggu_hari') or 0) +
+                (emp_data.get('cuti_nasional_hari') or 0) +
+                (emp_data.get('cuti_izin_hari') or 0)
+            )
+            emp_data['total_ketidakhadiran'] = total_ketidakhadiran
+
+        # Merge brondol amounts from PR_LOOSEFRUIT_ARC
+        for brondol_row in results.get('brondol_data', []):
+            emp_code, amount = brondol_row
+            if emp_code in employee_data:
+                val = amount or 0
+                employee_data[emp_code]['premi_brondol'] = val
+                employee_data[emp_code]['premi']['premi_brondol'] = val
+
+        # Merge premi amounts (dynamic only)
+        for premi_row in results.get('premi_amounts', []):
+            emp_code, doc_desc, amount = premi_row
+            if emp_code in employee_data and doc_desc:
+                doc_desc_clean = str(doc_desc).strip()
+                
+                # 1. Handle premi_dynamic_X mapping (for older support)
+                if doc_desc_clean in dynamic_header_map:
+                    field_name = dynamic_header_map[doc_desc_clean]
+                    employee_data[emp_code][field_name] = (employee_data[emp_code][field_name] or 0) + (amount or 0)
+                
+                # 2. Handle premi nested dict mapping (for SimplifiedHeaderService)
+                normalized_name = self._normalize_premi_field_name(doc_desc_clean)
+                if normalized_name:
+                    current_val = employee_data[emp_code]['premi'].get(normalized_name, 0.0)
+                    employee_data[emp_code]['premi'][normalized_name] = current_val + (amount or 0)
+
+        # Merge tunjangan data
+        for tunj_row in results.get('tunjangan_data', []):
+            emp_code, doc_desc, amount = tunj_row
+            if emp_code in employee_data and doc_desc:
+                doc_desc_upper = doc_desc.upper()
+                if 'BERAS' in doc_desc_upper:
+                    employee_data[emp_code]['beras_jumlah'] = amount or 0
+                elif 'JABATAN' in doc_desc_upper:
+                    employee_data[emp_code]['jabatan_jumlah'] = amount or 0
+                elif 'MASA KERJA' in doc_desc_upper:
+                    employee_data[emp_code]['masa_kerja_jumlah'] = amount or 0
+                elif 'LEMBUR' in doc_desc_upper:
+                    employee_data[emp_code]['lembur_jumlah'] = amount or 0
+
+        # Merge lembur data (hours and amount from taskreg)
+        for lembur_row in results.get('lembur_data', []):
+            emp_code, hours, amount = lembur_row
+            if emp_code in employee_data:
+                # Accumulate if there's already data (though usually one source is enough)
+                # Prioritize this specific lembur query over the generic tunjangan query for lembur
+                employee_data[emp_code]['lembur_jam'] = float(hours or 0)
+                employee_data[emp_code]['lembur_jumlah'] = float(amount or 0)
+
+        # Merge individual allowance data (rates)
+        for beras_row in results.get('beras_rate_data', []):
+            emp_code, beras_rate = beras_row
+            if emp_code in employee_data:
+                employee_data[emp_code]['beras_rate'] = beras_rate or 0.0
+                # Calculate beras_jumlah if not already set
+                if employee_data[emp_code]['beras_jumlah'] == 0.0:
+                    employee_data[emp_code]['beras_jumlah'] = beras_rate or 0.0
+
+        for jabatan_row in results.get('jabatan_data', []):
+            emp_code, jabatan_rate = jabatan_row
+            if emp_code in employee_data:
+                employee_data[emp_code]['jabatan_rate'] = jabatan_rate or 0.0
+                # Calculate jabatan_jumlah if not already set
+                if employee_data[emp_code]['jabatan_jumlah'] == 0.0:
+                    employee_data[emp_code]['jabatan_jumlah'] = jabatan_rate or 0.0
+
+        # Merge potongan data
+        for pot_row in results.get('potongan_data', []):
+            emp_code, doc_desc, amount = pot_row
+            if emp_code in employee_data and doc_desc:
+                doc_desc_upper = doc_desc.upper()
+                if 'PPH21' in doc_desc_upper or 'PPH 21' in doc_desc_upper:
+                    employee_data[emp_code]['pot_pph21'] = amount or 0
+                elif 'KONTAN' in doc_desc_upper:
+                    employee_data[emp_code]['pot_kontan'] = amount or 0
+                elif 'THR' in doc_desc_upper:
+                    employee_data[emp_code]['pot_thr'] = amount or 0
+                elif 'PINJAM' in doc_desc_upper:
+                    employee_data[emp_code]['pot_pinjam'] = amount or 0
+                elif 'BPJS KES' in doc_desc_upper or 'KESEHATAN' in doc_desc_upper:
+                    employee_data[emp_code]['pot_bpjs_kes'] = amount or 0
+                elif 'BPJS PEK' in doc_desc_upper or 'KESEHATAN PEKERJA' in doc_desc_upper:
+                    employee_data[emp_code]['pot_bpjs_pek'] = amount or 0
+                elif 'BPJS MAJ' in doc_desc_upper or 'KESEHATAN MAJIKAN' in doc_desc_upper:
+                    employee_data[emp_code]['pot_bpjs_maj'] = amount or 0
+                elif 'SPSI' in doc_desc_upper:
+                    employee_data[emp_code]['pot_spsi'] = amount or 0
+                elif 'KOREKSI' in doc_desc_upper:
+                    employee_data[emp_code]['pot_koreksi'] = amount or 0
+                    # Also map to total fields for compatibility
+                    employee_data[emp_code]['pot_total_1'] = amount or 0
+                elif 'TOTAL' in doc_desc_upper:
+                    # Map various TOTAL fields to total_* fields
+                    if '1' in doc_desc:
+                        employee_data[emp_code]['pot_total_1'] = amount or 0
+                    elif '2' in doc_desc:
+                        employee_data[emp_code]['pot_total_2'] = amount or 0
+                    elif '3' in doc_desc:
+                        employee_data[emp_code]['pot_total_3'] = amount or 0
+                    elif '4' in doc_desc:
+                        employee_data[emp_code]['pot_total_4'] = amount or 0
+                    else:
+                        # Default to pot_total_1 for unspecified TOTAL
+                        employee_data[emp_code]['pot_total_1'] = (employee_data[emp_code].get('pot_total_1', 0) + (amount or 0))
+
+        # Calculate derived values using correct formulas from reference code
+        final_data = []
+        for emp_data in employee_data.values():
+            # Calculate totals
+            # Calculate total premi from the nested dict to ensure accuracy
+            premi_values = emp_data['premi'].values()
+            total_premi_val = sum(premi_values)
+            emp_data['total_premi'] = total_premi_val
+            # Also set total_premi inside the nested dict
+            emp_data['premi']['total_premi'] = total_premi_val
+
+            emp_data['total_tunjangan'] = (
+                emp_data['beras_jumlah'] + emp_data['jabatan_jumlah'] +
+                emp_data['masa_kerja_jumlah'] + emp_data['lembur_jumlah']
+            )
+
+            emp_data['total_potongan'] = (
+                emp_data['pot_pph21'] + emp_data['pot_kontan'] + emp_data['pot_thr'] +
+                emp_data['pot_pinjam'] + emp_data['pot_kl'] + emp_data['pot_bpjs_kes'] +
+                emp_data['pot_bpjs_pek'] + emp_data['pot_bpjs_maj'] +
+                emp_data['pot_total_1'] + emp_data['pot_total_2'] +
+                emp_data['pot_total_3'] + emp_data['pot_total_4']
+            )
+            
+            # Calculate upah kotor and bersih
+            hk_count = emp_data.get('jumlah_hk', 0) or 0
+            hari_kerja = emp_data.get('hari_kerja', 0) or 0
+            payrate = float(emp_data.get('upah_dasar', 0) or 0)
+
+            # Calculate gaji_pokok (from jumlah_hk) and upah_pokok (from hari_kerja)
+            emp_data['gaji_pokok'] = float(hk_count * payrate)
+            emp_data['upah_pokok'] = float(hari_kerja * payrate)
+
+            # Calculate jumlah_upah_kotor using gaji_pokok (from jumlah_hk * upah_dasar) not upah_pokok
+            # Convert all to float to avoid Decimal vs float issues
+            gaji_pokok_val = float(emp_data.get('gaji_pokok', 0))
+            total_tunjangan_val = float(emp_data.get('total_tunjangan', 0))
+            total_premi_val = float(emp_data.get('total_premi', 0))
+            emp_data['jumlah_upah_kotor'] = gaji_pokok_val + total_tunjangan_val + total_premi_val
+
+            # Calculate upah_bersih with proper handling for None values to satisfy Pydantic model
+            jumlah_upah_kotor = emp_data.get('jumlah_upah_kotor', 0) or 0
+            total_potongan = emp_data.get('total_potongan', 0) or 0
+            emp_data['upah_bersih'] = max(0.0, float(jumlah_upah_kotor - total_potongan))
+
+            # Ensure ALL required fields have proper types and values for PayrollRow model
+            # This prevents Pydantic validation errors
+            emp_data['no'] = int(emp_data.get('no', 0) or 0)
+            emp_data['jenis_kelamin'] = str(emp_data.get('jenis_kelamin', 'L') or 'L')
+            emp_data['nik'] = str(emp_data.get('nik', '') or '')
+            emp_data['nama'] = str(emp_data.get('nama', '') or '')
+            emp_data['phone'] = str(emp_data.get('phone', '-') or '-')
+            emp_data['upah_dasar'] = float(emp_data.get('upah_dasar', 0) or 0)
+            emp_data['hari_kerja'] = int(emp_data.get('hari_kerja', 0) or 0)
+            emp_data['upah_pokok'] = float(emp_data.get('upah_pokok', 0) or 0)
+            emp_data['cuti_tahunan_hari'] = int(emp_data.get('cuti_tahunan_hari', 0) or 0)
+            emp_data['cuti_sakit_haid_hari'] = int(emp_data.get('cuti_sakit_haid_hari', 0) or 0)
+            emp_data['cuti_haid_hari'] = int(emp_data.get('cuti_haid_hari', 0) or 0)
+            emp_data['cuti_minggu_hari'] = int(emp_data.get('cuti_minggu_hari', 0) or 0)
+            emp_data['cuti_nasional_hari'] = int(emp_data.get('cuti_nasional_hari', 0) or 0)
+            emp_data['cuti_izin_hari'] = int(emp_data.get('cuti_izin_hari', 0) or 0)
+            emp_data['jumlah_hk'] = int(emp_data.get('jumlah_hk', 0) or 0)
+            emp_data['gaji_pokok'] = float(emp_data.get('gaji_pokok', 0) or 0)
+            emp_data['beras_rate'] = float(emp_data.get('beras_rate', 0) or 0)
+            emp_data['beras_jumlah'] = float(emp_data.get('beras_jumlah', 0) or 0)
+            emp_data['jabatan_rate'] = float(emp_data.get('jabatan_rate', 0) or 0)
+            emp_data['jabatan_jumlah'] = float(emp_data.get('jabatan_jumlah', 0) or 0)
+            emp_data['masa_kerja_tahun'] = int(emp_data.get('masa_kerja_tahun', 0) or 0)
+            emp_data['masa_kerja_jumlah'] = float(emp_data.get('masa_kerja_jumlah', 0) or 0)
+            emp_data['masa_kerja_amount'] = float(emp_data.get('masa_kerja_amount', 0) or 0)
+            emp_data['lembur_jam'] = int(emp_data.get('lembur_jam', 0) or 0)
+            emp_data['lembur_jumlah'] = float(emp_data.get('lembur_jumlah', 0) or 0)
+            emp_data['total_tunjangan'] = float(emp_data.get('total_tunjangan', 0) or 0)
+            emp_data['premi_brondol'] = float(emp_data.get('premi_brondol', 0) or 0)
+            emp_data['total_premi'] = float(emp_data.get('total_premi', 0) or 0)
+            emp_data['jumlah_upah_kotor'] = float(emp_data.get('jumlah_upah_kotor', 0) or 0)
+            emp_data['upah_bersih'] = max(0.0, float(emp_data.get('upah_bersih', 0) or 0))
+
+            # Ensure all potongan fields have proper float values
+            emp_data['pot_pph21'] = float(emp_data.get('pot_pph21', 0) or 0)
+            emp_data['pot_kontan'] = float(emp_data.get('pot_kontan', 0) or 0)
+            emp_data['pot_thr'] = float(emp_data.get('pot_thr', 0) or 0)
+            emp_data['pot_pinjam'] = float(emp_data.get('pot_pinjam', 0) or 0)
+            emp_data['pot_kl'] = float(emp_data.get('pot_kl', 0) or 0)
+            emp_data['pot_bpjs_kes'] = float(emp_data.get('pot_bpjs_kes', 0) or 0)
+            emp_data['pot_bpjs_pek'] = float(emp_data.get('pot_bpjs_pek', 0) or 0)
+            emp_data['pot_bpjs_maj'] = float(emp_data.get('pot_bpjs_maj', 0) or 0)
+            emp_data['pot_total_1'] = float(emp_data.get('pot_total_1', 0) or 0)
+            emp_data['pot_total_2'] = float(emp_data.get('pot_total_2', 0) or 0)
+            emp_data['pot_total_3'] = float(emp_data.get('pot_total_3', 0) or 0)
+            emp_data['pot_total_4'] = float(emp_data.get('pot_total_4', 0) or 0)
+            emp_data['total_potongan'] = float(emp_data.get('total_potongan', 0) or 0)
+            emp_data['pot_spsi'] = float(emp_data.get('pot_spsi', 0) or 0)
+            emp_data['pot_koreksi'] = float(emp_data.get('pot_koreksi', 0) or 0)
+
+            # Ensure BPJS fields are properly set
+            emp_data['pot_bpjs_kesehatan_pekerja'] = float(emp_data.get('pot_bpjs_kesehatan_pekerja', 0) or 0)
+            emp_data['pot_bpjs_kesehatan_majikan'] = float(emp_data.get('pot_bpjs_kesehatan_majikan', 0) or 0)
+            emp_data['pot_bpjs_pensiun_pekerja'] = float(emp_data.get('pot_bpjs_pensiun_pekerja', 0) or 0)
+            emp_data['pot_bpjs_pensiun_majikan'] = float(emp_data.get('pot_bpjs_pensiun_majikan', 0) or 0)
+            emp_data['pot_bpjs_jumlah'] = float(emp_data.get('pot_bpjs_jumlah', 0) or 0)
+            emp_data['pot_bpjs_pekerja_total'] = float(emp_data.get('pot_bpjs_pekerja_total', 0) or 0)
+            emp_data['pot_bpjs_kesehatan_total'] = float(emp_data.get('pot_bpjs_kesehatan_total', 0) or 0)
+            emp_data['pot_bpjs_pensiun_total'] = float(emp_data.get('pot_bpjs_pensiun_total', 0) or 0)
+
+            # Ensure dynamic potongan fields are properly set
+            emp_data['pot_dynamic_1'] = float(emp_data.get('pot_dynamic_1', 0) or 0)
+            emp_data['pot_dynamic_2'] = float(emp_data.get('pot_dynamic_2', 0) or 0)
+            emp_data['pot_dynamic_3'] = float(emp_data.get('pot_dynamic_3', 0) or 0)
+            emp_data['pot_dynamic_4'] = float(emp_data.get('pot_dynamic_4', 0) or 0)
+            emp_data['pot_dynamic_5'] = float(emp_data.get('pot_dynamic_5', 0) or 0)
+            emp_data['pot_dynamic_6'] = float(emp_data.get('pot_dynamic_6', 0) or 0)
+            emp_data['pot_dynamic_7'] = float(emp_data.get('pot_dynamic_7', 0) or 0)
+
+            # Ensure attendance fields are properly set
+            emp_data['tidak_hadir_cth'] = int(emp_data.get('tidak_hadir_cth', 0) or 0)
+            emp_data['tidak_hadir_alpa'] = int(emp_data.get('tidak_hadir_alpa', 0) or 0)
+
+            # Convert to list for final sorting
+            final_data.append(emp_data)
+            
+        # Sort by No/Name
+        final_data.sort(key=lambda x: x['nama'])
+        
+        # Assign NO
+        for idx, row in enumerate(final_data, 1):
+            row['no'] = idx
+
+        return {
+            'data_rows': final_data,
+            'premi_headers': raw_headers,
+            'total_employees': len(final_data),
+            'execution_time_ms': (time.perf_counter() - time.perf_counter()) * 1000  # This will be updated in the calling function
+        }
+
+    @staticmethod
+    def get_instance() -> 'ThreadedDataExtractor':
+        """Singleton pattern for ThreadedDataExtractor"""
+        if not hasattr(ThreadedDataExtractor, '_instance'):
+            ThreadedDataExtractor._instance = ThreadedDataExtractor()
+        return ThreadedDataExtractor._instance

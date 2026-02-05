@@ -6,6 +6,7 @@ import { UserRole } from "../types/user";
 import { Config } from "../config";
 import { deductionAdjustmentService } from "../services/deductionAdjustmentService";
 import { luasAreaService } from "../services/luasAreaService";
+import { thumbprintService } from "../services/thumbprintService";
 
 const authService = AuthService.getInstance();
 
@@ -219,6 +220,23 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             year: t.Number(),
             division_code: t.String(),
             value: t.Number()
+        })
+    })
+    // --- Get Available Thumbprint Months ---
+    .get("/thumbprint-months", async () => {
+        const months = await thumbprintService.getAvailableMonths();
+        return { success: true, months };
+    })
+    // --- Get Thumbprint Comparison ---
+    .get("/thumbprint-comparison", async ({ query }) => {
+        const month = parseInt(query.month);
+        const year = parseInt(query.year);
+        const comparison = await thumbprintService.getThumbprintComparison(month, year);
+        return { success: true, ...comparison };
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String()
         })
     })
     // --- Update PPH21 Adjustment ---

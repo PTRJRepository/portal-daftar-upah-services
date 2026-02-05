@@ -147,8 +147,7 @@ body.print-mode-large {
         background-color: #f0f0f0 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        overflow: visible !important;
         white-space: nowrap !important;
     }
 
@@ -174,8 +173,8 @@ body.print-mode-large {
         font-weight: 600 !important;
         border: 1px solid #000 !important;
         text-align: center !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        overflow: visible !important;
+        /* No ellipsis for numeric data */
         white-space: nowrap !important;
         word-break: keep-all !important;
     }
@@ -371,6 +370,37 @@ body.print-mode-large {
     .wsp-kpi-grid,
     .wsp-signature-section {
         page-break-inside: avoid !important;
+    }
+
+    /* ============================================
+       AG GRID CELLS - No ellipsis on numeric data
+       ============================================ */
+    .ag-cell,
+    .ag-cell-value {
+        overflow: visible !important;
+        text-overflow: clip !important;
+        white-space: nowrap !important;
+    }
+
+    /* AG Grid containers */
+    .ag-theme-alpine,
+    .ag-root-wrapper,
+    .ag-center-cols-container {
+        overflow: visible !important;
+    }
+
+    /* AG Grid rows */
+    .ag-row {
+        overflow: visible !important;
+    }
+
+    /* Summary report grid container */
+    .summary-report-grid-container {
+        overflow: visible !important;
+    }
+
+    .summary-report-grid-container .ag-theme-alpine {
+        overflow: visible !important;
     }
 }
 

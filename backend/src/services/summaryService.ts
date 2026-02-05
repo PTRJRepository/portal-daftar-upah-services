@@ -396,7 +396,8 @@ export class SummaryService {
                 total_lembur_current: curr.total_lembur,
                 previous_month: {
                     gaji: prevGaji,
-                    tbs_weight: prev.total_ffb_weight || 0
+                    tbs_weight: prev.total_ffb_weight || 0,
+                    thumb_print: prev.thumb_print || 0
                 },
                 current_month: {
                     gaji: currGaji,
@@ -510,7 +511,7 @@ export class SummaryService {
     public async getImpactReportData(month: number, year: number): Promise<any> {
         const prevMonth = month === 1 ? 12 : month - 1;
         const prevYear = month === 1 ? year - 1 : year;
-        const prevYear = month === 1 ? year - 1 : year;
+
 
         // Load payrates
         const payrates = await this.loadJsonData('payrate.json') || {};
@@ -593,9 +594,6 @@ export class SummaryService {
         const adjustedMainRows = await luasAreaService.applyLuasAreaAdjustments(month, year, mainRows);
 
         return {
-            success: true,
-            current_period: { month, year },
-            previous_period: { month: prevMonth, year: prevYear },
             success: true,
             current_period: { month, year },
             previous_period: { month: prevMonth, year: prevYear },

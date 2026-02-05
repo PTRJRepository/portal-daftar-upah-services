@@ -293,11 +293,29 @@ body {
     -webkit-print-color-adjust: exact !important;
   }
 
-  /* Fix for AG Grid in print mode */
+  /* Fix for AG Grid in print mode - No ellipsis on numeric data */
   .ag-theme-alpine,
   .ag-root-wrapper {
     width: 100% !important;
     max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* AG Grid cells - No ellipsis */
+  .ag-cell,
+  .ag-cell-value {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+  }
+
+  /* AG Grid containers */
+  .ag-center-cols-container {
+    overflow: visible !important;
+  }
+
+  /* AG Grid rows */
+  .ag-row {
     overflow: visible !important;
   }
 }

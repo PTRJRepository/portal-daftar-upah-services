@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import '../styles/summary-wages-print.css';
+import PrintModeSelector from './common/PrintModeSelector';
+import { initPrintMode } from '../utils/printOptimizer';
 
 /**
  * SummaryWagesReport - A custom print-ready financial statement component
@@ -15,8 +17,13 @@ export default function SummaryWagesReport({
     divisionName = '',
     onBack,
     onExport,
-    loading = false``
+    loading = false
 }) {
+    // Initialize print mode on mount
+    useEffect(() => {
+        initPrintMode();
+    }, []);
+
     // Format number with thousand separators
     const formatNumber = (value) => {
         if (value === null || value === undefined || value === '') return '-';
@@ -85,7 +92,8 @@ export default function SummaryWagesReport({
                 <button onClick={onBack} className="sw-btn">
                     BACK
                 </button>
-                <div className="btn-group">
+                <div className="btn-group" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <PrintModeSelector onPrint={handlePrint} />
                     <button onClick={handlePrint} className="sw-btn">
                         PRINT REPORT
                     </button>
