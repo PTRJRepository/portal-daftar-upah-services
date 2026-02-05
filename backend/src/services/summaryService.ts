@@ -650,8 +650,8 @@ export class SummaryService {
             if (filterType === 'ijl' && curr.division_code !== 'IJL') continue;
             if (filterType === 'non_ijl' && curr.division_code === 'IJL') continue;
 
-            const currPremi = curr.total_premi_excluding_special || 0;
-            const prevPremi = prev.total_premi_excluding_special || 0;
+            const currPremi = curr.total_premi || 0;
+            const prevPremi = prev.total_premi || 0;
             const currOt = curr.total_lembur || 0;
             const prevOt = prev.total_lembur || 0;
 
