@@ -343,10 +343,12 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 }
             */
 
+            const includeVirtual = query.include_virtual === 'true';
+
             // Use SERVER_PROFILE_2 for payroll data (main payroll database)
             // Changed from SERVER_PROFILE_1 per user requirement: payroll data is on PROFILE_2
-            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with SERVER_PROFILE_2`);
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_2");
+            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with SERVER_PROFILE_2, includeVirtual=${includeVirtual}`);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_2", includeVirtual);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -465,7 +467,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         query: t.Object({
             div: t.String(),
             month: t.String(),
-            year: t.String()
+            year: t.String(),
+            include_virtual: t.Optional(t.String())
         })
     })
     // --- Locked Gangs List ---

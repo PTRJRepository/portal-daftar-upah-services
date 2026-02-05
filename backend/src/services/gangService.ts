@@ -97,13 +97,14 @@ export class GangService {
         return null;
     }
 
-    public async fetchGangs(division?: string, search?: string): Promise<Gang[]> {
+    public async fetchGangs(division?: string, search?: string, includeVirtual: boolean = false): Promise<Gang[]> {
         try {
             let gangs: Gang[] = [];
 
             if (division) {
                 const locCode = this.convertDivisionToLocCode(division);
-                gangs = await divisionDefinition.getGangsForDivision(locCode);
+                // getGangsForDivision(divisionCode, excludeVirtualGangs)
+                gangs = await divisionDefinition.getGangsForDivision(locCode, !includeVirtual);
             } else {
                 // Fetch all gangs
                 const rows = await this.db.query<{ GangCode: string, Description: string, LocCode: string }>(`

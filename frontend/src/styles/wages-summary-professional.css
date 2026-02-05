@@ -852,6 +852,23 @@
         print-color-adjust: exact !important;
     }
 
+    /* Print Fix for Signature Stacking */
+    .wsp-signature-block {
+        max-width: none !important;
+        min-width: 180px !important;
+        margin-bottom: 0 !important;
+        flex: 1 !important;
+    }
+
+    .wsp-signature-name {
+        white-space: nowrap !important;
+        font-size: 0.7rem !important;
+        border-top: 1px solid #000 !important;
+        padding-top: 0.2rem !important;
+        width: 80% !important;
+        margin: 0 auto !important;
+    }
+
     .wsp-table tr.subtotal td:first-child {
         text-align: left !important;
     }

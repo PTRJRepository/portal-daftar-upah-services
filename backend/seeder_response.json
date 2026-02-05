@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "data": {
+    "processed": [],
+    "division_totals": {
+      "WKS_PG": 0
+    },
+    "total_divisions": 1,
+    "month": 1,
+    "year": 2026,
+    "timestamp": "2026-02-05T01:59:30.016Z"
+  }
+}

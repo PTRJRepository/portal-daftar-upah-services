@@ -176,7 +176,8 @@ export class DataExtractorService {
         gangCode: string = "ALL",
         divisionCode?: string,
         specificEmpCode: string | null = null,
-        serverProfile?: string
+        serverProfile?: string,
+        includeVirtualGangs: boolean = false
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -201,7 +202,7 @@ export class DataExtractorService {
             // Use UPPER for case-insensitive comparison and RTRIM to handle trailing spaces
             gangCondition = `UPPER(RTRIM(gl.GangCode)) = UPPER('${gangCode.trim()}')`;
         } else if (divisionCode) {
-            const gangs = await gangService.fetchGangs(divisionCode);
+            const gangs = await gangService.fetchGangs(divisionCode, undefined, includeVirtualGangs);
             if (gangs.length > 0) {
                 // Use UPPER for case-insensitive comparison and RTRIM for trailing spaces
                 const conditions = gangs.map((gang: { gang_code: string }) => `UPPER(RTRIM(gl.GangCode)) = UPPER('${gang.gang_code.trim()}')`).join(' OR ');
@@ -297,6 +298,10 @@ export class DataExtractorService {
             // ... (Rest of existing logic mostly unchanged until row creation)
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
             const hari_kerja = Math.max(0, hk - totalCuti);
+
+            // [FILTER] Exclude employees where kehadiran (hari_kerja) = 0
+            // kehadiran is calculated from hari_kerja, filter out employees with no actual work days
+            if (hari_kerja <= 0) continue;
 
             // [MODIFIED] Use database amount for basic salary
             const upah_pokok = attData.total_amount_rp || 0;
@@ -463,7 +468,7 @@ export class DataExtractorService {
                 loc_code: emp.loc_code,
                 gang_code: emp.gang_code,
                 upah_dasar: empUpahDasar,
-                jumlah_hk: effective_hk,
+                jumlah_hk: hk, // [UPDATED] Use Total HK (including Sundays & Holidays) as requested
                 total_jam_kerja: attData.total_hours,
                 has_shortage: attData.shortage_count > 0,
                 shortage_details: attData.shortage_details || [],
@@ -504,6 +509,9 @@ export class DataExtractorService {
                 koreksi_hk,
                 pot_spsi,
                 pot_pph21,
+                // [ALIAS] Ensure PPH21 and SPSI are available as keys expected by AggregationService/Frontend
+                pph21: pot_pph21,
+                spsi: pot_spsi,
                 pot_koreksi,
                 premi_koreksi: pot_koreksi,
                 potongan_upah_kotor_total: pot_koreksi,
@@ -997,7 +1005,13 @@ export class DataExtractorService {
             // Real PREMI_PPH items (TaskDesc='ACCRUALS-CHECKROLL') are handled by separate query below
             // Items with TaskDesc like '(DE) POTONGAN PREMI' should be processed normally based on DocDesc
 
-            const { key, title } = this.normalizePotonganName(r.doc_desc || "");
+            const { key, title } = this.normalizePotonganName(r.doc_desc || "", r.task_desc);
+
+            // [DEBUG] Log PPH items
+            if (r.doc_desc?.toUpperCase().includes("PPH")) {
+                console.log(`[DEBUG_PPH] Emp: ${emp} | Doc: "${r.doc_desc}" | Task: "${r.task_desc}" | Key: "${key}" | Amt: ${r.amount}`);
+            }
+
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
             // Store title mapping for dynamic headers
             if (!titleMap[key]) {
@@ -1269,8 +1283,9 @@ export class DataExtractorService {
         return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")} `;
     }
 
-    private normalizePotonganName(docDesc: string): { key: string; title: string } {
+    private normalizePotonganName(docDesc: string, taskDesc?: string | null): { key: string; title: string } {
         const upper = docDesc.toUpperCase().trim();
+        const upperTask = taskDesc ? taskDesc.toUpperCase().trim() : "";
         const cleanTitle = docDesc.trim();
 
         // [RULE 1] Handle KOREKSI variations separately
@@ -1282,10 +1297,17 @@ export class DataExtractorService {
             return { key, title: cleanTitle };
         }
 
-        // [RULE 2] Static: PPH (but NOT if it contains PREMI - handled earlier)
+        // [RULE 2] Static: PPH21 (PPH yang dipotong) - MUST CHECK BEFORE POTONGAN rule
+        // Pattern: DocDesc mengandung "PPH" atau "PAJAK" TAPI tidak mengandung "PREMI"
+        // Examples:
+        //   - "PPH21" → PPH21 ✓
+        //   - "POTONGAN PPH 21" → PPH21 ✓ (contains PPH, not PREMI)
+        //   - "PREMI PPH 21" → PREMI_PPH_21 ✗ (contains PREMI)
+        //   - "PREMI PPH" → PREMI_PPH ✗ (contains PREMI)
         if (upper.includes("PPH") || upper.includes("PAJAK")) {
-            // Double check: if contains PREMI, don't treat as PPH21
-            if (upper.includes("PREMI")) {
+            // EXCLUDE: If contains PREMI in DocDesc or TaskDesc, don't treat as PPH21
+            // User Request: "kecualikan kata premi,,jadi misal docDesc (premi pph tidak masuk ke pph21)"
+            if (upper.includes("PREMI") || upperTask.includes("PREMI")) {
                 const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
                 return { key, title: cleanTitle };
             }
@@ -1300,6 +1322,7 @@ export class DataExtractorService {
         // [RULE 4] Dynamic POTONGAN X patterns
         // Pattern: POTONGAN, POTONGAN A, POTONGAN BERAS, POT X, etc.
         // Each variation becomes a separate column in POTONGAN UPAH BERSIH
+        // NOTE: "POTONGAN PPH 21" is handled by RULE 2 (PPH check above)
         if (upper.startsWith("POTONGAN") || upper.startsWith("POT ") || upper.startsWith("POT_")) {
             const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
             return { key, title: cleanTitle };

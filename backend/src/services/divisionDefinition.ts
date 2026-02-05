@@ -36,19 +36,19 @@ export class DivisionDefinition {
         },
         "WKS_PG": {
             "name": "Workshop Parit Gunung",
-            "source_division": null,
+            "source_division": null, // Use dynamic to find gangs, and manual aggregation entries
             "pattern": null,
-            "description_pattern": "workshop.*(parit|pge|p\\.g)",
+            "description_pattern": "workshop.*(parit|pge|p\\.g|harapan\\s*mukti)",
             "exclude_from_source": true,
-            "description": "Divisi Workshop Parit Gunung - Gang dengan Description mengandung 'workshop' DAN 'parit/PGE'"
+            "description": "Divisi Workshop Parit Gunung"
         },
         "WKS_AR": {
             "name": "Workshop Air Ruak",
             "source_division": null,
             "pattern": null,
-            "description_pattern": "workshop.*(air\\s*ruak|are|a\\.r)",
+            "description_pattern": "workshop.*(air\\s*ruak|are|a\\.r)|.*traksi.*air\\s*ruak",
             "exclude_from_source": true,
-            "description": "Divisi Workshop Air Ruak - Gang dengan Description mengandung 'workshop' DAN 'air ruak/ARE'"
+            "description": "Divisi Workshop Air Ruak"
         },
         /* "WORKSHOP": {
             "name": "Workshop All",

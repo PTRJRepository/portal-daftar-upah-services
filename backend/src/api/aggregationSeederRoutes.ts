@@ -575,10 +575,10 @@ import { Config } from "../config";
  * Fetch payroll data using the raw-tree endpoint via HTTP
  * This ensures aggregation matches exactly what's displayed in the reports
  */
-async function fetchRawTreeData(division: string, month: number, year: number, authToken: string) {
-    console.log(`[AggregationSeeder] Fetching raw tree data for ${division} (${month}/${year})...`);
+async function fetchRawTreeData(division: string, month: number, year: number, authToken: string, includeVirtual: boolean = false) {
+    console.log(`[AggregationSeeder] Fetching raw tree data for ${division} (${month}/${year}) includeVirtual=${includeVirtual}...`);
 
-    const url = `http://localhost:${Config.PORT}/backend/upah/payroll/locked/report/raw-tree?div=${division}&month=${month}&year=${year}`;
+    const url = `http://localhost:${Config.PORT}/backend/upah/payroll/locked/report/raw-tree?div=${division}&month=${month}&year=${year}&include_virtual=${includeVirtual}`;
 
     try {
         const response = await fetch(url, {
@@ -809,7 +809,8 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
             console.log(`[AggregationSeeder] Fetching data for source division: ${sourceDiv}`);
 
             // Fetch payroll data from the raw-tree endpoint via HTTP
-            const rawTreeResponse: any = await fetchRawTreeData(sourceDiv, month, year, authToken);
+            // Pass includeVirtual=true if the target division is virtual, so we get the hidden gangs
+            const rawTreeResponse: any = await fetchRawTreeData(sourceDiv, month, year, authToken, isVirtual);
 
             if (!rawTreeResponse.success || !rawTreeResponse.data) {
                 console.log(`[AggregationSeeder] Skipping ${sourceDiv}: No data available`);
@@ -833,6 +834,9 @@ async function seedAggregationToDb(division: string | undefined, month: number, 
                 if (isVirtual && !virtualGangCodes.has(gangCode)) {
                     console.log(`[AggregationSeeder] Skipping ${gangCode}: Not in virtual division ${div}`);
                     continue;
+                } else if (isVirtual === false) {
+                    // For non-virtual, we might need to filter OUT virtual gangs if includeVirtual was false?
+                    // But here we rely on what raw-tree gave us.
                 }
 
                 // Skip if no employees with HK > 0
