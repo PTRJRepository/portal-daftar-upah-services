@@ -15,12 +15,17 @@ refactor_production/
 │       ├── api/                  # Route handlers (payroll, summary, auth, etc.)
 │       ├── services/             # Business logic (singleton pattern)
 │       ├── db/                   # SQL Gateway client (not direct DB connection)
-│       └── config.ts             # Environment configuration
+│       ├── config.ts             # Environment configuration
+│       └── scripts/              # Utility scripts for debugging/testing
 ├── frontend/                     # React + Vite + AG Grid Enterprise
 │   └── src/
 │       ├── pages/                # Page components
 │       ├── services/             # API client with Axios
-│       └── components/           # Reusable components (AgGridWrapper, etc.)
+│       ├── components/           # Reusable components (AgGridWrapper, etc.)
+│       ├── context/              # React contexts (Auth, Header, GangFilter)
+│       ├── hooks/                # Custom React hooks
+│       └── utils/                # Utility functions
+├── backend/data/                 # Data files (thumbprint_data.json)
 └── dokumentasi/                  # Indonesian documentation
 ```
 
@@ -31,6 +36,8 @@ The backend does NOT connect directly to MSSQL. Instead, it queries a **Python S
 ```
 Backend (Bun) → SQL Gateway API (Python) → MSSQL (db_ptrj, extend_db_ptrj, VenusHR14)
 ```
+
+**Gateway Endpoint:** `POST {DB_API_URL}/v1/query` with body `{ sql, params, server, database }`
 
 **Why this matters:** All queries must use the format expected by the gateway, with proper parameter conversion.
 
@@ -50,7 +57,9 @@ cd frontend
 npm run dev          # Start dev server (port 5173)
 npm run dev:network  # Expose on network (0.0.0.0:5175)
 npm run dev:proxy    # Enable proxy mode with /backend/upah prefix
+npm run dev:lan      # LAN mode with custom backend host
 npm run build        # Build for production
+npm run test         # Run vitest tests
 ```
 
 ### Fixing Frontend Issues
@@ -60,6 +69,15 @@ cd frontend
 rm -rf node_modules/.vite
 npm install
 # Then restart dev server
+```
+
+### Running Backend Scripts
+The `backend/src/scripts/` directory contains utility scripts:
+```bash
+cd backend
+bun run src/scripts/seed_aggregation.ts       # Seed aggregation data
+bun run src/scripts/get_token.ts              # Generate auth token
+bun run src/scripts/check_aggregation_data.ts # Debug aggregation
 ```
 
 ## Database Connection Rules (CRITICAL)
@@ -75,7 +93,7 @@ npm install
 ### Connection Methods
 
 ```typescript
-// Default payroll database (db_ptrj with SERVER_PROFILE_2 in prod)
+// Default payroll database (db_ptrj with SERVER_PROFILE_2 in prod, SERVER_PROFILE_1 in dev)
 const db = Database.getInstance();
 
 // Extended database (extend_db_ptrj with SERVER_PROFILE_1)
@@ -87,6 +105,8 @@ const db = Database.getVenusInstance();
 // Mill database for WM_TICKET (db_ptrj_mill with SERVER_PROFILE_3)
 const db = Database.getMillInstance();
 ```
+
+**Note:** `RUN_MODE=prod` automatically uses `SERVER_PROFILE_2` for main database; `RUN_MODE=dev` uses `SERVER_PROFILE_1`.
 
 ### SQL Query Rules
 
@@ -105,6 +125,13 @@ const result = await db.query(`
 ```
 
 The `prepareParams()` function auto-converts `?` → `@p0`, `@p1`, etc.
+
+### Database Client Features
+
+- **Auto-retry**: Failed queries retry up to `DB_QUERY_RETRIES` (default: 3) times
+- **Transaction support**: `db.transaction([{ sql, params }, ...])` for batch operations
+- **Query helpers**: `queryOne<T>()`, `count()` for common patterns
+- **Instance caching**: Multiple database profiles cached in singleton Map
 
 ## API Routing Structure
 
@@ -168,6 +195,17 @@ export const dataExtractorService = DataExtractorService.getInstance();
 | `gangService` | Fetch gangs/divisions from HR_GANG |
 | `headerService` | Generate dynamic AG Grid headers |
 | `authService` | JWT token verification |
+| `lemburCalculator` | Calculate overtime (lembur) amounts |
+| `pph21TerService` | Calculate PPH21 tax using TER method |
+| `employeeDetailService` | Fetch employee detail information |
+| `employeeEstateService` | Manage job title/estate data |
+| `tunjanganService` | Handle allowance calculations |
+| `thumbprintService` | Manage thumbprint data storage/retrieval |
+| `cacheService` | Cache management for frequently accessed data |
+| `currentPeriodService` | Get current payroll period |
+| `deductionAdjustmentService` | Handle deduction adjustments |
+| `luasAreaService` | Calculate area-based values |
+| `divisionDefinition` | Define division hierarchies |
 
 ## Data Flow Example: Payroll Report
 
@@ -210,6 +248,63 @@ The following fields are currently **NULL** - not yet implemented:
 | `premi_kinerja` | Dynamic Premi (Kinerja) | Not populated |
 | `total_koreksi` | Correction Table | Not populated |
 
+## Important Business Rules
+
+### PTKP Status Mapping (Tax Classification)
+
+PTKP (Penghasilan Tidak Kena Pajak) status is derived from `beras_rate` (RiceRation) in HR_PAYROLL:
+
+| beras_rate | PTKP Status | TER Category |
+|------------|-------------|--------------|
+| 2250 | TK/0 | TER A |
+| 3250 | TK/1 | TER A |
+| 4200 | TK/2 | TER B |
+| 3750 | K/0 | TER A |
+| 4650 | K/1 | TER B |
+| 5550 | K/2 | TER B |
+| 6450 | K/3 | TER C |
+
+**TER Categories:**
+- **TER A**: TK/0, TK/1, K/0 (5% rate)
+- **TER B**: TK/2, K/1, K/2 (15% rate)
+- **TER C**: K/3 (25% rate)
+
+### Premium (Premi) Filtering Rules
+
+For dynamic premium header generation, items are **excluded** if DocDesc contains:
+- `PPH`, `PPH21`, `PPH 21`
+- `LEMBUR` (overtime)
+- `PRUN`, `PRUNING` (aggregated to static `premi_pruning` column)
+- `KOREKSI`, `KOREKSI PANEN`, `POTONGAN KOREKSI`
+- `SPSI`
+- `TUNJANGAN JABATAN`, `TUNJANGAN MASA KERJA`
+- `TUNJANGAN BERAS`
+- `BRONDOL` (aggregated to static `premi_brondol` column)
+
+**Static Premium Columns:**
+- `premi_brondol`: Aggregates all BRONDOL-related items
+- `premi_pruning`: Aggregates all PRUN-related items (PRUNING, TUNJANGAN PRUNING, etc.)
+
+### Deduction (Potongan) Filtering Rules
+
+For dynamic deduction header generation, items are **excluded** if DocDesc contains:
+- Patterns starting with `POT%`
+- `SPSI`
+- `BERAS`
+- `JABATAN`
+- `MASA`
+- `LEMBUR`
+- `PPH%` (broader than just PPH21)
+
+### Employee Filtering Rules
+
+Employees are **excluded** from payroll reports when:
+- `hari_kerja <= 0` (no actual work days after subtracting leave)
+
+Applied in: `dataExtractorService.ts` line ~303
+
+For totals calculation, only employees with `jumlah_hk > 0` are included.
+
 ## Configuration
 
 ### Environment Variables
@@ -230,6 +325,9 @@ DB_API_URL=http://localhost:8001
 DB_API_KEY=
 DB_PROFILE=SERVER_PROFILE_2
 DB_DATABASE=db_ptrj
+DB_CONN_TIMEOUT=60
+DB_QUERY_TIMEOUT=30
+DB_QUERY_RETRIES=3
 
 # Extended Database (Aggregation)
 DB_EXTEND_DATABASE=extend_db_ptrj
@@ -238,6 +336,10 @@ DB_EXTEND_PROFILE=SERVER_PROFILE_1
 # VenusHR14 (Employee/Mill)
 DB_VENUS_DATABASE=VenusHR14
 DB_VENUS_PROFILE=SERVER_PROFILE_3
+
+# Mill Database (FFB Weight)
+DB_MILL_DATABASE=db_ptrj_mill
+DB_MILL_PROFILE=SERVER_PROFILE_3
 
 # Auth
 JWT_SECRET=...
@@ -260,6 +362,11 @@ DEFAULT_YEAR=2025
 - **RUN_MODE=prod**: Uses `SERVER_PROFILE_2` for payroll
 - **RUN_MODE=dev**: Uses `SERVER_PROFILE_1` for development
 - **USE_PROXY=true**: Strips `/backend/upah` prefix, sets `AUTH_MODE=external`
+- **TEST_MODE=true**: Enables test mode with default values for gang/month/year
+
+### Thumbprint Data
+
+The system stores thumbprint data in `backend/data/thumbprint_data.json`. This file contains division-specific thumbprint values indexed by period (YYYY-MM format). The `ThumbprintService` handles reading/writing this data.
 
 ## Frontend: AG Grid Integration
 
@@ -300,6 +407,49 @@ WHERE month = ? AND year = ? AND division_code = ?
 
 **Always use `SERVER_PROFILE_1` for summary/analysis queries.**
 
+## Frontend: React Context System
+
+The frontend uses React Context for state management:
+
+| Context | Purpose |
+|---------|---------|
+| `AuthContext` | Authentication state, user info, login/logout |
+| `HeaderContext` | AG Grid column definitions |
+| `GangFilterContext` | Gang selection filter state |
+
+## Frontend: Page Structure
+
+| Page | Route | Purpose |
+|------|-------|---------|
+| `LoginPage` | `/login` | Authentication |
+| `DashboardHome` | `/` | Dashboard landing |
+| `MainPage` | `/payroll` | Main payroll report with AG Grid |
+| `LockedMainPage` | `/locked` | Public payroll view (relaxed auth) |
+| `SummaryReportPage` | `/summary` | Summary by division |
+| `AnalysisReportPage` | `/analysis` | Analysis report |
+| `EmployeeDetailPage` | `/employee/:nik` | Individual employee details |
+| `WagesSummaryRebinmasPage` | `/wages-summary-rebinmas` | Rebinmas wage summary |
+| `WagesSummaryIJLPage` | `/wages-summary-ijl` | IJL wage summary |
+| `HighEarnerReportPage` | `/high-earner` | High earner report |
+| `ImpactReportPage` | `/impact` | Impact analysis |
+| `SalaryRangeDetailPage` | `/salary-range` | Salary range details |
+| `AggregationSeederPage` | `/admin/aggregation` | Aggregation management |
+
+## Common Components
+
+| Component | Purpose |
+|-----------|---------|
+| `AgGridWrapper` | AG Grid Enterprise wrapper with themes |
+| `GangFilter` | Gang selection dropdown |
+| `MonthPicker` | Month/year selection |
+| `DivisionTabs` | Division-based navigation tabs |
+| `SelectionStatusBar` | Show selected rows count |
+| `SummaryKPICards` | KPI cards for summary page |
+| `AggregationSeederModal` | Modal for triggering aggregation seed |
+| `TestModePanel` | Test mode controls |
+| `CustomPayrollTable` | Custom table rendering for payroll data |
+| `SalaryRangeModal` | Salary range analysis modal |
+
 ## Aggregation Seeder
 
 Triggers seeding of aggregation data from raw payroll to `extend_db_ptrj`.
@@ -309,3 +459,46 @@ Triggers seeding of aggregation data from raw payroll to `extend_db_ptrj`.
 - Summary Report page: Yellow "Seed Aggregation" button
 
 **Component:** `AggregationSeederModal`
+
+## Server Architecture Details
+
+### Dual Routing Support
+
+The backend mounts routes under two prefixes for compatibility:
+
+```
+/payroll/*        → Direct access (internal)
+/backend/upah/*   → Proxy access (external/reverse proxy)
+```
+
+This allows the same backend to work:
+1. **Directly** in development (frontend talks to backend on port 8002)
+2. **Behind reverse proxy** in production (proxy strips `/backend/upah` prefix)
+
+### Static File Serving
+
+The backend serves the frontend build in production:
+- `/` → `../frontend/dist/index.html`
+- `/assets/*` → `../frontend/dist/assets/*`
+- `/images/*` → `../frontend/dist/images/*`
+
+### SPA Fallback
+
+Unknown routes (non-API) return `index.html` for client-side routing:
+- API paths (`/backend/*`, `/api/*`, `/payroll/*`) return JSON 404
+- All other paths serve `index.html`
+
+### CORS Configuration
+
+- Origin: `true` (reflects request origin)
+- Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD
+- Credentials: enabled
+- Exposed Headers: `X-Total-Count`, `X-Execution-Time-Ms`
+
+### Request Logging
+
+All requests (except `/health`) are logged with method, path, and duration:
+```
+GET /payroll/divisions 123ms
+POST /auth/login 45ms
+```

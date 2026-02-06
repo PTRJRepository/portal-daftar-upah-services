@@ -239,7 +239,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             'N': 'NURSERY',
             'W': 'WORKSHOP',
             'K': 'ESTATE DME',
-            'I': 'DIVISI INFRASTRUKTUR',
+            'I': 'Infrastruktur',
             'M': 'OPERASI MILL',
         };
 
@@ -768,7 +768,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 {/* Subtotal Row */}
                 {group.subtotal && (
                     <tr className="subtotal">
-                        <td className="text-left sticky-col">GRAND TOTAL {group.label.replace('ESTATE ', '')}</td>
+                        <td className="text-left sticky-col">Grand Total {group.label.replace('ESTATE ', '')}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_employees)}</td>
                         <td className="text-right border-right-section">{formatNumber(group.subtotal.total_hk)}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_pph21)}</td>
@@ -798,6 +798,14 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     )}
 
                     <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={() => window.location.href = '/report/high-earners'}
+                            className="wsp-btn"
+                            title="Report Gaji > 6 Juta"
+                            style={{ backgroundColor: '#4f46e5', color: 'white' }}
+                        >
+                            High Earners
+                        </button>
                         <select
                             value={month}
                             onChange={(e) => setMonth(parseInt(e.target.value))}

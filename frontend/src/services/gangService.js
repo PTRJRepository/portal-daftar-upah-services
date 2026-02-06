@@ -27,3 +27,10 @@ export async function fetchGangInfo(token, gangCode) {
   })
   return r.data
 }
+
+export async function fetchCurrentPeriod(token) {
+  const r = await axios.get('/payroll/current-period', {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+  })
+  return r.data
+}
