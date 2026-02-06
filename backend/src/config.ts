@@ -20,8 +20,7 @@ export class Config {
     // Database Configuration (SQL Gateway)
     public static readonly DB_API_URL: string = env.DB_API_URL || "http://localhost:8001";
     public static readonly DB_API_KEY: string = env.DB_API_KEY || "";
-    public static readonly DB_PROFILE: string =
-        env.DB_PROFILE || (Config.RUN_MODE === "prod" ? "SERVER_PROFILE_2" : "SERVER_PROFILE_1");
+    public static readonly DB_PROFILE: string = env.DB_PROFILE || "SERVER_PROFILE_1";
     public static readonly DEFAULT_DATABASE: string = env.DB_DATABASE || "db_ptrj";
 
     // Database Timeouts

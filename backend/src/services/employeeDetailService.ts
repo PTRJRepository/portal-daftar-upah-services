@@ -420,7 +420,7 @@ export class EmployeeDetailService {
         try {
             // Pass empCode as specificEmpCode (5th argument) to use optimized single-employee fetch
             // Use SERVER_PROFILE_2 for payroll data
-            const payrollResult = await dataExtractorService.extractPayrollData(month, year, "ALL", undefined, empCode, "SERVER_PROFILE_2");
+            const payrollResult = await dataExtractorService.extractPayrollData(month, year, "ALL", undefined, empCode);
             // Filter for this specific employee (handle whitespace)
             const targetNik = empCode.trim().toUpperCase();
 
