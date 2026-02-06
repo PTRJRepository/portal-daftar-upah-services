@@ -1,6 +1,7 @@
 import { Database } from "../db/client";
 import { dataExtractorService } from "./dataExtractorService";
 import { lemburCalculator, getDayTypeDisplayName } from "./lemburCalculator";
+import { Config } from "../config";
 
 export interface AttendanceDay {
     date: string;
@@ -419,8 +420,8 @@ export class EmployeeDetailService {
 
         try {
             // Pass empCode as specificEmpCode (5th argument) to use optimized single-employee fetch
-            // Use SERVER_PROFILE_2 for payroll data
-            const payrollResult = await dataExtractorService.extractPayrollData(month, year, "ALL", undefined, empCode, "SERVER_PROFILE_2");
+            // Use Config.DB_PROFILE for payroll data
+            const payrollResult = await dataExtractorService.extractPayrollData(month, year, "ALL", undefined, empCode, Config.DB_PROFILE);
             // Filter for this specific employee (handle whitespace)
             const targetNik = empCode.trim().toUpperCase();
 

@@ -920,9 +920,9 @@ async function fetchAvailableDivisions(): Promise<string[]> {
 
 async function checkDivisionHasData(division: string, month: number, year: number): Promise<boolean> {
     try {
-        // Use SERVER_PROFILE_2 for payroll data (main payroll database)
+        // Use Config.DB_PROFILE for payroll data (main payroll database)
         const result = await dataExtractorService.extractPayrollData(
-            month, year, "ALL", division, null, "SERVER_PROFILE_2"
+            month, year, "ALL", division, null, Config.DB_PROFILE
         );
         return result.data_rows && result.data_rows.length > 0;
     } catch {

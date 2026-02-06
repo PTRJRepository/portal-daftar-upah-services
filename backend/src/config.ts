@@ -1,4 +1,21 @@
 import { env } from "bun";
+import { config } from "dotenv";
+import { join } from "path";
+
+// Load .env file FIRST before any other code
+// Use explicit path to ensure .env is found
+const envPath = join(import.meta.dir, "../.env");
+console.log("[Config] Loading .env from:", envPath);
+
+// Try loading dotenv
+const dotenvResult = config({ path: envPath });
+console.log("[Config] dotenv result:", dotenvResult.error ? dotenvResult.error.message : "Success");
+
+// Debug: Verify env loading BEFORE any Config class access
+console.log("[Config] === ENV DEBUG ===");
+console.log("[Config] env.DB_PROFILE =", env.DB_PROFILE);
+console.log("[Config] env.RUN_MODE =", env.RUN_MODE);
+console.log("[Config] =================");
 
 export type RunMode = "dev" | "prod";
 

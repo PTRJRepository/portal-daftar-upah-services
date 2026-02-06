@@ -4,6 +4,7 @@ import { headerService } from "../services/headerService";
 import { payrollService } from "../services/payrollService";
 import { AuthService } from "../services/authService";
 import { User, UserRole } from "../types/user";
+import { Config } from "../config";
 
 const authService = AuthService.getInstance();
 
@@ -173,7 +174,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "division_code, month, and year are required" };
             }
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_2");
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -345,10 +346,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             const includeVirtual = query.include_virtual === 'true';
 
-            // Use SERVER_PROFILE_2 for payroll data (main payroll database)
-            // Changed from SERVER_PROFILE_1 per user requirement: payroll data is on PROFILE_2
-            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with SERVER_PROFILE_2, includeVirtual=${includeVirtual}`);
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, "SERVER_PROFILE_2", includeVirtual);
+            // Use Config.DB_PROFILE for payroll data (main payroll database)
+            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with ${Config.DB_PROFILE}, includeVirtual=${includeVirtual}`);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -544,8 +544,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
             const year = parseInt(query.year || String(new Date().getFullYear()));
 
-            // Use SERVER_PROFILE_2 for payroll data
-            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, "SERVER_PROFILE_2");
+            // Use Config.DB_PROFILE for payroll data
+            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, Config.DB_PROFILE);
 
             return {
                 gang_code: gangCode,

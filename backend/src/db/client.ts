@@ -128,6 +128,11 @@ export class Database {
                     database: this.databaseName
                 };
 
+                // Debug log untuk setiap query (bisa di-disable nanti)
+                if (attempt === 0) {
+                    console.log(`[DB] Sending query to server=${this.serverProfile}, database=${this.databaseName}`);
+                }
+
                 const response = await fetch(`${this.baseUrl}/v1/query`, {
                     method: "POST",
                     headers: {

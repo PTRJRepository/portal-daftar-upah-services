@@ -16,6 +16,17 @@ import { staticPlugin } from "@elysiajs/static";
 
 
 // Initialize Database access
+console.log("\n\n=== BACKEND CONFIGURATION VERIFICATION ===");
+console.log(`RUN_MODE: ${Config.RUN_MODE}`);
+console.log(`DB_PROFILE: ${Config.DB_PROFILE}`);
+console.log(`DEFAULT_DATABASE: ${Config.DEFAULT_DATABASE}`);
+console.log(`DB_EXTEND_PROFILE: ${Config.DB_EXTEND_PROFILE}`);
+console.log(`DB_EXTEND_DATABASE: ${Config.DB_EXTEND_DATABASE}`);
+console.log(`DB_VENUS_PROFILE: ${Config.DB_VENUS_PROFILE}`);
+console.log(`DB_VENUS_DATABASE: ${Config.DB_VENUS_DATABASE}`);
+console.log(`DB_API_URL: ${Config.DB_API_URL}`);
+console.log("==========================================\n\n");
+
 Database.getInstance();
 
 console.log("\n\n!!! BACKEND STARTUP - DEBUG VERSION A0374 (Step 830) !!!\n\n");
