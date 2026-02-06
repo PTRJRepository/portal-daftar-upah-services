@@ -657,4 +657,102 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             year: t.Optional(t.String()),
             limit: t.Optional(t.String())
         })
+    })
+    // --- Salary Range Detail Report ---
+    .get("/report/salary-range-detail", async ({ query, set, currentUser }) => {
+        try {
+            const { dataExtractorService } = await import("../services/dataExtractorService");
+            const month = parseInt(query.month || String(new Date().getMonth() + 1));
+            const year = parseInt(query.year || String(new Date().getFullYear()));
+            const minSalary = parseInt(query.min_salary || "6000000");
+            const maxSalary = query.max_salary ? parseInt(query.max_salary) : undefined;
+
+            // PERMISSION CHECK
+            if (!currentUser) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            // Get all divisions first
+            const divisions = await gangService.getAllDivisions();
+
+            // Fetch data for all divisions in parallel
+            const allEmployees: any[] = [];
+            const BATCH_SIZE = 3;
+
+            for (let i = 0; i < divisions.length; i += BATCH_SIZE) {
+                const chunk = divisions.slice(i, i + BATCH_SIZE);
+                const promises = chunk.map(async (div) => {
+                    try {
+                        const result = await dataExtractorService.extractPayrollData(
+                            month,
+                            year,
+                            "ALL",
+                            div,
+                            null,
+                            "SERVER_PROFILE_2"
+                        );
+                        // Filter by salary range
+                        return result.data_rows.filter((row: any) => {
+                            const salary = row.upah_bersih || 0;
+                            const aboveMin = salary >= minSalary;
+                            const belowMax = maxSalary ? salary <= maxSalary : true;
+                            return aboveMin && belowMax;
+                        });
+                    } catch (err) {
+                        console.error(`Error fetching salary range detail for div ${div}:`, err);
+                        return [];
+                    }
+                });
+
+                const results = await Promise.all(promises);
+                results.forEach(rows => allEmployees.push(...rows));
+            }
+
+            // Sort by Upah Bersih descending
+            allEmployees.sort((a, b) => (b.upah_bersih || 0) - (a.upah_bersih || 0));
+
+            // Add rank
+            const ranked = allEmployees.map((row, index) => ({
+                ...row,
+                rank: index + 1
+            }));
+
+            // Calculate totals
+            const sumUpahBersih = ranked.reduce((sum, row) => sum + (row.upah_bersih || 0), 0);
+            const sumGajiPokok = ranked.reduce((sum, row) => sum + (row.gaji_pokok_aktual || 0), 0);
+            const sumTunjangan = ranked.reduce((sum, row) => sum + (row.total_tunjangan || 0), 0);
+            const sumLembur = ranked.reduce((sum, row) => sum + (row.lembur_jumlah || 0), 0);
+            const sumPremi = ranked.reduce((sum, row) => sum + (row.total_premi || 0), 0);
+            const sumPotongan = ranked.reduce((sum, row) => sum + (row.total_potongan_bersih || 0), 0);
+
+            return {
+                data: ranked,
+                meta: {
+                    month,
+                    year,
+                    min_salary: minSalary,
+                    max_salary: maxSalary,
+                    count: ranked.length,
+                    sum_upah_bersih: sumUpahBersih,
+                    sum_gaji_pokok: sumGajiPokok,
+                    sum_tunjangan: sumTunjangan,
+                    sum_lembur: sumLembur,
+                    sum_premi: sumPremi,
+                    sum_potongan: sumPotongan
+                }
+            };
+
+        } catch (e: any) {
+            console.error("[PayrollRoutes] salary-range-detail error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.Optional(t.String()),
+            year: t.Optional(t.String()),
+            min_salary: t.Optional(t.String()),
+            max_salary: t.Optional(t.String())
+        })
     });

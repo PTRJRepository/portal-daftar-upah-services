@@ -6,6 +6,7 @@ const LockedMainPage = lazy(() => import('./pages/LockedMainPage'))
 const EmployeeDetailRoute = lazy(() => import('./pages/EmployeeDetailRoute'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const HighEarnerReportPage = lazy(() => import('./pages/HighEarnerReportPage'))
+const SalaryRangeDetailPage = lazy(() => import('./pages/SalaryRangeDetailPage'))
 
 import { AuthProvider, useAuth } from './context/AuthContext'
 import LoadingScreen from './components/common/LoadingScreen'
@@ -139,6 +140,17 @@ function AppInner() {
     return (
       <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat laporan..." />}>
         <HighEarnerReportPage />
+      </Suspense>
+    )
+  }
+
+  // Handle salary range detail report route
+  const isSalaryRangeDetail = rawPathname.includes('/report/salary-range-detail')
+
+  if (isSalaryRangeDetail) {
+    return (
+      <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat laporan..." />}>
+        <SalaryRangeDetailPage />
       </Suspense>
     )
   }
