@@ -91,7 +91,7 @@ export default defineConfig({
     'process.env.VITE_DEV_MODE': JSON.stringify('true')
   },
   // Base path: Use relative path so it works under any proxy prefix (e.g. /backend/upah/) or root
-  base: process.env.NODE_ENV === 'production' ? './' : '/',
+  base: '/',
   server: {
     host: '0.0.0.0', // Allow access from any IP
     port: 5175,

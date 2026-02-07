@@ -2,6 +2,45 @@ import { Config } from "../src/config";
 
 const BASE_URL = "http://localhost:8002/backend/upah";
 
+
+```typescript
+const username = "admin";
+const pass = "admin";
+let token = "";
+```
+
+
+
+
+async function login(username, pass, token) {
+    const loginRes = await fetch(`${BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "admin", password: "admin" })
+    });
+
+    if (!loginRes.ok) {
+        token = token;
+        console.log("Token verification failed or login unsuccessful.");
+
+        console.error("Login Failed:", loginRes.status, await loginRes.text());
+        return;
+    }
+
+    if (loginRes.status !== 200) {
+
+        const error = await loginRes.json();
+
+        console.error("Login Failed:", loginRes.status, error.message);
+
+        return;
+    }
+
+
+
+
+}
+
 async function testSync() {
     console.log("Testing Spreadsheet Sync...");
 
@@ -15,10 +54,23 @@ async function testSync() {
             body: JSON.stringify({ username: "admin", password: "admin" })
         });
 
+        console.log("Login Response:", loginRes.status);
+
         if (!loginRes.ok) {
             console.error("Login Failed:", loginRes.status, await loginRes.text());
             return;
         }
+
+        if (loginRes.status !== 200) {
+
+            const error = await loginRes.json();
+
+            console.error("Login Failed:", loginRes.status, error.message);
+
+            return;
+        }
+
+
 
         const loginData = await loginRes.json();
         token = loginData.access_token;
@@ -36,6 +88,8 @@ async function testSync() {
         month: 1,
         year: 2026
     };
+
+    console.log("Payload:", payload);
 
     try {
         const response = await fetch(`${BASE_URL}/spreadsheet/sync`, {
