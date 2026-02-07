@@ -100,17 +100,20 @@ export default function ComprehensivePerformancePage({
     loadGangs();
   }, [division, token]);
 
-  // Fetch payroll data when filters change
-  useEffect(() => {
-    async function fetchData() {
-      if (!token || !division) {
-        setRawData([]);
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      try {
-        const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
+  // Fetch payroll data - extracted as separate function for manual trigger
+  const fetchData = async () => {
+    if (!token) {
+      setRawData([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
+
+      // Jika division dipilih (bukan "ALL"), fetch per divisi
+      // Jika "ALL" atau kosong, fetch semua divisi secara parallel
+      if (division && division !== 'ALL') {
         const gangParam = gang && gang !== 'ALL' ? `&gang_code=${gang}` : '';
         const response = await fetch(
           `${apiUrl}/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${gangParam}`,
@@ -134,16 +137,46 @@ export default function ComprehensivePerformancePage({
         }
 
         setRawData(allEmployees);
-      } catch (e) {
-        console.error('[ComprehensivePerformance] Error fetching data:', e);
-        setError(e.message || 'Failed to fetch data');
+      } else if (division === 'ALL' && allDivisions.length > 0) {
+        // Fetch semua divisi secara parallel
+        const divisionPromises = allDivisions.map(divCode =>
+          fetch(
+            `${apiUrl}/payroll/report/division-raw-tree?division_code=${divCode}&month=${month}&year=${year}`,
+            { headers: { 'Authorization': `Bearer ${token}` } }
+          ).then(res => res.json())
+        );
+
+        const results = await Promise.all(divisionPromises);
+
+        // Flatten all employees from all divisions
+        let allEmployees = [];
+        results.forEach(result => {
+          if (result.gangs && Array.isArray(result.gangs)) {
+            result.gangs.forEach(gangData => {
+              if (gangData.employees && Array.isArray(gangData.employees)) {
+                allEmployees = allEmployees.concat(gangData.employees);
+              }
+            });
+          }
+        });
+
+        setRawData(allEmployees);
+      } else {
         setRawData([]);
-      } finally {
-        setLoading(false);
       }
+    } catch (e) {
+      console.error('[ComprehensivePerformance] Error fetching data:', e);
+      setError(e.message || 'Failed to fetch data');
+      setRawData([]);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // Fetch payroll data when filters change (auto-fetch)
+  useEffect(() => {
     fetchData();
-  }, [token, division, gang, month, year]);
+  }, [token, division, gang, month, year, allDivisions]);
 
   // Filter data based on active tab and range filters
   const filteredData = useMemo(() => {
@@ -352,7 +385,7 @@ export default function ComprehensivePerformancePage({
 
         {/* Filters Section */}
         <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'flex-end' }}>
             {/* Month Selector */}
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.4rem' }}>PERIODE</label>
@@ -379,7 +412,7 @@ export default function ComprehensivePerformancePage({
                   minWidth: '150px'
                 }}
               >
-                <option value="">Pilih Divisi</option>
+                <option value="ALL">SEMUA DIVISI</option>
                 {allDivisions.map(d => (
                   <option key={d} value={d}>{d}</option>
                 ))}
@@ -409,6 +442,40 @@ export default function ComprehensivePerformancePage({
                   <option key={g.gang_code} value={g.gang_code}>{g.gang_code} - {g.description || ''}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Fetch Data Button */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.4rem' }}>&nbsp;</label>
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                style={{
+                  padding: '0.6rem 1.5rem',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                  border: '1px solid #16a34a',
+                  borderRadius: '6px',
+                  backgroundColor: loading ? '#86efac' : '#22c55e',
+                  color: 'white',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  opacity: loading ? 0.7 : 1,
+                  minWidth: '150px'
+                }}
+                onMouseOver={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = '#16a34a';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.backgroundColor = '#22c55e';
+                  }
+                }}
+              >
+                {loading ? 'MEMUAT...' : 'FETCH DATA'}
+              </button>
             </div>
           </div>
         </div>
@@ -499,6 +566,85 @@ export default function ComprehensivePerformancePage({
               }).length})
             </button>
           ))}
+        </div>
+
+        {/* Range Filter Inputs - Dynamic based on activeTab */}
+        <div style={{
+          marginBottom: '1rem',
+          padding: '1rem',
+          backgroundColor: '#f8fafc',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#475569' }}>
+            Filter {activeTab === 'semua' ? 'Upah Bersih' : activeTab === 'premi' ? 'Premi' : activeTab === 'lembur' ? 'Lembur' : activeTab === 'tunjangan' ? 'Tunjangan' : 'Potongan'}:
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', color: '#64748b' }}>Min:</label>
+            <input
+              type="number"
+              value={rangeFilters[activeTab]?.min || 0}
+              onChange={(e) => setRangeFilters(prev => ({
+                ...prev,
+                [activeTab]: { ...prev[activeTab], min: parseInt(e.target.value) || 0 }
+              }))}
+              style={{
+                padding: '0.5rem 0.75rem',
+                fontSize: '0.9rem',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                width: '140px',
+                backgroundColor: 'white'
+              }}
+              placeholder="0"
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', color: '#64748b' }}>Max:</label>
+            <input
+              type="number"
+              value={rangeFilters[activeTab]?.max || ''}
+              onChange={(e) => setRangeFilters(prev => ({
+                ...prev,
+                [activeTab]: { ...prev[activeTab], max: e.target.value ? parseInt(e.target.value) : null }
+              }))}
+              style={{
+                padding: '0.5rem 0.75rem',
+                fontSize: '0.9rem',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                width: '140px',
+                backgroundColor: 'white'
+              }}
+              placeholder="Kosongkan untuk tanpa batas"
+            />
+          </div>
+          <button
+            onClick={() => setRangeFilters(prev => ({
+              ...prev,
+              [activeTab]: { min: 0, max: null }
+            }))}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.85rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              backgroundColor: 'white',
+              cursor: 'pointer',
+              color: '#64748b'
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#e2e8f0'; }}
+            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white'; }}
+          >
+            Reset
+          </button>
+          <div style={{ fontSize: '0.8rem', color: '#64748b', marginLeft: 'auto' }}>
+            {filteredData.length} data {filteredData.length !== rawData.length ? `dari ${rawData.length}` : ''}
+          </div>
         </div>
 
         {/* Data Table */}
