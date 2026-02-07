@@ -1491,12 +1491,13 @@ export class DataExtractorService {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // Get task codes with descriptions, prioritizing non-OT (regular) tasks
-        // Use ROW_NUMBER to get the most common task per employee
-        let rows = await db.query<{ emp_code: string; task_code: string; task_desc: string; task_type: string; task_uom: string }>(`
-            WITH RankedTasks AS (
+        // Get task codes with descriptions from both tables, then rank by frequency
+        // Using simpler column aliases to avoid SQL Gateway issues
+        let rows = await db.query<any>(`
+            SELECT EmpCode, TaskCode, TaskDesc, TaskType, UOM
+            FROM (
                 SELECT
-                    RTRIM(trl.EmpCode) as emp_code,
+                    RTRIM(trl.EmpCode) as EmpCode,
                     trl.TaskCode,
                     tc.TaskDesc,
                     tc.TaskType,
@@ -1518,7 +1519,7 @@ export class DataExtractorService {
                 UNION ALL
 
                 SELECT
-                    RTRIM(trl.EmpCode) as emp_code,
+                    RTRIM(trl.EmpCode) as EmpCode,
                     trl.TaskCode,
                     tc.TaskDesc,
                     tc.TaskType,
@@ -1536,20 +1537,18 @@ export class DataExtractorService {
                   AND trl.TaskCode IS NOT NULL
                   AND trl.TaskCode <> ''
                 GROUP BY RTRIM(trl.EmpCode), trl.TaskCode, tc.TaskDesc, tc.TaskType, tc.UOM
-            )
-            SELECT emp_code, task_code, task_desc, task_type, task_uom
-            FROM RankedTasks
+            ) RankedTasks
             WHERE rn = 1
         `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, { task_code: string; task_desc: string; task_type: string; task_uom: string }> = {};
         for (const r of rows) {
-            const empCode = (r.emp_code || "").trim();
+            const empCode = (r.EmpCode || "").trim();
             result[empCode] = {
-                task_code: r.task_code || "",
-                task_desc: r.task_desc || "",
-                task_type: r.task_type || "",
-                task_uom: r.task_uom || ""
+                task_code: r.TaskCode || "",
+                task_desc: r.TaskDesc || "",
+                task_type: r.TaskType || "",
+                task_uom: r.UOM || ""
             };
         }
         return result;

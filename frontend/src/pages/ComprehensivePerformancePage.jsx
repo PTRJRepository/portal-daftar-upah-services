@@ -44,6 +44,15 @@ export default function ComprehensivePerformancePage({
   // State for active tab
   const [activeTab, setActiveTab] = useState('semua');
 
+  // State for range filters per tab
+  const [rangeFilters, setRangeFilters] = useState({
+    semua: { min: 0, max: null },      // Filter by upah_bersih
+    premi: { min: 0, max: null },      // Filter by total_premi
+    lembur: { min: 0, max: null },     // Filter by lembur_jumlah
+    tunjangan: { min: 0, max: null },  // Filter by total_tunjangan
+    potongan: { min: 0, max: null }   // Filter by total_potongan_bersih
+  });
+
   // Initialize print mode
   useEffect(() => {
     initPrintMode();
@@ -136,25 +145,47 @@ export default function ComprehensivePerformancePage({
     fetchData();
   }, [token, division, gang, month, year]);
 
-  // Filter data based on active tab
+  // Filter data based on active tab and range filters
   const filteredData = useMemo(() => {
-    if (activeTab === 'semua') return rawData;
+    const filter = rangeFilters[activeTab] || { min: 0, max: null };
 
     return rawData.filter(row => {
+      // Determine value to check based on active tab
+      let value = 0;
+      let hasData = true;
+
       switch (activeTab) {
+        case 'semua':
+          value = row.upah_bersih || 0;
+          hasData = true; // Always show for "Semua" tab
+          break;
         case 'lembur':
-          return row.lembur_jam > 0;
+          value = row.lembur_jumlah || 0;
+          hasData = value > 0;
+          break;
         case 'premi':
-          return row.total_premi > 0;
+          value = row.total_premi || 0;
+          hasData = value > 0;
+          break;
         case 'tunjangan':
-          return row.total_tunjangan > 0;
+          value = row.total_tunjangan || 0;
+          hasData = value > 0;
+          break;
         case 'potongan':
-          return row.total_potongan_bersih > 0;
+          value = row.total_potongan_bersih || 0;
+          hasData = value > 0;
+          break;
         default:
           return true;
       }
+
+      // Apply range filter
+      const minMatch = value >= filter.min;
+      const maxMatch = filter.max === null || value <= filter.max;
+
+      return hasData && minMatch && maxMatch;
     });
-  }, [rawData, activeTab]);
+  }, [rawData, activeTab, rangeFilters]);
 
   // Calculate KPI
   const kpiData = useMemo(() => {
@@ -382,7 +413,7 @@ export default function ComprehensivePerformancePage({
           </div>
         </div>
 
-        {/* KPI Cards */}
+        {/* KPI Cards - Dynamic based on activeTab */}
         <div className="wsp-kpi-grid">
           <div className="wsp-kpi-card">
             <div className="wsp-kpi-label">Total Employee</div>
@@ -392,14 +423,30 @@ export default function ComprehensivePerformancePage({
             <div className="wsp-kpi-label">Total HK</div>
             <div className="wsp-kpi-value">{formatNumber(kpiData.totalHK)}</div>
           </div>
-          <div className="wsp-kpi-card">
-            <div className="wsp-kpi-label">Total Premi</div>
-            <div className="wsp-kpi-value">{formatNumber(kpiData.totalPremi)}</div>
-          </div>
-          <div className="wsp-kpi-card">
-            <div className="wsp-kpi-label">Total Lembur</div>
-            <div className="wsp-kpi-value">{formatNumber(kpiData.totalLembur)}</div>
-          </div>
+          {(activeTab === 'semua' || activeTab === 'premi') && (
+            <div className="wsp-kpi-card">
+              <div className="wsp-kpi-label">Total Premi</div>
+              <div className="wsp-kpi-value">{formatNumber(kpiData.totalPremi)}</div>
+            </div>
+          )}
+          {(activeTab === 'semua' || activeTab === 'lembur') && (
+            <div className="wsp-kpi-card">
+              <div className="wsp-kpi-label">Total Lembur</div>
+              <div className="wsp-kpi-value">{formatNumber(kpiData.totalLembur)}</div>
+            </div>
+          )}
+          {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+            <div className="wsp-kpi-card">
+              <div className="wsp-kpi-label">Total Tunjangan</div>
+              <div className="wsp-kpi-value">{formatNumber(filteredData.reduce((s, r) => s + (r.total_tunjangan || 0), 0))}</div>
+            </div>
+          )}
+          {activeTab === 'potongan' && (
+            <div className="wsp-kpi-card">
+              <div className="wsp-kpi-label">Total Potongan</div>
+              <div className="wsp-kpi-value">{formatNumber(filteredData.reduce((s, r) => s + (r.total_potongan_bersih || 0), 0))}</div>
+            </div>
+          )}
           <div className="wsp-kpi-card highlight">
             <div className="wsp-kpi-label">Total Upah Bersih</div>
             <div className="wsp-kpi-value">{formatNumber(kpiData.totalUpahBersih)}</div>
@@ -464,42 +511,38 @@ export default function ComprehensivePerformancePage({
           ) : (
             <table className="wsp-table">
               <thead>
-                {/* Level 1: Column Groups */}
+                {/* Level 1: Column Groups - Dynamic based on activeTab */}
                 <tr className="wsp-header-master">
-                  <th colSpan="3">IDENTITAS</th>
-                  <th colSpan="2">ABSENSI</th>
-                  <th colSpan="1">GAJI POKOK</th>
-                  <th colSpan="4">TUNJANGAN</th>
-                  <th colSpan={2 + dynamicPremiHeaders.length}>PREMI</th>
-                  <th colSpan="3">LEMBUR</th>
-                  <th colSpan="5">POTONGAN</th>
-                  <th colSpan="2">TOTAL</th>
+                  <th colSpan="4">IDENTITAS & TASK</th>
+                  <th colSpan="1">ABSENSI</th>
+                  {activeTab === 'semua' && <th colSpan="4">TUNJANGAN</th>}
+                  {activeTab === 'semua' && <th colSpan={2 + dynamicPremiHeaders.length}>PREMI</th>}
+                  {activeTab === 'lembur' && <th colSpan="2">LEMBUR</th>}
+                  {activeTab === 'tunjangan' && <th colSpan="4">TUNJANGAN</th>}
+                  {activeTab === 'premi' && <th colSpan={2 + dynamicPremiHeaders.length}>PREMI</th>}
+                  {activeTab === 'potongan' && <th colSpan="1">POTONGAN</th>}
+                  {activeTab === 'semua' && <th colSpan="2">TOTAL</th>}
+                  <th colSpan="1">UPAH BERSIH</th>
                 </tr>
                 {/* Level 2: Column Names */}
                 <tr className="wsp-header-sub">
                   <th>NIK</th>
                   <th>NAMA</th>
                   <th>GANG</th>
+                  <th>Task Desc</th>
                   <th>HK</th>
-                  <th>Hadir</th>
-                  <th>Gaji</th>
-                  <th>Beras</th>
-                  <th>Jabatan</th>
-                  <th>Masa Kerja</th>
-                  <th>Total</th>
-                  <th>Brondol</th>
-                  <th>Pruning</th>
-                  {dynamicPremiHeaders.map(h => <th key={h}>{h.replace(/_/g, ' ').toUpperCase()}</th>)}
-                  <th>Total</th>
-                  <th>Jam</th>
-                  <th>Rate</th>
-                  <th>Jumlah</th>
-                  <th>Astek</th>
-                  <th>BPJS</th>
-                  <th>SPSI</th>
-                  <th>PPH21</th>
-                  <th>Total</th>
-                  <th>Kotor</th>
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <th>Beras</th>}
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <th>Jabatan</th>}
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <th>Masa Kerja</th>}
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <th>Total</th>}
+                  {(activeTab === 'semua' || activeTab === 'premi') && <th>Brondol</th>}
+                  {(activeTab === 'semua' || activeTab === 'premi') && <th>Pruning</th>}
+                  {(activeTab === 'semua' || activeTab === 'premi') && dynamicPremiHeaders.map(h => <th key={h}>{h.replace(/_/g, ' ').toUpperCase()}</th>)}
+                  {(activeTab === 'semua' || activeTab === 'premi') && <th>Total</th>}
+                  {(activeTab === 'semua' || activeTab === 'lembur') && <th>Jam</th>}
+                  {(activeTab === 'lembur') && <th>Jumlah</th>}
+                  {activeTab === 'potongan' && <th>Total Potongan</th>}
+                  {activeTab === 'semua' && <th>Kotor</th>}
                   <th>Bersih</th>
                 </tr>
               </thead>
@@ -509,58 +552,45 @@ export default function ComprehensivePerformancePage({
                     <td>{row.nik || '-'}</td>
                     <td>{row.nama || '-'}</td>
                     <td>{row.gang_code || '-'}</td>
+                    <td style={{ fontSize: '0.75rem' }}>{row.task_desc || '-'}</td>
                     <td className="text-right">{formatNumber(row.jumlah_hk)}</td>
-                    <td className="text-right">{formatNumber(row.kehadiran)}</td>
-                    <td className="text-right">{formatNumber(row.gaji_pokok)}</td>
-                    <td className="text-right">{formatNumber(row.beras_jumlah)}</td>
-                    <td className="text-right">{formatNumber(row.jabatan_jumlah)}</td>
-                    <td className="text-right">{formatNumber(row.masa_kerja_jumlah)}</td>
-                    <td className="text-right">{formatNumber(row.total_tunjangan)}</td>
-                    <td className="text-right">{formatNumber(row.premi_brondol)}</td>
-                    <td className="text-right">{formatNumber(row.premi_pruning)}</td>
-                    {dynamicPremiHeaders.map(h => (
+                    {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(row.beras_jumlah)}</td>}
+                    {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(row.jabatan_jumlah)}</td>}
+                    {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(row.masa_kerja_jumlah)}</td>}
+                    {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(row.total_tunjangan)}</td>}
+                    {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(row.premi_brondol)}</td>}
+                    {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(row.premi_pruning)}</td>}
+                    {(activeTab === 'semua' || activeTab === 'premi') && dynamicPremiHeaders.map(h => (
                       <td key={h} className="text-right">{formatNumber(row.premi?.[h])}</td>
                     ))}
-                    <td className="text-right">{formatNumber(row.total_premi)}</td>
-                    <td className="text-right">{formatDecimal(row.lembur_jam)}</td>
-                    <td className="text-right">{formatNumber(row.lembur_rate)}</td>
-                    <td className="text-right">{formatNumber(row.lembur_jumlah)}</td>
-                    <td className="text-right">{formatNumber(row.pot_astek)}</td>
-                    <td className="text-right">{formatNumber(row.pot_bpjs_kesehatan_pekerja)}</td>
-                    <td className="text-right">{formatNumber(row.pot_spsi)}</td>
-                    <td className="text-right">{formatNumber(row.pot_pph21)}</td>
-                    <td className="text-right">{formatNumber(row.total_potongan_bersih)}</td>
-                    <td className="text-right">{formatNumber(row.jumlah_upah_kotor)}</td>
-                    <td className="text-right">{formatNumber(row.upah_bersih)}</td>
+                    {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(row.total_premi)}</td>}
+                    {(activeTab === 'semua' || activeTab === 'lembur') && <td className="text-right">{formatDecimal(row.lembur_jam)}</td>}
+                    {activeTab === 'lembur' && <td className="text-right">{formatNumber(row.lembur_jumlah)}</td>}
+                    {activeTab === 'potongan' && <td className="text-right">{formatNumber(row.total_potongan_bersih)}</td>}
+                    {activeTab === 'semua' && <td className="text-right">{formatNumber(row.jumlah_upah_kotor)}</td>}
+                    <td className="text-right" style={{ fontWeight: 'bold' }}>{formatNumber(row.upah_bersih)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="wsp-grand-total">
-                  <td colSpan="3">TOTAL ({filteredData.length} Employee)</td>
+                  <td colSpan="4">TOTAL ({filteredData.length} Employee)</td>
                   <td className="text-right">{formatNumber(kpiData.totalHK)}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.kehadiran || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.gaji_pokok || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.beras_jumlah || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.jabatan_jumlah || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.masa_kerja_jumlah || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.total_tunjangan || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.premi_brondol || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.premi_pruning || 0), 0))}</td>
-                  {dynamicPremiHeaders.map(h => (
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.beras_jumlah || 0), 0))}</td>}
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.jabatan_jumlah || 0), 0))}</td>}
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.masa_kerja_jumlah || 0), 0))}</td>}
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.total_tunjangan || 0), 0))}</td>}
+                  {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.premi_brondol || 0), 0))}</td>}
+                  {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.premi_pruning || 0), 0))}</td>}
+                  {(activeTab === 'semua' || activeTab === 'premi') && dynamicPremiHeaders.map(h => (
                     <td key={h} className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.premi?.[h] || 0), 0))}</td>
                   ))}
-                  <td className="text-right">{formatNumber(kpiData.totalPremi)}</td>
-                  <td className="text-right">{formatDecimal(filteredData.reduce((s, r) => s + (r.lembur_jam || 0), 0))}</td>
-                  <td className="text-right">-</td>
-                  <td className="text-right">{formatNumber(kpiData.totalLembur)}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.pot_astek || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.pot_bpjs_kesehatan_pekerja || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.pot_spsi || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.pot_pph21 || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.total_potongan_bersih || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.jumlah_upah_kotor || 0), 0))}</td>
-                  <td className="text-right">{formatNumber(kpiData.totalUpahBersih)}</td>
+                  {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(kpiData.totalPremi)}</td>}
+                  {(activeTab === 'semua' || activeTab === 'lembur') && <td className="text-right">{formatDecimal(filteredData.reduce((s, r) => s + (r.lembur_jam || 0), 0))}</td>}
+                  {activeTab === 'lembur' && <td className="text-right">{formatNumber(kpiData.totalLembur)}</td>}
+                  {activeTab === 'potongan' && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.total_potongan_bersih || 0), 0))}</td>}
+                  {activeTab === 'semua' && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.jumlah_upah_kotor || 0), 0))}</td>}
+                  <td className="text-right" style={{ fontWeight: 'bold' }}>{formatNumber(kpiData.totalUpahBersih)}</td>
                 </tr>
               </tfoot>
             </table>
