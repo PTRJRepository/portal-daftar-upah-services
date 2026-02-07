@@ -19,7 +19,7 @@ refactor_production/
 │       └── scripts/              # Utility scripts for debugging/testing
 ├── frontend/                     # React + Vite + AG Grid Enterprise
 │   └── src/
-│       ├── pages/                # Page components
+│       ├── pages/                # Page components (.jsx files)
 │       ├── services/             # API client with Axios
 │       ├── components/           # Reusable components (AgGridWrapper, etc.)
 │       ├── context/              # React contexts (Auth, Header, GangFilter)
@@ -69,6 +69,16 @@ cd frontend
 rm -rf node_modules/.vite
 npm install
 # Then restart dev server
+```
+
+### Additional Frontend Dev Commands
+```bash
+npm run dev:test              # Test mode with VITE_DEV_MODE=true
+npm run dev:5175              # Run on port 5175
+npm run dev:custom-backend    # Network mode with custom backend
+npm run dev:external          # External backend mode
+npm run dev:lan               # LAN mode with backend at 10.0.0.128
+npm run preview               # Preview production build
 ```
 
 ### Running Backend Scripts
@@ -154,6 +164,9 @@ The system supports dual routing:
 | `GET /payroll/locked/report/raw-tree` | Locked data (relaxed auth) | db_ptrj (SERVER_PROFILE_2) |
 | `GET /summary/division` | Division summary | extend_db_ptrj |
 | `GET /summary/analysis-report` | Analysis report | extend_db_ptrj |
+| `POST /api/aggregation/seed` | Trigger aggregation seeding | extend_db_ptrj |
+| `GET /api/aggregation/status` | Get aggregation status | extend_db_ptrj |
+| `GET /api/aggregation/history` | Get aggregation history | extend_db_ptrj |
 
 ### Authentication & Permissions
 
@@ -201,11 +214,12 @@ export const dataExtractorService = DataExtractorService.getInstance();
 | `employeeEstateService` | Manage job title/estate data |
 | `tunjanganService` | Handle allowance calculations |
 | `thumbprintService` | Manage thumbprint data storage/retrieval |
-| `cacheService` | Cache management for frequently accessed data |
+| `cacheService` | Cache management (disabled in dev unless override) |
 | `currentPeriodService` | Get current payroll period |
 | `deductionAdjustmentService` | Handle deduction adjustments |
 | `luasAreaService` | Calculate area-based values |
 | `divisionDefinition` | Define division hierarchies |
+| `employeeRepository` | Employee data repository pattern |
 
 ## Data Flow Example: Payroll Report
 
@@ -225,12 +239,9 @@ export const dataExtractorService = DataExtractorService.getInstance();
 
 ## Filter Rules
 
-### Employee Filtering
+### Employee Filtering (CRITICAL - See Business Rules below)
 
-Employees are **excluded** from reports when:
-- `hari_kerja <= 0` (no actual work days after subtracting leave)
-
-Applied in: `dataExtractorService.ts` line ~303
+**IMPORTANT:** The employee filtering logic is a critical business rule. See "Employee Filtering Rules" in the Important Business Rules section for the complete specification.
 
 ### HK > 0 Filtering
 
@@ -298,10 +309,34 @@ For dynamic deduction header generation, items are **excluded** if DocDesc conta
 
 ### Employee Filtering Rules
 
-Employees are **excluded** from payroll reports when:
-- `hari_kerja <= 0` (no actual work days after subtracting leave)
+**CRITICAL:** The correct filter logic (as per MEMORY.md and fix from Feb 2025):
 
-Applied in: `dataExtractorService.ts` line ~303
+```typescript
+// Effective Work HK = HK - (Minggu + Libur Nasional)
+const effective_work_hk = hk - (empCuti.cuti_minggu + empCuti.cuti_nasional);
+
+// Cuti lain (tahunan, sakit/haid)
+const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
+
+// FILTER LOGIC:
+// - effective_work_hk <= 0 AND other_cuti == 0 → FILTERED OUT
+// - effective_work_hk <= 0 BUT other_cuti > 0 → KEPT
+// - effective_work_hk > 0 → Always KEPT
+if (effective_work_hk <= 0 && other_cuti == 0) continue;
+```
+
+**Rules:**
+1. Only HK Minggu/Libur Nasional (0 work days) → **Not displayed**
+2. 0 HK but HAS other leave (tahunan, sakit/haid) → **MUST be displayed**
+3. HK work > 0 → **Always displayed**
+
+**WRONG - Do NOT use:**
+```typescript
+// JANGAN gunakan filter tambahan ini!
+if (hari_kerja <= 0) continue;
+```
+
+Applied in: `dataExtractorService.ts` line ~301-317
 
 For totals calculation, only employees with `jumlah_hk > 0` are included.
 
@@ -363,6 +398,8 @@ DEFAULT_YEAR=2025
 - **RUN_MODE=dev**: Uses `SERVER_PROFILE_1` for development
 - **USE_PROXY=true**: Strips `/backend/upah` prefix, sets `AUTH_MODE=external`
 - **TEST_MODE=true**: Enables test mode with default values for gang/month/year
+- **Cache**: Disabled in dev mode unless `ENABLE_PRODUCTION_CACHE=true`
+- **DISABLE_CACHE=true**: Force disable cache globally
 
 ### Thumbprint Data
 
@@ -407,6 +444,12 @@ WHERE month = ? AND year = ? AND division_code = ?
 
 **Always use `SERVER_PROFILE_1` for summary/analysis queries.**
 
+## Git Commit References
+
+Important commits for reference:
+- **f620897** - Commit that successfully stored 693 juta (correct employee filtering)
+- Reference issue: Filter `hari_kerja <= 0` caused 1 employee to be missing (~3.8M difference)
+
 ## Frontend: React Context System
 
 The frontend uses React Context for state management:
@@ -430,9 +473,9 @@ The frontend uses React Context for state management:
 | `EmployeeDetailPage` | `/employee/:nik` | Individual employee details |
 | `WagesSummaryRebinmasPage` | `/wages-summary-rebinmas` | Rebinmas wage summary |
 | `WagesSummaryIJLPage` | `/wages-summary-ijl` | IJL wage summary |
-| `HighEarnerReportPage` | `/high-earner` | High earner report |
 | `ImpactReportPage` | `/impact` | Impact analysis |
-| `SalaryRangeDetailPage` | `/salary-range` | Salary range details |
+| `ComprehensivePerformancePage` | `/comprehensive-performance` | Comprehensive performance analysis |
+| `onlyIJLReportPages` | `/ijl-reports` | IJL-specific reports |
 | `AggregationSeederPage` | `/admin/aggregation` | Aggregation management |
 
 ## Common Components
@@ -448,7 +491,6 @@ The frontend uses React Context for state management:
 | `AggregationSeederModal` | Modal for triggering aggregation seed |
 | `TestModePanel` | Test mode controls |
 | `CustomPayrollTable` | Custom table rendering for payroll data |
-| `SalaryRangeModal` | Salary range analysis modal |
 
 ## Aggregation Seeder
 

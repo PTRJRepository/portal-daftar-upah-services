@@ -103,7 +103,8 @@
 /* =============================================
    DOCUMENT WRAPPER (The "Paper")
    ============================================= */
-.wsp-document {
+.wsp-document,
+.wsp-paper {
     background: #ffffff;
     width: fit-content;
     min-width: 1200px;
@@ -759,14 +760,16 @@
     }
 
     /* Document - FIXED: Proper border rendering */
-    .wsp-document {
+    .wsp-document,
+    .wsp-paper {
         box-shadow: none !important;
         border: 2px solid #000 !important;
         margin: 0 auto !important;
         padding: 0.2rem !important;
         width: auto !important;
         max-width: 100% !important;
-        min-width: auto !important; /* Override screen min-width */
+        min-width: auto !important;
+        /* Override screen min-width */
         height: auto !important;
         overflow: visible !important;
         position: relative !important;
@@ -787,7 +790,8 @@
     }
 
     .wsp-logo {
-        position: static !important; /* Remove absolute positioning in print */
+        position: static !important;
+        /* Remove absolute positioning in print */
         transform: none !important;
         width: 45px !important;
         height: auto !important;

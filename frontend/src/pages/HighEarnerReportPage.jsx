@@ -17,6 +17,12 @@ const HighEarnerReportPage = () => {
     const [error, setError] = useState('');
     const [meta, setMeta] = useState(null);
 
+    // Filters
+    const [divisions, setDivisions] = useState([]);
+    const [gangs, setGangs] = useState([]);
+    const [selectedDivision, setSelectedDivision] = useState('ALL');
+    const [selectedGang, setSelectedGang] = useState('ALL');
+
     // Options
     const monthOptions = [
         { value: 1, label: 'Januari' }, { value: 2, label: 'Februari' },
@@ -27,12 +33,67 @@ const HighEarnerReportPage = () => {
         { value: 11, label: 'November' }, { value: 12, label: 'Desember' }
     ];
 
+
+
+    // Fetch Divisions on Mount
+    useEffect(() => {
+        const fetchDivisions = async () => {
+            try {
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/payroll/divisions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const result = await response.json();
+                    setDivisions(result || []);
+                }
+            } catch (err) {
+                console.error("Failed to fetch divisions", err);
+            }
+        };
+        fetchDivisions();
+    }, [token]);
+
+    // Fetch Gangs when Division changes
+    useEffect(() => {
+        const fetchGangs = async () => {
+            if (selectedDivision === 'ALL') {
+                setGangs([]);
+                setSelectedGang('ALL');
+                return;
+            }
+
+            try {
+                // Fetch gangs for this division
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/payroll/gangs?division=${selectedDivision}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const result = await response.json();
+                    setGangs(result || []);
+                    setSelectedGang('ALL'); // Reset gang selection on division change
+                }
+            } catch (err) {
+                console.error("Failed to fetch gangs", err);
+            }
+        };
+        fetchGangs();
+    }, [selectedDivision, token]);
+
     // Fetch Data
     const fetchData = async () => {
         setLoading(true);
         setError('');
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/payroll/report/high-earners?month=${month}&year=${year}&limit=${limit}`, {
+            let url = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/payroll/report/high-earners?month=${month}&year=${year}&limit=${limit}`;
+
+            if (selectedDivision !== 'ALL') {
+                url += `&division=${selectedDivision}`;
+            }
+            if (selectedGang !== 'ALL') {
+                url += `&gang_code=${selectedGang}`;
+            }
+
+            const response = await fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -56,7 +117,9 @@ const HighEarnerReportPage = () => {
 
     // Initial Load
     useEffect(() => {
+        // Initial fetch
         fetchData();
+        // eslint-disable-next-line
     }, []);
 
     // Helper: Format Number
@@ -67,6 +130,27 @@ const HighEarnerReportPage = () => {
 
     return (
         <div className="wsp-container high-earner-container">
+            {/* Loading Overlay */}
+            {loading && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(255,255,255,0.7)',
+                    zIndex: 9999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexDirection: 'column'
+                }}>
+                    <div className="spinner-border" style={{
+                        width: '3rem', height: '3rem',
+                        border: '5px solid #e2e8f0', borderTopColor: '#3b82f6',
+                        borderRadius: '50%', animation: 'spin 1s linear infinite'
+                    }}></div>
+                    <div style={{ marginTop: '1rem', fontWeight: 'bold', color: '#1e3a8a' }}>Loading Data...</div>
+                    <style>{`
+                        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                    `}</style>
+                </div>
+            )}
+
             {/* Action Bar */}
             <div className="wsp-action-bar no-print">
                 <div className="left-section">
@@ -74,11 +158,13 @@ const HighEarnerReportPage = () => {
                         &larr; Kembali
                     </button>
 
-                    <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* Period Selectors */}
                         <select
                             value={month}
                             onChange={(e) => setMonth(parseInt(e.target.value))}
                             className="wsp-select"
+                            title="Select Month"
                         >
                             {monthOptions.map(m => (
                                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -88,6 +174,7 @@ const HighEarnerReportPage = () => {
                             value={year}
                             onChange={(e) => setYear(parseInt(e.target.value))}
                             className="wsp-select"
+                            title="Select Year"
                         >
                             {[...Array(5)].map((_, i) => {
                                 const y = new Date().getFullYear() - i;
@@ -95,8 +182,37 @@ const HighEarnerReportPage = () => {
                             })}
                         </select>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <span>Limit &gt;</span>
+                        {/* Division Selector */}
+                        <select
+                            value={selectedDivision}
+                            onChange={(e) => setSelectedDivision(e.target.value)}
+                            className="wsp-select"
+                            title="Filter by Division"
+                        >
+                            <option value="ALL">Semua Divisi</option>
+                            {divisions.map(div => (
+                                <option key={div} value={div}>{div}</option>
+                            ))}
+                        </select>
+
+                        {/* Gang Selector (only if division selected) */}
+                        {selectedDivision !== 'ALL' && (
+                            <select
+                                value={selectedGang}
+                                onChange={(e) => setSelectedGang(e.target.value)}
+                                className="wsp-select"
+                                title="Filter by Gang"
+                            >
+                                <option value="ALL">Semua Gang</option>
+                                {gangs.map(g => (
+                                    <option key={g.gang_code} value={g.gang_code}>{g.gang_code}</option>
+                                ))}
+                            </select>
+                        )}
+
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', borderLeft: '1px solid #ccc', paddingLeft: '8px', marginLeft: '8px' }}>
+                            <span style={{ fontSize: '0.85rem' }}>Limit &gt;</span>
                             <input
                                 type="number"
                                 value={limit}
@@ -107,7 +223,7 @@ const HighEarnerReportPage = () => {
                         </div>
 
                         <button onClick={fetchData} className="wsp-btn wsp-btn-primary" disabled={loading}>
-                            {loading ? 'Loading...' : 'Refresh'}
+                            {loading ? 'Refreshing...' : 'Refresh'}
                         </button>
                     </div>
                 </div>
@@ -121,7 +237,7 @@ const HighEarnerReportPage = () => {
 
             {/* Error Message */}
             {error && (
-                <div style={{ padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '0.5rem', marginBottom: '1rem' }}>
+                <div style={{ padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '0.5rem', marginBottom: '1rem', margin: '1rem' }}>
                     {error}
                 </div>
             )}
@@ -131,7 +247,10 @@ const HighEarnerReportPage = () => {
                 <div className="wsp-header">
                     <div className="wsp-title">LAPORAN GAJI TERTINGGI (High Earners)</div>
                     <div className="wsp-subtitle">
-                        Periode: {monthOptions[month - 1]?.label} {year} | Limit: Rp {formatNumber(limit)}
+                        Periode: {monthOptions[month - 1]?.label} {year}
+                        {selectedDivision !== 'ALL' && ` | Divisi: ${selectedDivision}`}
+                        {selectedGang !== 'ALL' && ` | Gang: ${selectedGang}`}
+                        {' '}| Limit: Rp {formatNumber(limit)}
                     </div>
                     {meta && (
                         <div className="wsp-meta" style={{ fontSize: '0.8rem', color: '#666' }}>
@@ -220,6 +339,13 @@ const HighEarnerReportPage = () => {
                                     </tr>
                                 );
                             })}
+                            {data.length === 0 && !loading && (
+                                <tr>
+                                    <td colSpan="10" className="text-center" style={{ padding: '2rem', fontStyle: 'italic', color: '#666' }}>
+                                        Tidak ada data yang ditemukan.
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

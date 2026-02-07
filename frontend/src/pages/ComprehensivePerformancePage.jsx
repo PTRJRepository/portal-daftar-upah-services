@@ -11,9 +11,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchGangs, fetchDivisions } from '../services/gangService';
-import { isProdMode, buildAppPath } from '../utils/prodModeUtils';
-import MonthSelector from '../components/common/MonthSelector';
-import LoadingScreen from '../components/common/LoadingScreen';
 import '../styles/wages-summary-professional.css';
 import { initPrintMode } from '../utils/printOptimizer';
 
@@ -21,12 +18,12 @@ const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
 export default function ComprehensivePerformancePage({
-  onBack,
   initialMonth = new Date().getMonth() + 1,
   initialYear = new Date().getFullYear(),
-  initialDivision = ''
+  initialDivision = '',
+  onBack
 }) {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
 
   // State for filters
   const [month, setMonth] = useState(initialMonth);
@@ -222,18 +219,17 @@ export default function ComprehensivePerformancePage({
 
   // Calculate KPI
   const kpiData = useMemo(() => {
-    const employeeCount = filteredData.length;
-    const totalHK = filteredData.reduce((sum, row) => sum + (row.jumlah_hk || 0), 0);
-    const totalPremi = filteredData.reduce((sum, row) => sum + (row.total_premi || 0), 0);
-    const totalLembur = filteredData.reduce((sum, row) => sum + (row.lembur_jumlah || 0), 0);
-    const totalUpahBersih = filteredData.reduce((sum, row) => sum + (row.upah_bersih || 0), 0);
+    // Helper to sum
+    const sum = (field) => filteredData.reduce((acc, row) => acc + (row[field] || 0), 0);
 
     return {
-      employeeCount,
-      totalHK,
-      totalPremi,
-      totalLembur,
-      totalUpahBersih
+      employeeCount: filteredData.length,
+      totalHK: sum('jumlah_hk'),
+      totalPremi: sum('total_premi'),
+      totalLembur: sum('lembur_jumlah'),
+      totalUpahBersih: sum('upah_bersih'),
+      totalTunjangan: sum('total_tunjangan'),
+      totalPotongan: sum('total_potongan_bersih')
     };
   }, [filteredData]);
 
@@ -346,408 +342,347 @@ export default function ComprehensivePerformancePage({
     window.print();
   };
 
-  if (loading && rawData.length === 0) {
-    return <LoadingScreen isLoading={loading} message="Memuat data..." />;
-  }
-
-  if (error && rawData.length === 0) {
-    return (
-      <div className="wsp-container" style={{ padding: '2rem', textAlign: 'center' }}>
-        <h2 style={{ color: '#dc2626' }}>Error</h2>
-        <p>{error}</p>
-        <button onClick={onBack} className="sw-btn">Kembali</button>
-      </div>
-    );
-  }
-
-  const periodLabel = `${monthNames[month - 1]} ${year}`;
-
+  // Render (New UI)
   return (
     <div className="wsp-container">
-      {/* Action Bar */}
-      <div className="wsp-action-bar">
-        <button onClick={onBack} className="wsp-btn">KEMBALI</button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button onClick={handlePrint} className="wsp-btn">PRINT</button>
-          <button onClick={handleExportCSV} className="wsp-btn wsp-btn-primary">EXPORT CSV</button>
+      {/* Loading Overlay */}
+      {loading && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(255,255,255,0.7)',
+          zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column'
+        }}>
+          <div className="spinner-border" style={{
+            width: '3rem', height: '3rem',
+            border: '5px solid #e2e8f0', borderTopColor: '#3b82f6',
+            borderRadius: '50%', animation: 'spin 1s linear infinite'
+          }}></div>
+          <div style={{ marginTop: '1rem', fontWeight: 'bold', color: '#1e3a8a' }}>Memuat Data...</div>
+          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
         </div>
-      </div>
+      )}
 
-      {/* Document */}
-      <div className="wsp-document">
-        {/* Letterhead */}
-        <header className="wsp-letterhead">
-          <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
-          <h2 className="wsp-report-title">ANALISIS PERFORMA KOMPREHENSIF</h2>
-          <div className="wsp-report-period">Periode: {periodLabel}</div>
-          <div className="wsp-report-division">Divisi: {division} {gang && gang !== 'ALL' ? `- Gang: ${gang}` : ''}</div>
-        </header>
+      {/* Action Bar */}
+      <div className="wsp-action-bar no-print">
+        <div className="left-section">
+          <button onClick={onBack} className="wsp-btn">
+            &larr; KEMBALI
+          </button>
 
-        {/* Filters Section */}
-        <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'flex-end' }}>
-            {/* Month Selector */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.4rem' }}>PERIODE</label>
-              <MonthSelector
-                month={month}
-                year={year}
-                onChange={(m, y) => { setMonth(m); setYear(y); }}
-              />
-            </div>
+          <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Month/Year */}
+            <select
+              value={month}
+              onChange={(e) => setMonth(parseInt(e.target.value))}
+              className="wsp-select"
+              title="Bulan"
+            >
+              {monthNames.map((name, idx) => (
+                <option key={idx + 1} value={idx + 1}>{name}</option>
+              ))}
+            </select>
+            <select
+              value={year}
+              onChange={(e) => setYear(parseInt(e.target.value))}
+              className="wsp-select"
+              title="Tahun"
+            >
+              {[...Array(5)].map((_, i) => {
+                const y = new Date().getFullYear() - i;
+                return <option key={y} value={y}>{y}</option>;
+              })}
+            </select>
 
-            {/* Division Selector */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.4rem' }}>DIVISI</label>
-              <select
-                value={division}
-                onChange={(e) => { setDivision(e.target.value); setGang(''); }}
-                style={{
-                  padding: '0.6rem 1rem',
-                  fontSize: '0.9rem',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer',
-                  minWidth: '150px'
-                }}
-              >
-                <option value="ALL">SEMUA DIVISI</option>
-                {allDivisions.map(d => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
+            {/* Division */}
+            <select
+              value={division}
+              onChange={(e) => { setDivision(e.target.value); setGang('ALL'); }}
+              className="wsp-select"
+              title="Divisi"
+              style={{ minWidth: '150px' }}
+            >
+              <option value="ALL">SEMUA DIVISI</option>
+              {allDivisions.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
 
-            {/* Gang Selector */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.4rem' }}>GANG</label>
-              <select
-                value={gang}
-                onChange={(e) => setGang(e.target.value)}
-                disabled={!division || gangs.length === 0}
-                style={{
-                  padding: '0.6rem 1rem',
-                  fontSize: '0.9rem',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  backgroundColor: (!division || gangs.length === 0) ? '#f1f5f9' : 'white',
-                  cursor: (!division || gangs.length === 0) ? 'not-allowed' : 'pointer',
-                  minWidth: '150px'
-                }}
-              >
-                <option value="">Pilih Gang</option>
-                <option value="ALL">SEMUA GANG</option>
-                {gangs.map(g => (
-                  <option key={g.gang_code} value={g.gang_code}>{g.gang_code} - {g.description || ''}</option>
-                ))}
-              </select>
-            </div>
+            {/* Gang */}
+            <select
+              value={gang}
+              onChange={(e) => setGang(e.target.value)}
+              className="wsp-select"
+              title="Gang"
+              disabled={division === 'ALL' || !division}
+              style={{ minWidth: '150px' }}
+            >
+              <option value="ALL">SEMUA GANG</option>
+              {gangs.map(g => (
+                <option key={g.gang_code} value={g.gang_code}>
+                  {g.gang_code} {g.description ? `- ${g.description}` : ''}
+                </option>
+              ))}
+            </select>
 
-            {/* Fetch Data Button */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.4rem' }}>&nbsp;</label>
-              <button
-                onClick={fetchData}
-                disabled={loading}
-                style={{
-                  padding: '0.6rem 1.5rem',
-                  fontSize: '0.9rem',
-                  fontWeight: '600',
-                  border: '1px solid #16a34a',
-                  borderRadius: '6px',
-                  backgroundColor: loading ? '#86efac' : '#22c55e',
-                  color: 'white',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s',
-                  opacity: loading ? 0.7 : 1,
-                  minWidth: '150px'
-                }}
-                onMouseOver={(e) => {
-                  if (!loading) {
-                    e.currentTarget.style.backgroundColor = '#16a34a';
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (!loading) {
-                    e.currentTarget.style.backgroundColor = '#22c55e';
-                  }
-                }}
-              >
-                {loading ? 'MEMUAT...' : 'FETCH DATA'}
-              </button>
-            </div>
+            <button onClick={fetchData} className="wsp-btn wsp-btn-primary" disabled={loading}>
+              {loading ? 'MEMUAT...' : 'REFRESH'}
+            </button>
           </div>
         </div>
 
-        {/* KPI Cards - Dynamic based on activeTab */}
-        <div className="wsp-kpi-grid">
+        <div className="right-section">
+          <button onClick={handlePrint} className="wsp-btn">
+            PRINT / PDF
+          </button>
+          <button onClick={handleExportCSV} className="wsp-btn wsp-btn-primary">
+            EXPORT CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{ padding: '1rem', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '0.5rem', margin: '1rem' }}>
+          {error}
+        </div>
+      )}
+
+      {/* Report Document */}
+      <div className="wsp-document">
+        {/* Letterhead */}
+        <div className="wsp-letterhead">
+          <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
+          <h2 className="wsp-report-title">ANALISIS PERFORMA KOMPREHENSIF</h2>
+          <div className="wsp-report-period">
+            Periode: {monthNames[month - 1]} {year}
+          </div>
+          <div className="wsp-report-division">
+            {division === 'ALL' ? 'SEMUA DIVISI' : `Divisi: ${division}`}
+            {gang && gang !== 'ALL' && ` | Gang: ${gang}`}
+          </div>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="wsp-kpi-grid" style={{ marginBottom: '2rem' }}>
           <div className="wsp-kpi-card">
-            <div className="wsp-kpi-label">Total Employee</div>
+            <div className="wsp-kpi-label">TOTAL KARYAWAN</div>
             <div className="wsp-kpi-value">{formatNumber(kpiData.employeeCount)}</div>
           </div>
           <div className="wsp-kpi-card">
-            <div className="wsp-kpi-label">Total HK</div>
+            <div className="wsp-kpi-label">TOTAL HK</div>
             <div className="wsp-kpi-value">{formatNumber(kpiData.totalHK)}</div>
           </div>
-          {(activeTab === 'semua' || activeTab === 'premi') && (
-            <div className="wsp-kpi-card">
-              <div className="wsp-kpi-label">Total Premi</div>
-              <div className="wsp-kpi-value">{formatNumber(kpiData.totalPremi)}</div>
-            </div>
-          )}
-          {(activeTab === 'semua' || activeTab === 'lembur') && (
-            <div className="wsp-kpi-card">
-              <div className="wsp-kpi-label">Total Lembur</div>
-              <div className="wsp-kpi-value">{formatNumber(kpiData.totalLembur)}</div>
-            </div>
-          )}
-          {(activeTab === 'semua' || activeTab === 'tunjangan') && (
-            <div className="wsp-kpi-card">
-              <div className="wsp-kpi-label">Total Tunjangan</div>
-              <div className="wsp-kpi-value">{formatNumber(filteredData.reduce((s, r) => s + (r.total_tunjangan || 0), 0))}</div>
-            </div>
-          )}
-          {activeTab === 'potongan' && (
-            <div className="wsp-kpi-card">
-              <div className="wsp-kpi-label">Total Potongan</div>
-              <div className="wsp-kpi-value">{formatNumber(filteredData.reduce((s, r) => s + (r.total_potongan_bersih || 0), 0))}</div>
-            </div>
-          )}
+          <div className="wsp-kpi-card">
+            <div className="wsp-kpi-label">TOTAL LEMBUR</div>
+            <div className="wsp-kpi-value">{formatNumber(kpiData.totalLembur)}</div>
+          </div>
           <div className="wsp-kpi-card highlight">
-            <div className="wsp-kpi-label">Total Upah Bersih</div>
+            <div className="wsp-kpi-label">TOTAL UPAH BERSIH</div>
             <div className="wsp-kpi-value">{formatNumber(kpiData.totalUpahBersih)}</div>
           </div>
         </div>
 
-        {/* Filter Tabs */}
-        <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {[
-            { key: 'semua', label: 'Semua' },
-            { key: 'lembur', label: 'Lembur' },
-            { key: 'premi', label: 'Premi' },
-            { key: 'tunjangan', label: 'Tunjangan' },
-            { key: 'potongan', label: 'Potongan' }
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                padding: '0.6rem 1.2rem',
-                fontSize: '0.85rem',
-                fontWeight: '600',
-                border: '1px solid',
-                borderColor: activeTab === tab.key ? '#1e3a8a' : '#cbd5e1',
-                backgroundColor: activeTab === tab.key ? '#1e3a8a' : 'white',
-                color: activeTab === tab.key ? 'white' : '#475569',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onMouseOver={(e) => {
-                if (activeTab !== tab.key) {
-                  e.currentTarget.style.backgroundColor = '#f1f5f9';
-                }
-              }}
-              onMouseOut={(e) => {
-                if (activeTab !== tab.key) {
-                  e.currentTarget.style.backgroundColor = 'white';
-                }
-              }}
-            >
-              {tab.label} ({activeTab === tab.key ? filteredData.length : rawData.filter(r => {
-                switch (tab.key) {
-                  case 'lembur': return r.lembur_jam > 0;
-                  case 'premi': return r.total_premi > 0;
-                  case 'tunjangan': return r.total_tunjangan > 0;
-                  case 'potongan': return r.total_potongan_bersih > 0;
-                  default: return true;
-                }
-              }).length})
-            </button>
-          ))}
-        </div>
+        {/* Internal Tab Filter (No-print) */}
+        <div className="no-print" style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {[
+              { key: 'semua', label: 'SEMUA' },
+              { key: 'lembur', label: 'LEMBUR' },
+              { key: 'premi', label: 'PREMI' },
+              { key: 'tunjangan', label: 'TUNJANGAN' },
+              { key: 'potongan', label: 'POTONGAN' }
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={activeTab === tab.key ? 'wsp-btn wsp-btn-primary' : 'wsp-btn'}
+                style={{ borderRadius: '20px', fontSize: '0.8rem' }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Range Filter Inputs - Dynamic based on activeTab */}
-        <div style={{
-          marginBottom: '1rem',
-          padding: '1rem',
-          backgroundColor: '#f8fafc',
-          borderRadius: '8px',
-          border: '1px solid #e2e8f0',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
-          flexWrap: 'wrap'
-        }}>
-          <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#475569' }}>
-            Filter {activeTab === 'semua' ? 'Upah Bersih' : activeTab === 'premi' ? 'Premi' : activeTab === 'lembur' ? 'Lembur' : activeTab === 'tunjangan' ? 'Tunjangan' : 'Potongan'}:
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <label style={{ fontSize: '0.85rem', color: '#64748b' }}>Min:</label>
+          {/* Range Filter */}
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>FILTER NILAI (Min/Max):</span>
             <input
               type="number"
-              value={rangeFilters[activeTab]?.min || 0}
+              placeholder="Min"
+              className="wsp-select"
+              style={{ width: '120px' }}
+              value={rangeFilters[activeTab]?.min || ''}
               onChange={(e) => setRangeFilters(prev => ({
-                ...prev,
-                [activeTab]: { ...prev[activeTab], min: parseInt(e.target.value) || 0 }
+                ...prev, [activeTab]: { ...prev[activeTab], min: e.target.value ? parseInt(e.target.value) : 0 }
               }))}
-              style={{
-                padding: '0.5rem 0.75rem',
-                fontSize: '0.9rem',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                width: '140px',
-                backgroundColor: 'white'
-              }}
-              placeholder="0"
             />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <label style={{ fontSize: '0.85rem', color: '#64748b' }}>Max:</label>
+            <span style={{ color: '#94a3b8' }}>-</span>
             <input
               type="number"
+              placeholder="Max"
+              className="wsp-select"
+              style={{ width: '120px' }}
               value={rangeFilters[activeTab]?.max || ''}
               onChange={(e) => setRangeFilters(prev => ({
-                ...prev,
-                [activeTab]: { ...prev[activeTab], max: e.target.value ? parseInt(e.target.value) : null }
+                ...prev, [activeTab]: { ...prev[activeTab], max: e.target.value ? parseInt(e.target.value) : null }
               }))}
-              style={{
-                padding: '0.5rem 0.75rem',
-                fontSize: '0.9rem',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                width: '140px',
-                backgroundColor: 'white'
-              }}
-              placeholder="Kosongkan untuk tanpa batas"
             />
-          </div>
-          <button
-            onClick={() => setRangeFilters(prev => ({
-              ...prev,
-              [activeTab]: { min: 0, max: null }
-            }))}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.85rem',
-              border: '1px solid #cbd5e1',
-              borderRadius: '6px',
-              backgroundColor: 'white',
-              cursor: 'pointer',
-              color: '#64748b'
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#e2e8f0'; }}
-            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white'; }}
-          >
-            Reset
-          </button>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginLeft: 'auto' }}>
-            {filteredData.length} data {filteredData.length !== rawData.length ? `dari ${rawData.length}` : ''}
+            <button
+              className="wsp-btn"
+              onClick={() => setRangeFilters(prev => ({ ...prev, [activeTab]: { min: 0, max: null } }))}
+            >
+              RESET
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#64748b' }}>
+              Menampilkan {filteredData.length} data
+            </span>
           </div>
         </div>
 
-        {/* Data Table */}
-        <div className="wsp-table-wrapper" style={{ marginTop: '1.5rem' }}>
-          {filteredData.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📊</div>
-              <div>Tidak ada data untuk filter yang dipilih</div>
-            </div>
-          ) : (
-            <table className="wsp-table">
-              <thead>
-                {/* Level 1: Column Groups - Dynamic based on activeTab */}
-                <tr className="wsp-header-master">
-                  <th colSpan="4">IDENTITAS & TASK</th>
-                  <th colSpan="1">ABSENSI</th>
-                  {activeTab === 'semua' && <th colSpan="4">TUNJANGAN</th>}
-                  {activeTab === 'semua' && <th colSpan={2 + dynamicPremiHeaders.length}>PREMI</th>}
-                  {activeTab === 'lembur' && <th colSpan="2">LEMBUR</th>}
-                  {activeTab === 'tunjangan' && <th colSpan="4">TUNJANGAN</th>}
-                  {activeTab === 'premi' && <th colSpan={2 + dynamicPremiHeaders.length}>PREMI</th>}
-                  {activeTab === 'potongan' && <th colSpan="1">POTONGAN</th>}
-                  {activeTab === 'semua' && <th colSpan="2">TOTAL</th>}
-                  <th colSpan="1">UPAH BERSIH</th>
-                </tr>
-                {/* Level 2: Column Names */}
-                <tr className="wsp-header-sub">
-                  <th>NIK</th>
-                  <th>NAMA</th>
-                  <th>GANG</th>
-                  <th>Task Desc</th>
-                  <th>HK</th>
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <th>Beras</th>}
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <th>Jabatan</th>}
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <th>Masa Kerja</th>}
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <th>Total</th>}
-                  {(activeTab === 'semua' || activeTab === 'premi') && <th>Brondol</th>}
-                  {(activeTab === 'semua' || activeTab === 'premi') && <th>Pruning</th>}
-                  {(activeTab === 'semua' || activeTab === 'premi') && dynamicPremiHeaders.map(h => <th key={h}>{h.replace(/_/g, ' ').toUpperCase()}</th>)}
-                  {(activeTab === 'semua' || activeTab === 'premi') && <th>Total</th>}
-                  {(activeTab === 'semua' || activeTab === 'lembur') && <th>Jam</th>}
-                  {(activeTab === 'lembur') && <th>Jumlah</th>}
-                  {activeTab === 'potongan' && <th>Total Potongan</th>}
-                  {activeTab === 'semua' && <th>Kotor</th>}
-                  <th>Bersih</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredData.map((row, idx) => (
-                  <tr key={idx} className={idx % 2 === 0 ? 'wsp-row-even' : 'wsp-row-odd'}>
-                    <td>{row.nik || '-'}</td>
-                    <td>{row.nama || '-'}</td>
-                    <td>{row.gang_code || '-'}</td>
-                    <td style={{ fontSize: '0.75rem' }}>{row.task_desc || '-'}</td>
-                    <td className="text-right">{formatNumber(row.jumlah_hk)}</td>
-                    {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(row.beras_jumlah)}</td>}
-                    {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(row.jabatan_jumlah)}</td>}
-                    {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(row.masa_kerja_jumlah)}</td>}
-                    {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(row.total_tunjangan)}</td>}
-                    {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(row.premi_brondol)}</td>}
-                    {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(row.premi_pruning)}</td>}
-                    {(activeTab === 'semua' || activeTab === 'premi') && dynamicPremiHeaders.map(h => (
-                      <td key={h} className="text-right">{formatNumber(row.premi?.[h])}</td>
+        {/* Table */}
+        <div className="wsp-table-wrapper">
+          <table className="wsp-table">
+            <thead>
+              <tr className="wsp-header-master">
+                <th colSpan="4">KARYAWAN</th>
+                <th colSpan="1">ABSENSI</th>
+                {activeTab === 'semua' && <th colSpan="4">TUNJANGAN</th>}
+                {activeTab === 'semua' && <th colSpan={2 + dynamicPremiHeaders.length}>PREMI</th>}
+                {(activeTab === 'semua' || activeTab === 'lembur') && <th colSpan="2">LEMBUR</th>}
+                {activeTab === 'tunjangan' && <th colSpan="4">TUNJANGAN</th>}
+                {activeTab === 'premi' && <th colSpan={2 + dynamicPremiHeaders.length}>PREMI</th>}
+                {activeTab === 'potongan' && <th colSpan="1">POTONGAN</th>}
+                {activeTab === 'semua' && <th colSpan="2">TOTAL</th>}
+                <th colSpan="1">UPAH BERSIH</th>
+              </tr>
+              <tr className="wsp-header-sub">
+                <th>NIK</th>
+                <th>NAMA</th>
+                <th>GANG</th>
+                <th>TASK</th>
+                <th className="text-right">HK</th>
+
+                {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+                  <>
+                    <th className="text-right">BERAS</th>
+                    <th className="text-right">JABATAN</th>
+                    <th className="text-right">MASA KERJA</th>
+                    <th className="text-right">TOTAL</th>
+                  </>
+                )}
+
+                {(activeTab === 'semua' || activeTab === 'premi') && (
+                  <>
+                    <th className="text-right">BRONDOL</th>
+                    <th className="text-right">PRUNING</th>
+                    {dynamicPremiHeaders.map(h => (
+                      <th key={h} className="text-right">{h.replace('PREMI_', '').replace(/_/g, ' ')}</th>
                     ))}
-                    {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(row.total_premi)}</td>}
-                    {(activeTab === 'semua' || activeTab === 'lembur') && <td className="text-right">{formatDecimal(row.lembur_jam)}</td>}
-                    {activeTab === 'lembur' && <td className="text-right">{formatNumber(row.lembur_jumlah)}</td>}
-                    {activeTab === 'potongan' && <td className="text-right">{formatNumber(row.total_potongan_bersih)}</td>}
-                    {activeTab === 'semua' && <td className="text-right">{formatNumber(row.jumlah_upah_kotor)}</td>}
-                    <td className="text-right" style={{ fontWeight: 'bold' }}>{formatNumber(row.upah_bersih)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="wsp-grand-total">
-                  <td colSpan="4">TOTAL ({filteredData.length} Employee)</td>
-                  <td className="text-right">{formatNumber(kpiData.totalHK)}</td>
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.beras_jumlah || 0), 0))}</td>}
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.jabatan_jumlah || 0), 0))}</td>}
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.masa_kerja_jumlah || 0), 0))}</td>}
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.total_tunjangan || 0), 0))}</td>}
-                  {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.premi_brondol || 0), 0))}</td>}
-                  {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.premi_pruning || 0), 0))}</td>}
-                  {(activeTab === 'semua' || activeTab === 'premi') && dynamicPremiHeaders.map(h => (
-                    <td key={h} className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.premi?.[h] || 0), 0))}</td>
-                  ))}
-                  {(activeTab === 'semua' || activeTab === 'premi') && <td className="text-right">{formatNumber(kpiData.totalPremi)}</td>}
-                  {(activeTab === 'semua' || activeTab === 'lembur') && <td className="text-right">{formatDecimal(filteredData.reduce((s, r) => s + (r.lembur_jam || 0), 0))}</td>}
-                  {activeTab === 'lembur' && <td className="text-right">{formatNumber(kpiData.totalLembur)}</td>}
-                  {activeTab === 'potongan' && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.total_potongan_bersih || 0), 0))}</td>}
-                  {activeTab === 'semua' && <td className="text-right">{formatNumber(filteredData.reduce((s, r) => s + (r.jumlah_upah_kotor || 0), 0))}</td>}
-                  <td className="text-right" style={{ fontWeight: 'bold' }}>{formatNumber(kpiData.totalUpahBersih)}</td>
+                    <th className="text-right">TOTAL</th>
+                  </>
+                )}
+
+                {(activeTab === 'semua' || activeTab === 'lembur') && (
+                  <>
+                    <th className="text-right">JAM</th>
+                    <th className="text-right">RUPIAH</th>
+                  </>
+                )}
+
+                {activeTab === 'potongan' && <th className="text-right">TOTAL POTONGAN</th>}
+
+                {activeTab === 'semua' && <th className="text-right">KOTOR</th>}
+                <th className="text-right">BERSIH</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredData.map((row, idx) => (
+                <tr key={idx}>
+                  <td>{row.nik}</td>
+                  <td style={{ fontWeight: 500 }}>{row.nama}</td>
+                  <td>{row.gang_code}</td>
+                  <td style={{ fontSize: '0.75rem' }}>{row.task_desc}</td>
+                  <td className="text-right">{formatNumber(row.jumlah_hk)}</td>
+
+                  {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+                    <>
+                      <td className="text-right">{formatNumber(row.beras_jumlah)}</td>
+                      <td className="text-right">{formatNumber(row.jabatan_jumlah)}</td>
+                      <td className="text-right">{formatNumber(row.masa_kerja_jumlah)}</td>
+                      <td className="text-right">{formatNumber(row.total_tunjangan)}</td>
+                    </>
+                  )}
+
+                  {(activeTab === 'semua' || activeTab === 'premi') && (
+                    <>
+                      <td className="text-right">{formatNumber(row.premi_brondol)}</td>
+                      <td className="text-right">{formatNumber(row.premi_pruning)}</td>
+                      {dynamicPremiHeaders.map(h => (
+                        <td key={h} className="text-right">{formatNumber(row.premi?.[h] || 0)}</td>
+                      ))}
+                      <td className="text-right">{formatNumber(row.total_premi)}</td>
+                    </>
+                  )}
+
+                  {(activeTab === 'semua' || activeTab === 'lembur') && (
+                    <>
+                      <td className="text-right">{formatDecimal(row.lembur_jam)}</td>
+                      <td className="text-right">{formatNumber(row.lembur_jumlah)}</td>
+                    </>
+                  )}
+
+                  {activeTab === 'potongan' && <td className="text-right">{formatNumber(row.total_potongan_bersih)}</td>}
+
+                  {activeTab === 'semua' && <td className="text-right">{formatNumber(row.jumlah_upah_kotor)}</td>}
+                  <td className="text-right" style={{ fontWeight: 'bold' }}>{formatNumber(row.upah_bersih)}</td>
                 </tr>
-              </tfoot>
-            </table>
-          )}
+              ))}
+              {filteredData.length === 0 && !loading && (
+                <tr>
+                  <td colSpan="100%" className="text-center" style={{ padding: '2rem', fontStyle: 'italic', color: '#64748b' }}>
+                    Tidak ada data untuk ditampilkan. Silakan cek filter Anda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr className="wsp-grand-total">
+                <td colSpan="4">TOTAL ({filteredData.length} Employee)</td>
+                <td className="text-right">{formatNumber(kpiData.totalHK)}</td>
+
+                {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+                  <>
+                    <td colSpan="3"></td>
+                    <td className="text-right">{formatNumber(kpiData.totalTunjangan)}</td>
+                  </>
+                )}
+                {(activeTab === 'semua' || activeTab === 'premi') && (
+                  <>
+                    <td colSpan={2 + dynamicPremiHeaders.length}></td>
+                    <td className="text-right">{formatNumber(kpiData.totalPremi)}</td>
+                  </>
+                )}
+                {(activeTab === 'semua' || activeTab === 'lembur') && (
+                  <>
+                    <td></td>
+                    <td className="text-right">{formatNumber(kpiData.totalLembur)}</td>
+                  </>
+                )}
+                {activeTab === 'potongan' && <td className="text-right">{formatNumber(kpiData.totalPotongan)}</td>}
+                {activeTab === 'semua' && <td></td>}
+                <td className="text-right">{formatNumber(kpiData.totalUpahBersih)}</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
 
         {/* Footer */}
-        <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0', textAlign: 'center', fontSize: '0.8rem', color: '#64748b' }}>
-          <div>Dicetak pada: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-          <div style={{ marginTop: '0.3rem' }}>Sistem Payroll PT Rebinmas Jaya</div>
+        <div className="wsp-footer">
+          <div>Dicetak: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+          <div>Sistem Payroll PT Rebinmas Jaya - Plantware Auto Report</div>
         </div>
+
       </div>
     </div>
   );
