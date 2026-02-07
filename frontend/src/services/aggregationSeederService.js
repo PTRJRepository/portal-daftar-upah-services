@@ -144,6 +144,37 @@ export async function fetchAggregationPeriods(token) {
 }
 
 /**
+ * Sync data to Google Spreadsheet
+ * @param {string} token - Auth token
+ * @param {number} month - Month
+ * @param {number} year - Year
+ * @param {string} division - Division (optional)
+ */
+export async function syncSpreadsheet(token, month, year, division = null) {
+    const body = {
+        month,
+        year,
+        ...(division && { division })
+    };
+
+    const response = await fetch(`${BACKEND_BASE}/spreadsheet/sync`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || `Failed to sync spreadsheet: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+/**
  * Fetch aggregation status for a specific period
  * @param {string} token - Auth token
  * @param {number} month - Month

@@ -597,47 +597,94 @@ export default function ComprehensivePerformancePage({
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((row, idx) => (
-                <tr key={idx}>
-                  <td>{row.nik}</td>
-                  <td style={{ fontWeight: 500 }}>{row.nama}</td>
-                  <td>{row.gang_code}</td>
-                  <td style={{ fontSize: '0.75rem' }}>{row.task_desc}</td>
-                  <td className="text-right">{formatNumber(row.jumlah_hk)}</td>
+              {filteredData.map((row, idx) => {
+                const hasLemburDetails = activeTab === 'lembur' && row.lembur_records && row.lembur_records.length > 0;
 
-                  {(activeTab === 'semua' || activeTab === 'tunjangan') && (
-                    <>
-                      <td className="text-right">{formatNumber(row.beras_jumlah)}</td>
-                      <td className="text-right">{formatNumber(row.jabatan_jumlah)}</td>
-                      <td className="text-right">{formatNumber(row.masa_kerja_jumlah)}</td>
-                      <td className="text-right">{formatNumber(row.total_tunjangan)}</td>
-                    </>
-                  )}
+                return (
+                  <React.Fragment key={idx}>
+                    {/* Main Employee Row */}
+                    <tr>
+                      <td>{row.nik}</td>
+                      <td style={{ fontWeight: 500 }}>{row.nama}</td>
+                      <td>{row.gang_code}</td>
+                      <td style={{ fontSize: '0.75rem' }}>{row.task_desc}</td>
+                      <td className="text-right">{formatNumber(row.jumlah_hk)}</td>
 
-                  {(activeTab === 'semua' || activeTab === 'premi') && (
-                    <>
-                      <td className="text-right">{formatNumber(row.premi_brondol)}</td>
-                      <td className="text-right">{formatNumber(row.premi_pruning)}</td>
-                      {dynamicPremiHeaders.map(h => (
-                        <td key={h} className="text-right">{formatNumber(row.premi?.[h] || 0)}</td>
-                      ))}
-                      <td className="text-right">{formatNumber(row.total_premi)}</td>
-                    </>
-                  )}
+                      {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+                        <>
+                          <td className="text-right">{formatNumber(row.beras_jumlah)}</td>
+                          <td className="text-right">{formatNumber(row.jabatan_jumlah)}</td>
+                          <td className="text-right">{formatNumber(row.masa_kerja_jumlah)}</td>
+                          <td className="text-right">{formatNumber(row.total_tunjangan)}</td>
+                        </>
+                      )}
 
-                  {(activeTab === 'semua' || activeTab === 'lembur') && (
-                    <>
-                      <td className="text-right">{formatDecimal(row.lembur_jam)}</td>
-                      <td className="text-right">{formatNumber(row.lembur_jumlah)}</td>
-                    </>
-                  )}
+                      {(activeTab === 'semua' || activeTab === 'premi') && (
+                        <>
+                          <td className="text-right">{formatNumber(row.premi_brondol)}</td>
+                          <td className="text-right">{formatNumber(row.premi_pruning)}</td>
+                          {dynamicPremiHeaders.map(h => (
+                            <td key={h} className="text-right">{formatNumber(row.premi?.[h] || 0)}</td>
+                          ))}
+                          <td className="text-right">{formatNumber(row.total_premi)}</td>
+                        </>
+                      )}
 
-                  {activeTab === 'potongan' && <td className="text-right">{formatNumber(row.total_potongan_bersih)}</td>}
+                      {(activeTab === 'semua' || activeTab === 'lembur') && (
+                        <>
+                          <td className="text-right">{formatDecimal(row.lembur_jam)}</td>
+                          <td className="text-right" style={{ fontWeight: hasLemburDetails ? 'bold' : 'normal' }}>
+                            {formatNumber(row.lembur_jumlah)}
+                            {hasLemburDetails && (
+                              <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: '#64748b' }}>
+                                ▼
+                              </span>
+                            )}
+                          </td>
+                        </>
+                      )}
 
-                  {activeTab === 'semua' && <td className="text-right">{formatNumber(row.jumlah_upah_kotor)}</td>}
-                  <td className="text-right" style={{ fontWeight: 'bold' }}>{formatNumber(row.upah_bersih)}</td>
-                </tr>
-              ))}
+                      {activeTab === 'potongan' && <td className="text-right">{formatNumber(row.total_potongan_bersih)}</td>}
+
+                      {activeTab === 'semua' && <td className="text-right">{formatNumber(row.jumlah_upah_kotor)}</td>}
+                      <td className="text-right" style={{ fontWeight: 'bold' }}>{formatNumber(row.upah_bersih)}</td>
+                    </tr>
+
+                    {/* Lembur Detail Sub-rows (Only when Lembur tab is active and has details) */}
+                    {hasLemburDetails && row.lembur_records.map((detail, detailIdx) => (
+                      <tr key={`${idx}-detail-${detailIdx}`} style={{ backgroundColor: '#f8fafc' }}>
+                        <td colSpan={4} style={{ paddingLeft: '2rem', fontSize: '0.8rem', fontStyle: 'italic', color: '#64748b' }}>
+                          └─ {detail.trx_date} | {detail.task_code || '-'} {detail.task_desc ? `(${detail.task_desc})` : ''}
+                        </td>
+                        <td className="text-right" style={{ color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
+
+                        {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+                          <td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
+                        )}
+
+                        {(activeTab === 'semua' || activeTab === 'premi') && (
+                          <td colSpan={3 + dynamicPremiHeaders.length} style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
+                        )}
+
+                        {(activeTab === 'semua' || activeTab === 'lembur') && (
+                          <>
+                            <td className="text-right" style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                              {formatDecimal(detail.hours || 0)}
+                            </td>
+                            <td className="text-right" style={{ fontSize: '0.8rem', color: '#059669' }}>
+                              {formatNumber(detail.amount || 0)}
+                            </td>
+                          </>
+                        )}
+
+                        {activeTab === 'potongan' && <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>}
+                        {activeTab === 'semua' && <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>}
+                        <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
               {filteredData.length === 0 && !loading && (
                 <tr>
                   <td colSpan="100%" className="text-center" style={{ padding: '2rem', fontStyle: 'italic', color: '#64748b' }}>

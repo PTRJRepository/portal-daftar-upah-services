@@ -34,7 +34,6 @@ const HighEarnerReportPage = () => {
     ];
 
 
-
     // Fetch Divisions on Mount
     useEffect(() => {
         const fetchDivisions = async () => {

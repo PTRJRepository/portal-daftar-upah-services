@@ -1,0 +1,270 @@
+import { Config } from "../config";
+import { divisionDefinition } from "./divisionDefinition";
+import { DataExtractorService } from "./dataExtractorService";
+
+export interface AggregationRecord {
+    gang_code: string;
+    gang_description: string;
+    total_employees: number;
+    total_hk: number;
+    total_hari_kerja: number;
+    total_cuti_tahunan: number;
+    total_cuti_sakit: number;
+    total_cuti_minggu: number;
+    total_cuti_nasional: number;
+    total_upah_dasar: number;
+    total_upah_pokok: number;
+    total_gaji_pokok: number;
+    total_beras: number;
+    total_jabatan: number;
+    total_masa_kerja: number;
+    total_lembur: number;
+    total_tunjangan: number;
+    total_premi_brondol: number;
+    total_premi_prunning: number;
+    total_premi_insentif: number;  // Extracted from dynamic_premi with "INSENTIF" header
+    total_premi_kinerja: number;   // Extracted from dynamic_premi with "KINERJA" header
+    total_premi: number;
+    total_potongan: number;
+    total_pph21: number;
+    total_bpjs_pekerja: number;
+    total_bpjs_majikan: number;
+    total_spsi: number;
+    total_upah_kotor: number;
+    total_upah_bersih: number;
+    total_ffb_weight: number;
+    total_weight_tbs: number;      // TBS weight
+    dynamic_premi_data: string;    // JSON string of all dynamic premi
+    informasi_tambahan: string;    // Additional information
+    total_koreksi: number;         // Extracted from dynamic_premi with "KOREKSI" header (except KOREKSI_HK)
+}
+
+export class PayrollDataService {
+    /**
+     * Fetch payroll data for a specific division and period.
+     * This handles virtual divisions by querying their source divisions.
+     * Returns a map of division -> AggregationRecord[]
+     * [Reload Trigger] - Forced reload
+     */
+    static async fetchPayrollData(division: string, month: number, year: number, authToken: string): Promise<Record<string, AggregationRecord[]>> {
+        const results: Record<string, AggregationRecord[]> = {};
+
+        // Check if this is a virtual division
+        const isVirtual = divisionDefinition.isVirtualDivision(division);
+        let divisionsToQuery: string[] = [division];
+
+        if (isVirtual) {
+            divisionsToQuery = await divisionDefinition.getSourceDivisionsForAggregation(division);
+            console.log(`[PayrollDataService] Virtual division ${division} -> Querying source divisions: ${divisionsToQuery.join(", ")}`);
+        }
+
+        for (const div of divisionsToQuery) {
+            try {
+                // Fetch data for this division
+                const rawData = await this.fetchRawTreeData(div, month, year, authToken);
+
+                if (rawData.success && rawData.data && rawData.data.gangs) {
+                    const records: AggregationRecord[] = [];
+                    const premiTitleMap = rawData.data.premi_title_map || {};
+                    const potonganTitleMap = rawData.data.potongan_title_map || {};
+
+                    for (const gangData of rawData.data.gangs) {
+                        const gangCode = gangData.gang_code;
+                        const gangDesc = gangData.gang_description || gangCode;
+                        const gangTotals = gangData.gang_totals;
+
+                        if (!gangCode || !gangTotals) continue;
+
+                        const record = this.mapGangTotalsToAggregation(
+                            gangCode,
+                            gangDesc,
+                            gangTotals,
+                            premiTitleMap,
+                            potonganTitleMap
+                        );
+                        records.push(record);
+                    }
+
+                    // Store results keyed by the division code
+                    // If it's a virtual division, we might want to aggregate them later or store strictly by source
+                    // For now, let's store by source division
+                    results[div] = records;
+                }
+            } catch (error) {
+                console.error(`[PayrollDataService] Error fetching data for ${div}:`, error);
+                // Continue to next division even if one fails
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Fetch detailed employee payroll data for a specific division and period.
+     * Returns a flat list of employee records (any[]).
+     */
+    static async fetchEmployeeData(division: string, month: number, year: number, authToken: string): Promise<any[]> {
+        const results: any[] = [];
+
+        // Check if this is a virtual division
+        const isVirtual = divisionDefinition.isVirtualDivision(division);
+        let divisionsToQuery: string[] = [division];
+
+        if (isVirtual) {
+            divisionsToQuery = await divisionDefinition.getSourceDivisionsForAggregation(division);
+            console.log(`[PayrollDataService] Virtual division ${division} -> Querying source divisions for employee data: ${divisionsToQuery.join(", ")}`);
+        }
+
+        const dataExtractor = DataExtractorService.getInstance();
+
+        for (const div of divisionsToQuery) {
+            try {
+                // Fetch data for this division DIRECTLY from service (bypass HTTP layer)
+                console.log(`[PayrollDataService] Fetching employee data for ${div} via DataExtractorService...`);
+                // Use Config.DB_PROFILE as default for payroll data
+                const rawData = await dataExtractor.extractPayrollData(month, year, "ALL", div, null, Config.DB_PROFILE, false);
+
+                if (rawData && rawData.data_rows && rawData.data_rows.length > 0) {
+                    // Normalize or tag data if needed (e.g. add division source if mixed)
+                    const taggedRows = rawData.data_rows.map((row: any) => ({
+                        ...row,
+                        _source_division: div
+                    }));
+                    results.push(...taggedRows);
+                } else {
+                    console.log(`[PayrollDataService] No data rows found for ${div}`);
+                }
+            } catch (error) {
+                console.error(`[PayrollDataService] Error fetching employee data for ${div}:`, error);
+                throw error; // Rethrow to let caller handle it
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Fetch payroll data using the raw-tree endpoint via HTTP
+     */
+    private static async fetchRawTreeData(division: string, month: number, year: number, authToken: string, includeVirtual: boolean = false) {
+        console.log(`[PayrollDataService] Fetching raw tree data for ${division} (${month}/${year}) includeVirtual=${includeVirtual}...`);
+
+        const url = `http://localhost:${Config.PORT}/backend/upah/payroll/locked/report/raw-tree?div=${division}&month=${month}&year=${year}&include_virtual=${includeVirtual}`;
+
+        try {
+            const response = await fetch(url, {
+                method: "GET",
+                headers: {
+                    "Authorization": authToken
+                }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch raw-tree data: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const result: any = await response.json();
+            return {
+                success: true,
+                data: result
+            };
+        } catch (error: any) {
+            console.error(`[PayrollDataService] Fetch error:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Map gang_totals from raw-tree response to AggregationRecord structure
+     */
+    private static mapGangTotalsToAggregation(
+        gangCode: string,
+        gangDescription: string,
+        totals: any,
+        premiTitleMap: Record<string, string>,
+        potonganTitleMap: Record<string, string>
+    ): AggregationRecord {
+        // Build dynamic_premi_data from gang_totals
+        const excludePatterns = ['premi_brondol', 'premi_pph', 'premi_koreksi', 'total_premi'];
+        const dynamicPremiList: any[] = [];
+
+        for (const [key, value] of Object.entries(totals)) {
+            if (key.startsWith('premi_') && (value as number) > 0) {
+                // Skip standard premi fields
+                if (excludePatterns.includes(key)) continue;
+
+                // Get header name from title map or use the key
+                const header = premiTitleMap[key] || key.replace('premi_', '').toUpperCase();
+                dynamicPremiList.push({
+                    header: header,
+                    total: value
+                });
+            }
+        }
+
+        // Calculate total_premi (brondol + dynamic)
+        const totalPremiBrondol = totals.premi_brondol || 0;
+        const totalPremiDynamic = dynamicPremiList.reduce((sum, item) => sum + (item.total || 0), 0);
+        const totalPremi = totalPremiBrondol + totalPremiDynamic;
+
+        // Extract separated premi components from dynamic list
+        let totalPremiInsentif = 0;
+        let totalPremiKinerja = 0;
+        let totalPremiPrunning = 0;
+        let totalKoreksi = 0;
+
+        for (const item of dynamicPremiList) {
+            const headerLower = item.header.toLowerCase();
+            if (headerLower.includes('insentif') || headerLower.includes('panen')) {
+                totalPremiInsentif += item.total;
+            }
+            if (headerLower.includes('kinerja')) {
+                totalPremiKinerja += item.total;
+            }
+            if ((headerLower.includes('prun') || headerLower.includes('pruning')) && !headerLower.includes('brondol')) {
+                totalPremiPrunning += item.total;
+            }
+            if (headerLower.includes('koreksi') && !headerLower.includes('koreksi_hk')) {
+                totalKoreksi += item.total;
+            }
+        }
+
+        return {
+            gang_code: gangCode,
+            gang_description: gangDescription,
+            total_employees: totals.employee_count || 0,
+            total_hk: totals.jumlah_hk || 0,
+            total_hari_kerja: totals.hari_kerja || 0,
+            total_cuti_tahunan: 0, // Not available in raw totals currently
+            total_cuti_sakit: 0,
+            total_cuti_minggu: 0,
+            total_cuti_nasional: 0,
+            total_upah_dasar: 0,
+            total_upah_pokok: totals.gaji_pokok || 0,
+            total_gaji_pokok: totals.gaji_pokok || 0,
+            total_beras: totals.beras_jumlah || 0,
+            total_jabatan: totals.jabatan_jumlah || 0,
+            total_masa_kerja: totals.masa_kerja_jumlah || 0,
+            total_lembur: totals.lembur_jumlah || 0,
+            total_tunjangan: totals.total_tunjangan || 0,
+            total_premi_brondol: totalPremiBrondol,
+            total_premi_prunning: totalPremiPrunning,
+            total_premi_insentif: totalPremiInsentif,
+            total_premi_kinerja: totalPremiKinerja,
+            total_premi: totalPremi,
+            total_potongan: totals.total_potongan || 0,
+            total_pph21: totals.pot_pph21 || 0,
+            total_bpjs_pekerja: totals.pot_bpjs_pekerja_total || 0,
+            total_bpjs_majikan: totals.pot_astek_maj || 0,
+            total_spsi: totals.pot_spsi || 0,
+            total_upah_kotor: totals.jumlah_upah_kotor || 0,
+            total_upah_bersih: totals.upah_bersih || 0,
+            total_ffb_weight: 0,
+            total_weight_tbs: 0,
+            dynamic_premi_data: JSON.stringify(dynamicPremiList),
+            informasi_tambahan: '',
+            total_koreksi: totalKoreksi
+        };
+    }
+}

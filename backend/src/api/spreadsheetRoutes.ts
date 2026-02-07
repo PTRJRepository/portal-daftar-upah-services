@@ -1,0 +1,78 @@
+import { Elysia, t } from "elysia";
+import { PayrollDataService, AggregationRecord } from "../services/payrollDataService";
+import { AppsScriptService } from "../services/appsScriptService";
+import { divisionDefinition } from "../services/divisionDefinition";
+
+export const spreadsheetRoutes = new Elysia({ prefix: "/spreadsheet" })
+    .post("/sync", async ({ body, headers, set }) => {
+        // Auth check (simple bearer token check if needed, or open for now if internal)
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const { division, month, year } = body;
+
+        try {
+            console.log(`[SpreadsheetSync] Request received for ${division || "ALL"} (${month}/${year})`);
+
+            // 1. Determine Divisions
+            let divisionsToProcess: string[] = [];
+            if (division) {
+                divisionsToProcess = [division];
+            } else {
+                // Fetch all available divisions
+                divisionsToProcess = await divisionDefinition.getAllDivisions(true);
+            }
+
+            const results = [];
+
+            // 2. Process Each Division
+            for (const div of divisionsToProcess) {
+                try {
+                    // A. Fetch Data (Detailed Employee Data)
+                    const employeeData = await PayrollDataService.fetchEmployeeData(div, month, year, authHeader);
+
+                    if (employeeData.length === 0) {
+                        console.log(`[SpreadsheetSync] No employee data for ${div}, skipping.`);
+                        results.push({ division: div, status: "SKIPPED_NO_DATA" });
+                        continue;
+                    }
+
+                    // B. Send to Apps Script
+                    const result = await AppsScriptService.syncDivisionToSpreadsheet(div, month, year, employeeData);
+
+                    results.push({
+                        division: div,
+                        status: "SUCCESS",
+                        rows: employeeData.length,
+                        sheet_response: result
+                    });
+
+                } catch (error: any) {
+                    console.error(`[SpreadsheetSync] Error processing ${div}:`, error);
+                    results.push({ division: div, status: "ERROR", message: error.message });
+                }
+            }
+
+            return {
+                success: true,
+                results: results
+            };
+
+        } catch (error: any) {
+            console.error("[SpreadsheetSync] Global Error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Internal Server Error"
+            };
+        }
+    }, {
+        body: t.Object({
+            division: t.Optional(t.String()),
+            month: t.Numeric(),
+            year: t.Numeric()
+        })
+    });

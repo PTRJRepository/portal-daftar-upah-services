@@ -472,6 +472,152 @@ export class LemburCalculator {
         return result;
     }
 
+    // --- Batch Overtime Details with Task Code Breakdown ---
+    public async calculateBatchDataWithTaskBreakdown(empCodes: string[], month: number, year: number, serverProfile?: string): Promise<Record<string, {
+        total_hours: number;
+        total_payment: number;
+        task_breakdown: Array<{
+            task_code: string;
+            task_desc: string;
+            hours: number;
+            amount: number;
+            record_count: number;
+        }>;
+    }>> {
+        if (!empCodes.length) return {};
+
+        const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${month.toString().padStart(2, "0")}-${daysInMonth}`;
+
+        const result: Record<string, {
+            total_hours: number;
+            total_payment: number;
+            task_breakdown: Array<{
+                task_code: string;
+                task_desc: string;
+                hours: number;
+                amount: number;
+                record_count: number;
+            }>;
+        }> = {};
+
+        // Use specific profile if requested, otherwise default
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+
+        // 1. Batch fetch PayRates
+        let payRates: Record<string, number> = {};
+        try {
+            payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
+        } catch (e) {
+            console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
+        }
+
+        // 2. Batch fetch Overtime Records with TaskCode
+        const empList = empCodes.map(e => `'${e}'`).join(",");
+        let rows: any[] = [];
+        try {
+            rows = await db.query<{
+                EmpCode: string;
+                Hours: number;
+                TrxDate: string;
+                TaskCode: string;
+            }>(`
+                SELECT
+                    trl.EmpCode,
+                    trl.Hours,
+                    trl.TrxDate,
+                    trl.TaskCode
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 1
+
+                UNION ALL
+
+                SELECT
+                    trl.EmpCode,
+                    trl.Hours,
+                    trl.TrxDate,
+                    trl.TaskCode
+                FROM PR_TASKREGLN_ARC trl
+                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 1
+            `, [startDate, endDate, startDate, endDate]);
+        } catch (e) {
+            console.error("[LemburCalculator] Failed to batch fetch overtime:", e);
+            return {};
+        }
+
+        // 3. Fetch TaskDesc for all unique TaskCodes
+        const uniqueTaskCodes = [...new Set(rows.map(r => r.TaskCode?.trim()).filter(tc => tc))];
+        const taskDescMap: Record<string, string> = {};
+        if (uniqueTaskCodes.length > 0) {
+            try {
+                const taskList = uniqueTaskCodes.map(tc => `'${tc}'`).join(",");
+                const taskRows = await db.query<{
+                    TaskCode: string;
+                    TaskDesc: string;
+                }>(`
+                    SELECT TaskCode, TaskDesc
+                    FROM PR_TASKCODE
+                    WHERE RTRIM(TaskCode) IN (${taskList})
+                `);
+                for (const tr of taskRows) {
+                    taskDescMap[tr.TaskCode?.trim() || ""] = tr.TaskDesc?.trim() || "";
+                }
+            } catch (e) {
+                console.error("[LemburCalculator] Failed to fetch task descriptions:", e);
+            }
+        }
+
+        // 4. Build records per employee (one record per transaction)
+        for (const empCode of empCodes) {
+            const empKey = empCode.trim();
+            result[empKey] = {
+                total_hours: 0,
+                total_payment: 0,
+                records: []
+            };
+
+            for (const row of rows) {
+                const rowEmpCode = row.EmpCode?.trim();
+                if (rowEmpCode !== empKey) continue;
+
+                const taskCode = (row.TaskCode || "").trim();
+                const taskDesc = taskDescMap[taskCode] || taskCode;
+                const upj = payRates[empKey] || 0;
+                const trxDate = new Date(row.TrxDate);
+                const dayOfWeek = trxDate.getDay();
+                const dayType = await this.classifyDay(trxDate, year);
+                const breakdown = this.calculateOvertimePayment(row.Hours, dayType, upj, dayOfWeek === 5);
+
+                const dayTypeDisplay = getDayTypeDisplayName(dayType);
+
+                result[empKey].records.push({
+                    trx_date: trxDate.toISOString().substring(0, 10),
+                    task_code: taskCode,
+                    task_desc: taskDesc,
+                    day_type: dayTypeDisplay,
+                    hours: row.Hours,
+                    rate: breakdown.total_rate || 0,
+                    amount: breakdown.total_amount
+                });
+
+                result[empKey].total_hours += row.Hours;
+                result[empKey].total_payment += breakdown.total_amount;
+            }
+
+            // Sort records by date
+            result[empKey].records.sort((a, b) => a.trx_date.localeCompare(b.trx_date));
+        }
+
+        return result;
+    }
+
     // --- Batch Amounts (Legacy Wrapper) ---
     public async calculateBatchAmounts(empCodes: string[], month: number, year: number): Promise<Record<string, number>> {
         const data = await this.calculateBatchData(empCodes, month, year);

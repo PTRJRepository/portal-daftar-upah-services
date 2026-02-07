@@ -17,6 +17,7 @@
         "date-fns": "^3.3.1",
         "dotenv": "^16.3.1",
         "elysia": "latest",
+        "googleapis": "^171.4.0",
         "jose": "^5.2.0",
         "mssql": "^10.0.1"
     },

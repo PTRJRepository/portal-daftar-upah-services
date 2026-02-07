@@ -29,6 +29,20 @@ interface LemburData {
     jumlah: number;
 }
 
+interface LemburRecord {
+    trx_date: string;
+    task_code: string;
+    task_desc: string;
+    day_type: string;
+    hours: number;
+    rate: number;
+    amount: number;
+}
+
+interface LemburDataWithDetails extends LemburData {
+    records: LemburRecord[];
+}
+
 interface ShortageDetail {
     date: string;
     day_name: string;
@@ -74,6 +88,15 @@ interface PayrollRow {
     lembur_jam: number;
     lembur_rate: number;
     lembur_jumlah: number;
+    lembur_records?: Array<{
+        trx_date: string;
+        task_code: string;
+        task_desc: string;
+        day_type: string;
+        hours: number;
+        rate: number;
+        amount: number;
+    }>;
     total_tunjangan: number;
     premi_brondol: number;
     premi_pph: number; // PREMI PPH - ADDED (+) to upah_bersih, not subtracted
@@ -272,12 +295,13 @@ export class DataExtractorService {
 
         const startParallel = performance.now();
         // Fetch all required data in parallel
-        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes] = await Promise.all([
+        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
             this.getPremi(empCodes, startDate, endDate, serverProfile),
             this.getPotongan(empCodes, startDate, endDate, serverProfile),
             this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
+            this.getLemburDetailsWithTaskBreakdown(empCodes, month, year, serverProfile),
 
             this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile),
             this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile), // RESTORED
@@ -311,6 +335,7 @@ export class DataExtractorService {
             const empPremi = premi[emp.emp_code] || {};
             const empPotongan = potongan[emp.emp_code] || {};
             const empLembur = lembur[emp.emp_code] || { jam: 0, jumlah: 0 };
+            const empLemburDetails = lemburWithDetails[emp.emp_code] || { jam: 0, jumlah: 0, task_breakdown: [] };
             const empLemburDocDesc = lemburDocDesc[emp.emp_code] || 0;
             const empBerasDocDesc = berasDocDesc[emp.emp_code] || 0;
             const empJabatan = jabatan[emp.emp_code] || 0;
@@ -544,6 +569,7 @@ export class DataExtractorService {
                 lembur_jam: empLembur.jam,
                 lembur_rate: empLemburJumlah > 0 && empLembur.jam > 0 ? empLemburJumlah / empLembur.jam : 0,
                 lembur_jumlah: empLemburJumlah,
+                lembur_records: empLemburDetails.records || [],
                 total_tunjangan,
                 premi_brondol: empBrondol,
                 upah_pokok,
@@ -1183,6 +1209,19 @@ export class DataExtractorService {
             result[k] = {
                 jam: data[k].total_hours || 0,
                 jumlah: data[k].total_payment || 0
+            };
+        }
+        return result;
+    }
+
+    private async getLemburDetailsWithTaskBreakdown(empCodes: string[], month: number, year: number, serverProfile?: string): Promise<Record<string, LemburDataWithDetails>> {
+        const data = await lemburCalculator.calculateBatchDataWithTaskBreakdown(empCodes, month, year, serverProfile);
+        const result: Record<string, LemburDataWithDetails> = {};
+        for (const k in data) {
+            result[k] = {
+                jam: data[k].total_hours || 0,
+                jumlah: data[k].total_payment || 0,
+                records: data[k].records || []
             };
         }
         return result;

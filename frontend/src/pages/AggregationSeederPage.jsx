@@ -12,6 +12,7 @@ import {
     fetchAggregationDivisions,
     fetchAggregationPeriods,
     fetchAggregationStatus,
+    syncSpreadsheet,
     formatMonthName,
     formatCurrency,
     formatNumber
@@ -33,6 +34,7 @@ export default function AggregationSeederPage({ onBack }) {
 
     // State
     const [isRunning, setIsRunning] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState('checking');
     const [logs, setLogs] = useState([]);
     const [showSummary, setShowSummary] = useState(false);
@@ -131,6 +133,47 @@ export default function AggregationSeederPage({ onBack }) {
             addLog(`❌ Error: ${e.message}`, 'error');
         } finally {
             setIsRunning(false);
+        }
+    };
+
+    // Run spreadsheet sync
+    const handleSyncSpreadsheet = async () => {
+        if (isSyncing || isRunning) return;
+
+        setIsSyncing(true);
+        addLog('='.repeat(40), 'info');
+        addLog('🔄 Starting Spreadsheet Sync...', 'info');
+        addLog(`📅 Period: ${formatMonthName(month)} ${year}`);
+        addLog(`📊 Division: ${division === 'ALL' ? 'All Divisions' : division}`);
+
+        try {
+            const result = await syncSpreadsheet(
+                token,
+                month,
+                year,
+                division === 'ALL' ? null : division
+            );
+
+            if (result.success) {
+                addLog('✅ Spreadsheet Sync complete!', 'success');
+                if (result.results) {
+                    const synced = result.results.filter(r => r.status === 'SUCCESS').length;
+                    const skipped = result.results.filter(r => r.status === 'SKIPPED_NO_DATA').length;
+                    const failed = result.results.filter(r => r.status === 'FAILED').length;
+                    addLog(`📈 Synced: ${synced}, Skipped: ${skipped}, Failed: ${failed}`);
+
+                    // Log details for failures
+                    result.results.filter(r => r.status === 'FAILED').forEach(r => {
+                        addLog(`❌ ${r.division}: ${r.error}`, 'error');
+                    });
+                }
+            } else {
+                addLog(`❌ Sync failed: ${result.error}`, 'error');
+            }
+        } catch (e) {
+            addLog(`❌ Sync Error: ${e.message}`, 'error');
+        } finally {
+            setIsSyncing(false);
         }
     };
 
@@ -269,8 +312,17 @@ export default function AggregationSeederPage({ onBack }) {
                     </button>
 
                     <button
+                        onClick={handleSyncSpreadsheet}
+                        disabled={isRunning || isSyncing || connectionStatus !== 'connected'}
+                        className="agg-btn agg-btn-success"
+                        style={{ backgroundColor: '#10b981', borderColor: '#059669', color: 'white', marginTop: '8px' }}
+                    >
+                        {isSyncing ? '⏳ Syncing...' : 'sheets Sync to Spreadsheet'}
+                    </button>
+
+                    <button
                         onClick={handleCheckStatus}
-                        disabled={isRunning}
+                        disabled={isRunning || isSyncing}
                         className="agg-btn agg-btn-secondary"
                     >
                         🔍 Check Status
