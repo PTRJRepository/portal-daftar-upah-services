@@ -5,22 +5,29 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import MonthSelector from '../components/common/MonthSelector';
+import LoadingScreen from '../components/common/LoadingScreen';
 import '../styles/wages-summary-professional.css';
 
-const SalaryRangeDetailPage = () => {
+const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+const SalaryRangeDetailPage = ({
+  onBack,
+  initialMonth = new Date().getMonth() + 1,
+  initialYear = new Date().getFullYear(),
+  initialMinSalary = 6000000
+}) => {
     const { token } = useAuth();
-    const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
 
-    // Get params from URL
-    const month = parseInt(searchParams.get('month') || String(new Date().getMonth() + 1));
-    const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()));
-    const minSalary = parseInt(searchParams.get('min_salary') || '6000000');
-    const maxSalary = searchParams.get('max_salary') ? parseInt(searchParams.get('max_salary')) : null;
+    // State for filters
+    const [month, setMonth] = useState(initialMonth);
+    const [year, setYear] = useState(initialYear);
+    const [minSalary, setMinSalary] = useState(initialMinSalary);
+    const [maxSalary, setMaxSalary] = useState(null);
 
-    // State
+    // State for data
     const [data, setData] = useState([]);
     const [meta, setMeta] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -40,6 +47,7 @@ const SalaryRangeDetailPage = () => {
         setLoading(true);
         setError('');
         try {
+            const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
             const params = new URLSearchParams({
                 month: String(month),
                 year: String(year),
@@ -48,7 +56,7 @@ const SalaryRangeDetailPage = () => {
             if (maxSalary) params.append('max_salary', String(maxSalary));
 
             const response = await fetch(
-                `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/payroll/report/salary-range-detail?${params}`,
+                `${apiUrl}/payroll/report/salary-range-detail?${params}`,
                 {
                     headers: { 'Authorization': `Bearer ${token}` }
                 }
@@ -80,71 +88,56 @@ const SalaryRangeDetailPage = () => {
         return new Intl.NumberFormat('id-ID').format(num);
     };
 
-    // Handle parameter change
-    const handleParamChange = (key, value) => {
-        const params = new URLSearchParams(searchParams);
-        params.set(key, value);
-        navigate(`/report/salary-range-detail?${params.toString()}`, { replace: true });
-    };
-
     if (loading) {
-        return (
-            <div className="wsp-container" style={{ padding: '2rem', textAlign: 'center' }}>
-                <p>Memuat data...</p>
-            </div>
-        );
+        return <LoadingScreen isLoading={loading} message="Memuat data..." />;
     }
+
+    const periodLabel = `${monthNames[month - 1]} ${year}`;
 
     return (
         <div className="wsp-container salary-range-container">
             {/* Action Bar */}
             <div className="wsp-action-bar no-print">
-                <div className="left-section">
-                    <button onClick={() => navigate(-1)} className="wsp-btn">
-                        &larr; Kembali
+                <div className="left-section" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <button onClick={onBack} className="wsp-btn">
+                        KEMBALI
                     </button>
 
                     <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <select
-                            value={month}
-                            onChange={(e) => handleParamChange('month', e.target.value)}
-                            className="wsp-select"
-                        >
-                            {monthOptions.map(m => (
-                                <option key={m.value} value={m.value}>{m.label}</option>
-                            ))}
-                        </select>
-                        <select
-                            value={year}
-                            onChange={(e) => handleParamChange('year', e.target.value)}
-                            className="wsp-select"
-                        >
-                            {[...Array(5)].map((_, i) => {
-                                const y = new Date().getFullYear() - i;
-                                return <option key={y} value={y}>{y}</option>;
-                            })}
-                        </select>
+                        <MonthSelector
+                            month={month}
+                            year={year}
+                            onChange={(m, y) => { setMonth(m); setYear(y); }}
+                        />
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <span>Gaji &gt;</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>Gaji &gt;</span>
                             <input
                                 type="number"
                                 value={minSalary}
-                                onChange={(e) => handleParamChange('min_salary', e.target.value)}
+                                onChange={(e) => setMinSalary(parseInt(e.target.value) || 0)}
                                 className="wsp-select"
-                                style={{ width: '120px' }}
+                                style={{ width: '150px', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}
                             />
                         </div>
 
-                        <button onClick={fetchData} className="wsp-btn wsp-btn-primary">
-                            Refresh
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>-</span>
+                            <input
+                                type="number"
+                                value={maxSalary || ''}
+                                onChange={(e) => setMaxSalary(e.target.value ? parseInt(e.target.value) : null)}
+                                placeholder="Maksimal (opsional)"
+                                className="wsp-select"
+                                style={{ width: '180px', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                            />
+                        </div>
                     </div>
                 </div>
 
                 <div className="right-section">
                     <button onClick={() => window.print()} className="wsp-btn">
-                        Print / PDF
+                        PRINT
                     </button>
                 </div>
             </div>
@@ -159,9 +152,10 @@ const SalaryRangeDetailPage = () => {
             {/* Report Content - Landscape */}
             <div id="salary-range-report" className="wsp-paper a4-landscape">
                 <div className="wsp-header">
-                    <div className="wsp-title">LAPORAN DETAIL GAJI RANGE</div>
+                    <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
+                    <h2 className="wsp-report-title">LAPORAN DETAIL GAJI RANGE</h2>
                     <div className="wsp-subtitle">
-                        Periode: {monthOptions[month - 1]?.label} {year} | Gaji Bersih &gt; Rp {formatCurrency(minSalary)}
+                        Periode: {periodLabel} | Gaji Bersih &gt; Rp {formatCurrency(minSalary)}
                         {maxSalary && ` - Rp ${formatCurrency(maxSalary)}`}
                     </div>
                     {meta && (

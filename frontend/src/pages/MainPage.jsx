@@ -12,6 +12,8 @@ import WagesSummaryRebinmasPage from './WagesSummaryRebinmasPage'
 import WagesSummaryIJLPage from './WagesSummaryIJLPage'
 import AnalysisReportPage from './AnalysisReportPage'
 import AggregationSeederPage from './AggregationSeederPage'
+import ComprehensivePerformancePage from './ComprehensivePerformancePage'
+import SalaryRangeDetailPage from './SalaryRangeDetailPage'
 import SalaryRangeModal from '../components/SalaryRangeModal'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
@@ -54,6 +56,8 @@ export default function MainPage({ lockedDiv = null }) {
   const [showAnalysisReport, setShowAnalysisReport] = useState(false)
   const [showAggregationSeeder, setShowAggregationSeeder] = useState(false)
   const [showSalaryRangeModal, setShowSalaryRangeModal] = useState(false)
+  const [showComprehensivePerformance, setShowComprehensivePerformance] = useState(false)
+  const [showSalaryRangePage, setShowSalaryRangePage] = useState(false)
   const [rowCount, setRowCount] = useState(0)
   const [fontSize, setFontSize] = useState(100) // Default 100% font size
   const [exportHandler, setExportHandler] = useState(null) // Export function from CustomPayrollTable
@@ -296,6 +300,24 @@ export default function MainPage({ lockedDiv = null }) {
     setShowSalaryRangeModal(false)
   }
 
+  // Handler for Comprehensive Performance Page
+  const handleShowComprehensivePerformance = () => {
+    setShowComprehensivePerformance(true)
+  }
+
+  const handleBackFromComprehensivePerformance = () => {
+    setShowComprehensivePerformance(false)
+  }
+
+  // Handler for Salary Range Detail Page
+  const handleShowSalaryRangePage = () => {
+    setShowSalaryRangePage(true)
+  }
+
+  const handleBackFromSalaryRangePage = () => {
+    setShowSalaryRangePage(false)
+  }
+
   // -- SHOW WAGES IJL REPORT PAGE --
   if (showWagesIJL) {
     return (
@@ -350,6 +372,29 @@ export default function MainPage({ lockedDiv = null }) {
     )
   }
 
+  // -- SHOW COMPREHENSIVE PERFORMANCE PAGE --
+  if (showComprehensivePerformance) {
+    return (
+      <ComprehensivePerformancePage
+        onBack={handleBackFromComprehensivePerformance}
+        initialMonth={month}
+        initialYear={year}
+        initialDivision={division}
+      />
+    )
+  }
+
+  // -- SHOW SALARY RANGE DETAIL PAGE --
+  if (showSalaryRangePage) {
+    return (
+      <SalaryRangeDetailPage
+        onBack={handleBackFromSalaryRangePage}
+        initialMonth={month}
+        initialYear={year}
+      />
+    )
+  }
+
   // -- SELECTION SCREEN (Formal Professional Theme) --
   if (!isReportGenerated) {
     return (
@@ -393,7 +438,46 @@ export default function MainPage({ lockedDiv = null }) {
             }}>
               Dashboard
             </div>
-            {/* Placeholder for future links */}
+
+            {/* Analisis Performa Link */}
+            <div
+              onClick={handleShowComprehensivePerformance}
+              style={{
+                padding: '0.75rem 1rem',
+                backgroundColor: 'transparent',
+                color: '#94a3b8',
+                borderRadius: '6px',
+                fontWeight: '500',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                borderLeft: '4px solid transparent',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#334155'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+            >
+              Analisis Performa
+            </div>
+
+            {/* Detail Range Gaji Link */}
+            <div
+              onClick={handleShowSalaryRangePage}
+              style={{
+                padding: '0.75rem 1rem',
+                backgroundColor: 'transparent',
+                color: '#94a3b8',
+                borderRadius: '6px',
+                fontWeight: '500',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                borderLeft: '4px solid transparent',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#334155'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+            >
+              Detail Range Gaji
+            </div>
           </div>
 
           {/* User Profile & Logout */}

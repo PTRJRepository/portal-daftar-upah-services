@@ -5,7 +5,6 @@ import { lemburCalculator } from "./lemburCalculator";
 import { EmployeeEstateService } from "./employeeEstateService";
 import { calculatePph21Ter } from "./pph21TerService";
 import { currentPeriodService } from "./currentPeriodService";
-import { currentPeriodService } from "./currentPeriodService";
 
 interface EmployeeRow {
     emp_code: string;
@@ -60,6 +59,11 @@ interface PayrollRow {
     cuti_sakit_haid_hari: number;
     cuti_minggu_hari: number;
     cuti_nasional_hari: number;
+    // Task/Job Code fields
+    task_code?: string;
+    task_desc?: string;
+    task_type?: string;
+    task_uom?: string;
     beras_rate: number;
     beras_jumlah: number;
     jabatan_rate: number;
@@ -268,7 +272,7 @@ export class DataExtractorService {
 
         const startParallel = performance.now();
         // Fetch all required data in parallel
-        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles] = await Promise.all([
+        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
             this.getPremi(empCodes, startDate, endDate, serverProfile),
@@ -282,7 +286,8 @@ export class DataExtractorService {
             this.getUpahPokok(empCodes, serverProfile),
             this.getBrondol(empCodes, startDate, endDate, serverProfile),
 
-            EmployeeEstateService.getEmployeeJobs()
+            EmployeeEstateService.getEmployeeJobs(),
+            this.getTaskCodes(empCodes, startDate, endDate, serverProfile)
         ]);
 
         // Destructure premi result - uses DocDesc as title
@@ -520,6 +525,11 @@ export class DataExtractorService {
                 hari_kerja,
                 gaji_pokok,
                 kehadiran: hari_kerja,
+                // Task/Job Code fields
+                task_code: taskCodes[emp.emp_code]?.task_code || "",
+                task_desc: taskCodes[emp.emp_code]?.task_desc || "",
+                task_type: taskCodes[emp.emp_code]?.task_type || "",
+                task_uom: taskCodes[emp.emp_code]?.task_uom || "",
                 cuti_tahunan_hari: empCuti.cuti_tahunan,
                 cuti_sakit_haid_hari: empCuti.cuti_sakit_haid,
                 cuti_minggu_hari: empCuti.cuti_minggu,
@@ -1462,6 +1472,85 @@ export class DataExtractorService {
         const result: Record<string, number> = {};
         for (const r of rows) {
             result[r.emp_code?.trim() || ""] = r.total || 0;
+        }
+        return result;
+    }
+
+    /**
+     * Get Task/Job Code for each employee for the specified month
+     * Uses UNION ALL to combine data from both current (PR_TASKREGLN) and historical (PR_TASKREGLN_ARC) tables
+     * Returns the most frequent task code for each employee (or the most recent one)
+     */
+    private async getTaskCodes(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, {
+        task_code: string;
+        task_desc: string;
+        task_type: string;
+        task_uom: string;
+    }>> {
+        if (!empCodes.length) return {};
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        const empList = empCodes.map(e => `'${e}'`).join(",");
+
+        // Get task codes with descriptions, prioritizing non-OT (regular) tasks
+        // Use ROW_NUMBER to get the most common task per employee
+        let rows = await db.query<{ emp_code: string; task_code: string; task_desc: string; task_type: string; task_uom: string }>(`
+            WITH RankedTasks AS (
+                SELECT
+                    RTRIM(trl.EmpCode) as emp_code,
+                    trl.TaskCode,
+                    tc.TaskDesc,
+                    tc.TaskType,
+                    tc.UOM,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY RTRIM(trl.EmpCode)
+                        ORDER BY COUNT(*) DESC, trl.TaskCode
+                    ) as rn
+                FROM PR_TASKREGLN trl
+                INNER JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                LEFT JOIN PR_TASKCODE tc ON trl.TaskCode = tc.TaskCode
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                  AND trl.TaskCode IS NOT NULL
+                  AND trl.TaskCode <> ''
+                GROUP BY RTRIM(trl.EmpCode), trl.TaskCode, tc.TaskDesc, tc.TaskType, tc.UOM
+
+                UNION ALL
+
+                SELECT
+                    RTRIM(trl.EmpCode) as emp_code,
+                    trl.TaskCode,
+                    tc.TaskDesc,
+                    tc.TaskType,
+                    tc.UOM,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY RTRIM(trl.EmpCode)
+                        ORDER BY COUNT(*) DESC, trl.TaskCode
+                    ) as rn
+                FROM PR_TASKREGLN_ARC trl
+                INNER JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                LEFT JOIN PR_TASKCODE tc ON trl.TaskCode = tc.TaskCode
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                  AND trl.TaskCode IS NOT NULL
+                  AND trl.TaskCode <> ''
+                GROUP BY RTRIM(trl.EmpCode), trl.TaskCode, tc.TaskDesc, tc.TaskType, tc.UOM
+            )
+            SELECT emp_code, task_code, task_desc, task_type, task_uom
+            FROM RankedTasks
+            WHERE rn = 1
+        `, [startDate, endDate, startDate, endDate]);
+
+        const result: Record<string, { task_code: string; task_desc: string; task_type: string; task_uom: string }> = {};
+        for (const r of rows) {
+            const empCode = (r.emp_code || "").trim();
+            result[empCode] = {
+                task_code: r.task_code || "",
+                task_desc: r.task_desc || "",
+                task_type: r.task_type || "",
+                task_uom: r.task_uom || ""
+            };
         }
         return result;
     }

@@ -14,6 +14,10 @@
     font-family: 'Segoe UI', 'Arial', sans-serif;
 }
 
+
+
+
+
 /* Header Bar */
 .summary-report-header {
     height: 56px;
@@ -637,7 +641,8 @@
 @media print {
     @page {
         size: A4 landscape;
-        margin: 8mm 8mm 8mm 8mm; /* Consistent margins to prevent cutoff */
+        margin: 8mm 8mm 8mm 8mm;
+        /* Consistent margins to prevent cutoff */
     }
 
     body {
