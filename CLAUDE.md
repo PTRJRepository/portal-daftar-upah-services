@@ -208,9 +208,9 @@ export const dataExtractorService = DataExtractorService.getInstance();
 | `gangService` | Fetch gangs/divisions from HR_GANG |
 | `headerService` | Generate dynamic AG Grid headers |
 | `authService` | JWT token verification |
-| `lemburCalculator` | Calculate overtime (lembur) amounts |
+| `lemburCalculator` | Calculate overtime (lembur) amounts with tier-based rates |
 | `pph21TerService` | Calculate PPH21 tax using TER method |
-| `employeeDetailService` | Fetch employee detail information |
+| `employeeDetailService` | Fetch employee detail information with daily overtime |
 | `employeeEstateService` | Manage job title/estate data |
 | `tunjanganService` | Handle allowance calculations |
 | `thumbprintService` | Manage thumbprint data storage/retrieval |
@@ -232,10 +232,127 @@ export const dataExtractorService = DataExtractorService.getInstance();
    - getCuti() for leave types (tahunan, sakit_haid, minggu, nasional)
    - getPremi() from PR_ADTRANS (DocDesc contains 'PREMI')
    - getPotongan() from PR_ADTRANS (DocDesc contains 'PPH', 'POT', etc.)
+   - getLemburDetailsFromCalculator() for overtime totals
+   - getLemburDetailsWithTaskBreakdown() for overtime detail records
 4. Calculate: gaji_pokok, tunjangan, premi, potongan, upah_bersih
-5. Filter: Exclude employees where hari_kerja (kehadiran) <= 0
-6. Return: PayrollRow[] with dynamic premi/potongan fields
+5. Filter: Exclude employees where effective_work_hk <= 0 AND other_cuti == 0
+6. Return: PayrollRow[] with dynamic premi/potongan fields + lembur_records
 ```
+
+## Lembur (Overtime) Calculation
+
+### Overview
+
+Lembur calculation uses **`lemburCalculator`** service with tier-based rate system:
+- **Source:** `PR_TASKREGLN` where `OT = 1` (pure overtime transactions only)
+- **UPJ Calculation:** `(pay_rate * 30) / 173` or fallback to `LEMBUR_UPJ` env var (default: 17257)
+- **Consistency:** Detail Page and Daftar Upah use the same calculation logic
+
+### Day Type Classification
+
+| Day Type | Description | Tier 1 Rate | Tier 2 Rate | Tier 3 Rate | Tier 1 Boundary |
+|----------|-------------|-------------|-------------|-------------|-----------------|
+| `WORKDAY_LONG` | Mon-Thu, Sat | 1.5x | 2x | - | 1 hour |
+| `WORKDAY_SHORT` | Friday | 1.5x | 2x | - | 1 hour |
+| `SUNDAY` | Sunday | 2x | 3x | 4x | 5/7 hours* |
+| `HOLIDAY_REGULAR` | Non-religious holiday | 2x | 3x | 4x | 5/7 hours* |
+| `HOLIDAY_RELIGIOUS` | Religious holiday | 3x | 4x | 4x | 5/7 hours* |
+
+*Tier boundary depends on whether it's a short day (Friday) or long day (other days)
+
+### Overtime Breakdown Structure
+
+```typescript
+interface OvertimeBreakdown {
+    tier_1_rate: number;      // Rate for first tier
+    tier_1_hours: number;     // Hours in tier 1
+    tier_1_amount: number;    // Amount for tier 1
+    tier_1_boundary: number;  // Hours before tier 2 starts
+    tier_2_rate: number;      // Rate for second tier
+    tier_2_hours: number;     // Hours in tier 2
+    tier_2_amount: number;    // Amount for tier 2
+    tier_3_rate: number;      // Rate for third tier
+    tier_3_hours: number;     // Hours in tier 3
+    tier_3_amount: number;    // Amount for tier 3
+    total_amount: number;     // Sum of all tiers
+}
+```
+
+### Lembur Records Structure
+
+```typescript
+interface LemburRecord {
+    trx_date: string;      // Transaction date (YYYY-MM-DD)
+    task_code: string;     // Task code from PR_TASKCODE
+    task_desc: string;     // Task description from PR_TASKCODE
+    day_type: string;      // "Hari Kerja", "Jumat", "Minggu", "Libur Umum", "Libur Keagamaan"
+    hours: number;         // Overtime hours for this transaction
+    rate: number;          // Total rate (weighted average of tiers)
+    amount: number;        // Calculated amount (hours × UPJ × tier rates)
+}
+```
+
+### Service Methods
+
+| Method | Purpose | Returns |
+|--------|---------|---------|
+| `calculate(empCode, month, year, upj?)` | Single employee overtime with full breakdown | `LemburResult` with records[] |
+| `calculateBatchData(empCodes, month, year)` | Multiple employees - totals only | `{ total_hours, total_payment }` |
+| `calculateBatchDataWithTaskBreakdown(empCodes, month, year)` | Multiple employees with detail records | `{ total_hours, total_payment, task_breakdown[], records[] }` |
+
+### UPJ Value Initialization
+
+**CRITICAL:** UPJ must be initialized from environment variable, not 0:
+
+```typescript
+private upjValue: number;
+
+private constructor() {
+    this.db = Database.getInstance();
+    // UPJ default value from environment or fallback to 17257
+    this.upjValue = parseFloat(process.env.LEMBUR_UPJ || "17257");
+}
+```
+
+### Data Source
+
+**Pure Overtime (OT=1) only:**
+```sql
+-- Active Table
+SELECT l.EmpCode, l.TrxDate, l.Hours, l.TaskCode, l.Amount, l.Rate
+FROM PR_TASKREGLN l
+JOIN PR_TASKREG m ON l.MasterID = m.ID
+WHERE l.EmpCode = ? AND l.TrxDate >= ? AND l.TrxDate <= ? AND l.OT = 1
+
+UNION ALL
+
+-- Archive Table
+SELECT l.EmpCode, l.TrxDate, l.Hours, l.TaskCode, l.Amount, l.Rate
+FROM PR_TASKREGLN_ARC l
+JOIN PR_TASKREG_ARC m ON l.MasterID = m.ID
+WHERE l.EmpCode = ? AND l.TrxDate >= ? AND l.TrxDate <= ? AND l.OT = 1
+```
+
+### Display in Frontend
+
+**Employee Detail Page (`/employee/:nik`):**
+- Shows daily overtime matrix (calendar view)
+- Lists individual transactions with date, day name, day type, hours, rate, amount
+- Groups transactions by day
+
+**Comprehensive Performance Page (`/comprehensive-performance`):**
+- Shows individual transaction records when Lembur tab is active
+- Format: `└─ DD/MM/YYYY (Hari Kerja) | PANEN MANUAL | X jam | Rp XXX`
+- Summary row validates: Total Detail = Total Lembur
+
+### Important Notes
+
+1. **Total Lembur = Sum of Detail Records** - No double counting
+2. **Lembur displayed excludes DocDesc 'LEMBUR'** - Only OT=1 transactions from PR_TASKREGLN
+3. **Multiple transactions per day** - All displayed individually (e.g., same day with different task_desc)
+4. **Consistent calculation** - Detail Page and Daftar Upah use same `lemburCalculator`
+
+
 
 ## Filter Rules
 
@@ -385,6 +502,9 @@ CONSTANTS_UPAH_MINIMUM_DASAR=3876600
 CONSTANTS_POTONGAN_BPJS_GAJI_POKOK_MIN=3876600
 CONSTANTS_POTONGAN_BPJS_IURAN_SPSI=4000
 
+# Lembur (Overtime)
+LEMBUR_UPJ=17257  # Default UPJ value used when pay_rate is not available
+
 # Test Mode
 TEST_MODE=false
 DEFAULT_GANG=H1H
@@ -426,7 +546,8 @@ Columns are organized into groups:
 - **Informasi Karyawan**: nik, nama, jabatan, lokasi
 - **Absensi**: jumlah_hk, hari_kerja, kehadiran
 - **Gaji Pokok**: gaji_pokok, gaji_pokok_ideal, gaji_pokok_aktual
-- **Tunjangan**: beras_jumlah, jabatan_jumlah, masa_kerja_jumlah, lembur_jumlah
+- **Tunjangan**: beras_jumlah, jabatan_jumlah, masa_kerja_jumlah, **lembur_jumlah**
+- **Lembur Details**: **lembur_records[]** (individual transactions with trx_date, task_desc, day_type, hours, rate, amount)
 - **Premi**: premi_brondol + dynamic premi fields
 - **Potongan Upah Kotor**: koreksi fields
 - **Potongan Upah Bersih**: astek, bpjs, spsi, pph21 + dynamic potongan
@@ -443,6 +564,57 @@ WHERE month = ? AND year = ? AND division_code = ?
 ```
 
 **Always use `SERVER_PROFILE_1` for summary/analysis queries.**
+
+## Recent Fixes & Improvements
+
+### Lembur Calculation Fixes (Feb 2025)
+
+**Issue:** Overtime calculations were inconsistent between Detail Page and Daftar Upah, with incorrect amounts displayed.
+
+**Root Causes:**
+1. `upjValue` was initialized to 0 instead of from environment variable
+2. Batch methods used `payRate || 0` causing UPJ = 0 when payRate not found
+3. Frontend grouped records by task_desc instead of showing individual transactions
+
+**Solutions Applied:**
+
+1. **Backend (`lemburCalculator.ts`):**
+   ```typescript
+   // Fixed UPJ initialization
+   private upjValue: number;
+   private constructor() {
+       this.upjValue = parseFloat(process.env.LEMBUR_UPJ || "17257");
+   }
+
+   // Fixed UPJ calculation in batch methods
+   const payRate = payRates[empKey] || 0;
+   const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
+   ```
+
+2. **Backend (`dataExtractorService.ts`):**
+   ```typescript
+   // Use pure overtime (OT=1) values for display
+   const empLemburJumlahPure = empLemburDetails.jumlah || empLembur.jumlah;
+   const empLemburJamPure = empLemburDetails.jam || empLembur.jam;
+
+   lembur_jam: empLemburJamPure,
+   lembur_jumlah: empLemburJumlahPure,
+   lembur_records: (empLemburDetails.records || []).map((r) => ({
+       ...r,
+       trx_date: r.date || r.trx_date || "",
+   })),
+   ```
+
+3. **Frontend (`ComprehensivePerformancePage.jsx`):**
+   - Changed from grouped-by-task display to individual transaction records
+   - Format: `└─ DD/MM/YYYY (Hari Kerja) | PANEN MANUAL | X jam | Rp XXX`
+   - Added summary row validating: Total Detail = Total Lembur
+
+**Result:**
+- ✅ Detail Page = Daftar Upah calculations
+- ✅ Total Lembur = Sum of all individual detail records
+- ✅ Multiple transactions per day displayed individually
+- ✅ Pure overtime (OT=1) only, excluding DocDesc 'LEMBUR' from PR_ADTRANS
 
 ## Git Commit References
 

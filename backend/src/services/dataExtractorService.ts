@@ -5,6 +5,7 @@ import { lemburCalculator } from "./lemburCalculator";
 import { EmployeeEstateService } from "./employeeEstateService";
 import { calculatePph21Ter } from "./pph21TerService";
 import { currentPeriodService } from "./currentPeriodService";
+import { PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
 
 interface EmployeeRow {
     emp_code: string;
@@ -38,6 +39,7 @@ interface LemburRecord {
     rate: number;
     amount: number;
     record_count?: number; // Number of transactions grouped (for grouped task breakdown)
+    meta?: PayrollComponentMetadata;
 }
 
 interface LemburDataWithDetails extends LemburData {
@@ -97,6 +99,7 @@ interface PayrollRow {
         hours: number;
         rate: number;
         amount: number;
+        meta?: PayrollComponentMetadata;
     }>;
     total_tunjangan: number;
     premi_brondol: number;
@@ -576,7 +579,11 @@ export class DataExtractorService {
                 lembur_jam: empLemburJamPure,
                 lembur_rate: empLemburJumlahPure > 0 && empLemburJamPure > 0 ? empLemburJumlahPure / empLemburJamPure : 0,
                 lembur_jumlah: empLemburJumlahPure,
-                lembur_records: empLemburDetails.records || [],
+                lembur_records: (empLemburDetails.records || []).map((r: any) => ({
+                    ...r,
+                    trx_date: r.date || r.trx_date || "", // Map date to trx_date, handle both just in case
+                    meta: r.meta
+                })),
                 total_tunjangan,
                 premi_brondol: empBrondol,
                 upah_pokok,

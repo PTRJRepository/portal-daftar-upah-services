@@ -1,6 +1,7 @@
 import { Database } from "../db/client";
 import { cacheService } from "./cacheService";
 import { payrollService } from "./payrollService";
+import { PayrollComponent, PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
 
 // Day Type Classification
 export enum DayType {
@@ -66,6 +67,7 @@ export interface OvertimeRecord {
     shift_code?: string;
     raw_amount?: number;
     raw_rate?: number;
+    meta?: PayrollComponentMetadata;
 }
 export class LemburCalculator {
     private static instance: LemburCalculator;
@@ -323,7 +325,9 @@ export class LemburCalculator {
             hours: number;
             rate: number;
             amount: number;
+            meta?: PayrollComponentMetadata;
         }>;
+        meta?: PayrollComponentMetadata;
     }>> {
         if (!empCodes.length) return {};
 
@@ -350,7 +354,9 @@ export class LemburCalculator {
                 hours: number;
                 rate: number;
                 amount: number;
+                meta?: PayrollComponentMetadata;
             }>;
+            meta?: PayrollComponentMetadata;
         }> = {};
 
         // Use specific profile if requested, otherwise default
@@ -434,7 +440,12 @@ export class LemburCalculator {
             result[empKey] = {
                 total_hours: 0,
                 total_payment: 0,
-                task_breakdown: []
+                task_breakdown: [],
+                meta: {
+                    source: 'CALCULATION',
+                    description: 'Overtime calculation from Plantware PR_TASKREGLN',
+                    last_updated: new Date()
+                }
             };
 
             // Store individual transaction records
@@ -447,6 +458,7 @@ export class LemburCalculator {
                 hours: number;
                 rate: number;
                 amount: number;
+                meta?: PayrollComponentMetadata;
             }> = [];
 
             for (const row of rows) {
@@ -472,7 +484,13 @@ export class LemburCalculator {
                     task_desc: taskDesc,
                     hours: row.Hours,
                     rate: breakdown.total_rate || 0,
-                    amount: breakdown.total_amount
+                    amount: breakdown.total_amount,
+                    meta: {
+                        source: 'DATABASE_PLANTWARE',
+                        description: `Overtime on ${trxDate.toISOString().substring(0, 10)} (${taskDesc})`,
+                        calculation_basis: `Day Type: ${getDayTypeDisplayName(dayType)}, UPJ: ${upj}`,
+                        taxable: true
+                    }
                 });
 
                 // Add to totals
