@@ -175,9 +175,9 @@ const DashboardLayout = () => {
                         {!collapsed && <span>Analysis OT & Premi</span>}
                     </NavLink>
 
-                    <NavLink to="/comprehensive" style={getLinkStyle} title={collapsed ? "Analisis Performa" : ""}>
+                    <NavLink to="/comprehensive" style={getLinkStyle} title={collapsed ? "Laporan Analisis Payroll" : ""}>
                         <Icons.Activity />
-                        {!collapsed && <span>Analisis Performa</span>}
+                        {!collapsed && <span>Laporan Analisis Payroll</span>}
                     </NavLink>
 
                     {isAdminUser && (

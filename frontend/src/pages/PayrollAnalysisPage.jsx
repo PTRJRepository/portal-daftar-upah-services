@@ -1,7 +1,7 @@
 /**
- * ComprehensivePerformancePage - Analisis Performa Komprehensif
+ * PayrollAnalysisPage - Laporan Analisis Payroll
  *
- * Halaman analisis performa dengan:
+ * Halaman analisis payroll dengan breakdown detail komponen:
  * - KPI Cards
  * - Filter tabs (Semua, Lembur, Premi, Tunjangan, Potongan)
  * - Custom HTML Table (print-ready)
@@ -17,7 +17,7 @@ import { initPrintMode } from '../utils/printOptimizer';
 const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-export default function ComprehensivePerformancePage({
+export default function PayrollAnalysisPage({
   initialMonth = new Date().getMonth() + 1,
   initialYear = new Date().getFullYear(),
   initialDivision = '',
@@ -63,7 +63,7 @@ export default function ComprehensivePerformancePage({
         const divisions = await fetchDivisions(token);
         setAllDivisions(divisions || []);
       } catch (e) {
-        console.error('[ComprehensivePerformance] Failed to load divisions:', e);
+        console.error('[PayrollAnalysis] Failed to load divisions:', e);
       }
     }
     loadDivisions();
@@ -89,7 +89,7 @@ export default function ComprehensivePerformancePage({
           setGang('');
         }
       } catch (e) {
-        console.error('[ComprehensivePerformance] Failed to load gangs:', e);
+        console.error('[PayrollAnalysis] Failed to load gangs:', e);
         setGangs([]);
         setGang('');
       }
@@ -127,7 +127,9 @@ export default function ComprehensivePerformancePage({
         let allEmployees = [];
         if (result.gangs && Array.isArray(result.gangs)) {
           result.gangs.forEach(gangData => {
-            if (gangData.employees && Array.isArray(gangData.employees)) {
+            // Filter by specific gang if selected, otherwise include all
+            const shouldInclude = !gang || gang === 'ALL' || gangData.gang_code === gang;
+            if (shouldInclude && gangData.employees && Array.isArray(gangData.employees)) {
               allEmployees = allEmployees.concat(gangData.employees);
             }
           });
@@ -145,12 +147,14 @@ export default function ComprehensivePerformancePage({
 
         const results = await Promise.all(divisionPromises);
 
-        // Flatten all employees from all divisions
+        // Flatten all employees from all divisions (with gang filter)
         let allEmployees = [];
         results.forEach(result => {
           if (result.gangs && Array.isArray(result.gangs)) {
             result.gangs.forEach(gangData => {
-              if (gangData.employees && Array.isArray(gangData.employees)) {
+              // Filter by specific gang if selected, otherwise include all
+              const shouldInclude = !gang || gang === 'ALL' || gangData.gang_code === gang;
+              if (shouldInclude && gangData.employees && Array.isArray(gangData.employees)) {
                 allEmployees = allEmployees.concat(gangData.employees);
               }
             });
@@ -162,7 +166,7 @@ export default function ComprehensivePerformancePage({
         setRawData([]);
       }
     } catch (e) {
-      console.error('[ComprehensivePerformance] Error fetching data:', e);
+      console.error('[PayrollAnalysis] Error fetching data:', e);
       setError(e.message || 'Failed to fetch data');
       setRawData([]);
     } finally {
@@ -354,7 +358,7 @@ export default function ComprehensivePerformancePage({
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `Analisis_Performa_${division}_${month}_${year}.csv`);
+    link.setAttribute('download', `Laporan_Analisis_Payroll_${division}_${month}_${year}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -476,7 +480,7 @@ export default function ComprehensivePerformancePage({
         {/* Letterhead */}
         <div className="wsp-letterhead">
           <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
-          <h2 className="wsp-report-title">ANALISIS PERFORMA KOMPREHENSIF</h2>
+          <h2 className="wsp-report-title">LAPORAN ANALISIS PAYROLL</h2>
           <div className="wsp-report-period">
             Periode: {monthNames[month - 1]} {year}
           </div>
@@ -683,7 +687,7 @@ export default function ComprehensivePerformancePage({
                     </tr>
 
                     {/* Lembur Detail Sub-rows (Only when Lembur tab is active and has details) */}
-                    {/* Grouped by task_desc - Analisis Performa per jenis pekerjaan */}
+                    {/* Grouped by task_desc - Breakdown lembur per jenis pekerjaan */}
                     {hasLemburDetails && groupLemburByTask(row.lembur_records).map((group, groupIdx) => (
                       <tr key={`${idx}-task-${groupIdx}`} style={{ backgroundColor: '#f8fafc' }}>
                         <td colSpan={4} style={{ paddingLeft: '2rem', fontSize: '0.8rem', color: '#475569' }}>

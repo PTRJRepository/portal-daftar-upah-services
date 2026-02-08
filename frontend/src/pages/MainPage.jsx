@@ -12,7 +12,7 @@ import WagesSummaryRebinmasPage from './WagesSummaryRebinmasPage'
 import WagesSummaryIJLPage from './WagesSummaryIJLPage'
 import AnalysisReportPage from './AnalysisReportPage'
 import AggregationSeederPage from './AggregationSeederPage'
-import ComprehensivePerformancePage from './ComprehensivePerformancePage'
+import PayrollAnalysisPage from './PayrollAnalysisPage'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
 
@@ -53,7 +53,7 @@ export default function MainPage({ lockedDiv = null }) {
   const [showWagesIJL, setShowWagesIJL] = useState(false)
   const [showAnalysisReport, setShowAnalysisReport] = useState(false)
   const [showAggregationSeeder, setShowAggregationSeeder] = useState(false)
-  const [showComprehensivePerformance, setShowComprehensivePerformance] = useState(false)
+  const [showPayrollAnalysis, setShowComprehensivePerformance] = useState(false)
   const [rowCount, setRowCount] = useState(0)
   const [fontSize, setFontSize] = useState(100) // Default 100% font size
   const [exportHandler, setExportHandler] = useState(null) // Export function from CustomPayrollTable
@@ -288,11 +288,11 @@ export default function MainPage({ lockedDiv = null }) {
   }
 
   // Handler for Comprehensive Performance Page
-  const handleShowComprehensivePerformance = () => {
+  const handleShowPayrollAnalysis = () => {
     setShowComprehensivePerformance(true)
   }
 
-  const handleBackFromComprehensivePerformance = () => {
+  const handleBackFromPayrollAnalysis = () => {
     setShowComprehensivePerformance(false)
   }
 
@@ -351,10 +351,10 @@ export default function MainPage({ lockedDiv = null }) {
   }
 
   // -- SHOW COMPREHENSIVE PERFORMANCE PAGE --
-  if (showComprehensivePerformance) {
+  if (showPayrollAnalysis) {
     return (
-      <ComprehensivePerformancePage
-        onBack={handleBackFromComprehensivePerformance}
+      <PayrollAnalysisPage
+        onBack={handleBackFromPayrollAnalysis}
         initialMonth={month}
         initialYear={year}
         initialDivision={division}
@@ -406,9 +406,9 @@ export default function MainPage({ lockedDiv = null }) {
               Dashboard
             </div>
 
-            {/* Analisis Performa Link */}
+            {/* Laporan Analisis Payroll Link */}
             <div
-              onClick={handleShowComprehensivePerformance}
+              onClick={handleShowPayrollAnalysis}
               style={{
                 padding: '0.75rem 1rem',
                 backgroundColor: 'transparent',
@@ -423,7 +423,7 @@ export default function MainPage({ lockedDiv = null }) {
               onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#334155'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
             >
-              Analisis Performa
+              Laporan Analisis Payroll
             </div>
           </div>
 

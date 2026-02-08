@@ -19,7 +19,7 @@ const WagesSummaryRebinmasPage = lazy(() => import('./pages/WagesSummaryRebinmas
 const WagesSummaryIJLPage = lazy(() => import('./pages/WagesSummaryIJLPage'))
 const AnalysisReportPage = lazy(() => import('./pages/AnalysisReportPage'))
 const AggregationSeederPage = lazy(() => import('./pages/AggregationSeederPage'))
-const ComprehensivePerformancePage = lazy(() => import('./pages/ComprehensivePerformancePage'))
+const PayrollAnalysisPage = lazy(() => import('./pages/PayrollAnalysisPage'))
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
@@ -376,7 +376,7 @@ function AppInner() {
           <Route path="wages-rebinmas" element={<SummaryReportWrapper component={WagesSummaryRebinmasPage} />} />
           <Route path="wages-ijl" element={<SummaryReportWrapper component={WagesSummaryIJLPage} />} />
           <Route path="analysis" element={<SummaryReportWrapper component={AnalysisReportPage} />} />
-          <Route path="comprehensive" element={<SummaryReportWrapper component={ComprehensivePerformancePage} />} />
+          <Route path="comprehensive" element={<SummaryReportWrapper component={PayrollAnalysisPage} />} />
           <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
 
           {/* Development/Test Pages */}
