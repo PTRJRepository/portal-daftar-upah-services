@@ -100,13 +100,8 @@ export function AuthProvider({ children }) {
           return true
         }
 
-        // ... fail case ...
-        setToken('')
-        setUser(null)
-        setIsExternalAuth(false)
-        setLockedDivision(null)
-        setLoading(false)
-        return false
+        console.log('[AuthContext] No specific production token found, checking for internal cookies...')
+        // Fall through to cookie check instead of returning false immediately
       }
 
       // ========== DEVELOPMENT MODE ==========

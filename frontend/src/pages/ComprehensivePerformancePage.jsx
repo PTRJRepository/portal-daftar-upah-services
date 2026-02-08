@@ -651,10 +651,50 @@ export default function ComprehensivePerformancePage({
                     </tr>
 
                     {/* Lembur Detail Sub-rows (Only when Lembur tab is active and has details) */}
-                    {hasLemburDetails && row.lembur_records.map((detail, detailIdx) => (
-                      <tr key={`${idx}-detail-${detailIdx}`} style={{ backgroundColor: '#f8fafc' }}>
-                        <td colSpan={4} style={{ paddingLeft: '2rem', fontSize: '0.8rem', fontStyle: 'italic', color: '#64748b' }}>
-                          └─ {detail.trx_date} | {detail.task_code || '-'} {detail.task_desc ? `(${detail.task_desc})` : ''}
+                    {/* Individual transaction records - like Employee Detail Page */}
+                    {hasLemburDetails && row.lembur_records.map((detail, detailIdx) => {
+                      // Format date for display (DD/MM/YYYY)
+                      const dateObj = new Date(detail.trx_date);
+                      const dateStr = detail.trx_date ? `${dateObj.getDate()}/${dateObj.getMonth() + 1}/${dateObj.getFullYear()}` : '-';
+
+                      return (
+                        <tr key={`${idx}-detail-${detailIdx}`} style={{ backgroundColor: '#f8fafc' }}>
+                          <td colSpan={4} style={{ paddingLeft: '2rem', fontSize: '0.8rem', color: '#475569' }}>
+                            └─ <strong>{dateStr}</strong> ({detail.day_type || '-'}) | {detail.task_desc || detail.task_code || '-'}
+                          </td>
+                          <td className="text-right" style={{ color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
+
+                          {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+                            <td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
+                          )}
+
+                          {(activeTab === 'semua' || activeTab === 'premi') && (
+                            <td colSpan={3 + dynamicPremiHeaders.length} style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
+                          )}
+
+                          {(activeTab === 'semua' || activeTab === 'lembur') && (
+                            <>
+                              <td className="text-right" style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                {formatDecimal(detail.hours || 0)} jam
+                              </td>
+                              <td className="text-right" style={{ fontSize: '0.8rem', color: '#059669' }}>
+                                {formatNumber(detail.amount || 0)}
+                              </td>
+                            </>
+                          )}
+
+                          {activeTab === 'potongan' && <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>}
+                          {activeTab === 'semua' && <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>}
+                          <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
+                        </tr>
+                      );
+                    })}
+
+                    {/* Lembur Detail Summary Row - Verifikasi total detail = total lembur */}
+                    {hasLemburDetails && (
+                      <tr style={{ backgroundColor: '#f1f5f9', borderTop: '2px solid #cbd5e1' }}>
+                        <td colSpan={4} style={{ paddingLeft: '2rem', fontSize: '0.75rem', fontWeight: 'bold', color: '#475569' }}>
+                          ✓ Total Detail ({row.lembur_records?.length || 0} transaksi)
                         </td>
                         <td className="text-right" style={{ color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
 
@@ -668,11 +708,11 @@ export default function ComprehensivePerformancePage({
 
                         {(activeTab === 'semua' || activeTab === 'lembur') && (
                           <>
-                            <td className="text-right" style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                              {formatDecimal(detail.hours || 0)}
+                            <td className="text-right" style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569' }}>
+                              {formatDecimal((row.lembur_records || []).reduce((sum, r) => sum + (r.hours || 0), 0))} jam
                             </td>
-                            <td className="text-right" style={{ fontSize: '0.8rem', color: '#059669' }}>
-                              {formatNumber(detail.amount || 0)}
+                            <td className="text-right" style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#059669' }}>
+                              {formatNumber((row.lembur_records || []).reduce((sum, r) => sum + (r.amount || 0), 0))}
                             </td>
                           </>
                         )}
@@ -681,7 +721,7 @@ export default function ComprehensivePerformancePage({
                         {activeTab === 'semua' && <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>}
                         <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>-</td>
                       </tr>
-                    ))}
+                    )}
                   </React.Fragment>
                 );
               })}

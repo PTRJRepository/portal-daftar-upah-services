@@ -626,7 +626,10 @@ export default function CustomPayrollTable({
     // Expose export function to parent
     useEffect(() => {
         if (onExportReady) {
-            onExportReady(handleExportToExcel);
+            // [FIX] Must wrap in arrow function because onExportReady is a useState setter (setExportHandler).
+            // Passing a function directly to useState setter causes React to execute it (functional update).
+            // We want to STORE the function, not execute it.
+            onExportReady(() => handleExportToExcel);
         }
     }, [onExportReady, handleExportToExcel]);
 

@@ -62,23 +62,11 @@ export interface OvertimeRecord {
     day_type?: DayType;
     breakdown?: OvertimeBreakdown;
     task_code?: string;
+    task_desc?: string;
     shift_code?: string;
     raw_amount?: number;
     raw_rate?: number;
 }
-
-export interface LemburResult {
-    emp_code: string;
-    emp_name: string;
-    month: number;
-    year: number;
-    upj: number;
-    records: OvertimeRecord[];
-    total_hours: number;
-    total_payment: number;
-    record_count: number;
-}
-
 export class LemburCalculator {
     private static instance: LemburCalculator;
     private db: Database;
@@ -86,7 +74,7 @@ export class LemburCalculator {
 
     private constructor() {
         this.db = Database.getInstance();
-        // UPJ default value (can be loaded from config)
+        // UPJ default value from environment or fallback to 17257
         this.upjValue = parseFloat(process.env.LEMBUR_UPJ || "17257");
     }
 
@@ -97,171 +85,12 @@ export class LemburCalculator {
         return LemburCalculator.instance;
     }
 
-    // --- Day Classification ---
-    public async classifyDay(date: Date, year: number): Promise<DayType> {
-        const dayOfWeek = date.getDay(); // 0 = Sunday, 5 = Friday
-
-        // Check if Sunday
-        if (dayOfWeek === 0) {
-            return DayType.SUNDAY;
-        }
-
-        // Check holidays
-        const holidays = await this.getHolidays(year);
-        const dateKey = date.toISOString().substring(0, 10);
-        const holiday = holidays[dateKey];
-
-        if (holiday) {
-            return holiday.is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
-        }
-
-        // Regular workday
-        return dayOfWeek === 5 ? DayType.WORKDAY_SHORT : DayType.WORKDAY_LONG;
-    }
-
-    // --- Get Holidays ---
-    public async getHolidays(year: number): Promise<Record<string, { description: string; is_religious: boolean }>> {
-        const cacheKey = `holidays:${year}`;
-        const cached = cacheService.get<Record<string, any>>(cacheKey);
-        if (cached) return cached;
-
-        const holidays: Record<string, any> = {};
-        try {
-            const rows = await this.db.query<{
-                HolidayDate: string;
-                Description: string;
-                IsRegionPH: number;
-            }>(`
-                SELECT HolidayDate, Description, IsRegionPH 
-                FROM HR_GPH 
-                WHERE YEAR(HolidayDate) = ? AND Status = 1
-            `, [year]);
-
-            for (const row of rows) {
-                const dateKey = new Date(row.HolidayDate).toISOString().substring(0, 10);
-                // IsRegionPH may be returned as string from database, convert to number for comparison
-                const isRegionPH = typeof row.IsRegionPH === 'string' ? parseInt(row.IsRegionPH, 10) : row.IsRegionPH;
-                holidays[dateKey] = {
-                    description: row.Description?.trim() || "",
-                    is_religious: isRegionPH === 1
-                };
-            }
-        } catch (e) {
-            console.error("[LemburCalculator] Failed to get holidays:", e);
-        }
-
-        cacheService.set(cacheKey, holidays, 3600); // 1 hour cache
-        return holidays;
-    }
-
-    // --- Calculate Overtime Payment ---
-    public calculateOvertimePayment(
-        hours: number,
-        dayType: DayType,
-        upj: number,
-        isShortDay: boolean = false
-    ): OvertimeBreakdown {
-        const rates = OVERTIME_RATES[dayType] || OVERTIME_RATES.WORKDAY_LONG;
-
-        const tier1Rate = rates.tier_1_rate;
-        const tier2Rate = rates.tier_2_rate;
-        const tier3Rate = rates.tier_3_rate;
-
-        let tier1Boundary: number;
-        let tier2Boundary: number;
-
-        // Determine tier boundaries
-        if (dayType === DayType.WORKDAY_LONG || dayType === DayType.WORKDAY_SHORT) {
-            tier1Boundary = rates.tier_1_boundary || 1;
-            tier2Boundary = 999; // Effectively infinite for workdays
-        } else {
-            tier1Boundary = isShortDay
-                ? (rates.tier_1_boundary_short || 5)
-                : (rates.tier_1_boundary_long || 7);
-            tier2Boundary = tier1Boundary + 1;
-        }
-
-        // Calculate hours in each tier
-        if (hours <= 0) {
-            return {
-                tier_1_rate: tier1Rate, tier_1_hours: 0, tier_1_amount: 0, tier_1_boundary: tier1Boundary,
-                tier_2_rate: tier2Rate, tier_2_hours: 0, tier_2_amount: 0,
-                tier_3_rate: tier3Rate, tier_3_hours: 0, tier_3_amount: 0,
-                total_rate: 0, total_amount: 0
-            };
-        }
-
-        // Tier 1
-        const tier1Hours = Math.min(hours, tier1Boundary);
-        const tier1Amount = upj * tier1Rate * tier1Hours;
-
-        // Tier 2
-        const remainingAfterT1 = Math.max(0, hours - tier1Boundary);
-        let tier2Hours: number;
-        let tier3Hours: number;
-
-        if (dayType === DayType.WORKDAY_LONG || dayType === DayType.WORKDAY_SHORT) {
-            // Workdays: 2-tier system
-            tier2Hours = remainingAfterT1;
-            tier3Hours = 0;
-        } else if (dayType === DayType.HOLIDAY_RELIGIOUS) {
-            // Religious holidays: 2-tier system (3-4-4 pattern)
-            // All remaining hours go to tier 2 (4x rate)
-            tier2Hours = remainingAfterT1;
-            tier3Hours = 0;
-        } else {
-            // Sunday and Regular holidays: 3-tier system (2-3-4 or 2-3-4 pattern)
-            tier2Hours = Math.min(remainingAfterT1, 1);
-            tier3Hours = Math.max(0, remainingAfterT1 - 1);
-        }
-
-        const tier2Amount = upj * tier2Rate * tier2Hours;
-        const tier3Amount = upj * tier3Rate * tier3Hours;
-
-        const totalRate = (tier1Rate * tier1Hours) + (tier2Rate * tier2Hours) + (tier3Rate * tier3Hours);
-        const totalAmount = tier1Amount + tier2Amount + tier3Amount;
-
-        return {
-            tier_1_rate: tier1Rate,
-            tier_1_hours: tier1Hours,
-            tier_1_amount: Math.round(tier1Amount * 100) / 100,
-            tier_1_boundary: tier1Boundary,
-            tier_2_rate: tier2Rate,
-            tier_2_hours: tier2Hours,
-            tier_2_amount: Math.round(tier2Amount * 100) / 100,
-            tier_3_rate: tier3Rate,
-            tier_3_hours: tier3Hours,
-            tier_3_amount: Math.round(tier3Amount * 100) / 100,
-            total_rate: Math.round(totalRate * 100) / 100,
-            total_amount: Math.round(totalAmount * 100) / 100
-        };
-    }
-
-    // --- Calculate for Employee ---
-    public async calculate(empCode: string, month: number, year: number, manualUpj?: number): Promise<LemburResult> {
-        const daysInMonth = new Date(year, month, 0).getDate();
+    public async calculate(empCode: string, month: number, year: number, upj?: number) {
+        let empName = "";
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
+        const daysInMonth = new Date(year, month, 0).getDate();
         const endDate = `${year}-${month.toString().padStart(2, "0")}-${daysInMonth}`;
-
-        // Deterined UPJ: manual > employee basic wage / 173 > default
-        let upj = manualUpj;
-        if (upj === undefined) {
-            try {
-                const payRates = await payrollService.getPayratesMap([empCode]);
-                const payRate = payRates[empCode] || 0;
-                if (payRate > 0) {
-                    upj = (payRate * 30) / 173;
-                } else {
-                    upj = this.upjValue; // Fallback to default
-                }
-            } catch (e) {
-                console.error("[LemburCalculator] Failed to fetch payrate, using fallback:", e);
-                upj = this.upjValue;
-            }
-        }
-
         const records: OvertimeRecord[] = [];
-        let empName = empCode;
 
         try {
             const rows = await this.db.query<{
@@ -270,13 +99,12 @@ export class LemburCalculator {
                 EmpName: string;
                 TrxDate: string;
                 Hours: number;
-
                 TaskCode: string;
+                TaskDesc: string;
                 ShiftCode: string;
                 Amount: number;
                 Rate: number;
             }>(`
-
                 SELECT 
                     trl.ID,
                     trl.EmpCode,
@@ -284,6 +112,7 @@ export class LemburCalculator {
                     trl.TrxDate,
                     trl.Hours,
                     trl.TaskCode,
+                    tc.TaskDesc,
                     trl.ShiftCode,
                     trl.Amount,
                     trl.Rate
@@ -303,6 +132,7 @@ export class LemburCalculator {
                     WHERE l.EmpCode = ? AND l.TrxDate >= ? AND l.TrxDate <= ? AND l.OT = 1
                 ) trl
                 LEFT JOIN HR_EMPLOYEE e ON e.EmpCode = trl.EmpCode
+                LEFT JOIN PR_TASKCODE tc ON tc.TaskCode = trl.TaskCode
                 ORDER BY trl.TrxDate
             `, [empCode, startDate, endDate, empCode, startDate, endDate]);
 
@@ -326,6 +156,7 @@ export class LemburCalculator {
                     day_type: dayType,
                     breakdown,
                     task_code: row.TaskCode,
+                    task_desc: row.TaskDesc,
                     shift_code: row.ShiftCode,
                     raw_amount: row.Amount || 0,
                     raw_rate: row.Rate || 0
@@ -483,6 +314,16 @@ export class LemburCalculator {
             amount: number;
             record_count: number;
         }>;
+        records?: Array<{
+            date: string;
+            day_name: string;
+            day_type: string;
+            task_code: string;
+            task_desc: string;
+            hours: number;
+            rate: number;
+            amount: number;
+        }>;
     }>> {
         if (!empCodes.length) return {};
 
@@ -499,6 +340,16 @@ export class LemburCalculator {
                 hours: number;
                 amount: number;
                 record_count: number;
+            }>;
+            records?: Array<{
+                date: string;
+                day_name: string;
+                day_type: string;
+                task_code: string;
+                task_desc: string;
+                hours: number;
+                rate: number;
+                amount: number;
             }>;
         }> = {};
 
@@ -574,14 +425,29 @@ export class LemburCalculator {
             }
         }
 
-        // 4. Build records per employee (one record per transaction)
+        // 4. Build individual records per employee (one record per transaction)
+        // This ensures total lembur = sum of all detail records (no double counting)
+        const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
         for (const empCode of empCodes) {
             const empKey = empCode.trim();
             result[empKey] = {
                 total_hours: 0,
                 total_payment: 0,
-                records: []
+                task_breakdown: []
             };
+
+            // Store individual transaction records
+            const records: Array<{
+                date: string;
+                day_name: string;
+                day_type: string;
+                task_code: string;
+                task_desc: string;
+                hours: number;
+                rate: number;
+                amount: number;
+            }> = [];
 
             for (const row of rows) {
                 const rowEmpCode = row.EmpCode?.trim();
@@ -589,30 +455,62 @@ export class LemburCalculator {
 
                 const taskCode = (row.TaskCode || "").trim();
                 const taskDesc = taskDescMap[taskCode] || taskCode;
-                const upj = payRates[empKey] || 0;
+                // UPJ: use payrate if available, otherwise fallback to default UPJ
+                const payRate = payRates[empKey] || 0;
+                const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
                 const trxDate = new Date(row.TrxDate);
                 const dayOfWeek = trxDate.getDay();
                 const dayType = await this.classifyDay(trxDate, year);
                 const breakdown = this.calculateOvertimePayment(row.Hours, dayType, upj, dayOfWeek === 5);
 
-                const dayTypeDisplay = getDayTypeDisplayName(dayType);
-
-                result[empKey].records.push({
-                    trx_date: trxDate.toISOString().substring(0, 10),
+                // Create individual transaction record
+                records.push({
+                    date: trxDate.toISOString().substring(0, 10),
+                    day_name: dayNames[dayOfWeek],
+                    day_type: getDayTypeDisplayName(dayType),
                     task_code: taskCode,
                     task_desc: taskDesc,
-                    day_type: dayTypeDisplay,
                     hours: row.Hours,
                     rate: breakdown.total_rate || 0,
                     amount: breakdown.total_amount
                 });
 
+                // Add to totals
                 result[empKey].total_hours += row.Hours;
                 result[empKey].total_payment += breakdown.total_amount;
             }
 
             // Sort records by date
-            result[empKey].records.sort((a, b) => a.trx_date.localeCompare(b.trx_date));
+            records.sort((a, b) => a.date.localeCompare(b.date));
+
+            // Create task_breakdown from individual records (for compatibility)
+            // Group by task_desc for summary view
+            const taskGroupMap: Record<string, {
+                task_code: string;
+                task_desc: string;
+                hours: number;
+                amount: number;
+                record_count: number;
+            }> = {};
+
+            for (const rec of records) {
+                const groupKey = rec.task_desc;
+                if (!taskGroupMap[groupKey]) {
+                    taskGroupMap[groupKey] = {
+                        task_code: rec.task_code,
+                        task_desc: rec.task_desc,
+                        hours: 0,
+                        amount: 0,
+                        record_count: 0
+                    };
+                }
+                taskGroupMap[groupKey].hours += rec.hours;
+                taskGroupMap[groupKey].amount += rec.amount;
+                taskGroupMap[groupKey].record_count += 1;
+            }
+
+            result[empKey].task_breakdown = Object.values(taskGroupMap).sort((a, b) => b.amount - a.amount);
+            result[empKey].records = records; // Add individual records
         }
 
         return result;
@@ -624,6 +522,98 @@ export class LemburCalculator {
         const res: Record<string, number> = {};
         for (const k in data) res[k] = data[k].total_payment;
         return res;
+    }
+
+    private async classifyDay(date: Date, year: number): Promise<DayType> {
+        const dayOfWeek = date.getDay();
+        if (dayOfWeek === 0) return DayType.SUNDAY;
+
+        // Check holidays
+        const holidays = await this.getHolidays(year);
+        const dateStr = date.toISOString().substring(0, 10);
+        if (holidays[dateStr]) {
+            return holidays[dateStr].is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
+        }
+
+        if (dayOfWeek === 5) return DayType.WORKDAY_SHORT;
+        return DayType.WORKDAY_LONG;
+    }
+
+    private async getHolidays(year: number): Promise<Record<string, { is_religious: boolean }>> {
+        const cacheKey = `holidays_${year}`;
+        const cached = cacheService.get<Record<string, { is_religious: boolean }>>(cacheKey);
+        if (cached) return cached;
+
+        const rows = await this.db.query<{ HolidayDate: string; Description: string }>(`
+            SELECT HolidayDate, Description FROM HR_GPH WHERE YEAR(HolidayDate) = ?
+        `, [year]);
+
+        const holidays: Record<string, { is_religious: boolean }> = {};
+        for (const row of rows) {
+            const dateStr = new Date(row.HolidayDate).toISOString().substring(0, 10);
+            const desc = (row.Description || "").toUpperCase();
+            const isReligious = desc.includes("IDUL") || desc.includes("NATAL") ||
+                desc.includes("IMLEK") || desc.includes("WAISAK") ||
+                desc.includes("NYEPI") || desc.includes("ISRA") ||
+                desc.includes("MAULID");
+            holidays[dateStr] = { is_religious: isReligious };
+        }
+
+        cacheService.set(cacheKey, holidays, 3600);
+        return holidays;
+    }
+
+    private calculateOvertimePayment(hours: number, dayType: DayType, upj: number, isShortDay: boolean): OvertimeBreakdown {
+        const rates = OVERTIME_RATES[dayType] || OVERTIME_RATES[DayType.WORKDAY_LONG];
+        let tier1Hours = 0, tier2Hours = 0, tier3Hours = 0;
+        let remainingHours = hours;
+
+        // Tier 1
+        const tier1Limit = isShortDay ? (rates.tier_1_boundary_short || rates.tier_1_boundary || 0)
+            : (rates.tier_1_boundary_long || rates.tier_1_boundary || 0);
+
+        if (remainingHours > 0) {
+            const h = Math.min(remainingHours, tier1Limit);
+            tier1Hours = h;
+            remainingHours -= h;
+        }
+
+        // Tier 2 - for Sundays/Holidays (next 1 hour usually), Workdays (rest)
+        let tier2Limit = 0;
+        if (dayType === DayType.SUNDAY || dayType === DayType.HOLIDAY_REGULAR || dayType === DayType.HOLIDAY_RELIGIOUS) {
+            tier2Limit = 1; // 8th hour
+        } else {
+            tier2Limit = 999; // Rest
+        }
+
+        if (remainingHours > 0) {
+            const h = Math.min(remainingHours, tier2Limit);
+            tier2Hours = h;
+            remainingHours -= h;
+        }
+
+        if (remainingHours > 0) {
+            tier3Hours = remainingHours;
+        }
+
+        const t1Amount = tier1Hours * upj * rates.tier_1_rate;
+        const t2Amount = tier2Hours * upj * rates.tier_2_rate;
+        const t3Amount = tier3Hours * upj * rates.tier_3_rate;
+
+        return {
+            tier_1_rate: rates.tier_1_rate,
+            tier_1_hours: tier1Hours,
+            tier_1_amount: t1Amount,
+            tier_1_boundary: tier1Limit,
+            tier_2_rate: rates.tier_2_rate,
+            tier_2_hours: tier2Hours,
+            tier_2_amount: t2Amount,
+            tier_3_rate: rates.tier_3_rate,
+            tier_3_hours: tier3Hours,
+            tier_3_amount: t3Amount,
+            total_rate: 0,
+            total_amount: t1Amount + t2Amount + t3Amount
+        };
     }
 }
 

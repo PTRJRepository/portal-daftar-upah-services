@@ -37,6 +37,7 @@ interface LemburRecord {
     hours: number;
     rate: number;
     amount: number;
+    record_count?: number; // Number of transactions grouped (for grouped task breakdown)
 }
 
 interface LemburDataWithDetails extends LemburData {
@@ -405,6 +406,11 @@ export class DataExtractorService {
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
             const empLemburJumlah = empLembur.jumlah + empLemburDocDesc;
 
+            // [FIX] Use pure overtime (OT=1) for lembur display to ensure detail records match the total
+            // lembur_records hanya menampilkan OT=1 transactions, jadi total yang ditampilkan harus sesuai
+            const empLemburJumlahPure = empLemburDetails.jumlah || empLembur.jumlah;
+            const empLemburJamPure = empLemburDetails.jam || empLembur.jam;
+
             // [UPDATED] Gaji Pokok untuk Grup Penggajian
             // gaji_pokok_ideal = upah_dasar × jumlah_hk (untuk referensi)
             // gaji_pokok_aktual = total_amount_rp dari PR_TASKREGLN (amount plantware) - untuk display dan perhitungan
@@ -566,9 +572,10 @@ export class DataExtractorService {
                 masa_kerja_tahun: masaKerjaLama,
                 masa_kerja_rate: masaKerjaRate,
                 masa_kerja_jumlah: empMasaKerjaJumlah,
-                lembur_jam: empLembur.jam,
-                lembur_rate: empLemburJumlah > 0 && empLembur.jam > 0 ? empLemburJumlah / empLembur.jam : 0,
-                lembur_jumlah: empLemburJumlah,
+                // [FIX] Use pure overtime (OT=1) values to ensure detail records match the total
+                lembur_jam: empLemburJamPure,
+                lembur_rate: empLemburJumlahPure > 0 && empLemburJamPure > 0 ? empLemburJumlahPure / empLemburJamPure : 0,
+                lembur_jumlah: empLemburJumlahPure,
                 lembur_records: empLemburDetails.records || [],
                 total_tunjangan,
                 premi_brondol: empBrondol,
@@ -1218,10 +1225,22 @@ export class DataExtractorService {
         const data = await lemburCalculator.calculateBatchDataWithTaskBreakdown(empCodes, month, year, serverProfile);
         const result: Record<string, LemburDataWithDetails> = {};
         for (const k in data) {
+            // Use individual transaction records from lemburCalculator
+            // This ensures total lembur = sum of all detail records (no double counting)
+            const records = (data[k].records || []).map((rec) => ({
+                trx_date: rec.date,
+                task_code: rec.task_code,
+                task_desc: rec.task_desc,
+                day_type: rec.day_type,
+                hours: rec.hours,
+                rate: rec.rate,
+                amount: rec.amount
+            }));
+
             result[k] = {
                 jam: data[k].total_hours || 0,
                 jumlah: data[k].total_payment || 0,
-                records: data[k].records || []
+                records: records
             };
         }
         return result;

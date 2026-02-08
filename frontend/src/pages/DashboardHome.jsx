@@ -1,257 +1,290 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { fetchGangs, fetchDivisions } from '../services/gangService'
-import MonthPicker from '../components/common/MonthPicker'
-import DivisionTabs from '../components/common/DivisionTabs'
-import GangCardGrid from '../components/common/GangCardGrid'
-import '../styles/dashboard-modern.css'
-import '../styles/theme.css'
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useReport } from '../context/ReportContext';
+import MonthSelector from '../components/common/MonthSelector';
+import { isProdMode } from '../utils/prodModeUtils';
 
-export default function DashboardHome({ user, token, onGenerateReport }) {
-  const [monthInput, setMonthInput] = useState('')
-  const [division, setDivision] = useState('')
-  const [divisions, setDivisions] = useState([])
-  const [gang, setGang] = useState('')
-  const [gangs, setGangs] = useState([])
-  const [gangLoading, setGangLoading] = useState(false)
-  const [divisionsLoading, setDivisionsLoading] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
+export default function DashboardHome() {
+  const { user } = useAuth();
+  const {
+    month, setMonth,
+    year, setYear,
+    division, setDivision,
+    gang, setGang,
+    gangs, allDivisions,
+    gangLoading, isLockedMode, isAdminUser
+  } = useReport();
 
-  // Initialize defaults
-  useEffect(() => {
-    const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    setMonthInput(currentMonth)
+  const navigate = useNavigate();
 
-    // Prioritize 'divisi' from user object or localStorage as requested
-    let initialDivision = ''
+  // Determine report access (simplified, similar to previous MainPage)
+  const inProdMode = isProdMode();
+  const canAccessReports = isAdminUser || !inProdMode;
 
-    // Check prop user
-    if (user?.divisi) {
-      initialDivision = user.divisi
-    } else if (user?.divisions?.length > 0) {
-      initialDivision = user.divisions[0]
+  const handleGenerateOperational = () => {
+    if (division && gang) {
+      navigate('/operational');
     }
-
-    // Fallback to localStorage
-    if (!initialDivision) {
-      try {
-        const storedUser = localStorage.getItem('user')
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser)
-          if (parsedUser.divisi) {
-            initialDivision = parsedUser.divisi
-          } else if (parsedUser.divisions?.length > 0) {
-            initialDivision = parsedUser.divisions[0]
-          }
-        }
-      } catch (e) {
-        console.error('Error reading user from localStorage:', e)
-      }
-    }
-
-    if (initialDivision) {
-      setDivision(initialDivision)
-    }
-  }, [user])
-
-  // Load available divisions
-  useEffect(() => {
-    async function loadDivisions() {
-      setDivisionsLoading(true)
-      try {
-        const divList = await fetchDivisions(token)
-        if (divList && divList.length > 0) {
-          setDivisions(divList)
-          // Set first division if none selected
-          if (!division && divList.length > 0) {
-            setDivision(divList[0])
-          }
-        } else {
-          // Fallback divisions
-          const fallback = ['P1A', 'P1B', 'P2A', 'P2B']
-          setDivisions(fallback)
-        }
-      } catch (e) {
-        console.error('Failed to load divisions:', e)
-        // Fallback
-        const fallback = ['P1A', 'P1B', 'P2A', 'P2B']
-        setDivisions(fallback)
-      } finally {
-        setDivisionsLoading(false)
-      }
-    }
-    loadDivisions()
-  }, [token])
-
-  // Load Gangs
-  useEffect(() => {
-    async function loadGangs() {
-      if (!division) {
-        setGangs([])
-        setGang('')
-        return
-      }
-
-      setGangLoading(true)
-
-      try {
-        // Always fetch all gangs for the division to enable client-side filtering
-        const list = await fetchGangs(token, division, null, true)
-
-        if (list && list.length > 0) {
-          setGangs(list)
-
-          // Select first gang by default if current selection is invalid
-          const firstGangCode = typeof list[0] === 'string' ? list[0] : list[0].gang_code
-
-          // Check if current gang exists in new list
-          const exists = list.some(g => {
-            const code = typeof g === 'string' ? g : g.gang_code
-            return code === gang
-          })
-
-          if (!gang || !exists) {
-            setGang('ALL') // Default to ALL for new division
-          }
-        } else {
-          setGangs([])
-          setGang('')
-        }
-      } catch (e) {
-        console.error('Failed to load gangs:', e)
-        // Fallback for offline/error
-        const fallbackGangs = ['H1H', 'H1M', 'H1T', 'A1H']
-        setGangs(fallbackGangs)
-        setGang('ALL')
-      } finally {
-        setGangLoading(false)
-      }
-    }
-
-    loadGangs()
-  }, [division, token])
-
-  const handleDivisionChange = (newDivision) => {
-    setDivision(newDivision)
-    setGang('')
-  }
-
-  const handleGenerateReport = async () => {
-    if (!monthInput || !division || !gang) return
-
-    setIsGenerating(true)
-
-    const [yearStr, monthStr] = monthInput.split('-')
-
-    try {
-      await onGenerateReport({
-        month: parseInt(monthStr, 10),
-        year: parseInt(yearStr, 10),
-        gang_code: gang,
-        division: division
-      })
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  const isFormValid = monthInput && division && gang && !gangLoading
+  };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'center',
-      padding: '2rem',
-      paddingTop: '4rem',
-      position: 'relative'
-    }}>
-      {/* Animated Background */}
-      <div className="modern-dashboard-bg" />
-
-      {/* Loading Bar */}
-      {isGenerating && (
-        <div className="loading-bar">
-          <div className="loading-bar-progress" />
-        </div>
-      )}
-
-      {/* Main Glass Card */}
-      <div className="glass-card" style={{
+    <>
+      {/* Header / Hero Section */}
+      <div style={{
+        height: '160px',
         width: '100%',
-        maxWidth: '520px',
-        zIndex: 1
+        backgroundImage: 'url("/images/wallpaper_loading_screen.webp")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'flex-end',
+        flexShrink: 0
       }}>
-        {/* Header */}
-        <div className="glass-card-header">
-          <h2 className="glass-card-title">
-            <span style={{ fontSize: '1.5rem' }}>📊</span>
-            Buat Laporan Gaji
-          </h2>
-          <p className="glass-card-subtitle">
-            Pilih periode dan kemandoran untuk generate laporan
+        {/* Dark Overlay for Text Readability */}
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)' // Darker overlay for formality
+        }} />
+        <div style={{ position: 'relative', padding: '2rem', width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: '600', margin: 0, color: '#ffffff', letterSpacing: '-0.025em' }}>
+            Selamat Datang, {user?.username}
+          </h1>
+          <p style={{ margin: '0.5rem 0 0', color: '#e2e8f0', fontSize: '0.95rem', fontWeight: '400' }}>
+            Sistem Manajemen Data Upah dan Laporan Operasional
           </p>
         </div>
+      </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
-          {/* Periode Section */}
-          <div>
-            <div className="section-label">
-              <span className="section-label-icon">📅</span>
-              Periode
+        {/* FILTER SECTION CARD */}
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          padding: '2.5rem',
+          border: '1px solid #cbd5e1',
+          borderTop: '5px solid #1e3a8a', // Navy Accent
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+          marginBottom: '2.5rem',
+          position: 'relative'
+        }}>
+          <h2 style={{
+            fontSize: '1rem',
+            fontWeight: '700',
+            color: '#1e3a8a',
+            marginBottom: '2rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            borderBottom: '2px solid #f1f5f9',
+            paddingBottom: '0.75rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            <span style={{ fontSize: '1.25rem' }}>⚙️</span> FILTER PARAMETER
+          </h2>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2.5rem', alignItems: 'flex-start' }}>
+            {/* Left Column: Calendar (Fixed Width) */}
+            <div style={{ flex: '0 0 320px', minWidth: '280px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.75rem', letterSpacing: '0.025em' }}>
+                PERIODE LAPORAN
+              </label>
+              <MonthSelector
+                month={month}
+                year={year}
+                onChange={(m, y) => { setMonth(m); setYear(y); }}
+              />
             </div>
-            <MonthPicker
-              value={monthInput}
-              onChange={setMonthInput}
-              disabled={isGenerating}
-            />
+
+            {/* Right Column: Division & Gang (Flexible) */}
+            <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+              {/* Division Selection */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem', letterSpacing: '0.025em' }}>
+                  DIVISI {isLockedMode && <span style={{ color: '#d97706', fontSize: '0.75rem', marginLeft: '4px' }}>(LOCKED)</span>}
+                </label>
+                <select
+                  className="input-field"
+                  style={{
+                    width: '100%',
+                    height: '48px', // Slightly taller for better click area
+                    padding: '0 1rem',
+                    fontSize: '0.95rem',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    backgroundColor: isLockedMode ? '#fffbeb' : 'white',
+                    cursor: isLockedMode ? 'not-allowed' : 'pointer',
+                    color: '#334155',
+                    outline: 'none',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}
+                  value={division}
+                  onChange={e => !isLockedMode && setDivision(e.target.value)}
+                  disabled={isLockedMode}
+                  onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
+                >
+                  <option value="">Pilih Divisi</option>
+                  {allDivisions.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                  {/* Handle case where division is not in allDivisions but exists in state logic handled by context? - Context does it. */}
+                </select>
+              </div>
+
+              {/* Gang Selection */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem', letterSpacing: '0.025em' }}>
+                  GANG / KEMANDORAN
+                </label>
+                <select
+                  className="input-field"
+                  style={{
+                    width: '100%',
+                    height: '48px',
+                    padding: '0 1rem',
+                    fontSize: '0.95rem',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    cursor: gangLoading ? 'wait' : 'pointer',
+                    backgroundColor: gangLoading ? '#f8fafc' : 'white',
+                    color: '#334155',
+                    outline: 'none',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}
+                  value={gang}
+                  onChange={e => setGang(e.target.value)}
+                  disabled={gangLoading}
+                  onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
+                >
+                  {gangLoading ? (
+                    <option>Memuat data...</option>
+                  ) : gangs.length === 0 ? (
+                    <option>Menunggu pemilihan divisi...</option>
+                  ) : (
+                    <>
+                      <option value="">Pilih Gang</option>
+                      <option value="ALL">SEMUA GANG</option>
+                      {gangs.map(g => (
+                        <option key={g.gang_code} value={g.gang_code}>
+                          {g.gang_code} - {g.description || '-'}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+
+            </div>
           </div>
 
-          {/* Division Section */}
-          <div>
-            <div className="section-label">
-              <span className="section-label-icon">🏢</span>
-              Divisi
-            </div>
-            <DivisionTabs
-              divisions={divisions}
-              selected={division}
-              onChange={handleDivisionChange}
-              disabled={isGenerating}
-              isLoading={divisionsLoading}
-            />
+          {/* QUICK ACTION BUTTON - Moved INSIDE/NEAR FILTER for accessibility */}
+          <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={handleGenerateOperational}
+              disabled={!division || !gang || gangLoading}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '1rem 2rem',
+                backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#0ea5e9', // Sky Blue Button
+                color: (!division || !gang || gangLoading) ? '#94a3b8' : 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '700',
+                fontSize: '1rem',
+                cursor: (!division || !gang || gangLoading) ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(14, 165, 233, 0.3)'
+              }}
+            >
+              {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DATA UPAH'}
+              <span>→</span>
+            </button>
           </div>
+        </div>
 
-          {/* Gang Selection Section */}
-          <div>
-            <div className="section-label">
-              <span className="section-label-icon">👥</span>
-              Kemandoran / Gang
-            </div>
-            <GangCardGrid
-              gangs={gangs}
-              selected={gang}
-              onChange={setGang}
-              disabled={isGenerating}
-              isLoading={gangLoading}
-              showAllOption={true}
-            />
-          </div>
+        {/* Shortcuts Section */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
 
-          {/* Generate Button */}
-          <button
-            className={`btn-generate ${isGenerating ? 'loading' : ''}`}
-            onClick={handleGenerateReport}
-            disabled={!isFormValid || isGenerating}
+          {/* Analysis & Summary Shortcuts */}
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '2rem',
+            border: '1px solid #cbd5e1',
+            borderTop: '5px solid #8b5cf6', // Violet Accent
+            boxShadow: '0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+            transition: 'all 0.3s ease'
+          }}
           >
-            <span className="btn-generate-icon">🚀</span>
-            {isGenerating ? 'Generating...' : 'Generate Report'}
-          </button>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ color: '#8b5cf6' }}>📊</span> Laporan Analisis & Summary
+            </h3>
+
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              <button
+                onClick={() => navigate('/summary')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Summary Report (Per Gang) <span>›</span>
+              </button>
+              <button
+                onClick={() => navigate('/comprehensive')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Analisis Performa Komprehensif <span>›</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Financial Reports Shortcuts */}
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '2rem',
+            border: '1px solid #cbd5e1',
+            borderTop: '5px solid #10b981', // Emerald Accent
+            boxShadow: '0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+            transition: 'all 0.3s ease'
+          }}
+          >
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ color: '#10b981' }}>💰</span> Laporan Keuangan
+            </h3>
+
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              <button
+                onClick={() => navigate('/wages-rebinmas')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Wages Rebinmas Report <span>›</span>
+              </button>
+              <button
+                onClick={() => navigate('/wages-ijl')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Wages Report (IJL) <span>›</span>
+              </button>
+            </div>
+          </div>
 
         </div>
+
       </div>
-    </div>
-  )
+    </>
+  );
 }

@@ -366,6 +366,7 @@ export class EmployeeDetailService {
                     amount: dbAmount,
                     rate: record.raw_rate || 0,
                     task_code: record.task_code || "",
+                    task_desc: record.task_desc || record.task_code || "",
                     day_type: record.day_type ? getDayTypeDisplayName(record.day_type) : "-",
                     formula_amount: formulaAmount,
                     shift_code: record.shift_code || ""
@@ -382,6 +383,7 @@ export class EmployeeDetailService {
                     amount_formula: formulaAmount,
                     rate: record.raw_rate || 0,
                     task_code: record.task_code || "",
+                    task_desc: record.task_desc || record.task_code || "",
                     day_type: detailObj.day_type
                 });
 

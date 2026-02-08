@@ -528,27 +528,29 @@ export default function EmployeeDetailPage({
                     {/* Overtime List Detail */}
                     {overtime.list && overtime.list.length > 0 && (
                         <div className="overtime-list">
-                            <h4>📋 Rincian Lembur</h4>
+                            <h4>📋 Rincian Lembur (By Activity)</h4>
                             <table className="overtime-table">
                                 <thead>
                                     <tr>
-                                        <th>Tanggal</th>
-                                        <th>Hari</th>
-                                        <th>Tipe Hari</th>
-                                        <th>Jam</th>
-                                        <th>Rate</th>
-                                        <th>Amount</th>
+                                        <th>Jenis Pekerjaan</th>
+                                        <th>Total Jam</th>
+                                        <th>Total Rupiah</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {overtime.list.map((ot, idx) => (
+                                    {Object.values(overtime.list.reduce((acc, curr) => {
+                                        const key = curr.task_desc || curr.task_code || 'Lain-lain';
+                                        if (!acc[key]) {
+                                            acc[key] = { task_desc: key, hours: 0, amount: 0 };
+                                        }
+                                        acc[key].hours += curr.hours;
+                                        acc[key].amount += (curr.amount_formula || 0);
+                                        return acc;
+                                    }, {})).sort((a, b) => b.amount - a.amount).map((group, idx) => (
                                         <tr key={idx}>
-                                            <td>{ot.date}</td>
-                                            <td>{ot.day_name || '-'}</td>
-                                            <td><span className="day-type-badge">{ot.day_type}</span></td>
-                                            <td>{ot.hours}</td>
-                                            <td>{formatCurrency(ot.rate)}</td>
-                                            <td className="amount-cell">{formatCurrency(ot.amount_formula)}</td>
+                                            <td>{group.task_desc}</td>
+                                            <td>{group.hours}</td>
+                                            <td className="amount-cell">{formatCurrency(group.amount)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
