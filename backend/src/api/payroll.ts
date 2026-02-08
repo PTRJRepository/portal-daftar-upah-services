@@ -582,3 +582,92 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             limit: t.Optional(t.String())
         })
     })
+
+    // =========================================================================
+    // NEW COMPONENT ARCHITECTURE ENDPOINTS
+    // These endpoints expose the new unified component services with metadata
+    // =========================================================================
+
+    /**
+     * Get payroll report with full component metadata
+     * This endpoint demonstrates the new architecture where all calculations
+     * return PayrollComponent with traceable metadata
+     */
+    .get("/report-with-components", async ({ query, set }) => {
+        try {
+            const { dataExtractorService } = await import("../services/dataExtractorService");
+
+            const gangCode = query.gang_code || "ALL";
+            const month = parseInt(query.month || String(new Date().getMonth() + 1));
+            const year = parseInt(query.year || String(new Date().getFullYear()));
+
+            // Use new component-based extraction method
+            const result = await dataExtractorService.extractPayrollDataWithComponents(month, year, gangCode, undefined, null, Config.DB_PROFILE);
+
+            return {
+                gang_code: gangCode,
+                month,
+                year,
+                data: result.data_rows,
+                components: result.components,  // All component data with metadata
+                meta: result.meta
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] report-with-components error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            gang_code: t.Optional(t.String()),
+            month: t.Optional(t.String()),
+            year: t.Optional(t.String())
+        })
+    })
+
+    /**
+     * Get detailed component breakdown for a single employee
+     * Returns all calculations with full metadata traceability
+     */
+    .get("/employee/:emp_code/components", async ({ params, query, set }) => {
+        try {
+            const { dataExtractorService } = await import("../services/dataExtractorService");
+
+            const empCode = params.emp_code;
+            const month = parseInt(query.month || String(new Date().getMonth() + 1));
+            const year = parseInt(query.year || String(new Date().getFullYear()));
+
+            const result = await dataExtractorService.getEmployeeComponentDetails(empCode, month, year, Config.DB_PROFILE);
+
+            return result;
+        } catch (e: any) {
+            console.error("[PayrollRoutes] employee components error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        params: t.Object({
+            emp_code: t.String()
+        }),
+        query: t.Object({
+            month: t.Optional(t.String()),
+            year: t.Optional(t.String())
+        })
+    })
+
+    /**
+     * Get component registry health status
+     * Returns all registered components and their versions
+     */
+    .get("/components/registry", async () => {
+        try {
+            const { payrollComponentRegistry } = await import("../services/payroll");
+
+            const health = payrollComponentRegistry.getHealthStatus();
+
+            return health;
+        } catch (e: any) {
+            console.error("[PayrollRoutes] components registry error:", e);
+            return { error: e.message };
+        }
+    })

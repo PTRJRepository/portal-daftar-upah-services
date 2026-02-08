@@ -204,12 +204,14 @@ export class LemburCalculator {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
 
         // 1. Batch fetch PayRates (pass profile)
-        let payRates: Record<string, number> = {};
-        try {
-            payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
-        } catch (e) {
-            console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
-        }
+        // 1. Batch fetch PayRates (pass profile)
+        // [REFACTOR] Standardize UPJ: Disable PayRate fetching to enforce global LEMBUR_UPJ
+        // let payRates: Record<string, number> = {};
+        // try {
+        //     payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
+        // } catch (e) {
+        //     console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
+        // }
 
         // 2. Batch fetch Overtime Records (use db instance)
         const empList = empCodes.map(e => `'${e}'`).join(",");
@@ -267,8 +269,10 @@ export class LemburCalculator {
                 continue;
             }
 
-            const payRate = payRates[empCode] || 0;
-            const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
+            // [REFACTOR] Standardize UPJ: Use global UPJ only
+            // const payRate = payRates[empCode] || 0;
+            // const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
+            const upj = this.upjValue;
 
             let totalHours = 0;
             let totalPayment = 0;
@@ -363,12 +367,14 @@ export class LemburCalculator {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
 
         // 1. Batch fetch PayRates
-        let payRates: Record<string, number> = {};
-        try {
-            payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
-        } catch (e) {
-            console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
-        }
+        // 1. Batch fetch PayRates
+        // [REFACTOR] Standardize UPJ: Disable PayRate fetching to enforce global LEMBUR_UPJ
+        // let payRates: Record<string, number> = {};
+        // try {
+        //     payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
+        // } catch (e) {
+        //     console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
+        // }
 
         // 2. Batch fetch Overtime Records with TaskCode
         const empList = empCodes.map(e => `'${e}'`).join(",");
@@ -388,7 +394,7 @@ export class LemburCalculator {
                 FROM PR_TASKREGLN trl
                 JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.TrxDate >= ? AND trl.TrxDate <= ?
                   AND trl.OT = 1
 
                 UNION ALL
@@ -401,7 +407,7 @@ export class LemburCalculator {
                 FROM PR_TASKREGLN_ARC trl
                 JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.TrxDate >= ? AND trl.TrxDate <= ?
                   AND trl.OT = 1
             `, [startDate, endDate, startDate, endDate]);
         } catch (e) {
@@ -468,8 +474,10 @@ export class LemburCalculator {
                 const taskCode = (row.TaskCode || "").trim();
                 const taskDesc = taskDescMap[taskCode] || taskCode;
                 // UPJ: use payrate if available, otherwise fallback to default UPJ
-                const payRate = payRates[empKey] || 0;
-                const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
+                // [REFACTOR] Standardize UPJ: Use global UPJ only
+                // const payRate = payRates[empKey] || 0;
+                // const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
+                const upj = this.upjValue;
                 const trxDate = new Date(row.TrxDate);
                 const dayOfWeek = trxDate.getDay();
                 const dayType = await this.classifyDay(trxDate, year);

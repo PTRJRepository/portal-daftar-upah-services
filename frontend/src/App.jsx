@@ -21,6 +21,9 @@ const AnalysisReportPage = lazy(() => import('./pages/AnalysisReportPage'))
 const AggregationSeederPage = lazy(() => import('./pages/AggregationSeederPage'))
 const ComprehensivePerformancePage = lazy(() => import('./pages/ComprehensivePerformancePage'))
 
+// Development/Test Pages
+const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
+
 // Wrapper for Operational Report
 const OperationalReportWrapper = () => {
   const {
@@ -375,6 +378,9 @@ function AppInner() {
           <Route path="analysis" element={<SummaryReportWrapper component={AnalysisReportPage} />} />
           <Route path="comprehensive" element={<SummaryReportWrapper component={ComprehensivePerformancePage} />} />
           <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
+
+          {/* Development/Test Pages */}
+          <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />
 
         </Route>
 

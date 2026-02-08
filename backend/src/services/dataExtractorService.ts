@@ -7,6 +7,9 @@ import { calculatePph21Ter } from "./pph21TerService";
 import { currentPeriodService } from "./currentPeriodService";
 import { PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
 
+// Import new unified component services
+import { lemburService, premiService, tunjanganService, potonganService, pph21TerService } from "./payroll";
+
 interface EmployeeRow {
     emp_code: string;
     emp_name: string;
@@ -347,7 +350,8 @@ export class DataExtractorService {
 
             // Calculate total earnings potential to check if employee should be kept despite low HK
             const total_premi_temp = Object.values(empPremi).reduce((a, b) => a + b, 0);
-            const total_earnings = (attData.total_amount_rp || 0) + total_premi_temp + empLembur.jumlah + empLemburDocDesc + empJabatan + empMasaKerjaJumlah;
+            // [FIXED] Use empLemburDetails.jumlah (only OT=1) for consistency
+            const total_earnings = (attData.total_amount_rp || 0) + total_premi_temp + empLemburDetails.jumlah + empJabatan + empMasaKerjaJumlah;
 
             if (emp.emp_code.includes('474')) {
                 console.log(`[DEBUG] F0474 Filter Check:
@@ -355,7 +359,7 @@ export class DataExtractorService {
                     Cuti Minggu: ${empCuti.cuti_minggu}
                     Cuti Nasional: ${empCuti.cuti_nasional}
                     Effective HK: ${effective_hk}
-                    Total Earnings: ${total_earnings} (Amount: ${attData.total_amount_rp}, Premi: ${total_premi_temp}, Lembur: ${empLembur.jumlah})
+                    Total Earnings: ${total_earnings} (Amount: ${attData.total_amount_rp}, Premi: ${total_premi_temp}, Lembur: ${empLemburDetails.jumlah})
                     Action: ${effective_hk <= 0 && total_earnings <= 0 ? 'SKIP' : 'KEEP'}
                 `);
             }
@@ -407,12 +411,12 @@ export class DataExtractorService {
 
             const jabatanRate = hk > 0 && empJabatan > 0 ? empJabatan / hk : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
-            const empLemburJumlah = empLembur.jumlah + empLemburDocDesc;
 
-            // [FIX] Use pure overtime (OT=1) for lembur display to ensure detail records match the total
-            // lembur_records hanya menampilkan OT=1 transactions, jadi total yang ditampilkan harus sesuai
-            const empLemburJumlahPure = empLemburDetails.jumlah || empLembur.jumlah;
-            const empLemburJamPure = empLemburDetails.jam || empLembur.jam;
+            // [FIX] Use ONLY empLemburDetails (OT=1 pure overtime) for ALL lembur calculations
+            // This ensures consistency between display and calculation, no double counting
+            // empLembur and empLemburDocDesc are NOT used anymore - only empLemburDetails
+            const empLemburJumlahPure = empLemburDetails.jumlah || 0;
+            const empLemburJamPure = empLemburDetails.jam || 0;
 
             // [UPDATED] Gaji Pokok untuk Grup Penggajian
             // gaji_pokok_ideal = upah_dasar × jumlah_hk (untuk referensi)
@@ -421,7 +425,9 @@ export class DataExtractorService {
             const gaji_pokok_ideal = empUpahDasar * hk;
             const gaji_pokok_aktual = attData.total_amount_rp ?? 0;
             const gaji_pokok = gaji_pokok_aktual;  // Use actual for display and calculation
-            const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlah;
+
+            // [FIXED] Use empLemburJumlahPure (only OT=1) for consistency
+            const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlahPure;
 
             empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
 
@@ -532,7 +538,8 @@ export class DataExtractorService {
             // [NEW] Penghasilan Bruto calculation
             // Sum of: gaji_pokok_aktual + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
             // Using gaji_pokok_aktual (REAL salary), NOT gaji_pokok_ideal
-            const penghasilan_bruto = gaji_pokok_aktual + berasJumlah + empJabatan + empMasaKerjaJumlah + empLembur.jumlah + total_premi;
+            // [FIXED] Use empLemburJumlahPure (only OT=1) for consistency
+            const penghasilan_bruto = gaji_pokok_aktual + berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlahPure + total_premi;
 
             const statusPtkp = mapBerasRateToPTKP(berasRate);
 
@@ -1265,16 +1272,16 @@ export class DataExtractorService {
                 FROM PR_TASKREGLN trl
                 JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.TrxDate >= ? AND trl.TrxDate <= ?
                   AND trl.OT = 1
-                
+
                 UNION ALL
 
                 SELECT trl.EmpCode, trl.Hours, trl.Amount
                 FROM PR_TASKREGLN_ARC trl
                 JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.TrxDate >= ? AND trl.TrxDate <= ?
                   AND trl.OT = 1
             ) combined
             GROUP BY RTRIM(EmpCode)
@@ -1617,6 +1624,189 @@ export class DataExtractorService {
             };
         }
         return result;
+    }
+
+    // =========================================================================
+    // NEW UNIFIED COMPONENT ARCHITECTURE METHODS
+    // These methods use the new component services with metadata
+    // =========================================================================
+
+    /**
+     * Extract payroll data using new unified component services
+     * This method demonstrates the new architecture where all calculations
+     * return PayrollComponent with full metadata
+     *
+     * @experimental - This is the future replacement for extractPayrollData
+     */
+    public async extractPayrollDataWithComponents(
+        month: number,
+        year: number,
+        gangCode: string = "ALL",
+        divisionCode?: string,
+        specificEmpCode: string | null = null,
+        serverProfile?: string
+    ): Promise<{
+        data_rows: PayrollRow[];
+        components: {
+            lembur: Record<string, any>;
+            premi: Record<string, any>;
+            tunjangan: Record<string, any>;
+            potongan: Record<string, any>;
+            pph21_ter: Record<string, any>;
+        };
+        meta: { execution_time_ms: number; row_count: number }
+    }> {
+        const startTime = Date.now();
+
+        // First, get the base data using the existing method
+        const baseResult = await this.extractPayrollData(month, year, gangCode, divisionCode, specificEmpCode, serverProfile);
+
+        // Then calculate components using the new component services
+        const empCodes = baseResult.data_rows.map(row => row.nik);
+
+        // Calculate all components in parallel using the registry
+        const componentResults = await payrollComponentRegistry.calculateAllBatch(
+            empCodes.map(code => ({
+                emp_code: code,
+                month,
+                year,
+                server_profile: serverProfile,
+            })),
+            ['lembur', 'premi', 'tunjangan', 'potongan', 'pph21_ter']
+        );
+
+        // Transform results into organized structure
+        const components = {
+            lembur: this.transformComponentResults(componentResults, 'lembur'),
+            premi: this.transformComponentResults(componentResults, 'premi'),
+            tunjangan: this.transformComponentResults(componentResults, 'tunjangan'),
+            potongan: this.transformComponentResults(componentResults, 'potongan'),
+            pph21_ter: this.transformComponentResults(componentResults, 'pph21_ter'),
+        };
+
+        return {
+            data_rows: baseResult.data_rows,
+            components,
+            meta: {
+                execution_time_ms: Date.now() - startTime,
+                row_count: baseResult.data_rows.length
+            }
+        };
+    }
+
+    /**
+     * Transform component results from Map to organized structure
+     */
+    private transformComponentResults(
+        allResults: Record<string, Record<string, any>>,
+        componentName: string
+    ): Record<string, any> {
+        const result: Record<string, any> = {};
+
+        // allResults has structure: { emp_code: { lembur: {...}, premi: {...}, ...} }
+        for (const [empCode, empResults] of Object.entries(allResults)) {
+            const componentResult = empResults[componentName];
+            if (componentResult && componentResult.output) {
+                result[empCode] = {
+                    value: componentResult.output.value,
+                    meta: componentResult.output.meta,
+                    execution_time_ms: componentResult.execution_time_ms,
+                };
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Get detailed component data for a single employee
+     * Returns all calculations with full metadata traceability
+     */
+    public async getEmployeeComponentDetails(
+        empCode: string,
+        month: number,
+        year: number,
+        serverProfile?: string
+    ): Promise<{
+        employee: any;
+        components: {
+            lembur: any;
+            premi: any;
+            tunjangan: any;
+            potongan: any;
+            pph21_ter: any;
+        };
+        calculation_meta: {
+            period: { month: number; year: number };
+            generated_at: Date;
+            execution_time_ms: number;
+            service_versions: Record<string, number>;
+        };
+    }> {
+        const startTime = Date.now();
+
+        // Calculate all components for this employee
+        const lemburResult = await lemburService.calculate({
+            emp_code: empCode,
+            month,
+            year,
+            server_profile: serverProfile,
+            include_details: true,
+        });
+
+        const premiResult = await premiService.calculate({
+            emp_code: empCode,
+            month,
+            year,
+            server_profile: serverProfile,
+        });
+
+        const tunjanganResult = await tunjanganService.calculate({
+            emp_code: empCode,
+            month,
+            year,
+            server_profile: serverProfile,
+        });
+
+        // Get penghasilan_bruto from tunjangan for PPH21 calculation
+        const penghasilanBruto = tunjanganResult.output.value.total +
+            tunjanganResult.output.value.beras?.value +
+            tunjanganResult.output.value.jabatan?.value +
+            tunjanganResult.output.value.masa_kerja?.value +
+            premiResult.output.value.total_premi;
+
+        const potonganResult = await potonganService.calculate({
+            emp_code: empCode,
+            month,
+            year,
+            server_profile: serverProfile,
+            penghasilan_bruto: penghasilanBruto,
+        });
+
+        const pph21TerResult = await pph21TerService.calculate({
+            emp_code: empCode,
+            month,
+            year,
+            server_profile: serverProfile,
+            penghasilan_bruto: penghasilanBruto,
+        });
+
+        return {
+            employee: { emp_code: empCode },
+            components: {
+                lembur: lemburResult.output,
+                premi: premiResult.output,
+                tunjangan: tunjanganResult.output,
+                potongan: potonganResult.output,
+                pph21_ter: pph21TerResult.output,
+            },
+            calculation_meta: {
+                period: { month, year: String(year) },
+                generated_at: new Date(),
+                execution_time_ms: Date.now() - startTime,
+                service_versions: payrollComponentRegistry.getAllServiceVersions(),
+            },
+        };
     }
 }
 

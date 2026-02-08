@@ -55,3 +55,34 @@ export async function getEmployeeCheckroll(token, empCode, month, year, division
         throw error
     }
 }
+
+/**
+ * Get employee component breakdown with metadata
+ * Uses the new unified component-based architecture
+ * @param {string} token - JWT token
+ * @param {string} empCode - Employee code
+ * @param {number} month - Month (1-12)
+ * @param {number} year - Year
+ * @param {string} division - Division code (optional)
+ * @returns {Promise<Object>} Component data with metadata for each payroll component
+ */
+export async function getEmployeeComponents(token, empCode, month, year, division = null) {
+    try {
+        const params = { month, year }
+        if (division) {
+            params.division = division
+        }
+
+        const baseUrl = getBaseUrl()
+        console.log(`[EmployeeDetailService] Using endpoint: ${baseUrl}/${empCode}/components`)
+
+        const response = await axios.get(`${baseUrl}/${empCode}/components`, {
+            headers: { Authorization: `Bearer ${token}` },
+            params
+        })
+        return response.data
+    } catch (error) {
+        console.error('[EmployeeDetailService] Failed to get employee components:', error)
+        throw error
+    }
+}

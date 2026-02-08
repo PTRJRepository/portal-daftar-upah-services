@@ -454,10 +454,136 @@
 .day-type-badge {
     background: #e0e7ff;
     color: #3730a3;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
     font-weight: 600;
+    display: inline-block;
+    white-space: nowrap;
+}
+
+.day-type-workday,
+.day-type-workday-long {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.day-type-workday-short {
+    background: #fef9c3;
+    color: #854d0e;
+}
+
+.day-type-sunday,
+.day-type-MINGGU {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.day-type-holiday,
+.day-type-LIBUR_NASIONAL,
+.day-type-holiday-regular {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.day-type-holiday-religious,
+.day-type-LIBUR_KEAGAMAAN {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.day-type-default {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+/* Overtime Summary Box */
+.overtime-summary-box {
+    margin: 1rem 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+}
+
+.overtime-summary-table {
+    width: 100%;
+    font-size: 0.85rem;
+    border-collapse: collapse;
+}
+
+.overtime-summary-table thead {
+    background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
+    color: white;
+}
+
+.overtime-summary-table th {
+    text-align: left;
+    padding: 0.75rem 0.5rem;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.overtime-summary-table td {
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.overtime-summary-table tbody tr:hover {
+    background-color: #faf5ff;
+}
+
+.overtime-summary-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.overtime-summary-table .hours-cell {
+    text-align: center;
+    font-weight: 600;
+    color: #7e22ce;
+}
+
+.overtime-summary-table .amount-cell {
+    text-align: right;
+    font-weight: 600;
+    color: #059669;
+}
+
+/* Overtime Total Summary */
+.overtime-total-summary {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+    border-radius: 8px;
+    border: 1px solid #c4b5fd;
+}
+
+.overtime-total-summary .summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px dashed #c4b5fd;
+}
+
+.overtime-total-summary .summary-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.overtime-total-summary .summary-row:first-child {
+    padding-top: 0;
+}
+
+.overtime-total-summary .summary-row span {
+    color: #4b5563;
+    font-size: 0.9rem;
+}
+
+.overtime-total-summary .summary-row strong {
+    color: #7e22ce;
+    font-size: 1.1rem;
 }
 
 /* Action Buttons */

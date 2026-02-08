@@ -363,7 +363,7 @@ export class EmployeeDetailService {
 
                 const detailObj = {
                     hours,
-                    amount: dbAmount,
+                    amount: formulaAmount,  // [FIXED] Use formulaAmount (calculated) instead of dbAmount
                     rate: record.raw_rate || 0,
                     task_code: record.task_code || "",
                     task_desc: record.task_desc || record.task_code || "",
@@ -374,21 +374,27 @@ export class EmployeeDetailService {
 
                 matrix[day].details.push(detailObj);
 
+                const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+                const dayName = dayNames[record.trx_date.getDay()];
+
                 overtimeList.push({
                     date: record.trx_date.toISOString().substring(0, 10),
+                    trx_date: record.trx_date.toISOString().substring(0, 10),
                     day,
+                    day_name: dayName,
                     hours,
-                    amount: dbAmount,
+                    amount: formulaAmount,  // [FIXED] Use formulaAmount (calculated) instead of dbAmount
                     amount_server: dbAmount,
                     amount_formula: formulaAmount,
                     rate: record.raw_rate || 0,
                     task_code: record.task_code || "",
                     task_desc: record.task_desc || record.task_code || "",
-                    day_type: detailObj.day_type
+                    day_type: detailObj.day_type,
+                    raw_day_type: record.day_type // Keep raw type for frontend styling
                 });
 
                 totalHours += hours;
-                totalAmount += dbAmount;
+                totalAmount += formulaAmount;  // [FIXED] Use formulaAmount (calculated) instead of dbAmount
             }
         } catch (e) {
             console.error("[EmployeeDetailService] Failed to get daily overtime:", e);

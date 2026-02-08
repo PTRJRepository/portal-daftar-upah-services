@@ -22,6 +22,58 @@ const getMonthName = (month) => {
     return months[month] || ''
 }
 
+// Helper to format day type to Indonesian
+const formatDayType = (dayType, rawDayType) => {
+    // If raw_day_type is provided, use it for proper mapping
+    if (rawDayType) {
+        const typeMap = {
+            'WORKDAY_LONG': 'Hari Kerja Panjang',
+            'WORKDAY_SHORT': 'Hari Kerja Pendek',
+            'SUNDAY': 'Minggu',
+            'HOLIDAY_REGULAR': 'Libur Nasional',
+            'HOLIDAY_RELIGIOUS': 'Libur Keagamaan',
+        };
+        return typeMap[rawDayType] || dayType || '-';
+    }
+
+    // Fallback to display value
+    const typeMap = {
+        'Hari Kerja Panjang': 'Hari Kerja Panjang',
+        'Hari Kerja Pendek': 'Hari Kerja Pendek',
+        'Minggu': 'Minggu',
+        'Libur Nasional': 'Libur Nasional',
+        'Libur Keagamaan': 'Libur Keagamaan',
+        'Hari Kerja': 'Hari Kerja',
+    };
+    return typeMap[dayType] || dayType || '-';
+}
+
+// Helper to get CSS class for day type badge
+const getDayTypeClass = (dayType, rawDayType) => {
+    // If raw_day_type is provided, use it for CSS class
+    if (rawDayType) {
+        const classMap = {
+            'WORKDAY_LONG': 'day-type-workday-long',
+            'WORKDAY_SHORT': 'day-type-workday-short',
+            'SUNDAY': 'day-type-sunday',
+            'HOLIDAY_REGULAR': 'day-type-holiday',
+            'HOLIDAY_RELIGIOUS': 'day-type-holiday-religious',
+        };
+        return classMap[rawDayType] || 'day-type-default';
+    }
+
+    // Fallback to display value
+    const classMap = {
+        'Hari Kerja Panjang': 'day-type-workday-long',
+        'Hari Kerja Pendek': 'day-type-workday-short',
+        'Minggu': 'day-type-sunday',
+        'Libur Nasional': 'day-type-holiday',
+        'Libur Keagamaan': 'day-type-holiday-religious',
+        'Hari Kerja': 'day-type-workday',
+    };
+    return classMap[dayType] || 'day-type-default';
+}
+
 // Attendance status colors (Restored)
 const statusColors = {
     hadir: { bg: '#10b981', text: '#fff', label: 'H' },
@@ -525,36 +577,82 @@ export default function EmployeeDetailPage({
                         </div>
                     </div>
 
-                    {/* Overtime List Detail */}
+                    {/* Overtime List Detail - Per Transaksi */}
                     {overtime.list && overtime.list.length > 0 && (
                         <div className="overtime-list">
-                            <h4>📋 Rincian Lembur (By Activity)</h4>
-                            <table className="overtime-table">
-                                <thead>
-                                    <tr>
-                                        <th>Jenis Pekerjaan</th>
-                                        <th>Total Jam</th>
-                                        <th>Total Rupiah</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {Object.values(overtime.list.reduce((acc, curr) => {
-                                        const key = curr.task_desc || curr.task_code || 'Lain-lain';
-                                        if (!acc[key]) {
-                                            acc[key] = { task_desc: key, hours: 0, amount: 0 };
-                                        }
-                                        acc[key].hours += curr.hours;
-                                        acc[key].amount += (curr.amount_formula || 0);
-                                        return acc;
-                                    }, {})).sort((a, b) => b.amount - a.amount).map((group, idx) => (
-                                        <tr key={idx}>
-                                            <td>{group.task_desc}</td>
-                                            <td>{group.hours}</td>
-                                            <td className="amount-cell">{formatCurrency(group.amount)}</td>
+                            <h4>📋 Rincian Lembur Per Transaksi</h4>
+
+                            {/* Summary Table */}
+                            <div className="overtime-summary-box">
+                                <table className="overtime-summary-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th>Hari</th>
+                                            <th>Tipe Hari</th>
+                                            <th>Pekerjaan</th>
+                                            <th>Jam</th>
+                                            <th>Jumlah</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {overtime.list
+                                            .sort((a, b) => {
+                                                // Sort by date
+                                                const dateA = a.date || a.trx_date || '';
+                                                const dateB = b.date || b.trx_date || '';
+                                                return dateA.localeCompare(dateB);
+                                            })
+                                            .map((trx, idx) => {
+                                                const date = trx.date || trx.trx_date || '';
+                                                const dayName = trx.day_name || trx.hari || '-';
+                                                const dayType = trx.day_type || trx.tipe_hari || '-';
+                                                const rawDayType = trx.raw_day_type || null;
+                                                const taskDesc = trx.task_desc || trx.task_code || 'Lain-lain';
+                                                const hours = trx.hours || 0;
+                                                const amount = trx.amount_formula || trx.amount || 0;
+
+                                                // Format date DD/MM/YYYY
+                                                const formattedDate = date ? new Date(date).toLocaleDateString('id-ID', {
+                                                    day: '2-digit',
+                                                    month: '2-digit',
+                                                    year: 'numeric'
+                                                }) : '-';
+
+                                                return (
+                                                    <tr key={idx}>
+                                                        <td>{formattedDate}</td>
+                                                        <td>{dayName}</td>
+                                                        <td>
+                                                            <span className={`day-type-badge ${getDayTypeClass(dayType, rawDayType)}`}>
+                                                                {formatDayType(dayType, rawDayType)}
+                                                            </span>
+                                                        </td>
+                                                        <td>{taskDesc}</td>
+                                                        <td className="hours-cell">{hours}</td>
+                                                        <td className="amount-cell">{formatCurrency(amount)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Total Summary */}
+                            <div className="overtime-total-summary">
+                                <div className="summary-row">
+                                    <span>Total Transaksi:</span>
+                                    <strong>{overtime.list.length}</strong>
+                                </div>
+                                <div className="summary-row">
+                                    <span>Total Jam:</span>
+                                    <strong>{overtime.list.reduce((sum, t) => sum + (t.hours || 0), 0)}</strong>
+                                </div>
+                                <div className="summary-row">
+                                    <span>Total Lembur:</span>
+                                    <strong>{formatCurrency(overtime.list.reduce((sum, t) => sum + (t.amount_formula || t.amount || 0), 0))}</strong>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

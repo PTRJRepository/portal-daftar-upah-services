@@ -247,6 +247,73 @@ export async function fetchReportRowsBatched(token, { month, year, gang_code, di
   // Return merged results directly as they are already paginated
   return mergedResults
 }
+// ==================== COMPONENT SERVICE API METHODS ====================
+// These methods use the new unified component-based architecture
+
+/**
+ * Fetch payroll data with component metadata
+ * Returns PayrollComponent<T> structure for each payroll item
+ */
+export async function fetchPayrollWithComponents(token, { month, year, gang_code, division }) {
+  const params = {}
+  const norm = normalizeMonthYear(month, year)
+  if (norm.month) params.month = norm.month
+  if (norm.year) params.year = norm.year
+  if (gang_code) params.gang_code = gang_code
+  if (division) params.division = division
+
+  const config = { params }
+  if (token) config.headers = { Authorization: `Bearer ${token}` }
+
+  try {
+    const r = await requestWithRetry('/payroll/report-with-components', config, 1, 500, 90000)
+    return r.data
+  } catch (error) {
+    console.error('[PayrollService] Failed to fetch payroll with components:', error)
+    throw error
+  }
+}
+
+/**
+ * Fetch detailed component breakdown for a single employee
+ * Returns detailed PayrollComponent data with metadata for each component
+ */
+export async function fetchEmployeeComponents(token, empCode, month, year, division) {
+  const params = {}
+  const norm = normalizeMonthYear(month, year)
+  if (norm.month) params.month = norm.month
+  if (norm.year) params.year = norm.year
+  if (division) params.division = division
+
+  const config = { params }
+  if (token) config.headers = { Authorization: `Bearer ${token}` }
+
+  try {
+    const r = await requestWithRetry(`/payroll/employee/${empCode}/components`, config, 1, 500, 60000)
+    return r.data
+  } catch (error) {
+    console.error('[PayrollService] Failed to fetch employee components:', error)
+    throw error
+  }
+}
+
+/**
+ * Fetch component registry status
+ * Returns health status and version info for all registered component services
+ */
+export async function fetchComponentRegistry(token) {
+  const config = {}
+  if (token) config.headers = { Authorization: `Bearer ${token}` }
+
+  try {
+    const r = await requestWithRetry('/payroll/components/registry', config, 1, 300, 10000)
+    return r.data
+  } catch (error) {
+    console.error('[PayrollService] Failed to fetch component registry:', error)
+    throw error
+  }
+}
+
 // In-flight guards to prevent duplicate requests for identical parameters
 const inflightAggregate = new Map()
 const inflightCount = new Map()

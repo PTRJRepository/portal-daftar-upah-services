@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { FormulaRegistry, getCellAddress } from '../utils/FormulaRegistry';
+import ComponentMetadataViewer from './common/ComponentMetadataViewer';
 
 export default function CellInspector({ cell, onClose }) {
   if (!cell) return null;
@@ -134,19 +135,36 @@ export default function CellInspector({ cell, onClose }) {
       {/* Comments / Issues Log */}
       <div className="mb-6">
           <h3 className="font-bold text-gray-700 mb-2">Notes / Issues</h3>
-          <textarea 
+          <textarea
             className="w-full border rounded p-2 text-sm h-24"
             placeholder="Log issues or comments for this cell..."
             value={note}
             onChange={(e) => setNote(e.target.value)}
           ></textarea>
-          <button 
+          <button
             onClick={handleSaveNote}
             className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm w-full hover:bg-blue-700"
           >
               Save Note
           </button>
       </div>
+
+      {/* Component Metadata (New Unified Architecture) */}
+      {data.components && Object.keys(data.components).length > 0 && (
+        <div className="mb-6 border-t pt-4">
+          <h3 className="font-bold text-gray-700 mb-2">📊 Component Metadata</h3>
+          <p className="text-xs text-gray-500 mb-2">PayrollComponent structure with metadata from unified architecture</p>
+          {Object.entries(data.components).map(([compName, compData]) => (
+            <div key={compName} className="mb-2">
+              <ComponentMetadataViewer
+                component={compData}
+                componentName={compName}
+                expanded={false}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

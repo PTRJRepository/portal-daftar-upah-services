@@ -216,6 +216,44 @@ export default function DashboardHome() {
         {/* Shortcuts Section */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
 
+          {/* Development/Test Shortcuts (DEV MODE ONLY) */}
+          {!inProdMode && (
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '2rem',
+              border: '1px solid #cbd5e1',
+              borderTop: '5px solid #f59e0b', // Amber Accent
+              boxShadow: '0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+              transition: 'all 0.3s ease'
+            }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#f59e0b' }}>🧪</span> Development & Testing
+              </h3>
+
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                <button
+                  onClick={() => navigate('/test/components')}
+                  className="dashboard-link-btn"
+                  style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  Component Metadata Test <span>›</span>
+                </button>
+                <button
+                  onClick={() => navigate('/seed')}
+                  className="dashboard-link-btn"
+                  style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  Aggregation Seeder <span>›</span>
+                </button>
+              </div>
+
+              <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '0.8rem', color: '#92400e' }}>
+                ℹ️ Development tools only visible in Dev Mode
+              </div>
+            </div>
+          )}
+
           {/* Analysis & Summary Shortcuts */}
           <div style={{
             backgroundColor: 'white',
