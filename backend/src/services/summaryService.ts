@@ -644,6 +644,8 @@ export class SummaryService {
             const prevPremi = prev.total_premi || 0;
             const currOt = curr.total_lembur || 0;
             const prevOt = prev.total_lembur || 0;
+            const currWage = curr.total_upah_bersih || 0;
+            const prevWage = prev.total_upah_bersih || 0;
 
             premiOtRows.push({
                 division_code: curr.division_code,
@@ -654,7 +656,10 @@ export class SummaryService {
                 diff_premi: currPremi - prevPremi,
                 prev_ot: prevOt,
                 curr_ot: currOt,
-                diff_ot: currOt - prevOt
+                diff_ot: currOt - prevOt,
+                prev_wage: prevWage,
+                curr_wage: currWage,
+                diff_wage: currWage - prevWage
             });
         }
 
@@ -685,6 +690,8 @@ export class SummaryService {
         const prevPremi = sum(premiOtRows, 'prev_premi');
         const currOt = sum(premiOtRows, 'curr_ot');
         const prevOt = sum(premiOtRows, 'prev_ot');
+        const currWage = sum(premiOtRows, 'curr_wage');
+        const prevWage = sum(premiOtRows, 'prev_wage');
         const currPruning = sum(pruningRows, 'curr_pruning');
         const prevPruning = sum(pruningRows, 'prev_pruning');
 
@@ -702,6 +709,9 @@ export class SummaryService {
                 prev_ot: prevOt,
                 curr_ot: currOt,
                 diff_ot: currOt - prevOt,
+                prev_wage: prevWage,
+                curr_wage: currWage,
+                diff_wage: currWage - prevWage,
                 prev_pruning: prevPruning,
                 curr_pruning: currPruning,
                 diff_pruning: currPruning - prevPruning

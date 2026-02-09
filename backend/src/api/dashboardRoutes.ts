@@ -62,6 +62,15 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
             return { success: false, error: e.message };
         }
     })
+    .get('/available-periods', async ({ set }) => {
+        try {
+            const periods = await dashboardService.getAvailablePeriods();
+            return { success: true, data: periods };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    })
     .get('/filter-options', async ({ query, set }) => {
         try {
             const month = parseInt(query.month);
@@ -119,6 +128,40 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
             const year = parseInt(query.year);
             const division = query.division_code;
             const data = await dashboardService.getPremiAnalysis(month, year, division);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            division_code: t.Optional(t.String())
+        })
+    })
+    .get('/premi-by-division', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const data = await dashboardService.getPremiByDivision(month, year);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String()
+        })
+    })
+    .get('/overtime-analysis', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const divisionCode = query.division_code;
+            const data = await dashboardService.getOvertimeAnalysis(month, year, divisionCode);
             return { success: true, data };
         } catch (e: any) {
             set.status = 500;

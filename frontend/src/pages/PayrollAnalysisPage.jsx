@@ -46,6 +46,42 @@ export default function PayrollAnalysisPage({
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
 
+  // State for range filters per tab
+  const [rangeFilters, setRangeFilters] = useState({
+    semua: { min: 0, max: null },
+    lembur: { min: 0, max: null },
+    premi: { min: 0, max: null },
+    tunjangan: { min: 0, max: null },
+    potongan: { min: 0, max: null }
+  });
+
+  // Load divisions on mount
+  useEffect(() => {
+    async function loadDivisions() {
+      try {
+        const divs = await fetchDivisions(token);
+        setAllDivisions(divs || []);
+      } catch (e) {
+        console.error('[PayrollAnalysis] Failed to load divisions:', e);
+      }
+    }
+    if (token) loadDivisions();
+  }, [token]);
+
+  // Load gangs when division changes
+  useEffect(() => {
+    async function loadGangs() {
+      try {
+        const gangList = await fetchGangs(token, division);
+        setGangs(gangList || []);
+        setGang(''); // Reset gang selection when division changes
+      } catch (e) {
+        console.error('[PayrollAnalysis] Failed to load gangs:', e);
+      }
+    }
+    if (token) loadGangs();
+  }, [token, division]);
+
   // ... (existing code)
 
   // Fetch aggregated data for KPIs
@@ -527,7 +563,7 @@ export default function PayrollAnalysisPage({
 
       {/* Sync Result */}
       {syncResult && (
-        <div style={{
+        <div className="no-print" style={{
           padding: '1rem',
           backgroundColor: syncResult.success ? '#d1fae5' : '#fee2e2',
           color: syncResult.success ? '#065f46' : '#b91c1c',
@@ -585,7 +621,7 @@ export default function PayrollAnalysisPage({
         </div>
 
         {/* Data Source Indicator */}
-        <div style={{ marginBottom: '2rem', fontSize: '0.75rem', color: kpiData.isAggregated ? '#059669' : '#64748b', textAlign: 'right', fontStyle: 'italic' }}>
+        <div className="no-print" style={{ marginBottom: '2rem', fontSize: '0.75rem', color: kpiData.isAggregated ? '#059669' : '#64748b', textAlign: 'right', fontStyle: 'italic' }}>
           {kpiData.isAggregated
             ? '✓ Sumber Data: Agregasi (Sesuai Dashboard Eksekutif)'
             : '⚠ Sumber Data: Kalkulasi Raw (Belum ada data agregasi)'}

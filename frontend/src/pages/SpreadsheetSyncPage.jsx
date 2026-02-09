@@ -140,15 +140,22 @@ export default function SpreadsheetSyncPage({ onBack }) {
         {
             id: 'DAFTAR_UPAH',
             title: 'Daftar Upah',
-            description: 'Laporan Gaji Bulanan Perorangan',
+            description: 'Laporan Gaji Bulanan Perorangan (dengan Analisis Lembur & Premi)',
             icon: '💰',
+            active: true
+        },
+        {
+            id: 'ANALISIS_PAYROLL',
+            title: 'Laporan Analisis Payroll',
+            description: 'Daftar Upah + Detail Lembur per Task + Premi per Jenis',
+            icon: '📊',
             active: true
         },
         {
             id: 'SUMMARY_WAGES',
             title: 'Wages Summary',
             description: 'Rekapitulasi Upah & Impact Report',
-            icon: '📊',
+            icon: '📈',
             active: true
         },
         {
@@ -259,9 +266,17 @@ export default function SpreadsheetSyncPage({ onBack }) {
 
                     {/* Quick Stats or Instructions */}
                     <div className="sync-instructions" style={{ padding: '0 1rem', color: '#64748b', fontSize: '0.9rem' }}>
-                        <p>ℹ️ <strong>Current Sync:</strong> {syncType === 'DAFTAR_UPAH' ? 'Detailed Employee Report' : syncType}</p>
+                        <p>ℹ️ <strong>Current Sync:</strong> {syncType === 'DAFTAR_UPAH' ? 'Daftar Upah Lengkap' : syncType === 'ANALISIS_PAYROLL' ? 'Daftar Upah + Analisis Lembur & Premi' : syncType === 'SUMMARY_WAGES' ? 'Wages Summary Report' : syncType}</p>
                         <p>Select a report type above, your desired period and division from the top bar, then click <b>Sync Now</b>.</p>
-                        <p>📋 <strong>Note:</strong> Sync will use the same format as Daftar Upah (with gang headers, gang totals, and grand total).</p>
+                        {syncType === 'DAFTAR_UPAH' && (
+                            <p>📋 <strong>Format:</strong> Daftar Upah dengan header bertingkat, gang headers, gang totals, grand total.</p>
+                        )}
+                        {syncType === 'ANALISIS_PAYROLL' && (
+                            <p>📋 <strong>Format:</strong> Daftar Upah + Analisis Lembur (per task) + Analisis Premi (per jenis) di kolom sebelah kanan.</p>
+                        )}
+                        {syncType === 'SUMMARY_WAGES' && (
+                            <p>📋 <strong>Format:</strong> Dashboard summary dengan KPI dan impact analysis.</p>
+                        )}
                     </div>
                 </div>
 

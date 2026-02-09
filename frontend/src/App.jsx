@@ -6,6 +6,7 @@ import LoadingScreen from './components/common/LoadingScreen'
 import { isProdMode, getUserDivision, redirectToExternalLogin, buildAppPath } from './utils/prodModeUtils'
 import DashboardLayout from './layouts/DashboardLayout'
 import ReportToolbar from './components/common/ReportToolbar'
+import './styles/print-overrides.css'
 
 // Lazy load pages
 const DashboardHome = lazy(() => import('./pages/DashboardHome'))

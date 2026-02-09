@@ -266,6 +266,19 @@ export class DashboardService {
     }
 
     /**
+     * Get All Available Data Periods
+     */
+    public async getAvailablePeriods(): Promise<{ month: number, year: number }[]> {
+        const query = `
+            SELECT DISTINCT period_month, period_year 
+            FROM dbo.daftar_upah_aggregation_history 
+            ORDER BY period_year DESC, period_month DESC
+        `;
+        const result = await this.extendDb.query<any>(query);
+        return result.map(r => ({ month: r.period_month, year: r.period_year }));
+    }
+
+    /**
      * Get Filter Options (Divisions and Gangs)
      */
     public async getFilterOptions(month: number, year: number): Promise<{ divisions: string[], gangs: string[] }> {
@@ -359,19 +372,22 @@ export class DashboardService {
         return rows;
     }
     /**
-     * Get Premi Analysis (Breakdown by Type)
+     * Get Premi Analysis (Breakdown by Type) - Including Dynamic Premi from JSON
      */
     public async getPremiAnalysis(month: number, year: number, divisionCode?: string): Promise<any[]> {
+        // Query to get static premi columns and dynamic_premi_data JSON
         const query = `
             SELECT 
                 SUM(ISNULL(total_premi_brondol, 0)) as brondol,
                 SUM(ISNULL(total_premi_prunning, 0)) as pruning,
                 SUM(ISNULL(total_premi_insentif, 0)) as insentif,
                 SUM(ISNULL(total_premi_kinerja, 0)) as kinerja,
-                SUM(ISNULL(total_premi, 0)) as total
+                SUM(ISNULL(total_premi, 0)) as total,
+                dynamic_premi_data
             FROM dbo.daftar_upah_aggregation_history
             WHERE period_month = ? AND period_year = ?
             ${divisionCode && divisionCode !== 'ALL' ? 'AND division_code = ?' : ''}
+            GROUP BY dynamic_premi_data
         `;
 
         const params: (string | number)[] = [month, year];
@@ -381,17 +397,142 @@ export class DashboardService {
 
         if (rows.length === 0) return [];
 
-        const r = rows[0];
-        // Calculate "Other" premi (Total - known components)
-        const other = r.total - (r.brondol + r.pruning + r.insentif + r.kinerja);
+        // Aggregate all rows (multiple gangs may have different dynamic_premi_data structures)
+        let totalBrondol = 0, totalPruning = 0, totalInsentif = 0, totalKinerja = 0, grandTotal = 0;
+        const dynamicPremiTotals: Record<string, number> = {};
 
-        return [
-            { name: 'Brondol', value: r.brondol },
-            { name: 'Pruning', value: r.pruning },
-            { name: 'Insentif', value: r.insentif },
-            { name: 'Kinerja', value: r.kinerja },
-            { name: 'Lainnya', value: other > 0 ? other : 0 }
-        ].filter(item => item.value > 0);
+        for (const row of rows) {
+            totalBrondol += row.brondol || 0;
+            totalPruning += row.pruning || 0;
+            totalInsentif += row.insentif || 0;
+            totalKinerja += row.kinerja || 0;
+            grandTotal += row.total || 0;
+
+            // Parse dynamic_premi_data JSON
+            // Structure from payrollDataService: [{header: string, total: number}]
+            if (row.dynamic_premi_data) {
+                try {
+                    const dynamicData = typeof row.dynamic_premi_data === 'string'
+                        ? JSON.parse(row.dynamic_premi_data)
+                        : row.dynamic_premi_data;
+
+                    if (Array.isArray(dynamicData)) {
+                        for (const item of dynamicData) {
+                            // payrollDataService uses {header, total} structure
+                            const key = item.header || item.name || item.key || 'Unknown';
+                            const value = item.total || item.value || item.amount || 0;
+                            if (value > 0) {
+                                dynamicPremiTotals[key] = (dynamicPremiTotals[key] || 0) + value;
+                            }
+                        }
+                    } else if (typeof dynamicData === 'object') {
+                        for (const [key, value] of Object.entries(dynamicData)) {
+                            if (typeof value === 'number' && value > 0) {
+                                dynamicPremiTotals[key] = (dynamicPremiTotals[key] || 0) + value;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[DashboardService] Failed to parse dynamic_premi_data:', e);
+                }
+            }
+        }
+
+        // Build result array
+        const result: { name: string; value: number }[] = [
+            { name: 'Brondol', value: totalBrondol },
+            { name: 'Pruning', value: totalPruning },
+            { name: 'Insentif', value: totalInsentif },
+            { name: 'Kinerja', value: totalKinerja }
+        ];
+
+        // Add dynamic premi types
+        for (const [key, value] of Object.entries(dynamicPremiTotals)) {
+            // Avoid duplicating known premi types
+            const normalizedKey = key.toLowerCase().replace(/[_\s]/g, '');
+            if (!['brondol', 'pruning', 'insentif', 'kinerja'].includes(normalizedKey)) {
+                result.push({ name: key.replace(/_/g, ' ').toUpperCase(), value });
+            }
+        }
+
+        // Calculate "Other" premi (Total - all known components)
+        const sumKnown = result.reduce((sum, item) => sum + item.value, 0);
+        const other = grandTotal - sumKnown;
+        if (other > 0) {
+            result.push({ name: 'Lainnya', value: other });
+        }
+
+        // Sort by value descending and filter out zeros
+        return result.filter(item => item.value > 0).sort((a, b) => b.value - a.value);
+    }
+
+    /**
+     * Get Premi Comparison by Division
+     */
+    public async getPremiByDivision(month: number, year: number): Promise<any[]> {
+        const query = `
+            SELECT 
+                division_code,
+                SUM(ISNULL(total_premi_brondol, 0)) as brondol,
+                SUM(ISNULL(total_premi_prunning, 0)) as pruning,
+                SUM(ISNULL(total_premi_insentif, 0)) as insentif,
+                SUM(ISNULL(total_premi_kinerja, 0)) as kinerja,
+                SUM(ISNULL(total_premi, 0)) as total
+            FROM dbo.daftar_upah_aggregation_history
+            WHERE period_month = ? AND period_year = ?
+            GROUP BY division_code
+            ORDER BY total DESC
+        `;
+
+        const rows = await this.extendDb.query<any>(query, [month, year]);
+
+        return rows.map(r => ({
+            division: r.division_code,
+            brondol: r.brondol,
+            pruning: r.pruning,
+            insentif: r.insentif,
+            kinerja: r.kinerja,
+            total: r.total
+        }));
+    }
+
+    /**
+     * Get Overtime Analysis (Breakdown by Task Type)
+     */
+    public async getOvertimeAnalysis(month: number, year: number, divisionCode?: string): Promise<any[]> {
+        // Query aggregation table to get lembur breakdown
+        // The total_lembur is stored in aggregation, but we need task breakdown from raw data
+        const query = `
+            SELECT 
+                division_code,
+                SUM(ISNULL(total_lembur, 0)) as total_lembur
+            FROM dbo.daftar_upah_aggregation_history
+            WHERE period_month = ? AND period_year = ?
+            ${divisionCode && divisionCode !== 'ALL' ? 'AND division_code = ?' : ''}
+            GROUP BY division_code
+            ORDER BY total_lembur DESC
+        `;
+
+        const params: (string | number)[] = [month, year];
+        if (divisionCode && divisionCode !== 'ALL') params.push(divisionCode);
+
+        const rows = await this.extendDb.query<any>(query, params);
+
+        if (rows.length === 0) return [];
+
+        // If single division, return total overtime
+        if (divisionCode && divisionCode !== 'ALL') {
+            return [{
+                name: 'Total Lembur',
+                value: rows[0]?.total_lembur || 0
+            }];
+        }
+
+        // Return breakdown by division
+        return rows.map(r => ({
+            name: r.division_code,
+            value: r.total_lembur || 0
+        })).filter(item => item.value > 0);
     }
 }
 

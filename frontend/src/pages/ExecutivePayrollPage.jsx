@@ -28,6 +28,7 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
+    const [availablePeriods, setAvailablePeriods] = useState([]);
 
     // Filters (Default to current month, can be changed to view historical snapshots)
     const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
@@ -39,6 +40,35 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
     const [selectedItems, setSelectedItems] = useState([]);
     const [compData, setCompData] = useState(null);
     const [compLoading, setCompLoading] = useState(false);
+
+    // Division Detail Modal State
+    const [selectedDivision, setSelectedDivision] = useState(null);
+    const [divisionDetails, setDivisionDetails] = useState(null);
+    const [divisionDetailsLoading, setDivisionDetailsLoading] = useState(false);
+
+    // Main Filter State (Header)
+    const [selectedFilterDivision, setSelectedFilterDivision] = useState('ALL');
+    const [selectedFilterGang, setSelectedFilterGang] = useState('ALL');
+    const [availableGangs, setAvailableGangs] = useState([]);
+
+    // Load available periods
+    useEffect(() => {
+        async function loadPeriods() {
+            try {
+                const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
+                const res = await fetch(`${apiUrl}/payroll/dashboard/available-periods`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const json = await res.json();
+                if (json.success) {
+                    setAvailablePeriods(json.data);
+                }
+            } catch (e) {
+                console.error("Failed to load available periods:", e);
+            }
+        }
+        if (token) loadPeriods();
+    }, [token]);
 
     // Auto-select latest period on mount
     useEffect(() => {
@@ -103,6 +133,8 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                 const json = await res.json();
                 if (json.success) {
                     setFilterOptions(json.data);
+                    // Initialize available gangs with all gangs
+                    setAvailableGangs(json.data.gangs || []);
                 }
             } catch (e) {
                 console.error("Failed to load filters:", e);
@@ -110,6 +142,22 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
         }
         if (token) loadFilters();
     }, [token, month, year]);
+
+    // Filter gangs when division changes
+    useEffect(() => {
+        if (selectedFilterDivision === 'ALL') {
+            setAvailableGangs(filterOptions.gangs || []);
+        } else {
+            // Filter gangs that belong to the selected division
+            // Gang codes usually start with division code, e.g., "AB1A" for division "AB1"
+            const filteredGangs = (filterOptions.gangs || []).filter(gang =>
+                gang.startsWith(selectedFilterDivision)
+            );
+            setAvailableGangs(filteredGangs.length > 0 ? filteredGangs : filterOptions.gangs || []);
+        }
+        // Reset gang selection when division changes
+        setSelectedFilterGang('ALL');
+    }, [selectedFilterDivision, filterOptions.gangs]);
 
     const handleCompare = async () => {
         if (selectedItems.length === 0) return;
@@ -140,19 +188,80 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
         }
     };
 
+    // Fetch Division Details (gangs, premi, and overtime breakdown)
+    const fetchDivisionDetails = async (divisionCode) => {
+        setSelectedDivision(divisionCode);
+        setDivisionDetailsLoading(true);
+        setDivisionDetails(null);
+
+        try {
+            const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
+
+            // Fetch gang breakdown for this division
+            const gangRes = await fetch(
+                `${apiUrl}/payroll/dashboard/aggregated-gang-data?month=${month}&year=${year}&division_code=${divisionCode}`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            const gangData = await gangRes.json();
+
+            // Fetch premi breakdown for this division
+            const premiRes = await fetch(
+                `${apiUrl}/payroll/dashboard/premi-analysis?month=${month}&year=${year}&division_code=${divisionCode}`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            const premiData = await premiRes.json();
+
+            // Fetch overtime analysis for this division
+            const otRes = await fetch(
+                `${apiUrl}/payroll/dashboard/overtime-analysis?month=${month}&year=${year}&division_code=${divisionCode}`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            const otData = await otRes.json();
+
+            setDivisionDetails({
+                gangs: gangData.success ? gangData.data : [],
+                premi: premiData.success ? premiData.data : [],
+                overtime: otData.success ? otData.data : []
+            });
+        } catch (e) {
+            console.error("Failed to fetch division details:", e);
+            setDivisionDetails({ gangs: [], premi: [], overtime: [] });
+        } finally {
+            setDivisionDetailsLoading(false);
+        }
+    };
+
+    // Handle bar click
+    const handleDivisionBarClick = (data) => {
+        if (data && data.name) {
+            fetchDivisionDetails(data.name);
+        }
+    };
+
     // Derived Data for Charts
     const divisionChartData = useMemo(() => {
         if (!data?.breakdown) return [];
-        // Top 10 Divisions by Wage
+        // All Divisions sorted by Wage - show stacked breakdown
         return [...data.breakdown]
             .sort((a, b) => b.total_wage - a.total_wage)
-            .slice(0, 10)
-            .map(d => ({
-                name: d.division_code,
-                Wage: d.total_wage,
-                Overtime: d.total_ot,
-                Premi: d.total_premi
-            }));
+            .map(d => {
+                const total = d.total_wage || 1; // Avoid division by zero
+                const overtime = d.total_ot || 0;
+                const premi = d.total_premi || 0;
+                const base = Math.max(0, total - overtime - premi); // Base = Total - OT - Premi
+
+                return {
+                    name: d.division_code,
+                    Total: total,
+                    Base: base,
+                    Overtime: overtime,
+                    Premi: premi,
+                    // Percentages for tooltip
+                    basePercent: ((base / total) * 100).toFixed(1),
+                    otPercent: ((overtime / total) * 100).toFixed(1),
+                    premiPercent: ((premi / total) * 100).toFixed(1)
+                };
+            });
     }, [data]);
 
     const gangChartData = useMemo(() => {
@@ -162,6 +271,20 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
             Wage: g.total_wage,
             Overtime: g.total_ot
         }));
+    }, [data]);
+
+    // Overtime Distribution Chart Data
+    const overtimeChartData = useMemo(() => {
+        if (!data?.breakdown) return [];
+        const totalOT = data.breakdown.reduce((sum, d) => sum + (d.total_ot || 0), 0);
+        return [...data.breakdown]
+            .filter(d => d.total_ot > 0)
+            .sort((a, b) => b.total_ot - a.total_ot)
+            .map(d => ({
+                name: d.division_code,
+                Overtime: d.total_ot || 0,
+                percent: totalOT > 0 ? ((d.total_ot / totalOT) * 100).toFixed(1) : 0
+            }));
     }, [data]);
 
     const efficiencyData = useMemo(() => {
@@ -212,7 +335,7 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
     if (!data) return null;
 
     const { kpi, trends } = data;
-
+    const percent = (value, total) => total > 0 ? ((value / total) * 100).toFixed(1) : 0;
     // KPI Percentages
     const calcChange = (curr, prev) => {
         if (!prev) return 0;
@@ -231,11 +354,85 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                     <h1 style={{ fontSize: '1.8rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>Daftar Upah Analysis Keseluruhan</h1>
                     <p style={{ color: '#64748b', marginTop: '0.25rem' }}>Overview of financial and operational metrics</p>
                 </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                    {/* Period Selector could go here, simplified for now */}
-                    <div style={{ padding: '0.5rem 1rem', background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', fontWeight: '600', color: '#334155' }}>
-                        {new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                    </div>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {/* Division Filter */}
+                    <select
+                        value={selectedFilterDivision}
+                        onChange={(e) => setSelectedFilterDivision(e.target.value)}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            fontWeight: '600',
+                            color: '#334155',
+                            cursor: 'pointer',
+                            outline: 'none',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            minWidth: '120px'
+                        }}
+                    >
+                        <option value="ALL">Semua Divisi</option>
+                        {filterOptions.divisions?.map((div, idx) => (
+                            <option key={idx} value={div}>{div}</option>
+                        ))}
+                    </select>
+
+                    {/* Gang Filter */}
+                    <select
+                        value={selectedFilterGang}
+                        onChange={(e) => setSelectedFilterGang(e.target.value)}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            fontWeight: '600',
+                            color: '#334155',
+                            cursor: 'pointer',
+                            outline: 'none',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            minWidth: '120px'
+                        }}
+                    >
+                        <option value="ALL">Semua Gang</option>
+                        {availableGangs.map((gang, idx) => (
+                            <option key={idx} value={gang}>{gang}</option>
+                        ))}
+                    </select>
+
+                    {/* Period Select */}
+                    <select
+                        value={`${year}-${month}`}
+                        onChange={(e) => {
+                            const [y, m] = e.target.value.split('-').map(Number);
+                            setYear(y);
+                            setMonth(m);
+                        }}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            fontWeight: '600',
+                            color: '#334155',
+                            cursor: 'pointer',
+                            outline: 'none',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                    >
+                        {availablePeriods.length > 0 ? (
+                            availablePeriods.map((p, idx) => (
+                                <option key={idx} value={`${p.year}-${p.month}`}>
+                                    {new Date(p.year, p.month - 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                                </option>
+                            ))
+                        ) : (
+                            <option value={`${year}-${month}`}>
+                                {new Date(year, month - 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                            </option>
+                        )}
+                    </select>
                 </div>
             </div>
 
@@ -390,16 +587,87 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
 
             {/* Secondary Charts Row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-                {/* Division Breakdown */}
+                {/* Division Breakdown - Full Stacked Bar */}
                 <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#334155', marginBottom: '1.5rem' }}>Top Divisions by Cost</h3>
-                    <div style={{ height: '300px' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#334155', marginBottom: '0.5rem' }}>
+                        Division Cost Breakdown ({divisionChartData.length} divisions)
+                    </h3>
+                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', fontSize: '0.75rem' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6', borderRadius: '2px' }}></span>
+                            Gaji Pokok + Tunjangan
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ width: '12px', height: '12px', backgroundColor: '#f97316', borderRadius: '2px' }}></span>
+                            Lembur
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ width: '12px', height: '12px', backgroundColor: '#10b981', borderRadius: '2px' }}></span>
+                            Premi
+                        </span>
+                    </div>
+                    <div style={{ height: Math.max(300, divisionChartData.length * 30) }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={divisionChartData} layout="vertical" margin={{ left: 20 }}>
-                                <XAxis type="number" hide />
-                                <YAxis dataKey="name" type="category" width={50} />
-                                <Tooltip formatter={(val) => formatCurrency(val)} />
-                                <Bar dataKey="Wage" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
+                            <BarChart data={divisionChartData} layout="vertical" margin={{ left: 40, right: 10 }}>
+                                <XAxis type="number" tickFormatter={(val) => `${(val / 1000000).toFixed(0)}jt`} fontSize={10} />
+                                <YAxis dataKey="name" type="category" width={35} fontSize={11} />
+                                <Tooltip
+                                    content={({ active, payload, label }) => {
+                                        if (!active || !payload?.length) return null;
+                                        const d = payload[0]?.payload;
+                                        return (
+                                            <div style={{
+                                                background: 'white',
+                                                padding: '10px',
+                                                borderRadius: '8px',
+                                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                                fontSize: '0.8rem'
+                                            }}>
+                                                <div style={{ fontWeight: '700', marginBottom: '6px' }}>{label}</div>
+                                                <div style={{ color: '#64748b', marginBottom: '4px' }}>
+                                                    Total: {formatCurrency(d.Total)}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <span style={{ color: '#3b82f6' }}>■</span>
+                                                    Base: {formatCurrency(d.Base)} ({d.basePercent}%)
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <span style={{ color: '#f97316' }}>■</span>
+                                                    Lembur: {formatCurrency(d.Overtime)} ({d.otPercent}%)
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <span style={{ color: '#10b981' }}>■</span>
+                                                    Premi: {formatCurrency(d.Premi)} ({d.premiPercent}%)
+                                                </div>
+                                            </div>
+                                        );
+                                    }}
+                                />
+                                <Bar
+                                    dataKey="Base"
+                                    stackId="a"
+                                    fill="#3b82f6"
+                                    barSize={22}
+                                    cursor="pointer"
+                                    onClick={handleDivisionBarClick}
+                                />
+                                <Bar
+                                    dataKey="Overtime"
+                                    stackId="a"
+                                    fill="#f97316"
+                                    barSize={22}
+                                    cursor="pointer"
+                                    onClick={handleDivisionBarClick}
+                                />
+                                <Bar
+                                    dataKey="Premi"
+                                    stackId="a"
+                                    fill="#10b981"
+                                    radius={[0, 4, 4, 0]}
+                                    barSize={22}
+                                    cursor="pointer"
+                                    onClick={handleDivisionBarClick}
+                                />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
@@ -430,11 +698,84 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                         </ResponsiveContainer>
                     </div>
                 </div>
+            </div>
 
-                {/* Premi Analysis Chart */}
-                <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
-                    <PremiCompositionChart month={month} year={year} division="ALL" />
+            {/* Premi Analysis - Full Width Row */}
+            <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', marginTop: '2rem' }}>
+                <PremiCompositionChart month={month} year={year} division="ALL" />
+            </div>
+
+            {/* Overtime Distribution - Full Width Row */}
+            <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', marginTop: '2rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#334155', margin: 0 }}>
+                        ⏰ Distribusi Lembur per Divisi ({overtimeChartData.length} divisions)
+                    </h3>
+                    <div style={{
+                        backgroundColor: '#fff7ed',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '8px',
+                        fontSize: '0.9rem',
+                        fontWeight: '600',
+                        color: '#ea580c'
+                    }}>
+                        Total: {formatCurrency(overtimeChartData.reduce((sum, d) => sum + d.Overtime, 0))}
+                    </div>
                 </div>
+                {overtimeChartData.length > 0 ? (
+                    <div style={{ height: Math.max(300, overtimeChartData.length * 32) }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={overtimeChartData} layout="vertical" margin={{ left: 40, right: 80 }}>
+                                <XAxis type="number" tickFormatter={(val) => `${(val / 1000000).toFixed(0)} jt`} fontSize={10} />
+                                <YAxis dataKey="name" type="category" width={35} fontSize={11} />
+                                <Tooltip
+                                    content={({ active, payload, label }) => {
+                                        if (!active || !payload?.length) return null;
+                                        const d = payload[0]?.payload;
+                                        return (
+                                            <div style={{
+                                                background: 'white',
+                                                padding: '10px',
+                                                borderRadius: '8px',
+                                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                                fontSize: '0.85rem'
+                                            }}>
+                                                <div style={{ fontWeight: '700', marginBottom: '4px' }}>Divisi: {label}</div>
+                                                <div style={{ color: '#ea580c' }}>
+                                                    Lembur: {formatCurrency(d?.Overtime || 0)} ({d?.percent || 0}%)
+                                                </div>
+                                            </div>
+                                        );
+                                    }}
+                                />
+                                <Bar
+                                    dataKey="Overtime"
+                                    fill="#f97316"
+                                    radius={[0, 4, 4, 0]}
+                                    barSize={24}
+                                    label={({ x, y, width, height, value, payload }) => {
+                                        if (!payload) return null;
+                                        return (
+                                            <text
+                                                x={x + width + 5}
+                                                y={y + height / 2}
+                                                fill="#64748b"
+                                                fontSize={10}
+                                                dominantBaseline="middle"
+                                            >
+                                                {formatCurrency(value)} ({payload.percent || 0}%)
+                                            </text>
+                                        );
+                                    }}
+                                />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                ) : (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+                        No overtime data available for this period
+                    </div>
+                )}
             </div>
 
             {/* Advanced Analysis Row */}
@@ -532,6 +873,228 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                     </div>
                 </div>
             </div>
+
+            {/* Division Details Modal */}
+            {selectedDivision && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        padding: '2rem'
+                    }}
+                    onClick={() => setSelectedDivision(null)}
+                >
+                    <div
+                        style={{
+                            backgroundColor: 'white',
+                            borderRadius: '16px',
+                            maxWidth: '900px',
+                            width: '100%',
+                            maxHeight: '85vh',
+                            overflow: 'hidden',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div style={{
+                            padding: '1.5rem',
+                            borderBottom: '1px solid #e2e8f0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                        }}>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>
+                                📊 Detail Divisi: {selectedDivision}
+                            </h2>
+                            <button
+                                onClick={() => setSelectedDivision(null)}
+                                style={{
+                                    background: '#f1f5f9',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    width: '32px',
+                                    height: '32px',
+                                    cursor: 'pointer',
+                                    fontSize: '1.1rem'
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div style={{ padding: '1.5rem', maxHeight: 'calc(85vh - 80px)', overflowY: 'auto' }}>
+                            {divisionDetailsLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                                    Loading division details...
+                                </div>
+                            ) : divisionDetails ? (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
+                                    {/* Gang Breakdown */}
+                                    <div>
+                                        <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#334155', marginBottom: '1rem' }}>
+                                            👥 Breakdown Gang ({divisionDetails.gangs?.length || 0} gangs)
+                                        </h3>
+                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                            <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                                                <thead>
+                                                    <tr style={{ backgroundColor: '#f8fafc', position: 'sticky', top: 0 }}>
+                                                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>Gang</th>
+                                                        <th style={{ padding: '8px', textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>Total Wage</th>
+                                                        <th style={{ padding: '8px', textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>Employees</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {divisionDetails.gangs
+                                                        ?.sort((a, b) => (b.total_upah_bersih || b.total_wage || 0) - (a.total_upah_bersih || a.total_wage || 0))
+                                                        .map((gang, idx) => (
+                                                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                                <td style={{ padding: '8px', fontWeight: '500' }}>{gang.gang_code}</td>
+                                                                <td style={{ padding: '8px', textAlign: 'right', color: '#3b82f6' }}>
+                                                                    {formatCurrency(gang.total_upah_bersih || gang.total_wage || 0)}
+                                                                </td>
+                                                                <td style={{ padding: '8px', textAlign: 'right' }}>{gang.total_employees || '-'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    {(!divisionDetails.gangs || divisionDetails.gangs.length === 0) && (
+                                                        <tr>
+                                                            <td colSpan={3} style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>
+                                                                No gang data available
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Premi Breakdown */}
+                                    <div>
+                                        <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#334155', marginBottom: '1rem' }}>
+                                            💰 Komposisi Premi ({divisionDetails.premi?.length || 0} jenis)
+                                        </h3>
+                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                            {divisionDetails.premi && divisionDetails.premi.length > 0 ? (
+                                                <>
+                                                    {/* Total Premi Summary */}
+                                                    <div style={{
+                                                        backgroundColor: '#f0fdf4',
+                                                        padding: '1rem',
+                                                        borderRadius: '8px',
+                                                        marginBottom: '1rem',
+                                                        textAlign: 'center'
+                                                    }}>
+                                                        <div style={{ color: '#15803d', fontSize: '0.8rem' }}>Total Premi Divisi</div>
+                                                        <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#166534' }}>
+                                                            {formatCurrency(divisionDetails.premi.reduce((sum, p) => sum + p.value, 0))}
+                                                        </div>
+                                                    </div>
+                                                    {/* Premi List */}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                        {divisionDetails.premi.map((premi, idx) => {
+                                                            const total = divisionDetails.premi.reduce((sum, p) => sum + p.value, 0);
+                                                            const percent = total > 0 ? ((premi.value / total) * 100).toFixed(1) : 0;
+                                                            return (
+                                                                <div key={idx} style={{
+                                                                    display: 'flex',
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center',
+                                                                    padding: '8px 12px',
+                                                                    backgroundColor: '#f8fafc',
+                                                                    borderRadius: '6px'
+                                                                }}>
+                                                                    <span style={{ fontWeight: '500', fontSize: '0.85rem' }}>{premi.name}</span>
+                                                                    <span style={{
+                                                                        color: '#10b981',
+                                                                        fontWeight: '600',
+                                                                        fontSize: '0.85rem'
+                                                                    }}>
+                                                                        {formatCurrency(premi.value)} ({percent}%)
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
+                                                    No premi data available for this division
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Overtime Breakdown */}
+                                    <div>
+                                        <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#334155', marginBottom: '1rem' }}>
+                                            ⏰ Analisis Lembur
+                                        </h3>
+                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                            {divisionDetails.overtime && divisionDetails.overtime.length > 0 ? (
+                                                <>
+                                                    {/* Total Overtime Summary */}
+                                                    <div style={{
+                                                        backgroundColor: '#fff7ed',
+                                                        padding: '1rem',
+                                                        borderRadius: '8px',
+                                                        marginBottom: '1rem',
+                                                        textAlign: 'center'
+                                                    }}>
+                                                        <div style={{ color: '#c2410c', fontSize: '0.8rem' }}>Total Lembur Divisi</div>
+                                                        <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#ea580c' }}>
+                                                            {formatCurrency(divisionDetails.overtime.reduce((sum, o) => sum + o.value, 0))}
+                                                        </div>
+                                                    </div>
+                                                    {/* Overtime List */}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                        {divisionDetails.overtime.map((ot, idx) => {
+                                                            const total = divisionDetails.overtime.reduce((sum, o) => sum + o.value, 0);
+                                                            const percent = total > 0 ? ((ot.value / total) * 100).toFixed(1) : 0;
+                                                            return (
+                                                                <div key={idx} style={{
+                                                                    display: 'flex',
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center',
+                                                                    padding: '8px 12px',
+                                                                    backgroundColor: '#f8fafc',
+                                                                    borderRadius: '6px'
+                                                                }}>
+                                                                    <span style={{ fontWeight: '500', fontSize: '0.85rem' }}>{ot.name}</span>
+                                                                    <span style={{
+                                                                        color: '#ea580c',
+                                                                        fontWeight: '600',
+                                                                        fontSize: '0.85rem'
+                                                                    }}>
+                                                                        {formatCurrency(ot.value)} ({percent}%)
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
+                                                    No overtime data available for this division
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                                    Failed to load division details
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

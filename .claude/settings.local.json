@@ -87,7 +87,8 @@
       "Bash(echo:*)",
       "Bash(bun run:*)",
       "Bash(npx tsx:*)",
-      "Bash(if exist node_modules.vite rmdir /s /q node_modules.vite:*)"
+      "Bash(if exist node_modules.vite rmdir /s /q node_modules.vite:*)",
+      "Bash(bun build:*)"
     ],
     "deny": [],
     "ask": []
