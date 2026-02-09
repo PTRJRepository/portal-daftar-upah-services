@@ -68,17 +68,41 @@ const backendTarget = getBackendHost()
 // Check if running in external/proxy mode (accessed via proxy gateway)
 const isProxyMode = process.env.VITE_BACKEND_HOST && process.env.VITE_BACKEND_HOST !== 'localhost'
 
+// Base path configuration:
+// - For development (local): '/'  
+// - For production (proxy mode at /upah/): '/upah/'
+// Can be overridden via VITE_BASE_PATH environment variable
+const getBasePath = () => {
+  // Allow explicit override
+  if (process.env.VITE_BASE_PATH) {
+    return process.env.VITE_BASE_PATH
+  }
+
+  // If building for proxy mode (external host), use /upah/ base path
+  // This matches the Apache/Nginx proxy configuration that serves at /upah/
+  if (isProxyMode || process.env.NODE_ENV === 'production') {
+    return '/upah/'
+  }
+
+  // Default for local development
+  return '/'
+}
+
+const basePath = getBasePath()
+
 console.log('Proxy configuration:', {
   isDev,
   backendTarget,
   isProxyMode,
+  basePath,
   envVars: {
     VITE_BACKEND_HOST: process.env.VITE_BACKEND_HOST,
     BACKEND_HOST: process.env.BACKEND_HOST,
     VITE_BACKEND_PORT: process.env.VITE_BACKEND_PORT,
     BACKEND_PORT: process.env.BACKEND_PORT,
     DEV_MODE: process.env.DEV_MODE,
-    VITE_DEV_MODE: process.env.VITE_DEV_MODE
+    VITE_DEV_MODE: process.env.VITE_DEV_MODE,
+    VITE_BASE_PATH: process.env.VITE_BASE_PATH
   }
 })
 
@@ -90,8 +114,8 @@ export default defineConfig({
     'process.env.VITE_DISABLE_CACHE': JSON.stringify('true'),
     'process.env.VITE_DEV_MODE': JSON.stringify('true')
   },
-  // Base path: Use relative path so it works under any proxy prefix (e.g. /backend/upah/) or root
-  base: '/',
+  // Base path: Use /upah/ for proxy mode, / for local development
+  base: basePath,
   server: {
     host: '0.0.0.0', // Allow access from any IP
     port: 5175,

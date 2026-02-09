@@ -86,7 +86,8 @@ body.print-mode-large {
     .summary-report-grid-container {
         width: auto !important;
         max-width: 100% !important;
-        min-width: auto !important; /* Override screen min-width */
+        min-width: auto !important;
+        /* Override screen min-width */
 
         border: 2px solid #000 !important;
         padding: 0.15rem !important;
@@ -442,6 +443,132 @@ body.print-mode-large {
 
     .summary-report-grid-container .ag-theme-alpine {
         overflow: visible !important;
+    }
+
+    /* ============================================
+       SCROLLBAR HIDE IN PRINT
+       ============================================ */
+    *::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+    }
+
+    * {
+        -ms-overflow-style: none !important;
+        scrollbar-width: none !important;
+    }
+
+    /* ============================================
+       TABLE WRAPPER - Remove scroll
+       ============================================ */
+    .wsp-table-container,
+    .table-container,
+    [class*="table-wrapper"],
+    [class*="scroll"] {
+        overflow: visible !important;
+        max-height: none !important;
+        height: auto !important;
+    }
+
+    /* ============================================
+       TEXT WRAPPING FOR LONG CONTENT
+       ============================================ */
+    /* Task Description column - allow wrapping */
+    .sw-table td:nth-child(4),
+    .wsp-table td:nth-child(4),
+    table td:nth-child(4) {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        word-break: break-word !important;
+        max-width: 150px !important;
+        font-size: calc(0.5rem * var(--print-font-scale, 1)) !important;
+        line-height: 1.2 !important;
+    }
+
+    /* Name column - allow wrap */
+    .sw-table td:nth-child(2),
+    .wsp-table td:nth-child(2),
+    table td:nth-child(2) {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        word-break: break-word !important;
+        max-width: 120px !important;
+        font-size: calc(0.52rem * var(--print-font-scale, 1)) !important;
+    }
+
+    /* ============================================
+       PAYROLL ANALYSIS PAGE SPECIFIC FIXES
+       ============================================ */
+    .wsp-document {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: visible !important;
+        padding: 0.2rem !important;
+        margin: 0 !important;
+    }
+
+    .wsp-document table {
+        table-layout: fixed !important;
+        width: 100% !important;
+        font-size: 0.55rem !important;
+    }
+
+    .wsp-document table td,
+    .wsp-document table th {
+        padding: 0.1rem 0.08rem !important;
+        border: 1px solid #333 !important;
+        overflow: hidden !important;
+    }
+
+    /* Column width distribution for payroll analysis */
+    .wsp-document table th:nth-child(1),
+    .wsp-document table td:nth-child(1) {
+        width: 6% !important;
+        /* NIK */
+    }
+
+    .wsp-document table th:nth-child(2),
+    .wsp-document table td:nth-child(2) {
+        width: 12% !important;
+        /* NAMA */
+    }
+
+    .wsp-document table th:nth-child(3),
+    .wsp-document table td:nth-child(3) {
+        width: 5% !important;
+        /* GANG */
+    }
+
+    .wsp-document table th:nth-child(4),
+    .wsp-document table td:nth-child(4) {
+        width: 14% !important;
+        /* TASK */
+    }
+
+    /* Numeric columns - smaller */
+    .wsp-document table th:nth-child(n+5),
+    .wsp-document table td:nth-child(n+5) {
+        width: auto !important;
+        text-align: right !important;
+        white-space: nowrap !important;
+    }
+
+    /* Detail rows - smaller fonts */
+    .wsp-document .detail-row td,
+    .wsp-document tr[class*="detail"] td {
+        font-size: 0.45rem !important;
+        padding: 0.05rem 0.08rem !important;
+        color: #4a5568 !important;
+    }
+
+    /* Header rows */
+    .wsp-document thead th {
+        font-size: 0.5rem !important;
+        font-weight: 700 !important;
+        background-color: #f0f0f0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 }
 
