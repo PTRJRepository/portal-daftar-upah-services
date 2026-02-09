@@ -94,4 +94,40 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
             month: t.Numeric(),
             year: t.Numeric()
         })
+    })
+    .get('/aggregation/gang-data', async ({ query, set }) => {
+        try {
+            const division = query.division_code;
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const data = await dashboardService.getAggregatedGangData(division, month, year);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            division_code: t.String(),
+            month: t.String(),
+            year: t.String()
+        })
+    })
+    .get('/premi-analysis', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const division = query.division_code;
+            const data = await dashboardService.getPremiAnalysis(month, year, division);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            division_code: t.Optional(t.String())
+        })
     });

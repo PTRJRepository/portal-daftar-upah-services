@@ -1,23 +1,14 @@
 /**
  * PAYROLL SYNC - GOOGLE APPS SCRIPT WEB APP
- *
- * Flexible spreadsheet synchronization for various report types:
- * - DAFTAR_UPAH: Detailed employee payroll with gang headers, gang totals, grand total
- * - DASHBOARD: Summary dashboard data
- * - Custom formats can be added
+ * Version: 6.0 - Multi-Level Headers + Dynamic Columns + Auto Width
  *
  * SETUP INSTRUCTIONS:
- * 1. Open your Google Spreadsheet.
- * 2. Go to Extensions > Apps Script.
- * 3. Copy this entire code into 'Code.gs'.
- * 4. Go to Project Settings (Gear icon) > Script Properties.
- *    - Add property: 'API_SECRET' = 'your-secure-secret-here' (Must match backend .env)
- * 5. Click 'Deploy' > 'New deployment'.
- *    - Select type: 'Web app'.
- *    - Description: 'v2'.
- *    - Execute as: 'Me' (your email).
- *    - Who has access: 'Anyone'.
- * 6. Copy the 'Web app URL' and paste it into your backend .env file as GOOGLE_SCRIPT_URL.
+ * 1. Open Google Spreadsheet > Extensions > Apps Script
+ * 2. Copy this entire code into 'Code.gs'
+ * 3. Go to Project Settings > Script Properties
+ *    - Add property: 'API_SECRET' = 'your-secure-secret-here'
+ * 4. Deploy > New deployment > Web app > Execute as: Me > Who has access: Anyone
+ * 5. Copy Web app URL to backend .env as GOOGLE_SCRIPT_URL
  */
 
 const PROPERTIES = PropertiesService.getScriptProperties();
@@ -27,48 +18,32 @@ const PROPERTIES = PropertiesService.getScriptProperties();
 // ============================================================================
 
 const COLORS = {
-    // Header colors
-    HEADER_BG: "#1F2937",           // Dark gray/black
-    HEADER_TEXT: "#FFFFFF",         // White
-
-    // Gang header colors
-    GANG_HEADER_BG: "#1E3A8A",      // Dark blue
-    GANG_HEADER_TEXT: "#FFFFFF",    // White
-
-    // Gang total colors
-    GANG_TOTAL_BG: "#E0F2FE",       // Light blue
-    GANG_TOTAL_TEXT: "#000000",     // Black
-
-    // Grand total colors
-    GRAND_TOTAL_BG: "#1E40AF",      // Medium blue
-    GRAND_TOTAL_TEXT: "#FFFFFF",    // White
-
-    // Zebra striping
-    ROW_EVEN: "#F8FAFB",            // Very light gray
-    ROW_ODD: "#FFFFFF",             // White
-
-    // Section title
-    TITLE_BG: "#E6F4EA",            // Light green
-    SECTION_HIGHLIGHT: "#FEF3C7"   // Light yellow
+    HEADER_BG: "#1F2937",
+    HEADER_TEXT: "#FFFFFF",
+    GANG_HEADER_BG: "#1E3A8A",
+    GANG_HEADER_TEXT: "#FFFFFF",
+    GANG_TOTAL_BG: "#E0F2FE",
+    GANG_TOTAL_TEXT: "#000000",
+    GRAND_TOTAL_BG: "#1E40AF",
+    GRAND_TOTAL_TEXT: "#FFFFFF",
+    ROW_EVEN: "#F8FAFB",
+    ROW_ODD: "#FFFFFF",
+    TITLE_BG: "#E6F4EA"
 };
 
 const FORMATS = {
-    NUMBER: "#,##0",               // Integer numbers
-    DECIMAL: "#,##0.##",           // Decimal numbers (HK)
-    CURRENCY: "#,##0",             // Currency without decimal
-    PERCENTAGE: "0.00%"            // Percentage
+    NUMBER: "#,##0",
+    DECIMAL: "#,##0.##",
+    CURRENCY: "#,##0",
+    PERCENTAGE: "0.00%"
 };
 
 // ============================================================================
 // REQUEST HANDLERS
 // ============================================================================
 
-/**
- * Handle POST requests from the Backend
- */
 function doPost(e) {
     const lock = LockService.getScriptLock();
-
     if (!lock.tryLock(30000)) {
         return jsonResponse({
             status: 'error',
@@ -78,8 +53,6 @@ function doPost(e) {
 
     try {
         const payload = JSON.parse(e.postData.contents);
-
-        // 1. Authentication
         if (!validateSecret(payload.secret)) {
             return jsonResponse({
                 status: 'error',
@@ -87,9 +60,7 @@ function doPost(e) {
             });
         }
 
-        // 2. Route to appropriate handler based on type
         const result = handleSyncRequest(payload);
-
         return jsonResponse({
             status: 'success',
             data: result
@@ -108,14 +79,11 @@ function doPost(e) {
     }
 }
 
-/**
- * Handle GET requests (Health check)
- */
 function doGet(e) {
     return jsonResponse({
         status: 'online',
         message: 'Payroll Sync Service is running',
-        version: '2.0',
+        version: '6.0',
         timestamp: new Date().toISOString()
     });
 }
@@ -124,34 +92,25 @@ function doGet(e) {
 // ROUTER & VALIDATION
 // ============================================================================
 
-/**
- * Validate API secret
- */
 function validateSecret(secret) {
     const configuredSecret = PROPERTIES.getProperty('API_SECRET');
     if (!configuredSecret) {
-        throw new Error("API_SECRET is not configured in Script Properties");
+        throw new Error("API_SECRET is not configured");
     }
     return secret === configuredSecret;
 }
 
-/**
- * Route request to appropriate handler based on type
- */
 function handleSyncRequest(payload) {
     const type = payload.type || payload.format || 'DAFTAR_UPAH';
 
     switch (type) {
         case 'DAFTAR_UPAH':
-        case 'DAFTAR_UPAH_DETAILED':
+        case 'DAFTAR_UPAH_DYNAMIC':
         case 'DAFTAR_UPAH_MULTILEVEL':
             return syncDaftarUpah(payload);
-
         case 'DASHBOARD':
         case 'SUMMARY_WAGES':
             return syncDashboard(payload);
-
-        case 'RAW':
         default:
             return syncGenericData(payload);
     }
@@ -161,11 +120,8 @@ function handleSyncRequest(payload) {
 // DAFTAR UPAH SYNC
 // ============================================================================
 
-/**
- * Sync Daftar Upah format with gang headers, gang totals, and grand total
- */
 function syncDaftarUpah(payload) {
-    const { division, month, year, headers, rows, format } = payload;
+    const { division, month, year, headers, rows } = payload;
 
     if (!rows) {
         throw new Error("Missing required field: rows");
@@ -174,303 +130,248 @@ function syncDaftarUpah(payload) {
     const sheetName = division || 'Sheet1';
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    // Always delete and recreate sheet to avoid any conflicts
+    // Delete existing sheet and create new one
     const existingSheet = ss.getSheetByName(sheetName);
     if (existingSheet) {
         ss.deleteSheet(existingSheet);
     }
     const sheet = ss.insertSheet(sheetName);
 
-    // Determine row types
-    const rowTypes = analyzeRowTypes(rows);
+    // Debug: Log structure
+    console.log("Rows length: " + rows.length);
+    console.log("First row length: " + (rows[0] ? rows[0].length : "N/A"));
+    console.log("Headers: " + JSON.stringify(headers).substring(0, 200));
 
-    // Add metadata section (title, period, timestamp)
-    const metadataRows = addMetadataSection(sheet, division, month, year);
+    // Determine number of columns FIRST
+    let numCols = rows[0]?.length || 10;
+    console.log("Initial numCols from rows: " + numCols);
 
-    // Write headers
-    let currentRow = metadataRows + 2; // +2 for spacing
+    // Check if headers is multi-level
+    let isMultiLevel = false;
+    if (headers && Array.isArray(headers) && headers.length > 0) {
+        if (Array.isArray(headers[0])) {
+            isMultiLevel = true;
+            numCols = headers[0].length;
+            console.log("Multi-level headers detected, numCols from headers: " + numCols);
+        }
+    }
+
+    // Add metadata (use numCols for merge)
+    const monthName = getMonthName(month);
+    sheet.getRange(1, 1).setValue(`DAFTAR UPAH - ${division}`);
+    sheet.getRange(1, 1, 1, Math.min(10, numCols)).merge().setFontWeight("bold").setFontSize(14).setBackground(COLORS.TITLE_BG);
+
+    sheet.getRange(2, 1).setValue(`BULAN: ${monthName} ${year}`);
+    sheet.getRange(2, 1, 1, Math.min(10, numCols)).merge().setFontWeight("bold");
+
+    sheet.getRange(3, 1).setValue(`Last Sync: ${new Date().toLocaleString('id-ID')}`);
+    sheet.getRange(3, 1, 1, Math.min(10, numCols)).merge().setFontStyle("italic").setFontSize(9);
+
+    // Write headers (handle both single row and multi-level)
     if (headers && headers.length > 0) {
-        writeHeaders(sheet, currentRow, headers);
-        currentRow++; // Move past header row
+        writeHeaders(sheet, 5, headers);
     }
 
-    // Write data rows with special formatting
+    console.log("Final numCols for data: " + numCols);
+
+    // Write data rows
     if (rows && rows.length > 0) {
-        writeDataRows(sheet, currentRow, rows, rowTypes);
+        const dataRange = sheet.getRange(10, 1, rows.length, numCols);
+        dataRange.setValues(rows);
+        applyFormatting(sheet, 10, rows, numCols);
     }
 
-    // Auto-resize columns
-    sheet.autoResizeColumns(1, headers ? headers.length : 10);
+    // Set column widths - auto resize with minimum width
+    for (let i = 1; i <= numCols; i++) {
+        sheet.setColumnWidth(i, 100); // Set initial width
+    }
+    sheet.autoResizeColumns(1, numCols);
+
+    // Set column widths to prevent overflow
+    for (let i = 1; i <= numCols; i++) {
+        const colWidth = sheet.getColumnWidth(i);
+        if (colWidth < 50) {
+            sheet.setColumnWidth(i, 50);
+        } else if (colWidth > 400) {
+            sheet.setColumnWidth(i, 400);
+        }
+    }
 
     return {
         sheet: sheetName,
         rows_processed: rows.length,
-        gang_count: rowTypes.gangHeaders,
-        employee_count: rowTypes.employees,
-        format: format || 'DAFTAR_UPAH'
+        format: 'DAFTAR_UPAH_DYNAMIC'
     };
 }
 
 /**
- * Analyze rows to determine their types (gang header, employee, gang total, grand total)
- */
-function analyzeRowTypes(rows) {
-    const types = {
-        gangHeaders: 0,
-        gangTotals: 0,
-        employees: 0,
-        grandTotal: false
-    };
-
-    rows.forEach(row => {
-        const thirdCol = row[2] ? row[2].toString() : "";
-
-        if (thirdCol.startsWith("GANG:")) {
-            types.gangHeaders++;
-        } else if (thirdCol === "TOTAL GANG") {
-            types.gangTotals++;
-        } else if (thirdCol === "GRAND TOTAL") {
-            types.grandTotal = true;
-        } else {
-            types.employees++;
-        }
-    });
-
-    return types;
-}
-
-/**
- * Write headers - supports single row headers for now
- * TODO: Add multi-level header support with proper cell merging
+ * Write headers - supports single row or multi-level
  */
 function writeHeaders(sheet, startRow, headers) {
-    // Single row headers
-    const numCols = headers.length;
-    const range = sheet.getRange(startRow, 1, 1, numCols);
-    range.setValues([headers]);
-    range.setBackground(COLORS.HEADER_BG);
-    range.setFontColor(COLORS.HEADER_TEXT);
-    range.setFontWeight("bold");
-    range.setHorizontalAlignment("center");
-    range.setVerticalAlignment("middle");
-}
+    console.log("writeHeaders called - startRow: " + startRow);
+    console.log("Headers structure check:");
+    console.log("- Is array: " + Array.isArray(headers));
+    console.log("- Length: " + (Array.isArray(headers) ? headers.length : "N/A"));
+    console.log("- First element type: " + (Array.isArray(headers) && headers.length > 0 ? typeof headers[0] : "N/A"));
+    console.log("- First element is array: " + (Array.isArray(headers) && headers.length > 0 && Array.isArray(headers[0])));
 
-/**
- * Write data rows with special formatting for gang headers, totals, etc.
- */
-function writeDataRows(sheet, startRow, rows, rowTypes) {
-    if (rows.length === 0) return;
+    // Check if multi-level (array of arrays)
+    if (Array.isArray(headers) && headers.length > 0 && Array.isArray(headers[0])) {
+        console.log("Multi-level headers CONFIRMED!");
+        // Multi-level headers
+        const numLevels = headers.length;
+        const numCols = headers[0].length;
 
-    const numCols = rows[0].length;
+        console.log("numLevels: " + numLevels + ", numCols: " + numCols);
+        console.log("Level 0 preview: " + headers[0].slice(0, 5).join(" | "));
+        console.log("Level 1 preview: " + headers[1].slice(0, 5).join(" | "));
 
-    // Write all data at once for performance
-    const dataRange = sheet.getRange(startRow, 1, rows.length, numCols);
-    dataRange.setValues(rows);
-
-    // Apply formatting based on row types
-    let rowIndex = 0;
-    rows.forEach((row, idx) => {
-        const rowNum = startRow + idx;
-        const thirdCol = row[2] ? row[2].toString() : "";
-
-        if (thirdCol.startsWith("GANG:")) {
-            // Gang Header Row
-            formatGangHeaderRow(sheet, rowNum, numCols);
-        } else if (thirdCol === "TOTAL GANG") {
-            // Gang Total Row
-            formatGangTotalRow(sheet, rowNum, numCols);
-        } else if (thirdCol === "GRAND TOTAL") {
-            // Grand Total Row
-            formatGrandTotalRow(sheet, rowNum, numCols);
-        } else {
-            // Employee Row
-            formatEmployeeRow(sheet, rowNum, numCols, idx);
+        // Write each level
+        for (let level = 0; level < numLevels; level++) {
+            const rowNum = startRow + level;
+            const range = sheet.getRange(rowNum, 1, 1, numCols);
+            range.setValues([headers[level]]);
+            range.setBackground(COLORS.HEADER_BG);
+            range.setFontColor(COLORS.HEADER_TEXT);
+            range.setFontWeight("bold");
+            range.setHorizontalAlignment("center");
+            range.setVerticalAlignment("middle");
+            console.log("Level " + level + " written to row " + rowNum + " with " + headers[level].length + " columns");
         }
-    });
 
-    // Apply borders to entire data section
-    const fullRange = sheet.getRange(startRow, 1, rows.length, numCols);
-    fullRange.setBorder(true, true, true, true, true, true, "#CCCCCC", SpreadsheetApp.BorderStyle.SOLID);
+        // Apply horizontal spanning for multi-level
+        console.log("Applying cell merging...");
+        for (let level = 0; level < numLevels; level++) {
+            let spanStart = 0;
+            let spanValue = headers[level][0];
+            let mergeCount = 0;
 
-    // Apply number formatting
-    applyNumberFormatting(sheet, startRow, rows, numCols);
-}
+            for (let col = 1; col <= numCols; col++) {
+                const cellValue = col < numCols ? headers[level][col] : null;
 
-/**
- * Format gang header row
- */
-function formatGangHeaderRow(sheet, rowNum, numCols) {
-    // Get the full row range and apply styling
-    const range = sheet.getRange(rowNum, 1, 1, numCols);
-    range.setBackground(COLORS.GANG_HEADER_BG);
-    range.setFontColor(COLORS.GANG_HEADER_TEXT);
-    range.setFontWeight("bold");
-    range.setFontSize(11);
-    range.setHorizontalAlignment("left");
+                if (col === numCols || cellValue !== spanValue) {
+                    const spanLength = col - spanStart;
 
-    // NO MERGE - disable merging to avoid frozen rows conflict
-    // Gang label "GANG: XXX" is already in column 3 (Nama)
-}
+                    if (spanLength > 1 && spanValue && spanValue !== "") {
+                        try {
+                            sheet.getRange(startRow + level, spanStart + 1, 1, spanLength).merge();
+                            mergeCount++;
+                            console.log("Merged level " + level + " cols " + (spanStart + 1) + "-" + col + " ('" + spanValue + "')");
+                        } catch (e) {
+                            console.log("Merge error at level " + level + ": " + e);
+                        }
+                    }
 
-/**
- * Format gang total row
- */
-function formatGangTotalRow(sheet, rowNum, numCols) {
-    const range = sheet.getRange(rowNum, 1, 1, numCols);
-    range.setBackground(COLORS.GANG_TOTAL_BG);
-    range.setFontColor(COLORS.GANG_TOTAL_TEXT);
-    range.setFontWeight("bold");
-    range.setFontSize(10);
-    range.setBorder(null, true, true, true, null, null, "#0284C7", SpreadsheetApp.BorderStyle.MEDIUM);
-}
-
-/**
- * Format grand total row
- */
-function formatGrandTotalRow(sheet, rowNum, numCols) {
-    const range = sheet.getRange(rowNum, 1, 1, numCols);
-    range.setBackground(COLORS.GRAND_TOTAL_BG);
-    range.setFontColor(COLORS.GRAND_TOTAL_TEXT);
-    range.setFontWeight("bold");
-    range.setFontSize(12);
-    range.setBorder(null, null, null, true, null, null, "#1E3A8A", SpreadsheetApp.BorderStyle.THICK);
-}
-
-/**
- * Format employee row
- */
-function formatEmployeeRow(sheet, rowNum, numCols, rowIdx) {
-    // Zebra striping
-    if (rowIdx % 2 === 0) {
-        sheet.getRange(rowNum, 1, 1, numCols).setBackground(COLORS.ROW_EVEN);
+                    spanStart = col;
+                    spanValue = cellValue;
+                }
+            }
+            console.log("Level " + level + ": " + mergeCount + " merges applied");
+        }
     } else {
-        sheet.getRange(rowNum, 1, 1, numCols).setBackground(COLORS.ROW_ODD);
+        console.log("Single row headers");
+        // Single row headers
+        const numCols = headers.length;
+        const range = sheet.getRange(startRow, 1, 1, numCols);
+        range.setValues([headers]);
+        range.setBackground(COLORS.HEADER_BG);
+        range.setFontColor(COLORS.HEADER_TEXT);
+        range.setFontWeight("bold");
+        range.setHorizontalAlignment("center");
     }
-
-    // Font size
-    sheet.getRange(rowNum, 1, 1, numCols).setFontSize(10);
 }
 
-/**
- * Apply number formatting based on column index
- * Structure: 34 columns total
- * 0-3: Identitas (No, NIK, Nama, Jabatan) - No format
- * 4-9: Absensi (AN, Cuti, Sakit+Haid, Minggu, Nasional, Jumlah HK) - Decimal
- * 10-33: Gaji Pokok, Tunjangan, Premi, Potongan, Total - Currency
- */
-function applyNumberFormatting(sheet, startRow, rows, numCols) {
-    // Skip formatting for non-data rows (will be overridden by special formatting)
+function applyFormatting(sheet, startRow, rows, numCols) {
     for (let idx = 0; idx < rows.length; idx++) {
         const row = rows[idx];
+        const rowNum = startRow + idx;
         const thirdCol = row[2] ? row[2].toString() : "";
 
-        // Skip special rows
-        if (thirdCol.startsWith("GANG:") || thirdCol.includes("TOTAL")) {
-            continue;
+        // Gang Header Row
+        if (thirdCol.startsWith("GANG:")) {
+            const range = sheet.getRange(rowNum, 1, 1, numCols);
+            range.setBackground(COLORS.GANG_HEADER_BG);
+            range.setFontColor(COLORS.GANG_HEADER_TEXT);
+            range.setFontWeight("bold");
+            range.setFontSize(11);
         }
+        // Gang/Grand Total Row
+        else if (thirdCol.includes("TOTAL")) {
+            if (thirdCol === "GRAND TOTAL") {
+                const range = sheet.getRange(rowNum, 1, 1, numCols);
+                range.setBackground(COLORS.GRAND_TOTAL_BG);
+                range.setFontColor(COLORS.GRAND_TOTAL_TEXT);
+                range.setFontWeight("bold");
+                range.setFontSize(12);
+            } else {
+                const range = sheet.getRange(rowNum, 1, 1, numCols);
+                range.setBackground(COLORS.GANG_TOTAL_BG);
+                range.setFontColor(COLORS.GANG_TOTAL_TEXT);
+                range.setFontWeight("bold");
+                range.setFontSize(10);
+            }
+        }
+        // Employee Row
+        else {
+            // Zebra striping
+            if (idx % 2 === 0) {
+                sheet.getRange(rowNum, 1, 1, numCols).setBackground(COLORS.ROW_EVEN);
+            } else {
+                sheet.getRange(rowNum, 1, 1, numCols).setBackground(COLORS.ROW_ODD);
+            }
+            sheet.getRange(rowNum, 1, 1, numCols).setFontSize(10);
 
-        const rowNum = startRow + idx;
+            // Number formatting - ABSENSI (columns 5-10)
+            sheet.getRange(rowNum, 5, 1, 6).setNumberFormat(FORMATS.DECIMAL);
 
-        // Absensi columns (indices 4-9, 1-indexed columns 5-10): Decimal format
-        sheet.getRange(rowNum, 5, 1, 6).setNumberFormat(FORMATS.DECIMAL);
-
-        // Currency columns (indices 10-33, 1-indexed columns 11-34): Currency format
-        if (numCols > 10) {
-            sheet.getRange(rowNum, 11, 1, numCols - 10).setNumberFormat(FORMATS.CURRENCY);
+            // Currency formatting (columns 11 onwards)
+            if (numCols > 10) {
+                sheet.getRange(rowNum, 11, 1, numCols - 10).setNumberFormat(FORMATS.CURRENCY);
+            }
         }
     }
+
+    // Borders
+    const fullRange = sheet.getRange(startRow, 1, rows.length, numCols);
+    fullRange.setBorder(true, true, true, true, true, true, "#CCCCCC", SpreadsheetApp.BorderStyle.SOLID);
 }
 
 // ============================================================================
 // DASHBOARD SYNC
 // ============================================================================
 
-/**
- * Sync dashboard/summary data
- */
 function syncDashboard(payload) {
     const { division, month, year, data } = payload;
-
     const sheetName = division || 'DASHBOARD';
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(sheetName);
-
-    if (!sheet) {
-        sheet = ss.insertSheet(sheetName);
-    }
-
+    if (!sheet) sheet = ss.insertSheet(sheetName);
     sheet.clear();
 
-    // Add metadata
-    const metadataRows = addMetadataSection(sheet, division, month, year, "DASHBOARD");
+    sheet.getRange(1, 1).setValue(`LAPORAN DASHBOARD - ${division}`);
+    sheet.getRange(1, 1, 1, 5).merge().setFontWeight("bold").setFontSize(14).setBackground(COLORS.TITLE_BG);
 
-    // Process dashboard data based on structure
     if (data && data.kpi) {
-        writeKPIData(sheet, metadataRows + 2, data.kpi);
-    }
-
-    if (data && data.comparisons) {
-        writeComparisonData(sheet, sheet.getLastRow() + 2, data.comparisons);
+        writeKPIData(sheet, 3, data.kpi);
     }
 
     sheet.autoResizeColumns(1, 20);
-
-    return {
-        sheet: sheetName,
-        format: 'DASHBOARD'
-    };
+    return { sheet: sheetName, format: 'DASHBOARD' };
 }
 
-/**
- * Write KPI data
- */
 function writeKPIData(sheet, startRow, kpiData) {
-    const headers = [["KPI", "Value", "Previous", "Change", "Change %"]];
+    const headers = [["KPI", "Value"]];
     sheet.getRange(startRow, 1, 1, headers[0].length).setValues([headers]);
+    sheet.getRange(startRow, 1, 1, headers[0].length).setBackground(COLORS.HEADER_BG)
+        .setFontColor(COLORS.HEADER_TEXT).setFontWeight("bold");
 
-    // Format headers
-    const headerRange = sheet.getRange(startRow, 1, 1, headers[0].length);
-    headerRange.setBackground(COLORS.HEADER_BG);
-    headerRange.setFontColor(COLORS.HEADER_TEXT);
-    headerRange.setFontWeight("bold");
-
-    // Write KPI rows
     const rows = [];
-    if (kpiData.total_employees !== undefined) {
-        rows.push(["Total Karyawan", kpiData.total_employees]);
-    }
-    if (kpiData.total_hk !== undefined) {
-        rows.push(["Total HK", kpiData.total_hk]);
-    }
-    if (kpiData.total_upah_bersih !== undefined) {
-        rows.push(["Total Upah Bersih", kpiData.total_upah_bersih]);
-    }
+    if (kpiData.total_employees !== undefined) rows.push(["Total Karyawan", kpiData.total_employees]);
+    if (kpiData.total_hk !== undefined) rows.push(["Total HK", kpiData.total_hk]);
+    if (kpiData.total_upah_bersih !== undefined) rows.push(["Total Upah Bersih", kpiData.total_upah_bersih]);
 
     if (rows.length > 0) {
         sheet.getRange(startRow + 1, 1, rows.length, rows[0].length).setValues(rows);
-    }
-}
-
-/**
- * Write comparison data
- */
-function writeComparisonData(sheet, startRow, comparisons) {
-    // Implementation for comparison/division data
-    if (Array.isArray(comparisons)) {
-        const headers = [["Division", "Employees", "HK", "Upah Bersih", "FFB/Employee"]];
-        sheet.getRange(startRow, 1, 1, headers[0].length).setValues([headers]);
-
-        const rows = comparisons.map(div => [
-            div.division || div.code,
-            div.employee_count || 0,
-            div.total_hk || 0,
-            div.upah_bersih || 0,
-            div.yield || 0
-        ]);
-
-        if (rows.length > 0) {
-            sheet.getRange(startRow + 1, 1, rows.length, rows[0].length).setValues(rows);
-        }
     }
 }
 
@@ -478,138 +379,44 @@ function writeComparisonData(sheet, startRow, comparisons) {
 // GENERIC SYNC (Fallback)
 // ============================================================================
 
-/**
- * Generic sync for unknown formats
- */
 function syncGenericData(payload) {
     const { division, month, year, headers, rows } = payload;
-
     const sheetName = division || 'Sheet1';
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(sheetName);
-
-    if (!sheet) {
-        sheet = ss.insertSheet(sheetName);
-    }
-
+    if (!sheet) sheet = ss.insertSheet(sheetName);
     sheet.clear();
 
-    let currentRow = 1;
+    sheet.getRange(1, 1).setValue(`REPORT: ${division || 'Generic'}`);
+    sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setFontSize(14);
 
-    // Add metadata
-    sheet.getRange(currentRow, 1).setValue(`REPORT: ${division || 'Generic'}`);
-    sheet.getRange(currentRow, 1, 1, 5).setFontWeight("bold").setFontSize(14);
-    // NO MERGE to avoid frozen rows conflict
-    currentRow += 2;
-
-    // Write headers
     if (headers && headers.length > 0) {
-        const headerRange = sheet.getRange(currentRow, 1, 1, headers.length);
+        const headerRange = sheet.getRange(3, 1, 1, headers.length);
         headerRange.setValues([headers]);
         headerRange.setBackground(COLORS.HEADER_BG);
         headerRange.setFontColor(COLORS.HEADER_TEXT);
         headerRange.setFontWeight("bold");
-        currentRow++;
     }
 
-    // Write data
     if (rows && rows.length > 0) {
-        const dataRange = sheet.getRange(currentRow, 1, rows.length, rows[0].length);
-        dataRange.setValues(rows);
-
-        // Basic formatting
-        dataRange.setBorder(true, true, true, true, true, true, "#CCCCCC", SpreadsheetApp.BorderStyle.SOLID);
+        sheet.getRange(4, 1, rows.length, rows[0].length).setValues(rows);
     }
 
     sheet.autoResizeColumns(1, 20);
-
-    return {
-        sheet: sheetName,
-        rows_processed: rows ? rows.length : 0,
-        format: 'GENERIC'
-    };
+    return { sheet: sheetName, rows_processed: rows ? rows.length : 0 };
 }
 
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/**
- * Add metadata section (title, period, timestamp)
- */
-function addMetadataSection(sheet, division, month, year, type = "DAFTAR_UPAH") {
-    // Row 1: Report Title
-    const title = type === "DASHBOARD"
-        ? `LAPORAN DASHBOARD - ${division}`
-        : `DAFTAR UPAH - ${division}`;
-
-    sheet.getRange(1, 1).setValue(title);
-    sheet.getRange(1, 1, 1, 8)
-        .setFontWeight("bold")
-        .setFontSize(14)
-        .setBackground(COLORS.TITLE_BG);
-    // NO MERGE to avoid frozen rows conflict
-
-    // Row 2: Period
-    const monthName = getMonthName(month);
-    const periodText = type === "DASHBOARD"
-        ? `PERIODE: ${monthName} ${year}`
-        : `BULAN: ${monthName} ${year}`;
-
-    sheet.getRange(2, 1).setValue(periodText);
-    sheet.getRange(2, 1, 1, 8).setFontWeight("bold");
-    // NO MERGE
-
-    // Row 3: Timestamp
-    sheet.getRange(3, 1).setValue(`Last Sync: ${new Date().toLocaleString('id-ID')}`);
-    sheet.getRange(3, 1, 1, 8).setFontStyle("italic").setFontSize(9);
-    // NO MERGE
-
-    return 3; // Number of metadata rows
-}
-
-/**
- * Get Indonesian month name
- */
 function getMonthName(monthIndex) {
-    const months = [
-        "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
-    ];
+    const months = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
     return months[monthIndex] || monthIndex;
 }
 
-/**
- * Create JSON response
- */
 function jsonResponse(data) {
     return ContentService.createTextOutput(JSON.stringify(data))
         .setMimeType(ContentService.MimeType.JSON);
-}
-
-// ============================================================================
-// TESTING FUNCTIONS (Optional)
-// ============================================================================
-
-/**
- * Test function - can be run manually from Apps Script editor
- */
-function testSync() {
-    const testPayload = {
-        secret: PROPERTIES.getProperty('API_SECRET'),
-        division: 'TEST',
-        month: 1,
-        year: 2026,
-        format: 'DAFTAR_UPAH',
-        headers: ["No", "NIK", "Nama", "Jabatan", "HK", "Upah"],
-        rows: [
-            ["", "", "GANG: H1H"],
-            [1, "001", "Employee 1", "Worker", 26, 5000000],
-            [2, "002", "Employee 2", "Worker", 26, 5000000],
-            ["", "", "TOTAL GANG", "", 52, 10000000],
-            ["", "", "GRAND TOTAL", "", 52, 10000000]
-        ]
-    };
-
-    return handleSyncRequest(testPayload);
 }

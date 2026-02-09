@@ -33,6 +33,7 @@ export default function PayrollAnalysisPage({
 
   // State for data
   const [rawData, setRawData] = useState([]);
+  const [aggregatedData, setAggregatedData] = useState(null); // New state for aggregated totals
   const [allDivisions, setAllDivisions] = useState([]);
   const [gangs, setGangs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -41,61 +42,31 @@ export default function PayrollAnalysisPage({
   // State for active tab
   const [activeTab, setActiveTab] = useState('semua');
 
-  // State for range filters per tab
-  const [rangeFilters, setRangeFilters] = useState({
-    semua: { min: 0, max: null },      // Filter by upah_bersih
-    premi: { min: 0, max: null },      // Filter by total_premi
-    lembur: { min: 0, max: null },     // Filter by lembur_jumlah
-    tunjangan: { min: 0, max: null },  // Filter by total_tunjangan
-    potongan: { min: 0, max: null }   // Filter by total_potongan_bersih
-  });
+  // State for sync
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
-  // Initialize print mode
-  useEffect(() => {
-    initPrintMode();
-  }, []);
+  // ... (existing code)
 
-  // Fetch divisions
-  useEffect(() => {
-    async function loadDivisions() {
-      if (!token) return;
-      try {
-        const divisions = await fetchDivisions(token);
-        setAllDivisions(divisions || []);
-      } catch (e) {
-        console.error('[PayrollAnalysis] Failed to load divisions:', e);
-      }
-    }
-    loadDivisions();
-  }, [token]);
-
-  // Load gangs when division changes
-  useEffect(() => {
-    async function loadGangs() {
-      if (!division || !token) {
-        setGangs([]);
-        setGang('');
-        return;
-      }
-      try {
-        const list = await fetchGangs(token, division, null, true);
-        if (list && list.length > 0) {
-          setGangs(list);
-          if (!gang || !list.some(g => g.gang_code === gang)) {
-            setGang(list[0]?.gang_code || '');
-          }
-        } else {
-          setGangs([]);
-          setGang('');
+  // Fetch aggregated data for KPIs
+  const fetchAggregatedData = async () => {
+    if (!token || !division) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
+      const response = await fetch(
+        `${apiUrl}/payroll/dashboard/aggregation/gang-data?division_code=${division}&month=${month}&year=${year}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      if (response.ok) {
+        const json = await response.json();
+        if (json.success) {
+          setAggregatedData(json.data);
         }
-      } catch (e) {
-        console.error('[PayrollAnalysis] Failed to load gangs:', e);
-        setGangs([]);
-        setGang('');
       }
+    } catch (e) {
+      console.error('[PayrollAnalysis] Failed to fetch aggregated data:', e);
     }
-    loadGangs();
-  }, [division, token]);
+  };
 
   // Fetch payroll data - extracted as separate function for manual trigger
   const fetchData = async () => {
@@ -105,6 +76,11 @@ export default function PayrollAnalysisPage({
     }
     setLoading(true);
     setError(null);
+    setAggregatedData(null); // Reset aggregation data
+
+    // Trigger aggregation fetch in parallel
+    fetchAggregatedData();
+
     try {
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
 
@@ -223,19 +199,39 @@ export default function PayrollAnalysisPage({
 
   // Calculate KPI
   const kpiData = useMemo(() => {
-    // Helper to sum
-    const sum = (field) => filteredData.reduce((acc, row) => acc + (row[field] || 0), 0);
+    // A. Calculate from Raw Data (Fallback & fields not in aggregation)
+    const rawSum = (field) => filteredData.reduce((acc, row) => acc + (row[field] || 0), 0);
 
+    // B. Calculate from Aggregation Data (Primary for consistency)
+    let aggregatedSum = null;
+    if (aggregatedData && Array.isArray(aggregatedData)) {
+      // Filter aggregation by selected gang if needed
+      const relevantData = (!gang || gang === 'ALL')
+        ? aggregatedData
+        : aggregatedData.filter(d => d.gang_code === gang);
+
+      aggregatedSum = {
+        total_wage: relevantData.reduce((acc, r) => acc + (r.total_wage || 0), 0),
+        total_ot: relevantData.reduce((acc, r) => acc + (r.total_ot || 0), 0),
+        total_premi: relevantData.reduce((acc, r) => acc + (r.total_premi || 0), 0),
+        total_hk: relevantData.reduce((acc, r) => acc + (r.total_hk || 0), 0),
+        headcount: relevantData.reduce((acc, r) => acc + (r.headcount || 0), 0),
+      };
+    }
+
+    // Use Aggregation if available, otherwise Raw
+    // Note: totalTunjangan and totalPotongan are ONLY available in raw for now.
     return {
-      employeeCount: filteredData.length,
-      totalHK: sum('jumlah_hk'),
-      totalPremi: sum('total_premi'),
-      totalLembur: sum('lembur_jumlah'),
-      totalUpahBersih: sum('upah_bersih'),
-      totalTunjangan: sum('total_tunjangan'),
-      totalPotongan: sum('total_potongan_bersih')
+      employeeCount: aggregatedSum ? aggregatedSum.headcount : filteredData.length,
+      totalHK: aggregatedSum ? aggregatedSum.total_hk : rawSum('jumlah_hk'),
+      totalPremi: aggregatedSum ? aggregatedSum.total_premi : rawSum('total_premi'),
+      totalLembur: aggregatedSum ? aggregatedSum.total_ot : rawSum('lembur_jumlah'),
+      totalUpahBersih: aggregatedSum ? aggregatedSum.total_wage : rawSum('upah_bersih'),
+      totalTunjangan: rawSum('total_tunjangan'),
+      totalPotongan: rawSum('total_potongan_bersih'),
+      isAggregated: !!aggregatedSum // Flag to show source
     };
-  }, [filteredData]);
+  }, [filteredData, aggregatedData, gang]);
 
   // Format helpers
   const formatNumber = (value) => {
@@ -365,6 +361,64 @@ export default function PayrollAnalysisPage({
     document.body.removeChild(link);
   };
 
+  // Sync to Spreadsheet handler
+  const handleSync = async () => {
+    if (!division) {
+      alert('Pilih divisi terlebih dahulu');
+      return;
+    }
+    if (filteredData.length === 0) {
+      alert('Tidak ada data untuk disinkronisasi');
+      return;
+    }
+
+    setSyncing(true);
+    setSyncResult(null);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
+      const response = await fetch(
+        `${apiUrl}/spreadsheet/sync`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            division: division,
+            month: month,
+            year: year,
+            syncType: 'DAFTAR_UPAH' // Use same sync type as main Daftar Upah
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        const successCount = result.results?.filter(r => r.status === 'SUCCESS').length || 0;
+        setSyncResult({
+          success: true,
+          message: `Berhasil mensinkronisasi ${successCount} divisi (${filteredData.length} data) ke Spreadsheet!`
+        });
+      } else {
+        setSyncResult({
+          success: false,
+          message: result.error || 'Gagal mensinkronisasi data'
+        });
+      }
+    } catch (err) {
+      console.error('[PayrollAnalysis] Sync error:', err);
+      setSyncResult({
+        success: false,
+        message: err.message || 'Terjadi kesalahan saat sinkronisasi'
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // Print handler
   const handlePrint = () => {
     window.print();
@@ -459,6 +513,9 @@ export default function PayrollAnalysisPage({
         </div>
 
         <div className="right-section">
+          <button onClick={handleSync} className="wsp-btn wsp-btn-success" disabled={syncing || loading} style={{ backgroundColor: syncing ? '#94a3b8' : '#10b981' }}>
+            {syncing ? 'SYNCING...' : 'SYNC TO SPREADSHEET'}
+          </button>
           <button onClick={handlePrint} className="wsp-btn">
             PRINT / PDF
           </button>
@@ -467,6 +524,23 @@ export default function PayrollAnalysisPage({
           </button>
         </div>
       </div>
+
+      {/* Sync Result */}
+      {syncResult && (
+        <div style={{
+          padding: '1rem',
+          backgroundColor: syncResult.success ? '#d1fae5' : '#fee2e2',
+          color: syncResult.success ? '#065f46' : '#b91c1c',
+          borderRadius: '0.5rem',
+          margin: '0.5rem 1rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <span>{syncResult.message}</span>
+          <button onClick={() => setSyncResult(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -491,7 +565,7 @@ export default function PayrollAnalysisPage({
         </div>
 
         {/* KPI Cards */}
-        <div className="wsp-kpi-grid" style={{ marginBottom: '2rem' }}>
+        <div className="wsp-kpi-grid" style={{ marginBottom: '0.5rem' }}>
           <div className="wsp-kpi-card">
             <div className="wsp-kpi-label">TOTAL KARYAWAN</div>
             <div className="wsp-kpi-value">{formatNumber(kpiData.employeeCount)}</div>
@@ -508,6 +582,13 @@ export default function PayrollAnalysisPage({
             <div className="wsp-kpi-label">TOTAL UPAH BERSIH</div>
             <div className="wsp-kpi-value">{formatNumber(kpiData.totalUpahBersih)}</div>
           </div>
+        </div>
+
+        {/* Data Source Indicator */}
+        <div style={{ marginBottom: '2rem', fontSize: '0.75rem', color: kpiData.isAggregated ? '#059669' : '#64748b', textAlign: 'right', fontStyle: 'italic' }}>
+          {kpiData.isAggregated
+            ? '✓ Sumber Data: Agregasi (Sesuai Dashboard Eksekutif)'
+            : '⚠ Sumber Data: Kalkulasi Raw (Belum ada data agregasi)'}
         </div>
 
         {/* Internal Tab Filter (No-print) */}

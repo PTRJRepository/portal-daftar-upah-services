@@ -5,6 +5,7 @@ import {
     BarChart, Bar, Cell, PieChart, Pie, Legend, LineChart, Line
 } from 'recharts';
 import LoadingScreen from '../components/common/LoadingScreen';
+import PremiCompositionChart from '../components/dashboard/PremiCompositionChart';
 
 // Helper to format currency
 const formatCurrency = (val) => {
@@ -428,6 +429,11 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
+                </div>
+
+                {/* Premi Analysis Chart */}
+                <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+                    <PremiCompositionChart month={month} year={year} division="ALL" />
                 </div>
             </div>
 

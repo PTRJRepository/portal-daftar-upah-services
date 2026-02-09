@@ -8,7 +8,7 @@ import { currentPeriodService } from "./currentPeriodService";
 import { PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
 
 // Import new unified component services
-import { lemburService, premiService, tunjanganService, potonganService, pph21TerService } from "./payroll";
+import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
 
 interface EmployeeRow {
     emp_code: string;
@@ -1769,11 +1769,11 @@ export class DataExtractorService {
         });
 
         // Get penghasilan_bruto from tunjangan for PPH21 calculation
-        const penghasilanBruto = tunjanganResult.output.value.total +
-            tunjanganResult.output.value.beras?.value +
-            tunjanganResult.output.value.jabatan?.value +
-            tunjanganResult.output.value.masa_kerja?.value +
-            premiResult.output.value.total_premi;
+        const penghasilanBruto = tunjanganResult.output.value.total.value +
+            (tunjanganResult.output.value.beras?.value || 0) +
+            (tunjanganResult.output.value.jabatan?.value || 0) +
+            (tunjanganResult.output.value.masa_kerja?.value || 0) +
+            (premiResult.output.value.total_premi || 0);
 
         const potonganResult = await potonganService.calculate({
             emp_code: empCode,
@@ -1801,7 +1801,7 @@ export class DataExtractorService {
                 pph21_ter: pph21TerResult.output,
             },
             calculation_meta: {
-                period: { month, year: String(year) },
+                period: { month, year },
                 generated_at: new Date(),
                 execution_time_ms: Date.now() - startTime,
                 service_versions: payrollComponentRegistry.getAllServiceVersions(),

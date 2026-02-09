@@ -2,70 +2,16 @@ import { Config } from "../config";
 import { AggregationRecord } from "./payrollDataService";
 import { SummaryService } from "./summaryService";
 
-/**
- * Multi-level header definition matching Daftar Upah format
- * Original structure: 34 columns to match employee data
- */
-const MULTI_LEVEL_HEADERS = [
-    // IDENTITAS (4 columns)
-    { field: 'no', headers: ['IDENTITAS', null, null, 'NO'] },
-    { field: 'nik', headers: ['IDENTITAS', null, null, 'NIK'] },
-    { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'] },
-    { field: 'jabatan', headers: ['IDENTITAS', null, null, 'JABATAN'] },
-
-    // ABSENSI (6 columns)
-    { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'] },
-    { field: 'cuti_tahunan_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'CUTI'] },
-    { field: 'cuti_sakit_haid_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'SAKIT+HAID'] },
-    { field: 'cuti_minggu_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'MINGGU'] },
-    { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'NASIONAL'] },
-    { field: 'jumlah_hk', headers: ['ABSENSI', 'REKAP', null, 'JUMLAH HK'] },
-
-    // GAJI POKOK (3 columns)
-    { field: 'gaji_pokok', headers: ['GAJI POKOK', null, null, 'JUMLAH'] },
-    { field: 'gaji_pokok_ideal', headers: ['GAJI POKOK', null, null, 'IDEAL'] },
-    { field: 'gaji_pokok_aktual', headers: ['GAJI POKOK', null, null, 'AKTUAL'] },
-
-    // TUNJANGAN (5 columns)
-    { field: 'beras_jumlah', headers: ['TUNJANGAN', 'BERAS', null, 'JUMLAH'] },
-    { field: 'jabatan_jumlah', headers: ['TUNJANGAN', 'JABATAN', null, 'JUMLAH'] },
-    { field: 'masa_kerja_jumlah', headers: ['TUNJANGAN', 'MASA KERJA', null, 'JUMLAH'] },
-    { field: 'lembur_jumlah', headers: ['TUNJANGAN', 'LEMBUR', null, 'JUMLAH'] },
-    { field: 'total_tunjangan', headers: ['TUNJANGAN', null, null, 'TOTAL'] },
-
-    // PREMI (6 columns: brondol, pruning, 3 empty, total)
-    { field: 'premi_brondol', headers: ['PREMI', 'BRONDOL', null, 'JUMLAH'] },
-    { field: 'premi_pruning', headers: ['PREMI', 'PRUNING', null, 'JUMLAH'] },
-    { field: 'premi_empty_1', headers: ['PREMI', 'DINAMIS', null, ''] },
-    { field: 'premi_empty_2', headers: ['PREMI', 'DINAMIS', null, ''] },
-    { field: 'premi_empty_3', headers: ['PREMI', 'DINAMIS', null, ''] },
-    { field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL'] },
-
-    // POTONGAN (8 columns: 3 empty, astek, bpjs, spsi, pph21, total)
-    { field: 'pot_empty_1', headers: ['POTONGAN', 'DINAMIS', null, ''] },
-    { field: 'pot_empty_2', headers: ['POTONGAN', 'DINAMIS', null, ''] },
-    { field: 'pot_empty_3', headers: ['POTONGAN', 'DINAMIS', null, ''] },
-    { field: 'pot_astek', headers: ['POTONGAN', 'ASTEK', 'PEKERJA', 'JUMLAH'] },
-    { field: 'pot_bpjs_kesehatan_pekerja', headers: ['POTONGAN', 'BPJS', 'PEKERJA', 'JUMLAH'] },
-    { field: 'pot_spsi', headers: ['POTONGAN', 'SPSI', null, 'JUMLAH'] },
-    { field: 'pot_pph21', headers: ['POTONGAN', 'PPH21', null, 'JUMLAH'] },
-    { field: 'total_potongan_bersih', headers: ['POTONGAN', null, null, 'TOTAL'] },
-
-    // TOTAL (2 columns)
-    { field: 'jumlah_upah_kotor', headers: ['TOTAL', null, null, 'KOTOR'] },
-    { field: 'upah_bersih', headers: ['TOTAL', null, null, 'BERSIH'] }
-];
-
 export class AppsScriptService {
     /**
      * Sync division data to Google Spreadsheet via Apps Script Web App
-     * Format matches Daftar Upah with multi-level headers, gang headers, gang totals, and grand total
+     * Handles DYNAMIC columns for premi and potongan
      */
     static async syncDivisionToSpreadsheet(
         division: string,
         month: number,
         year: number,
-        records: any[] // Flat employee records
+        records: any[] // Flat employee records with dynamic fields
     ) {
         const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
         const scriptSecret = process.env.GOOGLE_SCRIPT_SECRET;
@@ -74,7 +20,7 @@ export class AppsScriptService {
             throw new Error("Missing GOOGLE_SCRIPT_URL or GOOGLE_SCRIPT_SECRET in environment variables");
         }
 
-        console.log(`[AppsScriptService] Syncing ${division} (${month}/${year}) to Spreadsheet (Daftar Upah Multi-Level Format)...`);
+        console.log(`[AppsScriptService] Syncing ${division} (${month}/${year}) to Spreadsheet (Dynamic Column Format)...`);
 
         // 1. Group employees by gang
         const gangsMap = new Map<string, any[]>();
@@ -89,22 +35,26 @@ export class AppsScriptService {
         // 2. Sort gangs alphabetically
         const sortedGangs = Array.from(gangsMap.keys()).sort();
 
-        // 3. Build multi-level headers (4 levels)
-        const headers = this.buildMultiLevelHeaders();
-        const flatHeaders = this.flattenHeaders(headers);
+        // 3. Build DYNAMIC column structure by scanning all records
+        const dynamicColumns = this.buildDynamicColumnStructure(records);
 
-        // Helper to get numeric value
-        const val = (v: any) => parseFloat(v) || 0;
+        // 4. Build headers dynamically
+        const headers = this.buildDynamicHeaders(dynamicColumns);
 
-        // 4. Build rows with gang headers and gang totals
+        // Get the actual number of columns from headers
+        const numCols = headers[0].length;
+        console.log(`[AppsScriptService] Built headers: ${headers.length} levels, ${numCols} columns`);
+        console.log(`[AppsScriptService] Headers structure:`, JSON.stringify(headers.map(h => h.slice(0, 10)))); // Log first 10 columns of each level
+
+        // 5. Build rows with gang headers and gang totals
         const spreadsheetRows: any[][] = [];
         let globalNo = 1;
 
         sortedGangs.forEach(gangCode => {
             const employees = gangsMap.get(gangCode)!;
 
-            // A. Gang Header Row
-            const gangHeaderRow = new Array(flatHeaders.length).fill("");
+            // A. Gang Header Row - use numCols instead of headers.length
+            const gangHeaderRow = new Array(numCols).fill("");
             gangHeaderRow[2] = `GANG: ${gangCode}`; // Put in "Nama" column (index 2)
             spreadsheetRows.push(gangHeaderRow);
 
@@ -115,41 +65,51 @@ export class AppsScriptService {
                 return nikA.localeCompare(nikB, undefined, { numeric: true, sensitivity: 'base' });
             });
 
-            // C. Calculate gang total
-            const gangTotal = new Array(flatHeaders.length).fill(0);
+            // C. Calculate gang total - use numCols instead of headers.length
+            const gangTotal = new Array(numCols).fill(0);
             gangTotal[0] = ""; // No
             gangTotal[1] = ""; // NIK
             gangTotal[2] = "TOTAL GANG"; // Nama
 
             // D. Employee rows
             employees.forEach(emp => {
-                const row = this.buildEmployeeRow(emp, globalNo++, flatHeaders.length);
+                const row = this.buildDynamicEmployeeRow(emp, globalNo++, dynamicColumns);
                 spreadsheetRows.push(row);
 
                 // Accumulate gang total for numeric columns
-                this.accumulateTotal(gangTotal, row);
+                this.accumulateDynamicTotal(gangTotal, row);
             });
 
             // E. Add Gang Total Row
             spreadsheetRows.push(gangTotal);
         });
 
-        // 5. Calculate and Add Grand Total Row
-        const grandTotal = this.calculateGrandTotal(spreadsheetRows, flatHeaders.length);
+        // 6. Calculate and Add Grand Total Row - use numCols instead of headers.length
+        const grandTotal = this.calculateDynamicGrandTotal(spreadsheetRows, numCols);
         spreadsheetRows.push(grandTotal);
 
-        // 6. Prepare Payload for Apps Script
+        console.log(`[AppsScriptService] Total rows: ${spreadsheetRows.length}, First row has ${spreadsheetRows[0]?.length} columns`);
+
+        // Validate all rows have same column count
+        const colCounts = spreadsheetRows.map(r => r.length);
+        const uniqueColCounts = [...new Set(colCounts)];
+        if (uniqueColCounts.length > 1) {
+            console.error(`[AppsScriptService] ERROR: Inconsistent column counts!`, uniqueColCounts);
+            throw new Error(`Inconsistent row lengths: ${uniqueColCounts.join(', ')}`);
+        }
+
+        // 7. Prepare Payload for Apps Script
         const payload = {
             secret: scriptSecret,
             division: division,
             month: month,
             year: year,
-            headers: headers, // Multi-level headers!
+            headers: headers,
             rows: spreadsheetRows,
-            format: "DAFTAR_UPAH_MULTILEVEL"
+            format: "DAFTAR_UPAH_DYNAMIC"
         };
 
-        // 7. Send to Web App
+        // 8. Send to Web App
         try {
             const response = await fetch(scriptUrl, {
                 method: "POST",
@@ -180,100 +140,350 @@ export class AppsScriptService {
     }
 
     /**
-     * Build simple single-row headers for now
-     * TODO: Implement proper multi-level headers with cell merging
+     * Build dynamic column structure by scanning all employee records
+     * Returns list of all unique dynamic field names for premi and potongan
      */
-    private static buildMultiLevelHeaders() {
-        // Just return the bottom level (level 3) with column names
-        const headers: string[] = [];
-        for (const colDef of MULTI_LEVEL_HEADERS) {
-            headers.push(colDef.headers[3]);
+    private static buildDynamicColumnStructure(records: any[]) {
+        const dynamicPremiFields = new Set<string>();
+        const dynamicPotonganFields = new Set<string>();
+
+        // Scan all records for dynamic fields
+        records.forEach(emp => {
+            // Find all fields starting with 'premi_' except static ones
+            Object.keys(emp).forEach(key => {
+                if (key.startsWith('premi_') &&
+                    key !== 'premi_brondol' &&
+                    key !== 'premi_pruning' &&
+                    key !== 'total_premi') {
+                    dynamicPremiFields.add(key);
+                }
+
+                // Find all fields starting with 'pot_' except static ones
+                if (key.startsWith('pot_') &&
+                    key !== 'pot_astek' &&
+                    key !== 'pot_bpjs_kesehatan_pekerja' &&
+                    key !== 'pot_bpjs_kesehatan_majikan' &&
+                    key !== 'pot_spsi' &&
+                    key !== 'pot_pph21' &&
+                    key !== 'pot_pph21_ter' &&
+                    key !== 'total_potongan_bersih') {
+                    dynamicPotonganFields.add(key);
+                }
+            });
+        });
+
+        return {
+            dynamicPremiFields: Array.from(dynamicPremiFields).sort(),
+            dynamicPotonganFields: Array.from(dynamicPotonganFields).sort()
+        };
+    }
+
+    /**
+     * Build MULTI-LEVEL headers dynamically based on actual columns present
+     * Returns array of arrays where each sub-array is a header level
+     */
+    private static buildDynamicHeaders(dynamicCols: ReturnType<typeof AppsScriptService.buildDynamicColumnStructure>): string[][] {
+        const level0: string[] = [];  // Top level (main categories)
+        const level1: string[] = [];  // Second level (sub-categories)
+        const level2: string[] = [];  // Third level (detail sub-categories)
+        const level3: string[] = [];  // Bottom level (column names)
+
+        // Helper to add empty value for spanning
+        const empty = "";
+
+        // Count columns for positioning
+        let colIndex = 0;
+
+        // IDENTITAS (4 columns)
+        for (let i = 0; i < 4; i++) {
+            level0.push('IDENTITAS');
+            level1.push(empty);
+            level2.push(empty);
         }
-        return headers;
-    }
+        level3.push('NO', 'NIK', 'NAMA', 'JABATAN');
+        colIndex += 4;
 
-    /**
-     * Flatten multi-level headers for spreadsheet (for backward compatibility)
-     */
-    private static flattenHeaders(headers: any[][]) {
-        // Return the bottom level (level 3) with column names
-        return headers[headers.length - 1];
-    }
+        // ABSENSI (6 columns)
+        // First 1 column: KEHADIRAN
+        level0.push('ABSENSI');
+        level1.push('KEHADIRAN');
+        level2.push(empty);
+        level3.push('AN');
+        colIndex++;
 
-    /**
-     * Build employee data row matching the header structure
-     * Original structure: 34 columns
-     */
-    private static buildEmployeeRow(emp: any, no: number, numCols: number): any[] {
-        const val = (v: any) => parseFloat(v) || 0;
+        // Next 4 columns: KETIDAKHADIRAN
+        for (let i = 0; i < 4; i++) {
+            level0.push('ABSENSI');
+            level1.push('KETIDAKHADIRAN');
+            level2.push(empty);
+        }
+        level3.push('CUTI', 'SAKIT+HAID', 'MINGGU', 'NASIONAL');
+        colIndex += 4;
 
-        return [
-            no,                              // 0: No
-            emp.nik || "",                   // 1: NIK
-            emp.nama || "",                   // 2: Nama
-            emp.jabatan_estate || emp.jabatan || "",  // 3: Jabatan
+        // Last column: REKAP
+        level0.push('ABSENSI');
+        level1.push('REKAP');
+        level2.push(empty);
+        level3.push('JUMLAH HK');
+        colIndex++;
 
-            // ABSENSI (6 columns)
-            val(emp.hari_kerja),             // 4: AN
-            val(emp.cuti_tahunan_hari),      // 5: Cuti
-            val(emp.cuti_sakit_haid_hari),    // 6: Sakit+Haid
-            val(emp.cuti_minggu_hari),        // 7: Minggu
-            val(emp.cuti_nasional_hari),      // 8: Nasional
-            val(emp.jumlah_hk),               // 9: Jumlah HK
+        // GAJI POKOK (3 columns)
+        for (let i = 0; i < 3; i++) {
+            level0.push('GAJI POKOK');
+            level1.push(empty);
+            level2.push(empty);
+        }
+        level3.push('JUMLAH', 'IDEAL', 'AKTUAL');
+        colIndex += 3;
 
-            // GAJI POKOK (3 columns)
-            val(emp.gaji_pokok),              // 10: Jumlah
-            val(emp.gaji_pokok_ideal),        // 11: Ideal
-            val(emp.gaji_pokok_aktual),        // 12: Aktual
+        // TUNJANGAN (5 columns)
+        level0.push('TUNJANGAN');
+        level1.push('BERAS');
+        level2.push(empty);
+        level3.push('JUMLAH');
+        colIndex++;
 
-            // TUNJANGAN (5 columns)
-            val(emp.beras_jumlah),           // 13: Beras
-            val(emp.jabatan_jumlah),          // 14: Jabatan
-            val(emp.masa_kerja_jumlah),       // 15: Masa Kerja
-            val(emp.lembur_jumlah),           // 16: Lembur
-            val(emp.total_tunjangan),         // 17: Total
+        level0.push('TUNJANGAN');
+        level1.push('JABATAN');
+        level2.push(empty);
+        level3.push('JUMLAH');
+        colIndex++;
 
-            // PREMI (6 columns with empty placeholders)
-            val(emp.premi_brondol),           // 18: Brondol
-            val(emp.premi_pruning),            // 19: Pruning
-            "", "", "",                       // 20-22: Empty for dynamic premi
-            val(emp.total_premi),             // 23: Total
+        level0.push('TUNJANGAN');
+        level1.push('MASA KERJA');
+        level2.push(empty);
+        level3.push('JUMLAH');
+        colIndex++;
 
-            // POTONGAN (8 columns with empty placeholders)
-            "", "", "",                       // 24-26: Empty for dynamic potongan
-            val(emp.pot_astek),              // 27: Astek
-            val(emp.pot_bpjs_kesehatan_pekerja), // 28: BPJS TK
-            val(emp.pot_spsi),                 // 29: SPSI
-            val(emp.pot_pph21),                // 30: PPH21
-            val(emp.total_potongan_bersih),   // 31: Total
+        level0.push('TUNJANGAN');
+        level1.push('LEMBUR');
+        level2.push(empty);
+        level3.push('JUMLAH');
+        colIndex++;
 
-            // TOTAL (2 columns)
-            val(emp.jumlah_upah_kotor),       // 32: Kotor
-            val(emp.upah_bersih)               // 33: Bersih
-        ];
-    }
+        level0.push('TUNJANGAN');
+        level1.push(empty);
+        level2.push(empty);
+        level3.push('TOTAL');
+        colIndex++;
 
-    /**
-     * Accumulate values into total array
-     * Original structure: 34 columns total
-     */
-    private static accumulateTotal(total: any[], row: any[]): void {
-        // Columns that should be summed (numeric columns only)
-        // Skip empty columns (20-22, 24-26)
-        const sumIndices = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 23, 27, 28, 29, 30, 31, 32, 33];
+        // PREMI - Brondol, Pruning, Dynamic fields, Total
+        level0.push('PREMI');
+        level1.push('BRONDOL');
+        level2.push(empty);
+        level3.push('JUMLAH');
+        colIndex++;
 
-        sumIndices.forEach(idx => {
-            if (idx < row.length) {
-                const value = parseFloat(row[idx]) || 0;
-                total[idx] = (total[idx] as number) + value;
+        level0.push('PREMI');
+        level1.push('PRUNING');
+        level2.push(empty);
+        level3.push('JUMLAH');
+        colIndex++;
+
+        dynamicCols.dynamicPremiFields.forEach(field => {
+            level0.push('PREMI');
+            level1.push('PREMI DINAMIS');
+            level2.push(empty);
+            const displayName = field.replace('premi_', '').replace(/_/g, ' ').toUpperCase();
+            level3.push(displayName);
+            colIndex++;
+        });
+
+        level0.push('PREMI');
+        level1.push(empty);
+        level2.push(empty);
+        level3.push('TOTAL');
+        colIndex++;
+
+        // POTONGAN - Dynamic fields, then static
+        dynamicCols.dynamicPotonganFields.forEach(field => {
+            level0.push('POTONGAN');
+            level1.push('POTONGAN DINAMIS');
+            level2.push(empty);
+            const displayName = field.replace('pot_', '').replace(/_/g, ' ').toUpperCase();
+            level3.push(displayName);
+            colIndex++;
+        });
+
+        // Static potongan fields (matching data row: pot_astek, pot_bpjs_kesehatan_pekerja, pot_spsi, pot_pph21, total_potongan_bersih)
+        // ASTEK
+        level0.push('POTONGAN');
+        level1.push('ASTEK');
+        level2.push(empty);
+        level3.push('PEKERJA');
+        colIndex++;
+
+        // BPJS
+        level0.push('POTONGAN');
+        level1.push('BPJS');
+        level2.push('PEKERJA');
+        level3.push('JUMLAH');
+        colIndex++;
+
+        // SPSI
+        level0.push('POTONGAN');
+        level1.push('SPSI');
+        level2.push(empty);
+        level3.push('JUMLAH');
+        colIndex++;
+
+        // PPH21
+        level0.push('POTONGAN');
+        level1.push('PPH21');
+        level2.push(empty);
+        level3.push('JUMLAH');
+        colIndex++;
+
+        // Total potongan
+        level0.push('POTONGAN');
+        level1.push(empty);
+        level2.push(empty);
+        level3.push('TOTAL');
+        colIndex++;
+
+        // TOTAL (2 columns)
+        for (let i = 0; i < 2; i++) {
+            level0.push('TOTAL');
+            level1.push(empty);
+            level2.push(empty);
+        }
+        level3.push('KOTOR', 'BERSIH');
+
+        // ========== ANALISIS LEMBUR ==========
+        // Get unique task_desc from all employee lembur records
+        const lemburTasks = new Set<string>();
+        records.forEach(emp => {
+            if (emp.lembur_records && Array.isArray(emp.lembur_records)) {
+                emp.lembur_records.forEach((record: any) => {
+                    const taskDesc = record.task_desc || record.task_code || 'LAINNYA';
+                    lemburTasks.add(taskDesc);
+                });
             }
         });
+        const sortedLemburTasks = Array.from(lemburTasks).sort();
+
+        // For each task, add 2 columns: JAM, JUMLAH
+        sortedLemburTasks.forEach(task => {
+            const taskName = task.replace(/\s+/g, ' ').toUpperCase().substring(0, 15); // Limit length
+            level0.push('ANALISIS LEMBUR');
+            level1.push(taskName);
+            level2.push('JAM');
+            level3.push('JAM');
+            colIndex++;
+
+            level0.push('ANALISIS LEMBUR');
+            level1.push(taskName);
+            level2.push('JUMLAH');
+            level3.push('RP');
+            colIndex++;
+        });
+
+        // ========== ANALISIS PREMI ==========
+        // Premi columns breakdown: Brondol, Pruning, Dynamic
+        level0.push('ANALISIS PREMI');
+        level1.push('BRONDOL');
+        level2.push('JUMLAH');
+        level3.push('RP');
+        colIndex++;
+
+        level0.push('ANALISIS PREMI');
+        level1.push('PRUNING');
+        level2.push('JUMLAH');
+        level3.push('RP');
+        colIndex++;
+
+        dynamicCols.dynamicPremiFields.forEach(field => {
+            const displayName = field.replace('premi_', '').replace(/_/g, ' ').toUpperCase().substring(0, 15);
+            level0.push('ANALISIS PREMI');
+            level1.push(displayName);
+            level2.push('JUMLAH');
+            level3.push('RP');
+            colIndex++;
+        });
+
+        return [level0, level1, level2, level3];
     }
 
     /**
-     * Calculate grand total from all employee rows
+     * Build employee data row dynamically based on actual columns
      */
-    private static calculateGrandTotal(rows: any[][], numCols: number): any[] {
+    private static buildDynamicEmployeeRow(emp: any, no: number, dynamicCols: ReturnType<typeof AppsScriptService.buildDynamicColumnStructure>): any[] {
+        const val = (v: any) => parseFloat(v) || 0;
+        const row: any[] = [];
+
+        // IDENTITAS (4)
+        row.push(no, emp.nik || "", emp.nama || "", emp.jabatan_estate || emp.jabatan || "");
+
+        // ABSENSI (6)
+        row.push(
+            val(emp.hari_kerja),
+            val(emp.cuti_tahunan_hari),
+            val(emp.cuti_sakit_haid_hari),
+            val(emp.cuti_minggu_hari),
+            val(emp.cuti_nasional_hari),
+            val(emp.jumlah_hk)
+        );
+
+        // GAJI POKOK (3)
+        row.push(val(emp.gaji_pokok), val(emp.gaji_pokok_ideal), val(emp.gaji_pokok_aktual));
+
+        // TUNJANGAN (5)
+        row.push(
+            val(emp.beras_jumlah),
+            val(emp.jabatan_jumlah),
+            val(emp.masa_kerja_jumlah),
+            val(emp.lembur_jumlah),
+            val(emp.total_tunjangan)
+        );
+
+        // PREMI - Static
+        row.push(val(emp.premi_brondol), val(emp.premi_pruning));
+
+        // PREMI - Dynamic
+        dynamicCols.dynamicPremiFields.forEach(field => {
+            row.push(val(emp[field]));
+        });
+
+        // PREMI - Total
+        row.push(val(emp.total_premi));
+
+        // POTONGAN - Dynamic
+        dynamicCols.dynamicPotonganFields.forEach(field => {
+            row.push(val(emp[field]));
+        });
+
+        // POTONGAN - Static
+        row.push(
+            val(emp.pot_astek),
+            val(emp.pot_bpjs_kesehatan_pekerja),
+            val(emp.pot_spsi),
+            val(emp.pot_pph21),
+            val(emp.total_potongan_bersih)
+        );
+
+        // TOTAL (2)
+        row.push(val(emp.jumlah_upah_kotor), val(emp.upah_bersih));
+
+        return row;
+    }
+
+    /**
+     * Accumulate values into total array (dynamic)
+     */
+    private static accumulateDynamicTotal(total: any[], row: any[]): void {
+        // Skip label columns (indices 0-3)
+        for (let i = 4; i < row.length; i++) {
+            if (i < row.length) {
+                const value = parseFloat(row[i]) || 0;
+                total[i] = (total[i] as number) + value;
+            }
+        }
+    }
+
+    /**
+     * Calculate grand total from all employee rows (dynamic)
+     */
+    private static calculateDynamicGrandTotal(rows: any[][], numCols: number): any[] {
         const grandTotal = new Array(numCols).fill(0);
         grandTotal[0] = ""; // No
         grandTotal[1] = ""; // NIK
@@ -285,7 +495,7 @@ export class AppsScriptService {
 
             // Skip non-employee rows
             if (!thirdCol.startsWith("GANG") && !thirdCol.includes("TOTAL")) {
-                this.accumulateTotal(grandTotal, row);
+                this.accumulateDynamicTotal(grandTotal, row);
             }
         });
 

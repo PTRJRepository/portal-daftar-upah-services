@@ -43,7 +43,7 @@ export class DashboardService {
             WHERE 
                 (period_year > ? OR (period_year = ? AND period_month >= ?))
                 AND (period_year < ? OR (period_year = ? AND period_month <= ?))
-                AND division_code NOT IN ('MILL', 'PKS') -- Usually we separate Mill for plantation analysis, but can be included if needed
+                -- AND division_code NOT IN ('MILL', 'PKS') -- Removed to include ALL divisions in Payroll Trend (Mill, IJL, etc.)
             GROUP BY period_year, period_month
             ORDER BY period_year, period_month
         `;
@@ -330,6 +330,68 @@ export class DashboardService {
             cost_per_hk: r.total_hk > 0 ? r.total_wage / r.total_hk : 0,
             headcount: r.headcount
         }));
+    }
+
+    /**
+     * Get Aggregated Gang Data for Comprehensive Analysis
+     * Used for KPI cards to ensure consistency with Executive Dashboard
+     */
+    public async getAggregatedGangData(divisionCode: string, month: number, year: number): Promise<any[]> {
+        const query = `
+            SELECT 
+                gang_code,
+                SUM(ISNULL(total_upah_bersih, 0)) as total_wage,
+                SUM(ISNULL(total_lembur, 0)) as total_ot,
+                SUM(ISNULL(total_premi, 0)) as total_premi,
+                SUM(ISNULL(total_hk, 0)) as total_hk,
+                SUM(ISNULL(total_employees, 0)) as headcount
+            FROM dbo.daftar_upah_aggregation_history
+            WHERE period_month = ? AND period_year = ? 
+            ${divisionCode && divisionCode !== 'ALL' ? 'AND division_code = ?' : ''}
+            GROUP BY gang_code
+            ORDER BY gang_code
+        `;
+
+        const params: (string | number)[] = [month, year];
+        if (divisionCode && divisionCode !== 'ALL') params.push(divisionCode);
+
+        const rows = await this.extendDb.query<any>(query, params);
+        return rows;
+    }
+    /**
+     * Get Premi Analysis (Breakdown by Type)
+     */
+    public async getPremiAnalysis(month: number, year: number, divisionCode?: string): Promise<any[]> {
+        const query = `
+            SELECT 
+                SUM(ISNULL(total_premi_brondol, 0)) as brondol,
+                SUM(ISNULL(total_premi_prunning, 0)) as pruning,
+                SUM(ISNULL(total_premi_insentif, 0)) as insentif,
+                SUM(ISNULL(total_premi_kinerja, 0)) as kinerja,
+                SUM(ISNULL(total_premi, 0)) as total
+            FROM dbo.daftar_upah_aggregation_history
+            WHERE period_month = ? AND period_year = ?
+            ${divisionCode && divisionCode !== 'ALL' ? 'AND division_code = ?' : ''}
+        `;
+
+        const params: (string | number)[] = [month, year];
+        if (divisionCode && divisionCode !== 'ALL') params.push(divisionCode);
+
+        const rows = await this.extendDb.query<any>(query, params);
+
+        if (rows.length === 0) return [];
+
+        const r = rows[0];
+        // Calculate "Other" premi (Total - known components)
+        const other = r.total - (r.brondol + r.pruning + r.insentif + r.kinerja);
+
+        return [
+            { name: 'Brondol', value: r.brondol },
+            { name: 'Pruning', value: r.pruning },
+            { name: 'Insentif', value: r.insentif },
+            { name: 'Kinerja', value: r.kinerja },
+            { name: 'Lainnya', value: other > 0 ? other : 0 }
+        ].filter(item => item.value > 0);
     }
 }
 

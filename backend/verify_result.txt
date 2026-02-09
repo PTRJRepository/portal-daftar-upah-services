@@ -1,0 +1,13 @@
+Verifying Refactor Consistency...
+Latest Period: 1/2026
+Testing Division: AB1
+Fetching Aggregated Gang Data...
+[AGGREGATED] Total Wage: 689,215,043.83
+[AGGREGATED] Headcount: 137
+Fetching Raw Data (DataExtractorService)...
+[RAW] Total Wage: 686,557,897.21
+[RAW] Headcount: 138
+---------------------------------------------------
+Wage Difference: 2,657,146.62 (0.3855%)
+Headcount Diff: -1
+⚠️ WARNING: Significant discrepancy found.
