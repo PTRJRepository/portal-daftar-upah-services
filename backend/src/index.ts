@@ -12,6 +12,7 @@ import { tunjanganRoutes } from "./api/tunjangan";
 import { devConfigRoutes } from "./api/devConfig";
 import { aggregationSeederRoutes } from "./api/aggregationSeederRoutes";
 import { spreadsheetRoutes } from "./api/spreadsheetRoutes";
+import { dashboardRoutes } from "./api/dashboardRoutes";
 import { Database } from "./db/client";
 import { staticPlugin } from "@elysiajs/static";
 
@@ -126,6 +127,7 @@ const app = new Elysia()
     .use(spreadsheetRoutes)
     // Summary routes already have /payroll/summary prefix in their definition
     .use(summaryRoutes)
+    .use(dashboardRoutes)
 
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
@@ -140,7 +142,9 @@ const app = new Elysia()
         .use(tunjanganRoutes)
         .use(aggregationSeederRoutes)
         .use(spreadsheetRoutes)
+        .use(spreadsheetRoutes)
         .use(summaryRoutes)
+        .use(dashboardRoutes)
         .use(devConfigRoutes)
     )
 

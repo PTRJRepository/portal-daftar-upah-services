@@ -144,6 +144,7 @@ function handleSyncRequest(payload) {
     switch (type) {
         case 'DAFTAR_UPAH':
         case 'DAFTAR_UPAH_DETAILED':
+        case 'DAFTAR_UPAH_MULTILEVEL':
             return syncDaftarUpah(payload);
 
         case 'DASHBOARD':
@@ -164,7 +165,7 @@ function handleSyncRequest(payload) {
  * Sync Daftar Upah format with gang headers, gang totals, and grand total
  */
 function syncDaftarUpah(payload) {
-    const { division, month, year, headers, rows } = payload;
+    const { division, month, year, headers, rows, format } = payload;
 
     if (!rows) {
         throw new Error("Missing required field: rows");
@@ -172,15 +173,13 @@ function syncDaftarUpah(payload) {
 
     const sheetName = division || 'Sheet1';
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(sheetName);
 
-    // Create sheet if not exists
-    if (!sheet) {
-        sheet = ss.insertSheet(sheetName);
+    // Always delete and recreate sheet to avoid any conflicts
+    const existingSheet = ss.getSheetByName(sheetName);
+    if (existingSheet) {
+        ss.deleteSheet(existingSheet);
     }
-
-    // Clear sheet
-    sheet.clear();
+    const sheet = ss.insertSheet(sheetName);
 
     // Determine row types
     const rowTypes = analyzeRowTypes(rows);
@@ -192,7 +191,7 @@ function syncDaftarUpah(payload) {
     let currentRow = metadataRows + 2; // +2 for spacing
     if (headers && headers.length > 0) {
         writeHeaders(sheet, currentRow, headers);
-        currentRow++;
+        currentRow++; // Move past header row
     }
 
     // Write data rows with special formatting
@@ -203,16 +202,12 @@ function syncDaftarUpah(payload) {
     // Auto-resize columns
     sheet.autoResizeColumns(1, headers ? headers.length : 10);
 
-    // Freeze header rows and first 3 columns (No, NIK, Nama)
-    sheet.setFrozenRows(metadataRows + 3);
-    sheet.setFrozenColumns(3);
-
     return {
         sheet: sheetName,
         rows_processed: rows.length,
         gang_count: rowTypes.gangHeaders,
         employee_count: rowTypes.employees,
-        format: 'DAFTAR_UPAH'
+        format: format || 'DAFTAR_UPAH'
     };
 }
 
@@ -245,30 +240,19 @@ function analyzeRowTypes(rows) {
 }
 
 /**
- * Write headers with multi-level support
+ * Write headers - supports single row headers for now
+ * TODO: Add multi-level header support with proper cell merging
  */
 function writeHeaders(sheet, startRow, headers) {
-    // Check if headers is multi-level (array of arrays)
-    if (Array.isArray(headers[0])) {
-        // Multi-level headers
-        headers.forEach((headerRow, index) => {
-            const range = sheet.getRange(startRow + index, 1, 1, headerRow.length);
-            range.setValues([headerRow]);
-            range.setBackground(COLORS.HEADER_BG);
-            range.setFontColor(COLORS.HEADER_TEXT);
-            range.setFontWeight("bold");
-            range.setHorizontalAlignment("center");
-            range.setVerticalAlignment("middle");
-        });
-    } else {
-        // Single row headers
-        const range = sheet.getRange(startRow, 1, 1, headers.length);
-        range.setValues([headers]);
-        range.setBackground(COLORS.HEADER_BG);
-        range.setFontColor(COLORS.HEADER_TEXT);
-        range.setFontWeight("bold");
-        range.setHorizontalAlignment("center");
-    }
+    // Single row headers
+    const numCols = headers.length;
+    const range = sheet.getRange(startRow, 1, 1, numCols);
+    range.setValues([headers]);
+    range.setBackground(COLORS.HEADER_BG);
+    range.setFontColor(COLORS.HEADER_TEXT);
+    range.setFontWeight("bold");
+    range.setHorizontalAlignment("center");
+    range.setVerticalAlignment("middle");
 }
 
 /**
@@ -316,14 +300,16 @@ function writeDataRows(sheet, startRow, rows, rowTypes) {
  * Format gang header row
  */
 function formatGangHeaderRow(sheet, rowNum, numCols) {
+    // Get the full row range and apply styling
     const range = sheet.getRange(rowNum, 1, 1, numCols);
     range.setBackground(COLORS.GANG_HEADER_BG);
     range.setFontColor(COLORS.GANG_HEADER_TEXT);
     range.setFontWeight("bold");
     range.setFontSize(11);
+    range.setHorizontalAlignment("left");
 
-    // Merge first few cells for gang label
-    sheet.getRange(rowNum, 1, 1, numCols).merge();
+    // NO MERGE - disable merging to avoid frozen rows conflict
+    // Gang label "GANG: XXX" is already in column 3 (Nama)
 }
 
 /**
@@ -367,6 +353,10 @@ function formatEmployeeRow(sheet, rowNum, numCols, rowIdx) {
 
 /**
  * Apply number formatting based on column index
+ * Structure: 34 columns total
+ * 0-3: Identitas (No, NIK, Nama, Jabatan) - No format
+ * 4-9: Absensi (AN, Cuti, Sakit+Haid, Minggu, Nasional, Jumlah HK) - Decimal
+ * 10-33: Gaji Pokok, Tunjangan, Premi, Potongan, Total - Currency
  */
 function applyNumberFormatting(sheet, startRow, rows, numCols) {
     // Skip formatting for non-data rows (will be overridden by special formatting)
@@ -381,13 +371,12 @@ function applyNumberFormatting(sheet, startRow, rows, numCols) {
 
         const rowNum = startRow + idx;
 
-        // Column-specific formatting (adjust indices based on actual column order)
-        // HK columns (usually columns 6-11): Decimal format
-        sheet.getRange(rowNum, 6, 1, 6).setNumberFormat(FORMATS.DECIMAL);
+        // Absensi columns (indices 4-9, 1-indexed columns 5-10): Decimal format
+        sheet.getRange(rowNum, 5, 1, 6).setNumberFormat(FORMATS.DECIMAL);
 
-        // Currency columns (column 14 onwards): Currency format
-        if (numCols > 14) {
-            sheet.getRange(rowNum, 14, 1, numCols - 13).setNumberFormat(FORMATS.CURRENCY);
+        // Currency columns (indices 10-33, 1-indexed columns 11-34): Currency format
+        if (numCols > 10) {
+            sheet.getRange(rowNum, 11, 1, numCols - 10).setNumberFormat(FORMATS.CURRENCY);
         }
     }
 }
@@ -509,7 +498,8 @@ function syncGenericData(payload) {
 
     // Add metadata
     sheet.getRange(currentRow, 1).setValue(`REPORT: ${division || 'Generic'}`);
-    sheet.getRange(currentRow, 1, 1, 5).merge().setFontWeight("bold").setFontSize(14);
+    sheet.getRange(currentRow, 1, 1, 5).setFontWeight("bold").setFontSize(14);
+    // NO MERGE to avoid frozen rows conflict
     currentRow += 2;
 
     // Write headers
@@ -554,10 +544,11 @@ function addMetadataSection(sheet, division, month, year, type = "DAFTAR_UPAH") 
         : `DAFTAR UPAH - ${division}`;
 
     sheet.getRange(1, 1).setValue(title);
-    sheet.getRange(1, 1, 1, 8).merge()
+    sheet.getRange(1, 1, 1, 8)
         .setFontWeight("bold")
         .setFontSize(14)
         .setBackground(COLORS.TITLE_BG);
+    // NO MERGE to avoid frozen rows conflict
 
     // Row 2: Period
     const monthName = getMonthName(month);
@@ -566,11 +557,13 @@ function addMetadataSection(sheet, division, month, year, type = "DAFTAR_UPAH") 
         : `BULAN: ${monthName} ${year}`;
 
     sheet.getRange(2, 1).setValue(periodText);
-    sheet.getRange(2, 1, 1, 8).merge().setFontWeight("bold");
+    sheet.getRange(2, 1, 1, 8).setFontWeight("bold");
+    // NO MERGE
 
     // Row 3: Timestamp
     sheet.getRange(3, 1).setValue(`Last Sync: ${new Date().toLocaleString('id-ID')}`);
-    sheet.getRange(3, 1, 1, 8).merge().setFontStyle("italic").setFontSize(9);
+    sheet.getRange(3, 1, 1, 8).setFontStyle("italic").setFontSize(9);
+    // NO MERGE
 
     return 3; // Number of metadata rows
 }

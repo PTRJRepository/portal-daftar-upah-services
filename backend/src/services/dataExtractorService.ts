@@ -258,7 +258,7 @@ export class DataExtractorService {
             }
         });
 
-        let gangCondition = "";
+        let gangCondition = "1=1";
         if (specificEmpCode) {
             gangCondition = `RTRIM(e.EmpCode) = '${specificEmpCode.trim()}'`;
         } else if (gangCode && gangCode !== "ALL") {

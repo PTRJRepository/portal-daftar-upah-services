@@ -188,6 +188,11 @@ const DashboardLayout = () => {
                         {!collapsed && <span>Laporan Operasional</span>}
                     </NavLink>
 
+                    <NavLink to="/executive" style={getLinkStyle} title={collapsed ? "Analisis Keseluruhan" : ""}>
+                        <Icons.TrendingUp />
+                        {!collapsed && <span>Analisis Keseluruhan</span>}
+                    </NavLink>
+
                     {/* Section Separator / Label */}
                     {!collapsed ? (
                         <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
