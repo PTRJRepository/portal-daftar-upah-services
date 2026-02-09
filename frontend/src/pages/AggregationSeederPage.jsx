@@ -26,6 +26,7 @@ export default function AggregationSeederPage({ onBack }) {
     const [division, setDivision] = useState('ALL');
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
+    const [syncType, setSyncType] = useState('DAFTAR_UPAH');
 
     // Data
     const [divisions, setDivisions] = useState(['ALL']);
@@ -151,7 +152,8 @@ export default function AggregationSeederPage({ onBack }) {
                 token,
                 month,
                 year,
-                division === 'ALL' ? null : division
+                division === 'ALL' ? null : division,
+                syncType
             );
 
             if (result.success) {
@@ -297,6 +299,19 @@ export default function AggregationSeederPage({ onBack }) {
                             {yearOptions.map(y => (
                                 <option key={y} value={y}>{y}</option>
                             ))}
+                        </select>
+                    </div>
+
+                    {/* Sync Type */}
+                    <div className="agg-form-group">
+                        <label>Sync Type</label>
+                        <select
+                            value={syncType}
+                            onChange={(e) => setSyncType(e.target.value)}
+                            disabled={isRunning || isSyncing}
+                        >
+                            <option value="DAFTAR_UPAH">Daftar Upah</option>
+                            <option value="OTHER_REPORT" disabled>Laporan Lain (Coming Soon)</option>
                         </select>
                     </div>
 

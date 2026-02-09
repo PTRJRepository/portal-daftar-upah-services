@@ -25,7 +25,19 @@ async function testDirect() {
             // Sync
             console.log("Syncing to Apps Script...");
             const result = await AppsScriptService.syncDivisionToSpreadsheet(division, month, year, employeeData);
-            console.log("Sync Success:", result);
+            console.log("Sync Result:", result);
+
+            if (result && result.rows_processed) {
+                const inputRows = employeeData.length;
+                const outputRows = result.rows_processed;
+                console.log(`Input Rows: ${inputRows}`);
+                console.log(`Output Rows (GAS): ${outputRows}`);
+                if (outputRows > inputRows) {
+                    console.log("✅ SUCCESS: Output rows > Input rows, implying Total row added.");
+                } else {
+                    console.log("❌ WARNING: Output rows <= Input rows. Total row might be missing.");
+                }
+            }
         } else {
             console.log("No data found. This confirms DB/Logic issue if direct call fails.");
         }

@@ -247,10 +247,6 @@ export default function DashboardHome() {
                   Aggregation Seeder <span>›</span>
                 </button>
               </div>
-
-              <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '0.8rem', color: '#92400e' }}>
-                ℹ️ Development tools only visible in Dev Mode
-              </div>
             </div>
           )}
 

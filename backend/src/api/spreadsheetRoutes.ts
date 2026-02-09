@@ -12,12 +12,22 @@ export const spreadsheetRoutes = new Elysia({ prefix: "/spreadsheet" })
             return { success: false, error: "Unauthorized" };
         }
 
-        const { division, month, year } = body;
+        const { division, month, year, syncType } = body;
 
         try {
-            console.log(`[SpreadsheetSync] Request received for ${division || "ALL"} (${month}/${year})`);
+            console.log(`[SpreadsheetSync] Request received for ${division || "ALL"} (${month}/${year}) - Type: ${syncType || "DAFTAR_UPAH"}`);
 
-            // 1. Determine Divisions
+            // 1. Handle Dashboard Sync
+            if (syncType === "DASHBOARD_SUMMARY" || syncType === "SUMMARY_WAGES") {
+                console.log(`[SpreadsheetSync] Starting Dashboard Sync for ${month}/${year}`);
+                const result = await AppsScriptService.syncDashboard(month, year);
+                return {
+                    success: true,
+                    results: [{ division: "ALL", status: "SUCCESS", sheet_response: result }]
+                };
+            }
+
+            // 2. Determine Divisions
             let divisionsToProcess: string[] = [];
             if (division) {
                 divisionsToProcess = [division];
@@ -73,6 +83,7 @@ export const spreadsheetRoutes = new Elysia({ prefix: "/spreadsheet" })
         body: t.Object({
             division: t.Optional(t.String()),
             month: t.Numeric(),
-            year: t.Numeric()
+            year: t.Numeric(),
+            syncType: t.Optional(t.String())
         })
     });

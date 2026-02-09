@@ -337,20 +337,24 @@ WHERE l.EmpCode = ? AND l.TrxDate >= ? AND l.TrxDate <= ? AND l.OT = 1
 
 **Employee Detail Page (`/employee/:nik`):**
 - Shows daily overtime matrix (calendar view)
-- Lists individual transactions with date, day name, day type, hours, rate, amount
+- Lists **individual transactions** with date, day name, day type, hours, rate, amount
 - Groups transactions by day
+- Each transaction shown separately (e.g., same day with different task_desc = 2 rows)
 
-**Comprehensive Performance Page (`/comprehensive-performance`):**
-- Shows individual transaction records when Lembur tab is active
-- Format: `└─ DD/MM/YYYY (Hari Kerja) | PANEN MANUAL | X jam | Rp XXX`
+**Laporan Analisis Payroll (`/comprehensive`):**
+- Shows **grouped-by-task** breakdown when Lembur tab is active
+- Groups multiple transactions by task_desc
+- Format: `└─ PANEN MANUAL (5x) | 10 jam | Rp 380.000`
 - Summary row validates: Total Detail = Total Lembur
 
 ### Important Notes
 
 1. **Total Lembur = Sum of Detail Records** - No double counting
 2. **Lembur displayed excludes DocDesc 'LEMBUR'** - Only OT=1 transactions from PR_TASKREGLN
-3. **Multiple transactions per day** - All displayed individually (e.g., same day with different task_desc)
-4. **Consistent calculation** - Detail Page and Daftar Upah use same `lemburCalculator`
+3. **Multiple transactions per day**:
+   - Employee Detail Page: All displayed individually
+   - Laporan Analisis Payroll: Grouped by task_desc with count
+4. **Consistent calculation** - All pages use same `lemburCalculator`
 
 
 
@@ -616,6 +620,38 @@ WHERE month = ? AND year = ? AND division_code = ?
 - ✅ Multiple transactions per day displayed individually
 - ✅ Pure overtime (OT=1) only, excluding DocDesc 'LEMBUR' from PR_ADTRANS
 
+### Page Rename & Gang Filter Fix (Feb 2026)
+
+**Changes:**
+1. **Page Rename:** `ComprehensivePerformancePage` → `PayrollAnalysisPage`
+   - New display name: "Laporan Analisis Payroll"
+   - Route remains `/comprehensive` for backward compatibility
+   - File renamed to `PayrollAnalysisPage.jsx`
+
+2. **Gang Filter Fix:**
+   - **Issue:** Gang filter was not working - changing gang selection didn't filter displayed data
+   - **Root Cause:** Data flattening logic included ALL employees from ALL gangs regardless of selected gang
+   - **Solution:** Added gang filtering when flattening API response:
+     ```typescript
+     // BEFORE (Wrong):
+     result.gangs.forEach(gangData => {
+       allEmployees = allEmployees.concat(gangData.employees);  // All employees!
+     });
+
+     // AFTER (Correct):
+     result.gangs.forEach(gangData => {
+       const shouldInclude = !gang || gang === 'ALL' || gangData.gang_code === gang;
+       if (shouldInclude && gangData.employees) {
+         allEmployees = allEmployees.concat(gangData.employees);
+       }
+     });
+     ```
+
+**Result:**
+- ✅ Gang filter now properly filters displayed data
+- ✅ Division filter triggers gang list refresh
+- ✅ useEffect dependencies include gang for auto-refresh
+
 ## Git Commit References
 
 Important commits for reference:
@@ -642,13 +678,114 @@ The frontend uses React Context for state management:
 | `LockedMainPage` | `/locked` | Public payroll view (relaxed auth) |
 | `SummaryReportPage` | `/summary` | Summary by division |
 | `AnalysisReportPage` | `/analysis` | Analysis report |
+| `PayrollAnalysisPage` | `/comprehensive` | **Payroll analysis with breakdown by component** |
 | `EmployeeDetailPage` | `/employee/:nik` | Individual employee details |
 | `WagesSummaryRebinmasPage` | `/wages-summary-rebinmas` | Rebinmas wage summary |
 | `WagesSummaryIJLPage` | `/wages-summary-ijl` | IJL wage summary |
 | `ImpactReportPage` | `/impact` | Impact analysis |
-| `ComprehensivePerformancePage` | `/comprehensive-performance` | Comprehensive performance analysis |
 | `onlyIJLReportPages` | `/ijl-reports` | IJL-specific reports |
 | `AggregationSeederPage` | `/admin/aggregation` | Aggregation management |
+
+## Frontend: Laporan Analisis Payroll
+
+**Page:** `PayrollAnalysisPage` (formerly `ComprehensivePerformancePage`)
+**Route:** `/comprehensive`
+**File:** `frontend/src/pages/PayrollAnalysisPage.jsx`
+
+### Overview
+
+Comprehensive payroll analysis page with breakdown detail per component. Shows KPI cards, filtered tabs, and print-ready custom HTML table.
+
+### Features
+
+#### 1. Filter Controls
+- **Month/Year Selector**: Select payroll period
+- **Division Filter**: "SEMUA DIVISI" or specific division
+- **Gang Filter**: "SEMUA GANG" or specific gang (disabled when division = "ALL")
+- **Refresh Button**: Manual data refresh
+
+#### 2. KPI Cards (Top Section)
+- Total Karyawan
+- Total HK
+- Total Lembur
+- Total Upah Bersih
+
+#### 3. Tab Filters (with Range Filtering)
+| Tab | Filter Value | Description |
+|-----|--------------|-------------|
+| SEMUA | `upah_bersih` | Shows all employees with full component breakdown |
+| LEMBUR | `lembur_jumlah` | Shows employees with overtime, grouped by task_desc |
+| PREMI | `total_premi` | Shows employees with premiums |
+| TUNJANGAN | `total_tunjangan` | Shows employees with allowances |
+| POTONGAN | `total_potongan_bersih` | Shows employees with deductions |
+
+Each tab has Min/Max range filter to filter by the respective value.
+
+#### 4. Lembur Display (Grouped by Task)
+
+**IMPORTANT:** Unlike Employee Detail Page which shows individual transactions, this page groups overtime by `task_desc`:
+
+```
+└─ PANEN MANUAL (5x) | 10 jam | Rp 380.000
+└─ PUPUK (3x) | 6 jam | Rp 228.000
+✓ Total (2 jenis pekerjaan, 8 transaksi) | 16 jam | Rp 608.000
+```
+
+This provides:
+- **Per-task breakdown**: See which job types have the most overtime
+- **Transaction count**: Number of transactions per task
+- **Summary validation**: Total detail = Total lembur
+
+#### 5. Table Columns (Dynamic by Tab)
+
+| Column Group | SEMUA | LEMBUR | PREMI | TUNJANGAN | POTONGAN |
+|--------------|-------|--------|-------|-----------|----------|
+| Karyawan (NIK, NAMA, GANG, TASK) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| ABSENSI (HK) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| TUNJANGAN (Beras, Jabatan, Masa Kerja, Total) | ✅ | - | - | ✅ | - |
+| PREMI (Brondol, Pruning, Dynamic, Total) | ✅ | - | ✅ | - | - |
+| LEMBUR (Jam, Rupiah) | ✅ | ✅ | - | - | - |
+| TOTAL (Kotor) | ✅ | - | - | - | - |
+| POTONGAN | - | - | - | - | ✅ |
+| UPAH BERSIH | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+#### 6. Export Features
+- **PRINT/PDF**: Browser print dialog with print-optimized CSS
+- **EXPORT CSV**: Downloads data with all columns including dynamic premi headers
+
+### Data Fetching
+
+**API Endpoint:** `GET /payroll/report/division-raw-tree`
+
+**Filtering Logic (Client-side after fetch):**
+```typescript
+// When gang is selected, filter by gang_code when flattening
+const shouldInclude = !gang || gang === 'ALL' || gangData.gang_code === gang;
+if (shouldInclude && gangData.employees && Array.isArray(gangData.employees)) {
+  allEmployees = allEmployees.concat(gangData.employees);
+}
+```
+
+**useEffect Dependencies:**
+```typescript
+useEffect(() => {
+  fetchData();
+}, [token, division, gang, month, year, allDivisions]);
+```
+
+### Important Notes
+
+1. **Gang/Division Filter Sync**: Changing division or gang triggers automatic data refresh via useEffect
+2. **Tab Filtering**: Filtered data is computed via `useMemo` based on active tab and range filters
+3. **Lembur Records**: Only displayed when LEMBUR tab is active and employee has `lembur_records`
+4. **Dynamic Premi Headers**: Premi columns are generated dynamically from actual data
+5. **Print Optimization**: Uses `printOptimizer` for clean printed output
+
+### Access Points
+
+- **Dashboard Home**: "Laporan Analisis Payroll" card
+- **Navigation Sidebar**: "Laporan Analisis Payroll" link
+- **Main Page**: "LAPORAN ANALISIS PAYROLL" sidebar link
 
 ## Common Components
 

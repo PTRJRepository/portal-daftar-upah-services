@@ -150,11 +150,12 @@ export async function fetchAggregationPeriods(token) {
  * @param {number} year - Year
  * @param {string} division - Division (optional)
  */
-export async function syncSpreadsheet(token, month, year, division = null) {
+export async function syncSpreadsheet(token, month, year, division = null, syncType = 'DAFTAR_UPAH') {
     const body = {
         month,
         year,
-        ...(division && { division })
+        ...(division && { division }),
+        syncType
     };
 
     const response = await fetch(`${BACKEND_BASE}/spreadsheet/sync`, {

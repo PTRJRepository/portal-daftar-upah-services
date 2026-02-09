@@ -57,79 +57,121 @@ const DashboardLayout = () => {
             backgroundColor: '#f8fafc',
             fontFamily: "'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
             overflow: 'hidden',
-            color: '#334155'
+            color: '#334155',
+            position: 'relative' // For absolute positioning context
         }}>
-            {/* SIDEBAR */}
+            {/* BACKDROP (Overlay mode) - Applies on ALL screens now since sidebar is overlay 
+                This allows user to click anywhere outside to close it, solving "cannot close" issue.
+            */}
+            {!collapsed && (
+                <div
+                    onClick={() => setCollapsed(true)}
+                    style={{
+                        position: 'absolute',
+                        top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.4)', // Slightly darker for better focus
+                        zIndex: 15,
+                        backdropFilter: 'blur(2px)',
+                        cursor: 'pointer'
+                    }}
+                />
+            )}
+
+            {/* SIDEBAR - Fixed/Absolute Position */}
             <div style={{
-                width: sidebarWidth,
-                backgroundColor: '#1e293b', // Dark Slate/Navy
+                width: collapsed ? '72px' : '260px',
+                height: '100%',
+                backgroundColor: '#0f172a', // Darker Slate for more contrast
                 color: '#f1f5f9',
                 display: 'flex',
                 flexDirection: 'column',
-                zIndex: 10,
-                boxShadow: '4px 0 10px rgba(0,0,0,0.05)',
-                flexShrink: 0,
-                transition: 'width 0.3s ease-in-out',
-                position: 'relative'
+                zIndex: 20, // Higher than content
+                boxShadow: collapsed ? '4px 0 10px rgba(0,0,0,0.05)' : '4px 0 20px rgba(0,0,0,0.25)',
+                transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                position: 'absolute', // FLOAT over content
+                left: 0,
+                top: 0
             }}>
-                {/* Collapse Toggle */}
-                <button
-                    onClick={() => setCollapsed(!collapsed)}
-                    style={{
-                        position: 'absolute',
-                        right: '-12px',
-                        top: '24px',
-                        width: '24px',
-                        height: '24px',
-                        backgroundColor: '#3b82f6',
-                        border: '2px solid #1e293b',
-                        borderRadius: '50%',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        zIndex: 20,
-                        padding: 0
-                    }}
-                >
-                    {collapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
-                </button>
 
-                {/* Sidebar Header */}
+                {/* Sidebar Header with Toggle Integrated */}
                 <div style={{
-                    padding: collapsed ? '1.5rem 0.5rem' : '1.5rem',
-                    borderBottom: '1px solid #334155',
+                    padding: '1rem',
+                    borderBottom: '1px solid #1e293b',
                     display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: collapsed ? 'center' : 'flex-start',
-                    height: '100px',
+                    alignItems: 'center',
+                    justifyContent: collapsed ? 'center' : 'space-between',
+                    minHeight: '70px',
                     transition: 'all 0.3s'
                 }}>
-                    <img
-                        src="/images/rebinmas.webp"
-                        alt="Logo"
-                        style={{
-                            height: collapsed ? '32px' : '40px',
-                            marginBottom: collapsed ? '0' : '1rem',
-                            display: 'block',
-                            transition: 'all 0.3s'
-                        }}
-                    />
-                    {!collapsed && (
-                        <div style={{ opacity: 1, transition: 'opacity 0.3s', whiteSpace: 'nowrap' }}>
-                            <div style={{ fontWeight: '600', fontSize: '0.75rem', letterSpacing: '0.05em', color: '#94a3b8', textTransform: 'uppercase' }}>Payroll System</div>
+                    {/* Logo Area */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        overflow: 'hidden',
+                        opacity: collapsed ? 0 : 1,
+                        width: collapsed ? 0 : 'auto',
+                        transition: 'opacity 0.2s',
+                    }}>
+                        <img
+                            src="/images/rebinmas.webp"
+                            alt="Logo"
+                            style={{ height: '32px', display: 'block' }}
+                        />
+                        <div style={{ whiteSpace: 'nowrap' }}>
                             <div style={{ fontWeight: '700', fontSize: '1rem', color: '#ffffff' }}>PT Rebinmas Jaya</div>
                         </div>
-                    )}
+                    </div>
+
+                    {/* Collapse Toggle Button - Always visible, changes position/icon */}
+                    <button
+                        onClick={() => setCollapsed(!collapsed)}
+                        style={{
+                            width: '32px',
+                            height: '32px',
+                            backgroundColor: collapsed ? 'transparent' : '#334155',
+                            border: 'none',
+                            borderRadius: '6px',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            // Reset margins
+                            margin: 0
+                        }}
+                        title={collapsed ? "Expand Menu" : "Close Menu"}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#475569'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = collapsed ? 'transparent' : '#334155'}
+                    >
+                        {collapsed ? (
+                            // Hamburger / Menu Icon
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                        ) : (
+                            // Close / X Icon
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        )}
+                    </button>
                 </div>
+
+                {/* Collapsed Logo (Only shown when collapsed, centered below toggle) */}
+                {collapsed && (
+                    <div style={{ padding: '0.5rem', display: 'flex', justifyContent: 'center' }}>
+                        <img
+                            src="/images/rebinmas.webp"
+                            alt="Logo"
+                            style={{ height: '28px', display: 'block' }}
+                        />
+                    </div>
+                )}
 
                 {/* Navigation Links */}
                 <div style={{ padding: '1.5rem 0.75rem', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
 
                     {/* Main Menu Label */}
                     {!collapsed ? (
-                        <div style={{ marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem' }}>
+                        <div style={{ marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
                             Main Menu
                         </div>
                     ) : (
@@ -148,7 +190,7 @@ const DashboardLayout = () => {
 
                     {/* Section Separator / Label */}
                     {!collapsed ? (
-                        <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem' }}>
+                        <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
                             Analysis & Summary
                         </div>
                     ) : (
@@ -183,7 +225,7 @@ const DashboardLayout = () => {
                     {isAdminUser && (
                         <>
                             {!collapsed ? (
-                                <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem' }}>
+                                <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
                                     Admin Tools
                                 </div>
                             ) : (
@@ -192,7 +234,25 @@ const DashboardLayout = () => {
 
                             <NavLink to="/seed" style={getLinkStyle} title={collapsed ? "Aggregation Seeder" : ""}>
                                 <Icons.Settings />
-                                {!collapsed && <span>Aggregation Seeder</span>}
+                                <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {!collapsed && <span>Aggregation Seeder</span>}
+                                </div>
+                            </NavLink>
+
+                            <NavLink to="/spreadsheet-sync" style={getLinkStyle} title={collapsed ? "Spreadsheet Sync" : ""}>
+                                <Icons.Clipboard /> {/* Or any other icon */}
+                                <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {!collapsed && <span>Spreadsheet Sync</span>}
+                                </div>
+                            </NavLink>
+
+                            {/* Check if Metadata Test route exists and show if needed
+                                Ideally we check routes, but here we just rely on link validity */}
+                            <NavLink to="/test/components" style={getLinkStyle} title={collapsed ? "Metadata Test" : ""}>
+                                <Icons.Activity /> {/* Reusing icon */}
+                                <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {!collapsed && <span>Metadata Test</span>}
+                                </div>
                             </NavLink>
                         </>
                     )}
@@ -207,11 +267,12 @@ const DashboardLayout = () => {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: '1rem'
+                    gap: '1rem',
+                    marginBottom: '0'
                 }}>
                     {!collapsed && (
-                        <div style={{ width: '100%' }}>
-                            <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#ffffff' }}>{user?.username}</div>
+                        <div style={{ width: '100%', overflow: 'hidden' }}>
+                            <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#ffffff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{user?.username}</div>
                             <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{user?.role || 'Staff'}</div>
                         </div>
                     )}
@@ -251,11 +312,31 @@ const DashboardLayout = () => {
                 </div>
             </div>
 
+            {/* SPACER FOR COLLAPSED RAIL - Ensures content isn't hidden behind the always-visible 72px rail 
+                We always reserve 72px. When sidebar expands to 260px, it overlaps the content area. 
+                This prevents layout shift (jumping) of the main content.
+            */}
+            <div style={{
+                width: '72px',
+                flexShrink: 0,
+                height: '100%',
+                backgroundColor: '#f8fafc' // Match bg to be invisible
+            }}></div>
+
             {/* MAIN CONTENT AREA */}
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                overflowX: 'hidden', // Let children handle X scroll, keep container clean
+                display: 'flex',
+                flexDirection: 'column',
+                position: 'relative',
+                minWidth: 0, // CRITICAL for flex containers to shrinking properly
+                height: '100vh'
+            }}>
                 <Outlet />
             </div>
-        </div>
+        </div >
     );
 };
 
