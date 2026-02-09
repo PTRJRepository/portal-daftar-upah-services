@@ -72,29 +72,40 @@ const app = new Elysia()
     })
     // Root endpoints
     // Serve Frontend Static Files
-    // Serve Frontend Static Files explicitly
-    .get("/", () => {
-        console.log("!!! ROOT HANDLER HIT !!! Serving index.html...");
-        return Bun.file("../frontend/dist/index.html");
-    })
+    .get("/", () => Bun.file("../frontend/dist/index.html"))
     .get("/index.html", () => Bun.file("../frontend/dist/index.html"))
     .get("/vite.svg", () => Bun.file("../frontend/dist/vite.svg"))
 
-    // Serve assets (JS/CSS) - Handle /upah prefix from Vite production build
-    // .use(staticPlugin({
-    //     assets: "../frontend/dist",
-    //     prefix: "/upah"
-    // }))
-    // Also serve at root /assets just in case
+    // Serve all static files from dist root (handles /assets, /images, etc. naturally)
     .use(staticPlugin({
-        assets: "../frontend/dist/assets",
-        prefix: "/assets"
+        assets: "../frontend/dist",
+        prefix: "/"
     }))
-    // Serve images at root /images to match frontend hardcoded paths
-    .use(staticPlugin({
-        assets: "../frontend/dist/images",
-        prefix: "/images"
-    }))
+
+    // Explicit fallback for /assets in case static plugin doesn't work
+    .get("/assets/*", async ({ params, set }) => {
+        const filePath = `../frontend/dist/assets/${params["*"]}`;
+        const file = Bun.file(filePath);
+        if (await file.exists()) {
+            return file;
+        }
+        console.log(`[ASSETS] File not found: ${filePath}`);
+        set.status = 404;
+        return "Asset not found";
+    })
+
+    // Explicit fallback for /images in case static plugin doesn't work
+    .get("/images/*", async ({ params, set }) => {
+        const filePath = `../frontend/dist/images/${params["*"]}`;
+        const file = Bun.file(filePath);
+        if (await file.exists()) {
+            return file;
+        }
+        console.log(`[IMAGES] File not found: ${filePath}`);
+        set.status = 404;
+        return "Image not found";
+    })
+
     .get("/api-info", () => ({
         message: "Payroll Backend (Bun/Elysia) is running",
         version: "2.0.0",
@@ -148,21 +159,30 @@ const app = new Elysia()
         .use(devConfigRoutes)
     )
 
-    // SPA Fallback: Serve index.html for any unknown routes (excluding API)
+    // SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)
     .get("*", async ({ request, set }) => {
         const url = new URL(request.url);
         const pathname = url.pathname;
         console.log(`!!! CATCH-ALL HIT for ${pathname} !!!`);
 
-        // Critical Fix: Do NOT serve HTML for API request failures.
-        // If it looks like an API call (starts with /backend, /api, or common API segments), return JSON 404.
-        if (pathname.startsWith("/backend") || pathname.startsWith("/api") || pathname.includes("/payroll/")) {
-            console.log("-> Returning 404 JSON for likely API path (preventing HTML injection)");
+        // If it looks like an API call, return 404
+        const isApi = pathname.startsWith("/backend") || pathname.startsWith("/api") || pathname.includes("/payroll/");
+        if (isApi) {
+            console.log(`-> Returning 404 for API: ${pathname}`);
             set.status = 404;
-            return { error: "Route not found", path: pathname, hint: "Check proxy routing or URL prefix" };
+            return { error: "Route not found", path: pathname };
         }
 
-        console.log("-> Serving index.html...");
+        // If it looks like a static file (has extension), return 404 - static plugin should have handled it
+        const hasExtension = pathname.includes(".");
+        if (hasExtension) {
+            console.log(`-> Returning 404 for missing static file: ${pathname}`);
+            set.status = 404;
+            return "File not found";
+        }
+
+        // Otherwise, serve index.html for SPA routing
+        console.log("-> Serving index.html for SPA route...");
         return Bun.file("../frontend/dist/index.html");
     })
     // Start server
