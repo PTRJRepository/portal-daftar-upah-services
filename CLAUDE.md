@@ -853,3 +853,229 @@ All requests (except `/health`) are logged with method, path, and duration:
 GET /payroll/divisions 123ms
 POST /auth/login 45ms
 ```
+
+## Google Spreadsheet Sync
+
+### Overview
+
+The system can sync payroll data to Google Spreadsheet via Google Apps Script Web App, providing:
+- **2-Sheet Format**: Main Daftar Upah + Analysis sheet with multi-section breakdown
+- **Charts**: Visual charts for Lembur, Premi, and Upah Bersih analysis
+- **Filter Feature**: Create filtered sheets (accessible to ALL users including viewers)
+
+### Setup Instructions
+
+1. **Open Google Spreadsheet** > Extensions > Apps Script
+2. **Copy code** from `integrasi/spreadsheet/Code.js` to `Code.gs`
+3. **Project Settings** > Script Properties:
+   - Add property: `API_SECRET` = your-secure-secret
+4. **Deploy** > New deployment > Web app:
+   - Execute as: Me
+   - Who has access: Anyone
+5. **Copy Web app URL** to backend `.env` as `GOOGLE_SCRIPT_URL`
+
+### Environment Variables
+
+```bash
+# Google Apps Script
+GOOGLE_SCRIPT_URL=https://script.google.com/macros/s/.../exec
+GOOGLE_SCRIPT_SECRET=your-secure-secret
+```
+
+### Sync Types
+
+| Sync Type | Description | Sheets Created |
+|-----------|-------------|----------------|
+| `DAFTAR_UPAH` | Main payroll with multi-level headers | `AB1` (main), `AB1 - ANALISIS` (multi-section) |
+| `ANALISIS_PAYROLL` | Payroll + Lembur + Premi breakdown | Same as above |
+| `SUMMARY_WAGES` | Wages summary dashboard | `DASHBOARD` (summary) |
+
+### Sheet Structure
+
+#### Sheet 1: "AB1" - Main Daftar Upah
+
+Full payroll data with:
+- Multi-level headers (4 levels)
+- Gang headers, Gang totals, Grand total
+- All columns: Identitas, Absensi, Gaji Pokok, Tunjangan, Premi, Potongan, Total
+- Dynamic premi/potongan columns based on actual data
+
+#### Sheet 2: "AB1 - ANALISIS" - Multi-Section Breakdown
+
+**Section 1: 📊 ANALISIS LEMBUR**
+| Columns | Description |
+|---------|-------------|
+| NO, NIK, NAMA, GANG | Employee info |
+| TASK | Task name + transaction count |
+| JAM | Total hours per task |
+| RUPIAH | Total amount per task |
+
+**Section 2: 📊 ANALISIS PREMI**
+| Columns | Description |
+|---------|-------------|
+| NO, NIK, NAMA, GANG | Employee info |
+| BRONDOL, PRUNING | Static premi columns |
+| [DYNAMIC] | Dynamic premi columns per jenis |
+| TOTAL PREMI | Total all premi |
+
+**Section 3: 📊 ANALISIS UPAH BERSIH**
+| Columns | Description |
+|---------|-------------|
+| NO, NIK, NAMA, GANG | Employee info |
+| HK | Jumlah hari kerja |
+| GAJI POKOK | Base salary |
+| TUNJANGAN | Total allowances |
+| PREMI | Total premiums |
+| POTONGAN | Total deductions |
+| UPAH BERSIH | Take home pay |
+
+### Charts
+
+Each section includes visual charts:
+
+**Lembur Section:**
+- Bar Chart: Jam lembur per karyawan-task
+- Pie Chart: Distribusi rupiah lembur
+
+**Premi Section:**
+- Stacked Column Chart: Premi per karyawan (Brondol, Pruning, Dynamic)
+
+**Upah Bersih Section:**
+- Pie Chart: Komposisi komponen upah (Gaji, Tunjangan, Premi, Potongan, Bersih)
+- Bar Chart: Perbandingan nilai komponen
+
+### Filter Feature - ALL USERS CAN USE!
+
+**How It Works:**
+- Filter creates a **NEW SHEET** with filtered results
+- Original data is **NEVER DELETED** - safe for all users
+- ALL users (including view-only) can see filtered results
+
+**Payroll Tools Menu:**
+```
+📊 Payroll Tools
+├── 🔍 Filter Data (New Sheet)  - Open filter sidebar
+├── 🗑️ Clear Filtered Sheets     - Delete all filtered sheets
+├── 📈 Refresh Charts            - Rebuild charts
+└── ❓ Help                       - Show help dialog
+```
+
+**Filter Parameters:**
+- **Search NIK/Nama**: Partial match search
+- **Range HK**: Min/Max hari kerja
+- **Range Gaji Pokok**: Min/Max gaji pokok
+- **Range Upah Bersih**: Min/Max take home pay
+- **Range Lembur Jam**: Min/Max overtime hours
+- **Range Lembur Rupiah**: Min/Max overtime amount
+- **Range Premi**: Min/Max total premium
+
+**Section-Specific Filtering (Analysis Sheet):**
+- Section Lembur: Filter by Jam & Rupiah
+- Section Premi: Filter by Total Premi
+- Section Upah Bersih: Filter by HK & Upah Bersih
+
+**Usage:**
+1. Click **Payroll Tools > Filter Data (New Sheet)**
+2. Fill filter parameters in sidebar
+3. Click **Apply**
+4. New sheet "AB1 - Filtered" is created
+5. Results visible to ALL users
+
+### Access from Portal
+
+**SpreadsheetSyncPage (`/spreadsheet-sync`):**
+- Select Division (or ALL)
+- Select Month/Year
+- Select Sync Type
+- Click "Sync Now" button
+
+**PayrollAnalysisPage:**
+- "SYNC TO SPREADSHEET" button to sync current filtered view
+
+### Backend Service
+
+**File:** `backend/src/services/appsScriptService.ts`
+
+**Key Methods:**
+```typescript
+// Main sync entry point - creates 2 sheets
+AppsScriptService.syncDivisionToSpreadsheet(division, month, year, records)
+
+// Build main sheet (simple format)
+buildMainSheetData(division, sortedGangs, gangsMap, dynamicColumns)
+
+// Build analysis sheet (multi-section)
+buildAnalysisSheetData(division, sortedGangs, gangsMap, dynamicColumns)
+
+// Section builders
+buildLemburAnalysisSection(sortedGangs, gangsMap)
+buildPremiAnalysisSection(sortedGangs, gangsMap, dynamicColumns)
+buildUpahBersihAnalysisSection(sortedGangs, gangsMap)
+```
+
+### Google Apps Script Functions
+
+**File:** `integrasi/spreadsheet/Code.js`
+
+**Key Functions:**
+```javascript
+// Sync handlers
+syncDaftarUpah(payload)           // Main sync function
+processSingleSheet(ss, sheetData) // Process individual sheet
+processSheetData(sheet, sheetData) // Process main sheet
+processAnalysisSheet(sheet, sheetData) // Process analysis sheet
+
+// Analysis sheet functions
+applyAnalysisFormatting(sheet, startRow, rows)
+addAnalysisCharts(sheet, rows, startRow)
+addLemburChart(sheet, dataStart, dataEnd, chartCol, allRows)
+addPremiChart(sheet, dataStart, dataEnd, chartCol, allRows)
+addUpahBersihChart(sheet, dataStart, dataEnd, chartCol, allRows)
+
+// Filter functions
+applyFilter(filterParams)           // Create new filtered sheet
+applyFilterToAnalysisSheet()         // Filter for multi-section
+passesFilters(row, params, colIndex) // Check if row passes filter
+clearFilteredSheets()                // Delete all filtered sheets
+refreshCharts()                      // Rebuild charts
+
+// UI functions
+onOpen()                            // Create menu on spreadsheet open
+openFilterSidebar()                 // Open filter sidebar
+showFilterHelp()                    // Show help dialog
+getFilterSidebarHtml()              // Generate sidebar HTML
+```
+
+### User Permissions
+
+| Role | Can View | Can Filter | Can Edit |
+|------|----------|------------|----------|
+| **Owner** | ✅ All sheets | ✅ Sidebar filter | ✅ All |
+| **Editor** | ✅ All sheets | ✅ Sidebar filter | ✅ All |
+| **Viewer** | ✅ All sheets | ✅ Filtered sheets (read-only) | ❌ None |
+
+**Important:** Filter creates NEW sheets that ALL users can view. Users with edit access can create new filtered sheets via sidebar.
+
+### Troubleshooting
+
+**Issue:** "TypeError: sheet.getRange(...).setColumnWidth is not a function"
+- **Cause:** Using Range method instead of Sheet method
+- **Fix:** Deploy updated Code.js with correct syntax:
+  ```javascript
+  // WRONG
+  sheet.getRange(1, i, 1, 1).setColumnWidth(100);
+  // CORRECT
+  sheet.setColumnWidth(i, 100);
+  ```
+
+**Issue:** "Data ini memiliki X kolom, tetapi rentang memiliki Y kolom"
+- **Cause:** Column count mismatch between headers and data
+- **Fix:** Check backend uses `headers[0].length` for column count
+
+**Issue:** Charts not displaying
+- **Cause:** Chart data range is empty or invalid
+- **Fix:** Click "Payroll Tools > Refresh Charts" to rebuild
+
+**Issue:** Filter not working for viewers
+- **Cause:** Old filter method tried to modify original sheet
+- **Fix:** Updated version creates new sheet - redeploy Code.js

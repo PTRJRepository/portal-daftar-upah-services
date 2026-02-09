@@ -106,6 +106,71 @@ const app = new Elysia()
         return "Image not found";
     })
 
+    // ========================
+    // PROXY MODE STATIC FILES
+    // When frontend is built with base: '/upah/', assets are requested at /upah/assets/...
+    // ========================
+    .get("/upah", () => Bun.file("../frontend/dist/index.html"))
+    .get("/upah/", () => Bun.file("../frontend/dist/index.html"))
+    .get("/upah/index.html", () => Bun.file("../frontend/dist/index.html"))
+
+    // Serve /upah/assets/* - main chunk files, CSS, JS
+    .get("/upah/assets/*", async ({ params, set }) => {
+        const p = params["*"];
+        const filePath = `../frontend/dist/assets/${p}`;
+        console.log(`[UPAH/ASSETS] Request: ${p}, Resolving: ${filePath}`);
+
+        const file = Bun.file(filePath);
+        const exists = await file.exists();
+        console.log(`[UPAH/ASSETS] Exists: ${exists}`);
+
+        if (exists) {
+            // Set correct content-type based on extension
+            const ext = filePath.split('.').pop()?.toLowerCase();
+            if (ext === 'js') {
+                set.headers['Content-Type'] = 'application/javascript';
+            } else if (ext === 'css') {
+                set.headers['Content-Type'] = 'text/css';
+            }
+            return file;
+        }
+        console.log(`[UPAH/ASSETS] 404 Not found`);
+        set.status = 404;
+        return "Asset not found";
+    })
+
+    // Serve /upah/images/*
+    .get("/upah/images/*", async ({ params, set }) => {
+        const filePath = `../frontend/dist/images/${params["*"]}`;
+        const file = Bun.file(filePath);
+        if (await file.exists()) {
+            return file;
+        }
+        console.log(`[UPAH/IMAGES] File not found: ${filePath}`);
+        set.status = 404;
+        return "Image not found";
+    })
+
+    // Serve any other /upah/* static files (like fonts, etc)
+    .get("/upah/*", async ({ params, set, request }) => {
+        const pathname = params["*"];
+
+        // If it's a SPA route (no extension), serve index.html
+        if (!pathname.includes('.')) {
+            return Bun.file("../frontend/dist/index.html");
+        }
+
+        // Otherwise try to serve the static file
+        const filePath = `../frontend/dist/${pathname}`;
+        const file = Bun.file(filePath);
+        if (await file.exists()) {
+            return file;
+        }
+        console.log(`[UPAH/*] File not found: ${filePath}`);
+        set.status = 404;
+        return "File not found";
+    })
+
     .get("/api-info", () => ({
         message: "Payroll Backend (Bun/Elysia) is running",
         version: "2.0.0",
