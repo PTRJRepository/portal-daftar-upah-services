@@ -5,6 +5,7 @@
 */
 
 @media print {
+
     /* Hide the sidebar - Looking for the 0f172a background and fixed/absolute positioning */
     div[style*="background-color: rgb(15, 23, 42)"],
     div[style*="background-color: #0f172a"],
@@ -26,7 +27,8 @@
 
     /* Reset the main content container to take full width and remove scrollbars */
     div[style*="flex: 1"][style*="overflow-y: auto"],
-    div[style*="flex: 1"][style*="overflowY: auto"] {
+    div[style*="flex: 1"][style*="overflowY: auto"],
+    .print-content-area {
         position: static !important;
         width: 100% !important;
         height: auto !important;
@@ -34,6 +36,8 @@
         padding: 0 !important;
         margin: 0 !important;
         left: 0 !important;
+        display: block !important;
+        /* Override flex display if needed */
     }
 
     /* Hide the Sidebar Header if it's separate (some layouts) */

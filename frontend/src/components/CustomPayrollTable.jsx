@@ -23,7 +23,10 @@ const formatDecimal = (value) => {
 };
 
 export default function CustomPayrollTable({
-    token, month, year, division, gangCode, onViewEmployeeDetail, fontSize = 100, onExportReady = null, refreshTrigger = 0
+    token, month, year, division, gangCode, onViewEmployeeDetail, fontSize = 100,
+    onExportReady = null, refreshTrigger = 0,
+    selectedEmployees = [], onToggleEmployeeSelection = () => { },
+    onSelectAllEmployees = () => { }
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -37,6 +40,7 @@ export default function CustomPayrollTable({
     const [highlightedRowId, setHighlightedRowId] = useState(null);
     const [activePremiFields, setActivePremiFields] = useState([]);
     const [activePotFields, setActivePotFields] = useState([]);
+    const [allEmployeeNiks, setAllEmployeeNiks] = useState([]);
 
     // Tunjangan Mode & Rates
     const [tunjanganMode, setTunjanganMode] = useState('DB'); // 'DB' or 'CALC'
@@ -46,6 +50,33 @@ export default function CustomPayrollTable({
     const [isTaxExpanded, setIsTaxExpanded] = useState(false);
 
     const tableRef = useRef(null);
+
+    // Sync employee NIKs when rows change (for select-all checkbox state only)
+    useEffect(() => {
+        const nikList = rows
+            .filter(r => r.type === 'employee')
+            .map(r => r.nik)
+            .filter(nik => nik);
+        setAllEmployeeNiks(nikList);
+        // NOTE: Don't call onSelectAllEmployees here - let user manually select employees
+    }, [rows]);
+
+    // Handle checkbox toggle
+    const handleCheckboxChange = (nik) => {
+        onToggleEmployeeSelection?.(nik);
+    };
+
+    // Handle select all checkbox
+    const handleSelectAll = (e) => {
+        if (!onSelectAllEmployees) return;
+        if (e.target.checked) {
+            // Select all employees
+            onSelectAllEmployees(allEmployeeNiks);
+        } else {
+            // Deselect all - pass empty array directly instead of toggling each one
+            onSelectAllEmployees([]);
+        }
+    };
 
     useEffect(() => {
         fetch('/tunjangan/rates?category=JABATAN')
@@ -270,10 +301,30 @@ export default function CustomPayrollTable({
     // null means "merge with parent above"
     const columnDefs = useMemo(() => {
         const cols = [
+            // Checkbox Column
+            {
+                field: 'checkbox',
+                headers: ['', null, null, '✓'],
+                w: 35,
+                className: 'text-center sticky-col',
+                left: 0,
+                render: (row) => {
+                    if (row.type !== 'employee') return null;
+                    return (
+                        <input
+                            type="checkbox"
+                            checked={Array.isArray(selectedEmployees) && selectedEmployees.includes(row.nik)}
+                            onChange={() => handleCheckboxChange(row.nik)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ cursor: 'pointer' }}
+                        />
+                    );
+                }
+            },
             // IDENTITAS
-            { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 40, className: 'text-center' },
-            { field: 'nik', headers: ['IDENTITAS', null, null, 'NI'], w: 60, className: 'text-center sticky-col', left: 0 },
-            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 170, className: 'text-left sticky-col', left: 60 },
+            { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 35, className: 'text-center', left: 35 },
+            { field: 'nik', headers: ['IDENTITAS', null, null, 'NIK'], w: 55, className: 'text-center sticky-col', left: 35 },
+            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 160, className: 'text-left sticky-col', left: 90 },
 
             // PAJAK [Conditionally Expanded]
             ...(isTaxExpanded ? [
@@ -717,19 +768,31 @@ export default function CustomPayrollTable({
                 if (cell.merged) continue;
                 if (cell.startRow !== row) continue; // This cell started in a previous row
 
-                rowCells.push({
-                    label: cell.label || '',
-                    colSpan: cell.colSpan,
-                    rowSpan: cell.rowSpan,
-                    isSticky: columnDefs[col].left !== undefined,
-                    left: columnDefs[col].left
-                });
+                // Special handling for checkbox column header
+                if (columnDefs[col].field === 'checkbox') {
+                    rowCells.push({
+                        label: 'checkbox',
+                        colSpan: cell.colSpan,
+                        rowSpan: cell.rowSpan,
+                        isSticky: true,
+                        left: columnDefs[col].left,
+                        isCheckboxHeader: true
+                    });
+                } else {
+                    rowCells.push({
+                        label: cell.label || '',
+                        colSpan: cell.colSpan,
+                        rowSpan: cell.rowSpan,
+                        isSticky: columnDefs[col].left !== undefined,
+                        left: columnDefs[col].left
+                    });
+                }
             }
             result.push(rowCells);
         }
 
         return result;
-    }, [columnDefs]);
+    }, [columnDefs, allEmployeeNiks]);
 
     // Selection Logic - supports Ctrl+Click for multi-select
     const handleMouseDown = (e, rowIndex, colIndex, rowId) => {
@@ -878,6 +941,20 @@ export default function CustomPayrollTable({
                                             >
                                                 {tunjanganMode === 'CALC' ? 'GUIDE' : 'DB'}
                                             </div>
+                                        </div>
+                                    ) : cell.isCheckboxHeader ? (
+                                        <div className="flex items-center justify-center h-full w-full">
+                                            <input
+                                                type="checkbox"
+                                                checked={Array.isArray(selectedEmployees) && Array.isArray(allEmployeeNiks) && allEmployeeNiks.length > 0 && selectedEmployees.length === allEmployeeNiks.length}
+                                                ref={input => {
+                                                    if (input && Array.isArray(selectedEmployees) && Array.isArray(allEmployeeNiks)) {
+                                                        input.indeterminate = selectedEmployees.length > 0 && selectedEmployees.length < allEmployeeNiks.length;
+                                                    }
+                                                }}
+                                                onChange={(e) => handleSelectAll(e)}
+                                                className="w-4 h-4 cursor-pointer"
+                                            />
                                         </div>
                                     ) : cell.label}
                                 </th>

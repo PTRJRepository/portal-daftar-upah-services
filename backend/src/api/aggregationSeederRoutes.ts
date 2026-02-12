@@ -53,7 +53,7 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
         const { division, month, year, force } = body;
 
         try {
-            // Pass authorization header to internal function
+            // Seed hanya ke aggregation table (existing behavior)
             const result = await seedAggregationToDb(division, month, year, authHeader, force || false);
             return {
                 success: true,

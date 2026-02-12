@@ -1,6 +1,8 @@
 /**
  * AggregationSeederPage - Web UI for Payroll Aggregation Seeder
  * Equivalent to the Python Tkinter gui_app.py but as a React component
+ *
+ * MODIFIED: Added History Seeder functionality (terpisah dari aggregation seeder)
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,10 +15,15 @@ import {
     fetchAggregationPeriods,
     fetchAggregationStatus,
     syncSpreadsheet,
-    formatMonthName,
+    formatMonthName as formatAggMonthName,
     formatCurrency,
     formatNumber
 } from '../services/aggregationSeederService';
+import {
+    checkHistoryHealth,
+    seedPayrollHistory,
+    formatMonthName
+} from '../services/historyService';
 import '../styles/aggregation-seeder.css';
 
 export default function AggregationSeederPage({ onBack }) {
@@ -36,7 +43,9 @@ export default function AggregationSeederPage({ onBack }) {
     // State
     const [isRunning, setIsRunning] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isHistoryRunning, setIsHistoryRunning] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState('checking');
+    const [historyConnectionStatus, setHistoryConnectionStatus] = useState('checking');
     const [logs, setLogs] = useState([]);
     const [showSummary, setShowSummary] = useState(false);
 
@@ -59,19 +68,37 @@ export default function AggregationSeederPage({ onBack }) {
         async function checkConnection() {
             if (!token) return;
             setConnectionStatus('checking');
-            addLog('🔌 Checking database connection...');
+            setHistoryConnectionStatus('checking');
+            addLog('🔌 Checking database connections...');
+
+            // Check aggregation database
             try {
                 const result = await checkAggregationHealth(token);
                 if (result.success) {
                     setConnectionStatus('connected');
-                    addLog('✅ Database connection OK', 'success');
+                    addLog('✅ Aggregation DB connection OK', 'success');
                 } else {
                     setConnectionStatus('error');
-                    addLog(`❌ Connection failed: ${result.message}`, 'error');
+                    addLog(`❌ Aggregation DB connection failed: ${result.message}`, 'error');
                 }
             } catch (e) {
                 setConnectionStatus('error');
-                addLog(`❌ Connection error: ${e.message}`, 'error');
+                addLog(`❌ Aggregation DB connection error: ${e.message}`, 'error');
+            }
+
+            // Check history database
+            try {
+                const result = await checkHistoryHealth(token);
+                if (result.success) {
+                    setHistoryConnectionStatus('connected');
+                    addLog(`✅ History DB connection OK (${result.mode} mode)`, 'success');
+                } else {
+                    setHistoryConnectionStatus('error');
+                    addLog(`❌ History DB connection failed: ${result.message}`, 'error');
+                }
+            } catch (e) {
+                setHistoryConnectionStatus('error');
+                addLog(`❌ History DB connection error: ${e.message}`, 'error');
             }
         }
         checkConnection();
@@ -217,6 +244,61 @@ export default function AggregationSeederPage({ onBack }) {
         }
     };
 
+    // Run history seeder (terpisah dari aggregation seeder)
+    const handleRunHistorySeeder = async () => {
+        if (isHistoryRunning) return;
+        if (historyConnectionStatus !== 'connected') {
+            addLog('❌ History database not connected. Cannot run history seeder.', 'error');
+            return;
+        }
+
+        setIsHistoryRunning(true);
+        addLog('='.repeat(40), 'info');
+        addLog('🚀 Starting HISTORY seeder (terpisah)...');
+        addLog(`📅 Period: ${formatMonthName(month)} ${year}`);
+        addLog(`📊 Division: ${division === 'ALL' ? 'All Divisions' : division}`);
+
+        try {
+            const result = await seedPayrollHistory(
+                token,
+                month,
+                year,
+                division === 'ALL' ? null : division,
+                null, // gang_code - seed all gangs
+                false // force
+            );
+
+            if (result.success) {
+                addLog('='.repeat(40), 'info');
+                addLog('✅ History seeding complete!', 'success');
+                addLog(`📊 Total employees: ${result.data?.total_employees || 0}`);
+
+                const records = result.data?.records_inserted;
+                if (records) {
+                    addLog(`📋 Records inserted:`);
+                    addLog(`  • Master: ${records.master}`);
+                    addLog(`  • Detail: ${records.detail}`);
+                    addLog(`  • Taskreg: ${records.taskreg}`);
+                    addLog(`  • ADTrans: ${records.adtrans}`);
+                    addLog(`  • Gang Member: ${records.gang_member}`);
+                }
+
+                if (result.data?.history_id) {
+                    addLog(`🔑 History ID: ${result.data.history_id}`);
+                }
+            } else {
+                addLog(`❌ History seeding failed: ${result.error}`, 'error');
+                if (result.errors?.length > 0) {
+                    result.errors.forEach(err => addLog(`  • ${err}`, 'error'));
+                }
+            }
+        } catch (e) {
+            addLog(`❌ Error: ${e.message}`, 'error');
+        } finally {
+            setIsHistoryRunning(false);
+        }
+    };
+
     // Clear logs
     const handleClearLogs = () => {
         setLogs([]);
@@ -349,6 +431,24 @@ export default function AggregationSeederPage({ onBack }) {
                         className="agg-btn agg-btn-secondary"
                     >
                         📈 View Summary
+                    </button>
+
+                    <hr className="agg-divider" />
+
+                    {/* History Seeder Button (Terpisah) */}
+                    <button
+                        onClick={handleRunHistorySeeder}
+                        disabled={isHistoryRunning || isRunning || historyConnectionStatus !== 'connected'}
+                        className="agg-btn"
+                        style={{
+                            backgroundColor: '#8b5cf6',
+                            borderColor: '#7c3aed',
+                            color: 'white',
+                            marginTop: '8px'
+                        }}
+                        title="Simpan data lengkap ke history tables (terpisah dari aggregation)"
+                    >
+                        {isHistoryRunning ? '⏳ Saving History...' : '💾 Save to History (Terpisah)'}
                     </button>
 
                     <hr className="agg-divider" />

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -6,20 +7,20 @@ import {
 } from 'recharts';
 import LoadingScreen from '../components/common/LoadingScreen';
 import PremiCompositionChart from '../components/dashboard/PremiCompositionChart';
+import DivisionDetailCard from './DivisionDetailCard';
+import KPICard from '../components/dashboard/KPICard';
+import GangComparisonChart from '../components/dashboard/GangComparisonChart';
+import TopBottomPerformersCard from '../components/dashboard/TopBottomPerformersCard';
+import GangCostBreakdownChart from '../components/dashboard/GangCostBreakdownChart';
+import GangTrendChart from '../components/dashboard/GangTrendChart';
+import GangDetailModal from '../components/dashboard/GangDetailModal';
 
 // Helper to format currency
 const formatCurrency = (val) => {
     if (val === null || val === undefined) return '-';
-    // Miliar
-    if (Math.abs(val) >= 1000000000) {
-        return `Rp ${(val / 1000000000).toFixed(2)} M`;
-    }
-    // Juta
-    if (Math.abs(val) >= 1000000) {
-        return `Rp ${(val / 1000000).toFixed(1)} jt`;
-    }
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
 };
+
 
 const formatNumber = (val) => new Intl.NumberFormat('id-ID').format(val);
 
@@ -46,10 +47,31 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
     const [divisionDetails, setDivisionDetails] = useState(null);
     const [divisionDetailsLoading, setDivisionDetailsLoading] = useState(false);
 
+    // Employee Detail State (New)
+    const [employeeData, setEmployeeData] = useState([]);
+    const [filteredEmployees, setFilteredEmployees] = useState([]);
+    const [detailedOvertime, setDetailedOvertime] = useState([]);
+    const [employeeFilters, setEmployeeFilters] = useState({
+        minNetWage: 0,
+        minOvertime: 0,
+        minPremi: 0,
+        search: ''
+    });
+    const [activeTab, setActiveTab] = useState('overview');
+
     // Main Filter State (Header)
     const [selectedFilterDivision, setSelectedFilterDivision] = useState('ALL');
     const [selectedFilterGang, setSelectedFilterGang] = useState('ALL');
     const [availableGangs, setAvailableGangs] = useState([]);
+
+    // Gang Comparison Charts State
+    const [gangComparisonData, setGangComparisonData] = useState([]);
+    const [topBottomData, setTopBottomData] = useState({ top: [], bottom: [] });
+    const [gangChartsLoading, setGangChartsLoading] = useState(false);
+
+    // Gang Detail Modal State
+    const [detailModalOpen, setDetailModalOpen] = useState(false);
+    const [selectedGangCode, setSelectedGangCode] = useState(null);
 
     // Load available periods
     useEffect(() => {
@@ -70,32 +92,46 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
         if (token) loadPeriods();
     }, [token]);
 
-    // Auto-select latest period on mount
+
+    // Auto-select latest period on mount AND load filters
     useEffect(() => {
-        async function checkLatestPeriod() {
+        async function initializeDashboard() {
             try {
                 const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
-                const res = await fetch(`${apiUrl}/payroll/dashboard/latest-period`, {
+
+                // Step 1: Get latest period
+                const periodRes = await fetch(`${apiUrl}/payroll/dashboard/latest-period`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const json = await res.json();
-                if (json.success) {
-                    const { month: latestMonth, year: latestYear } = json.data;
-                    // If current selection is different (or future/empty), switch to latest
+                const periodJson = await periodRes.json();
+
+                if (periodJson.success) {
+                    const { month: latestMonth, year: latestYear } = periodJson.data;
+
                     // Only switch if we are strictly using defaults (not user provided props)
                     if (!initialMonth && !initialYear) {
                         if (latestYear !== year || latestMonth !== month) {
                             console.log(`Switching to latest data period: ${latestMonth}/${latestYear}`);
                             setMonth(latestMonth);
                             setYear(latestYear);
+
+                            // Step 2: Load filters for the latest period immediately
+                            const filterRes = await fetch(`${apiUrl}/payroll/dashboard/filter-options?month=${latestMonth}&year=${latestYear}`, {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            });
+                            const filterJson = await filterRes.json();
+                            if (filterJson.success) {
+                                setFilterOptions(filterJson.data);
+                                setAvailableGangs(filterJson.data.gangs || []);
+                            }
                         }
                     }
                 }
             } catch (e) {
-                console.error("Failed to check latest period:", e);
+                console.error("Failed to initialize dashboard:", e);
             }
         }
-        if (token) checkLatestPeriod();
+        if (token) initializeDashboard();
     }, [token]);
 
     useEffect(() => {
@@ -119,10 +155,10 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                 setLoading(false);
             }
         }
-        if (token) loadDashboard();
+        if (token && month && year) loadDashboard();
     }, [token, month, year]);
 
-    // Load Filter Options
+    // Load Filter Options when period changes (user selection)
     useEffect(() => {
         async function loadFilters() {
             try {
@@ -140,7 +176,10 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                 console.error("Failed to load filters:", e);
             }
         }
-        if (token) loadFilters();
+        // Only load filters if month/year changed by user (not initial load)
+        if (token && month && year) {
+            loadFilters();
+        }
     }, [token, month, year]);
 
     // Filter gangs when division changes
@@ -193,36 +232,40 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
         setSelectedDivision(divisionCode);
         setDivisionDetailsLoading(true);
         setDivisionDetails(null);
+        setEmployeeData([]);
+        setFilteredEmployees([]);
+        setDetailedOvertime([]);
+        setEmployeeFilters({ minNetWage: 0, minOvertime: 0, minPremi: 0, search: '' });
+        setActiveTab('overview'); // 'overview', 'overtime', 'employees'
 
         try {
             const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
+            const headers = { 'Authorization': `Bearer ${token}` };
 
-            // Fetch gang breakdown for this division
-            const gangRes = await fetch(
-                `${apiUrl}/payroll/dashboard/aggregated-gang-data?month=${month}&year=${year}&division_code=${divisionCode}`,
-                { headers: { 'Authorization': `Bearer ${token}` } }
-            );
+            // Parallel Fetching
+            const [gangRes, premiRes, otRes, detailRes] = await Promise.all([
+                fetch(`${apiUrl}/payroll/dashboard/aggregated-gang-data?month=${month}&year=${year}&division_code=${divisionCode}`, { headers }),
+                fetch(`${apiUrl}/payroll/dashboard/premi-analysis?month=${month}&year=${year}&division_code=${divisionCode}`, { headers }),
+                fetch(`${apiUrl}/payroll/dashboard/overtime-analysis?month=${month}&year=${year}&division_code=${divisionCode}`, { headers }),
+                fetch(`${apiUrl}/payroll/dashboard/division-detail-data?month=${month}&year=${year}&division_code=${divisionCode}`, { headers })
+            ]);
+
             const gangData = await gangRes.json();
-
-            // Fetch premi breakdown for this division
-            const premiRes = await fetch(
-                `${apiUrl}/payroll/dashboard/premi-analysis?month=${month}&year=${year}&division_code=${divisionCode}`,
-                { headers: { 'Authorization': `Bearer ${token}` } }
-            );
             const premiData = await premiRes.json();
-
-            // Fetch overtime analysis for this division
-            const otRes = await fetch(
-                `${apiUrl}/payroll/dashboard/overtime-analysis?month=${month}&year=${year}&division_code=${divisionCode}`,
-                { headers: { 'Authorization': `Bearer ${token}` } }
-            );
             const otData = await otRes.json();
+            const detailData = await detailRes.json();
 
             setDivisionDetails({
                 gangs: gangData.success ? gangData.data : [],
                 premi: premiData.success ? premiData.data : [],
                 overtime: otData.success ? otData.data : []
             });
+
+            if (detailData.success) {
+                setEmployeeData(detailData.data.employees || []);
+                setFilteredEmployees(detailData.data.employees || []);
+                setDetailedOvertime(detailData.data.overtimeBreakdown || []);
+            }
         } catch (e) {
             console.error("Failed to fetch division details:", e);
             setDivisionDetails({ gangs: [], premi: [], overtime: [] });
@@ -237,6 +280,43 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
             fetchDivisionDetails(data.name);
         }
     };
+
+    // Load Gang Comparison Charts Data
+    useEffect(() => {
+        async function loadGangCharts() {
+            if (!token || !month || !year) return;
+
+            setGangChartsLoading(true);
+            try {
+                const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
+                const divParam = selectedFilterDivision !== 'ALL' ? `&division_code=${selectedFilterDivision}` : '';
+
+                // Fetch gang comparison
+                const compRes = await fetch(`${apiUrl}/payroll/dashboard/gang-comparison?month=${month}&year=${year}${divParam}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const compJson = await compRes.json();
+                if (compJson.success) {
+                    setGangComparisonData(compJson.data);
+                }
+
+                // Fetch top/bottom performers
+                const topBottomRes = await fetch(`${apiUrl}/payroll/dashboard/top-bottom-gangs?month=${month}&year=${year}${divParam}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const topBottomJson = await topBottomRes.json();
+                if (topBottomJson.success) {
+                    setTopBottomData(topBottomJson.data);
+                }
+            } catch (e) {
+                console.error("Failed to load gang charts:", e);
+            } finally {
+                setGangChartsLoading(false);
+            }
+        }
+
+        loadGangCharts();
+    }, [token, month, year, selectedFilterDivision]);
 
     // Derived Data for Charts
     const divisionChartData = useMemo(() => {
@@ -285,7 +365,17 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                 Overtime: d.total_ot || 0,
                 percent: totalOT > 0 ? ((d.total_ot / totalOT) * 100).toFixed(1) : 0
             }));
-    }, [data]);
+    }, [data, selectedFilterDivision]); // Added selectedFilterDivision dependency if needed, though mainly data changes
+
+    // Trigger detail fetch when division filter changes
+    useEffect(() => {
+        if (selectedFilterDivision !== 'ALL') {
+            fetchDivisionDetails(selectedFilterDivision);
+        } else {
+            // clear details if back to ALL
+            setDivisionDetails(null);
+        }
+    }, [selectedFilterDivision, month, year]);
 
     const efficiencyData = useMemo(() => {
         if (!data?.efficiency) return [];
@@ -345,6 +435,18 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
     const wageChange = calcChange(kpi.curr_wage, kpi.prev_wage);
     const otChange = calcChange(kpi.curr_ot, kpi.prev_ot);
     const headChange = calcChange(kpi.curr_headcount, kpi.prev_headcount);
+
+    // If a specific division is selected, show the Detail Card View instead of the Dashboard
+    if (selectedFilterDivision !== 'ALL') {
+        return (
+            <DivisionDetailCard
+                division={selectedFilterDivision}
+                data={divisionDetails}
+                loading={divisionDetailsLoading}
+                onBack={() => setSelectedFilterDivision('ALL')}
+            />
+        );
+    }
 
     return (
         <div style={{ padding: '2rem', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
@@ -815,6 +917,49 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                 </div>
             </div>
 
+            {/* Gang Performance Charts Section */}
+            <TopBottomPerformersCard
+                data={topBottomData}
+                loading={gangChartsLoading}
+            />
+
+            <div style={{ marginTop: '2rem' }}>
+                <GangComparisonChart
+                    data={gangComparisonData}
+                    loading={gangChartsLoading}
+                    onGangClick={(data) => {
+                        if (data?.gang_code) {
+                            setSelectedGangCode(data.gang_code);
+                            setDetailModalOpen(true);
+                        }
+                    }}
+                />
+            </div>
+
+            {/* Gang Cost Breakdown - Shows composition of costs */}
+            <div style={{ marginTop: '2rem' }}>
+                <GangCostBreakdownChart
+                    data={gangComparisonData}
+                    loading={gangChartsLoading}
+                    onGangClick={(data) => {
+                        if (data?.gang_code) {
+                            setSelectedGangCode(data.gang_code);
+                            setDetailModalOpen(true);
+                        }
+                    }}
+                />
+            </div>
+
+            {/* Gang Trend Comparison - Multi-line chart */}
+            <div style={{ marginTop: '2rem' }}>
+                <GangTrendChart
+                    token={token}
+                    month={month}
+                    year={year}
+                    divisionCode={selectedFilterDivision}
+                />
+            </div>
+
             {/* Phase 2: Productivity & Alerts */}
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', marginTop: '2rem', marginBottom: '3rem' }}>
                 {/* Productivity Trend */}
@@ -874,242 +1019,18 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                 </div>
             </div>
 
-            {/* Division Details Modal */}
-            {selectedDivision && (
-                <div
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
-                        backgroundColor: 'rgba(0,0,0,0.5)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        zIndex: 1000,
-                        padding: '2rem'
-                    }}
-                    onClick={() => setSelectedDivision(null)}
-                >
-                    <div
-                        style={{
-                            backgroundColor: 'white',
-                            borderRadius: '16px',
-                            maxWidth: '900px',
-                            width: '100%',
-                            maxHeight: '85vh',
-                            overflow: 'hidden',
-                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Modal Header */}
-                        <div style={{
-                            padding: '1.5rem',
-                            borderBottom: '1px solid #e2e8f0',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                        }}>
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>
-                                📊 Detail Divisi: {selectedDivision}
-                            </h2>
-                            <button
-                                onClick={() => setSelectedDivision(null)}
-                                style={{
-                                    background: '#f1f5f9',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    width: '32px',
-                                    height: '32px',
-                                    cursor: 'pointer',
-                                    fontSize: '1.1rem'
-                                }}
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        {/* Modal Content */}
-                        <div style={{ padding: '1.5rem', maxHeight: 'calc(85vh - 80px)', overflowY: 'auto' }}>
-                            {divisionDetailsLoading ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
-                                    Loading division details...
-                                </div>
-                            ) : divisionDetails ? (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
-                                    {/* Gang Breakdown */}
-                                    <div>
-                                        <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#334155', marginBottom: '1rem' }}>
-                                            👥 Breakdown Gang ({divisionDetails.gangs?.length || 0} gangs)
-                                        </h3>
-                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                                            <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
-                                                <thead>
-                                                    <tr style={{ backgroundColor: '#f8fafc', position: 'sticky', top: 0 }}>
-                                                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>Gang</th>
-                                                        <th style={{ padding: '8px', textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>Total Wage</th>
-                                                        <th style={{ padding: '8px', textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>Employees</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {divisionDetails.gangs
-                                                        ?.sort((a, b) => (b.total_upah_bersih || b.total_wage || 0) - (a.total_upah_bersih || a.total_wage || 0))
-                                                        .map((gang, idx) => (
-                                                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                                <td style={{ padding: '8px', fontWeight: '500' }}>{gang.gang_code}</td>
-                                                                <td style={{ padding: '8px', textAlign: 'right', color: '#3b82f6' }}>
-                                                                    {formatCurrency(gang.total_upah_bersih || gang.total_wage || 0)}
-                                                                </td>
-                                                                <td style={{ padding: '8px', textAlign: 'right' }}>{gang.total_employees || '-'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    {(!divisionDetails.gangs || divisionDetails.gangs.length === 0) && (
-                                                        <tr>
-                                                            <td colSpan={3} style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>
-                                                                No gang data available
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    {/* Premi Breakdown */}
-                                    <div>
-                                        <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#334155', marginBottom: '1rem' }}>
-                                            💰 Komposisi Premi ({divisionDetails.premi?.length || 0} jenis)
-                                        </h3>
-                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                                            {divisionDetails.premi && divisionDetails.premi.length > 0 ? (
-                                                <>
-                                                    {/* Total Premi Summary */}
-                                                    <div style={{
-                                                        backgroundColor: '#f0fdf4',
-                                                        padding: '1rem',
-                                                        borderRadius: '8px',
-                                                        marginBottom: '1rem',
-                                                        textAlign: 'center'
-                                                    }}>
-                                                        <div style={{ color: '#15803d', fontSize: '0.8rem' }}>Total Premi Divisi</div>
-                                                        <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#166534' }}>
-                                                            {formatCurrency(divisionDetails.premi.reduce((sum, p) => sum + p.value, 0))}
-                                                        </div>
-                                                    </div>
-                                                    {/* Premi List */}
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                        {divisionDetails.premi.map((premi, idx) => {
-                                                            const total = divisionDetails.premi.reduce((sum, p) => sum + p.value, 0);
-                                                            const percent = total > 0 ? ((premi.value / total) * 100).toFixed(1) : 0;
-                                                            return (
-                                                                <div key={idx} style={{
-                                                                    display: 'flex',
-                                                                    justifyContent: 'space-between',
-                                                                    alignItems: 'center',
-                                                                    padding: '8px 12px',
-                                                                    backgroundColor: '#f8fafc',
-                                                                    borderRadius: '6px'
-                                                                }}>
-                                                                    <span style={{ fontWeight: '500', fontSize: '0.85rem' }}>{premi.name}</span>
-                                                                    <span style={{
-                                                                        color: '#10b981',
-                                                                        fontWeight: '600',
-                                                                        fontSize: '0.85rem'
-                                                                    }}>
-                                                                        {formatCurrency(premi.value)} ({percent}%)
-                                                                    </span>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
-                                                    No premi data available for this division
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Overtime Breakdown */}
-                                    <div>
-                                        <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#334155', marginBottom: '1rem' }}>
-                                            ⏰ Analisis Lembur
-                                        </h3>
-                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                                            {divisionDetails.overtime && divisionDetails.overtime.length > 0 ? (
-                                                <>
-                                                    {/* Total Overtime Summary */}
-                                                    <div style={{
-                                                        backgroundColor: '#fff7ed',
-                                                        padding: '1rem',
-                                                        borderRadius: '8px',
-                                                        marginBottom: '1rem',
-                                                        textAlign: 'center'
-                                                    }}>
-                                                        <div style={{ color: '#c2410c', fontSize: '0.8rem' }}>Total Lembur Divisi</div>
-                                                        <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#ea580c' }}>
-                                                            {formatCurrency(divisionDetails.overtime.reduce((sum, o) => sum + o.value, 0))}
-                                                        </div>
-                                                    </div>
-                                                    {/* Overtime List */}
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                        {divisionDetails.overtime.map((ot, idx) => {
-                                                            const total = divisionDetails.overtime.reduce((sum, o) => sum + o.value, 0);
-                                                            const percent = total > 0 ? ((ot.value / total) * 100).toFixed(1) : 0;
-                                                            return (
-                                                                <div key={idx} style={{
-                                                                    display: 'flex',
-                                                                    justifyContent: 'space-between',
-                                                                    alignItems: 'center',
-                                                                    padding: '8px 12px',
-                                                                    backgroundColor: '#f8fafc',
-                                                                    borderRadius: '6px'
-                                                                }}>
-                                                                    <span style={{ fontWeight: '500', fontSize: '0.85rem' }}>{ot.name}</span>
-                                                                    <span style={{
-                                                                        color: '#ea580c',
-                                                                        fontWeight: '600',
-                                                                        fontSize: '0.85rem'
-                                                                    }}>
-                                                                        {formatCurrency(ot.value)} ({percent}%)
-                                                                    </span>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
-                                                    No overtime data available for this division
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                                    Failed to load division details
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Division Details Modal - REMOVED, Replaced by DivisionDetailCard View */}
+            {/* Gang Detail Modal */}
+            <GangDetailModal
+                isOpen={detailModalOpen}
+                onClose={() => setDetailModalOpen(false)}
+                gangCode={selectedGangCode}
+                month={month}
+                year={year}
+                token={token}
+            />
         </div>
     );
 }
 
-const KPICard = ({ title, value, subValue, trend, color }) => (
-    <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', borderLeft: `4px solid ${getColorCode(color)}` }}>
-        <p style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', textTransform: 'uppercase' }}>{title}</p>
-        <p style={{ fontSize: '1.5rem', fontWeight: '800', color: '#1e293b', marginBottom: '0.25rem' }}>{value}</p>
-        <p style={{ fontSize: '0.875rem', color: trend === 'up' && color !== 'green' ? '#ef4444' : '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-            {trend === 'up' ? '▲' : '▼'} {subValue}
-        </p>
-    </div>
-);
 
-const getColorCode = (name) => {
-    const map = { red: '#ef4444', blue: '#3b82f6', green: '#10b981', orange: '#f59e0b', gray: '#94a3b8' };
-    return map[name] || '#94a3b8';
-};

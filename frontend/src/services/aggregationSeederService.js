@@ -1,16 +1,35 @@
 /**
  * Aggregation Seeder Service
  * Service functions for aggregation seeding to extend_db_ptrj
+ * Supports both direct backend access and proxy mode
  */
 
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || '';
+// Detect if we're in proxy mode (accessed via proxy gateway)
+const isProxyMode = import.meta.env.VITE_PROXY_MODE === 'true' ||
+                       import.meta.env.NODE_ENV === 'production' ||
+                       (import.meta.env.VITE_BACKEND_HOST && import.meta.env.VITE_BACKEND_HOST !== 'localhost');
+
+// Use relative URLs in proxy mode, absolute URLs in direct mode
+// This allows the same build to work both locally and via proxy
+const getBackendUrl = () => {
+    if (isProxyMode) {
+        // In proxy mode, use relative URLs - the Vite proxy will forward them
+        return ''; // Empty string means use relative URLs like '/payroll/aggregation/health'
+    } else {
+        // In direct mode, use the absolute backend URL
+        return import.meta.env.VITE_BACKEND_BASE || 'http://localhost:8002';
+    }
+};
 
 /**
  * Check health of extend_db_ptrj connection
  * @param {string} token - Auth token
  */
 export async function checkAggregationHealth(token) {
-    const response = await fetch(`${BACKEND_BASE}/payroll/aggregation/health`, {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/aggregation/health`;
+
+    const response = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -33,6 +52,9 @@ export async function checkAggregationHealth(token) {
  * @param {boolean} force - Force seeding even if no active employees
  */
 export async function seedAggregation(token, month, year, division = null, force = false) {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/aggregation/seed`;
+
     const body = {
         month,
         year,
@@ -40,7 +62,7 @@ export async function seedAggregation(token, month, year, division = null, force
         force
     };
 
-    const response = await fetch(`${BACKEND_BASE}/payroll/aggregation/seed`, {
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
@@ -65,12 +87,15 @@ export async function seedAggregation(token, month, year, division = null, force
  * @param {string} division - Division filter (optional)
  */
 export async function fetchAggregationHistory(token, month = null, year = null, division = null) {
+    const baseUrl = getBackendUrl();
     const params = new URLSearchParams();
     if (month) params.append('month', month);
     if (year) params.append('year', year);
     if (division) params.append('division', division);
 
-    const response = await fetch(`${BACKEND_BASE}/payroll/aggregation/history?${params.toString()}`, {
+    const url = `${baseUrl}/payroll/aggregation/history?${params.toString()}`;
+
+    const response = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -91,7 +116,10 @@ export async function fetchAggregationHistory(token, month = null, year = null, 
  * @param {number} year - Year
  */
 export async function fetchAggregationSummary(token, month, year) {
-    const response = await fetch(`${BACKEND_BASE}/payroll/aggregation/summary?month=${month}&year=${year}`, {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/aggregation/summary?month=${month}&year=${year}`;
+
+    const response = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -110,7 +138,10 @@ export async function fetchAggregationSummary(token, month, year) {
  * @param {string} token - Auth token
  */
 export async function fetchAggregationDivisions(token) {
-    const response = await fetch(`${BACKEND_BASE}/payroll/aggregation/divisions`, {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/aggregation/divisions`;
+
+    const response = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -129,7 +160,10 @@ export async function fetchAggregationDivisions(token) {
  * @param {string} token - Auth token
  */
 export async function fetchAggregationPeriods(token) {
-    const response = await fetch(`${BACKEND_BASE}/payroll/aggregation/periods`, {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/aggregation/periods`;
+
+    const response = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -151,6 +185,9 @@ export async function fetchAggregationPeriods(token) {
  * @param {string} division - Division (optional)
  */
 export async function syncSpreadsheet(token, month, year, division = null, syncType = 'DAFTAR_UPAH') {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/spreadsheet/sync`;
+
     const body = {
         month,
         year,
@@ -158,7 +195,7 @@ export async function syncSpreadsheet(token, month, year, division = null, syncT
         syncType
     };
 
-    const response = await fetch(`${BACKEND_BASE}/spreadsheet/sync`, {
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
@@ -182,7 +219,10 @@ export async function syncSpreadsheet(token, month, year, division = null, syncT
  * @param {number} year - Year
  */
 export async function fetchAggregationStatus(token, month, year) {
-    const response = await fetch(`${BACKEND_BASE}/payroll/aggregation/status/${month}/${year}`, {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/aggregation/status/${month}/${year}`;
+
+    const response = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',

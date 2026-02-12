@@ -1,0 +1,182 @@
+[
+    {
+        "no": 1,
+        "name": "SARWANDI",
+        "gender": "L",
+        "status": "K/1",
+        "months_worked": 11,
+        "monthly_income": {
+            "january": 4048600,
+            "february": 7080250,
+            "march": 9732523,
+            "april": 8456290,
+            "may": 9340382,
+            "june": 8904452,
+            "july": 8824994,
+            "august": 8768974,
+            "september": 8915655,
+            "october": 9205932,
+            "november": 8624350,
+            "december": 0
+        },
+        "monthly_components": {
+            "january": 77532,
+            "february": 77532,
+            "march": 77532,
+            "april": 77532,
+            "may": 77532,
+            "june": 77532,
+            "july": 78542,
+            "august": 78542,
+            "september": 78542,
+            "october": 78542,
+            "november": 78542,
+            "december": 0
+        },
+        "summary": {
+            "total_income_jan_nov": 91902401,
+            "thr": 4053100,
+            "bonus": 600000,
+            "medical_claim": 0,
+            "total_annual_income": 96555501,
+            "ptkp": 63000000,
+            "taxable_income": 0,
+            "total_components_jan_nov": 857902
+        }
+    },
+    {
+        "no": 2,
+        "name": "SUHARMAN",
+        "gender": "L",
+        "status": "K/0",
+        "months_worked": 11,
+        "monthly_income": {
+            "january": 4455775,
+            "february": 4108374,
+            "march": 4192070,
+            "april": 5359270,
+            "may": 7161143,
+            "june": 5205913,
+            "july": 6705276,
+            "august": 6660460,
+            "september": 5844543,
+            "october": 5810931,
+            "november": 6079828,
+            "december": 0
+        },
+        "monthly_components": {
+            "january": 77532,
+            "february": 77532,
+            "march": 77532,
+            "april": 77532,
+            "may": 77532,
+            "june": 77532,
+            "july": 79312,
+            "august": 79312,
+            "september": 79312,
+            "october": 79312,
+            "november": 79312,
+            "december": 0
+        },
+        "summary": {
+            "total_income_jan_nov": 61583580,
+            "thr": 4059600,
+            "bonus": 200000,
+            "medical_claim": 0,
+            "total_annual_income": 65843180,
+            "ptkp": 58500000,
+            "taxable_income": 0,
+            "total_components_jan_nov": 861752
+        }
+    },
+    {
+        "no": 13,
+        "name": "ERWIN HAZANI",
+        "gender": "L",
+        "status": "K/1",
+        "months_worked": 11,
+        "monthly_income": {
+            "january": 4469625,
+            "february": 4957785,
+            "march": 4586316,
+            "april": 5472014,
+            "may": 6692677,
+            "june": 5763319,
+            "july": 6939165,
+            "august": 6771104,
+            "september": 6054624,
+            "october": 5717924,
+            "november": 6054624,
+            "december": 0
+        },
+        "monthly_components": {
+            "january": 77532,
+            "february": 77532,
+            "march": 77532,
+            "april": 77532,
+            "may": 77532,
+            "june": 77532,
+            "july": 78192,
+            "august": 78192,
+            "september": 78192,
+            "october": 78192,
+            "november": 78192,
+            "december": 0
+        },
+        "summary": {
+            "total_income_jan_nov": 63479176,
+            "thr": 4049100,
+            "bonus": 600000,
+            "medical_claim": 0,
+            "total_annual_income": 68128276,
+            "ptkp": 63000000,
+            "taxable_income": 0,
+            "total_components_jan_nov": 856152
+        }
+    },
+    {
+        "no": 16,
+        "name": "ARLINI",
+        "gender": "P",
+        "status": "TK/0",
+        "months_worked": 11,
+        "monthly_income": {
+            "january": 5502555,
+            "february": 5258094,
+            "march": 5388607,
+            "april": 5227229,
+            "may": 5825565,
+            "june": 5182413,
+            "july": 5779544,
+            "august": 6049645,
+            "september": 5528534,
+            "october": 5897789,
+            "november": 4174048,
+            "december": 0
+        },
+        "monthly_components": {
+            "january": 77532,
+            "february": 77532,
+            "march": 77532,
+            "april": 77532,
+            "may": 77532,
+            "june": 77532,
+            "july": 78542,
+            "august": 78542,
+            "september": 78542,
+            "october": 78542,
+            "november": 78542,
+            "december": 0
+        },
+        "summary": {
+            "total_income_jan_nov": 59814022,
+            "thr": 3994600,
+            "bonus": 600000,
+            "medical_claim": 0,
+            "total_annual_income": 64408622,
+            "ptkp": 54000000,
+            "taxable_income": 0,
+            "total_components_jan_nov": 857902
+        }
+    }
+]

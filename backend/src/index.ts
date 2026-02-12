@@ -13,6 +13,7 @@ import { devConfigRoutes } from "./api/devConfig";
 import { aggregationSeederRoutes } from "./api/aggregationSeederRoutes";
 import { spreadsheetRoutes } from "./api/spreadsheetRoutes";
 import { dashboardRoutes } from "./api/dashboardRoutes";
+import { historyRoutes } from "./api/historyRoutes";
 import { Database } from "./db/client";
 import { staticPlugin } from "@elysiajs/static";
 
@@ -24,6 +25,7 @@ console.log(`DB_PROFILE: ${Config.DB_PROFILE}`);
 console.log(`DEFAULT_DATABASE: ${Config.DEFAULT_DATABASE}`);
 console.log(`DB_EXTEND_PROFILE: ${Config.DB_EXTEND_PROFILE}`);
 console.log(`DB_EXTEND_DATABASE: ${Config.DB_EXTEND_DATABASE}`);
+console.log(`DB_EXTEND_TRANS_DATABASE: ${process.env.DB_EXTEND_TRANS_DATABASE || "extend_db_ptrj_transaksi"}`);
 console.log(`DB_VENUS_PROFILE: ${Config.DB_VENUS_PROFILE}`);
 console.log(`DB_VENUS_DATABASE: ${Config.DB_VENUS_DATABASE}`);
 console.log(`DB_API_URL: ${Config.DB_API_URL}`);
@@ -204,6 +206,8 @@ const app = new Elysia()
     // Summary routes already have /payroll/summary prefix in their definition
     .use(summaryRoutes)
     .use(dashboardRoutes)
+    // History routes
+    .use(historyRoutes)
 
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
@@ -221,6 +225,7 @@ const app = new Elysia()
         .use(spreadsheetRoutes)
         .use(summaryRoutes)
         .use(dashboardRoutes)
+        .use(historyRoutes)
         .use(devConfigRoutes)
     )
 

@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulasi Pajak PPh 21 - TER & Annual</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">🧮</div>
+                    <div class="logo-text">
+                        <h1>Simulasi Pajak PPh 21</h1>
+                        <span>Perhitungan Bulanan (TER) & Tahunan</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button id="btnLoadSample" class="btn btn-secondary">
+                        <span class="btn-icon">📋</span>
+                        Load Sample Data
+                    </button>
+                    <button id="btnExport" class="btn btn-secondary">
+                        <span class="btn-icon">💾</span>
+                        Export JSON
+                    </button>
+                    <button id="btnReset" class="btn btn-danger">
+                        <span class="btn-icon">🔄</span>
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Sidebar: Employee List -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Daftar Karyawan</h2>
+                    <button id="btnAddEmployee" class="btn btn-primary btn-sm">
+                        <span class="btn-icon">+</span>
+                        Tambah
+                    </button>
+                </div>
+                <div class="employee-list" id="employeeList">
+                    <!-- Employee items will be rendered here -->
+                </div>
+                <div class="sidebar-footer">
+                    <div class="summary-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Total Karyawan:</span>
+                            <span class="stat-value" id="totalEmployees">0</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right Content: Tax Calculator -->
+            <section class="calculator-section">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="employee">
+                        <span class="tab-icon">👤</span>
+                        Data Karyawan
+                    </button>
+                    <button class="tab-btn" data-tab="monthly">
+                        <span class="tab-icon">📅</span>
+                        Penghasilan Bulanan
+                    </button>
+                    <button class="tab-btn" data-tab="monthly-tax">
+                        <span class="tab-icon">💰</span>
+                        Pajak Bulanan (TER)
+                    </button>
+                    <button class="tab-btn" data-tab="annual">
+                        <span class="tab-icon">📊</span>
+                        Perhitungan Tahunan
+                    </button>
+                    <button class="tab-btn" data-tab="astek">
+                        <span class="tab-icon">🏦</span>
+                        Akumulasi ASTEK
+                    </button>
+                </div>
+
+                <!-- Tab Content: Employee Data -->
+                <div class="tab-content active" id="tab-employee">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Informasi Karyawan</h3>
+                            <button id="btnDeleteEmployee" class="btn btn-danger btn-sm" style="display: none;">
+                                🗑️ Hapus
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <form id="employeeForm" class="form-grid">
+                                <div class="form-group">
+                                    <label for="empNo">Nomor</label>
+                                    <input type="number" id="empNo" class="form-control" placeholder="1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="empName">Nama Karyawan *</label>
+                                    <input type="text" id="empName" class="form-control" placeholder="Nama lengkap"
+                                        required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="empNIK">NIK/Paspor</label>
+                                    <input type="text" id="empNIK" class="form-control" placeholder="Nomor identitas">
+                                </div>
+                                <div class="form-group">
+                                    <label for="empNPWP">NPWP</label>
+                                    <input type="text" id="empNPWP" class="form-control"
+                                        placeholder="00.000.000.0-000.000">
+                                </div>
+                                <div class="form-group">
+                                    <label for="empGender">Jenis Kelamin</label>
+                                    <select id="empGender" class="form-control">
+                                        <option value="L">Laki-laki</option>
+                                        <option value="P">Perempuan</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="empStatus">Status PTKP *</label>
+                                    <select id="empStatus" class="form-control" required>
+                                        <option value="TK/0">TK/0 - Tidak Kawin, 0 Tanggungan</option>
+                                        <option value="TK/1">TK/1 - Tidak Kawin, 1 Tanggungan</option>
+                                        <option value="TK/2">TK/2 - Tidak Kawin, 2 Tanggungan</option>
+                                        <option value="TK/3">TK/3 - Tidak Kawin, 3 Tanggungan</option>
+                                        <option value="K/0">K/0 - Kawin, 0 Tanggungan</option>
+                                        <option value="K/1">K/1 - Kawin, 1 Tanggungan</option>
+                                        <option value="K/2">K/2 - Kawin, 2 Tanggungan</option>
+                                        <option value="K/3">K/3 - Kawin, 3 Tanggungan</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="empPosition">Jabatan</label>
+                                    <input type="text" id="empPosition" class="form-control" placeholder="Jabatan">
+                                </div>
+                                <div class="form-group">
+                                    <label for="empAddress">Alamat</label>
+                                    <textarea id="empAddress" class="form-control" rows="2"
+                                        placeholder="Alamat lengkap"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="empMasaKerja">Masa Kerja (Bulan)</label>
+                                    <input type="number" id="empMasaKerja" class="form-control" placeholder="12"
+                                        value="12">
+                                </div>
+                                <div class="form-group">
+                                    <label for="empYear">Tahun Pajak</label>
+                                    <select id="empYear" class="form-control">
+                                        <option value="2025">2025</option>
+                                        <option value="2026" selected>2026</option>
+                                        <option value="2027">2027</option>
+                                    </select>
+                                </div>
+                            </form>
+                            <div class="form-actions">
+                                <button id="btnSaveEmployee" class="btn btn-primary">💾 Simpan Data</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Monthly Income -->
+                <div class="tab-content" id="tab-monthly">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Penghasilan Bulanan (Januari - Desember)</h3>
+                            <div class="header-info">
+                                <span class="badge" id="terCategoryBadge">TER A</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="monthly-income-grid">
+                                <!-- Jan - Jun -->
+                                <div class="month-group">
+                                    <h4>Semester 1</h4>
+                                    <div class="month-inputs">
+                                        <div class="month-row">
+                                            <label>Januari</label>
+                                            <input type="number" class="form-control month-income" data-month="january"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>Februari</label>
+                                            <input type="number" class="form-control month-income" data-month="february"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>Maret</label>
+                                            <input type="number" class="form-control month-income" data-month="march"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>April</label>
+                                            <input type="number" class="form-control month-income" data-month="april"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>Mei</label>
+                                            <input type="number" class="form-control month-income" data-month="may"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>Juni</label>
+                                            <input type="number" class="form-control month-income" data-month="june"
+                                                placeholder="0">
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Jul - Dec -->
+                                <div class="month-group">
+                                    <h4>Semester 2</h4>
+                                    <div class="month-inputs">
+                                        <div class="month-row">
+                                            <label>Juli</label>
+                                            <input type="number" class="form-control month-income" data-month="july"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>Agustus</label>
+                                            <input type="number" class="form-control month-income" data-month="august"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>September</label>
+                                            <input type="number" class="form-control month-income"
+                                                data-month="september" placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>Oktober</label>
+                                            <input type="number" class="form-control month-income" data-month="october"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>November</label>
+                                            <input type="number" class="form-control month-income" data-month="november"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="month-row">
+                                            <label>Desember</label>
+                                            <input type="number" class="form-control month-income" data-month="december"
+                                                placeholder="0">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Irregular Income -->
+                            <div class="irregular-income-section">
+                                <h4>Penghasilan Tidak Teratur</h4>
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label for="incomeTHR">THR (Tunjangan Hari Raya)</label>
+                                        <input type="number" id="incomeTHR" class="form-control" placeholder="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="incomeBonus">Bonus</label>
+                                        <input type="number" id="incomeBonus" class="form-control" placeholder="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="incomeTantiem">Tantiem</label>
+                                        <input type="number" id="incomeTantiem" class="form-control" placeholder="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="incomeMedical">Medical Claim</label>
+                                        <input type="number" id="incomeMedical" class="form-control" placeholder="0">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Monthly Components (ASTEK) -->
+                            <div class="astek-section">
+                                <h4>Iuran ASTEK & BPJS per Bulan</h4>
+                                <div class="monthly-components-grid">
+                                    <div class="month-row">
+                                        <label>Januari</label>
+                                        <input type="number" class="form-control month-component" data-month="january"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>Februari</label>
+                                        <input type="number" class="form-control month-component" data-month="february"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>Maret</label>
+                                        <input type="number" class="form-control month-component" data-month="march"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>April</label>
+                                        <input type="number" class="form-control month-component" data-month="april"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>Mei</label>
+                                        <input type="number" class="form-control month-component" data-month="may"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>Juni</label>
+                                        <input type="number" class="form-control month-component" data-month="june"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>Juli</label>
+                                        <input type="number" class="form-control month-component" data-month="july"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>Agustus</label>
+                                        <input type="number" class="form-control month-component" data-month="august"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>September</label>
+                                        <input type="number" class="form-control month-component" data-month="september"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>Oktober</label>
+                                        <input type="number" class="form-control month-component" data-month="october"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>November</label>
+                                        <input type="number" class="form-control month-component" data-month="november"
+                                            placeholder="0">
+                                    </div>
+                                    <div class="month-row">
+                                        <label>Desember</label>
+                                        <input type="number" class="form-control month-component" data-month="december"
+                                            placeholder="0">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button id="btnCalculateMonthly" class="btn btn-primary">🧮 Hitung & Simpan</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Monthly Tax (TER) -->
+                <div class="tab-content" id="tab-monthly-tax">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Perhitungan Pajak Bulanan (Metode TER)</h3>
+                            <div class="header-info">
+                                <span class="info-text">PP 58 Tahun 2023</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="tax-summary-cards">
+                                <div class="tax-card">
+                                    <div class="tax-card-label">Total PPh 21 Jan-Nov (TER)</div>
+                                    <div class="tax-card-value" id="totalTaxJanNov">Rp 0</div>
+                                </div>
+                                <div class="tax-card">
+                                    <div class="tax-card-label">PPh 21 Desember (Annual)</div>
+                                    <div class="tax-card-value" id="taxDecember">Rp 0</div>
+                                </div>
+                                <div class="tax-card highlight">
+                                    <div class="tax-card-label">Total PPh 21 Setahun</div>
+                                    <div class="tax-card-value" id="totalTaxYear">Rp 0</div>
+                                </div>
+                            </div>
+
+                            <div class="monthly-tax-table-container">
+                                <h4>Rincian Pajak Bulanan</h4>
+                                <table class="data-table" id="monthlyTaxTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Bulan</th>
+                                            <th>Penghasilan Bruto</th>
+                                            <th>Kategori TER</th>
+                                            <th>Tarif</th>
+                                            <th>PPh 21 Terutang</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Will be populated by JS -->
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="total-row">
+                                            <td colspan="4"><strong>Total Januari - November (TER)</strong></td>
+                                            <td><strong id="tableTotalJanNov">Rp 0</strong></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Annual Calculation -->
+                <div class="tab-content" id="tab-annual">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Perhitungan Pajak Tahunan (Desember)</h3>
+                            <div class="header-info">
+                                <span class="info-text">Perhitungan Ulang Akhir Tahun</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="annual-calculation-grid">
+                                <!-- Left: Income Summary -->
+                                <div class="calculation-section">
+                                    <h4>Penghasilan Bruto Setahun</h4>
+                                    <div class="calculation-rows">
+                                        <div class="calc-row">
+                                            <span>Total Gaji Pokok (Jan-Des)</span>
+                                            <span id="annualGajiPokok">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>Total Tunjangan Lainnya</span>
+                                            <span id="annualTunjangan">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>Total Premi Asuransi (JKK, JKM, Kesehatan)</span>
+                                            <span id="annualPremi">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>THR</span>
+                                            <span id="annualTHR">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>Bonus</span>
+                                            <span id="annualBonus">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>Tantiem</span>
+                                            <span id="annualTantiem">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row total">
+                                            <span><strong>Penghasilan Bruto Setahun</strong></span>
+                                            <span id="annualBrutoTotal"><strong>Rp 0</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Right: Deductions & Tax -->
+                                <div class="calculation-section">
+                                    <h4>Pengurang & Perhitungan Pajak</h4>
+                                    <div class="calculation-rows">
+                                        <div class="calc-row">
+                                            <span>Biaya Jabatan (5% max Rp 6jt)</span>
+                                            <span id="annualBiayaJabatan">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>Iuran JHT/JP (Karyawan)</span>
+                                            <span id="annualIuranJHT">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row total">
+                                            <span><strong>Penghasilan Netto Setahun</strong></span>
+                                            <span id="annualNetto"><strong>Rp 0</strong></span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>PTKP (<span id="annualPTKPStatus">-</span>)</span>
+                                            <span id="annualPTKP">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row highlight">
+                                            <span><strong>PKP (Penghasilan Kena Pajak)</strong></span>
+                                            <span id="annualPKP"><strong>Rp 0</strong></span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>PPh 21 Setahun (Progressif)</span>
+                                            <span id="annualPPh21Setahun">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row">
+                                            <span>PPh 21 Jan-Nov (TER)</span>
+                                            <span id="annualPPh21Terbayar">Rp 0</span>
+                                        </div>
+                                        <div class="calc-row result">
+                                            <span><strong>PPh 21 Desember (Kurang/Lebih)</strong></span>
+                                            <span id="annualPPh21Desember"><strong>Rp 0</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tax Bracket Visualization -->
+                            <div class="tax-bracket-section">
+                                <h4>Perhitungan PPh 21 Progressif</h4>
+                                <div class="bracket-table-container">
+                                    <table class="data-table" id="bracketTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Lapisan PKP</th>
+                                                <th>Tarif</th>
+                                                <th>PKP dalam Lapisan</th>
+                                                <th>PPh 21</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Will be populated by JS -->
+                                        </tbody>
+                                        <tfoot>
+                                            <tr class="total-row">
+                                                <td colspan="3"><strong>Total PPh 21 Setahun</strong></td>
+                                                <td><strong id="bracketTotalPPh21">Rp 0</strong></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: ASTEK Accumulation -->
+                <div class="tab-content" id="tab-astek">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Akumulasi Iuran ASTEK & BPJS</h3>
+                            <div class="header-info">
+                                <span class="info-text">JHT, JKK, JKM, JP, Kesehatan</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="astek-summary-cards">
+                                <div class="astek-card">
+                                    <div class="astek-card-label">Total Iuran Jan-Nov</div>
+                                    <div class="astek-card-value" id="astekTotalJanNov">Rp 0</div>
+                                </div>
+                                <div class="astek-card">
+                                    <div class="astek-card-label">Iuran Desember</div>
+                                    <div class="astek-card-value" id="astekDecember">Rp 0</div>
+                                </div>
+                                <div class="astek-card highlight">
+                                    <div class="astek-card-label">Total Setahun</div>
+                                    <div class="astek-card-value" id="astekTotalYear">Rp 0</div>
+                                </div>
+                            </div>
+
+                            <div class="astek-table-container">
+                                <h4>Rincian Iuran per Bulan</h4>
+                                <table class="data-table" id="astekTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Bulan</th>
+                                            <th>JHT (2%)</th>
+                                            <th>JP (1%)</th>
+                                            <th>JKK (0.24-1.74%)</th>
+                                            <th>JKM (0.3%)</th>
+                                            <th>Kesehatan (1%)</th>
+                                            <th>Total Iuran</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Will be populated by JS -->
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="total-row">
+                                            <td><strong>Total</strong></td>
+                                            <td id="totalJHT">Rp 0</td>
+                                            <td id="totalJP">Rp 0</td>
+                                            <td id="totalJKK">Rp 0</td>
+                                            <td id="totalJKM">Rp 0</td>
+                                            <td id="totalKes">Rp 0</td>
+                                            <td id="totalIuran"><strong>Rp 0</strong></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+
+                            <div class="astek-info">
+                                <h4>Informasi Tarif Iuran</h4>
+                                <div class="info-grid">
+                                    <div class="info-item">
+                                        <span class="info-label">JHT (Jaminan Hari Tua)</span>
+                                        <span class="info-value">Karyawan 2%, Perusahaan 3.7%</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">JP (Jaminan Pensiun)</span>
+                                        <span class="info-value">Karyawan 1%, Perusahaan 2%</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">JKK (Jaminan Kecelakaan Kerja)</span>
+                                        <span class="info-value">Perusahaan 0.24% - 1.74%</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">JKM (Jaminan Kematian)</span>
+                                        <span class="info-value">Perusahaan 0.3%</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Kesehatan (BPJS Kesehatan)</span>
+                                        <span class="info-value">Karyawan 1%, Perusahaan 4%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Simulasi Pajak PPh 21 &copy; 2026 | Berdasarkan PP 58 Tahun 2023</p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="taxEngine.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

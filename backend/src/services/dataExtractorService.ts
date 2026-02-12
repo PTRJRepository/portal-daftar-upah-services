@@ -139,8 +139,11 @@ interface PayrollRow {
     total_potongan: number;
     total_potongan_bersih: number;
     // New calculated tax fields
-    astek_084: number;
-    penghasilan_bruto: number; // Sum of: gaji_pokok_aktual + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
+    // IMPORTANT: ASTEK and BPJS Kesehatan are calculated from payrate × 30 (monthly salary), NOT from actual HK
+    gaji_pokok_bulanan: number; // payrate × 30 (for ASTEK/BPJS calculation)
+    astek_084: number; // ASTEK/BPJS Pensiun Majikan (0.84%) - calculated from gaji_pokok_bulanan + masa_kerja_jumlah
+    bpjs_kesehatan_majikan_4_pct: number; // BPJS Kesehatan Majikan (4%) - calculated from gaji_pokok_bulanan + masa_kerja_jumlah
+    penghasilan_bruto: number; // For PPH21 TER: gaji_pokok_aktual + tunjangan + lembur + premi + astek_084 + bpjs_kesehatan_majikan_4_pct
     upah_kotor_pajak: number; // Jumlah Upah Kotor + Astek + BPJS Kesehatan (untuk header/pajak)
     // PPH21 TER fields
     tarif_pajak_ter: number; // TER rate as percentage (e.g., 5 for 5%)
@@ -531,15 +534,36 @@ export class DataExtractorService {
             // If aktual < ideal, koreksi_hk = negative value (deduction)
             const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal;
 
-            // [NEW] Astek 0.84% calculation
-            // Formula: (gaji_pokok_ideal + tunjangan_masa_kerja) * 0.84%
-            const astek_084 = Math.round((gaji_pokok_ideal + empMasaKerjaJumlah) * 0.0084);
+            // [FIXED] Astek 0.84% calculation
+            // IMPORTANT: Always calculated from payrate × 30 (monthly salary), NOT from gaji_pokok_ideal
+            // Formula: (payrate × 30 + tunjangan_masa_kerja) × 0.84%
+            // This is the EMPLOYER portion of BPJS Pensiun (ASTEK) for tax calculation
+            const gaji_pokok_bulanan = empUpahDasar * 30; // Always payrate × 30, not depending on HK
+            const astek_084 = Math.round((gaji_pokok_bulanan + empMasaKerjaJumlah) * 0.0084);
 
-            // [NEW] Penghasilan Bruto calculation
-            // Sum of: gaji_pokok_aktual + beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah + total_premi
-            // Using gaji_pokok_aktual (REAL salary), NOT gaji_pokok_ideal
-            // [FIXED] Use empLemburJumlahPure (only OT=1) for consistency
-            const penghasilan_bruto = gaji_pokok_aktual + berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlahPure + total_premi;
+            // [FIXED] BPJS Kesehatan Majikan (4%) - for tax calculation
+            // IMPORTANT: Always calculated from payrate × 30 (monthly salary), NOT from gaji_pokok_ideal
+            // Formula: (payrate × 30 + tunjangan_masa_kerja) × 4%
+            // This is the EMPLOYER portion of BPJS Kesehatan
+            const bpjs_kesehatan_majikan_4_pct = Math.round((gaji_pokok_bulanan + empMasaKerjaJumlah) * 0.04);
+
+            // [UPDATED] Penghasilan Bruto calculation for PPh21 TER
+            // IMPORTANT: Includes ASTEK (0.84%) + BPJS Kesehatan Majikan (4%)
+            // Per PP 58 Tahun 2023, penghasilan bruto untuk perhitungan PPh21 meliputi:
+            // - Gaji Pokok Aktual
+            // - Tunjangan (Beras, Jabatan, Masa Kerja)
+            // - Lembur
+            // - Premi
+            // - ASTEK/BPJS Pensiun Majikan (0.84%)
+            // - BPJS Kesehatan Majikan (4%)
+            const penghasilan_bruto = gaji_pokok_aktual +
+                berasJumlah +
+                empJabatan +
+                empMasaKerjaJumlah +
+                empLemburJumlahPure +
+                total_premi +
+                astek_084 +
+                bpjs_kesehatan_majikan_4_pct;
 
             const statusPtkp = mapBerasRateToPTKP(berasRate);
 
@@ -621,7 +645,9 @@ export class DataExtractorService {
                     ...koreksiVariations,
                     total: pot_koreksi
                 },
+                gaji_pokok_bulanan,
                 astek_084,
+                bpjs_kesehatan_majikan_4_pct,
                 penghasilan_bruto,
                 tarif_pajak_ter,
                 pph21_ter,

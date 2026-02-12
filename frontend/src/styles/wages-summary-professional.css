@@ -763,13 +763,15 @@
     .wsp-document,
     .wsp-paper {
         box-shadow: none !important;
-        border: 2px solid #000 !important;
+        border: none !important;
+        /* Remove border for table-only view */
         margin: 0 auto !important;
-        padding: 0.2rem !important;
-        width: auto !important;
+        padding: 0 !important;
+        /* Remove padding */
+        width: 100% !important;
+        /* Full width */
         max-width: 100% !important;
         min-width: auto !important;
-        /* Override screen min-width */
         height: auto !important;
         overflow: visible !important;
         position: relative !important;
@@ -778,24 +780,14 @@
         right: 0 !important;
     }
 
-    /* Letterhead - Ensure visible */
-    .wsp-letterhead {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        margin-bottom: 0.5rem !important;
-        padding-bottom: 0.3rem !important;
-        border-bottom: 2px solid #000 !important;
-        position: relative !important;
+    /* Letterhead - HIDDEN for table-only view */
+    .wsp-letterhead,
+    .wsp-kpi-grid {
+        display: none !important;
     }
 
     .wsp-logo {
-        position: static !important;
-        /* Remove absolute positioning in print */
-        transform: none !important;
-        width: 45px !important;
-        height: auto !important;
-        margin-bottom: 0.2rem !important;
+        display: none !important;
     }
 
     .wsp-company-name {

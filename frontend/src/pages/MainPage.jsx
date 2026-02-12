@@ -60,6 +60,48 @@ export default function MainPage({ lockedDiv = null }) {
   const [exportLoading, setExportLoading] = useState(false)
   const [canAccessReports, setCanAccessReports] = useState(DEV_MODE) // Default to DEV_MODE, will be checked via API
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  
+  // Employee selection state for payslip printing
+  const [selectedEmployees, setSelectedEmployees] = useState([])
+
+  // Handle toggle single employee selection
+  const handleToggleEmployeeSelection = (nik) => {
+    setSelectedEmployees(prev => {
+      if (prev.includes(nik)) {
+        return prev.filter(n => n !== nik)
+      } else {
+        return [...prev, nik]
+      }
+    })
+  }
+
+  // Handle select all employees
+  const handleSelectAllEmployees = (nikList) => {
+    setSelectedEmployees(nikList)
+  }
+
+  // Handle clear all selections
+  const handleClearSelections = () => {
+    setSelectedEmployees([])
+  }
+
+  // Handle print payslip for selected employees
+  const handlePrintPayslip = () => {
+    if (selectedEmployees.length === 0) {
+      alert('Silakan pilih minimal 1 karyawan terlebih dahulu')
+      return
+    }
+    
+    const params = new URLSearchParams({
+      emp_codes: selectedEmployees.join(','),
+      month: month,
+      year: year,
+      division: division
+    })
+    
+    const payslipPath = buildAppPath(`/payslip-print?${params.toString()}`)
+    window.open(payslipPath, '_blank', 'noopener,noreferrer')
+  }
 
   // Refresh handler
   const handleRefresh = () => {
@@ -979,6 +1021,58 @@ export default function MainPage({ lockedDiv = null }) {
             </button>
           )}
 
+          {/* Print Slip Gaji Button */}
+          {selectedEmployees.length > 0 && (
+            <button
+              onClick={handlePrintPayslip}
+              style={{
+                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                color: '#ffffff',
+                border: 'none',
+                padding: '0.4rem 0.8rem',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                height: '36px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}
+              title={`Print Slip Gaji untuk ${selectedEmployees.length} karyawan`}
+            >
+              <span>🖨️</span>
+              <span>Print Slip Gaji ({selectedEmployees.length})</span>
+            </button>
+          )}
+
+          {/* Clear Selection Button */}
+          {selectedEmployees.length > 0 && (
+            <button
+              onClick={handleClearSelections}
+              style={{
+                background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+                color: '#ffffff',
+                border: 'none',
+                padding: '0.4rem 0.8rem',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                height: '36px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}
+              title="Batalkan semua pilihan"
+            >
+              <span>✕</span>
+              <span>Batalkan ({selectedEmployees.length})</span>
+            </button>
+          )}
+
           <div style={{ textAlign: 'right', display: 'none', '@media (min-width: 768px)': { display: 'block' } }}>
             <div style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>{user?.username || 'User'}</div>
             <div style={{ fontSize: '0.7rem', color: 'var(--primary-600)' }}>{user?.role || 'Staff'}</div>
@@ -1008,6 +1102,9 @@ export default function MainPage({ lockedDiv = null }) {
               fontSize={fontSize}
               onExportReady={(handler) => setExportHandler(() => handler)}
               refreshTrigger={refreshTrigger}
+              selectedEmployees={selectedEmployees}
+              onToggleEmployeeSelection={handleToggleEmployeeSelection}
+              onSelectAllEmployees={handleSelectAllEmployees}
             />
           </div>
         ) : (

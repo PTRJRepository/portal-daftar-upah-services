@@ -1,11 +1,20 @@
 /**
  * PPH21 TER Component Service
  *
- * Calculates PPH21 tax using TER (Tarif Efektif Ringan) method
+ * Calculates PPH21 tax using TER (Tarif Efektif Rata-rata) method
+ * Based on PP 58 Tahun 2023
+ *
+ * IMPORTANT: Penghasilan Bruto for PPH21 calculation includes:
+ * - Gaji Pokok Aktual
+ * - Tunjangan (Beras, Jabatan, Masa Kerja)
+ * - Lembur
+ * - Premi
+ * - ASTEK/BPJS Pensiun Majikan (0.84%)
+ * - BPJS Kesehatan Majikan (4%)
  */
 
 import { BasePayrollComponentService } from '../BasePayrollComponentService';
-import { calculatePph21Ter } from '../../pph21TerService';
+import { pph21TerService as mainPph21TerService } from '../../pph21TerService';
 import { PayrollCalculationInput, PayrollCalculationResult, BatchPayrollCalculationResult } from '../../../types/payroll/BasePayrollTypes';
 import { PayrollComponent } from '../../../types/payroll/PayrollComponent';
 
@@ -37,21 +46,19 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
                 beras_rate = await this.getBerasRate(input.emp_code, input.server_profile);
             }
 
-            // Calculate PPH21 using existing service
-            const tax_amount = await calculatePph21Ter(penghasilan_bruto, beras_rate);
+            // Map beras_rate to PTKP status
+            const ptkp_status = this.mapBerasRateToPTKP(beras_rate);
 
-            // Determine PTKP status and TER category
-            const ptkp_status = this.getPtkpStatus(beras_rate);
-            const ter_category = this.getTerCategory(beras_rate);
-            const rate_decimal = this.getTerRate(ter_category);
+            // Calculate PPH21 using the main TER service (with full progressive brackets)
+            const terResult = mainPph21TerService.calculatePph21Ter(penghasilan_bruto, ptkp_status);
 
             const output: Pph21Output = {
-                ptkp_status,
-                ter_category,
-                gross_income: penghasilan_bruto,
-                rate_percent: rate_decimal * 100,
-                rate_decimal,
-                tax_amount,
+                ptkp_status: terResult.ptkp_status,
+                ter_category: terResult.ter_category,
+                gross_income: terResult.gross_income,
+                rate_percent: terResult.rate_percent,
+                rate_decimal: terResult.rate,
+                tax_amount: terResult.tax_amount,
             };
 
             return {
@@ -59,13 +66,16 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
                 input,
                 output: {
                     ...output,
-                    meta: this.buildMetadata('CALCULATION', 'PPH21 Tax using TER Method', {
-                        calculation_basis: `penghasilan_bruto × rate_decimal (${rate_decimal} = ${this.getTerCategoryName(ter_category)})`,
+                    meta: this.buildMetadata('CALCULATION', 'PPH21 Tax using TER Method (PP 58/2023)', {
+                        calculation_basis: `penghasilan_bruto (${penghasilan_bruto}) × tarif (${terResult.rate_percent}% for ${terResult.ter_category})`,
                         dependencies: ['penghasilan_bruto', 'beras_rate'],
-                        version: 1,
+                        version: 2,
                         taxable: false,
+                        ptkp_status,
+                        ter_category: terResult.ter_category,
                     }),
                 },
+                cached: false,
             };
         } catch (error) {
             return this.createErrorResult(input, error as Error);
@@ -75,32 +85,38 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
     protected async calculateBatch(inputs: Pph21Input[]): Promise<BatchPayrollCalculationResult<Pph21Output>> {
         const results = new Map<string, PayrollCalculationResult<Pph21Output>>();
         let cachedCount = 0;
+        let errorCount = 0;
 
         // Batch fetch beras_rates first
         const empCodes = inputs.map(i => i.emp_code);
         const berasRates = await this.batchGetBerasRate(empCodes, inputs[0].server_profile);
 
         for (const input of inputs) {
-            const inputWithRate = { ...input, beras_rate: berasRates[input.emp_code] };
-            const result = await this.calculateSingle(inputWithRate);
-            results.set(input.emp_code, result);
-            if (result.cached) cachedCount++;
+            try {
+                const inputWithRate = { ...input, beras_rate: berasRates[input.emp_code] };
+                const result = await this.calculateSingle(inputWithRate);
+                results.set(input.emp_code, result);
+                if (result.cached) cachedCount++;
+            } catch (error) {
+                errorCount++;
+                results.set(input.emp_code, this.createErrorResult(input, error as Error));
+            }
         }
 
         return {
             results,
             summary: {
-                total_calculated: results.size,
-                total_errors: 0,
+                total_calculated: results.size - errorCount,
+                total_errors: errorCount,
                 execution_time_ms: 0,
                 cached_count: cachedCount,
             },
-            meta: this.buildMetadata('CALCULATION', 'Batch PPH21 calculation'),
+            meta: this.buildMetadata('CALCULATION', 'Batch PPH21 TER calculation'),
         };
     }
 
     protected getCalculationBasis(input: Pph21Input): string {
-        return 'TER Method: penghasilan_bruto × rate (based on beras_rate → PTKP status)';
+        return 'TER Method (PP 58/2023): penghasilan_bruto × tarif (progressive based on bruto + PTKP status)';
     }
 
     protected getCacheKey(input: Pph21Input): string {
@@ -139,7 +155,19 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
         return result;
     }
 
-    private getPtkpStatus(beras_rate: number): string {
+    /**
+     * Map beras_rate (RiceRation) to PTKP status
+     *
+     * Based on HR_PAYROLL.beras_rate:
+     * - 2250 -> TK/0
+     * - 3250 -> TK/1
+     * - 4200 -> TK/2
+     * - 3750 -> K/0
+     * - 4650 -> K/1
+     * - 5550 -> K/2
+     * - 6450 -> K/3
+     */
+    private mapBerasRateToPTKP(beras_rate: number): string {
         const ptkpMap: Record<number, string> = {
             2250: 'TK/0',
             3250: 'TK/1',
@@ -150,37 +178,6 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
             6450: 'K/3',
         };
         return ptkpMap[beras_rate] || 'TK/0';
-    }
-
-    private getTerCategory(beras_rate: number): string {
-        const terMap: Record<number, string> = {
-            2250: 'TER_A',  // TK/0
-            3250: 'TER_A',  // TK/1
-            4200: 'TER_B',  // TK/2
-            3750: 'TER_A',  // K/0
-            4650: 'TER_B',  // K/1
-            5550: 'TER_B',  // K/2
-            6450: 'TER_C',  // K/3
-        };
-        return terMap[beras_rate] || 'TER_A';
-    }
-
-    private getTerRate(ter_category: string): number {
-        const rateMap: Record<string, number> = {
-            'TER_A': 0.05,
-            'TER_B': 0.15,
-            'TER_C': 0.25,
-        };
-        return rateMap[ter_category] || 0.05;
-    }
-
-    private getTerCategoryName(ter_category: string): string {
-        const nameMap: Record<string, string> = {
-            'TER_A': '5%',
-            'TER_B': '15%',
-            'TER_C': '25%',
-        };
-        return nameMap[ter_category] || '5%';
     }
 }
 

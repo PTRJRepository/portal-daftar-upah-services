@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ReportProvider, useReport } from './context/ReportContext'
 import LoadingScreen from './components/common/LoadingScreen'
-import { isProdMode, getUserDivision, redirectToExternalLogin, buildAppPath } from './utils/prodModeUtils'
+import { isProdMode, getUserDivision, redirectToExternalLogin, buildAppPath, getBasePath } from './utils/prodModeUtils'
 import DashboardLayout from './layouts/DashboardLayout'
 import ReportToolbar from './components/common/ReportToolbar'
 import './styles/print-overrides.css'
@@ -12,6 +12,7 @@ import './styles/print-overrides.css'
 const DashboardHome = lazy(() => import('./pages/DashboardHome'))
 const EmployeeDetailRoute = lazy(() => import('./pages/EmployeeDetailRoute'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
+const PayslipPrintPage = lazy(() => import('./pages/PayslipPrintPage'))
 
 // Report Pages
 const CustomPayrollTable = lazy(() => import('./components/CustomPayrollTable'))
@@ -42,6 +43,7 @@ const OperationalReportWrapper = () => {
   const [fontSize, setFontSize] = useState(100);
   const [exportHandler, setExportHandler] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
 
   // Layout state for selectors
   // If not admin and locked mode, division is read-only
@@ -63,6 +65,41 @@ const OperationalReportWrapper = () => {
       setExportLoading(false)
     }
   }
+
+  const handleToggleEmployeeSelection = (nik) => {
+    setSelectedEmployees(prev => {
+      if (prev.includes(nik)) {
+        return prev.filter(code => code !== nik);
+      } else {
+        return [...prev, nik];
+      }
+    });
+  };
+
+  const handleSelectAllEmployees = (employeeNikList) => {
+    setSelectedEmployees(employeeNikList);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedEmployees([]);
+  };
+
+  const handlePrintPayslips = () => {
+    if (selectedEmployees.length === 0) {
+      alert('Pilih minimal 1 karyawan untuk mencetak slip gaji');
+      return;
+    }
+    
+    const params = new URLSearchParams({
+      emp_codes: selectedEmployees.join(','),
+      month: month,
+      year: year,
+      division: division
+    });
+
+    const printPath = buildAppPath(`/payslip-print?${params.toString()}`);
+    window.open(printPath, '_blank', 'noopener,noreferrer');
+  };
 
   const handleViewEmployeeDetail = (employeeData) => {
     console.log('[OperationalReport] Opening detail tab for employee:', employeeData)
@@ -268,6 +305,28 @@ const OperationalReportWrapper = () => {
             <button onClick={handleFontIncrease} style={{ padding: '0.4rem 0.8rem', background: 'white', border: 'none', cursor: 'pointer', fontSize: '0.9rem' }}>A+</button>
           </div>
 
+          {/* Payslip Print Button */}
+          <button
+            onClick={handlePrintPayslips}
+            disabled={selectedEmployees.length === 0}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: selectedEmployees.length > 0 ? '#3b82f6' : '#9ca3af',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              fontSize: '0.9rem',
+              cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+            title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu'}
+          >
+            🖨️ Print Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}
+          </button>
+
           {/* Export Button */}
           <button
             onClick={handleExportExcel}
@@ -302,11 +361,9 @@ const OperationalReportWrapper = () => {
           fontSize={fontSize}
           onExportReady={setExportHandler}
           onViewEmployeeDetail={handleViewEmployeeDetail}
-        // Force remount when division/gang changes to ensure clean slate if needed
-        // Although key based on division/gang is usually better handled inside 
-        // CustomPayrollTable via useEffect, but adding key here ensures full remount 
-        // which can be safer for complex state resets.
-        // key={`${division}-${gang}-${month}-${year}`} 
+          selectedEmployees={selectedEmployees}
+          onToggleEmployeeSelection={handleToggleEmployeeSelection}
+          onSelectAllEmployees={handleSelectAllEmployees}
         />
       </div>
     </div>
@@ -365,6 +422,13 @@ function AppInner() {
           </ProtectedRoute>
         } />
 
+        {/* Payslip Print Route */}
+        <Route path="/payslip-print" element={
+          <ProtectedRoute>
+            <PayslipPrintPage />
+          </ProtectedRoute>
+        } />
+
         {/* Dashboard Layout Routes */}
         <Route path="/" element={
           <ProtectedRoute>
@@ -412,8 +476,11 @@ const SummaryReportWrapper = ({ component: Component }) => {
 }
 
 export default function App() {
+  // Get base path for proxy mode: '/upah' when accessed via proxy, '' otherwise
+  const basename = getBasePath();
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <AuthProvider>
         <ReportProvider>
           <AppInner />

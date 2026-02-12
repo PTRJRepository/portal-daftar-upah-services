@@ -1,0 +1,390 @@
+[
+    {
+        "nomor_urut": 1,
+        "nama_karyawan": "SARWANDI",
+        "nik_paspor": "1902050708780007",
+        "npwp": "97.228.383.2-305.000",
+        "alamat": "DSN AIR BEGANTUNG RT. 009 RW. 003 DESA KACANG BUTOR KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/1",
+            "ter": "TER B",
+            "masa_kerja": "01"
+        },
+        "rincian_desember": {
+            "gaji_pokok": 9256269,
+            "total_tunjangan": 54000,
+            "premi_jkk_jkm_kes": 0,
+            "tunjangan_pph": 0,
+            "penghasilan_bruto": 9310269
+        },
+        "penghasilan_tidak_teratur": {
+            "thr": 4053100,
+            "bonus": 600000,
+            "tantiem": 0
+        },
+        "akumulasi_tahunan": {
+            "total_gaji_pokok": 101158670,
+            "total_tunjangan_lainnya": 0,
+            "total_premi_asuransi": 2142243,
+            "total_tunjangan_pph": 0,
+            "total_natura": 0,
+            "total_thr_bonus_tantiem": 4653100,
+            "penghasilan_bruto_setahun": 107954013
+        },
+        "pengurang": {
+            "biaya_jabatan": 5397701,
+            "total_iuran_jht_tht_jp": 1449246
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 101107066,
+            "ptkp": 63000000,
+            "pkp": 38107000,
+            "pph_21_setahun": 1905350,
+            "pph_21_jan_sd_nov": 1582520,
+            "pph_21_desember": 322830
+        }
+    },
+    {
+        "nomor_urut": 2,
+        "nama_karyawan": "SUHARMAN",
+        "nik_paspor": "1902051909730001",
+        "npwp": "97.228.314.7-305.000",
+        "alamat": "DSN. AIR BEGANTUNG RT.009 RW.003 DESA KACANG BUTOR KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "rincian_desember": {
+            "gaji_pokok": 5888013,
+            "total_tunjangan": 89000,
+            "premi_jkk_jkm_kes": 0,
+            "tunjangan_pph": 0,
+            "penghasilan_bruto": 5977013
+        },
+        "penghasilan_tidak_teratur": {
+            "thr": 4059600,
+            "bonus": 200000,
+            "tantiem": 0
+        },
+        "akumulasi_tahunan": {
+            "total_gaji_pokok": 67471593,
+            "total_tunjangan_lainnya": 0,
+            "total_premi_asuransi": 2194120,
+            "total_tunjangan_pph": 0,
+            "total_natura": 0,
+            "total_thr_bonus_tantiem": 4259600,
+            "penghasilan_bruto_setahun": 73925313
+        },
+        "pengurang": {
+            "biaya_jabatan": 3696266,
+            "total_iuran_jht_tht_jp": 1456421
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 68772626,
+            "ptkp": 58500000,
+            "pkp": 10272000,
+            "pph_21_setahun": 513600,
+            "pph_21_jan_sd_nov": 563003,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 3,
+        "nama_karyawan": "DARMAWAN",
+        "nik_paspor": "1902050708720001",
+        "npwp": "97.237.829.3-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/1",
+            "ter": "TER B",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 70833484,
+            "ptkp": 63000000,
+            "pkp": 7833000,
+            "pph_21_setahun": 391650,
+            "pph_21_jan_sd_nov": 318239,
+            "pph_21_desember": 73411
+        }
+    },
+    {
+        "nomor_urut": 4,
+        "nama_karyawan": "SUMARDI",
+        "nik_paspor": "1902050109770001",
+        "npwp": "97.228.327.9-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/1",
+            "ter": "TER B",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 69754727,
+            "ptkp": 63000000,
+            "pkp": 6754000,
+            "pph_21_setahun": 337700,
+            "pph_21_jan_sd_nov": 292553,
+            "pph_21_desember": 45147
+        }
+    },
+    {
+        "nomor_urut": 5,
+        "nama_karyawan": "EKI SUMANTRI",
+        "nik_paspor": "1607051709920004",
+        "npwp": null,
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/1",
+            "ter": "TER B",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 73230780,
+            "ptkp": 63000000,
+            "pkp": 10230000,
+            "pph_21_setahun": 511500,
+            "pph_21_jan_sd_nov": 359120,
+            "pph_21_desember": 152380
+        }
+    },
+    {
+        "nomor_urut": 6,
+        "nama_karyawan": "SULISTIYANI SAPUTRI",
+        "nik_paspor": "1906046307740004",
+        "npwp": "97.228.324.6-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "P",
+            "ptkp": "TK/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 49545142,
+            "ptkp": 54000000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 122576,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 7,
+        "nama_karyawan": "TRISNAWATI",
+        "nik_paspor": "1906046011770002",
+        "npwp": null,
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "P",
+            "ptkp": "TK/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 49862214,
+            "ptkp": 54000000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 121688,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 8,
+        "nama_karyawan": "ELNI",
+        "nik_paspor": "1906046603820002",
+        "npwp": "55.166.633.2-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "P",
+            "ptkp": "TK/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 50510967,
+            "ptkp": 54000000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 122147,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 9,
+        "nama_karyawan": "YUSTIANA",
+        "nik_paspor": "1906046609780003",
+        "npwp": "97.228.361.8-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "P",
+            "ptkp": "TK/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 51978777,
+            "ptkp": 54000000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 124762,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 10,
+        "nama_karyawan": "YULIANA",
+        "nik_paspor": "1906044807940004",
+        "npwp": "55.166.797.5.305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "P",
+            "ptkp": "TK/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 51738971,
+            "ptkp": 54000000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 124119,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 11,
+        "nama_karyawan": "SALMIA",
+        "nik_paspor": "1906044210780002",
+        "npwp": "97.228.362.6-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "P",
+            "ptkp": "TK/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 52010708,
+            "ptkp": 54000000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 124762,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 12,
+        "nama_karyawan": "SISWANDI",
+        "nik_paspor": "1906042509710002",
+        "npwp": "97.228.330.3-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 50758714,
+            "ptkp": 58500000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 125874,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 13,
+        "nama_karyawan": "ERWIN HAZANI",
+        "nik_paspor": "1902042907780002",
+        "npwp": "55.161.754.1-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/1",
+            "ter": "TER B",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 72368840,
+            "ptkp": 63000000,
+            "pkp": 9368000,
+            "pph_21_setahun": 468400,
+            "pph_21_jan_sd_nov": 299945,
+            "pph_21_desember": 168455
+        }
+    },
+    {
+        "nomor_urut": 14,
+        "nama_karyawan": "SERIHAN",
+        "nik_paspor": "1902050701710001",
+        "npwp": "97.387.469.6-305.000",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 51005964,
+            "ptkp": 58500000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 123583,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 15,
+        "nama_karyawan": "IMAM ROHMANU,SIP",
+        "nik_paspor": "3503021809910001",
+        "npwp": null,
+        "jabatan": "KARYAWAN PERAWATAN",
+        "status_karyawan": {
+            "lp": "L",
+            "ptkp": "K/2",
+            "ter": "TER B",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 53506616,
+            "ptkp": 67500000,
+            "pkp": 0,
+            "pph_21_setahun": 0,
+            "pph_21_jan_sd_nov": 81697,
+            "pph_21_desember": 0
+        }
+    },
+    {
+        "nomor_urut": 16,
+        "nama_karyawan": "ARLINI",
+        "nik_paspor": "1902016004770002",
+        "npwp": "97.228.571.2-305.000",
+        "jabatan": "KERANI",
+        "status_karyawan": {
+            "lp": "P",
+            "ptkp": "TK/0",
+            "ter": "TER A",
+            "masa_kerja": "01"
+        },
+        "perhitungan_pajak": {
+            "penghasilan_netto_setahun": 66003604,
+            "ptkp": 54000000,
+            "pkp": 12003000,
+            "pph_21_setahun": 600150,
+            "pph_21_jan_sd_nov": 455121,
+            "pph_21_desember": 145029
+        }
+    }
+]

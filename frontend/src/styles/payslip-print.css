@@ -1,0 +1,365 @@
+/**
+ * Payslip Print Styles - 4 per A4 page layout
+ */
+
+/* Print Page Setup */
+@page {
+    size: A4;
+    margin: 8mm;
+}
+
+/* Container for print layout */
+.payslip-print-container {
+    background: white;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Grid layout for 4 per page */
+.payslip-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 5mm;
+    width: 100%;
+    height: 277mm;
+    /* A4 height minus margins */
+    page-break-after: always;
+}
+
+.payslip-grid:last-child {
+    page-break-after: auto;
+}
+
+/* Individual Payslip Card */
+.payslip-card {
+    border: 1px solid #333;
+    padding: 4mm;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    font-size: 8pt;
+    line-height: 1.25;
+    overflow: hidden;
+}
+
+/* Card Header */
+.payslip-card-header {
+    text-align: center;
+    border-bottom: 1px solid #333;
+    padding-bottom: 1mm;
+    margin-bottom: 1mm;
+}
+
+.payslip-card-company {
+    font-size: 9.5pt;
+    font-weight: bold;
+    color: #000;
+}
+
+.payslip-card-title {
+    font-size: 8.5pt;
+    font-weight: bold;
+    margin: 0.5mm 0;
+}
+
+.payslip-card-period {
+    font-size: 7.5pt;
+    color: #555;
+}
+
+/* Employee Info */
+.payslip-card-info {
+    margin-bottom: 1mm;
+    font-size: 7.5pt;
+}
+
+.payslip-info-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.2mm;
+}
+
+.payslip-info-label {
+    font-weight: 600;
+    color: #333;
+    flex: 0 0 45px;
+}
+
+.payslip-info-value {
+    flex: 1;
+    text-align: left;
+    padding-left: 2mm;
+}
+
+/* Content - Two Columns */
+.payslip-card-content {
+    display: flex;
+    gap: 2mm;
+    flex: 1;
+    border-top: 1px dashed #999;
+    border-bottom: 1px dashed #999;
+    padding: 1mm 0;
+}
+
+.payslip-card-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.payslip-column-header {
+    font-weight: bold;
+    font-size: 7.5pt;
+    text-align: center;
+    background: #f0f0f0;
+    padding: 0.5mm;
+    margin-bottom: 0.5mm;
+    border-bottom: 1px solid #333;
+}
+
+.payslip-subheader {
+    font-size: 7pt;
+    font-weight: 600;
+    color: #555;
+    margin-top: 0.5mm;
+    margin-bottom: 0.2mm;
+    font-style: italic;
+}
+
+.payslip-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 7.5pt;
+    margin-bottom: 0.1mm;
+}
+
+.payslip-item-indent {
+    padding-left: 2mm;
+}
+
+.payslip-item-label {
+    flex: 1;
+}
+
+.payslip-item-value {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    min-width: 50px;
+}
+
+.payslip-negative {
+    color: #c00;
+}
+
+.payslip-total-line {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+    font-size: 7.5pt;
+    margin-top: 0.5mm;
+    padding-top: 0.5mm;
+    border-top: 1px solid #333;
+}
+
+/* Footer - THP */
+.payslip-card-footer {
+    text-align: center;
+    margin: 1mm 0;
+    padding: 1mm;
+    background: #f9f9f9;
+    border: 1px solid #333;
+}
+
+.payslip-thp-label {
+    font-size: 7.5pt;
+    font-weight: 600;
+}
+
+.payslip-thp-value {
+    font-size: 9.5pt;
+    font-weight: bold;
+    color: #000;
+}
+
+/* Signature */
+.payslip-card-signature {
+    display: flex;
+    justify-content: space-around;
+    margin-top: auto;
+    padding-top: 1mm;
+}
+
+.payslip-sig-box {
+    text-align: center;
+    flex: 1;
+}
+
+.payslip-sig-label {
+    font-size: 6.5pt;
+    color: #555;
+    margin-bottom: 6mm;
+}
+
+.payslip-sig-line {
+    border-bottom: 1px solid #333;
+    width: 80%;
+    margin: 0 auto;
+    margin-bottom: 1mm;
+}
+
+.payslip-sig-name {
+    font-size: 6.5pt;
+    font-weight: 600;
+}
+
+/* Print Preview Mode */
+.payslip-preview-container {
+    background: #e5e7eb;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.payslip-preview-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background: white;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 20px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.payslip-preview-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.payslip-preview-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.payslip-preview-btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.payslip-preview-btn:hover {
+    background: #f3f4f6;
+}
+
+.payslip-preview-btn-primary {
+    background: #0f172a;
+    color: white;
+    border-color: #0f172a;
+}
+
+.payslip-preview-btn-primary:hover {
+    background: #1e293b;
+}
+
+/* A4 Page Container for Preview */
+.payslip-a4-page {
+    width: 210mm;
+    min-height: 297mm;
+    background: white;
+    margin: 0 auto 20px;
+    padding: 8mm;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Loading State */
+.payslip-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+}
+
+.payslip-loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e5e7eb;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: payslip-spin 1s linear infinite;
+}
+
+@keyframes payslip-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Error State */
+.payslip-error {
+    text-align: center;
+    padding: 2rem;
+    color: #dc2626;
+}
+
+/* Print Specific Styles */
+@media print {
+    .payslip-preview-container {
+        background: white;
+        padding: 0;
+    }
+
+    .payslip-preview-toolbar {
+        display: none !important;
+    }
+
+    .payslip-a4-page {
+        width: 100%;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+    }
+
+    .payslip-grid {
+        height: 277mm;
+        page-break-after: always;
+    }
+
+    .payslip-grid:last-child {
+        page-break-after: auto;
+    }
+
+    .payslip-card {
+        break-inside: avoid;
+    }
+}
+
+/* Responsive for screen preview */
+@media screen and (max-width: 900px) {
+    .payslip-a4-page {
+        width: 100%;
+        max-width: 210mm;
+    }
+
+    .payslip-grid {
+        height: auto;
+        min-height: 400px;
+    }
+}
+
+/* Hide elements when printing */
+.no-print {
+    display: none;
+}
+
+@media print {
+    .no-print {
+        display: none !important;
+    }
+}

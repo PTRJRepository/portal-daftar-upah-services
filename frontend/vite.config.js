@@ -112,7 +112,12 @@ export default defineConfig({
   define: {
     // Force disable cache for development
     'process.env.VITE_DISABLE_CACHE': JSON.stringify('true'),
-    'process.env.VITE_DEV_MODE': JSON.stringify('true')
+    'process.env.VITE_DEV_MODE': JSON.stringify('true'),
+    // IMPORTANT: Expose backend URL to frontend code
+    'process.env.VITE_BACKEND_BASE': JSON.stringify(backendTarget),
+    // Also expose mode flags
+    'process.env.VITE_PROXY_MODE': JSON.stringify(isProxyMode),
+    'process.env.VITE_BASE_PATH': JSON.stringify(basePath)
   },
   // Base path: Use /upah/ for proxy mode, / for local development
   base: basePath,

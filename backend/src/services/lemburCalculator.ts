@@ -87,12 +87,25 @@ export class LemburCalculator {
         return LemburCalculator.instance;
     }
 
-    public async calculate(empCode: string, month: number, year: number, upj?: number) {
+    public async calculate(empCode: string, month: number, year: number, upj?: number, serverProfile?: string) {
         let empName = "";
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const daysInMonth = new Date(year, month, 0).getDate();
         const endDate = `${year}-${month.toString().padStart(2, "0")}-${daysInMonth}`;
         const records: OvertimeRecord[] = [];
+
+        // If UPJ not provided, calculate from payRate: UPJ = payrate × 30 / 173
+        let calculatedUpj = upj;
+        if (!calculatedUpj) {
+            try {
+                const payRates = await payrollService.getPayratesMap([empCode], serverProfile);
+                const payRate = payRates[empCode] || 0;
+                calculatedUpj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
+            } catch (e) {
+                console.error("[LemburCalculator] Failed to fetch payrate:", e);
+                calculatedUpj = this.upjValue;
+            }
+        }
 
         try {
             const rows = await this.db.query<{
@@ -147,7 +160,7 @@ export class LemburCalculator {
                 const dayType = await this.classifyDay(trxDate, year);
 
                 // Calculate breakdown
-                const breakdown = this.calculateOvertimePayment(row.Hours, dayType, upj || this.upjValue, isFriday);
+                const breakdown = this.calculateOvertimePayment(row.Hours, dayType, calculatedUpj, isFriday);
 
                 records.push({
                     id: row.ID,
@@ -176,7 +189,7 @@ export class LemburCalculator {
             emp_name: empName,
             month,
             year,
-            upj: upj || this.upjValue,
+            upj: calculatedUpj,
             records,
             total_hours: totalHours,
             total_payment: totalPayment,
@@ -204,14 +217,13 @@ export class LemburCalculator {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
 
         // 1. Batch fetch PayRates (pass profile)
-        // 1. Batch fetch PayRates (pass profile)
-        // [REFACTOR] Standardize UPJ: Disable PayRate fetching to enforce global LEMBUR_UPJ
-        // let payRates: Record<string, number> = {};
-        // try {
-        //     payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
-        // } catch (e) {
-        //     console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
-        // }
+        // UPJ = payrate × 30 / 173
+        let payRates: Record<string, number> = {};
+        try {
+            payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
+        } catch (e) {
+            console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
+        }
 
         // 2. Batch fetch Overtime Records (use db instance)
         const empList = empCodes.map(e => `'${e}'`).join(",");
@@ -269,10 +281,10 @@ export class LemburCalculator {
                 continue;
             }
 
-            // [REFACTOR] Standardize UPJ: Use global UPJ only
-            // const payRate = payRates[empCode] || 0;
-            // const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
-            const upj = this.upjValue;
+            // UPJ = payrate × 30 / 173
+            // If payRate is not available, use fallback UPJ from environment
+            const payRate = payRates[empCode] || 0;
+            const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
 
             let totalHours = 0;
             let totalPayment = 0;
@@ -367,14 +379,13 @@ export class LemburCalculator {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
 
         // 1. Batch fetch PayRates
-        // 1. Batch fetch PayRates
-        // [REFACTOR] Standardize UPJ: Disable PayRate fetching to enforce global LEMBUR_UPJ
-        // let payRates: Record<string, number> = {};
-        // try {
-        //     payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
-        // } catch (e) {
-        //     console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
-        // }
+        // UPJ = payrate × 30 / 173
+        let payRates: Record<string, number> = {};
+        try {
+            payRates = await payrollService.getPayratesMap(empCodes, serverProfile);
+        } catch (e) {
+            console.error("[LemburCalculator] Failed to batch fetch payrates:", e);
+        }
 
         // 2. Batch fetch Overtime Records with TaskCode
         const empList = empCodes.map(e => `'${e}'`).join(",");
@@ -473,11 +484,10 @@ export class LemburCalculator {
 
                 const taskCode = (row.TaskCode || "").trim();
                 const taskDesc = taskDescMap[taskCode] || taskCode;
-                // UPJ: use payrate if available, otherwise fallback to default UPJ
-                // [REFACTOR] Standardize UPJ: Use global UPJ only
-                // const payRate = payRates[empKey] || 0;
-                // const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
-                const upj = this.upjValue;
+                // UPJ = payrate × 30 / 173
+                // If payRate is not available, use fallback UPJ from environment
+                const payRate = payRates[empKey] || 0;
+                const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
                 const trxDate = new Date(row.TrxDate);
                 const dayOfWeek = trxDate.getDay();
                 const dayType = await this.classifyDay(trxDate, year);

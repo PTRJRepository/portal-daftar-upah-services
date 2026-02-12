@@ -1,0 +1,205 @@
+import React, { useState } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+const formatCurrency = (val) => {
+    if (val === null || val === undefined) return '-';
+    if (val >= 1000000) return `Rp ${(val / 1000000).toFixed(1)}jt`;
+    if (val >= 1000) return `Rp ${(val / 1000).toFixed(0)}rb`;
+    return `Rp ${val.toFixed(0)}`;
+};
+
+// Color coding based on performance (cost/HK)
+const getPerformanceColor = (value, allValues, metric) => {
+    if (metric !== 'cost_per_hk') return '#3b82f6'; // Default blue for other metrics
+
+    if (!allValues || allValues.length === 0) return '#3b82f6';
+
+    const sorted = [...allValues].sort((a, b) => a - b);
+    const p25 = sorted[Math.floor(sorted.length * 0.25)];
+    const p75 = sorted[Math.floor(sorted.length * 0.75)];
+
+    if (value <= p25) return '#10b981'; // Green - Top performers (Low Cost/HK)
+    if (value >= p75) return '#ef4444'; // Red - Needs attention (High Cost/HK)
+    return '#f59e0b'; // Orange - Average
+};
+
+export default function GangComparisonChart({ data, loading, onGangClick }) {
+    const [sortBy, setSortBy] = useState('cost_per_hk');
+
+    if (loading) {
+        return (
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '400px',
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '2rem'
+            }}>
+                <div style={{ color: '#64748b', fontSize: '1.1rem' }}>Loading gang comparison...</div>
+            </div>
+        );
+    }
+
+    if (!data || data.length === 0) {
+        return (
+            <div style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '2rem',
+                textAlign: 'center'
+            }}>
+                <div style={{ color: '#94a3b8', fontSize: '1.1rem' }}>No gang data available</div>
+            </div>
+        );
+    }
+
+    // Sort Data
+    const sortedData = [...data].sort((a, b) => b[sortBy] - a[sortBy]);
+
+    // Config based on sort metric
+    const getMetricConfig = () => {
+        switch (sortBy) {
+            case 'cost_per_hk': return { label: 'Cost/HK', formatter: formatCurrency };
+            case 'total_wage': return { label: 'Total Wage', formatter: formatCurrency };
+            case 'headcount': return { label: 'Headcount', formatter: (val) => `${val} Emp` };
+            case 'total_hk': return { label: 'Total HK', formatter: (val) => val.toLocaleString() };
+            default: return { label: 'Value', formatter: (val) => val };
+        }
+    };
+
+    const metricConfig = getMetricConfig();
+    const allMetricValues = data.map(d => d[sortBy]);
+
+    const CustomTooltip = ({ active, payload }) => {
+        if (active && payload && payload.length) {
+            const gang = payload[0].payload;
+            return (
+                <div style={{
+                    backgroundColor: 'white',
+                    padding: '12px 16px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                }}>
+                    <div style={{ fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
+                        {gang.gang_code}
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '8px' }}>
+                        {gang.gang_name}
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: '#334155' }}>
+                        <div><strong>Cost/HK:</strong> {formatCurrency(gang.cost_per_hk)}</div>
+                        <div><strong>Headcount:</strong> {gang.headcount} emp</div>
+                        <div><strong>Total HK:</strong> {gang.total_hk.toLocaleString()}</div>
+                        <div><strong>Total Wage:</strong> {formatCurrency(gang.total_wage)}</div>
+                    </div>
+                </div>
+            );
+        }
+        return null;
+    };
+
+    return (
+        <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '1.5rem',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+        }}>
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1.5rem',
+                flexWrap: 'wrap',
+                gap: '1rem'
+            }}>
+                <div>
+                    <h3 style={{
+                        fontSize: '1.2rem',
+                        fontWeight: '700',
+                        color: '#1e293b',
+                        margin: 0
+                    }}>
+                        📊 Gang Performance Comparison
+                    </h3>
+                    <p style={{
+                        fontSize: '0.9rem',
+                        color: '#64748b',
+                        margin: '4px 0 0 0'
+                    }}>
+                        Comparing by <span style={{ fontWeight: '600', color: '#3b82f6' }}>{metricConfig.label}</span> | {data.length} gangs
+                    </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <label style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: '600' }}>
+                        Sort by:
+                    </label>
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        style={{
+                            padding: '0.5rem 0.75rem',
+                            borderRadius: '6px',
+                            border: '1px solid #e2e8f0',
+                            backgroundColor: 'white',
+                            fontSize: '0.9rem',
+                            fontWeight: '600',
+                            color: '#334155',
+                            cursor: 'pointer',
+                            outline: 'none'
+                        }}
+                    >
+                        <option value="cost_per_hk">Cost per HK</option>
+                        <option value="total_wage">Total Wage</option>
+                        <option value="headcount">Headcount</option>
+                        <option value="total_hk">Total HK</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style={{ height: Math.max(400, data.length * 35) }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                        data={sortedData}
+                        layout="vertical"
+                        margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+                    >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                        <XAxis
+                            type="number"
+                            tickFormatter={(val) => {
+                                if (sortBy === 'headcount') return val;
+                                return `${(val / 1000).toFixed(0)}k`;
+                            }}
+                        />
+                        <YAxis
+                            type="category"
+                            dataKey="gang_code"
+                            width={90}
+                            tick={{ fontSize: 12 }}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar
+                            dataKey={sortBy}
+                            name={metricConfig.label}
+                            radius={[0, 4, 4, 0]}
+                            onClick={onGangClick}
+                            cursor="pointer"
+                        >
+                            {sortedData.map((entry, index) => (
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={getPerformanceColor(entry[sortBy], allMetricValues, sortBy)}
+                                />
+                            ))}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+    );
+}

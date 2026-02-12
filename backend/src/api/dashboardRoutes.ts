@@ -122,6 +122,24 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
             year: t.String()
         })
     })
+    .get('/aggregated-gang-data', async ({ query, set }) => {
+        try {
+            const division = query.division_code;
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const data = await dashboardService.getAggregatedGangData(division, month, year);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            division_code: t.String(),
+            month: t.String(),
+            year: t.String()
+        })
+    })
     .get('/premi-analysis', async ({ query, set }) => {
         try {
             const month = parseInt(query.month);
@@ -166,6 +184,115 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
         } catch (e: any) {
             set.status = 500;
             return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            division_code: t.Optional(t.String())
+        })
+    })
+    .get('/division-detail-data', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const divisionCode = query.division_code;
+
+            if (!divisionCode) {
+                return { success: false, error: "Division code is required" };
+            }
+
+            const data = await dashboardService.getDivisionDetailData(month, year, divisionCode);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            division_code: t.String()
+        })
+    })
+    .get('/gang-comparison', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const divisionCode = query.division_code;
+            const data = await dashboardService.getGangComparison(month, year, divisionCode);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            division_code: t.Optional(t.String())
+        })
+    })
+    .get('/top-bottom-gangs', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const divisionCode = query.division_code;
+            const data = await dashboardService.getTopBottomGangs(month, year, divisionCode);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            division_code: t.Optional(t.String())
+        })
+    })
+
+    .get('/gang-history', async ({ query }) => {
+        const month = parseInt(query.month);
+        const year = parseInt(query.year);
+        const gangCode = query.gang_code;
+
+        try {
+            const data = await dashboardService.getGangHistory(gangCode, month, year);
+            return {
+                success: true,
+                data
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            gang_code: t.String()
+        })
+    })
+
+    .get('/all-gangs-trend', async ({ query }) => {
+        const month = parseInt(query.month);
+        const year = parseInt(query.year);
+        const divisionCode = query.division_code;
+
+        try {
+            const data = await dashboardService.getAllGangsTrend(month, year, divisionCode);
+            return {
+                success: true,
+                data
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : 'Unknown error'
+            };
         }
     }, {
         query: t.Object({

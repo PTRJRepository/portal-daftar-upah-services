@@ -65,6 +65,7 @@ const DashboardLayout = () => {
             */}
             {!collapsed && (
                 <div
+                    className="no-print"
                     onClick={() => setCollapsed(true)}
                     style={{
                         position: 'absolute',
@@ -78,7 +79,7 @@ const DashboardLayout = () => {
             )}
 
             {/* SIDEBAR - Fixed/Absolute Position */}
-            <div style={{
+            <div className="no-print" style={{
                 width: collapsed ? '72px' : '260px',
                 height: '100%',
                 backgroundColor: '#0f172a', // Darker Slate for more contrast
@@ -317,11 +318,8 @@ const DashboardLayout = () => {
                 </div>
             </div>
 
-            {/* SPACER FOR COLLAPSED RAIL - Ensures content isn't hidden behind the always-visible 72px rail 
-                We always reserve 72px. When sidebar expands to 260px, it overlaps the content area. 
-                This prevents layout shift (jumping) of the main content.
-            */}
-            <div style={{
+            {/* SPACER FOR COLLAPSED RAIL */}
+            <div className="no-print" style={{
                 width: '72px',
                 flexShrink: 0,
                 height: '100%',
@@ -329,7 +327,7 @@ const DashboardLayout = () => {
             }}></div>
 
             {/* MAIN CONTENT AREA */}
-            <div style={{
+            <div className="print-content-area" style={{
                 flex: 1,
                 overflowY: 'auto',
                 overflowX: 'hidden', // Let children handle X scroll, keep container clean

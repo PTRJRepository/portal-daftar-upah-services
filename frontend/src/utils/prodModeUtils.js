@@ -18,19 +18,25 @@ export const PROD_STORAGE_KEYS = {
 }
 
 /**
- * Check if running in production mode (port 3001)
+ * Check if running in production mode (port 3001 or production build)
  */
 export const isProdMode = () => {
-    return window.location.port === '3001'
+    // Check if running in production build OR accessed via port 3001
+    return import.meta.env.PROD || window.location.port === '3001' || import.meta.env.NODE_ENV === 'production'
 }
 
 /**
  * Get the base path for the application
- * In proxy mode (port 3001), returns '/upah'
+ * In proxy mode (port 3001, VITE_BACKEND_HOST set, or production build), returns '/upah'
  * In direct mode, returns ''
  */
 export const getBasePath = () => {
-    if (isProdMode() || window.location.pathname.startsWith('/upah')) {
+    // Check various conditions that indicate proxy mode
+    const isProxyBuild = import.meta.env.BASE_PATH && import.meta.env.BASE_PATH !== '/'
+    const isProxyHost = import.meta.env.VITE_BACKEND_HOST && import.meta.env.VITE_BACKEND_HOST !== 'localhost'
+    const isProxyAccess = window.location.port === '3001' || window.location.pathname.startsWith('/upah/')
+
+    if (isProxyBuild || isProxyHost || isProxyAccess) {
         return '/upah'
     }
     return ''

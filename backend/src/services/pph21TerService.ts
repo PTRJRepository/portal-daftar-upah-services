@@ -119,6 +119,7 @@ class Pph21TerService {
 
     /**
      * Get TER Rate based on category and gross income
+     * Returns rate as percentage (e.g., 0.25 for 0.25%, 5.0 for 5%)
      */
     public getTerRate(categoryKey: string, grossIncome: number): number {
         if (!this.rules) {
@@ -146,14 +147,32 @@ class Pph21TerService {
         return lastLayer.tarif;
     }
 
+    /**
+     * Calculate PPH21 using TER method
+     *
+     * IMPORTANT: Penghasilan Bruto for PPH21 calculation includes:
+     * - Gaji Pokok Aktual
+     * - Tunjangan (Beras, Jabatan, Masa Kerja)
+     * - Lembur
+     * - Premi
+     * - ASTEK (BPJS Pensiun pekerja 0.84% - employer portion)
+     * - BPJS Kesehatan (4% - employer portion)
+     *
+     * Formula: PPh21 = Penghasilan Bruto × Tarif TER
+     *
+     * @param grossIncome - Total bruto income INCLUDING ASTEK + BPJS MAJIKAN
+     * @param ptkpStatus - PTKP status (TK/0, TK/1, K/0, etc.)
+     */
     public calculatePph21Ter(grossIncome: number, ptkpStatus: string): Pph21TerResult {
         const categoryKey = this.getTerCategoryKey(ptkpStatus);
 
         // Helper to get friendly name
         const categoryName = this.rules?.tarif_pph21_ter[categoryKey]?.kategori || categoryKey.toUpperCase().replace('_', ' ');
 
-        const ratePercent = this.getTerRate(categoryKey, grossIncome); // e.g. 0.25
-        const rateDecimal = ratePercent / 100; // e.g. 0.0025
+        // ratePercent is the percentage from JSON (e.g., 0.25 for 0.25%, 5.0 for 5%)
+        const ratePercent = this.getTerRate(categoryKey, grossIncome);
+        // Convert to decimal for calculation (0.25% -> 0.0025)
+        const rateDecimal = ratePercent / 100;
         const taxAmount = Math.round(grossIncome * rateDecimal);
 
         return {
@@ -164,6 +183,40 @@ class Pph21TerService {
             rate_percent: ratePercent,
             tax_amount: taxAmount
         };
+    }
+
+    /**
+     * Calculate Penghasilan Bruto for PPh21 TER calculation
+     * This includes ASTEK and BPJS Majikan portions
+     *
+     * @param gajiPokokAktual - Actual base salary
+     * @param berasJumlah - Rice allowance
+     * @param jabatanJumlah - Position allowance
+     * @param masaKerjaJumlah - Longevity allowance
+     * @param lemburJumlah - Overtime amount
+     * @param totalPremi - Total premium
+     * @param astekPekerja - ASTEK/BPJS Pensiun pekerja (0.84%)
+     * @param bpjsKesehatanMajikan - BPJS Kesehatan majikan (4%)
+     * @returns Penghasilan Bruto for tax calculation
+     */
+    public calculatePenghasilanBruto(
+        gajiPokokAktual: number,
+        berasJumlah: number,
+        jabatanJumlah: number,
+        masaKerjaJumlah: number,
+        lemburJumlah: number,
+        totalPremi: number,
+        astekPekerja: number,
+        bpjsKesehatanMajikan: number
+    ): number {
+        return gajiPokokAktual +
+            berasJumlah +
+            jabatanJumlah +
+            masaKerjaJumlah +
+            lemburJumlah +
+            totalPremi +
+            astekPekerja +
+            bpjsKesehatanMajikan;
     }
 }
 

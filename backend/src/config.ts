@@ -49,6 +49,8 @@ export class Config {
     public static readonly DB_EXTEND_DATABASE: string = env.DB_EXTEND_DATABASE || "extend_db_ptrj";
     public static readonly DB_EXTEND_PROFILE: string = env.DB_EXTEND_PROFILE || "SERVER_PROFILE_1";
 
+    // Extended Transaction Database (for history detail - Taskreg, ADTrans)
+    public static readonly DB_EXTEND_TRANS_DATABASE: string = env.DB_EXTEND_TRANS_DATABASE || "extend_db_ptrj_transaksi";
 
     // VenusHR14 Database (for Mill PKS data)
     public static readonly DB_VENUS_PROFILE: string = env.DB_VENUS_PROFILE || "SERVER_PROFILE_3";

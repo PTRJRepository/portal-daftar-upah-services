@@ -9,13 +9,6 @@ WHERE t.EmpCode IN (
     )
     AND t.DocDate >= ?
     AND t.DocDate < ?
-    AND UPPER(t.DocDesc) NOT LIKE 'POT%'
-    AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
-    AND UPPER(t.DocDesc) NOT LIKE '%SPSI%'
-    AND UPPER(t.DocDesc) NOT LIKE '%BERAS%'
-    AND UPPER(t.DocDesc) NOT LIKE '%JABATAN%'
-    AND UPPER(t.DocDesc) NOT LIKE '%MASA%'
-    AND UPPER(t.DocDesc) NOT LIKE '%LEMBUR%'
-    AND UPPER(t.DocDesc) NOT LIKE '%KOREKSI%'
+    
     AND t.DocDesc IS NOT NULL
 ORDER BY t.DocDesc;
