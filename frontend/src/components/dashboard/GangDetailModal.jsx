@@ -37,7 +37,6 @@ export default function GangDetailModal({ isOpen, onClose, gangCode, month, year
                 const formatted = json.data.map(d => ({
                     ...d,
                     period: `${d.month}/${d.year}`,
-                    period: `${d.month}/${d.year}`,
                     formattedWage: formatCurrency(d.total_wage),
                     sub_productivity: d.total_hk > 0 ? d.total_premi / d.total_hk : 0,
                     ot_ratio: d.total_wage > 0 ? (d.total_ot / d.total_wage) * 100 : 0

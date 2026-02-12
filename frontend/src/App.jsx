@@ -24,6 +24,7 @@ const AggregationSeederPage = lazy(() => import('./pages/AggregationSeederPage')
 const SpreadsheetSyncPage = lazy(() => import('./pages/SpreadsheetSyncPage'))
 const PayrollAnalysisPage = lazy(() => import('./pages/PayrollAnalysisPage'))
 const ExecutivePayrollPage = lazy(() => import('./pages/ExecutivePayrollPage'))
+const GangComparisonReportPage = lazy(() => import('./pages/GangComparisonReportPage'))
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
@@ -89,7 +90,7 @@ const OperationalReportWrapper = () => {
       alert('Pilih minimal 1 karyawan untuk mencetak slip gaji');
       return;
     }
-    
+
     const params = new URLSearchParams({
       emp_codes: selectedEmployees.join(','),
       month: month,
@@ -426,6 +427,13 @@ function AppInner() {
         <Route path="/payslip-print" element={
           <ProtectedRoute>
             <PayslipPrintPage />
+          </ProtectedRoute>
+        } />
+
+        {/* Gang Comparison Report Route */}
+        <Route path="/gang-comparison-report" element={
+          <ProtectedRoute>
+            <GangComparisonReportPage />
           </ProtectedRoute>
         } />
 

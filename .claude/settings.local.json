@@ -89,7 +89,10 @@
       "Bash(npx tsx:*)",
       "Bash(if exist node_modules.vite rmdir /s /q node_modules.vite:*)",
       "Bash(bun build:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(xxd:*)",
+      "Bash(grep:*)",
+      "Bash(awk:*)"
     ],
     "deny": [],
     "ask": []

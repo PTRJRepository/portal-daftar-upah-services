@@ -45,11 +45,15 @@ export default function PayslipCard({ data, month, year }) {
 
     // Handle both nested attendance object and flat structure from API
     // JSON keys: hari_kerja, cuti_minggu_hari, cuti_tahunan_hari, cuti_sakit_haid_hari
-    const attHadir = att.hke || att.hk || att.hadir || data.hari_kerja || data.kehadiran || 0;
-    const attMgg = att.mgg || att.minggu || data.cuti_minggu_hari || 0;
-    const attCuti = att.ct || att.cuti || data.cuti_tahunan_hari || 0;
-    const attSakit = att.skt || att.sakit || data.cuti_sakit_haid_hari || 0;
-    const attIzin = att.izin || att.i || data.izin || 0; // 'izin' not explicitly in sample JSON, keeping fallback
+    // These keys are likely in payroll_data (payroll) or employee (empInfo) if not in attendance object
+    // Attendance service returns { summary: { total_hadir, cuti_minggu, ... } }
+
+    const attHadir = att.summary?.total_hadir ?? getNum('hari_kerja') ?? getNum('kehadiran') ?? 0;
+    const attMgg = att.summary?.cuti_minggu ?? getNum('cuti_minggu_hari') ?? 0;
+    const attCuti = att.summary?.cuti_tahunan ?? getNum('cuti_tahunan_hari') ?? 0;
+    const attSakit = att.summary?.cuti_sakit ?? getNum('cuti_sakit_haid_hari') ?? 0;
+    const attLibur = att.summary?.libur ?? getNum('cuti_nasional_hari') ?? 0;
+    const attAlpa = att.summary?.alpa ?? getNum('alpa') ?? 0;
 
     // Tunjangan Breakdown
     const tunjanganList = [
@@ -146,7 +150,7 @@ export default function PayslipCard({ data, month, year }) {
 
                 <div className="payslip-info-row">
                     <span className="payslip-info-label">Absensi</span>
-                    <span className="payslip-info-value">: H:{attHadir} M:{attMgg} C:{attCuti} S:{attSakit} I:{attIzin}</span>
+                    <span className="payslip-info-value">: H:{attHadir} M:{attMgg} L:{attLibur} C:{attCuti} S:{attSakit} A:{attAlpa}</span>
                 </div>
 
                 <div className="payslip-info-row">

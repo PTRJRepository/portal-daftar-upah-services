@@ -38,10 +38,15 @@ export default function GangTrendChart({ token, month, year, divisionCode }) {
         setLoading(true);
         try {
             const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
-            const url = new URL(`${apiUrl}/payroll/dashboard/all-gangs-trend`);
-            url.searchParams.append('month', month);
-            url.searchParams.append('year', year);
-            if (divisionCode) url.searchParams.append('division_code', divisionCode);
+
+            // Safe URL construction
+            const params = new URLSearchParams({
+                month: month,
+                year: year
+            });
+            if (divisionCode) params.append('division_code', divisionCode);
+
+            const url = `${apiUrl}/payroll/dashboard/all-gangs-trend?${params.toString()}`;
 
             const res = await fetch(url.toString(), {
                 headers: { 'Authorization': `Bearer ${token}` }

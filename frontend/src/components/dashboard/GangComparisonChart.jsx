@@ -1,11 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import '../../styles/gang-report-print.css';
 
 const formatCurrency = (val) => {
     if (val === null || val === undefined) return '-';
     if (val >= 1000000) return `Rp ${(val / 1000000).toFixed(1)}jt`;
     if (val >= 1000) return `Rp ${(val / 1000).toFixed(0)}rb`;
     return `Rp ${val.toFixed(0)}`;
+};
+
+const formatNumber = (val) => {
+    if (val === null || val === undefined) return '0';
+    return new Intl.NumberFormat('id-ID').format(val);
+};
+
+// Get gang type from last character of gang code
+const getGangType = (gangCode) => {
+    if (!gangCode) return 'uncategorized';
+    const lastChar = gangCode.slice(-1).toUpperCase();
+    if (lastChar === 'H') return 'harvesting';
+    if (lastChar === 'T') return 'transport';
+    if (lastChar === 'M') return 'maintenance';
+    return 'uncategorized';
+};
+
+// Check if gang belongs to IJL division (Starts with L)
+const isIJLGang = (gangCode) => {
+    if (!gangCode) return false;
+    return gangCode.toUpperCase().startsWith('L');
+};
+
+// Get gang type label
+const getGangTypeLabel = (type) => {
+    const labels = {
+        harvesting: 'Panen (Harvesting)',
+        transport: 'Transport',
+        maintenance: 'Maintenance',
+        uncategorized: 'Lainnya'
+    };
+    return labels[type] || type;
+};
+
+// Get gang type color
+const getGangTypeColor = (type) => {
+    const colors = {
+        harvesting: '#16a34a',
+        transport: '#2563eb',
+        maintenance: '#d97706',
+        uncategorized: '#64748b'
+    };
+    return colors[type] || '#64748b';
+};
+
+// Helper to get month name
+const getMonthName = (monthNum) => {
+    const months = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return months[monthNum] || '';
 };
 
 // Color coding based on performance (cost/HK)
@@ -23,8 +75,24 @@ const getPerformanceColor = (value, allValues, metric) => {
     return '#f59e0b'; // Orange - Average
 };
 
-export default function GangComparisonChart({ data, loading, onGangClick }) {
+
+// ... existing helpers ...
+
+export default function GangComparisonChart({ data, loading, onGangClick, month, year }) {
+    const navigate = useNavigate(); // Hook for navigation
     const [sortBy, setSortBy] = useState('cost_per_hk');
+    // Removed modal state
+
+    const handleGenerateReport = () => {
+        // Navigate to the report page with filters
+        const params = new URLSearchParams({
+            month: month,
+            year: year,
+            division: 'ALL', // Default, user can change on report page
+            type: 'ALL'     // Default
+        });
+        navigate(`/gang-comparison-report?${params.toString()}`);
+    };
 
     if (loading) {
         return (
@@ -55,9 +123,6 @@ export default function GangComparisonChart({ data, loading, onGangClick }) {
         );
     }
 
-    // Sort Data
-    const sortedData = [...data].sort((a, b) => b[sortBy] - a[sortBy]);
-
     // Config based on sort metric
     const getMetricConfig = () => {
         switch (sortBy) {
@@ -71,6 +136,22 @@ export default function GangComparisonChart({ data, loading, onGangClick }) {
 
     const metricConfig = getMetricConfig();
     const allMetricValues = data.map(d => d[sortBy]);
+
+    // Enrich data with gang type and division info
+    const enrichedData = useMemo(() => {
+        return data.map(gang => ({
+            ...gang,
+            gang_type: getGangType(gang.gang_code),
+            is_ijl: isIJLGang(gang.gang_code)
+        }));
+    }, [data]);
+
+    // Sort Data
+    const sortedData = useMemo(() => {
+        return [...enrichedData].sort((a, b) => b[sortBy] - a[sortBy]);
+    }, [enrichedData, sortBy]);
+
+    // Removed Report Data Logic (moved to page)
 
     const CustomTooltip = ({ active, payload }) => {
         if (active && payload && payload.length) {
@@ -94,6 +175,7 @@ export default function GangComparisonChart({ data, loading, onGangClick }) {
                         <div><strong>Headcount:</strong> {gang.headcount} emp</div>
                         <div><strong>Total HK:</strong> {gang.total_hk.toLocaleString()}</div>
                         <div><strong>Total Wage:</strong> {formatCurrency(gang.total_wage)}</div>
+                        <div><strong>Gang Type:</strong> {getGangTypeLabel(getGangType(gang.gang_code))}</div>
                     </div>
                 </div>
             );
@@ -125,6 +207,25 @@ export default function GangComparisonChart({ data, loading, onGangClick }) {
                     }}>
                         📊 Gang Performance Comparison
                     </h3>
+                    <button
+                        onClick={handleGenerateReport}
+                        style={{
+                            padding: '0.4rem 0.8rem',
+                            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(15, 23, 42, 0.2)',
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.target.style.transform = 'translateY(-1px)'}
+                        onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+                    >
+                        🖨️ Generate Report
+                    </button>
                     <p style={{
                         fontSize: '0.9rem',
                         color: '#64748b',
@@ -200,6 +301,8 @@ export default function GangComparisonChart({ data, loading, onGangClick }) {
                     </BarChart>
                 </ResponsiveContainer>
             </div>
+
+            {/* Modal Removed */}
         </div>
     );
 }

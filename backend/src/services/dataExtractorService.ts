@@ -694,7 +694,7 @@ export class DataExtractorService {
         };
     }
 
-    private async getEmployees(gangCondition: string, month: number, year: number, serverProfile?: string, isHistorical: boolean = false, descToCodeMap?: Record<string, string>): Promise<EmployeeRow[]> {
+    public async getEmployees(gangCondition: string, month: number, year: number, serverProfile?: string, isHistorical: boolean = false, descToCodeMap?: Record<string, string>): Promise<EmployeeRow[]> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         console.log(`[DataExtractor] getEmployees: serverProfile=${serverProfile || 'undefined (using this.db)'}, month=${month}, year=${year}, isHistorical=${isHistorical}`);
 

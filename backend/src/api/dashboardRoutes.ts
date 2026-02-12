@@ -300,4 +300,57 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
             year: t.String(),
             division_code: t.Optional(t.String())
         })
+    })
+
+    /**
+     * Cost per HK Comparison Report
+     * Groups by gang type (Harvesting/Transport/Maintenance)
+     */
+    .get('/cost-hk-comparison', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const divisionFilter = query.division_filter || 'ALL';
+            const gangTypeFilter = query.gang_type_filter || 'ALL';
+
+            // Parse gang_codes from comma-separated string
+            let gangCodes: string[] | undefined;
+            if (query.gang_codes) {
+                gangCodes = query.gang_codes.split(',').filter(g => g.trim());
+            }
+
+            const data = await dashboardService.getCostHKComparison(month, year, divisionFilter, gangCodes, gangTypeFilter);
+            return data;
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            division_filter: t.Optional(t.String()),
+            gang_type_filter: t.Optional(t.String()),
+            gang_codes: t.Optional(t.String())
+        })
+    })
+
+    /**
+     * Get available gangs for filter dropdown
+     */
+    .get('/available-gangs', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const gangs = await dashboardService.getAvailableGangs(month, year);
+            return { success: true, data: gangs };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String()
+        })
     });

@@ -250,6 +250,200 @@ export class DashboardService {
     }
 
     /**
+     * Classify gang by last letter
+     * H = Harvesting (Panen)
+     * T = Transport
+     * M = Maintenance
+     * 
+     * Update: IJL gangs start with 'L'. 
+     * If starts with 'L', we might classify it differently or just mark it as is_ijl.
+     */
+    private classifyGangType(gangCode: string): string {
+        if (!gangCode || gangCode.length === 0) return 'uncategorized';
+
+        const lastLetter = gangCode.slice(-1).toUpperCase();
+
+        switch (lastLetter) {
+            case 'H':
+                return 'harvesting';
+            case 'T':
+                return 'transport';
+            case 'M':
+                return 'maintenance';
+            default:
+                // If starts with 'L', it might be harvesting/maintenance but uncategorized by suffix.
+                // For now, return 'uncategorized' unless we have more rules.
+                return 'uncategorized';
+        }
+    }
+
+    /**
+     * Check if gang is IJL (Starts with 'L')
+     */
+    private isIJL(gangCode: string): boolean {
+        return gangCode?.toUpperCase().startsWith('L') || false;
+    }
+
+    /**
+     * Get Cost per HK Comparison Report
+     * Groups data by gang type (Harvesting/Transport/Maintenance)
+     * Supports division filter (IJL/non-IJL)
+     */
+    public async getCostHKComparison(
+        month: number,
+        year: number,
+        divisionFilter: string = 'ALL',
+        gangCodes?: string[],
+        gangTypeFilter?: string
+    ): Promise<any> {
+        try {
+            // Build query with filters
+            let whereConditions = ['period_month = ?', 'period_year = ?'];
+            const params: any[] = [month, year];
+
+            // Division filter - IJL gangs start with 'L'
+            if (divisionFilter === 'IJL') {
+                whereConditions.push("gang_code LIKE 'L%'");
+            } else if (divisionFilter === 'NON_IJL') {
+                whereConditions.push("gang_code NOT LIKE 'L%'");
+            }
+
+            // Gang Update: "Gang Panen" filter (requested as 'L' prefix or 'H' suffix?)
+            // If gangTypeFilter is 'harvesting', we usually check suffix 'H'.
+            // If user wants specific "Panen (L)" filter, we can handle it here or in frontend.
+            // For now, let's strictly follow the suffix for Type, and Prefix for IJL/Div.
+
+            // Gang Codes Filter
+            if (gangCodes && gangCodes.length > 0) {
+                const gangPlaceholders = gangCodes.map(() => '?').join(',');
+                whereConditions.push(`gang_code IN (${gangPlaceholders})`);
+                params.push(...gangCodes);
+            }
+
+            const whereClause = whereConditions.join(' AND ');
+
+            // Query for gang-level data with description from HR_GANG
+            const query = `
+                SELECT
+                    agg.gang_code,
+                    agg.division_code,
+                    g.Description as gang_description,
+                    SUM(ISNULL(agg.total_upah_bersih, 0)) as total_cost,
+                    SUM(ISNULL(agg.total_hk, 0)) as total_hk,
+                    SUM(ISNULL(agg.total_employees, 0)) as headcount
+                FROM dbo.daftar_upah_aggregation_history agg
+                LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
+                WHERE ${whereClause}
+                GROUP BY agg.gang_code, agg.division_code, g.Description
+                ORDER BY agg.division_code, agg.gang_code
+            `;
+
+            const rows = await this.extendDb.query<any>(query, params);
+
+            // Classify gangs and calculate Cost/HK
+            let gangDetails = rows.map(row => {
+                const costPerHK = row.total_hk > 0 ? row.total_cost / row.total_hk : 0;
+                return {
+                    gang_code: row.gang_code,
+                    division_code: row.division_code,
+                    gang_description: row.gang_description || '-',
+                    gang_type: this.classifyGangType(row.gang_code),
+                    is_ijl: this.isIJL(row.gang_code),
+                    total_cost: row.total_cost,
+                    total_hk: row.total_hk,
+                    cost_per_hk: Math.round(costPerHK),
+                    headcount: row.headcount
+                };
+            });
+
+            // Filter by gang type if specified
+            if (gangTypeFilter && gangTypeFilter !== 'ALL') {
+                gangDetails = gangDetails.filter(g => g.gang_type === gangTypeFilter);
+            }
+
+            // Group by gang type for summary
+            const summaryByType: Record<string, any> = {
+                harvesting: { total_cost: 0, total_hk: 0, count: 0 },
+                transport: { total_cost: 0, total_hk: 0, count: 0 },
+                maintenance: { total_cost: 0, total_hk: 0, count: 0 },
+                uncategorized: { total_cost: 0, total_hk: 0, count: 0 }
+            };
+
+            let grandTotalCost = 0;
+            let grandTotalHK = 0;
+
+            gangDetails.forEach(gang => {
+                if (summaryByType[gang.gang_type]) {
+                    summaryByType[gang.gang_type].total_cost += gang.total_cost;
+                    summaryByType[gang.gang_type].total_hk += gang.total_hk;
+                    summaryByType[gang.gang_type].count += 1;
+                }
+                grandTotalCost += gang.total_cost;
+                grandTotalHK += gang.total_hk;
+            });
+
+            // Calculate cost per HK for each type
+            const summary: Record<string, any> = {};
+            Object.keys(summaryByType).forEach(type => {
+                const data = summaryByType[type];
+                summary[type] = {
+                    ...data,
+                    cost_per_hk: data.total_hk > 0 ? Math.round(data.total_cost / data.total_hk) : 0
+                };
+            });
+
+            return {
+                success: true,
+                period: `${this.getMonthName(month)} ${year}`,
+                division_filter: divisionFilter,
+                summary,
+                gang_details: gangDetails.sort((a, b) => a.gang_code.localeCompare(b.gang_code)), // Sort alphabetically by code
+                grand_total: {
+                    total_cost: grandTotalCost,
+                    total_hk: grandTotalHK,
+                    cost_per_hk: grandTotalHK > 0 ? Math.round(grandTotalCost / grandTotalHK) : 0
+                }
+            };
+        } catch (e: any) {
+            console.error("[DashboardService] Error getting cost/HK comparison:", e);
+            throw e;
+        }
+    }
+
+    /**
+     * Get available gangs for filter dropdown
+     */
+    public async getAvailableGangs(month: number, year: number): Promise<any[]> {
+        try {
+            const query = `
+                SELECT DISTINCT
+                    agg.gang_code,
+                    agg.division_code,
+                    g.Description as gang_description
+                FROM dbo.daftar_upah_aggregation_history agg
+                LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
+                WHERE agg.period_month = ? AND agg.period_year = ?
+                AND agg.gang_code IS NOT NULL
+                AND agg.gang_code != ''
+                ORDER BY agg.gang_code
+            `;
+
+            const rows = await this.extendDb.query<any>(query, [month, year]);
+
+            return rows.map(row => ({
+                gang_code: row.gang_code,
+                division_code: row.division_code,
+                gang_description: row.gang_description || '-',
+                gang_type: this.classifyGangType(row.gang_code),
+                is_ijl: this.isIJL(row.gang_code)
+            }));
+        } catch (e: any) {
+            console.error("[DashboardService] Error getting available gangs:", e);
+            throw e;
+        }
+    }
+
+    /**
      * Get Latest Available Data Period
      */
     public async getLatestPeriod(): Promise<{ month: number, year: number }> {
@@ -315,8 +509,8 @@ export class DashboardService {
 
         const column = type === 'division' ? 'division_code' : 'gang_code';
 
-        // Dynamic IN clause placeholder
-        const placeholders = codes.map((_, i) => `@p${i + 2}`).join(','); // +2 because month/year are 0,1
+        // Dynamic IN clause placeholder using ?
+        const placeholders = codes.map(() => '?').join(',');
 
         const query = `
             SELECT 
@@ -326,8 +520,8 @@ export class DashboardService {
                 SUM(ISNULL(total_hk, 0)) as total_hk,
                 SUM(ISNULL(total_employees, 0)) as headcount
             FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = @p0 
-              AND period_year = @p1
+            WHERE period_month = ? 
+              AND period_year = ?
               AND ${column} IN (${placeholders})
             GROUP BY ${column}
         `;
@@ -558,7 +752,7 @@ export class DashboardService {
         const safeDivCode = divisionCode.replace(/[^a-zA-Z0-9]/g, '');
         const gangCondition = `g.GangCode LIKE '${safeDivCode}%'`;
 
-        const employees = await dataExtractorService.getEmployees(gangCondition, month, year, false);
+        const employees = await dataExtractorService.getEmployees(gangCondition, month, year, undefined, false);
 
         if (!employees || employees.length === 0) {
             return {
@@ -693,8 +887,8 @@ export class DashboardService {
                 MAX(h.total_employees) as headcount,
                 CAST(SUM(h.total_wage) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
             FROM daftar_upah_aggregation_history h
-            WHERE h.gang_code = @p1
-              AND (h.year * 100 + h.month) <= (@p2 * 100 + @p3)
+            WHERE h.gang_code = ?
+              AND (h.year * 100 + h.month) <= (? * 100 + ?)
             GROUP BY h.month, h.year
             ORDER BY h.year DESC, h.month DESC
         `;
@@ -725,11 +919,9 @@ export class DashboardService {
         if (divisionCode && divisionCode !== 'ALL') {
             divisionFilter = `
                 AND h.gang_code IN (
-                    SELECT code FROM HR_GANG WHERE division_code = @p5 
+                    SELECT code FROM HR_GANG WHERE division_code = ? 
                 )
             `;
-            // Actually, if using @p5, need to ensure params aligns.
-            // Let's use @p5 if divisionCode exists.
             params.push(divisionCode);
         }
 
@@ -745,8 +937,8 @@ export class DashboardService {
                 CAST(SUM(h.total_wage) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
             FROM daftar_upah_aggregation_history h
             WHERE (
-                (h.year > @p1 OR (h.year = @p1 AND h.month >= @p2)) AND
-                (h.year < @p3 OR (h.year = @p3 AND h.month <= @p4))
+                (h.year > ? OR (h.year = ? AND h.month >= ?)) AND
+                (h.year < ? OR (h.year = ? AND h.month <= ?))
             )
             ${divisionFilter}
             GROUP BY h.gang_code, h.month, h.year
