@@ -1,0 +1,230 @@
+=== WM_TICKET (Top 20) ===
+[
+  {
+    "TicketNo": "TB26318886          ",
+    "CustomerCode": "PTRJ05  ",
+    "TransporterCode": "000017  ",
+    "VehicleCode": "DT046   ",
+    "DriverCode": "G0182 ",
+    "BlkCode": "        ",
+    "NetWeight": -4670,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318887          ",
+    "CustomerCode": "PTRJ01  ",
+    "TransporterCode": "000012  ",
+    "VehicleCode": "T0012   ",
+    "DriverCode": "A0255 ",
+    "BlkCode": "        ",
+    "NetWeight": 3670,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318888          ",
+    "CustomerCode": "PTRJ50  ",
+    "TransporterCode": "000021  ",
+    "VehicleCode": "DT048   ",
+    "DriverCode": "L0028 ",
+    "BlkCode": "        ",
+    "NetWeight": -4860,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318889          ",
+    "CustomerCode": "PTRJ01  ",
+    "TransporterCode": "000012  ",
+    "VehicleCode": "DT013   ",
+    "DriverCode": "A0151 ",
+    "BlkCode": "        ",
+    "NetWeight": -3650,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318890          ",
+    "CustomerCode": "PTRJ09  ",
+    "TransporterCode": "000001  ",
+    "VehicleCode": "DT054   ",
+    "DriverCode": "E0075 ",
+    "BlkCode": "        ",
+    "NetWeight": -4350,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318891          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "PTRJ    ",
+    "VehicleCode": "CP003   ",
+    "DriverCode": "CP019",
+    "BlkCode": "        ",
+    "NetWeight": 7230,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318892          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "CP016   ",
+    "DriverCode": "CP018",
+    "BlkCode": "        ",
+    "NetWeight": 8070,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318893          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "CP008   ",
+    "DriverCode": "CP012",
+    "BlkCode": "        ",
+    "NetWeight": 8210,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318894          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "CP009   ",
+    "DriverCode": "CP009",
+    "BlkCode": "        ",
+    "NetWeight": 8190,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318895          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "CP002   ",
+    "DriverCode": "CP002",
+    "BlkCode": "        ",
+    "NetWeight": 10110,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318896          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "CP011   ",
+    "DriverCode": "CP011",
+    "BlkCode": "        ",
+    "NetWeight": 7140,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318897          ",
+    "CustomerCode": "PTRJ02  ",
+    "TransporterCode": "000014  ",
+    "VehicleCode": "DT019   ",
+    "DriverCode": "B0679 ",
+    "BlkCode": "        ",
+    "NetWeight": -3690,
+    "DateReceived": "2026-02-13T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318779          ",
+    "CustomerCode": "PTRJ50  ",
+    "TransporterCode": "000021  ",
+    "VehicleCode": "DT048   ",
+    "DriverCode": "L0028 ",
+    "BlkCode": "        ",
+    "NetWeight": 7560,
+    "DateReceived": "2026-02-12T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318780          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "BN8046WU",
+    "DriverCode": "OTH00016",
+    "BlkCode": "        ",
+    "NetWeight": 9120,
+    "DateReceived": "2026-02-12T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318781          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "BN8222WU",
+    "DriverCode": "OTH00017",
+    "BlkCode": "        ",
+    "NetWeight": 8360,
+    "DateReceived": "2026-02-12T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318782          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "PTRJ    ",
+    "VehicleCode": "CP003   ",
+    "DriverCode": "CP019",
+    "BlkCode": "        ",
+    "NetWeight": 6990,
+    "DateReceived": "2026-02-12T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318783          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "CP016   ",
+    "DriverCode": "CP018",
+    "BlkCode": "        ",
+    "NetWeight": 8070,
+    "DateReceived": "2026-02-12T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318784          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "BN8160WQ",
+    "DriverCode": "OTH00029",
+    "BlkCode": "        ",
+    "NetWeight": 8950,
+    "DateReceived": "2026-02-12T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318785          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "CP008   ",
+    "DriverCode": "CP012",
+    "BlkCode": "        ",
+    "NetWeight": 8200,
+    "DateReceived": "2026-02-12T00:00:00.000Z"
+  },
+  {
+    "TicketNo": "TB26318786          ",
+    "CustomerCode": "PT0002  ",
+    "TransporterCode": "000003  ",
+    "VehicleCode": "CP009   ",
+    "DriverCode": "CP009",
+    "BlkCode": "        ",
+    "NetWeight": 8190,
+    "DateReceived": "2026-02-12T00:00:00.000Z"
+  }
+]
+
+=== PR_TASKREGLN (Top 1) ===
+Columns: ID, MasterID, TaskCode, TaskRtnVal, EmpCode, EmpName, OT, ShiftCode, Hours, Unit, Rate, Amount, Status, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, ImpFlag, TrxDate, ChargeTo, NormalDay, TappingType
+{
+  "ID": "5125736",
+  "MasterID": "4556130",
+  "TaskCode": "GA9234P1A",
+  "TaskRtnVal": 18460,
+  "EmpCode": "A0231",
+  "EmpName": "YOYO ( HAMIA ",
+  "OT": false,
+  "ShiftCode": "",
+  "Hours": 7,
+  "Unit": 1,
+  "Rate": 18460,
+  "Amount": 129220,
+  "Status": 1,
+  "CreatedBy": "adm028",
+  "CreatedDate": "2025-11-29T11:13:18.347Z",
+  "UpdatedBy": "adm028",
+  "UpdatedDate": "2025-11-29T11:13:18.347Z",
+  "ImpFlag": 0,
+  "TrxDate": "2025-11-30T00:00:00.000Z",
+  "ChargeTo": "P1A",
+  "NormalDay": null,
+  "TappingType": "0"
+}

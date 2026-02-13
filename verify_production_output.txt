@@ -1,0 +1,19 @@
+Fetching Gang Comparison for Month 2, Year 2026...
+Total Gangs: 2
+Gangs with Production > 0: 1
+Top 5 Gangs by Production:
+[
+  {
+    "gang_code": "C2T",
+    "gang_description": "TRANSPORT AIR BETANGAN",
+    "gang_type": "uncategorized",
+    "total_wage": 15000000,
+    "total_hk": 120,
+    "headcount": 5,
+    "total_ot": 200000,
+    "total_premi": 500000,
+    "total_production": 137440,
+    "cost_per_hk": 125000,
+    "cost_per_ton": 109138.53317811408
+  }
+]

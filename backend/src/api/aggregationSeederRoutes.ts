@@ -527,7 +527,7 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
 
 // Helper functions removed as they are now in PayrollDataService
 
-async function seedAggregationToDb(division: string | undefined, month: number, year: number, authToken: string, force: boolean = false) {
+export async function seedAggregationToDb(division: string | undefined, month: number, year: number, authToken: string, force: boolean = false) {
     // Get all divisions from backend if not specified
     const divisions = division ? [division] : await fetchAvailableDivisions();
 

@@ -20,8 +20,13 @@ async function getUserFromHeader(headers: Record<string, string | undefined>): P
 
 export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     .derive(async ({ headers }) => {
-        const user = await getUserFromHeader(headers);
-        return { currentUser: user };
+        try {
+            const user = await getUserFromHeader(headers);
+            return { currentUser: user };
+        } catch (e) {
+            console.error("[PayrollRoutes] Derive error:", e);
+            return { currentUser: null };
+        }
     })
     .onBeforeHandle(({ currentUser, set }) => {
         if (!currentUser) {

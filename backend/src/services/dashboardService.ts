@@ -817,8 +817,21 @@ export class DashboardService {
     /**
      * Get Gang Comparison Data for Charts
      */
-    public async getGangComparison(month: number, year: number, divisionCode?: string): Promise<any[]> {
-        const query = `
+    // ... existing code ...
+
+    /**
+     * Get Gang Comparison Data with Production from Mill
+     */
+    /**
+     * Get Gang Comparison Data with Production from Mill
+     */
+    public async getGangComparison(
+        month: number,
+        year: number,
+        divisionCode?: string
+    ) {
+        // 1. Fetch Aggregation Data (Cost & Headcount)
+        let sql = `
             SELECT 
                 agg.gang_code,
                 RTRIM(g.Description) as gang_description,
@@ -827,35 +840,124 @@ export class DashboardService {
                 SUM(ISNULL(agg.total_employees, 0)) as headcount,
                 SUM(ISNULL(agg.total_lembur, 0)) as total_ot,
                 SUM(ISNULL(agg.total_premi, 0)) as total_premi,
-                CASE 
-                    WHEN SUM(ISNULL(agg.total_hk, 0)) > 0 
-                    THEN SUM(ISNULL(agg.total_upah_bersih, 0)) / SUM(ISNULL(agg.total_hk, 0))
-                    ELSE 0 
-                END as cost_per_hk
+                SUM(ISNULL(agg.total_ffb_weight, 0)) as total_production_db
             FROM dbo.daftar_upah_aggregation_history agg
             LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
             WHERE agg.period_month = ? AND agg.period_year = ?
-            ${divisionCode && divisionCode !== 'ALL' ? 'AND agg.division_code = ?' : ''}
-            GROUP BY agg.gang_code, g.Description
-            HAVING SUM(ISNULL(agg.total_employees, 0)) >= 3
-            ORDER BY cost_per_hk DESC
         `;
 
-        const params: (string | number)[] = [month, year];
-        if (divisionCode && divisionCode !== 'ALL') params.push(divisionCode);
+        const params: any[] = [month, year];
 
-        const rows = await this.extendDb.query<any>(query, params);
+        if (divisionCode && divisionCode !== 'ALL') {
+            if (divisionCode === 'IJL') {
+                sql += " AND agg.division_code LIKE 'L%'";
+            } else if (divisionCode === 'NON_IJL') {
+                sql += " AND agg.division_code NOT LIKE 'L%'";
+            } else {
+                sql += " AND agg.division_code = ?";
+                params.push(divisionCode);
+            }
+        }
 
-        return rows.map(r => ({
-            gang_code: r.gang_code,
-            gang_name: r.gang_description || r.gang_code,
-            total_wage: r.total_wage,
-            cost_per_hk: r.cost_per_hk,
-            headcount: r.headcount,
-            total_hk: r.total_hk,
-            total_ot: r.total_ot,
-            total_premi: r.total_premi
-        }));
+        sql += `
+            GROUP BY agg.gang_code, g.Description
+            HAVING SUM(ISNULL(agg.total_employees, 0)) >= 0
+            ORDER BY total_wage DESC
+        `;
+
+        // Use extendDb which is likely initialized in constructor
+        const aggData = await this.extendDb.query<any>(sql, params);
+
+        // 2. Fetch Real Production Data from Mill (WM_TICKET) -> Driver -> Gang
+        const productionMap = await this.getGangProduction(month, year);
+
+        // 3. Merge Data
+        const mergedData = aggData.map(row => {
+            const cleanGangCode = row.gang_code.trim();
+            const realProductionKg = productionMap.get(cleanGangCode) || 0;
+            const totalProduction = row.total_production_db > 0 ? row.total_production_db : realProductionKg;
+
+            const costPerHk = row.total_hk > 0 ? row.total_wage / row.total_hk : 0;
+            const totalTon = totalProduction / 1000;
+            const costPerTon = totalTon > 0 ? row.total_wage / totalTon : 0;
+
+            return {
+                gang_code: cleanGangCode,
+                gang_description: row.gang_description,
+                gang_type: 'uncategorized', // Default for now as column missing in DB
+                total_wage: row.total_wage,
+                total_hk: row.total_hk,
+                headcount: row.headcount,
+                total_ot: row.total_ot,
+                total_premi: row.total_premi,
+                total_production: totalProduction,
+                cost_per_hk: costPerHk,
+                cost_per_ton: costPerTon
+            };
+        });
+
+        return mergedData.sort((a, b) => b.cost_per_hk - a.cost_per_hk);
+    }
+
+    /**
+     * Fetch Production Data (NetWeight) from WM_TICKET 
+     * aggregated by Transport Gang (via Driver)
+     */
+    private async getGangProduction(month: number, year: number): Promise<Map<string, number>> {
+        const gangProduction = new Map<string, number>();
+        const dbMill = Database.getMillInstance();
+        const dbPayroll = Database.getInstance();
+
+        try {
+            const ticketQuery = `
+                SELECT 
+                    DriverCode, 
+                    SUM(CAST(NetWeight AS BIGINT)) as TotalWeight
+                FROM [dbo].[WM_TICKET]
+                WHERE MONTH(DateReceived) = ? AND YEAR(DateReceived) = ?
+                  AND DriverCode IS NOT NULL AND DriverCode <> ''
+                GROUP BY DriverCode
+            `;
+
+            const driverWeights = await dbMill.query<{ DriverCode: string, TotalWeight: number }>(ticketQuery, [month, year]);
+
+            if (driverWeights.length === 0) return gangProduction;
+
+            const driverCodes = [...new Set(driverWeights.map(d => d.DriverCode))];
+
+            const driverGangMap = new Map<string, string>();
+
+            if (driverCodes.length > 0) {
+                // Formatting for IN clause
+                const codeList = driverCodes.map(c => `'${c.replace("'", "''")}'`).join(",");
+                const gangQuery = `
+                    SELECT TRIM(GangMember) as EmpCode, TRIM(GangCode) as GangCode
+                    FROM HR_GANGLN 
+                    WHERE GangMember IN (${codeList})
+                `;
+
+                const mappings = await dbPayroll.query<{ EmpCode: string, GangCode: string }>(gangQuery);
+                mappings.forEach(m => {
+                    driverGangMap.set(m.EmpCode, m.GangCode);
+                });
+            }
+
+            for (const dw of driverWeights) {
+                const gangCode = driverGangMap.get(dw.DriverCode.trim());
+                if (gangCode) {
+                    const current = gangProduction.get(gangCode) || 0;
+                    // Ensure TotalWeight is treated as number (it might come as string from BigInt)
+                    const weight = Number(dw.TotalWeight) || 0;
+                    gangProduction.set(gangCode, current + weight);
+                }
+            }
+
+
+        } catch (error) {
+            console.error("[DashboardService] Error fetching gang production:", error);
+        }
+
+        return gangProduction;
     }
 
     /**
@@ -878,20 +980,20 @@ export class DashboardService {
     public async getGangHistory(gangCode: string, endMonth: number, endYear: number): Promise<any[]> {
         const query = `
             SELECT TOP 6
-                h.month,
-                h.year,
-                SUM(h.total_wage) as total_wage,
-                SUM(h.total_ot_amount) as total_ot,
-                SUM(h.total_premi_amount) as total_premi,
-                SUM(h.total_hk) as total_hk,
-                MAX(h.total_employees) as headcount,
-                CAST(SUM(h.total_wage) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
+        h.month,
+            h.year,
+            SUM(h.total_wage) as total_wage,
+            SUM(h.total_ot_amount) as total_ot,
+            SUM(h.total_premi_amount) as total_premi,
+            SUM(h.total_hk) as total_hk,
+            MAX(h.total_employees) as headcount,
+            CAST(SUM(h.total_wage) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
             FROM daftar_upah_aggregation_history h
             WHERE h.gang_code = ?
-              AND (h.year * 100 + h.month) <= (? * 100 + ?)
+            AND(h.year * 100 + h.month) <= (? * 100 + ?)
             GROUP BY h.month, h.year
             ORDER BY h.year DESC, h.month DESC
-        `;
+            `;
 
         const rows = await this.extendDb.query<any>(query, [gangCode, endYear, endMonth]);
         return rows.reverse(); // Return in chronological order
@@ -918,32 +1020,32 @@ export class DashboardService {
 
         if (divisionCode && divisionCode !== 'ALL') {
             divisionFilter = `
-                AND h.gang_code IN (
-                    SELECT code FROM HR_GANG WHERE division_code = ? 
+                AND h.gang_code IN(
+                SELECT code FROM HR_GANG WHERE division_code = ? 
                 )
             `;
             params.push(divisionCode);
         }
 
         const query = `
-            SELECT 
-                h.gang_code,
-                h.month,
-                h.year,
-                SUM(h.total_wage) as total_wage,
-                SUM(h.total_ot_amount) as total_ot,
-                SUM(h.total_premi_amount) as total_premi,
-                MAX(h.total_employees) as headcount,
-                CAST(SUM(h.total_wage) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
+        SELECT
+        h.gang_code,
+            h.month,
+            h.year,
+            SUM(h.total_wage) as total_wage,
+            SUM(h.total_ot_amount) as total_ot,
+            SUM(h.total_premi_amount) as total_premi,
+            MAX(h.total_employees) as headcount,
+            CAST(SUM(h.total_wage) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
             FROM daftar_upah_aggregation_history h
-            WHERE (
-                (h.year > ? OR (h.year = ? AND h.month >= ?)) AND
-                (h.year < ? OR (h.year = ? AND h.month <= ?))
-            )
+        WHERE(
+            (h.year > ? OR(h.year = ? AND h.month >= ?)) AND
+            (h.year < ? OR(h.year = ? AND h.month <= ?))
+        )
             ${divisionFilter}
             GROUP BY h.gang_code, h.month, h.year
             ORDER BY h.gang_code, h.year, h.month
-        `;
+            `;
 
         return await this.extendDb.query<any>(query, params);
     }
