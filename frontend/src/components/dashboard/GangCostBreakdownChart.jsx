@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
 
 const formatCurrency = (val) => {
@@ -8,8 +8,40 @@ const formatCurrency = (val) => {
     return val.toFixed(0);
 };
 
-export default function GangCostBreakdownChart({ data, loading }) {
+export default function GangCostBreakdownChart({ data, loading, onGangClick }) {
     const [sortBy, setSortBy] = useState('total'); // total, base_wage, overtime, premi
+
+    // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS (React rules of hooks)
+    // Transform data for stacked bar chart
+    const safeData = Array.isArray(data) ? data : [];
+    
+    const chartData = useMemo(() => {
+        if (safeData.length === 0) return [];
+        return safeData.map(gang => {
+            const baseWage = (gang.total_wage || 0) - (gang.total_ot || 0) - (gang.total_premi || 0);
+            return {
+                gang_code: gang.gang_code,
+                gang_name: gang.gang_name,
+                base_wage: Math.max(0, baseWage),
+                overtime: gang.total_ot || 0,
+                premi: gang.total_premi || 0,
+                total: gang.total_wage || 0,
+                headcount: gang.headcount || 0
+            };
+        });
+    }, [safeData]);
+
+    // Sort data
+    const sortedData = useMemo(() => {
+        if (chartData.length === 0) return [];
+        return [...chartData].sort((a, b) => {
+            if (sortBy === 'total') return b.total - a.total;
+            if (sortBy === 'base_wage') return b.base_wage - a.base_wage;
+            if (sortBy === 'overtime') return b.overtime - a.overtime;
+            if (sortBy === 'premi') return b.premi - a.premi;
+            return 0;
+        });
+    }, [chartData, sortBy]);
 
     if (loading) {
         return (
@@ -28,7 +60,7 @@ export default function GangCostBreakdownChart({ data, loading }) {
         );
     }
 
-    if (!data || data.length === 0) {
+    if (safeData.length === 0) {
         return (
             <div style={{
                 backgroundColor: 'white',
@@ -41,29 +73,6 @@ export default function GangCostBreakdownChart({ data, loading }) {
             </div>
         );
     }
-
-    // Transform data for stacked bar chart
-    const chartData = data.map(gang => {
-        const baseWage = (gang.total_wage || 0) - (gang.total_ot || 0) - (gang.total_premi || 0);
-        return {
-            gang_code: gang.gang_code,
-            gang_name: gang.gang_name,
-            base_wage: Math.max(0, baseWage),
-            overtime: gang.total_ot || 0,
-            premi: gang.total_premi || 0,
-            total: gang.total_wage || 0,
-            headcount: gang.headcount || 0
-        };
-    });
-
-    // Sort data
-    const sortedData = [...chartData].sort((a, b) => {
-        if (sortBy === 'total') return b.total - a.total;
-        if (sortBy === 'base_wage') return b.base_wage - a.base_wage;
-        if (sortBy === 'overtime') return b.overtime - a.overtime;
-        if (sortBy === 'premi') return b.premi - a.premi;
-        return 0;
-    });
 
     const CustomTooltip = ({ active, payload }) => {
         if (active && payload && payload.length) {
@@ -199,8 +208,8 @@ export default function GangCostBreakdownChart({ data, loading }) {
                 </span>
             </div>
 
-            <div style={{ height: Math.max(400, sortedData.length * 35) }}>
-                <ResponsiveContainer width="100%" height="100%">
+            <div style={{ height: Math.max(400, sortedData.length * 35), minHeight: '200px' }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
                     <BarChart
                         data={sortedData}
                         layout="vertical"

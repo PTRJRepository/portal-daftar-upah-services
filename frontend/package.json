@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:test": "cross-env VITE_DEV_MODE=true vite --config ./vite.config.test.js",
-    "dev:5175": "cross-env PORT=5175 vite --config ./vite.config.test.js",
+    "dev:5174": "cross-env PORT=5174 vite --config ./vite.config.test.js",
     "dev:network": "cross-env VITE_DEV_MODE=true NODE_ENV=network vite --host 0.0.0.0 --port 5175",
     "dev:custom-backend": "cross-env VITE_DEV_MODE=true NODE_ENV=network vite --host 0.0.0.0",
     "dev:external": "cross-env VITE_DEV_MODE=true VITE_BACKEND_HOST=192.168.1.100 NODE_ENV=network vite --host 0.0.0.0 --port 5175",

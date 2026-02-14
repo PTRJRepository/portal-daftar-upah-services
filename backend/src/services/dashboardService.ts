@@ -980,19 +980,19 @@ export class DashboardService {
     public async getGangHistory(gangCode: string, endMonth: number, endYear: number): Promise<any[]> {
         const query = `
             SELECT TOP 6
-        h.month,
-            h.year,
-            SUM(h.total_wage) as total_wage,
-            SUM(h.total_ot_amount) as total_ot,
-            SUM(h.total_premi_amount) as total_premi,
+            h.period_month as month,
+            h.period_year as year,
+            SUM(h.total_upah_bersih) as total_wage,
+            SUM(h.total_lembur) as total_ot,
+            SUM(h.total_premi) as total_premi,
             SUM(h.total_hk) as total_hk,
             MAX(h.total_employees) as headcount,
-            CAST(SUM(h.total_wage) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
+            CAST(SUM(h.total_upah_bersih) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
             FROM daftar_upah_aggregation_history h
             WHERE h.gang_code = ?
-            AND(h.year * 100 + h.month) <= (? * 100 + ?)
-            GROUP BY h.month, h.year
-            ORDER BY h.year DESC, h.month DESC
+            AND (h.period_year * 100 + h.period_month) <= (? * 100 + ?)
+            GROUP BY h.period_month, h.period_year
+            ORDER BY h.period_year DESC, h.period_month DESC
             `;
 
         const rows = await this.extendDb.query<any>(query, [gangCode, endYear, endMonth]);
@@ -1012,16 +1012,19 @@ export class DashboardService {
         }
 
         let divisionFilter = '';
-        // Note: parameters are positional in extendDb usually? 
+        // Note: parameters are positional in extendDb usually?
         // Based on previous usage, it accepts array.
         // We will pass [startYear, startMonth, endYear, endMonth, divisionCode]
 
-        const params: any[] = [startYear, startMonth, endYear, endMonth];
+        // Query has 6 placeholders for date logic:
+        // (year > ? OR (year = ? AND month >= ?)) AND (year < ? OR (year = ? AND month <= ?))
+        // Params order: startYear, startYear, startMonth, endYear, endYear, endMonth
+        const params: any[] = [startYear, startYear, startMonth, endYear, endYear, endMonth];
 
         if (divisionCode && divisionCode !== 'ALL') {
             divisionFilter = `
                 AND h.gang_code IN(
-                SELECT code FROM HR_GANG WHERE division_code = ? 
+                SELECT code FROM HR_GANG WHERE division_code = ?
                 )
             `;
             params.push(divisionCode);
@@ -1029,22 +1032,21 @@ export class DashboardService {
 
         const query = `
         SELECT
-        h.gang_code,
-            h.month,
-            h.year,
-            SUM(h.total_wage) as total_wage,
-            SUM(h.total_ot_amount) as total_ot,
-            SUM(h.total_premi_amount) as total_premi,
+            h.gang_code,
+            h.period_month as month,
+            h.period_year as year,
+            SUM(h.total_upah_bersih) as total_wage,
+            SUM(h.total_lembur) as total_ot,
+            SUM(h.total_premi) as total_premi,
             MAX(h.total_employees) as headcount,
-            CAST(SUM(h.total_wage) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
+            CAST(SUM(h.total_upah_bersih) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
             FROM daftar_upah_aggregation_history h
-        WHERE(
-            (h.year > ? OR(h.year = ? AND h.month >= ?)) AND
-            (h.year < ? OR(h.year = ? AND h.month <= ?))
-        )
+        WHERE
+            (h.period_year > ? OR (h.period_year = ? AND h.period_month >= ?)) AND
+            (h.period_year < ? OR (h.period_year = ? AND h.period_month <= ?))
             ${divisionFilter}
-            GROUP BY h.gang_code, h.month, h.year
-            ORDER BY h.gang_code, h.year, h.month
+            GROUP BY h.gang_code, h.period_month, h.period_year
+            ORDER BY h.gang_code, h.period_year, h.period_month
             `;
 
         return await this.extendDb.query<any>(query, params);

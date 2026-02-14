@@ -34,7 +34,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             return { message: "Unauthorized" };
         }
     })
-    // --- Divisions ---
+    // --- Divisions ---as
     .get("/divisions", async () => {
         const divisions = await gangService.getAllDivisions();
         return divisions;

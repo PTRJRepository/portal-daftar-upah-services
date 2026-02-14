@@ -277,9 +277,9 @@ export default function GangTrendChart({ token, month, year, divisionCode }) {
                 </div>
             </div>
 
-            <div style={{ height: '350px' }}>
+            <div style={{ height: '350px', minHeight: '200px' }}>
                 {selectedGangs.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
                         <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="name" />

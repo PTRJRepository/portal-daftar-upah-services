@@ -171,8 +171,8 @@ const PremiCompositionChart = ({ month, year, division }) => {
             </div>
 
             {/* Chart */}
-            <div style={{ height: viewMode === 'bar' ? chartHeight : 350, width: '100%' }}>
-                <ResponsiveContainer>
+            <div style={{ height: viewMode === 'bar' ? chartHeight : 350, width: '100%', minHeight: '200px' }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
                     {viewMode === 'pie' ? (
                         <PieChart>
                             <Pie

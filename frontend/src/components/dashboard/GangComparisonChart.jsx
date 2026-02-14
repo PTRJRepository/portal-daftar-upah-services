@@ -81,15 +81,31 @@ const getPerformanceColor = (value, allValues, metric) => {
 export default function GangComparisonChart({ data, loading, onGangClick, month, year }) {
     const navigate = useNavigate(); // Hook for navigation
     const [sortBy, setSortBy] = useState('cost_per_hk');
-    // Removed modal state
+
+    // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS (React rules of hooks)
+    // Enrich data with gang type and division info
+    const safeData = Array.isArray(data) ? data : [];
+    const enrichedData = useMemo(() => {
+        if (safeData.length === 0) return [];
+        return safeData.map(gang => ({
+            ...gang,
+            gang_type: getGangType(gang.gang_code),
+            is_ijl: isIJLGang(gang.gang_code)
+        }));
+    }, [safeData]);
+
+    // Sort Data
+    const sortedData = useMemo(() => {
+        if (enrichedData.length === 0) return [];
+        return [...enrichedData].sort((a, b) => b[sortBy] - a[sortBy]);
+    }, [enrichedData, sortBy]);
 
     const handleGenerateReport = () => {
-        // Navigate to the report page with filters
         const params = new URLSearchParams({
             month: month,
             year: year,
-            division: 'ALL', // Default, user can change on report page
-            type: 'ALL'     // Default
+            division: 'ALL',
+            type: 'ALL'
         });
         navigate(`/gang-comparison-report?${params.toString()}`);
     };
@@ -110,7 +126,7 @@ export default function GangComparisonChart({ data, loading, onGangClick, month,
         );
     }
 
-    if (!data || data.length === 0) {
+    if (safeData.length === 0) {
         return (
             <div style={{
                 backgroundColor: 'white',
@@ -135,21 +151,7 @@ export default function GangComparisonChart({ data, loading, onGangClick, month,
     };
 
     const metricConfig = getMetricConfig();
-    const allMetricValues = data.map(d => d[sortBy]);
-
-    // Enrich data with gang type and division info
-    const enrichedData = useMemo(() => {
-        return data.map(gang => ({
-            ...gang,
-            gang_type: getGangType(gang.gang_code),
-            is_ijl: isIJLGang(gang.gang_code)
-        }));
-    }, [data]);
-
-    // Sort Data
-    const sortedData = useMemo(() => {
-        return [...enrichedData].sort((a, b) => b[sortBy] - a[sortBy]);
-    }, [enrichedData, sortBy]);
+    const allMetricValues = safeData.map(d => d[sortBy]);
 
     // Removed Report Data Logic (moved to page)
 
@@ -262,8 +264,8 @@ export default function GangComparisonChart({ data, loading, onGangClick, month,
                 </div>
             </div>
 
-            <div style={{ height: Math.max(400, data.length * 35) }}>
-                <ResponsiveContainer width="100%" height="100%">
+            <div style={{ height: Math.max(400, safeData.length * 35), minHeight: '200px' }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
                     <BarChart
                         data={sortedData}
                         layout="vertical"
