@@ -232,6 +232,7 @@ export class HeaderService {
             { field: "nama", headerName: "Nama" },
             { field: "jenis_kelamin", headerName: "JK" },
             { field: "gang_code", headerName: "Gang" },
+            { field: "bunches_total", headerName: "FFB Bunches" },
             {
                 field: "upah_kotor",
                 headerName: "UPAH KOTOR",
@@ -292,6 +293,8 @@ export class HeaderService {
             { field: "nik", headerName: "NIK" },
             { field: "nama", headerName: "Nama" },
             { field: "jenis_kelamin", headerName: "JK" },
+            { field: "gang_code", headerName: "Gang" },
+            { field: "bunches_total", headerName: "FFB Bunches" },
             { field: "upah_dasar", headerName: "Upah Dasar" },
             { field: "jumlah_hk", headerName: "JML HK" },
             { field: "gaji_pokok", headerName: "Gaji Pokok" },

@@ -92,7 +92,8 @@
       "Bash(npx tsc:*)",
       "Bash(xxd:*)",
       "Bash(grep:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(bun test:*)"
     ],
     "deny": [],
     "ask": []

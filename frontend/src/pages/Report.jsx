@@ -757,7 +757,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const formatLeaf = useCallback((col) => {
     const cfg = { ...col, ...baseCol }
     const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi']
-    const intFields = ['no', 'hari_kerja', 'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari', 'tidak_hadir_cth', 'tidak_hadir_alpa', 'jumlah_hk', 'masa_kerja_tahun']
+    const intFields = ['no', 'hari_kerja', 'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari', 'tidak_hadir_cth', 'tidak_hadir_alpa', 'jumlah_hk', 'masa_kerja_tahun', 'bunches_total', 'bunches_ripe', 'bunches_unripe', 'bunches_round', 'bunches_transactions']
     // lembur_jam removed from intFields - should preserve decimal values (e.g., 1.5 hours)
     const decimalFields = ['lembur_jam']
 

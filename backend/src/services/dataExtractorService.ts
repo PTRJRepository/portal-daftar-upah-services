@@ -6,6 +6,7 @@ import { EmployeeEstateService } from "./employeeEstateService";
 import { calculatePph21Ter } from "./pph21TerService";
 import { currentPeriodService } from "./currentPeriodService";
 import { PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
+import { harvesterService } from "./harvesterService";
 
 // Import new unified component services
 import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
@@ -104,6 +105,12 @@ interface PayrollRow {
         amount: number;
         meta?: PayrollComponentMetadata;
     }>;
+    // Harvest / Bunches fields (for harvest gangs ending with "H")
+    bunches_total?: number;
+    bunches_ripe?: number;
+    bunches_unripe?: number;
+    bunches_round?: number;
+    bunches_transactions?: number;
     total_tunjangan: number;
     premi_brondol: number;
     premi_pph: number; // PREMI PPH - ADDED (+) to upah_bersih, not subtracted
@@ -305,7 +312,7 @@ export class DataExtractorService {
 
         const startParallel = performance.now();
         // Fetch all required data in parallel
-        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes] = await Promise.all([
+        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes, bunchesBatch] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
             this.getPremi(empCodes, startDate, endDate, serverProfile),
@@ -321,7 +328,8 @@ export class DataExtractorService {
             this.getBrondol(empCodes, startDate, endDate, serverProfile),
 
             EmployeeEstateService.getEmployeeJobs(),
-            this.getTaskCodes(empCodes, startDate, endDate, serverProfile)
+            this.getTaskCodes(empCodes, startDate, endDate, serverProfile),
+            this.getBunchesBatch(empCodes, month, year) // Add bunches data fetch
         ]);
 
         // Destructure premi result - uses DocDesc as title
@@ -615,6 +623,14 @@ export class DataExtractorService {
                     trx_date: r.date || r.trx_date || "", // Map date to trx_date, handle both just in case
                     meta: r.meta
                 })),
+                // Harvest / Bunches data (only for harvest gangs ending with "H")
+                ...(harvesterService.isHarvestGang(emp.gang_code) ? {
+                    bunches_total: bunchesBatch.get(emp.emp_code)?.total_bunches || 0,
+                    bunches_ripe: bunchesBatch.get(emp.emp_code)?.bunches_ripe || 0,
+                    bunches_unripe: bunchesBatch.get(emp.emp_code)?.bunches_unripe || 0,
+                    bunches_round: bunchesBatch.get(emp.emp_code)?.bunches_round || 0,
+                    bunches_transactions: bunchesBatch.get(emp.emp_code)?.bunches_transactions || 0,
+                } : {}),
                 total_tunjangan,
                 premi_brondol: empBrondol,
                 upah_pokok,
@@ -1540,6 +1556,23 @@ export class DataExtractorService {
         // [RULE 5] Default: Use DocDesc as title, normalized key for field name
         const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
         return { key, title: cleanTitle };
+    }
+
+    /**
+     * Fetch bunches data for multiple employees in batch
+     * Only returns data for harvest gangs (ending with "H")
+     */
+    private async getBunchesBatch(empCodes: string[], month: number, year: number): Promise<Map<string, import("../types/harvest").HarvestData>> {
+        if (empCodes.length === 0) {
+            return new Map();
+        }
+
+        try {
+            return await harvesterService.getBatchEmployeeBunches(empCodes, month, year);
+        } catch (error: any) {
+            console.error("[DataExtractor] Error fetching bunches batch:", error.message);
+            return new Map();
+        }
     }
 
     private async getBrondol(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {

@@ -15,6 +15,13 @@ const formatNumber = (val) => {
     return new Intl.NumberFormat('id-ID').format(val);
 };
 
+// Format bunches with K suffix for large numbers
+const formatBunches = (val) => {
+    if (val === null || val === undefined) return '0';
+    if (val >= 1000) return `${(val / 1000).toFixed(1)}K`;
+    return val.toString();
+};
+
 // Get gang type from last character of gang code
 const getGangType = (gangCode) => {
     if (!gangCode) return 'uncategorized';
@@ -146,6 +153,7 @@ export default function GangComparisonChart({ data, loading, onGangClick, month,
             case 'total_wage': return { label: 'Total Wage', formatter: formatCurrency };
             case 'headcount': return { label: 'Headcount', formatter: (val) => `${val} Emp` };
             case 'total_hk': return { label: 'Total HK', formatter: (val) => val.toLocaleString() };
+            case 'total_ffb_bunches': return { label: 'FFB Bunches', formatter: formatBunches };
             default: return { label: 'Value', formatter: (val) => val };
         }
     };
@@ -158,6 +166,9 @@ export default function GangComparisonChart({ data, loading, onGangClick, month,
     const CustomTooltip = ({ active, payload }) => {
         if (active && payload && payload.length) {
             const gang = payload[0].payload;
+            const gangType = getGangType(gang.gang_code);
+            const isHarvesting = gangType === 'harvesting';
+            
             return (
                 <div style={{
                     backgroundColor: 'white',
@@ -170,14 +181,26 @@ export default function GangComparisonChart({ data, loading, onGangClick, month,
                         {gang.gang_code}
                     </div>
                     <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '8px' }}>
-                        {gang.gang_name}
+                        {gang.gang_name || gang.gang_description}
                     </div>
                     <div style={{ fontSize: '0.9rem', color: '#334155' }}>
                         <div><strong>Cost/HK:</strong> {formatCurrency(gang.cost_per_hk)}</div>
                         <div><strong>Headcount:</strong> {gang.headcount} emp</div>
                         <div><strong>Total HK:</strong> {gang.total_hk.toLocaleString()}</div>
                         <div><strong>Total Wage:</strong> {formatCurrency(gang.total_wage)}</div>
-                        <div><strong>Gang Type:</strong> {getGangTypeLabel(getGangType(gang.gang_code))}</div>
+                        <div><strong>Gang Type:</strong> {getGangTypeLabel(gangType)}</div>
+                        {isHarvesting && gang.total_ffb_bunches > 0 && (
+                            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e2e8f0' }}>
+                                <div style={{ color: '#16a34a', fontWeight: '600' }}>
+                                    🌴 FFB Bunches: {formatNumber(gang.total_ffb_bunches)}
+                                </div>
+                                {gang.harvester_count > 0 && (
+                                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                                        Harvesters: {gang.harvester_count} emp
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -260,6 +283,7 @@ export default function GangComparisonChart({ data, loading, onGangClick, month,
                         <option value="total_wage">Total Wage</option>
                         <option value="headcount">Headcount</option>
                         <option value="total_hk">Total HK</option>
+                        <option value="total_ffb_bunches">FFB Bunches</option>
                     </select>
                 </div>
             </div>
@@ -276,6 +300,7 @@ export default function GangComparisonChart({ data, loading, onGangClick, month,
                             type="number"
                             tickFormatter={(val) => {
                                 if (sortBy === 'headcount') return val;
+                                if (sortBy === 'total_ffb_bunches') return formatBunches(val);
                                 return `${(val / 1000).toFixed(0)}k`;
                             }}
                         />

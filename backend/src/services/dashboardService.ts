@@ -870,12 +870,20 @@ export class DashboardService {
 
         // 2. Fetch Real Production Data from Mill (WM_TICKET) -> Driver -> Gang
         const productionMap = await this.getGangProduction(month, year);
+        
+        // 3. Fetch Harvester FFB Bunches Data
+        const bunchesMap = await this.getHarvesterBunches(month, year);
 
-        // 3. Merge Data
+        // 4. Merge Data
         const mergedData = aggData.map(row => {
             const cleanGangCode = row.gang_code.trim();
             const realProductionKg = productionMap.get(cleanGangCode) || 0;
             const totalProduction = row.total_production_db > 0 ? row.total_production_db : realProductionKg;
+            
+            // Get FFB bunches data for harvesting gangs
+            const bunchesData = bunchesMap.get(cleanGangCode);
+            const totalBunches = bunchesData?.totalBunches || 0;
+            const harvesterCount = bunchesData?.employeeCount || 0;
 
             const costPerHk = row.total_hk > 0 ? row.total_wage / row.total_hk : 0;
             const totalTon = totalProduction / 1000;
@@ -891,6 +899,8 @@ export class DashboardService {
                 total_ot: row.total_ot,
                 total_premi: row.total_premi,
                 total_production: totalProduction,
+                total_ffb_bunches: totalBunches,
+                harvester_count: harvesterCount,
                 cost_per_hk: costPerHk,
                 cost_per_ton: costPerTon
             };
@@ -958,6 +968,47 @@ export class DashboardService {
         }
 
         return gangProduction;
+    }
+
+    /**
+     * Get Harvester FFB Bunches Data
+     * Fetches TotalBunches from PR_HARVESTERLN_ARC joined with PR_HARVESTER_ARC
+     * Returns Map<GangCode, { totalBunches, employeeCount }>
+     */
+    private async getHarvesterBunches(month: number, year: number): Promise<Map<string, { totalBunches: number; employeeCount: number }>> {
+        const gangBunches = new Map<string, { totalBunches: number; employeeCount: number }>();
+        
+        // Use SERVER_PROFILE_2 for harvester data (same as payroll data)
+        const dbHarvester = Database.getInstance(undefined, "SERVER_PROFILE_2");
+        
+        try {
+            const query = `
+                SELECT
+                    h.GangCode,
+                    COUNT(DISTINCT hl.EmpCode) as EmpCount,
+                    SUM(ISNULL(hl.TotalBunches, 0)) as TotalBunches
+                FROM PR_HARVESTERLN_ARC hl
+                JOIN PR_HARVESTER_ARC h ON hl.MasterID = h.ID
+                WHERE h.AccYear = ? AND h.AccMonth = ?
+                GROUP BY h.GangCode
+            `;
+            
+            const rows = await dbHarvester.query<{ GangCode: string; EmpCount: number; TotalBunches: number }>(query, [year.toString(), month.toString()]);
+            
+            for (const row of rows) {
+                const gangCode = row.GangCode?.trim() || "";
+                if (gangCode) {
+                    gangBunches.set(gangCode, {
+                        totalBunches: row.TotalBunches || 0,
+                        employeeCount: row.EmpCount || 0
+                    });
+                }
+            }
+        } catch (error) {
+            console.error("[DashboardService] Error fetching harvester bunches:", error);
+        }
+        
+        return gangBunches;
     }
 
     /**
