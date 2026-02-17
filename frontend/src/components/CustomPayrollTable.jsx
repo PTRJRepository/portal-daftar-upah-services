@@ -68,10 +68,25 @@ export default function CustomPayrollTable({
     // Tax View Mode
     const [isTaxExpanded, setIsTaxExpanded] = useState(false);
 
+    // State for collapsible column groups
+    const [isHarvestExpanded, setHarvestExpanded] = useState(false);
+    const [isAttendanceExpanded, setAttendanceExpanded] = useState(false);
+    const [isAllowanceExpanded, setAllowanceExpanded] = useState(false);
+    const [isDeductionExpanded, setDeductionExpanded] = useState(false);
+
     // Table Preferences (Body Cell Colors - applied to body cells, NOT headers)
     const [cellColors, setCellColors] = useState(DEFAULT_CELL_COLORS);
 
     const tableRef = useRef(null);
+
+    // Toggle handlers
+    const toggleGroup = useCallback((group) => {
+        if (group === 'PANEN') setHarvestExpanded(prev => !prev);
+        if (group === 'ABSENSI') setAttendanceExpanded(prev => !prev);
+        if (group === 'TUNJANGAN') setAllowanceExpanded(prev => !prev);
+        if (group === 'POTONGAN_BERSIH') setDeductionExpanded(prev => !prev); // Special key for convenience
+        if (group === 'PAJAK') setIsTaxExpanded(prev => !prev);
+    }, []);
 
     // Load preferences on mount
     useEffect(() => {
@@ -409,10 +424,12 @@ export default function CustomPayrollTable({
             // ABSENSI > KEHADIRAN
             { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'], w: 40, className: 'text-center' },
             // ABSENSI > KETIDAKHADIRAN
-            { field: 'cuti_tahunan_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'CUTI'], w: 45, className: 'text-center' },
-            { field: 'cuti_sakit_haid_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'SAKIT+HAID'], w: 70, className: 'text-center' },
-            { field: 'cuti_minggu_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'MINGGU'], w: 55, className: 'text-center' },
-            { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'NASIONAL'], w: 60, className: 'text-center' },
+            ...(isAttendanceExpanded ? [
+                { field: 'cuti_tahunan_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'CUTI'], w: 45, className: 'text-center' },
+                { field: 'cuti_sakit_haid_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'SAKIT+HAID'], w: 70, className: 'text-center' },
+                { field: 'cuti_minggu_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'MINGGU'], w: 55, className: 'text-center' },
+                { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'NASIONAL'], w: 60, className: 'text-center' },
+            ] : []),
             // ABSENSI > JUMLAH HK
             { field: 'jumlah_hk', headers: ['ABSENSI', null, null, 'JUMLAH HK'], w: 60, className: 'text-center font-bold' },
             // ABSENSI > TOTAL JAM [NEW] - Marks employees with shortage hours (kurang jam)
@@ -481,145 +498,165 @@ export default function CustomPayrollTable({
                     );
                 }
             },
-            // PANEN (BUNCHES) - Khusus untuk Gang Panen (berakhiran "H")
-            {
-                field: 'bunches_total', headers: ['PANEN', 'BUNCHES', null, 'TOTAL JANJANG'], w: 90, className: 'text-right', render: (row) => {
-                    const val = row.bunches_total || 0;
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }
-            },
-            {
+        ];
+
+        // PANEN (Harvest) - Collapsible
+        // Default: Show ONLY Total Janjang
+        // Expanded: Show Bunches Breakdown + Loose Fruit
+        const showHarvestDetails = isHarvestExpanded;
+
+        cols.push({
+            field: 'bunches_total', headers: ['PANEN', 'BUNCHES', null, 'TOTAL JANJANG'], w: 90, className: 'text-right',
+            // Add indicator to header if possible, but headers are strings here. Logic handled in header rendering.
+            render: (row) => {
+                const val = row.bunches_total || 0;
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        if (showHarvestDetails) {
+            cols.push({
                 field: 'bunches_ripe', headers: ['PANEN', 'BUNCHES', null, 'MASAK'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_ripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
-            },
-            {
+            });
+            cols.push({
                 field: 'bunches_underripe', headers: ['PANEN', 'BUNCHES', null, 'MENGKAL'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_underripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
-            },
-            {
+            });
+            cols.push({
                 field: 'bunches_unripe', headers: ['PANEN', 'BUNCHES', null, 'MENTAH'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_unripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
-            },
-            {
+            });
+            cols.push({
                 field: 'bunches_overripe', headers: ['PANEN', 'BUNCHES', null, 'LEWAT MASAK'], w: 75, className: 'text-right', render: (row) => {
                     const val = row.bunches_overripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
-            },
-            {
+            });
+            cols.push({
                 field: 'bunches_rotten', headers: ['PANEN', 'BUNCHES', null, 'BUSUK'], w: 55, className: 'text-right', render: (row) => {
                     const val = row.bunches_rotten || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
-            },
-            {
+            });
+            cols.push({
                 field: 'bunches_abnormal', headers: ['PANEN', 'BUNCHES', null, 'ABNORMAL'], w: 65, className: 'text-right', render: (row) => {
                     const val = row.bunches_abnormal || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
-            },
-            {
+            });
+            cols.push({
                 field: 'loose_fruit', headers: ['PANEN', 'BRONDOLAN', null, 'KG/QTY'], w: 70, className: 'text-right', render: (row) => {
                     const val = row.loose_fruit || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
-            },
-            // REMOVED: bunches_round (Bundar) as it does not exist in Ffbscannerdata
-            {
+            });
+            cols.push({
                 field: 'bunches_transactions', headers: ['PANEN', 'BUNCHES', null, 'JML TRX'], w: 65, className: 'text-center', render: (row) => {
                     const val = row.bunches_transactions || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
-            },
-            // PENGGAJIAN
-            { field: 'upah_dasar', headers: ['PENGGAJIAN', null, null, 'UPAH DASAR'], w: 85, className: 'text-right' },
-            { field: 'gaji_pokok_ideal', headers: ['PENGGAJIAN', null, null, 'GP IDEAL'], w: 85, className: 'text-right' },
-            { field: 'gaji_pokok_aktual', headers: ['PENGGAJIAN', null, null, 'GP AKTUAL'], w: 85, className: 'text-right' },
-            {
-                field: 'koreksi_hk',
-                headers: ['PENGGAJIAN', null, null, 'KOREKSI HK'],
-                w: 85,
-                className: 'text-right',
-                render: (row) => {
-                    const val = row.koreksi_hk;
-                    if (val === null || val === undefined || val === 0) return '-';
-                    // [FIXED] koreksi_hk is ALWAYS minus or zero (never positive)
-                    // No need to check for positive values, only display as negative/red
-                    return (
-                        <span style={{ color: '#dc2626' }}>
-                            -{formatNumber(Math.abs(val))}
-                        </span>
-                    );
-                }
-            },
+            });
+        }
 
-            // JABATAN [NEW] - HIDDEN TEMPORARILY
-            // {
-            //     field: 'jabatan_estate',
-            //     headers: ['IDENTITAS', null, null, 'JABATAN'],
-            //     w: 110,
-            //     className: 'text-left p-0', // p-0 to allow select to fill
-            //     render: (row) => (
-            //         <select
-            //             className="w-full h-full border-none bg-transparent text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            //             value={row.jabatan_estate || 'Karyawan'}
-            //             onChange={(e) => handleJobTitleChange(row.nik, e.target.value)}
-            //             onClick={(e) => e.stopPropagation()}
-            //             onMouseDown={(e) => e.stopPropagation()}
-            //             style={{ padding: '0 4px', height: '100%' }}
-            //         >
-            //             <option value="Karyawan">Karyawan</option>
-            //             <option value="Mandor">Mandor</option>
-            //             <option value="Kerani">Kerani</option>
-            //             <option value="Helper">Helper</option>
-            //             <option value="Operator">Operator</option>
-            //         </select>
-            //     )
-            // },
+        // PENGGAJIAN - Only GP Aktual and Koreksi
+        // Removed: upah_dasar, gaji_pokok_ideal
+        cols.push({ field: 'gaji_pokok_aktual', headers: ['PENGGAJIAN', null, null, 'GP AKTUAL'], w: 85, className: 'text-right' });
+        cols.push({
+            field: 'koreksi_hk',
+            headers: ['PENGGAJIAN', null, null, 'KOREKSI HK'],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = row.koreksi_hk;
+                if (val === null || val === undefined || val === 0) return '-';
+                // [FIXED] koreksi_hk is ALWAYS minus or zero (never positive)
+                // No need to check for positive values, only display as negative/red
+                return (
+                    <span style={{ color: '#dc2626' }}>
+                        -{formatNumber(Math.abs(val))}
+                    </span>
+                );
+            }
+        });
 
-            // TUNJANGAN > BERAS
-            { field: 'beras_rate', headers: ['TUNJANGAN', 'BERAS', null, 'RATE'], w: 60, className: 'text-right' },
-            { field: 'beras_jumlah', headers: ['TUNJANGAN', 'BERAS', null, 'JUMLAH'], w: 80, className: 'text-right' },
-            // TUNJANGAN > JABATAN (This is allowance amount, not title)
-            // TUNJANGAN > JABATAN (This is allowance amount, not title)
-            {
+        // JABATAN [NEW] - HIDDEN TEMPORARILY
+        // {
+        //     field: 'jabatan_estate',
+        //     headers: ['IDENTITAS', null, null, 'JABATAN'],
+        //     w: 110,
+        //     className: 'text-left p-0', // p-0 to allow select to fill
+        //     render: (row) => (
+        //         <select
+        //             className="w-full h-full border-none bg-transparent text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+        //             value={row.jabatan_estate || 'Karyawan'}
+        //             onChange={(e) => handleJobTitleChange(row.nik, e.target.value)}
+        //             onClick={(e) => e.stopPropagation()}
+        //             onMouseDown={(e) => e.stopPropagation()}
+        //             style={{ padding: '0 4px', height: '100%' }}
+        //         >
+        //             <option value="Karyawan">Karyawan</option>
+        //             <option value="Mandor">Mandor</option>
+        //             <option value="Kerani">Kerani</option>
+        //             <option value="Helper">Helper</option>
+        //             <option value="Operator">Operator</option>
+        //         </select>
+        //     )
+        // },
+
+        // TUNJANGAN - Simplified
+        // Show Rates ONLY if expanded
+        const showAllowanceRates = isAllowanceExpanded;
+
+        // TUNJANGAN > BERAS
+        if (showAllowanceRates) {
+            cols.push({ field: 'beras_rate', headers: ['TUNJANGAN', 'BERAS', null, 'RATE'], w: 60, className: 'text-right' });
+        }
+        cols.push({ field: 'beras_jumlah', headers: ['TUNJANGAN', 'BERAS', null, 'JUMLAH'], w: 80, className: 'text-right' });
+
+        // TUNJANGAN > JABATAN (This is allowance amount, not title)
+        if (showAllowanceRates) {
+            cols.push({
                 field: 'jabatan_rate',
                 headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, 'RATE'],
                 w: 60,
                 className: 'text-right',
                 render: (row) => formatNumber(row.jabatan_rate)
-            },
-            {
-                field: 'jabatan_jumlah',
-                headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, 'JUMLAH'],
-                w: 80,
-                className: 'text-right',
-                render: (row) => formatNumber(row.jabatan_jumlah)
-            },
-            // TUNJANGAN > MASA KERJA
-            { field: 'masa_kerja_tahun', headers: ['TUNJANGAN', 'MASA KERJA', null, 'LAMA'], w: 45, className: 'text-center' },
-            { field: 'masa_kerja_jumlah', headers: ['TUNJANGAN', 'MASA KERJA', null, 'JUMLAH'], w: 80, className: 'text-right' },
-            // TUNJANGAN > LEMBUR
-            { field: 'lembur_jam', headers: ['TUNJANGAN', 'LEMBUR', null, 'JAM'], w: 45, className: 'text-center' },
-            { field: 'lembur_jumlah', headers: ['TUNJANGAN', 'LEMBUR', null, 'JUMLAH'], w: 80, className: 'text-right' },
-            // TUNJANGAN > TOTAL
-            { field: 'total_tunjangan', headers: ['TUNJANGAN', null, null, 'TOTAL TUNJANGAN'], w: 100, className: 'text-right font-bold' },
-        ];
+            });
+        }
+        cols.push({
+            field: 'jabatan_jumlah',
+            headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, 'JUMLAH'],
+            w: 80,
+            className: 'text-right',
+            render: (row) => formatNumber(row.jabatan_jumlah)
+        });
+
+        // TUNJANGAN > MASA KERJA (Always show Lama? or hide? "hanya menampilkan jumlah tanpa rate". Lama is not rate. Keep it for context.)
+        cols.push({ field: 'masa_kerja_tahun', headers: ['TUNJANGAN', 'MASA KERJA', null, 'LAMA'], w: 45, className: 'text-center' });
+        cols.push({ field: 'masa_kerja_jumlah', headers: ['TUNJANGAN', 'MASA KERJA', null, 'JUMLAH'], w: 80, className: 'text-right' });
+
+        // TUNJANGAN > LEMBUR (Keep Jam + Jumlah)
+        cols.push({ field: 'lembur_jam', headers: ['TUNJANGAN', 'LEMBUR', null, 'JAM'], w: 45, className: 'text-center' });
+        cols.push({ field: 'lembur_jumlah', headers: ['TUNJANGAN', 'LEMBUR', null, 'JUMLAH'], w: 80, className: 'text-right' });
+
+        // TUNJANGAN > TOTAL
+        cols.push({ field: 'total_tunjangan', headers: ['TUNJANGAN', null, null, 'TOTAL TUNJANGAN'], w: 100, className: 'text-right font-bold' });
 
         // PREMI - Static BRONDOL column (from separate query, always show if has values)
         // BRONDOL is not in dynamic_premi_headers because it comes from brondol_data query
@@ -667,79 +704,86 @@ export default function CustomPayrollTable({
         // UPAH KOTOR (separate group, not child of POTONGAN UPAH KOTOR)
         cols.push({ field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', null, null, 'JUMLAH'], w: 110, className: 'text-right font-bold' });
 
-        // POTONGAN UPAH BERSIH > CARUMAN ASTEK
-        cols.push({ field: 'pot_astek', headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'PEKERJA'], w: 75, className: 'text-right' });
-        cols.push({ field: 'pot_astek_maj', headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'MAJIKAN'], w: 75, className: 'text-right' });
+        // POTONGAN UPAH BERSIH - Collapsible
+        // Default: Show ONLY Total Potongan
+        const showDeductionDetails = isDeductionExpanded;
 
-        // POTONGAN UPAH BERSIH > POTONGAN BPJS > KESEHATAN
-        cols.push({ field: 'pot_bpjs_kesehatan_pekerja', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'PEKERJA'], w: 75, className: 'text-right' });
-        cols.push({ field: 'pot_bpjs_kesehatan_majikan', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'MAJIKAN'], w: 75, className: 'text-right' });
-        // POTONGAN UPAH BERSIH > POTONGAN BPJS > PENSIUN
-        cols.push({ field: 'pot_bpjs_pensiun_pekerja', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'PEKERJA'], w: 75, className: 'text-right' });
-        cols.push({ field: 'pot_bpjs_pensiun_majikan', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'MAJIKAN'], w: 75, className: 'text-right' });
-        // POTONGAN UPAH BERSIH > POTONGAN BPJS > JUMLAH
-        cols.push({ field: 'pot_bpjs_pekerja_total', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', null, 'JUMLAH'], w: 80, className: 'text-right font-bold' });
-        // Other deductions
-        cols.push({ field: 'pot_spsi', headers: ['POTONGAN UPAH BERSIH', null, null, 'IURAN SPSI'], w: 80, className: 'text-right' });
-        cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', null, null, 'PPH21 (-)'], w: 80, className: 'text-right' });
+        if (showDeductionDetails) {
+            // POTONGAN UPAH BERSIH > CARUMAN ASTEK
+            cols.push({ field: 'pot_astek', headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'PEKERJA'], w: 75, className: 'text-right' });
+            cols.push({ field: 'pot_astek_maj', headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'MAJIKAN'], w: 75, className: 'text-right' });
 
-        // [NEW] PREMI PPH - This is an ADDITION (+), not a deduction
-        // Display with + sign to indicate it's added to upah_bersih
-        cols.push({
-            field: 'premi_pph',
-            headers: ['POTONGAN UPAH BERSIH', null, null, 'PREMI PPH (+)'],
-            w: 90,
-            className: 'text-right cell-premi-pph',
-            render: (row) => {
-                const val = row.premi_pph || 0;
-                if (val === 0) return '-';
-                // Show with a + sign and green color to indicate addition
-                return (
-                    <span style={{ color: '#059669', fontWeight: 'bold' }}>
-                        +{formatNumber(val)}
-                    </span>
-                );
-            }
-        });
+            // POTONGAN UPAH BERSIH > POTONGAN BPJS > KESEHATAN
+            cols.push({ field: 'pot_bpjs_kesehatan_pekerja', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'PEKERJA'], w: 75, className: 'text-right' });
+            cols.push({ field: 'pot_bpjs_kesehatan_majikan', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'MAJIKAN'], w: 75, className: 'text-right' });
+            // POTONGAN UPAH BERSIH > POTONGAN BPJS > PENSIUN
+            cols.push({ field: 'pot_bpjs_pensiun_pekerja', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'PEKERJA'], w: 75, className: 'text-right' });
+            cols.push({ field: 'pot_bpjs_pensiun_majikan', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'MAJIKAN'], w: 75, className: 'text-right' });
+            // POTONGAN UPAH BERSIH > POTONGAN BPJS > JUMLAH
+            cols.push({ field: 'pot_bpjs_pekerja_total', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', null, 'JUMLAH'], w: 80, className: 'text-right font-bold' });
+            // Other deductions
+            cols.push({ field: 'pot_spsi', headers: ['POTONGAN UPAH BERSIH', null, null, 'IURAN SPSI'], w: 80, className: 'text-right' });
+            cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', null, null, 'PPH21 (-)'], w: 80, className: 'text-right' });
 
-        // Dynamic Potongan Bersih - show POTONGAN variations, PREMI_PPH, and PREMI items from TaskDesc
-        const potonganBersihFields = Object.entries(dynamicHeaders.potongan)
-            .filter(([label, field]) => {
-                const upperLabel = label.toUpperCase();
-                const upperField = field.toUpperCase();
-
-                // Exclude KOREKSI (shown in POTONGAN UPAH KOTOR)
-                if (upperLabel.startsWith('KOREKSI') || upperField.startsWith('KOREKSI')) return false;
-
-                // Exclude SPSI (static column already exists)
-                if (upperLabel.includes('SPSI') || upperField === 'SPSI') return false;
-
-                // Exclude PPH21 (static column already exists)
-                if (upperField === 'PPH21') return false;
-
-                // Exclude PREMI_PPH (static column already exists with + sign)
-                if (upperField === 'PREMI_PPH') return false;
-
-                // INCLUDE: POTONGAN X, and other dynamic items
-                return true;
-            })
-            .filter(([label, field]) => activePotFields.includes(field))
-            .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
-
-        console.log("[DEBUG] potonganBersihFields:", potonganBersihFields);
-        console.log("[DEBUG] dynamicHeaders.potongan:", dynamicHeaders.potongan);
-        console.log("[DEBUG] activePotFields:", activePotFields);
-
-        for (const [label, field] of potonganBersihFields) {
-            // Clean up the label for display
-            const displayLabel = label.replace(/^(POTONGAN\s*|POT\s*)/i, '') || label;
+            // [NEW] PREMI PPH - This is an ADDITION (+), not a deduction
+            // Display with + sign to indicate it's added to upah_bersih
             cols.push({
-                field,
-                headers: ['POTONGAN UPAH BERSIH', null, null, displayLabel],
-                w: 80,
-                className: 'text-right'
+                field: 'premi_pph',
+                headers: ['POTONGAN UPAH BERSIH', null, null, 'PREMI PPH (+)'],
+                w: 90,
+                className: 'text-right cell-premi-pph',
+                render: (row) => {
+                    const val = row.premi_pph || 0;
+                    if (val === 0) return '-';
+                    // Show with a + sign and green color to indicate addition
+                    return (
+                        <span style={{ color: '#059669', fontWeight: 'bold' }}>
+                            +{formatNumber(val)}
+                        </span>
+                    );
+                }
             });
+
+            // Dynamic Potongan Bersih - show POTONGAN variations, PREMI_PPH, and PREMI items from TaskDesc
+            const potonganBersihFields = Object.entries(dynamicHeaders.potongan)
+                .filter(([label, field]) => {
+                    const upperLabel = label.toUpperCase();
+                    const upperField = field.toUpperCase();
+
+                    // Exclude KOREKSI (shown in POTONGAN UPAH KOTOR)
+                    if (upperLabel.startsWith('KOREKSI') || upperField.startsWith('KOREKSI')) return false;
+
+                    // Exclude SPSI (static column already exists)
+                    if (upperLabel.includes('SPSI') || upperField === 'SPSI') return false;
+
+                    // Exclude PPH21 (static column already exists)
+                    if (upperField === 'PPH21') return false;
+
+                    // Exclude PREMI_PPH (static column already exists with + sign)
+                    if (upperField === 'PREMI_PPH') return false;
+
+                    // INCLUDE: POTONGAN X, and other dynamic items
+                    return true;
+                })
+                .filter(([label, field]) => activePotFields.includes(field))
+                .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
+
+            console.log("[DEBUG] potonganBersihFields:", potonganBersihFields);
+            console.log("[DEBUG] dynamicHeaders.potongan:", dynamicHeaders.potongan);
+            console.log("[DEBUG] activePotFields:", activePotFields);
+
+            for (const [label, field] of potonganBersihFields) {
+                // Clean up the label for display
+                const displayLabel = label.replace(/^(POTONGAN\s*|POT\s*)/i, '') || label;
+                cols.push({
+                    field,
+                    headers: ['POTONGAN UPAH BERSIH', null, null, displayLabel],
+                    w: 80,
+                    className: 'text-right'
+                });
+            }
         }
+        // Total Potongan Bersih (Always Shown)
         cols.push({ field: 'total_potongan_bersih', headers: ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'], w: 100, className: 'text-right font-bold cell-deduction' });
 
         // TOTAL UPAH (Summary group) - only Upah Bersih since Upah Kotor is now separate
@@ -751,7 +795,7 @@ export default function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded]);
 
     // === EXPORT TO EXCEL HANDLER ===
     const handleExportToExcel = useCallback(async () => {
@@ -1046,14 +1090,24 @@ export default function CustomPayrollTable({
                                                 💾
                                             </button>
                                         </div>
-                                    ) : cell.label === 'PAJAK' ? (
-                                        <div className="flex items-center justify-center gap-1 cursor-pointer hover:bg-opacity-80 transition-colors"
-                                            onClick={() => setIsTaxExpanded(!isTaxExpanded)}
-                                            style={{ backgroundColor: isTaxExpanded ? 'rgba(0,0,0,0.05)' : 'transparent', height: '100%', width: '100%' }}
+                                    ) : ['PAJAK', 'PANEN', 'ABSENSI', 'TUNJANGAN', 'POTONGAN UPAH BERSIH'].includes(cell.label) ? (
+                                        <div className="flex items-center justify-center gap-1 cursor-pointer hover:bg-white/10 transition-colors h-full w-full select-none"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const groupKey = cell.label === 'POTONGAN UPAH BERSIH' ? 'POTONGAN_BERSIH' : cell.label;
+                                                toggleGroup(groupKey);
+                                            }}
+                                            title="Klik untuk melihat/menyembunyikan detail"
                                         >
-                                            <span>PAJAK</span>
-                                            <span style={{ fontSize: '10px' }}>
-                                                {isTaxExpanded ? '▼' : '▶'}
+                                            <span>{cell.label}</span>
+                                            <span style={{ fontSize: '10px', marginLeft: '4px' }}>
+                                                {(
+                                                    cell.label === 'PAJAK' ? isTaxExpanded :
+                                                        cell.label === 'PANEN' ? isHarvestExpanded :
+                                                            cell.label === 'ABSENSI' ? isAttendanceExpanded :
+                                                                cell.label === 'TUNJANGAN' ? isAllowanceExpanded :
+                                                                    cell.label === 'POTONGAN UPAH BERSIH' ? isDeductionExpanded : false
+                                                ) ? '▼' : '▶'}
                                             </span>
                                         </div>
                                     ) : cell.label === '%TOGGLE_JUMLAH%' ? (

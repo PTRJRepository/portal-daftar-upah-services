@@ -310,4 +310,135 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             month: t.String(),
             year: t.String()
         })
+    })
+    // --- Employee History (Multiple Periods) ---
+    .get("/:emp_code/history", async ({ params, query, set }) => {
+        try {
+            const empCode = params.emp_code;
+            const months = parseInt(query.months || "12"); // Number of months to fetch
+            const includeCurrent = query.include_current !== "false";
+
+            // Get current period first
+            const { currentPeriodService } = await import("../services/currentPeriodService");
+            const currentPeriod = await currentPeriodService.getCurrentPeriod();
+
+            // Calculate periods to fetch
+            const periods = [];
+            let startMonth = currentPeriod.month - 1;
+            let startYear = currentPeriod.year;
+
+            for (let i = 0; i < months; i++) {
+                let m = startMonth - i;
+                let y = startYear;
+
+                while (m < 1) {
+                    m += 12;
+                    y -= 1;
+                }
+
+                // Only add historical periods if include_current is false
+                if (includeCurrent || !(m === currentPeriod.month && y === currentPeriod.year)) {
+                    periods.push({ month: m, year: y });
+                }
+            }
+
+            // Fetch data for each period
+            const results = [];
+            for (const period of periods) {
+                try {
+                    const result = await employeeDetailService.getEmployeeCheckroll(
+                        empCode,
+                        period.month,
+                        period.year
+                    );
+
+                    if (!result.error && result.payroll_data) {
+                        // Extract key data from payroll_data
+                        const data = result.payroll_data;
+                        results.push({
+                            period_month: period.month,
+                            period_year: period.year,
+                            period_label: `${getMonthName(period.month)} ${period.year}`,
+                            emp_code: empCode,
+                            nik: empCode,
+                            nama: data.nama || data.emp_name || '-',
+                            gang_code: data.gang_code || '-',
+                            loc_code: data.loc_code || '-',
+                            division: data.division || '-',
+                            // Absensi
+                            jumlah_hk: data.jumlah_hk || 0,
+                            hari_kerja: data.hari_kerja || 0,
+                            kehadiran: data.kehadiran || 0,
+                            // Tunjangan
+                            beras_rate: data.beras_rate || 0,
+                            beras_jumlah: data.beras_jumlah || 0,
+                            jabatan_rate: data.jabatan_rate || 0,
+                            jabatan_jumlah: data.jabatan_jumlah || 0,
+                            masa_kerja_rate: data.masa_kerja_rate || 0,
+                            masa_kerja_jumlah: data.masa_kerja_jumlah || 0,
+                            total_tunjangan: (data.beras_jumlah || 0) +
+                                           (data.jabatan_jumlah || 0) +
+                                           (data.masa_kerja_jumlah || 0),
+                            // Gaji Pokok
+                            gaji_pokok: data.gaji_pokok || data.upah_pokok || 0,
+                            upah_dasar: data.upah_dasar || 0,
+                            // Lembur
+                            lembur_jam: data.lembur_jam || 0,
+                            lembur_jumlah: data.lembur_jumlah || data.lembur_rupiah || 0,
+                            // Premi
+                            premi_brondol: data.premi_brondol || 0,
+                            premi_pruning: data.premi_pruning || 0,
+                            total_premi: data.total_premi || 0,
+                            // Potongan
+                            pot_bpjs: data.pot_bpjs_pekerja_total || 0,
+                            pot_astek: data.pot_astek || 0,
+                            pot_spsi: data.pot_spsi || 0,
+                            pot_pph21: data.pot_pph21 || 0,
+                            total_potongan: data.total_potongan || 0,
+                            // Total
+                            upah_kotor: data.jumlah_upah_kotor || data.upah_kotor || 0,
+                            upah_bersih: data.upah_bersih || 0,
+                            // Raw data for detail view
+                            raw_data: result
+                        });
+                    }
+                } catch (err) {
+                    console.error(`[EmployeeHistory] Failed to fetch period ${period.month}/${period.year}:`, err);
+                    // Continue with next period
+                }
+            }
+
+            // Sort by period (most recent first)
+            results.sort((a, b) => {
+                const periodA = a.period_year * 100 + a.period_month;
+                const periodB = b.period_year * 100 + b.period_month;
+                return periodB - periodA;
+            });
+
+            return {
+                success: true,
+                emp_code: empCode,
+                count: results.length,
+                data: results,
+                current_period: currentPeriod
+            };
+        } catch (e: any) {
+            console.error("[EmployeeHistory] Error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            months: t.Optional(t.String()),
+            include_current: t.Optional(t.String())
+        })
     });
+
+// Helper function for month name
+function getMonthName(month: number): string {
+    const months = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    return months[month - 1] || '';
+}

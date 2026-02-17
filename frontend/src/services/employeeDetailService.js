@@ -86,3 +86,35 @@ export async function getEmployeeComponents(token, empCode, month, year, divisio
         throw error
     }
 }
+
+/**
+ * Get employee history (multiple periods)
+ * Returns payroll data for an employee across multiple periods
+ * @param {string} token - JWT token
+ * @param {string} empCode - Employee code
+ * @param {Object} options - Options
+ * @param {number} options.months - Number of months to fetch (default: 12)
+ * @param {boolean} options.includeCurrent - Include current period (default: false)
+ * @returns {Promise<Object>} Employee history data
+ */
+export async function getEmployeeHistory(token, empCode, options = {}) {
+    try {
+        const { months = 12, includeCurrent = false } = options
+        const params = {
+            months: months.toString(),
+            include_current: includeCurrent.toString()
+        }
+
+        const baseUrl = getBaseUrl()
+        console.log(`[EmployeeDetailService] Using endpoint: ${baseUrl}/${empCode}/history`)
+
+        const response = await axios.get(`${baseUrl}/${empCode}/history`, {
+            headers: { Authorization: `Bearer ${token}` },
+            params
+        })
+        return response.data
+    } catch (error) {
+        console.error('[EmployeeDetailService] Failed to get employee history:', error)
+        throw error
+    }
+}

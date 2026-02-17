@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getEmployeeCheckroll } from '../../services/employeeDetailService'
 import LoadingScreen from '../common/LoadingScreen'
+import SalaryHistoryTable from './SalaryHistoryTable'
+import ThumbprintVerification from './ThumbprintVerification'
 import './EmployeeDetailPage.css'
 
 // Helper to format currency
@@ -655,6 +657,28 @@ export default function EmployeeDetailPage({
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* SALARY HISTORY SECTION */}
+            <div className="salary-history-section no-print">
+                {/* Thumbprint Verification */}
+                <ThumbprintVerification
+                    division={division}
+                    month={month}
+                    year={year}
+                    upahBersih={upahBersih}
+                />
+
+                {/* Salary History Table */}
+                <SalaryHistoryTable
+                    empCode={empCode}
+                    months={12}
+                    onPeriodClick={(record) => {
+                        // Navigate to different period - could implement period switching
+                        console.log('Navigate to period:', record.period_month, record.period_year);
+                        // For now, just log - you can implement navigation logic here
+                    }}
+                />
             </div>
 
             {/* ACTION BUTTONS (No Print) */}

@@ -707,3 +707,42 @@
     background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
     color: white;
 }
+
+/* ============================================================================
+   SALARY HISTORY SECTION STYLES
+   ============================================================================ */
+
+.salary-history-section {
+    width: 210mm;
+    max-width: 100%;
+    margin: 0 auto 2rem auto;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .salary-history-section {
+        width: 100%;
+        padding: 0 10px;
+    }
+
+    .salary-history-section .table-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .salary-history-section .salary-history-table {
+        font-size: 0.65rem;
+    }
+
+    .salary-history-section .salary-history-table th,
+    .salary-history-section .salary-history-table td {
+        padding: 4px 2px;
+    }
+
+    .salary-history-section .period-badge {
+        font-size: 0.65rem;
+        padding: 2px 4px;
+        min-width: 40px;
+    }
+}

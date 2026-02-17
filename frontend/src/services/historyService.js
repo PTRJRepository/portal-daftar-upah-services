@@ -328,24 +328,24 @@ export async function isHistoricalPeriod(token, month, year) {
 
 /**
  * Get employee history timeline
+ * NOTE: This function now redirects to the correct endpoint in employee.ts
  * @param {string} token - Auth token
  * @param {string} empCode - Employee code
  * @param {Object} options - Query options
- * @param {number} options.startMonth - Start month filter (optional)
- * @param {number} options.startYear - Start year filter (optional)
- * @param {number} options.endMonth - End month filter (optional)
- * @param {number} options.endYear - End year filter (optional)
+ * @param {number} options.months - Number of months to fetch (default: 12)
+ * @param {boolean} options.includeCurrent - Include current period (default: false)
+ * @deprecated Use getEmployeeHistory from employeeDetailService.js instead
  */
 export async function getEmployeeHistory(token, empCode, options = {}) {
     const baseUrl = getBackendUrl();
     const params = new URLSearchParams();
 
-    if (options.startMonth) params.append('start_month', options.startMonth);
-    if (options.startYear) params.append('start_year', options.startYear);
-    if (options.endMonth) params.append('end_month', options.endMonth);
-    if (options.endYear) params.append('end_year', options.endYear);
+    // Use new endpoint parameters
+    if (options.months) params.append('months', options.months.toString());
+    if (options.includeCurrent !== undefined) params.append('include_current', options.includeCurrent.toString());
 
-    const url = `${baseUrl}/payroll/history/employee/${empCode}?${params.toString()}`;
+    // CORRECTED: Use the proper endpoint that exists in employee.ts
+    const url = `${baseUrl}/payroll/employee/${empCode}/history?${params.toString()}`;
 
     const response = await fetch(url, {
         headers: {
@@ -363,14 +363,21 @@ export async function getEmployeeHistory(token, empCode, options = {}) {
 
 /**
  * Get employee detail for specific period
+ * NOTE: This function now redirects to the correct endpoint in employee.ts
  * @param {string} token - Auth token
  * @param {string} empCode - Employee code
  * @param {number} month - Month (1-12)
  * @param {number} year - Year
+ * @deprecated Use getEmployeeCheckroll from employeeDetailService.js instead
  */
 export async function getEmployeeDetailForPeriod(token, empCode, month, year) {
     const baseUrl = getBackendUrl();
-    const url = `${baseUrl}/payroll/history/employee/${empCode}/period/${month}/${year}`;
+    const params = new URLSearchParams();
+    params.append('month', month.toString());
+    params.append('year', year.toString());
+
+    // CORRECTED: Use the proper checkroll endpoint that exists in employee.ts
+    const url = `${baseUrl}/payroll/employee/${empCode}/checkroll?${params.toString()}`;
 
     const response = await fetch(url, {
         headers: {
@@ -388,25 +395,15 @@ export async function getEmployeeDetailForPeriod(token, empCode, month, year) {
 
 /**
  * Get gang history for specific period
+ * NOTE: This endpoint is not yet implemented. Use main payroll endpoint instead.
  * @param {string} token - Auth token
  * @param {string} gangCode - Gang code
  * @param {number} month - Month (1-12)
  * @param {number} year - Year
+ * @deprecated This endpoint is not yet implemented. Use /payroll/report with gang filter instead.
  */
 export async function getGangHistoryForPeriod(token, gangCode, month, year) {
-    const baseUrl = getBackendUrl();
-    const url = `${baseUrl}/payroll/history/gang/${gangCode}/period/${month}/${year}`;
-
-    const response = await fetch(url, {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-    });
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch gang history: ${response.statusText}`);
-    }
-
-    return response.json();
+    throw new Error('Gang history endpoint is not yet implemented. Use /payroll/report with gang_code parameter instead.');
+    // Original endpoint (not working):
+    // const url = `${baseUrl}/payroll/history/gang/${gangCode}/period/${month}/${year}`;
 }
