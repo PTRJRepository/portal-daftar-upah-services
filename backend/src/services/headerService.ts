@@ -232,7 +232,17 @@ export class HeaderService {
             { field: "nama", headerName: "Nama" },
             { field: "jenis_kelamin", headerName: "JK" },
             { field: "gang_code", headerName: "Gang" },
-            { field: "bunches_total", headerName: "FFB Bunches" },
+            {
+                field: "bunches",
+                headerName: "PANEN (BUNCHES)",
+                children: [
+                    { field: "bunches_total", headerName: "Total Janjang" },
+                    { field: "bunches_ripe", headerName: "Masak" },
+                    { field: "bunches_unripe", headerName: "Mentah" },
+                    { field: "bunches_round", headerName: "Bundar" },
+                    { field: "bunches_transactions", headerName: "Jml Transaksi" }
+                ]
+            },
             {
                 field: "upah_kotor",
                 headerName: "UPAH KOTOR",
@@ -294,7 +304,11 @@ export class HeaderService {
             { field: "nama", headerName: "Nama" },
             { field: "jenis_kelamin", headerName: "JK" },
             { field: "gang_code", headerName: "Gang" },
-            { field: "bunches_total", headerName: "FFB Bunches" },
+            { field: "bunches_total", headerName: "Total Janjang" },
+            { field: "bunches_ripe", headerName: "Masak" },
+            { field: "bunches_unripe", headerName: "Mentah" },
+            { field: "bunches_round", headerName: "Bundar" },
+            { field: "bunches_transactions", headerName: "Jml Transaksi" },
             { field: "upah_dasar", headerName: "Upah Dasar" },
             { field: "jumlah_hk", headerName: "JML HK" },
             { field: "gaji_pokok", headerName: "Gaji Pokok" },

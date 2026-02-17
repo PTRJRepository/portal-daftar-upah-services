@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { getBasePath } from '../../utils/prodModeUtils'
 import './LoadingScreen.css'
 
 export default function LoadingScreen({
@@ -104,15 +105,19 @@ export default function LoadingScreen({
 
   if (!isLoading) return null
 
+  const basePath = getBasePath()
+
   return (
     <div className="loading-screen-overlay">
-      <div className="loading-screen-wallpaper"></div>
+      <div className="loading-screen-wallpaper" style={{
+        backgroundImage: `url('${basePath}/images/wallpaper_loading_screen.webp')`
+      }}></div>
 
       <div className="loading-screen-content">
         {/* Logo Section */}
         <div className="loading-logo-container">
           <img
-            src="/images/rebinmas.webp"
+            src={`${basePath}/images/rebinmas.webp`}
             alt="PT Rebinmas Jaya"
             className="loading-logo"
             onError={(e) => {

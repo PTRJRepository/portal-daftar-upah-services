@@ -81,21 +81,30 @@ export const ReportProvider = ({ children }) => {
         }
     }, [user, inProdMode, prodDivision, externalLockedDiv, allDivisions, isAdminUser, division]);
 
+    // Track latest gang value to avoid stale closures in async calls
+    const gangRef = React.useRef(gang);
+    useEffect(() => {
+        gangRef.current = gang;
+    }, [gang]);
+
     // Load Gangs when Division changes
     useEffect(() => {
         async function load() {
+            console.log('[ReportContext] loadGangs effect triggered', { division, hasToken: !!token, isLockedMode });
+
             if (!division || !token) {
                 setGangs([]);
                 setGang('');
                 return;
             }
+
+            // If the user already selected a gang, we don't want to wipe it out while loading
+            // But we do want to disable the selector potentially? 
+            // For now, let's just fetch.
             setGangLoading(true);
             try {
                 let list;
                 if (isLockedMode) {
-                    // If locked, verify if the locked division matches current division before calling locked service?
-                    // Actually getLockedGangs usually takes the division as arg.
-                    // If we are in locked mode, we should ONLY be able to fetch gangs for that division.
                     list = await getLockedGangs(token, division);
                 } else {
                     list = await fetchGangs(token, division, null, true);
@@ -103,10 +112,25 @@ export const ReportProvider = ({ children }) => {
 
                 if (list && list.length > 0) {
                     setGangs(list);
-                    // Auto-select first gang if not set or invalid
-                    const currentExists = list.some(g => g.gang_code === gang);
-                    if (!gang || !currentExists) {
-                        if (list[0]?.gang_code) setGang(list[0].gang_code);
+
+                    // Check against the LATEST gang value (from ref)
+                    const currentGang = gangRef.current;
+                    const currentExists = list.some(g => g.gang_code === currentGang);
+
+                    console.log('[ReportContext] Gangs loaded', {
+                        count: list.length,
+                        currentGang,
+                        currentExists
+                    });
+
+                    // Only auto-select if:
+                    // 1. No gang is currently selected
+                    // 2. OR the currently selected gang is NOT in the new list (invalid)
+                    if (!currentGang || !currentExists) {
+                        if (list[0]?.gang_code) {
+                            console.log('[ReportContext] Auto-selecting first gang:', list[0].gang_code);
+                            setGang(list[0].gang_code);
+                        }
                     }
                 } else {
                     setGangs([]);

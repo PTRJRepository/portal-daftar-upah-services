@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getEmployeeCheckroll } from '../../services/employeeDetailService'
+import LoadingScreen from '../common/LoadingScreen'
 import './EmployeeDetailPage.css'
 
 // Helper to format currency
@@ -14,6 +15,10 @@ const formatCurrency = (value) => {
     // Handle 0 explicitly if needed, but formatter works.
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value)
 }
+
+// ... existing code ...
+
+
 
 // Helper to get month name in Indonesian
 const getMonthName = (month) => {
@@ -129,14 +134,7 @@ export default function EmployeeDetailPage({
     }, [token, empCode, month, year, division])
 
     if (loading) {
-        return (
-            <div className="payslip-wrapper">
-                <div className="loading-screen">
-                    <div className="spinner"></div>
-                    <p>Memuat slip gaji...</p>
-                </div>
-            </div>
-        )
+        return <LoadingScreen isLoading={true} message="Memuat slip gaji..." />
     }
 
     if (error) {
@@ -155,6 +153,7 @@ export default function EmployeeDetailPage({
     const empInfo = checkrollData?.employee || employeeData || {}
     const attendance = checkrollData?.attendance || {}
     const overtime = checkrollData?.overtime || {}
+    const harvest = checkrollData?.harvest || []
 
     // Helper to safely get numeric values
     const getNum = (key) => {
@@ -662,6 +661,56 @@ export default function EmployeeDetailPage({
             <div className="action-buttons no-print">
                 <button onClick={onBack} className="btn btn-secondary">Tutup / Kembali</button>
                 <button onClick={() => window.print()} className="btn btn-primary">🖨️ Cetak Slip Gaji</button>
+                {/* Harvest Matrix (Only if data exists) */}
+                {harvest && harvest.length > 0 && (
+                    <div className="matrix-card">
+                        <div className="matrix-header gradient-header-orange">
+                            <h3>🌴 Matriks Panen</h3>
+                            <div className="overtime-total">
+                                Total: <strong>{formatCurrency(harvest.reduce((sum, h) => sum + (h.TotalWeight || 0), 0))}</strong> Kg / <strong>{formatCurrency(harvest.reduce((sum, h) => sum + (h.TotalBunches || 0), 0))}</strong> Jjg
+                            </div>
+                        </div>
+
+                        <div className="overtime-list">
+                            <div className="overtime-summary-box">
+                                <table className="overtime-summary-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th>Gang</th>
+                                            <th>Lokasi</th>
+                                            <th style={{ textAlign: 'right' }}>Berat (Kg)</th>
+                                            <th style={{ textAlign: 'right' }}>Janjang</th>
+                                            <th style={{ textAlign: 'right' }}>Upah</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {harvest.map((h, idx) => (
+                                            <tr key={idx}>
+                                                <td>{new Date(h.TrxDate).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
+                                                <td>{h.GrpRef || '-'}</td>
+                                                <td>{h.ChargeTo || '-'}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: h.TotalWeight > 0 ? 'bold' : 'normal' }}>
+                                                    {formatCurrency(h.TotalWeight)}
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>{formatCurrency(h.TotalBunches)}</td>
+                                                <td style={{ textAlign: 'right' }}>{formatCurrency(h.Amount)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style={{ fontWeight: 'bold', backgroundColor: '#f9fafb' }}>
+                                            <td colSpan="3">Total</td>
+                                            <td style={{ textAlign: 'right' }}>{formatCurrency(harvest.reduce((sum, h) => sum + (h.TotalWeight || 0), 0))}</td>
+                                            <td style={{ textAlign: 'right' }}>{formatCurrency(harvest.reduce((sum, h) => sum + (h.TotalBunches || 0), 0))}</td>
+                                            <td style={{ textAlign: 'right' }}>{formatCurrency(harvest.reduce((sum, h) => sum + (h.Amount || 0), 0))}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     )

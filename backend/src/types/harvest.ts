@@ -8,16 +8,28 @@ export interface HarvestData {
     bunches_unripe: number;
     bunches_round: number;
     bunches_transactions: number;
+    // Extended fields from Staging
+    bunches_underripe?: number;
+    bunches_overripe?: number;
+    bunches_rotten?: number;
+    bunches_abnormal?: number;
+    loose_fruit?: number; // Kg or count? Usually Kg for Loosefruit but here distinct from Bunch count. In Ffbscannerdata it might be count of sacks or kg. 
 }
 
 export interface HarvestDataRaw {
     EmpCode: string;
-    EmpName: string;
+    EmpName: string; // Optional in some raw queries
     TotalBunches: number;
     Ripe: number;
     Unripe: number;
-    TotalRound: number;
+    TotalRound?: number;
     TrxCount: number;
+    // Extended fields
+    Underripe?: number;
+    Overripe?: number;
+    Rotten?: number;
+    Abnormal?: number;
+    Loosefruit?: number;
 }
 
 export interface HarvestMasterData {

@@ -212,7 +212,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
                     'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                     'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
-                    'upah_bersih', 'koreksi_hk'
+                    'upah_bersih', 'koreksi_hk',
+                    // Harvest items
+                    'bunches_total', 'bunches_ripe', 'bunches_unripe',
+                    'bunches_underripe', 'bunches_overripe', 'bunches_rotten', 'bunches_abnormal',
+                    'loose_fruit', 'bunches_transactions'
                 ];
 
                 // Initialize totals

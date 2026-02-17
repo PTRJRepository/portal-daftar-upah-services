@@ -78,8 +78,8 @@ const getBasePath = () => {
     return process.env.VITE_BASE_PATH
   }
 
-  // If building for proxy mode (external host), use /upah/ base path
-  // This matches the Apache/Nginx proxy configuration that serves at /upah/
+  // FORCE /upah/ for production builds or if proxy mode is detected
+  // This ensures assets are loaded correctly when served behind the proxy
   if (isProxyMode || process.env.NODE_ENV === 'production') {
     return '/upah/'
   }

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReport } from '../context/ReportContext';
+import { getBasePath } from '../utils/prodModeUtils';
 
 // Icons (Simple SVG implementation to avoid dependencies)
 const Icons = {
@@ -26,6 +27,9 @@ const DashboardLayout = () => {
 
     // Sidebar State
     const [collapsed, setCollapsed] = useState(false);
+
+    // Get base path for proxy mode compatibility
+    const basePath = getBasePath();
 
     // Dynamic styles
     const getLinkStyle = ({ isActive }) => ({
@@ -115,7 +119,7 @@ const DashboardLayout = () => {
                         transition: 'opacity 0.2s',
                     }}>
                         <img
-                            src="/images/rebinmas.webp"
+                            src={`${basePath}/images/rebinmas.webp`}
                             alt="Logo"
                             style={{ height: '32px', display: 'block' }}
                         />
@@ -160,7 +164,7 @@ const DashboardLayout = () => {
                 {collapsed && (
                     <div style={{ padding: '0.5rem', display: 'flex', justifyContent: 'center' }}>
                         <img
-                            src="/images/rebinmas.webp"
+                            src={`${basePath}/images/rebinmas.webp`}
                             alt="Logo"
                             style={{ height: '28px', display: 'block' }}
                         />
@@ -335,7 +339,8 @@ const DashboardLayout = () => {
                 flexDirection: 'column',
                 position: 'relative',
                 minWidth: 0, // CRITICAL for flex containers to shrinking properly
-                height: '100vh'
+                height: '100vh',
+                zIndex: 10 // Ensures proper layering: sidebar (20) > backdrop (15) > content (10)
             }}>
                 <Outlet />
             </div>

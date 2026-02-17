@@ -8,7 +8,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 9999;
+  z-index: 10000;
   backdrop-filter: blur(8px);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
@@ -19,16 +19,19 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background-image: url('/images/wallpaper_loading_screen.webp');
+  /* background-image is set dynamically via inline style in LoadingScreen.jsx */
   background-size: cover;
   background-position: center;
-  opacity: 0.2; /* Slightly higher opacity for better vibe */
+  opacity: 0.2;
+  /* Slightly higher opacity for better vibe */
   z-index: -1;
-  filter: saturate(0.8); /* Desaturate slightly for professionalism */
+  filter: saturate(0.8);
+  /* Desaturate slightly for professionalism */
 }
 
 .loading-screen-content {
-  background: rgba(255, 255, 255, 0.95); /* Lighter background for better contrast */
+  background: rgba(255, 255, 255, 0.95);
+  /* Lighter background for better contrast */
   border: 1px solid rgba(255, 255, 255, 0.5);
   padding: 2.5rem;
   border-radius: 24px;
@@ -49,7 +52,8 @@
   left: 0;
   width: 100%;
   height: 4px;
-  background: linear-gradient(90deg, #22c55e, #15803d); /* Green gradient */
+  background: linear-gradient(90deg, #22c55e, #15803d);
+  /* Green gradient */
 }
 
 .loading-logo-container {
@@ -65,7 +69,8 @@
 .loading-company-name {
   font-size: 1.5rem;
   font-weight: 800;
-  color: #14532d; /* Dark Green */
+  color: #14532d;
+  /* Dark Green */
   letter-spacing: 0.025em;
   text-transform: uppercase;
   margin-bottom: 0.25rem;
@@ -97,7 +102,7 @@
   font-size: 0.75rem;
   color: #64748b;
   margin-bottom: 0.75rem;
-  height: 1.2em; 
+  height: 1.2em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -114,7 +119,8 @@
 
 .loading-progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4ade80, #16a34a); /* Light green to dark green */
+  background: linear-gradient(90deg, #4ade80, #16a34a);
+  /* Light green to dark green */
   border-radius: 4px;
   transition: width 0.3s ease-out;
   position: relative;
@@ -126,12 +132,10 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.6),
-    transparent
-  );
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.6),
+      transparent);
   transform: translateX(-100%);
   animation: shimmer 2s infinite;
 }
@@ -198,15 +202,20 @@
   width: 24px;
   height: 24px;
   border: 3px solid rgba(0, 0, 0, 0.1);
-  border-top-color: #16a34a; /* Green spinner */
+  border-top-color: #16a34a;
+  /* Green spinner */
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes shimmer {
-  100% { transform: translateX(100%); }
+  100% {
+    transform: translateX(100%);
+  }
 }

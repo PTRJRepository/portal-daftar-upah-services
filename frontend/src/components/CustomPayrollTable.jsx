@@ -451,6 +451,71 @@ export default function CustomPayrollTable({
                     );
                 }
             },
+            // PANEN (BUNCHES) - Khusus untuk Gang Panen (berakhiran "H")
+            {
+                field: 'bunches_total', headers: ['PANEN', 'BUNCHES', null, 'TOTAL JANJANG'], w: 90, className: 'text-right cell-harvest', render: (row) => {
+                    const val = row.bunches_total || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
+            {
+                field: 'bunches_ripe', headers: ['PANEN', 'BUNCHES', null, 'MASAK'], w: 60, className: 'text-right cell-harvest', render: (row) => {
+                    const val = row.bunches_ripe || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
+            {
+                field: 'bunches_underripe', headers: ['PANEN', 'BUNCHES', null, 'MENGKAL'], w: 60, className: 'text-right cell-harvest', render: (row) => {
+                    const val = row.bunches_underripe || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
+            {
+                field: 'bunches_unripe', headers: ['PANEN', 'BUNCHES', null, 'MENTAH'], w: 60, className: 'text-right cell-harvest', render: (row) => {
+                    const val = row.bunches_unripe || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
+            {
+                field: 'bunches_overripe', headers: ['PANEN', 'BUNCHES', null, 'LEWAT MASAK'], w: 75, className: 'text-right cell-harvest', render: (row) => {
+                    const val = row.bunches_overripe || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
+            {
+                field: 'bunches_rotten', headers: ['PANEN', 'BUNCHES', null, 'BUSUK'], w: 55, className: 'text-right cell-harvest', render: (row) => {
+                    const val = row.bunches_rotten || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
+            {
+                field: 'bunches_abnormal', headers: ['PANEN', 'BUNCHES', null, 'ABNORMAL'], w: 65, className: 'text-right cell-harvest', render: (row) => {
+                    const val = row.bunches_abnormal || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
+            {
+                field: 'loose_fruit', headers: ['PANEN', 'BRONDOLAN', null, 'KG/QTY'], w: 70, className: 'text-right cell-harvest', render: (row) => {
+                    const val = row.loose_fruit || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
+            // REMOVED: bunches_round (Bundar) as it does not exist in Ffbscannerdata
+            {
+                field: 'bunches_transactions', headers: ['PANEN', 'BUNCHES', null, 'JML TRX'], w: 65, className: 'text-center cell-harvest', render: (row) => {
+                    const val = row.bunches_transactions || 0;
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            },
             // PENGGAJIAN
             { field: 'upah_dasar', headers: ['PENGGAJIAN', null, null, 'UPAH DASAR'], w: 85, className: 'text-right' },
             { field: 'gaji_pokok_ideal', headers: ['PENGGAJIAN', null, null, 'GP IDEAL'], w: 85, className: 'text-right' },

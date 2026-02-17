@@ -150,11 +150,13 @@ export const getUserDivision = () => {
  * Redirect to external login page (for production mode)
  */
 export const redirectToExternalLogin = () => {
-    const loginUrl = getExternalLoginUrl()
+    // Use relative path '/login' which the proxy will route to the root login page
+    // This allows it to work regardless of the domain or port
+    const loginUrl = '/login'
     console.log('[ProdMode] Redirecting to external login:', loginUrl)
 
     // Add return URL to guide the user back after login
-    // We need to encode the current path so the login page can handle it
+    // We utilize the relative path functionality of the browser
     const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
     window.location.href = `${loginUrl}?returnUrl=${returnUrl}`
 }

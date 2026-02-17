@@ -3,6 +3,7 @@
  */
 
 import { Database } from "../db/client";
+import { Config } from "../config";
 import type { HarvestData, HarvestDataRaw, HarvestExtendedData, HarvestMasterData, HarvestLineData } from "../types/harvest";
 
 export class HarvesterService {
@@ -30,9 +31,22 @@ export class HarvesterService {
 
     /**
      * Ambil data bunches untuk karyawan tertentu dalam periode tertentu
-     * Data diambil dari PR_HARVESTERLN_ARC (detail per karyawan)
+     * PREFER: Ambil dari Staging (Ffbscannerdata)
+     * FALLBACK: Ambil dari PR_HARVESTERLN_ARC (Legacy)
      */
     public async getEmployeeBunches(empCode: string, month: number, year: number): Promise<HarvestData> {
+        // 1. Coba ambil dari Staging terlebih dahulu
+        try {
+            const stagingData = await this.getEmployeeBunchesFromStaging(empCode, month, year);
+            if (stagingData.total_bunches > 0 || stagingData.bunches_transactions > 0) {
+                // Determine if we should return this or check legacy?
+                // Assume Staging is the source of truth if data exists.
+                return stagingData;
+            }
+        } catch (e) {
+            console.warn("[HarvesterService] Failed to get from staging, falling back to legacy:", e);
+        }
+
         const defaultData: HarvestData = {
             total_bunches: 0,
             bunches_ripe: 0,
@@ -42,9 +56,26 @@ export class HarvesterService {
         };
 
         try {
-            // Cari data di archive table (PR_HARVESTERLN_ARC)
-            // Filter by TrxDate (tanggal transaksi) dan EmpCode
+            // Logic Lama (Legacy)
+            // Query dari kedua tabel: aktif dan archive
+            // PR_HARVESTERLN_ACC (aktif) dan PR_HARVESTERLN_ARC (archive)
             const sql = `
+                SELECT
+                    EmpCode,
+                    EmpName,
+                    SUM(TotalBunches) as TotalBunches,
+                    SUM(Ripe) as Ripe,
+                    SUM(Unripe) as Unripe,
+                    SUM(TotalRound) as TotalRound,
+                    COUNT(*) as TrxCount
+                FROM PR_HARVESTERLN_ACC
+                WHERE EmpCode = ?
+                    AND MONTH(TrxDate) = ?
+                    AND YEAR(TrxDate) = ?
+                GROUP BY EmpCode, EmpName
+
+                UNION ALL
+
                 SELECT
                     EmpCode,
                     EmpName,
@@ -60,16 +91,24 @@ export class HarvesterService {
                 GROUP BY EmpCode, EmpName
             `;
 
-            const results = await this.db.query<HarvestDataRaw>(sql, [empCode, month, year]);
+            const results = await this.db.query<HarvestDataRaw>(sql, [empCode, month, year, empCode, month, year]);
 
             if (results.length > 0) {
-                const row = results[0];
+                // Aggregate results karena UNION ALL bisa menghasilkan multiple baris
+                let totalBunches = 0, ripe = 0, unripe = 0, totalRound = 0, trxCount = 0;
+                for (const row of results) {
+                    totalBunches += row.TotalBunches || 0;
+                    ripe += row.Ripe || 0;
+                    unripe += row.Unripe || 0;
+                    totalRound += row.TotalRound || 0;
+                    trxCount += row.TrxCount || 0;
+                }
                 return {
-                    total_bunches: row.TotalBunches || 0,
-                    bunches_ripe: row.Ripe || 0,
-                    bunches_unripe: row.Unripe || 0,
-                    bunches_round: row.TotalRound || 0,
-                    bunches_transactions: row.TrxCount || 0,
+                    total_bunches: totalBunches,
+                    bunches_ripe: ripe,
+                    bunches_unripe: unripe,
+                    bunches_round: totalRound,
+                    bunches_transactions: trxCount,
                 };
             }
 
@@ -103,10 +142,71 @@ export class HarvesterService {
             return resultMap;
         }
 
+        // 1. Coba ambil dari Staging
+        try {
+            const stagingMap = await this.getBatchEmployeeBunchesFromStaging(empCodes, month, year);
+            if (stagingMap.size > 0) {
+                // Merge staging results into resultMap
+                for (const [key, val] of stagingMap) {
+                    if (val.total_bunches > 0 || val.bunches_transactions > 0) {
+                        resultMap.set(key, val);
+                    }
+                }
+                // Jika kita mengasumsikan staging lengkap, kita bisa return disini.
+                // Namun jika staging parsial (hanya sebagian karyawan), kita mungkin perlu fallback per karyawan.
+                // Untuk simplifikasi: jika staging ada data, kita pakai staging data untuk karyawan tersebut.
+                // Jika tidak ada di staging (tetap 0), biarkan 0 (atau bisa coba legacy).
+
+                // Mari periksa apakah kita perlu fallback ke legacy untuk karyawan yang tidak ada di staging?
+                // Jika User minta "Gunakan DB Staging", asumsinya DB Staging replace Legacy.
+                // Jadi kita return hasil merge staging.
+                return resultMap;
+            }
+        } catch (e) {
+            console.warn("[HarvesterService] Failed batch staging fetch:", e);
+        }
+
         try {
             // Build IN clause untuk empCodes
             const placeholders = empCodes.map(() => "?").join(",");
+
+            console.log("[HarvesterService] Fetching bunches (LEGACY) for", empCodes.length, "employees, month:", month, "year:", year);
+
+            // Query dari semua tabel harvester yang mungkin ada data
+            // PR_HARVESTERLN (aktif), PR_HARVESTERLN_ACC (aktif), PR_HARVESTERLN_ARC (archive)
             const sql = `
+                SELECT
+                    EmpCode,
+                    EmpName,
+                    SUM(TotalBunches) as TotalBunches,
+                    SUM(Ripe) as Ripe,
+                    SUM(Unripe) as Unripe,
+                    SUM(TotalRound) as TotalRound,
+                    COUNT(*) as TrxCount
+                FROM PR_HARVESTERLN
+                WHERE EmpCode IN (${placeholders})
+                    AND MONTH(TrxDate) = ?
+                    AND YEAR(TrxDate) = ?
+                GROUP BY EmpCode, EmpName
+
+                UNION ALL
+
+                SELECT
+                    EmpCode,
+                    EmpName,
+                    SUM(TotalBunches) as TotalBunches,
+                    SUM(Ripe) as Ripe,
+                    SUM(Unripe) as Unripe,
+                    SUM(TotalRound) as TotalRound,
+                    COUNT(*) as TrxCount
+                FROM PR_HARVESTERLN_ACC
+                WHERE EmpCode IN (${placeholders})
+                    AND MONTH(TrxDate) = ?
+                    AND YEAR(TrxDate) = ?
+                GROUP BY EmpCode, EmpName
+
+                UNION ALL
+
                 SELECT
                     EmpCode,
                     EmpName,
@@ -122,10 +222,28 @@ export class HarvesterService {
                 GROUP BY EmpCode, EmpName
             `;
 
-            const results = await this.db.query<HarvestDataRaw>(sql, [...empCodes, month, year]);
+            const params = [...empCodes, month, year, ...empCodes, month, year, ...empCodes, month, year];
+            const results = await this.db.query<HarvestDataRaw>(sql, params);
 
+            // Aggregate results karena UNION ALL bisa menghasilkan multiple baris per EmpCode
+            const aggregatedMap = new Map<string, HarvestDataRaw>();
             for (const row of results) {
-                resultMap.set(row.EmpCode, {
+                const existing = aggregatedMap.get(row.EmpCode);
+                if (existing) {
+                    // Sum dengan data yang sudah ada
+                    existing.TotalBunches = (existing.TotalBunches || 0) + (row.TotalBunches || 0);
+                    existing.Ripe = (existing.Ripe || 0) + (row.Ripe || 0);
+                    existing.Unripe = (existing.Unripe || 0) + (row.Unripe || 0);
+                    existing.TotalRound = (existing.TotalRound || 0) + (row.TotalRound || 0);
+                    existing.TrxCount = (existing.TrxCount || 0) + (row.TrxCount || 0);
+                } else {
+                    aggregatedMap.set(row.EmpCode, row);
+                }
+            }
+
+            // Set final results
+            for (const [empCode, row] of aggregatedMap) {
+                resultMap.set(empCode, {
                     total_bunches: row.TotalBunches || 0,
                     bunches_ripe: row.Ripe || 0,
                     bunches_unripe: row.Unripe || 0,
@@ -136,6 +254,7 @@ export class HarvesterService {
 
         } catch (error: any) {
             console.error("[HarvesterService] Error fetching batch bunches:", error.message);
+            console.error("[HarvesterService] Error stack:", error.stack);
         }
 
         return resultMap;
@@ -222,6 +341,222 @@ export class HarvesterService {
             return null;
         }
     }
+
+    /**
+     * Ambil data panen harian untuk satu karyawan dalam satu bulan
+     * Mengembalikan list transaksi harian dengan Berat (Kg) dan Janjang/Bunches
+     */
+    public async getDailyEmployeeHarvest(empCode: string, month: number, year: number): Promise<HarvestLineData[]> {
+        try {
+            // Kita ambil data dari PR_HARVESTERLN_ARC yang digabung dengan PR_HARVESTER_ARC
+            // untuk mendapatkan info Gang dan Lokasi jika perlu.
+            // Fokus utama: TrxDate, TotalBunches, TotalWeight (jika ada)
+
+            // Note: TotalWeight mungkin null di database lama, kita handle di query
+            const sql = `
+                SELECT
+                    l.ID,
+                    l.MasterID,
+                    l.EmpCode,
+                    l.EmpName,
+                    l.TrxDate,
+                    m.GangCode,
+                    m.LocCode,
+                    SUM(l.TotalBunches) as TotalBunches,
+                    SUM(l.TotalWeight) as TotalWeight,
+                    SUM(l.Ripe) as Ripe,
+                    SUM(l.Unripe) as Unripe,
+                    MAX(l.Rate) as Rate,
+                    SUM(l.Amount) as Amount
+                FROM PR_HARVESTERLN_ARC l
+                INNER JOIN PR_HARVESTER_ARC m ON l.MasterID = m.ID
+                WHERE l.EmpCode = ?
+                    AND MONTH(l.TrxDate) = ?
+                    AND YEAR(l.TrxDate) = ?
+                GROUP BY l.ID, l.MasterID, l.EmpCode, l.EmpName, l.TrxDate, m.GangCode, m.LocCode
+                ORDER BY l.TrxDate
+            `;
+
+            const results = await this.db.query<any>(sql, [empCode, month, year]);
+
+            // Map result ke type HarvestLineData (atau subset yang kita butuhkan)
+            return results.map(row => ({
+                ID: row.ID,
+                MasterID: row.MasterID,
+                GangMember: true, // Asumsi
+                EmpCode: row.EmpCode,
+                EmpName: row.EmpName,
+                TaskCode: 'HARVEST', // Placeholder
+                TaskRtnVal: 0,
+                GrpRef: row.GangCode, // Pakai GangCode sebagai referensi grup
+                ChargeTo: row.LocCode,
+                Hours: 0, // Panen biasanya by result, bukan jam (kecuali HK)
+                Ripe: row.Ripe || 0,
+                Unripe: row.Unripe || 0,
+                TotalBunches: row.TotalBunches || 0,
+                Rate: row.Rate || 0,
+                ABW: 0,
+                Amount: row.Amount || 0,
+                Status: 1,
+                TrxDate: new Date(row.TrxDate),
+                TotalRound: 0,
+                TotalWeight: row.TotalWeight || 0
+            }));
+
+        } catch (error: any) {
+            console.error("[HarvesterService] Error fetching daily employee harvest:", error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Ambil data bunches dari Staging Database (Ffbscannerdata)
+     * Digunakan sebagai alternatif atau pengganti PR_HARVESTERLN
+     */
+    public async getEmployeeBunchesFromStaging(empCode: string, month: number, year: number): Promise<HarvestData> {
+        const defaultData: HarvestData = {
+            total_bunches: 0,
+            bunches_ripe: 0,
+            bunches_unripe: 0,
+            bunches_round: 0,
+            bunches_transactions: 0,
+            bunches_underripe: 0,
+            bunches_overripe: 0,
+            bunches_rotten: 0,
+            bunches_abnormal: 0,
+            loose_fruit: 0
+        };
+
+        try {
+            // Gunakan profile yang sama dengan main DB (Server 2), tapi arahkan ke staging database
+            // Nama database staging: staging_PTRJ_iFES_Plantware
+            const stagingDb = Database.getInstance("staging_PTRJ_iFES_Plantware", Config.DB_PROFILE);
+
+            const sql = `
+                SELECT
+                    WORKERCODE as EmpCode,
+                    -- Total Bunches = Sum of all categories
+                    SUM(ISNULL(RIPE, 0) + ISNULL(UNRIPE, 0) + ISNULL(UNDERRIPE, 0) + ISNULL(OVERRIPE, 0) + ISNULL(ROTTEN, 0) + ISNULL(ABNORMAL, 0)) as TotalBunches,
+                    SUM(ISNULL(RIPE, 0)) as Ripe,
+                    SUM(ISNULL(UNRIPE, 0)) as Unripe,
+                    SUM(ISNULL(UNDERRIPE, 0)) as Underripe,
+                    SUM(ISNULL(OVERRIPE, 0)) as Overripe,
+                    SUM(ISNULL(ROTTEN, 0)) as Rotten,
+                    SUM(ISNULL(ABNORMAL, 0)) as Abnormal,
+                    SUM(ISNULL(LOOSEFRUIT, 0)) as Loosefruit,
+                    0 as TotalRound, -- Tidak ada kolom Round di Ffbscannerdata
+                    COUNT(*) as TrxCount
+                FROM [staging_PTRJ_iFES_Plantware].[dbo].[Ffbscannerdata]
+                WHERE WORKERCODE = ?
+                    AND MONTH(TRANSDATE) = ?
+                    AND YEAR(TRANSDATE) = ?
+                    AND (TRANSSTATUS = 'OK' OR TRANSSTATUS LIKE 'OK%')
+                GROUP BY WORKERCODE
+            `;
+
+            const results = await stagingDb.query<HarvestDataRaw>(sql, [empCode, month, year]);
+
+            if (results.length > 0) {
+                const row = results[0];
+                return {
+                    total_bunches: row.TotalBunches || 0,
+                    bunches_ripe: row.Ripe || 0,
+                    bunches_unripe: row.Unripe || 0,
+                    bunches_round: row.TotalRound || 0,
+                    bunches_transactions: row.TrxCount || 0,
+                    bunches_underripe: row.Underripe || 0,
+                    bunches_overripe: row.Overripe || 0,
+                    bunches_rotten: row.Rotten || 0,
+                    bunches_abnormal: row.Abnormal || 0,
+                    loose_fruit: row.Loosefruit || 0
+                };
+            }
+
+            return defaultData;
+
+        } catch (error: any) {
+            console.error("[HarvesterService] Error fetching employee bunches from staging:", error.message);
+            return defaultData;
+        }
+    }
+
+    /**
+     * Batch retrieval from Staging
+     */
+    public async getBatchEmployeeBunchesFromStaging(empCodes: string[], month: number, year: number): Promise<Map<string, HarvestData>> {
+        const resultMap = new Map<string, HarvestData>();
+
+        // Default data
+        for (const empCode of empCodes) {
+            resultMap.set(empCode, {
+                total_bunches: 0,
+                bunches_ripe: 0,
+                bunches_unripe: 0,
+                bunches_round: 0,
+                bunches_transactions: 0,
+                bunches_underripe: 0,
+                bunches_overripe: 0,
+                bunches_rotten: 0,
+                bunches_abnormal: 0,
+                loose_fruit: 0
+            });
+        }
+
+        if (empCodes.length === 0) return resultMap;
+
+        try {
+            const stagingDb = Database.getInstance("staging_PTRJ_iFES_Plantware", Config.DB_PROFILE);
+            const placeholders = empCodes.map(() => "?").join(",");
+
+            // Note: Parameter limit rule might apply, but usually OK for batch sizes used
+            const sql = `
+                SELECT
+                    WORKERCODE as EmpCode,
+                    SUM(ISNULL(RIPE, 0) + ISNULL(UNRIPE, 0) + ISNULL(UNDERRIPE, 0) + ISNULL(OVERRIPE, 0) + ISNULL(ROTTEN, 0) + ISNULL(ABNORMAL, 0)) as TotalBunches,
+                    SUM(ISNULL(RIPE, 0)) as Ripe,
+                    SUM(ISNULL(UNRIPE, 0)) as Unripe,
+                    SUM(ISNULL(UNDERRIPE, 0)) as Underripe,
+                    SUM(ISNULL(OVERRIPE, 0)) as Overripe,
+                    SUM(ISNULL(ROTTEN, 0)) as Rotten,
+                    SUM(ISNULL(ABNORMAL, 0)) as Abnormal,
+                    SUM(ISNULL(LOOSEFRUIT, 0)) as Loosefruit,
+                    0 as TotalRound,
+                    COUNT(*) as TrxCount
+                FROM [staging_PTRJ_iFES_Plantware].[dbo].[Ffbscannerdata]
+                WHERE WORKERCODE IN (${placeholders})
+                    AND MONTH(TRANSDATE) = ?
+                    AND YEAR(TRANSDATE) = ?
+                    AND (TRANSSTATUS = 'OK' OR TRANSSTATUS LIKE 'OK%')
+                GROUP BY WORKERCODE
+            `;
+
+            const params = [...empCodes, month, year];
+            const results = await stagingDb.query<HarvestDataRaw>(sql, params);
+
+            for (const row of results) {
+                resultMap.set(row.EmpCode, {
+                    total_bunches: row.TotalBunches || 0,
+                    bunches_ripe: row.Ripe || 0,
+                    bunches_unripe: row.Unripe || 0,
+                    bunches_round: row.TotalRound || 0,
+                    bunches_transactions: row.TrxCount || 0,
+                    bunches_underripe: row.Underripe || 0,
+                    bunches_overripe: row.Overripe || 0,
+                    bunches_rotten: row.Rotten || 0,
+                    bunches_abnormal: row.Abnormal || 0,
+                    loose_fruit: row.Loosefruit || 0
+                });
+            }
+
+            console.log(`[HarvesterService] Fetched batch from Staging: ${results.length} rows`);
+
+        } catch (error: any) {
+            console.error("[HarvesterService] Error fetching batch bunches from staging:", error.message);
+        }
+
+        return resultMap;
+    }
 }
+
 
 export const harvesterService = HarvesterService.getInstance();

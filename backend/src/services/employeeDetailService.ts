@@ -1,6 +1,7 @@
 import { Database } from "../db/client";
 import { dataExtractorService } from "./dataExtractorService";
 import { lemburCalculator, getDayTypeDisplayName } from "./lemburCalculator";
+import { harvesterService } from "./harvesterService";
 import { Config } from "../config";
 
 export interface AttendanceDay {
@@ -421,6 +422,7 @@ export class EmployeeDetailService {
 
         const attendanceData = await this.getDailyAttendance(empCode, month, year);
         const overtimeData = await this.getDailyOvertime(empCode, month, year);
+        const harvestData = await harvesterService.getDailyEmployeeHarvest(empCode, month, year);
 
         // Fetch calculated payroll data
         let payrollData = null;
@@ -464,6 +466,7 @@ export class EmployeeDetailService {
             employee: employeeInfo,
             attendance: attendanceData,
             overtime: overtimeData,
+            harvest: harvestData,
             payroll_data: payrollData,
             debug_info: debugInfo
         };

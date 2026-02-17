@@ -109,7 +109,11 @@ interface PayrollRow {
     bunches_total?: number;
     bunches_ripe?: number;
     bunches_unripe?: number;
-    bunches_round?: number;
+    bunches_underripe?: number;
+    bunches_overripe?: number;
+    bunches_rotten?: number;
+    bunches_abnormal?: number;
+    loose_fruit?: number;
     bunches_transactions?: number;
     total_tunjangan: number;
     premi_brondol: number;
@@ -628,7 +632,11 @@ export class DataExtractorService {
                     bunches_total: bunchesBatch.get(emp.emp_code)?.total_bunches || 0,
                     bunches_ripe: bunchesBatch.get(emp.emp_code)?.bunches_ripe || 0,
                     bunches_unripe: bunchesBatch.get(emp.emp_code)?.bunches_unripe || 0,
-                    bunches_round: bunchesBatch.get(emp.emp_code)?.bunches_round || 0,
+                    bunches_underripe: bunchesBatch.get(emp.emp_code)?.bunches_underripe || 0,
+                    bunches_overripe: bunchesBatch.get(emp.emp_code)?.bunches_overripe || 0,
+                    bunches_rotten: bunchesBatch.get(emp.emp_code)?.bunches_rotten || 0,
+                    bunches_abnormal: bunchesBatch.get(emp.emp_code)?.bunches_abnormal || 0,
+                    loose_fruit: bunchesBatch.get(emp.emp_code)?.loose_fruit || 0,
                     bunches_transactions: bunchesBatch.get(emp.emp_code)?.bunches_transactions || 0,
                 } : {}),
                 total_tunjangan,

@@ -230,11 +230,12 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
           setAvailableGangs(gangsToLoad || [])
 
-          // Auto-select first available gang if current selection is invalid
-          if (gangsToLoad && gangsToLoad.length > 0 && !gangsToLoad.includes(finalGangCode)) {
-            const firstGang = typeof gangsToLoad[0] === 'string' ? gangsToLoad[0] : gangsToLoad[0].gang_code
-            setOverrideGangCode(firstGang)
-          }
+          // AUTO-SELECTION DISABLED: User must manually select gang
+          // The auto-selection was causing the gang to change unexpectedly after loading
+          // if (gangsToLoad && gangsToLoad.length > 0 && !gangsToLoad.includes(finalGangCode)) {
+          //   const firstGang = typeof gangsToLoad[0] === 'string' ? gangsToLoad[0] : gangsToLoad[0].gang_code
+          //   setOverrideGangCode(firstGang)
+          // }
         } catch (e) {
           console.warn('Failed to load gangs for selector', e)
           setAvailableGangs([])
