@@ -87,7 +87,7 @@ axios.interceptors.response.use(
         // However, the request was: "etia tokennya sudah expired saya inign ke halaman login yang versi proxy"
 
         // Force Redirect to Proxy Login (Relative Path)
-        window.location.href = '/login?expired=true'
+        window.location.href = '/login'
       }
 
     } catch (_) { }

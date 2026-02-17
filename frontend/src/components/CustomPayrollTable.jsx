@@ -7,6 +7,7 @@ import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
+import { getTablePreferences, DEFAULT_CELL_COLORS } from '../services/tablePreferencesService';
 
 const formatNumber = (value) => {
     if (value === null || value === undefined) return '-';
@@ -20,6 +21,24 @@ const formatDecimal = (value) => {
     const n = Number(value);
     if (isNaN(n)) return '-';
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
+};
+
+// Helper function to get header group from label
+const getHeaderGroup = (label) => {
+    if (!label) return null;
+    const upper = label.toUpperCase();
+    if (upper === 'IDENTITAS') return 'IDENTITAS';
+    if (upper === 'PAJAK') return 'PAJAK';
+    if (upper === 'ABSENSI') return 'ABSENSI';
+    if (upper === 'PANEN') return 'PANEN';
+    if (upper === 'PENGGAJIAN') return 'PENGGAJIAN';
+    if (upper === 'TUNJANGAN') return 'TUNJANGAN';
+    if (upper === 'PREMI') return 'PREMI';
+    if (upper.includes('POTONGAN UPAH KOTOR')) return 'POTONGAN UPAH KOTOR';
+    if (upper === 'UPAH KOTOR') return 'UPAH KOTOR';
+    if (upper.includes('POTONGAN UPAH BERSIH')) return 'POTONGAN UPAH BERSIH';
+    if (upper === 'UPAH BERSIH') return 'UPAH BERSIH';
+    return null;
 };
 
 export default function CustomPayrollTable({
@@ -49,7 +68,18 @@ export default function CustomPayrollTable({
     // Tax View Mode
     const [isTaxExpanded, setIsTaxExpanded] = useState(false);
 
+    // Table Preferences (Body Cell Colors - applied to body cells, NOT headers)
+    const [cellColors, setCellColors] = useState(DEFAULT_CELL_COLORS);
+
     const tableRef = useRef(null);
+
+    // Load preferences on mount
+    useEffect(() => {
+        const prefs = getTablePreferences();
+        if (prefs.preferences?.cellColors) {
+            setCellColors(prefs.preferences.cellColors);
+        }
+    }, []);
 
     // Sync employee NIKs when rows change (for select-all checkbox state only)
     useEffect(() => {
@@ -377,20 +407,20 @@ export default function CustomPayrollTable({
 
             // Continue with other columns...
             // ABSENSI > KEHADIRAN
-            { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'], w: 40, className: 'text-center cell-absensi' },
+            { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'], w: 40, className: 'text-center' },
             // ABSENSI > KETIDAKHADIRAN
-            { field: 'cuti_tahunan_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'CUTI'], w: 45, className: 'text-center cell-absensi' },
-            { field: 'cuti_sakit_haid_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'SAKIT+HAID'], w: 70, className: 'text-center cell-absensi' },
-            { field: 'cuti_minggu_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'MINGGU'], w: 55, className: 'text-center cell-absensi' },
-            { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'NASIONAL'], w: 60, className: 'text-center cell-absensi' },
+            { field: 'cuti_tahunan_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'CUTI'], w: 45, className: 'text-center' },
+            { field: 'cuti_sakit_haid_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'SAKIT+HAID'], w: 70, className: 'text-center' },
+            { field: 'cuti_minggu_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'MINGGU'], w: 55, className: 'text-center' },
+            { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'NASIONAL'], w: 60, className: 'text-center' },
             // ABSENSI > JUMLAH HK
-            { field: 'jumlah_hk', headers: ['ABSENSI', null, null, 'JUMLAH HK'], w: 60, className: 'text-center cell-absensi font-bold' },
+            { field: 'jumlah_hk', headers: ['ABSENSI', null, null, 'JUMLAH HK'], w: 60, className: 'text-center font-bold' },
             // ABSENSI > TOTAL JAM [NEW] - Marks employees with shortage hours (kurang jam)
             {
                 field: 'total_jam_kerja',
                 headers: ['ABSENSI', null, null, 'TOTAL JAM'],
                 w: 80,
-                className: 'text-center cell-absensi',
+                className: 'text-center',
                 render: (row) => {
                     if (!row.has_shortage) {
                         return (
@@ -453,56 +483,56 @@ export default function CustomPayrollTable({
             },
             // PANEN (BUNCHES) - Khusus untuk Gang Panen (berakhiran "H")
             {
-                field: 'bunches_total', headers: ['PANEN', 'BUNCHES', null, 'TOTAL JANJANG'], w: 90, className: 'text-right cell-harvest', render: (row) => {
+                field: 'bunches_total', headers: ['PANEN', 'BUNCHES', null, 'TOTAL JANJANG'], w: 90, className: 'text-right', render: (row) => {
                     const val = row.bunches_total || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             },
             {
-                field: 'bunches_ripe', headers: ['PANEN', 'BUNCHES', null, 'MASAK'], w: 60, className: 'text-right cell-harvest', render: (row) => {
+                field: 'bunches_ripe', headers: ['PANEN', 'BUNCHES', null, 'MASAK'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_ripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             },
             {
-                field: 'bunches_underripe', headers: ['PANEN', 'BUNCHES', null, 'MENGKAL'], w: 60, className: 'text-right cell-harvest', render: (row) => {
+                field: 'bunches_underripe', headers: ['PANEN', 'BUNCHES', null, 'MENGKAL'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_underripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             },
             {
-                field: 'bunches_unripe', headers: ['PANEN', 'BUNCHES', null, 'MENTAH'], w: 60, className: 'text-right cell-harvest', render: (row) => {
+                field: 'bunches_unripe', headers: ['PANEN', 'BUNCHES', null, 'MENTAH'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_unripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             },
             {
-                field: 'bunches_overripe', headers: ['PANEN', 'BUNCHES', null, 'LEWAT MASAK'], w: 75, className: 'text-right cell-harvest', render: (row) => {
+                field: 'bunches_overripe', headers: ['PANEN', 'BUNCHES', null, 'LEWAT MASAK'], w: 75, className: 'text-right', render: (row) => {
                     const val = row.bunches_overripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             },
             {
-                field: 'bunches_rotten', headers: ['PANEN', 'BUNCHES', null, 'BUSUK'], w: 55, className: 'text-right cell-harvest', render: (row) => {
+                field: 'bunches_rotten', headers: ['PANEN', 'BUNCHES', null, 'BUSUK'], w: 55, className: 'text-right', render: (row) => {
                     const val = row.bunches_rotten || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             },
             {
-                field: 'bunches_abnormal', headers: ['PANEN', 'BUNCHES', null, 'ABNORMAL'], w: 65, className: 'text-right cell-harvest', render: (row) => {
+                field: 'bunches_abnormal', headers: ['PANEN', 'BUNCHES', null, 'ABNORMAL'], w: 65, className: 'text-right', render: (row) => {
                     const val = row.bunches_abnormal || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             },
             {
-                field: 'loose_fruit', headers: ['PANEN', 'BRONDOLAN', null, 'KG/QTY'], w: 70, className: 'text-right cell-harvest', render: (row) => {
+                field: 'loose_fruit', headers: ['PANEN', 'BRONDOLAN', null, 'KG/QTY'], w: 70, className: 'text-right', render: (row) => {
                     const val = row.loose_fruit || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
@@ -510,7 +540,7 @@ export default function CustomPayrollTable({
             },
             // REMOVED: bunches_round (Bundar) as it does not exist in Ffbscannerdata
             {
-                field: 'bunches_transactions', headers: ['PANEN', 'BUNCHES', null, 'JML TRX'], w: 65, className: 'text-center cell-harvest', render: (row) => {
+                field: 'bunches_transactions', headers: ['PANEN', 'BUNCHES', null, 'JML TRX'], w: 65, className: 'text-center', render: (row) => {
                     const val = row.bunches_transactions || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
@@ -588,20 +618,20 @@ export default function CustomPayrollTable({
             { field: 'lembur_jam', headers: ['TUNJANGAN', 'LEMBUR', null, 'JAM'], w: 45, className: 'text-center' },
             { field: 'lembur_jumlah', headers: ['TUNJANGAN', 'LEMBUR', null, 'JUMLAH'], w: 80, className: 'text-right' },
             // TUNJANGAN > TOTAL
-            { field: 'total_tunjangan', headers: ['TUNJANGAN', null, null, 'TOTAL TUNJANGAN'], w: 100, className: 'text-right font-bold cell-total-tunjangan' },
+            { field: 'total_tunjangan', headers: ['TUNJANGAN', null, null, 'TOTAL TUNJANGAN'], w: 100, className: 'text-right font-bold' },
         ];
 
         // PREMI - Static BRONDOL column (from separate query, always show if has values)
         // BRONDOL is not in dynamic_premi_headers because it comes from brondol_data query
-        cols.push({ field: 'premi_brondol', headers: ['PREMI', null, null, 'BRONDOL'], w: 80, className: 'text-right cell-premi' });
+        cols.push({ field: 'premi_brondol', headers: ['PREMI', null, null, 'BRONDOL'], w: 80, className: 'text-right' });
 
         // PREMI (dynamic) - only show if has values in current gang
         Object.entries(dynamicHeaders.premi)
             .filter(([label, field]) => activePremiFields.includes(field))
             .forEach(([label, field]) => {
-                cols.push({ field, headers: ['PREMI', null, null, label.replace('PREMI ', '')], w: 80, className: 'text-right cell-premi-dynamic' });
+                cols.push({ field, headers: ['PREMI', null, null, label.replace('PREMI ', '')], w: 80, className: 'text-right' });
             });
-        cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold cell-total-premi' });
+        cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold' });
 
         // POTONGAN UPAH KOTOR - KOREKSI columns (all variations)
         // Display each KOREKSI variation as a separate column
@@ -615,7 +645,7 @@ export default function CustomPayrollTable({
                 field: 'pot_koreksi',
                 headers: ['POTONGAN UPAH KOTOR', null, null, 'KOREKSI'],
                 w: 80,
-                className: 'text-right cell-koreksi'
+                className: 'text-right'
             });
         } else {
             // Show each KOREKSI variation as separate column
@@ -626,7 +656,7 @@ export default function CustomPayrollTable({
                     field,
                     headers: ['POTONGAN UPAH KOTOR', null, null, displayLabel],
                     w: 80,
-                    className: 'text-right cell-koreksi'
+                    className: 'text-right'
                 });
             }
         }
@@ -635,7 +665,7 @@ export default function CustomPayrollTable({
         cols.push({ field: 'potongan_upah_kotor_total', headers: ['POTONGAN UPAH KOTOR', null, null, 'TOTAL KOREKSI'], w: 95, className: 'text-right font-bold' });
 
         // UPAH KOTOR (separate group, not child of POTONGAN UPAH KOTOR)
-        cols.push({ field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', null, null, 'JUMLAH'], w: 110, className: 'text-right font-bold cell-upah-kotor' });
+        cols.push({ field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', null, null, 'JUMLAH'], w: 110, className: 'text-right font-bold' });
 
         // POTONGAN UPAH BERSIH > CARUMAN ASTEK
         cols.push({ field: 'pot_astek', headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'PEKERJA'], w: 75, className: 'text-right' });
@@ -707,13 +737,18 @@ export default function CustomPayrollTable({
                 field,
                 headers: ['POTONGAN UPAH BERSIH', null, null, displayLabel],
                 w: 80,
-                className: 'text-right cell-potongan-dynamic'
+                className: 'text-right'
             });
         }
         cols.push({ field: 'total_potongan_bersih', headers: ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'], w: 100, className: 'text-right font-bold cell-deduction' });
 
         // TOTAL UPAH (Summary group) - only Upah Bersih since Upah Kotor is now separate
         cols.push({ field: 'upah_bersih', headers: ['UPAH BERSIH', null, null, 'JUMLAH'], w: 115, className: 'text-right font-bold cell-net-salary' });
+
+        // Attach group to each column for body cell coloring
+        cols.forEach(c => {
+            c.group = getHeaderGroup(c.headers[0]);
+        });
 
         return cols;
     }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded]);
@@ -749,7 +784,25 @@ export default function CustomPayrollTable({
         }
     }, [onExportReady, handleExportToExcel]);
 
-    // === GENERATE HEADER ROWS FROM COLUMN DEFINITIONS ===
+
+    // Helper function to get header color style — uniform dark color for ALL headers
+    const getHeaderStyle = useCallback(() => {
+        return {
+            backgroundColor: '#1a365d',
+            color: 'white'
+        };
+    }, []);
+
+    // Helper to get body cell inline style from cookie preferences
+    const getCellGroupStyle = useCallback((group) => {
+        if (!group || !cellColors[group]) return {};
+        const colors = cellColors[group];
+        return {
+            backgroundColor: colors.bg,
+            color: colors.text
+        };
+    }, [cellColors]);
+
     const headerRows = useMemo(() => {
         const numRows = 4;
         const numCols = columnDefs.length;
@@ -833,6 +886,10 @@ export default function CustomPayrollTable({
                 if (cell.merged) continue;
                 if (cell.startRow !== row) continue; // This cell started in a previous row
 
+                // Get header group for color styling
+                const headerGroup = getHeaderGroup(cell.label);
+                const headerStyle = getHeaderStyle(cell.label, row);
+
                 // Special handling for checkbox column header
                 if (columnDefs[col].field === 'checkbox') {
                     rowCells.push({
@@ -841,7 +898,9 @@ export default function CustomPayrollTable({
                         rowSpan: cell.rowSpan,
                         isSticky: true,
                         left: columnDefs[col].left,
-                        isCheckboxHeader: true
+                        isCheckboxHeader: true,
+                        headerGroup: null,
+                        headerStyle: { backgroundColor: '#1a365d', color: 'white' }
                     });
                 } else {
                     rowCells.push({
@@ -849,7 +908,10 @@ export default function CustomPayrollTable({
                         colSpan: cell.colSpan,
                         rowSpan: cell.rowSpan,
                         isSticky: columnDefs[col].left !== undefined,
-                        left: columnDefs[col].left
+                        left: columnDefs[col].left,
+                        headerGroup,
+                        headerStyle,
+                        level: row
                     });
                 }
             }
@@ -857,7 +919,7 @@ export default function CustomPayrollTable({
         }
 
         return result;
-    }, [columnDefs, allEmployeeNiks]);
+    }, [columnDefs, allEmployeeNiks, getHeaderStyle, selectedEmployees]);
 
     // Selection Logic - supports Ctrl+Click for multi-select
     const handleMouseDown = (e, rowIndex, colIndex, rowId) => {
@@ -965,11 +1027,12 @@ export default function CustomPayrollTable({
                                     key={`hc-${rIdx}-${cIdx}`}
                                     colSpan={cell.colSpan}
                                     rowSpan={cell.rowSpan}
-                                    className={`sticky-header ${cell.isSticky ? 'sticky-corner' : ''}`}
+                                    className={`sticky-header ${cell.isSticky ? 'sticky-corner' : ''} ${cell.headerGroup ? `header-group-${cell.headerGroup.toLowerCase().replace(/\s+/g, '-')}` : ''}`}
                                     style={{
                                         top: rIdx * rowHeight,
                                         left: cell.left,
-                                        height: cell.rowSpan * rowHeight
+                                        height: cell.rowSpan * rowHeight,
+                                        ...cell.headerStyle
                                     }}
                                 >
                                     {cell.label === 'JABATAN' ? (
@@ -1054,12 +1117,16 @@ export default function CustomPayrollTable({
                                     }
                                     const selected = isCellSelected(rIdx, cIdx);
 
+                                    // Build group class + inline color for body cells
+                                    const groupClass = col.group ? `cell-group-${col.group.toLowerCase().replace(/\s+/g, '-')}` : '';
+                                    const cellGroupInline = getCellGroupStyle(col.group);
+
                                     if (col.render) {
                                         return (
                                             <td
                                                 key={cIdx}
-                                                className={`${col.className} ${selected ? 'cell-selected' : ''}`}
-                                                style={{ left: col.left, width: col.w, minWidth: col.w }}
+                                                className={`${col.className} ${selected ? 'cell-selected' : ''} ${groupClass}`}
+                                                style={{ left: col.left, width: col.w, minWidth: col.w, ...cellGroupInline }}
                                                 onMouseDown={(e) => { e.preventDefault(); handleMouseDown(e, rIdx, cIdx, row.id); }}
                                                 onMouseOver={() => handleMouseOver(rIdx, cIdx)}
                                             >
@@ -1071,8 +1138,8 @@ export default function CustomPayrollTable({
                                     return (
                                         <td
                                             key={cIdx}
-                                            className={`${col.className} ${selected ? 'cell-selected' : ''}`}
-                                            style={{ left: col.left, width: col.w, minWidth: col.w }}
+                                            className={`${col.className} ${selected ? 'cell-selected' : ''} ${groupClass}`}
+                                            style={{ left: col.left, width: col.w, minWidth: col.w, ...cellGroupInline }}
                                             onMouseDown={(e) => { e.preventDefault(); handleMouseDown(e, rIdx, cIdx, row.id); }}
                                             onMouseOver={() => handleMouseOver(rIdx, cIdx)}
                                         >

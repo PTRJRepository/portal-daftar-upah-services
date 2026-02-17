@@ -424,7 +424,7 @@ export class DataExtractorService {
 
             const berasJumlah = berasJumlahBase + additionalBeras;
 
-            const jabatanRate = hk > 0 && empJabatan > 0 ? empJabatan / hk : 0;
+            const jabatanRate = hari_kerja > 0 && empJabatan > 0 ? empJabatan / hari_kerja : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
 
             // [FIX] Use ONLY empLemburDetails (OT=1 pure overtime) for ALL lembur calculations

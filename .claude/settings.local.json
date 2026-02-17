@@ -93,7 +93,8 @@
       "Bash(xxd:*)",
       "Bash(grep:*)",
       "Bash(awk:*)",
-      "Bash(bun test:*)"
+      "Bash(bun test:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

@@ -14,6 +14,14 @@ import { Elysia, t } from "elysia";
 import { historyDatabaseService } from "../services/historyDatabaseService";
 import { historySeederService, SeederOptions } from "../services/historySeederService";
 import { Config } from "../config";
+import { currentPeriodService } from "../services/currentPeriodService";
+
+// Helper to get month name in Indonesian
+function getMonthName(month: number): string {
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return months[month - 1] || '';
+}
 
 // Helper to get client IP
 function getClientIP(headers: Record<string, string | undefined>): string {
@@ -447,6 +455,248 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
             return {
                 success: false,
                 error: error.message || "Failed to fetch periods"
+            };
+        }
+    })
+
+    // ============================================================================
+    // EMPLOYEE-CENTRIC HISTORY ENDPOINTS
+    // ============================================================================
+
+    // Get current period information
+    .get("/current-period", async ({ headers, set }) => {
+        try {
+            const currentPeriod = await currentPeriodService.getCurrentPeriod();
+
+            return {
+                success: true,
+                data: {
+                    month: currentPeriod.month,
+                    year: currentPeriod.year,
+                    display: `${getMonthName(currentPeriod.month)} ${currentPeriod.year}`,
+                    latest_trx_date: currentPeriod.latest_trx_date
+                }
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Current period error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to get current period"
+            };
+        }
+    })
+
+    // Check if a specific period is historical
+    .get("/is-historical/:month/:year", async ({ params, set }) => {
+        const { month, year } = params;
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+
+        try {
+            const currentPeriod = await currentPeriodService.getCurrentPeriod();
+            const requestedPeriod = yearNum * 100 + monthNum;
+            const currentPeriodValue = currentPeriod.year * 100 + currentPeriod.month;
+
+            const isHistorical = requestedPeriod < currentPeriodValue;
+
+            return {
+                success: true,
+                data: {
+                    month: monthNum,
+                    year: yearNum,
+                    is_historical: isHistorical,
+                    current_month: currentPeriod.month,
+                    current_year: currentPeriod.year
+                }
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Is historical check error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to check period"
+            };
+        }
+    })
+
+    // Get employee history timeline (all periods for an employee)
+    .get("/employee/:empCode", async ({ params, headers, query, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const { empCode } = params;
+        const startMonth = query.start_month ? parseInt(query.start_month) : undefined;
+        const startYear = query.start_year ? parseInt(query.start_year) : undefined;
+        const endMonth = query.end_month ? parseInt(query.end_month) : undefined;
+        const endYear = query.end_year ? parseInt(query.end_year) : undefined;
+
+        try {
+            const db = historyDatabaseService.getPayrollDatabase();
+
+            let sql = `
+                SELECT
+                    phd.*,
+                    g.Description as gang_description,
+                    d.Description as division_description
+                FROM dbo.payroll_history_detail phd
+                LEFT JOIN HR_GANG g ON phd.gang_code = g.GangCode
+                LEFT JOIN HR_DIVISION d ON phd.division_code = d.DivCode
+                WHERE phd.emp_code = ?
+            `;
+            const params: any[] = [empCode];
+
+            if (startMonth && startYear) {
+                sql += ` AND (phd.period_year * 100 + phd.period_month) >= ?`;
+                params.push(startYear * 100 + startMonth);
+            }
+            if (endMonth && endYear) {
+                sql += ` AND (phd.period_year * 100 + phd.period_month) <= ?`;
+                params.push(endYear * 100 + endMonth);
+            }
+
+            sql += ` ORDER BY phd.period_year DESC, phd.period_month DESC`;
+
+            const records = await db.query(sql, params);
+
+            return {
+                success: true,
+                data: records,
+                count: records.length
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Employee history error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch employee history"
+            };
+        }
+    }, {
+        query: t.Object({
+            start_month: t.Optional(t.String()),
+            start_year: t.Optional(t.String()),
+            end_month: t.Optional(t.String()),
+            end_year: t.Optional(t.String())
+        })
+    })
+
+    // Get employee detail for a specific period
+    .get("/employee/:empCode/period/:month/:year", async ({ params, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const { empCode, month, year } = params;
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+
+        try {
+            const db = historyDatabaseService.getPayrollDatabase();
+
+            const record = await db.queryOne(`
+                SELECT
+                    phd.*,
+                    g.Description as gang_description,
+                    d.Description as division_description
+                FROM dbo.payroll_history_detail phd
+                LEFT JOIN HR_GANG g ON phd.gang_code = g.GangCode
+                LEFT JOIN HR_DIVISION d ON phd.division_code = d.DivCode
+                WHERE phd.emp_code = ? AND phd.period_month = ? AND phd.period_year = ?
+            `, [empCode, monthNum, yearNum]);
+
+            if (!record) {
+                set.status = 404;
+                return {
+                    success: false,
+                    error: "Employee record not found for this period"
+                };
+            }
+
+            // Parse lembur_records if it's a JSON string
+            if (record.lembur_records && typeof record.lembur_records === 'string') {
+                try {
+                    record.lembur_records = JSON.parse(record.lembur_records);
+                } catch (e) {
+                    record.lembur_records = [];
+                }
+            }
+
+            // Parse premi_detail if it's a JSON string
+            if (record.premi_detail && typeof record.premi_detail === 'string') {
+                try {
+                    record.premi_detail = JSON.parse(record.premi_detail);
+                } catch (e) {
+                    record.premi_detail = {};
+                }
+            }
+
+            // Parse shortage_details if it's a JSON string
+            if (record.shortage_details && typeof record.shortage_details === 'string') {
+                try {
+                    record.shortage_details = JSON.parse(record.shortage_details);
+                } catch (e) {
+                    record.shortage_details = [];
+                }
+            }
+
+            return {
+                success: true,
+                data: record
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Employee period detail error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch employee detail"
+            };
+        }
+    })
+
+    // Get gang history for a specific period (all employees)
+    .get("/gang/:gangCode/period/:month/:year", async ({ params, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const { gangCode, month, year } = params;
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+
+        try {
+            const db = historyDatabaseService.getPayrollDatabase();
+
+            const employees = await db.query(`
+                SELECT
+                    phd.*,
+                    g.Description as gang_description,
+                    d.Description as division_description
+                FROM dbo.payroll_history_detail phd
+                LEFT JOIN HR_GANG g ON phd.gang_code = g.GangCode
+                LEFT JOIN HR_DIVISION d ON phd.division_code = d.DivCode
+                WHERE phd.gang_code = ? AND phd.period_month = ? AND phd.period_year = ?
+                ORDER BY phd.emp_code
+            `, [gangCode, monthNum, yearNum]);
+
+            return {
+                success: true,
+                data: employees,
+                count: employees.length
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Gang period history error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch gang history"
             };
         }
     });
