@@ -1,256 +1,286 @@
-/**
- * SalaryHistoryTable Component (Fixed Version)
- *
- * Displays employee salary history in a table format similar to daftar upah
- * Uses the existing payroll endpoint for reliable data fetching
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getEmployeeHistory } from '../../services/employeeDetailService';
 import './SalaryHistoryTable.css';
 
-export function SalaryHistoryTable({ empCode, onPeriodClick, compact = false, months = 12 }) {
-    const { token } = useAuth();
-    const [history, setHistory] = useState([]);
+/**
+ * SalaryHistoryTable - Comprehensive tabular view of salary history
+ * Displays all daftar upah fields in a structured table with sortable columns.
+ */
+export default function SalaryHistoryTable({ empCode, months = 12 }) {
+    const [historyData, setHistoryData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [sortConfig, setSortConfig] = useState({ key: 'period_year', direction: 'desc' });
+    const [sortField, setSortField] = useState('period_year');
+    const [sortDir, setSortDir] = useState('desc');
+    const [expandedColumns, setExpandedColumns] = useState({
+        absensi: false,
+        tunjangan: false,
+        potongan: false,
+        pajak: false,
+    });
+    const { token } = useAuth();
 
     useEffect(() => {
-        async function loadHistory() {
-            if (!token || !empCode) {
-                setLoading(false);
-                return;
-            }
+        if (!empCode || !token) return;
+        setLoading(true);
+        setError(null);
+        getEmployeeHistory(token, empCode, { months, includeCurrent: false })
+            .then(res => setHistoryData(res.data || []))
+            .catch(err => setError(err.message || 'Failed to load data'))
+            .finally(() => setLoading(false));
+    }, [empCode, months, token]);
 
-            setLoading(true);
-            setError(null);
-
-            try {
-                const response = await getEmployeeHistory(token, empCode, { months, includeCurrent: false });
-                console.log('[SalaryHistoryTable] History response:', response);
-
-                if (response.success && response.data) {
-                    // Sort by period (most recent first)
-                    const sorted = [...response.data].sort((a, b) => {
-                        const periodA = a.period_year * 100 + a.period_month;
-                        const periodB = b.period_year * 100 + b.period_month;
-                        return periodB - periodA;
-                    });
-                    setHistory(sorted);
-                } else {
-                    setError(response.error || 'Failed to load history');
-                }
-            } catch (err) {
-                console.error('[SalaryHistoryTable] Error:', err);
-                setError(err.message || 'Failed to load history');
-            } finally {
-                setLoading(false);
-            }
-        }
-
-        loadHistory();
-    }, [token, empCode, months]);
-
-    const handleSort = (key) => {
-        let direction = 'asc';
-        if (sortConfig.key === key && sortConfig.direction === 'asc') {
-            direction = 'desc';
-        }
-        setSortConfig({ key, direction });
-
-        const sorted = [...history].sort((a, b) => {
-            let valA = a[key];
-            let valB = b[key];
-
-            if (key === 'period') {
-                valA = a.period_year * 100 + a.period_month;
-                valB = b.period_year * 100 + b.period_month;
-            }
-
-            if (valA < valB) return direction === 'asc' ? -1 : 1;
-            if (valA > valB) return direction === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        setHistory(sorted);
+    const fmt = (value) => {
+        if (value === null || value === undefined || value === '') return '-';
+        const num = Number(value);
+        if (isNaN(num)) return value;
+        if (num === 0) return '0';
+        return new Intl.NumberFormat('id-ID').format(Math.round(num));
     };
 
-    const handleRowClick = (record) => {
-        if (onPeriodClick) {
-            onPeriodClick(record);
+    const sorted = useMemo(() => {
+        if (!historyData.length) return [];
+        return [...historyData].sort((a, b) => {
+            let aVal = a[sortField];
+            let bVal = b[sortField];
+            if (sortField === 'period_year') {
+                aVal = a.period_year * 100 + a.period_month;
+                bVal = b.period_year * 100 + b.period_month;
+            }
+            if (typeof aVal === 'string') {
+                return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            }
+            return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+        });
+    }, [historyData, sortField, sortDir]);
+
+    const totals = useMemo(() => {
+        if (!historyData.length) return {};
+        const sum = (field) => historyData.reduce((acc, r) => acc + (Number(r[field]) || 0), 0);
+        return {
+            gaji_pokok: sum('gaji_pokok'),
+            total_tunjangan: sum('total_tunjangan'),
+            lembur_jumlah: sum('lembur_jumlah'),
+            total_premi: sum('total_premi'),
+            total_potongan: sum('total_potongan'),
+            jumlah_upah_kotor: sum('jumlah_upah_kotor'),
+            upah_bersih: sum('upah_bersih'),
+        };
+    }, [historyData]);
+
+    const handleSort = (field) => {
+        if (sortField === field) {
+            setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortDir('desc');
         }
+    };
+
+    const toggleColumnGroup = (group) => {
+        setExpandedColumns(prev => ({ ...prev, [group]: !prev[group] }));
+    };
+
+    const SortIcon = ({ field }) => {
+        if (sortField !== field) return <span className="sht-sort-icon">⇅</span>;
+        return <span className="sht-sort-icon active">{sortDir === 'asc' ? '↑' : '↓'}</span>;
     };
 
     if (loading) {
         return (
-            <div className="salary-history-table-wrapper loading">
-                <div className="table-loading">
-                    <div className="spinner"></div>
-                    <p>Memuat riwayat gaji...</p>
-                </div>
+            <div className="sht-table-container sht-table-loading">
+                <div className="sht-spinner" />
+                <p>Loading salary history...</p>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="salary-history-table-wrapper error">
-                <div className="error-content">
-                    <p>❌ {error}</p>
-                    <p className="error-hint">Pastikan data periode sebelumnya sudah tersedia.</p>
-                </div>
+            <div className="sht-table-container sht-table-error">
+                <p>⚠ {error}</p>
             </div>
         );
     }
 
-    if (history.length === 0) {
+    if (!historyData.length) {
         return (
-            <div className="salary-history-table-wrapper empty">
-                <p>📋 Tidak ada riwayat gaji ditemukan</p>
-                <p className="empty-hint">Data riwayat akan muncul setelah periode berakhir selesai.</p>
+            <div className="sht-table-container sht-table-empty">
+                <p>📭 No salary history data available</p>
             </div>
         );
     }
-
-    // Calculate totals
-    const totals = history.reduce((acc, record) => ({
-        jumlah_hk: acc.jumlah_hk + (record.jumlah_hk || 0),
-        gaji_pokok: acc.gaji_pokok + (record.gaji_pokok || 0),
-        tunjangan: acc.tunjangan + (record.total_tunjangan || 0),
-        lembur: acc.lembur + (record.lembur_jumlah || 0),
-        premi: acc.premi + (record.total_premi || 0),
-        potongan: acc.potongan + (record.total_potongan || 0),
-        upah_bersih: acc.upah_bersih + (record.upah_bersih || 0)
-    }), {
-        jumlah_hk: 0,
-        gaji_pokok: 0,
-        tunjangan: 0,
-        lembur: 0,
-        premi: 0,
-        potongan: 0,
-        upah_bersih: 0
-    });
 
     return (
-        <div className="salary-history-table-wrapper">
-            <div className="table-header">
-                <h3>📊 Riwayat Gaji ({history.length} Periode)</h3>
-                <div className="table-summary">
-                    <span>Rata-rata: <strong>{formatCompact(totals.upah_bersih / history.length)}</strong></span>
-                    <span className="separator">|</span>
-                    <span>Total: <strong>{formatCompact(totals.upah_bersih)}</strong></span>
+        <div className="sht-table-container">
+            <div className="sht-table-toolbar">
+                <div className="sht-table-info">
+                    📊 {historyData.length} periode dimuat
+                </div>
+                <div className="sht-column-toggles">
+                    {Object.entries({
+                        absensi: '📋 Absensi',
+                        tunjangan: '🎁 Tunjangan',
+                        potongan: '📉 Potongan Detail',
+                        pajak: '🏛️ Pajak'
+                    }).map(([key, label]) => (
+                        <button
+                            key={key}
+                            className={`sht-toggle-btn ${expandedColumns[key] ? 'active' : ''}`}
+                            onClick={() => toggleColumnGroup(key)}
+                        >
+                            {label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            <div className="table-responsive">
-                <table className={`salary-history-table ${compact ? 'compact' : ''}`}>
+            <div className="sht-table-scroll">
+                <table className="sht-table">
                     <thead>
                         <tr>
-                            <th rowSpan="2" className="sortable" onClick={() => handleSort('period')}>
-                                Periode {sortConfig.key === 'period' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                            <th onClick={() => handleSort('period_year')} className="sht-th-sticky">
+                                Periode <SortIcon field="period_year" />
                             </th>
-                            <th rowSpan="2">Gang</th>
-                            <th colSpan="2">Absensi</th>
-                            <th rowSpan="2" className="sortable" onClick={() => handleSort('gaji_pokok')}>
-                                Gaji Pokok {sortConfig.key === 'gaji_pokok' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                            <th>Gang</th>
+
+                            {/* Absensi */}
+                            <th onClick={() => handleSort('jumlah_hk')}>HK <SortIcon field="jumlah_hk" /></th>
+                            {expandedColumns.absensi && <>
+                                <th>Hari Kerja</th>
+                                <th>Jam Kerja</th>
+                                <th>CT</th>
+                                <th>CS</th>
+                                <th>CM</th>
+                                <th>CN</th>
+                            </>}
+
+                            {/* Penggajian */}
+                            <th>Upah Dasar</th>
+                            <th onClick={() => handleSort('gaji_pokok')}>Gaji Pokok <SortIcon field="gaji_pokok" /></th>
+
+                            {/* Tunjangan */}
+                            {expandedColumns.tunjangan && <>
+                                <th>Beras</th>
+                                <th>Jabatan</th>
+                                <th>Masa Kerja</th>
+                            </>}
+                            <th onClick={() => handleSort('total_tunjangan')}>Tot. Tunj. <SortIcon field="total_tunjangan" /></th>
+
+                            {/* Lembur & Premi */}
+                            <th onClick={() => handleSort('lembur_jumlah')}>Lembur <SortIcon field="lembur_jumlah" /></th>
+                            <th onClick={() => handleSort('total_premi')}>Premi <SortIcon field="total_premi" /></th>
+
+                            {/* Potongan */}
+                            {expandedColumns.potongan && <>
+                                <th>SPSI</th>
+                                <th>PPH21</th>
+                                <th>ASTEK</th>
+                                <th>BPJS Kes</th>
+                                <th>BPJS Pens</th>
+                                <th>Koreksi</th>
+                            </>}
+                            <th onClick={() => handleSort('total_potongan')}>Tot. Pot. <SortIcon field="total_potongan" /></th>
+
+                            {/* Pajak */}
+                            {expandedColumns.pajak && <>
+                                <th>PTKP</th>
+                                <th>TER</th>
+                                <th>Tarif %</th>
+                                <th>PPH21 TER</th>
+                            </>}
+
+                            {/* Totals */}
+                            <th onClick={() => handleSort('jumlah_upah_kotor')}>Upah Kotor <SortIcon field="jumlah_upah_kotor" /></th>
+                            <th onClick={() => handleSort('upah_bersih')} className="sht-th-net">
+                                Upah Bersih <SortIcon field="upah_bersih" />
                             </th>
-                            <th colSpan="3">Tunjangan</th>
-                            <th rowSpan="2" className="sortable" onClick={() => handleSort('total_tunjangan')}>
-                                Total {sortConfig.key === 'total_tunjangan' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                            </th>
-                            <th colSpan="2">Lembur</th>
-                            <th rowSpan="2">Premi</th>
-                            <th rowSpan="2">Potongan</th>
-                            <th rowSpan="2" className="sortable highlight" onClick={() => handleSort('upah_bersih')}>
-                                Upah Bersih {sortConfig.key === 'upah_bersih' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                            </th>
-                        </tr>
-                        <tr>
-                            <th className="sortable" onClick={() => handleSort('jumlah_hk')}>
-                                HK {sortConfig.key === 'jumlah_hk' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                            </th>
-                            <th>Hari</th>
-                            <th>Beras</th>
-                            <th>Jabatan</th>
-                            <th>Masa Kerja</th>
-                            <th>Jam</th>
-                            <th>Jumlah</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {history.map((record, index) => {
-                            const periodLabel = `${getMonthIndo(record.period_month).substring(0, 3)} ${record.period_year}`;
+                        {sorted.map((row, idx) => (
+                            <tr key={`${row.period_year}_${row.period_month}`}>
+                                <td className="sht-td-period">{row.period_label}</td>
+                                <td className="sht-td-gang">{row.gang_code || '-'}</td>
 
-                            return (
-                                <tr
-                                    key={record.id || index}
-                                    className="history-row"
-                                    onClick={() => handleRowClick(record)}
-                                >
-                                    <td className="period-cell">
-                                        <span className="period-badge">{periodLabel}</span>
-                                    </td>
-                                    <td className="gang-cell">{record.gang_code}</td>
-                                    <td className="number-cell">{record.jumlah_hk || 0}</td>
-                                    <td className="number-cell">{record.hari_kerja || 0}</td>
-                                    <td className="number-cell">{formatCompact(record.beras_jumlah)}</td>
-                                    <td className="number-cell">{formatCompact(record.jabatan_jumlah)}</td>
-                                    <td className="number-cell">{formatCompact(record.masa_kerja_jumlah)}</td>
-                                    <td className="number-cell total-cell">{formatCompact(record.total_tunjangan)}</td>
-                                    <td className="number-cell">{record.lembur_jam || 0}</td>
-                                    <td className="number-cell">{formatCompact(record.lembur_jumlah)}</td>
-                                    <td className="number-cell">{formatCompact(record.total_premi)}</td>
-                                    <td className="number-cell">{formatCompact(record.total_potongan)}</td>
-                                    <td className="number-cell highlight-cell">{formatCompact(record.upah_bersih)}</td>
-                                </tr>
-                            );
-                        })}
+                                {/* Absensi */}
+                                <td className="sht-td-num">{row.jumlah_hk || 0}</td>
+                                {expandedColumns.absensi && <>
+                                    <td className="sht-td-num sht-td-dim">{row.hari_kerja || 0}</td>
+                                    <td className="sht-td-num sht-td-dim">{fmt(row.total_jam_kerja)}</td>
+                                    <td className="sht-td-num sht-td-dim">{row.cuti_tahunan_hari || 0}</td>
+                                    <td className="sht-td-num sht-td-dim">{row.cuti_sakit_haid_hari || 0}</td>
+                                    <td className="sht-td-num sht-td-dim">{row.cuti_minggu_hari || 0}</td>
+                                    <td className="sht-td-num sht-td-dim">{row.cuti_nasional_hari || 0}</td>
+                                </>}
+
+                                {/* Penggajian */}
+                                <td className="sht-td-num sht-td-dim">{fmt(row.upah_dasar)}</td>
+                                <td className="sht-td-num">{fmt(row.gaji_pokok)}</td>
+
+                                {/* Tunjangan */}
+                                {expandedColumns.tunjangan && <>
+                                    <td className="sht-td-num sht-td-dim">{fmt(row.beras_jumlah)}</td>
+                                    <td className="sht-td-num sht-td-dim">{fmt(row.jabatan_jumlah)}</td>
+                                    <td className="sht-td-num sht-td-dim">{fmt(row.masa_kerja_jumlah)}</td>
+                                </>}
+                                <td className="sht-td-num">{fmt(row.total_tunjangan)}</td>
+
+                                {/* Lembur & Premi */}
+                                <td className="sht-td-num">{fmt(row.lembur_jumlah)}</td>
+                                <td className="sht-td-num">{fmt(row.total_premi)}</td>
+
+                                {/* Potongan */}
+                                {expandedColumns.potongan && <>
+                                    <td className="sht-td-num sht-td-neg">{fmt(row.pot_spsi)}</td>
+                                    <td className="sht-td-num sht-td-neg">{fmt(row.pot_pph21)}</td>
+                                    <td className="sht-td-num sht-td-neg">{fmt(row.pot_astek_pekerja || row.pot_astek)}</td>
+                                    <td className="sht-td-num sht-td-neg">{fmt(row.pot_bpjs_kesehatan_pekerja)}</td>
+                                    <td className="sht-td-num sht-td-neg">{fmt(row.pot_bpjs_pensiun_pekerja)}</td>
+                                    <td className="sht-td-num sht-td-neg">{fmt(row.pot_koreksi)}</td>
+                                </>}
+                                <td className="sht-td-num sht-td-neg">{fmt(row.total_potongan)}</td>
+
+                                {/* Pajak */}
+                                {expandedColumns.pajak && <>
+                                    <td className="sht-td-dim">{row.status_ptkp || '-'}</td>
+                                    <td className="sht-td-dim">{row.kategori_ter || '-'}</td>
+                                    <td className="sht-td-num sht-td-dim">{row.tarif_pajak_ter || 0}%</td>
+                                    <td className="sht-td-num sht-td-dim">{fmt(row.pph21_ter)}</td>
+                                </>}
+
+                                {/* Totals */}
+                                <td className="sht-td-num">{fmt(row.jumlah_upah_kotor)}</td>
+                                <td className="sht-td-num sht-td-net">{fmt(row.upah_bersih)}</td>
+                            </tr>
+                        ))}
                     </tbody>
                     <tfoot>
-                        <tr className="footer-row">
-                            <td colSpan="3"><strong>TOTAL ({history.length})</strong></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td className="number-cell"><strong>{formatCompact(totals.total_tunjangan)}</strong></td>
-                            <td></td>
-                            <td className="number-cell"><strong>{formatCompact(totals.lembur)}</strong></td>
-                            <td className="number-cell"><strong>{formatCompact(totals.premi)}</strong></td>
-                            <td className="number-cell"><strong>{formatCompact(totals.potongan)}</strong></td>
-                            <td className="number-cell highlight-cell"><strong>{formatCompact(totals.upah_bersih)}</strong></td>
+                        <tr className="sht-totals-row">
+                            <td colSpan={2 + (expandedColumns.absensi ? 6 : 0)}>TOTAL</td>
+
+                            <td className="sht-td-num">{expandedColumns.absensi ? '' : ''}</td>
+                            <td className="sht-td-num">{fmt(totals.gaji_pokok)}</td>
+                            <td className="sht-td-num">{fmt(totals.gaji_pokok)}</td>
+
+                            {expandedColumns.tunjangan && <td colSpan={3}></td>}
+                            <td className="sht-td-num">{fmt(totals.total_tunjangan)}</td>
+
+                            <td className="sht-td-num">{fmt(totals.lembur_jumlah)}</td>
+                            <td className="sht-td-num">{fmt(totals.total_premi)}</td>
+
+                            {expandedColumns.potongan && <td colSpan={6}></td>}
+                            <td className="sht-td-num sht-td-neg">{fmt(totals.total_potongan)}</td>
+
+                            {expandedColumns.pajak && <td colSpan={4}></td>}
+
+                            <td className="sht-td-num">{fmt(totals.jumlah_upah_kotor)}</td>
+                            <td className="sht-td-num sht-td-net">{fmt(totals.upah_bersih)}</td>
                         </tr>
                     </tfoot>
                 </table>
             </div>
-
-            <div className="table-footer-note">
-                <small>💡 Klik pada baris untuk melihat detail lengkap periode tersebut</small>
-            </div>
         </div>
     );
 }
-
-function getMonthIndo(month) {
-    const months = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-    ];
-    return months[month - 1] || '';
-}
-
-function formatCompact(value) {
-    if (!value || value === 0) return '-';
-    if (value >= 1000000) {
-        return (value / 1000000).toFixed(1) + 'jt';
-    }
-    if (value >= 1000) {
-        return (value / 1000).toFixed(0) + 'rb';
-    }
-    return value.toLocaleString('id-ID');
-}
-
-export default SalaryHistoryTable;

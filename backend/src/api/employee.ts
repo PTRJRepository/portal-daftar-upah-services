@@ -30,7 +30,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     // ========================
     // STATIC ROUTES FIRST (before parameterized routes)
     // ========================
-    
+
     // --- List Employees by Gang ---
     .get("/list", async ({ query }) => {
         const employees = await employeeRepository.list({
@@ -200,7 +200,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     // ========================
     // PARAMETERIZED ROUTES (after static routes)
     // ========================
-    
+
     // --- Get Employee by NIK ---
     .get("/by-nik/:nik", async ({ params, set }) => {
         const employee = await employeeRepository.getByNik(params.nik);
@@ -353,53 +353,37 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
                     );
 
                     if (!result.error && result.payroll_data) {
-                        // Extract key data from payroll_data
                         const data = result.payroll_data;
+
+                        // Spread ALL payroll_data fields (PayrollRow has 80+ fields)
+                        // This ensures frontend gets complete daftar upah data including:
+                        // PPH21, BPJS breakdown, pay rates, koreksi, premi detail, etc.
                         results.push({
+                            // Period metadata
                             period_month: period.month,
                             period_year: period.year,
                             period_label: `${getMonthName(period.month)} ${period.year}`,
+
+                            // Spread ALL payroll data fields
+                            ...data,
+
+                            // Override/ensure key identity fields
                             emp_code: empCode,
-                            nik: empCode,
+                            nik: data.nik || empCode,
                             nama: data.nama || data.emp_name || '-',
-                            gang_code: data.gang_code || '-',
-                            loc_code: data.loc_code || '-',
-                            division: data.division || '-',
-                            // Absensi
-                            jumlah_hk: data.jumlah_hk || 0,
-                            hari_kerja: data.hari_kerja || 0,
-                            kehadiran: data.kehadiran || 0,
-                            // Tunjangan
-                            beras_rate: data.beras_rate || 0,
-                            beras_jumlah: data.beras_jumlah || 0,
-                            jabatan_rate: data.jabatan_rate || 0,
-                            jabatan_jumlah: data.jabatan_jumlah || 0,
-                            masa_kerja_rate: data.masa_kerja_rate || 0,
-                            masa_kerja_jumlah: data.masa_kerja_jumlah || 0,
-                            total_tunjangan: (data.beras_jumlah || 0) +
-                                           (data.jabatan_jumlah || 0) +
-                                           (data.masa_kerja_jumlah || 0),
-                            // Gaji Pokok
-                            gaji_pokok: data.gaji_pokok || data.upah_pokok || 0,
-                            upah_dasar: data.upah_dasar || 0,
-                            // Lembur
-                            lembur_jam: data.lembur_jam || 0,
-                            lembur_jumlah: data.lembur_jumlah || data.lembur_rupiah || 0,
-                            // Premi
-                            premi_brondol: data.premi_brondol || 0,
-                            premi_pruning: data.premi_pruning || 0,
-                            total_premi: data.total_premi || 0,
-                            // Potongan
-                            pot_bpjs: data.pot_bpjs_pekerja_total || 0,
-                            pot_astek: data.pot_astek || 0,
-                            pot_spsi: data.pot_spsi || 0,
-                            pot_pph21: data.pot_pph21 || 0,
-                            total_potongan: data.total_potongan || 0,
-                            // Total
-                            upah_kotor: data.jumlah_upah_kotor || data.upah_kotor || 0,
-                            upah_bersih: data.upah_bersih || 0,
-                            // Raw data for detail view
-                            raw_data: result
+
+                            // Attendance summary from checkroll
+                            attendance_summary: result.attendance?.summary || null,
+                            cuti_tahunan_hari: data.cuti_tahunan_hari || result.attendance?.summary?.cuti_tahunan || 0,
+                            cuti_sakit_haid_hari: data.cuti_sakit_haid_hari || result.attendance?.summary?.cuti_sakit || 0,
+                            cuti_minggu_hari: data.cuti_minggu_hari || result.attendance?.summary?.cuti_minggu || 0,
+                            cuti_nasional_hari: data.cuti_nasional_hari || result.attendance?.summary?.libur || 0,
+
+                            // Overtime summary from checkroll
+                            overtime_summary: result.overtime?.summary || null,
+
+                            // Harvest summary from checkroll
+                            harvest_summary: result.harvest?.summary || null,
                         });
                     }
                 } catch (err) {

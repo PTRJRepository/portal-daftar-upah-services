@@ -11,7 +11,8 @@
 import React, { useState } from 'react';
 import { usePeriodInfo } from '../../hooks/useCurrentPeriod';
 import EmployeeDetailPage from './EmployeeDetailPage';
-import { SalaryHistoryTimeline } from './SalaryHistoryTimeline';
+import SalaryHistoryTimeline from './SalaryHistoryTimeline';
+import SalaryHistoryTable from './SalaryHistoryTable';
 import { EmployeeTrendsCharts } from './EmployeeTrendsCharts';
 import { PeriodComparison } from './PeriodComparison';
 import './EmployeeHistoryPage.css';
@@ -24,6 +25,7 @@ export default function EmployeeHistoryPage({
     onBack
 }) {
     const [activeTab, setActiveTab] = useState('current');
+    const [historyView, setHistoryView] = useState('timeline'); // 'timeline' or 'table'
     const { currentPeriod, isHistorical, periodType } = usePeriodInfo(month, year);
 
     const empCode = employeeData?.nik || employeeData?.NIK || '';
@@ -38,6 +40,7 @@ export default function EmployeeHistoryPage({
     const tabs = [
         { id: 'current', label: '📋 Periode Ini', visible: true },
         { id: 'history', label: '📜 Riwayat Gaji', visible: true },
+        { id: 'history_table', label: '📊 Tabel Gaji', visible: true },
         { id: 'trends', label: '📈 Tren & Statistik', visible: true },
         { id: 'comparison', label: '⚖️ Perbandingan', visible: true }
     ];
@@ -101,17 +104,13 @@ export default function EmployeeHistoryPage({
 
                 {activeTab === 'history' && (
                     <div className="tab-pane">
-                        <SalaryHistoryTimeline
-                            empCode={empCode}
-                            onPeriodClick={(record) => {
-                                // Navigate to the selected period
-                                if (onBack) {
-                                    onBack();
-                                }
-                                // In a real implementation, you'd update the parent's month/year state
-                                console.log('Navigate to period:', record.period_month, record.period_year);
-                            }}
-                        />
+                        <SalaryHistoryTimeline empCode={empCode} months={12} />
+                    </div>
+                )}
+
+                {activeTab === 'history_table' && (
+                    <div className="tab-pane">
+                        <SalaryHistoryTable empCode={empCode} months={12} />
                     </div>
                 )}
 

@@ -1,240 +1,200 @@
-/* SalaryHistoryTable Styles */
+/* ============================================================
+   SalaryHistoryTable - Premium Dark Design
+   ============================================================ */
 
-.salary-history-table-wrapper {
-    margin: 20px 0;
+.sht-table-container {
+    font-family: 'Inter', 'Segoe UI', -apple-system, sans-serif;
+    color: #e2e8f0;
 }
 
-/* Loading State */
-.table-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
+.sht-table-loading,
+.sht-table-error,
+.sht-table-empty {
     text-align: center;
+    padding: 48px 24px;
+    background: rgba(30, 41, 59, 0.5);
+    border-radius: 12px;
+    color: #94a3b8;
 }
 
-.table-loading .spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #e5e7eb;
-    border-top-color: #3b82f6;
+.sht-table-loading .sht-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(148, 163, 184, 0.2);
+    border-top-color: #60a5fa;
     border-radius: 50%;
-    margin: 0 auto 15px;
-    animation: spin 1s linear infinite;
+    margin: 0 auto 16px;
+    animation: sht-spin 0.8s linear infinite;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
+@keyframes sht-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
-/* Error & Empty States */
-.salary-history-table-wrapper.error,
-.salary-history-table-wrapper.empty {
-    padding: 40px;
-    text-align: center;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    border-radius: 8px;
-}
-
-.salary-history-table-wrapper.empty {
-    background: #f9fafb;
-    border-color: #e5e7eb;
-}
-
-/* Table Header */
-.table-header {
+/* Toolbar */
+.sht-table-toolbar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
-    padding: 15px 20px;
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    border-radius: 8px 8px 0 0;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(30, 41, 59, 0.6);
+    border-radius: 10px 10px 0 0;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-bottom: none;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
-.table-header h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #fff;
+.sht-table-info {
+    font-size: 0.82rem;
+    color: #94a3b8;
 }
 
-.table-summary {
-    font-size: 0.9rem;
-    color: #dbeafe;
+.sht-column-toggles {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
 }
 
-.table-summary strong {
-    color: #fff;
-}
-
-/* Table Container */
-.table-responsive {
-    overflow-x: auto;
-    border: 1px solid #e5e7eb;
-    border-top: none;
-}
-
-.salary-history-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
-    background: #fff;
-}
-
-.salary-history-table thead {
-    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.salary-history-table th {
-    padding: 10px 8px;
-    text-align: center;
-    font-weight: 600;
-    color: #374151;
-    border: 1px solid #d1d5db;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.salary-history-table th.sortable {
+.sht-toggle-btn {
+    font-size: 0.72rem;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(30, 41, 59, 0.5);
+    color: #94a3b8;
     cursor: pointer;
-    user-select: none;
-}
-
-.salary-history-table th.sortable:hover {
-    background: #e2e8f0;
-}
-
-.salary-history-table tbody tr.history-row {
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.salary-history-table tbody tr.history-row:hover {
-    background: linear-gradient(90deg, #eff6ff, #f0fdf4);
-    transform: scale(1.005);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
-}
-
-.salary-history-table tbody tr:nth-child(even) {
-    background: #fafafa;
-}
-
-.salary-history-table tbody tr:nth-child(even):hover {
-    background: linear-gradient(90deg, #eff6ff, #f0fdf4);
-}
-
-.salary-history-table td {
-    padding: 8px 6px;
-    border: 1px solid #e5e7eb;
-}
-
-.salary-history-table .number-cell {
-    text-align: right;
-    font-family: 'Courier New', monospace;
+    transition: all 0.15s;
     font-weight: 500;
 }
 
-/* Period Cell */
-.period-cell {
-    text-align: center;
+.sht-toggle-btn:hover {
+    border-color: rgba(96, 165, 250, 0.4);
+    color: #cbd5e1;
 }
 
-.period-badge {
-    display: inline-block;
-    padding: 4px 10px;
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    color: #fff;
-    border-radius: 12px;
-    font-weight: 700;
-    font-size: 0.8rem;
-    min-width: 60px;
+.sht-toggle-btn.active {
+    background: rgba(96, 165, 250, 0.15);
+    border-color: rgba(96, 165, 250, 0.4);
+    color: #60a5fa;
 }
 
-/* Gang Cell */
-.gang-cell {
-    text-align: center;
+/* Table Scroll */
+.sht-table-scroll {
+    overflow-x: auto;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 0 0 10px 10px;
+}
+
+/* Table */
+.sht-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+.sht-table thead tr {
+    background: rgba(15, 23, 42, 0.7);
+}
+
+.sht-table th {
+    padding: 10px 12px;
+    text-align: left;
     font-weight: 600;
-    color: #4b5563;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 2px solid rgba(148, 163, 184, 0.1);
+    transition: color 0.15s;
 }
 
-/* Total Cell */
-.total-cell {
-    font-weight: 700;
-    color: #059669;
+.sht-table th:hover {
+    color: #e2e8f0;
 }
 
-/* Highlight Cell */
-.highlight-cell {
-    font-weight: 700;
-    color: #dc2626;
-    background: linear-gradient(135deg, #fef2f2, #fee2e2);
+.sht-th-net {
+    color: #34d399 !important;
 }
 
-/* Footer */
-.salary-history-table tfoot {
-    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+.sht-sort-icon {
+    font-size: 0.65rem;
+    margin-left: 4px;
+    opacity: 0.3;
 }
 
-.salary-history-table tfoot td {
-    padding: 12px 8px;
-    border: 1px solid #d1d5db;
+.sht-sort-icon.active {
+    opacity: 1;
+    color: #60a5fa;
+}
+
+/* Table Body */
+.sht-table tbody tr {
+    background: rgba(30, 41, 59, 0.3);
+    transition: background 0.15s;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+.sht-table tbody tr:hover {
+    background: rgba(51, 65, 85, 0.4);
+}
+
+.sht-table tbody tr:nth-child(even) {
+    background: rgba(30, 41, 59, 0.5);
+}
+
+.sht-table td {
+    padding: 8px 12px;
+    white-space: nowrap;
+}
+
+.sht-td-period {
     font-weight: 600;
+    color: #cbd5e1;
 }
 
-.footer-row td {
-    text-align: center;
+.sht-td-gang {
+    color: #34d399;
+    font-weight: 500;
 }
 
-/* Table Footer Note */
-.table-footer-note {
-    padding: 10px 15px;
-    background: #fef3c7;
-    border: 1px solid #fcd34d;
-    border-radius: 0 0 8px 8px;
-    text-align: center;
+.sht-td-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
 }
 
-.table-footer-note small {
-    color: #92400e;
+.sht-td-dim {
+    opacity: 0.5;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .table-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-    }
-
-    .salary-history-table {
-        font-size: 0.7rem;
-    }
-
-    .salary-history-table th,
-    .salary-history-table td {
-        padding: 6px 4px;
-    }
-
-    .period-badge {
-        font-size: 0.7rem;
-        padding: 3px 6px;
-        min-width: 50px;
-    }
+.sht-td-neg {
+    color: #f87171 !important;
 }
 
-/* Compact Mode */
-.salary-history-table-wrapper.compact .salary-history-table {
-    font-size: 0.8rem;
+.sht-td-net {
+    color: #34d399 !important;
+    font-weight: 700 !important;
+    font-size: 0.88rem;
 }
 
-.salary-history-table-wrapper.compact .salary-history-table th,
-.salary-history-table-wrapper.compact .salary-history-table td {
-    padding: 6px 4px;
+/* Footer / Totals */
+.sht-table tfoot {
+    background: rgba(15, 23, 42, 0.7);
+}
+
+.sht-totals-row td {
+    padding: 12px;
+    font-weight: 700;
+    color: #cbd5e1;
+    border-top: 2px solid rgba(96, 165, 250, 0.3);
+}
+
+.sht-totals-row .sht-td-net {
+    font-size: 0.95rem;
 }
