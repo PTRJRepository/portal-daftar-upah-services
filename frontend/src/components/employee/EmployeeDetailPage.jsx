@@ -513,13 +513,18 @@ export default function EmployeeDetailPage({
                                             color: isShort ? '#b91c1c' : statusStyle.text,
                                             border: isShort ? '1px solid #ef4444' : '1px solid #e5e7eb'
                                         }}
-                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''} (${hours} Jam)${isShort ? ' - Warning: Jam Kerja Kurang' : ''}`}
+                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''} (${hours} Jam)${dayData.amount ? ` - Rp ${formatCurrency(dayData.amount)}` : ''}${isShort ? ' - Warning: Jam Kerja Kurang' : ''}`}
                                     >
                                         <div className="calendar-date">{day}</div>
                                         <div className="calendar-status">{statusStyle.label}</div>
                                         {hours > 0 && (
                                             <div style={{ fontSize: '0.6rem', marginTop: '1px', fontWeight: 'bold' }}>
                                                 {hours} Jam {isShort && '⚠️'}
+                                            </div>
+                                        )}
+                                        {dayData.amount !== undefined && (
+                                            <div style={{ fontSize: '0.6rem', color: '#047857', fontWeight: 'bold' }}>
+                                                {dayData.amount > 0 ? `Rp ${formatCurrency(dayData.amount)}` : ''}
                                             </div>
                                         )}
                                     </div>
@@ -547,6 +552,78 @@ export default function EmployeeDetailPage({
                         </div>
                     </div>
                 </div>
+
+                {/* Daily Activity Details List (New) */}
+                {attendance.list && attendance.list.length > 0 && (
+                    <div className="matrix-card" style={{ marginTop: '1rem' }}>
+                        <div className="matrix-header" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                            <h3 style={{ color: '#0f172a', fontSize: '1rem' }}>📋 Rincian Aktivitas Harian (Regular)</h3>
+                            <div className="overtime-total">
+                                Total: <strong>{formatCurrency(attendance.list.reduce((sum, item) => sum + (item.amount || 0), 0))}</strong>
+                            </div>
+                        </div>
+                        <div className="overtime-list">
+                            <div className="overtime-summary-box">
+                                <table className="overtime-summary-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th>Status</th>
+                                            <th>Pekerjaan</th>
+                                            <th style={{ textAlign: 'center' }}>Jam</th>
+                                            <th style={{ textAlign: 'right' }}>Rate/Upah</th>
+                                            <th style={{ textAlign: 'right' }}>Jumlah</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {attendance.list.map((item, idx) => (
+                                            <tr key={idx}>
+                                                <td>
+                                                    {item.date ? new Date(item.date).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}
+                                                </td>
+                                                <td>
+                                                    <span className="legend-dot" style={{
+                                                        display: 'inline-block',
+                                                        width: '8px',
+                                                        height: '8px',
+                                                        borderRadius: '50%',
+                                                        marginRight: '6px',
+                                                        background: statusColors[item.status]?.bg || '#e5e7eb'
+                                                    }}></span>
+                                                    {statusColors[item.status]?.label === 'H' ? 'Hadir' : item.remarks || item.status}
+                                                </td>
+                                                <td>
+                                                    {item.task_desc}
+                                                    {item.task_code && <span style={{ color: '#94a3b8', fontSize: '0.8em', marginLeft: '4px' }}>({item.task_code})</span>}
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>{item.hours > 0 ? item.hours : '-'}</td>
+                                                <td style={{ textAlign: 'right', color: '#64748b' }}>
+                                                    {item.rate > 0 ? formatCurrency(item.rate) : '-'}
+                                                </td>
+                                                <td style={{ textAlign: 'right', fontWeight: '600' }}>
+                                                    {item.amount > 0 ? formatCurrency(item.amount) : '-'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style={{ fontWeight: 'bold', backgroundColor: '#f9fafb' }}>
+                                            <td colSpan="3">Total</td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                {attendance.list.reduce((sum, item) => sum + (item.hours || 0), 0)}
+                                            </td>
+                                            <td></td>
+                                            <td style={{ textAlign: 'right' }}>
+                                                {formatCurrency(attendance.list.reduce((sum, item) => sum + (item.amount || 0), 0))}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
 
                 {/* Overtime Matrix */}
                 <div className="matrix-card">
@@ -671,12 +748,12 @@ export default function EmployeeDetailPage({
 
                 {/* Salary History Table */}
                 <SalaryHistoryTable
+                    key={`sht-${empCode}-${Date.now()}`}
                     empCode={empCode}
                     months={12}
                     onPeriodClick={(record) => {
                         // Navigate to different period - could implement period switching
                         console.log('Navigate to period:', record.period_month, record.period_year);
-                        // For now, just log - you can implement navigation logic here
                     }}
                 />
             </div>

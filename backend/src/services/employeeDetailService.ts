@@ -13,6 +13,7 @@ export interface AttendanceDay {
     remarks: string;
     task_code?: string;
     hours?: number;
+    amount?: number; // Added amount field
     has_data: boolean;
 }
 
@@ -155,6 +156,7 @@ export class EmployeeDetailService {
         matrix: Record<number, AttendanceDay>;
         summary: AttendanceSummary;
         holidays: any[];
+        list: any[]; // New detailed list
     }> {
         const daysInMonth = new Date(year, month, 0).getDate();
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
@@ -190,23 +192,33 @@ export class EmployeeDetailService {
             };
         }
 
+        const attendanceList: any[] = [];
+
         try {
             // Query PR_TASKREGLN for attendance
+            // Added Amount, Rate, and description join
             const rows = await this.db.query<{
                 day_of_month: number;
                 TrxDate: string;
                 TaskCode: string;
+                TaskDesc: string;
                 Hours: number;
+                Amount: number;
+                Rate: number;
             }>(`
                 SELECT 
                     DAY(TrxDate) as day_of_month,
                     TrxDate,
                     TaskCode,
-                    Hours
+                    TaskDesc,
+                    Hours,
+                    Amount,
+                    Rate
                 FROM (
-                    SELECT trl.TrxDate, trl.TaskCode, trl.Hours
+                    SELECT trl.TrxDate, trl.TaskCode, tm.TaskDesc, trl.Hours, trl.Amount, trl.Rate
                     FROM PR_TASKREGLN trl
-                    JOIN PR_TASKREG tm ON trl.MasterID = tm.ID
+                    JOIN PR_TASKREG trh ON trl.MasterID = trh.ID
+                    LEFT JOIN PR_TASKCODE tm ON trl.TaskCode = tm.TaskCode
                     WHERE RTRIM(trl.EmpCode) = RTRIM(?)
                       AND trl.TrxDate >= ?
                       AND trl.TrxDate <= ?
@@ -214,9 +226,10 @@ export class EmployeeDetailService {
                     
                     UNION ALL
                     
-                    SELECT trl.TrxDate, trl.TaskCode, trl.Hours
+                    SELECT trl.TrxDate, trl.TaskCode, tm.TaskDesc, trl.Hours, trl.Amount, trl.Rate
                     FROM PR_TASKREGLN_ARC trl
-                    JOIN PR_TASKREG_ARC tm ON trl.MasterID = tm.ID
+                    JOIN PR_TASKREG_ARC trh ON trl.MasterID = trh.ID
+                    LEFT JOIN PR_TASKCODE tm ON trl.TaskCode = tm.TaskCode
                     WHERE RTRIM(trl.EmpCode) = RTRIM(?)
                       AND trl.TrxDate >= ?
                       AND trl.TrxDate <= ?
@@ -228,9 +241,25 @@ export class EmployeeDetailService {
             const daysWithData = new Set<number>();
             let maxDataDay = 0;
 
+            // Track accumulators for days with multiple records
+            const dayAccumulators: Record<number, { amount: number; hours: number; rate: number }> = {};
+
             for (const row of rows) {
                 const day = row.day_of_month;
                 const taskCode = row.TaskCode || "";
+
+                // Initialize accumulator for this day if needed
+                if (!dayAccumulators[day]) {
+                    dayAccumulators[day] = { amount: 0, hours: 0, rate: 0 };
+                }
+
+                // Accumulate amount and hours for multiple records per day
+                dayAccumulators[day].amount += row.Amount || 0;
+                dayAccumulators[day].hours += row.Hours || 0;
+                // Use the last non-zero rate or accumulate as needed
+                if (row.Rate && row.Rate > 0) {
+                    dayAccumulators[day].rate = row.Rate;
+                }
 
                 daysWithData.add(day);
                 if (day > maxDataDay) maxDataDay = day;
@@ -277,6 +306,7 @@ export class EmployeeDetailService {
                     summary.kehadiran_efektif++;
                 }
 
+                // Update Matrix with accumulated values
                 matrix[day] = {
                     date: row.TrxDate?.substring(0, 10) || matrix[day].date,
                     status,
@@ -285,9 +315,23 @@ export class EmployeeDetailService {
                     is_holiday: isHoliday,
                     remarks,
                     task_code: taskCode,
-                    hours: row.Hours,
+                    hours: dayAccumulators[day].hours,
+                    amount: dayAccumulators[day].amount,
                     has_data: true
                 };
+
+                // Add to List (individual records for breakdown)
+                attendanceList.push({
+                    date: row.TrxDate?.substring(0, 10),
+                    day,
+                    task_code: taskCode,
+                    task_desc: row.TaskDesc || taskCode, // Fallback to code if desc missing
+                    hours: row.Hours,
+                    amount: row.Amount || 0,
+                    rate: row.Rate || 0,
+                    status,
+                    remarks: remarks || "-"
+                });
             }
 
             // Handle days without data
@@ -318,7 +362,7 @@ export class EmployeeDetailService {
             ...info
         }));
 
-        return { matrix, summary, holidays: holidayList };
+        return { matrix, summary, holidays: holidayList, list: attendanceList };
     }
 
     // --- Daily Overtime ---

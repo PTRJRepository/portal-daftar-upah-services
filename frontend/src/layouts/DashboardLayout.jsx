@@ -226,6 +226,11 @@ const DashboardLayout = () => {
                                 {!collapsed && <span>Wages IJL</span>}
                             </NavLink>
 
+                            <NavLink to="/wages-comparison" style={getLinkStyle} title={collapsed ? "Verifikasi Upah" : ""}>
+                                <Icons.Activity />
+                                {!collapsed && <span>Verifikasi Upah</span>}
+                            </NavLink>
+
                             <NavLink to="/analysis" style={getLinkStyle} title={collapsed ? "Analysis OT & Premi" : ""}>
                                 <Icons.TrendingUp />
                                 {!collapsed && <span>Analysis OT & Premi</span>}

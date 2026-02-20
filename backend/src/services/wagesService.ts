@@ -54,14 +54,39 @@ export interface WagesComparison {
     gang_code: string;
     division_code: string;
     
-    // Data dari daftar upah (calculated)
+    // Data dari daftar upah (calculated) - Detailed breakdown
     daftar_upah: {
         jumlah_hk: number;
+        upah_dasar: number;
         gaji_pokok: number;
+        // Tunjangan detail
+        beras_jumlah: number;
+        jabatan_jumlah: number;
+        masa_kerja_jumlah: number;
         total_tunjangan: number;
+        // Lembur
+        lembur_jam: number;
+        lembur_jumlah: number;
+        // Premi detail
+        premi_brondol: number;
+        premi_pph: number;
         total_premi: number;
+        // Potongan detail
+        pot_spsi: number;
+        pot_pph21: number;
+        pot_astek_pekerja: number;
+        pot_bpjs_kesehatan_pekerja: number;
+        pot_bpjs_pensiun_pekerja: number;
+        pot_koreksi: number;
         total_potongan: number;
+        // Summary
+        jumlah_upah_kotor: number;
         upah_bersih: number;
+        // Pajak info
+        status_ptkp?: string;
+        kategori_ter?: string;
+        tarif_pajak_ter?: number;
+        pph21_ter?: number;
     };
     
     // Data dari wages (paid)
@@ -69,6 +94,11 @@ export interface WagesComparison {
         wages_no: string;
         wages_date?: Date;
         jumlah_hk: number;
+        upah_dasar?: number;
+        gaji_pokok?: number;
+        total_tunjangan?: number;
+        total_premi?: number;
+        total_potongan?: number;
         upah_bersih: number;
         payment_status?: string;
     } | null;
@@ -117,9 +147,9 @@ class WagesService {
      */
     async getWagesByPeriod(month: number, year: number, divisionCode?: string): Promise<WagesDetail[]> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
-        
+
         let query = `
-            SELECT 
+            SELECT
                 ew.WAGES_NO as wages_no,
                 ew.EMP_CODE as emp_code,
                 e.EMP_NAME as emp_name,
@@ -139,19 +169,19 @@ class WagesService {
             FROM PR_EMPWAGES ew
             INNER JOIN PR_WAGES w ON ew.WAGES_NO = w.WAGES_NO
             LEFT JOIN HR_EMPLOYEE e ON ew.EMP_CODE = e.EMP_CODE
-            WHERE MONTH(w.WAGES_DATE) = @month 
-              AND YEAR(w.WAGES_DATE) = @year
+            WHERE MONTH(w.WAGES_DATE) = ?
+              AND YEAR(w.WAGES_DATE) = ?
         `;
-        
-        const params: Record<string, any> = { month, year };
-        
+
+        const params: any[] = [month, year];
+
         if (divisionCode && divisionCode !== 'ALL') {
-            query += ` AND SUBSTRING(e.GANG_CODE, 1, 2) = @divisionCode`;
-            params.divisionCode = divisionCode;
+            query += ` AND SUBSTRING(e.GANG_CODE, 1, 2) = ?`;
+            params.push(divisionCode);
         }
-        
+
         query += ` ORDER BY e.GANG_CODE, e.EMP_NAME`;
-        
+
         try {
             const result = await db.query<any>(query, params);
             return result.map(row => this.mapWagesDetail(row));
@@ -167,9 +197,9 @@ class WagesService {
      */
     private async getWagesFromArchive(month: number, year: number, divisionCode?: string): Promise<WagesDetail[]> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
-        
+
         let query = `
-            SELECT 
+            SELECT
                 ew.WAGES_NO as wages_no,
                 ew.EMP_CODE as emp_code,
                 e.EMP_NAME as emp_name,
@@ -187,19 +217,19 @@ class WagesService {
                 ew.STATUS as payment_status
             FROM PR_EMPWAGES_ARC ew
             LEFT JOIN HR_EMPLOYEE e ON ew.EMP_CODE = e.EMP_CODE
-            WHERE ew.PERIOD_MONTH = @month 
-              AND ew.PERIOD_YEAR = @year
+            WHERE ew.PERIOD_MONTH = ?
+              AND ew.PERIOD_YEAR = ?
         `;
-        
-        const params: Record<string, any> = { month, year };
-        
+
+        const params: any[] = [month, year];
+
         if (divisionCode && divisionCode !== 'ALL') {
-            query += ` AND SUBSTRING(e.GANG_CODE, 1, 2) = @divisionCode`;
-            params.divisionCode = divisionCode;
+            query += ` AND SUBSTRING(e.GANG_CODE, 1, 2) = ?`;
+            params.push(divisionCode);
         }
-        
+
         query += ` ORDER BY e.GANG_CODE, e.EMP_NAME`;
-        
+
         try {
             const result = await db.query<any>(query, params);
             return result.map(row => this.mapWagesDetail(row));
@@ -214,9 +244,9 @@ class WagesService {
      */
     async getWagesByEmployee(empCode: string, month: number, year: number): Promise<WagesDetail | null> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
-        
+
         const query = `
-            SELECT 
+            SELECT
                 ew.WAGES_NO as wages_no,
                 ew.EMP_CODE as emp_code,
                 e.EMP_NAME as emp_name,
@@ -236,13 +266,13 @@ class WagesService {
             FROM PR_EMPWAGES ew
             INNER JOIN PR_WAGES w ON ew.WAGES_NO = w.WAGES_NO
             LEFT JOIN HR_EMPLOYEE e ON ew.EMP_CODE = e.EMP_CODE
-            WHERE ew.EMP_CODE = @empCode
-              AND MONTH(w.WAGES_DATE) = @month 
-              AND YEAR(w.WAGES_DATE) = @year
+            WHERE ew.EMP_CODE = ?
+              AND MONTH(w.WAGES_DATE) = ?
+              AND YEAR(w.WAGES_DATE) = ?
         `;
-        
+
         try {
-            const result = await db.query<any>(query, { empCode, month, year });
+            const result = await db.query<any>(query, [empCode, month, year]);
             if (result && result.length > 0) {
                 return this.mapWagesDetail(result[0]);
             }
@@ -258,7 +288,7 @@ class WagesService {
      */
     async getEmployeeWagesHistory(empCode: string, months: number = 12): Promise<WagesDetail[]> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
-        
+
         const query = `
             SELECT TOP ${months}
                 ew.WAGES_NO as wages_no,
@@ -282,12 +312,12 @@ class WagesService {
             FROM PR_EMPWAGES ew
             INNER JOIN PR_WAGES w ON ew.WAGES_NO = w.WAGES_NO
             LEFT JOIN HR_EMPLOYEE e ON ew.EMP_CODE = e.EMP_CODE
-            WHERE ew.EMP_CODE = @empCode
+            WHERE ew.EMP_CODE = ?
             ORDER BY w.WAGES_DATE DESC
         `;
-        
+
         try {
-            const result = await db.query<any>(query, { empCode });
+            const result = await db.query<any>(query, [empCode]);
             return result.map(row => this.mapWagesDetail(row));
         } catch (error: any) {
             console.error('[WagesService] Error fetching employee wages history:', error);
@@ -319,13 +349,39 @@ class WagesService {
             const empCode = (payroll.nik || payroll.emp_code || '').toUpperCase();
             const wages = wagesMap.get(empCode);
             
+            // Build detailed daftar upah data
             const daftarUpah = {
                 jumlah_hk: Number(payroll.jumlah_hk) || 0,
+                upah_dasar: Number(payroll.upah_dasar) || 0,
                 gaji_pokok: Number(payroll.gaji_pokok) || 0,
+                // Tunjangan detail
+                beras_jumlah: Number(payroll.beras_jumlah) || 0,
+                jabatan_jumlah: Number(payroll.jabatan_jumlah) || 0,
+                masa_kerja_jumlah: Number(payroll.masa_kerja_jumlah) || 0,
                 total_tunjangan: Number(payroll.total_tunjangan) || 0,
+                // Lembur
+                lembur_jam: Number(payroll.lembur_jam) || 0,
+                lembur_jumlah: Number(payroll.lembur_jumlah) || 0,
+                // Premi detail
+                premi_brondol: Number(payroll.premi_brondol) || 0,
+                premi_pph: Number(payroll.premi_pph) || 0,
                 total_premi: Number(payroll.total_premi) || 0,
+                // Potongan detail
+                pot_spsi: Number(payroll.pot_spsi) || 0,
+                pot_pph21: Number(payroll.pot_pph21) || 0,
+                pot_astek_pekerja: Number(payroll.pot_astek_pekerja) || Number(payroll.pot_astek) || 0,
+                pot_bpjs_kesehatan_pekerja: Number(payroll.pot_bpjs_kesehatan_pekerja) || 0,
+                pot_bpjs_pensiun_pekerja: Number(payroll.pot_bpjs_pensiun_pekerja) || 0,
+                pot_koreksi: Number(payroll.pot_koreksi) || 0,
                 total_potongan: Number(payroll.total_potongan) || 0,
-                upah_bersih: Number(payroll.upah_bersih) || 0
+                // Summary
+                jumlah_upah_kotor: Number(payroll.jumlah_upah_kotor) || 0,
+                upah_bersih: Number(payroll.upah_bersih) || 0,
+                // Pajak info
+                status_ptkp: payroll.status_ptkp || '-',
+                kategori_ter: payroll.kategori_ter || '-',
+                tarif_pajak_ter: Number(payroll.tarif_pajak_ter) || 0,
+                pph21_ter: Number(payroll.pph21_ter) || 0
             };
             
             let comparison: WagesComparison['comparison'];
@@ -374,6 +430,11 @@ class WagesService {
                     wages_no: wages.wages_no,
                     wages_date: wages.payment_date,
                     jumlah_hk: wages.jumlah_hk,
+                    upah_dasar: wages.upah_dasar,
+                    gaji_pokok: wages.gaji_pokok,
+                    total_tunjangan: wages.total_tunjangan,
+                    total_premi: wages.total_premi,
+                    total_potongan: wages.total_potongan,
                     upah_bersih: wages.upah_bersih,
                     payment_status: wages.payment_status
                 } : null,

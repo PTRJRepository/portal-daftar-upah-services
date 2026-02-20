@@ -1,4 +1,5 @@
 import { Database } from "../db/client";
+import { Config } from "../config";
 import { payrollService } from "./payrollService";
 import { gangService } from "./gangService";
 import { lemburCalculator } from "./lemburCalculator";
@@ -328,7 +329,7 @@ export class DataExtractorService {
             this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile), // RESTORED
             this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
             this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
-            this.getUpahPokok(empCodes, serverProfile),
+            this.getUpahPokok(empCodes, year, serverProfile),
             this.getBrondol(empCodes, startDate, endDate, serverProfile),
 
             EmployeeEstateService.getEmployeeJobs(),
@@ -1478,11 +1479,30 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getUpahPokok(empCodes: string[], serverProfile?: string): Promise<Record<string, number>> {
+    private async getUpahPokok(empCodes: string[], year: number, serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
+        // Get current period to determine if we should use historical rates
+        const currentPeriod = await currentPeriodService.getCurrentPeriod();
+        const currentYear = currentPeriod.year;
+
+        // For historical years (before current year), use Config-based upah dasar
+        // For 2025, this returns 129220 as defined in .env (UPAH_DASAR_2025)
+        if (year < currentYear) {
+            const historicalRate = Config.getUpahDasar(year);
+            console.log(`[DataExtractor] Using historical upah dasar from Config for year ${year}: ${historicalRate}`);
+
+            // Still need to get emp_code list for the result
+            const result: Record<string, number> = {};
+            for (const empCode of empCodes) {
+                result[empCode.trim()] = historicalRate;
+            }
+            return result;
+        }
+
+        // For current year, query HR_CPTRX for employee-specific rates
         const rows = await db.query<{ emp_code: string; upah_dasar: number }>(`
             WITH LatestCPTRX AS(
                 SELECT EmpCode, NewRate, ROW_NUMBER() OVER(PARTITION BY EmpCode ORDER BY UpdateDate DESC) as rn

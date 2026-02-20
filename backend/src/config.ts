@@ -73,6 +73,82 @@ export class Config {
     public static readonly BPJS_GAJI_POKOK_MIN: number = parseFloat(env.CONSTANTS_POTONGAN_BPJS_GAJI_POKOK_MIN || "3876600");
     public static readonly IURAN_SPSI: number = parseFloat(env.CONSTANTS_POTONGAN_BPJS_IURAN_SPSI || "4000");
 
+    // ============================================================
+    // PAYRATE CONFIGURATION BY YEAR
+    // Cara menentukan tahun berjalan:
+    // 1. Query MAX(TRX_DATE) dari PR_TASKREGLN
+    // 2. Extract YEAR dari tanggal tersebut
+    // 3. Gunakan getUpahDasar(year) untuk mendapatkan upah dasar yang sesuai
+    // ============================================================
+    
+    // Payrate per tahun (dari .env)
+    public static readonly UPAH_DASAR_2024: number = parseFloat(env.UPAH_DASAR_2024 || "125000");
+    public static readonly UPAH_DASAR_2025: number = parseFloat(env.UPAH_DASAR_2025 || "129220");
+    public static readonly UPAH_DASAR_2026: number = parseFloat(env.UPAH_DASAR_2026 || "129220");
+    
+    // Default upah dasar (fallback)
+    public static readonly UPAH_DASAR: number = parseFloat(env.UPAH_DASAR || "129220");
+    
+    // Tunjangan rates per tahun
+    public static readonly BERAS_RATE_2025: number = parseFloat(env.BERAS_RATE_2025 || "35000");
+    public static readonly BERAS_RATE_2026: number = parseFloat(env.BERAS_RATE_2026 || "35000");
+    
+    public static readonly JABATAN_RATE_2025: number = parseFloat(env.JABATAN_RATE_2025 || "150000");
+    public static readonly JABATAN_RATE_2026: number = parseFloat(env.JABATAN_RATE_2026 || "150000");
+    
+    public static readonly MASA_KERJA_RATE_2025: number = parseFloat(env.MASA_KERJA_RATE_2025 || "25000");
+    public static readonly MASA_KERJA_RATE_2026: number = parseFloat(env.MASA_KERJA_RATE_2026 || "25000");
+
+    /**
+     * Get Upah Dasar based on year
+     * @param year - Year to get payrate for
+     * @returns Upah Dasar for the specified year
+     */
+    public static getUpahDasar(year: number): number {
+        switch (year) {
+            case 2024:
+                return this.UPAH_DASAR_2024;
+            case 2025:
+                return this.UPAH_DASAR_2025;
+            case 2026:
+                return this.UPAH_DASAR_2026;
+            default:
+                // For future years, return the latest known rate
+                if (year > 2026) {
+                    return this.UPAH_DASAR_2026;
+                }
+                // For years before 2024, return the oldest known rate
+                return this.UPAH_DASAR_2024;
+        }
+    }
+
+    /**
+     * Get Beras Rate based on year
+     * @param year - Year to get rate for
+     * @returns Beras rate for the specified year
+     */
+    public static getBerasRate(year: number): number {
+        return year >= 2026 ? this.BERAS_RATE_2026 : this.BERAS_RATE_2025;
+    }
+
+    /**
+     * Get Jabatan Rate based on year
+     * @param year - Year to get rate for
+     * @returns Jabatan rate for the specified year
+     */
+    public static getJabatanRate(year: number): number {
+        return year >= 2026 ? this.JABATAN_RATE_2026 : this.JABATAN_RATE_2025;
+    }
+
+    /**
+     * Get Masa Kerja Rate based on year
+     * @param year - Year to get rate for
+     * @returns Masa Kerja rate for the specified year
+     */
+    public static getMasaKerjaRate(year: number): number {
+        return year >= 2026 ? this.MASA_KERJA_RATE_2026 : this.MASA_KERJA_RATE_2025;
+    }
+
     // Test Mode Configuration
     public static readonly TEST_MODE: boolean = (env.TEST_MODE === "true");
     public static readonly DEFAULT_GANG: string = env.DEFAULT_GANG || "H1H";

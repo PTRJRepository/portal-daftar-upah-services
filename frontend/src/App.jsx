@@ -25,6 +25,7 @@ const SpreadsheetSyncPage = lazy(() => import('./pages/SpreadsheetSyncPage'))
 const PayrollAnalysisPage = lazy(() => import('./pages/PayrollAnalysisPage'))
 const ExecutivePayrollPage = lazy(() => import('./pages/ExecutivePayrollPage'))
 const GangComparisonReportPage = lazy(() => import('./pages/GangComparisonReportPage'))
+const WagesComparisonPage = lazy(() => import('./pages/WagesComparisonPage'))
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
@@ -474,6 +475,7 @@ function AppInner() {
           <Route path="executive" element={<SummaryReportWrapper component={ExecutivePayrollPage} />} />
           <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
           <Route path="spreadsheet-sync" element={<SummaryReportWrapper component={SpreadsheetSyncPage} />} />
+          <Route path="wages-comparison" element={<SummaryReportWrapper component={WagesComparisonPage} />} />
 
           {/* Development/Test Pages */}
           <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />
