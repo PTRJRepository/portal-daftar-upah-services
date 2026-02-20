@@ -94,7 +94,9 @@
       "Bash(grep:*)",
       "Bash(awk:*)",
       "Bash(bun test:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(sqlite3:*)",
+      "Bash(bun -e:*)"
     ],
     "deny": [],
     "ask": []

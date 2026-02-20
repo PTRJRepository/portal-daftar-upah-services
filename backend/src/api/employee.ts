@@ -87,7 +87,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
 
             const startTime = Date.now();
             const results = [];
-            const errors = [];
+            const errors: any[] = [];
             const notFound = [];
 
             // OPTIMIZATION: Get division from first employee's gang code
@@ -314,17 +314,55 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     // --- Employee History (Multiple Periods) ---
     .get("/:emp_code/history", async ({ params, query, set }) => {
         try {
-            const empCode = params.emp_code;
+            const requestedEmpCode = params.emp_code;
             const requestedMonths = parseInt(query.months || "12"); // Number of months to fetch
             const includeCurrent = query.include_current !== "false";
+
+            // RESOLVE ALL HISTORICAL EMPCODES BY NIK
+            const db = require("../db/client").Database.getInstance();
+            let targetNik = null;
+            let targetName = null;
+
+            try {
+                const empQuery = await db.query(`SELECT RTRIM(EmpName) as EmpName, RTRIM(NewICNo) as NewICNo FROM HR_EMPLOYEE WHERE RTRIM(EmpCode) = ?`, [requestedEmpCode]);
+                if (empQuery.length > 0) {
+                    targetName = empQuery[0].EmpName?.trim();
+                    targetNik = empQuery[0].NewICNo?.trim();
+                }
+            } catch (e) {
+                console.warn("[EmployeeHistory] Could not fetch NIK info:", e);
+            }
+
+            let historicalEmpCodes = [requestedEmpCode]; // Fallback to at least the requested code
+            try {
+                if (targetName) {
+                    const nameCleaned = targetName.replace(/\s+/g, '%');
+                    let queryStr = `SELECT RTRIM(EmpCode) as EmpCode FROM HR_EMPLOYEE WHERE RTRIM(EmpName) LIKE ?`;
+                    let qParams = [`%${nameCleaned}%`];
+
+                    if (targetNik && targetNik.length > 5) {
+                        queryStr += ` OR RTRIM(NewICNo) = ?`;
+                        qParams.push(targetNik);
+                    }
+
+                    const codesQuery = await db.query(queryStr, qParams);
+                    const foundCodes = codesQuery.map((row: any) => row.EmpCode);
+
+                    // Add requested code to be safe, then unique
+                    foundCodes.push(requestedEmpCode);
+                    historicalEmpCodes = [...new Set(foundCodes)] as string[];
+                }
+            } catch (e) {
+                console.warn("[EmployeeHistory] Could not fetch historical codes:", e);
+            }
+
+            console.log(`[EmployeeHistory] Target ${requestedEmpCode} resolved to historical codes: ${historicalEmpCodes.join(', ')}`);
 
             // Get current period first
             const { currentPeriodService } = await import("../services/currentPeriodService");
             const currentPeriod = await currentPeriodService.getCurrentPeriod();
 
             // Calculate periods to fetch
-            // When includeCurrent is false, we need to fetch requestedMonths + 1 to exclude current period
-            // and still get the full requested number of historical months
             const monthsToFetch = includeCurrent ? requestedMonths : requestedMonths + 1;
 
             const periods = [];
@@ -340,7 +378,6 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
                     y -= 1;
                 }
 
-                // Only add historical periods if include_current is false
                 if (includeCurrent || !(m === currentPeriod.month && y === currentPeriod.year)) {
                     periods.push({ month: m, year: y });
                 }
@@ -349,27 +386,50 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             // Fetch data for each period
             const results = [];
 
-            // Import wagesService for fetching PR_WAGES data
-            const { wagesService } = await import("../services/wagesService");
-
             for (const period of periods) {
                 try {
-                    // Fetch payroll checkroll data
-                    const result = await employeeDetailService.getEmployeeCheckroll(
-                        empCode,
-                        period.month,
-                        period.year
-                    );
+                    let bestPayrollResult: any = null;
+                    let activeEmpCodeForMonth = null;
 
-                    // Fetch PR_WAGES data for actual upah bersih
-                    const wagesData = await wagesService.getWagesByEmployee(
-                        empCode,
-                        period.month,
-                        period.year
-                    );
+                    // Try all historical codes. We take the first one that successfully returns payroll_data.
+                    // Usually an employee only has 1 active code per month.
+                    for (const checkCode of historicalEmpCodes) {
+                        try {
+                            const result = await employeeDetailService.getEmployeeCheckroll(
+                                checkCode,
+                                period.month,
+                                period.year
+                            );
 
-                    if (!result.error && result.payroll_data) {
-                        const data = result.payroll_data;
+                            if (!result.error && result.payroll_data) {
+                                bestPayrollResult = result;
+                                activeEmpCodeForMonth = checkCode;
+                                break; // Found the active record for this month
+                            }
+                        } catch (innerErr) {
+                            // ignore and try next code
+                        }
+                    }
+
+                    if (bestPayrollResult && bestPayrollResult.payroll_data) {
+                        const data = bestPayrollResult.payroll_data;
+                        const result = bestPayrollResult;
+
+                        // Try to fetch PR_WAGES data (non-blocking)
+                        let wagesData = null;
+                        if (activeEmpCodeForMonth) {
+                            try {
+                                const { wagesService } = await import("../services/wagesService");
+                                wagesData = await wagesService.getWagesByEmployee(
+                                    activeEmpCodeForMonth,
+                                    period.month,
+                                    period.year
+                                );
+                            } catch (wagesErr: any) {
+                                // Silently ignore PR_WAGES errors - don't break payroll history
+                                console.warn(`[EmployeeHistory] Could not fetch PR_WAGES for ${period.month}/${period.year}:`, wagesErr?.message || 'Unknown error');
+                            }
+                        }
 
                         // Spread ALL payroll_data fields (PayrollRow has 80+ fields)
                         // This ensures frontend gets complete daftar upah data including:
@@ -384,8 +444,8 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
                             ...data,
 
                             // Override/ensure key identity fields
-                            emp_code: empCode,
-                            nik: data.nik || empCode,
+                            emp_code: activeEmpCodeForMonth,
+                            nik: data.nik || activeEmpCodeForMonth,
                             nama: data.nama || data.emp_name || '-',
 
                             // Attendance summary from checkroll
@@ -431,7 +491,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
 
             return {
                 success: true,
-                emp_code: empCode,
+                emp_code: requestedEmpCode,
                 count: results.length,
                 data: results,
                 current_period: currentPeriod

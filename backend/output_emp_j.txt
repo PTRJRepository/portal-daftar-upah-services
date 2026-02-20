@@ -1,0 +1,169 @@
+﻿[Config] Loading .env from: D:\Gawean Rebinmas\Monitoring Database\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\.env
+[Config] dotenv result: Success
+[Config] === ENV DEBUG ===
+[Config] env.DB_PROFILE = SERVER_PROFILE_2
+[Config] env.RUN_MODE = prod
+[Config] =================
+[DB] Initialized with Profile: SERVER_PROFILE_2, DB: db_ptrj
+[DB] Gateway Base: http://10.0.0.110:8001
+[DB] Query Target: http://10.0.0.110:8001/v1/query
+--- Fetching Jamila from HR_EMPLOYEE by Name ---
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"A0144"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"UNAS JAYA ( JAMILAH )                                           "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"P1A     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"5203040107830450  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"A0233"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"JAMILA ( ZAINA )                                                "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"P1A     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"1902056811690001  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"C0357"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"UMAR ( INAQ JAMILAH )                                           "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"P2A     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"5203013112790074  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"C0369"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"MUHAMMAD PAOZAN WADI ( JAMILAH )                                "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"P2A     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"                  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"D0236"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"FIRMAN WAHYUDI ( JAMILAH )                                      "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"P2B     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"5203200811850001  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"E0509"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"IRWAN PURNAMA (JAMILAH)                                         "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"DME     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"5203190107880283  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"E0552"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"SURYADI (JAMILA)                                                "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"DME     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"1906012506960004  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"G0034"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"JAMILA ( YANA )                                                 "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"AB1     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"1902054106880003  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"G0172"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"MUSTAMIN ( JAMILAH )                                            "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"AB1     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"5203021505820007  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"G0430"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"IWAN ROHADI (Jamila)                                            "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"AB1     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"5204081608730002  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"H0270"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"AGUS TRI SULISTIO ( JAMILAH )                                   "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"AB2     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"1906031408990001  "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"H0285"[0m[0m[0m[2m,[0m
+    [0mEmpName[2m:[0m [0m[32m[0m[32m"IRIN ( JAMILAH )                                                "[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"AB2     "[0m[0m[0m[2m,[0m
+    [0mNewICNo[2m:[0m [0m[32m[0m[32m"19060314019000001 "[0m[0m[0m[2m,[0m
+  }
+]
+
+--- Fetching HR_CPTRX for those EmpCodes ---
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"A0233"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"C2      "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2025-12-01T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"P1A     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"A2      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"INF     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"G0034"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"I3      "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2025-01-01T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"AB1     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"G1      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"GEN     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"E0552"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"I3      "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2025-01-01T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"DME     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"E2      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"HAR     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"A0233"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"I3      "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2025-01-01T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"P1A     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"A2      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"INF     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"E0552"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"A01     "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2024-12-26T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"DME     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"E2      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"HAR     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"E0552"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"A01     "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2024-12-01T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"DME     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"E2      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"HAR     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"H0270"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"C2      "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2024-10-01T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"AB2     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"H1      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"HAR     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"E0509"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"A01     "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2024-07-25T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"DME     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"E2      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"HAR     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"E0509"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"T01     "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2024-07-01T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"DME     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"E2      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"HAR     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }[0m[2m,[0m
+  {
+    [0mEmpCode[2m:[0m [0m[32m[0m[32m"G0034"[0m[0m[0m[2m,[0m
+    [0mCPCode[2m:[0m [0m[32m[0m[32m"I3      "[0m[0m[0m[2m,[0m
+    [0mDateFrom[2m:[0m [0m[32m[0m[32m"2024-01-01T00:00:00.000Z"[0m[0m[0m[2m,[0m
+    [0mLocCode[2m:[0m [0m[32m[0m[32m"AB1     "[0m[0m[0m[2m,[0m
+    [0mDeptCode[2m:[0m [0m[32m[0m[32m"G1      "[0m[0m[0m[2m,[0m
+    [0mPosCode[2m:[0m [0m[32m[0m[32m"GEN     "[0m[0m[0m[2m,[0m
+    [0mRemark[2m:[0m [0m[32m[0m[32m"                                                                                                                                "[0m[0m[0m[2m,[0m
+  }
+]

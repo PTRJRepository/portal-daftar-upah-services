@@ -1,0 +1,96 @@
+﻿[Config] Loading .env from: D:\Gawean Rebinmas\Monitoring Database\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\.env
+[Config] dotenv result: Success
+[Config] === ENV DEBUG ===
+[Config] env.DB_PROFILE = SERVER_PROFILE_2
+[Config] env.RUN_MODE = prod
+[Config] =================
+[DB] Initialized with Profile: SERVER_PROFILE_2, DB: db_ptrj
+[DB] Gateway Base: http://10.0.0.110:8001
+[DB] Query Target: http://10.0.0.110:8001/v1/query
+[PayrollComponentRegistry] Registered component: lembur (v1)
+[PayrollComponentRegistry] Registered component: premi (v1)
+[PayrollComponentRegistry] Registered component: tunjangan (v1)
+[PayrollComponentRegistry] Registered component: potongan (v1)
+[PayrollComponentRegistry] Registered component: pph21_ter (v1)
+Fetching INFRASTUKTUR gang for November 2025...
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DataExtractor] Current period: 2/2026, Selected: 11/2025, IsHistorical: true
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DataExtractor] Gang Filter: Input='INFRASTUKTUR' -> Query='INFRASTUKTUR'
+[DataExtractor] getEmployees: serverProfile=SERVER_PROFILE_2, month=11, year=2025, isHistorical=true
+[DataExtractor] Historical query: calendar 11/2025 -> AccMonth 8/AccYear 2026
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Initialized with Profile: SERVER_PROFILE_1, DB: extend_db_ptrj
+[DB] Gateway Base: http://10.0.0.110:8001
+[DB] Query Target: http://10.0.0.110:8001/v1/query
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Initialized with Profile: SERVER_PROFILE_2, DB: staging_PTRJ_iFES_Plantware
+[DB] Gateway Base: http://10.0.0.110:8001
+[DB] Query Target: http://10.0.0.110:8001/v1/query
+[DB] Sending query to server=SERVER_PROFILE_2, database=staging_PTRJ_iFES_Plantware
+[DataExtractor] Using historical upah dasar from Config for year 2025: 129220
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[HarvesterService] Fetched batch from Staging: 0 rows
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DEBUG_PPH] Emp: A0233 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45452
+[DEBUG_PPH] Emp: A0243 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 64293
+[DEBUG_PPH] Emp: A0738 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 54615
+[DEBUG_PPH] Emp: A0740 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 66765
+[DEBUG_PPH] Emp: A0778 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 14100
+[DEBUG_PPH] Emp: A0867 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 73149
+[DEBUG_PPH] Emp: A0934 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 126837
+[DEBUG_PPH] Emp: A0961 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 88441
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+November: Found 23 employees
+
+--- YOYO ( HAMIA ) (A0231) ---
+Upah Kotor (API):       4059600
+  Gaji Pokok (Hitam):   3876600
+  Total Tunjangan:      183000
+  Total Premi:          0
+  Pot. Koreksi:         0
+  Lembur:               0
+
+--- JAMILA ( ZAINA ) (A0233) ---
+Upah Kotor (API):       5868295.202312139
+  Gaji Pokok (Hitam):   3488940
+  Total Tunjangan:      2379355.202312139
+  Total Premi:          0
+  Pot. Koreksi:         0
+  Lembur:               2229605.202312139
+
+--- SUHANDI ( SAMSUNA ) (A0240) ---
+Upah Kotor (API):       4797796.531791908
+  Gaji Pokok (Hitam):   3876600
+  Total Tunjangan:      921196.5317919075
+  Total Premi:          0
+  Pot. Koreksi:         0
+  Lembur:               734696.5317919075
+
+--- HARIAH ( SOPIAH ) (A0243) ---
+Upah Kotor (API):       6331631.791907514
+  Gaji Pokok (Hitam):   3876600
+  Total Tunjangan:      2455031.7919075144
+  Total Premi:          0
+  Pot. Koreksi:         0
+  Lembur:               2344031.7919075144

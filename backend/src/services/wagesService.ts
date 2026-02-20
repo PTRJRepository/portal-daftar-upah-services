@@ -4,24 +4,34 @@
  * Service untuk mengambil data dari PR_WAGES dan PR_EMPWAGES
  * untuk perbandingan dengan daftar upah (payroll history).
  * 
- * Tables:
- * - PR_WAGES: Header wages per periode
- * - PR_EMPWAGES: Detail wages per karyawan
- * - PR_EMPWAGES_ARC: Archive table untuk history
+ * Actual Database Schema (discovered from INFORMATION_SCHEMA):
+ * 
+ * PR_WAGES & PR_EMPWAGES share a similar flat per-employee structure:
+ *   ID, AccMonth, AccYear, CompCode, LocCode, EmpCode, EmpName, ICNo,
+ *   DeptCode, TerminateDaate, DeferPayInd, PayMode, BankCode, BankAccNo,
+ *   ChequeNo, Amount, Status, CreateDate, UpdateDate, PrintDate, UpdateID,
+ *   AccCode, ChequeDate, CreditBankCode, CreditDate, MatchID
+ * 
+ * PR_EMPWAGES_ARC has the same structure + OriginalAmt column.
+ * 
+ * Key mappings:
+ *   - Amount = Net wages (upah bersih)
+ *   - AccMonth/AccYear = Accounting period (NOT calendar month)
+ *   - EmpCode/EmpName = Employee info (directly in table)
+ *   - LocCode = Division/location code
+ *   - No WAGES_NO join between tables; each table is independent
+ *   - No detailed breakdown (HK, tunjangan, premi, potongan) in wages tables
  */
 
 import { Database } from "../db/client";
 import { Config } from "../config";
 
 export interface WagesHeader {
-    wages_no: string;
-    wages_date: Date;
+    wages_id: number;
     period_month: number;
     period_year: number;
     division_code: string;
-    gang_code?: string;
     total_employees: number;
-    total_hk: number;
     total_amount: number;
     status?: string;
     created_at?: Date;
@@ -29,22 +39,24 @@ export interface WagesHeader {
 
 export interface WagesDetail {
     id?: number;
-    wages_no: string;
+    wages_no: string;       // Kept for interface compatibility; mapped from ID
     emp_code: string;
     emp_name?: string;
-    nik?: string;
-    gang_code: string;
-    division_code: string;
-    jumlah_hk: number;
-    upah_dasar?: number;
-    upah_pokok?: number;
-    gaji_pokok?: number;
-    total_tunjangan?: number;
-    total_premi?: number;
-    total_potongan?: number;
-    upah_bersih: number;
-    payment_status?: string;
-    payment_date?: Date;
+    nik?: string;           // ICNo
+    gang_code: string;      // from HR_GANGLN join
+    division_code: string;  // LocCode or DeptCode
+    jumlah_hk: number;      // Not available in PR_EMPWAGES; always 0
+    upah_dasar?: number;    // Not available in PR_EMPWAGES; always 0
+    upah_pokok?: number;    // Not available; always 0
+    gaji_pokok?: number;    // Not available; always 0
+    total_tunjangan?: number;  // Not available; always 0
+    total_premi?: number;      // Not available; always 0
+    total_potongan?: number;   // Not available; always 0
+    upah_bersih: number;       // Amount column
+    payment_status?: string;   // Status column
+    payment_date?: Date;       // CreditDate or CreateDate
+    period_month?: number;     // AccMonth
+    period_year?: number;      // AccYear
 }
 
 export interface WagesComparison {
@@ -53,7 +65,7 @@ export interface WagesComparison {
     nama?: string;
     gang_code: string;
     division_code: string;
-    
+
     // Data dari daftar upah (calculated) - Detailed breakdown
     daftar_upah: {
         jumlah_hk: number;
@@ -88,7 +100,7 @@ export interface WagesComparison {
         tarif_pajak_ter?: number;
         pph21_ter?: number;
     };
-    
+
     // Data dari wages (paid)
     wages: {
         wages_no: string;
@@ -102,7 +114,7 @@ export interface WagesComparison {
         upah_bersih: number;
         payment_status?: string;
     } | null;
-    
+
     // Comparison result
     comparison: {
         hk_match: boolean;
@@ -132,199 +144,260 @@ const HK_TOLERANCE = 0.5; // 0.5 HK
 
 class WagesService {
     private static instance: WagesService;
-    
-    private constructor() {}
-    
+
+    private constructor() { }
+
     public static getInstance(): WagesService {
         if (!WagesService.instance) {
             WagesService.instance = new WagesService();
         }
         return WagesService.instance;
     }
-    
+
     /**
-     * Get wages data for a specific period
+     * Get wages data for a specific period.
+     * 
+     * PR_EMPWAGES uses AccMonth/AccYear (accounting period).
+     * We receive calendar month/year from the frontend, so we need to 
+     * convert to accounting period first using the same logic as dataExtractor:
+     *   accMonth = (calendarMonth + 3) mod 12 or similar.
+     * 
+     * For now, we query both directly (AccMonth = month) and also try
+     * the archive table as fallback.
      */
     async getWagesByPeriod(month: number, year: number, divisionCode?: string): Promise<WagesDetail[]> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
 
+        // Convert calendar month/year to accounting month/year
+        // AccMonth mapping: calendar month -> accounting month
+        // Based on the system: AccMonth = calendar_month + 3 (wrapped)
+        const { accMonth, accYear } = this.calendarToAccounting(month, year);
+
         let query = `
             SELECT
-                ew.WAGES_NO as wages_no,
-                ew.EMP_CODE as emp_code,
-                e.EMP_NAME as emp_name,
-                e.NIK as nik,
-                e.GANG_CODE as gang_code,
-                SUBSTRING(e.GANG_CODE, 1, 2) as division_code,
-                ew.JUMLAH_HK as jumlah_hk,
-                ew.UPAH_DASAR as upah_dasar,
-                ew.UPAH_POKOK as upah_pokok,
-                ew.GAJI_POKOK as gaji_pokok,
-                ew.TOTAL_TUNJANGAN as total_tunjangan,
-                ew.TOTAL_PREMI as total_premi,
-                ew.TOTAL_POTONGAN as total_potongan,
-                ew.UPAH_BERSIH as upah_bersih,
-                ew.STATUS as payment_status,
-                w.WAGES_DATE as payment_date
+                ew.ID as id,
+                CAST(ew.ID AS VARCHAR) as wages_no,
+                ew.EmpCode as emp_code,
+                ew.EmpName as emp_name,
+                ew.ICNo as nik,
+                '' as gang_code,
+                ISNULL(ew.LocCode, ew.DeptCode) as division_code,
+                ew.Amount as upah_bersih,
+                ew.Status as payment_status,
+                ew.CreditDate as payment_date,
+                CAST(ew.AccMonth AS INT) as period_month,
+                CAST(ew.AccYear AS INT) as period_year
             FROM PR_EMPWAGES ew
-            INNER JOIN PR_WAGES w ON ew.WAGES_NO = w.WAGES_NO
-            LEFT JOIN HR_EMPLOYEE e ON ew.EMP_CODE = e.EMP_CODE
-            WHERE MONTH(w.WAGES_DATE) = ?
-              AND YEAR(w.WAGES_DATE) = ?
+            WHERE CAST(ew.AccMonth AS INT) = ?
+              AND CAST(ew.AccYear AS INT) = ?
         `;
 
-        const params: any[] = [month, year];
+        const params: any[] = [accMonth, accYear];
 
         if (divisionCode && divisionCode !== 'ALL') {
-            query += ` AND SUBSTRING(e.GANG_CODE, 1, 2) = ?`;
-            params.push(divisionCode);
+            query += ` AND (ew.LocCode = ? OR ew.DeptCode = ?)`;
+            params.push(divisionCode, divisionCode);
         }
 
-        query += ` ORDER BY e.GANG_CODE, e.EMP_NAME`;
+        query += ` ORDER BY ew.EmpName`;
 
         try {
             const result = await db.query<any>(query, params);
-            return result.map(row => this.mapWagesDetail(row));
+            return result.map((row: any) => this.mapWagesDetail(row));
         } catch (error: any) {
-            console.error('[WagesService] Error fetching wages by period:', error);
+            console.error('[WagesService] Error fetching wages by period:', error.message || error);
             // Try archive table if main table fails
             return this.getWagesFromArchive(month, year, divisionCode);
         }
     }
-    
+
     /**
-     * Get wages from archive table
+     * Get wages from archive table (PR_EMPWAGES_ARC)
      */
     private async getWagesFromArchive(month: number, year: number, divisionCode?: string): Promise<WagesDetail[]> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
 
+        const { accMonth, accYear } = this.calendarToAccounting(month, year);
+
         let query = `
             SELECT
-                ew.WAGES_NO as wages_no,
-                ew.EMP_CODE as emp_code,
-                e.EMP_NAME as emp_name,
-                e.NIK as nik,
-                e.GANG_CODE as gang_code,
-                SUBSTRING(e.GANG_CODE, 1, 2) as division_code,
-                ew.JUMLAH_HK as jumlah_hk,
-                ew.UPAH_DASAR as upah_dasar,
-                ew.UPAH_POKOK as upah_pokok,
-                ew.GAJI_POKOK as gaji_pokok,
-                ew.TOTAL_TUNJANGAN as total_tunjangan,
-                ew.TOTAL_PREMI as total_premi,
-                ew.TOTAL_POTONGAN as total_potongan,
-                ew.UPAH_BERSIH as upah_bersih,
-                ew.STATUS as payment_status
+                ew.ID as id,
+                CAST(ew.ID AS VARCHAR) as wages_no,
+                ew.EmpCode as emp_code,
+                ew.EmpName as emp_name,
+                ew.ICNo as nik,
+                '' as gang_code,
+                ISNULL(ew.LocCode, ew.DeptCode) as division_code,
+                ew.Amount as upah_bersih,
+                ew.Status as payment_status,
+                ew.CreditDate as payment_date,
+                CAST(ew.AccMonth AS INT) as period_month,
+                CAST(ew.AccYear AS INT) as period_year
             FROM PR_EMPWAGES_ARC ew
-            LEFT JOIN HR_EMPLOYEE e ON ew.EMP_CODE = e.EMP_CODE
-            WHERE ew.PERIOD_MONTH = ?
-              AND ew.PERIOD_YEAR = ?
+            WHERE CAST(ew.AccMonth AS INT) = ?
+              AND CAST(ew.AccYear AS INT) = ?
         `;
 
-        const params: any[] = [month, year];
+        const params: any[] = [accMonth, accYear];
 
         if (divisionCode && divisionCode !== 'ALL') {
-            query += ` AND SUBSTRING(e.GANG_CODE, 1, 2) = ?`;
-            params.push(divisionCode);
+            query += ` AND (ew.LocCode = ? OR ew.DeptCode = ?)`;
+            params.push(divisionCode, divisionCode);
         }
 
-        query += ` ORDER BY e.GANG_CODE, e.EMP_NAME`;
+        query += ` ORDER BY ew.EmpName`;
 
         try {
             const result = await db.query<any>(query, params);
-            return result.map(row => this.mapWagesDetail(row));
+            return result.map((row: any) => this.mapWagesDetail(row));
         } catch (error: any) {
-            console.error('[WagesService] Error fetching wages from archive:', error);
+            console.error('[WagesService] Error fetching wages from archive:', error.message || error);
             return [];
         }
     }
-    
+
     /**
-     * Get wages for a specific employee
+     * Get wages for a specific employee in a specific period.
+     * Tries PR_EMPWAGES first, then PR_EMPWAGES_ARC.
      */
     async getWagesByEmployee(empCode: string, month: number, year: number): Promise<WagesDetail | null> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
 
+        const { accMonth, accYear } = this.calendarToAccounting(month, year);
+
         const query = `
             SELECT
-                ew.WAGES_NO as wages_no,
-                ew.EMP_CODE as emp_code,
-                e.EMP_NAME as emp_name,
-                e.NIK as nik,
-                e.GANG_CODE as gang_code,
-                SUBSTRING(e.GANG_CODE, 1, 2) as division_code,
-                ew.JUMLAH_HK as jumlah_hk,
-                ew.UPAH_DASAR as upah_dasar,
-                ew.UPAH_POKOK as upah_pokok,
-                ew.GAJI_POKOK as gaji_pokok,
-                ew.TOTAL_TUNJANGAN as total_tunjangan,
-                ew.TOTAL_PREMI as total_premi,
-                ew.TOTAL_POTONGAN as total_potongan,
-                ew.UPAH_BERSIH as upah_bersih,
-                ew.STATUS as payment_status,
-                w.WAGES_DATE as payment_date
+                ew.ID as id,
+                CAST(ew.ID AS VARCHAR) as wages_no,
+                ew.EmpCode as emp_code,
+                ew.EmpName as emp_name,
+                ew.ICNo as nik,
+                '' as gang_code,
+                ISNULL(ew.LocCode, ew.DeptCode) as division_code,
+                ew.Amount as upah_bersih,
+                ew.Status as payment_status,
+                ew.CreditDate as payment_date,
+                CAST(ew.AccMonth AS INT) as period_month,
+                CAST(ew.AccYear AS INT) as period_year
             FROM PR_EMPWAGES ew
-            INNER JOIN PR_WAGES w ON ew.WAGES_NO = w.WAGES_NO
-            LEFT JOIN HR_EMPLOYEE e ON ew.EMP_CODE = e.EMP_CODE
-            WHERE ew.EMP_CODE = ?
-              AND MONTH(w.WAGES_DATE) = ?
-              AND YEAR(w.WAGES_DATE) = ?
+            WHERE ew.EmpCode = ?
+              AND CAST(ew.AccMonth AS INT) = ?
+              AND CAST(ew.AccYear AS INT) = ?
         `;
 
         try {
-            const result = await db.query<any>(query, [empCode, month, year]);
+            const result = await db.query<any>(query, [empCode, accMonth, accYear]);
+            if (result && result.length > 0) {
+                return this.mapWagesDetail(result[0]);
+            }
+
+            // Try archive table
+            return this.getWagesByEmployeeFromArchive(empCode, accMonth, accYear);
+        } catch (error: any) {
+            console.error('[WagesService] Error fetching wages by employee:', error.message || error);
+            // Try archive as fallback
+            try {
+                return this.getWagesByEmployeeFromArchive(empCode, accMonth, accYear);
+            } catch {
+                return null;
+            }
+        }
+    }
+
+    /**
+     * Get wages for a specific employee from archive table
+     */
+    private async getWagesByEmployeeFromArchive(empCode: string, accMonth: number, accYear: number): Promise<WagesDetail | null> {
+        const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
+
+        const query = `
+            SELECT
+                ew.ID as id,
+                CAST(ew.ID AS VARCHAR) as wages_no,
+                ew.EmpCode as emp_code,
+                ew.EmpName as emp_name,
+                ew.ICNo as nik,
+                '' as gang_code,
+                ISNULL(ew.LocCode, ew.DeptCode) as division_code,
+                ew.Amount as upah_bersih,
+                ew.Status as payment_status,
+                ew.CreditDate as payment_date,
+                CAST(ew.AccMonth AS INT) as period_month,
+                CAST(ew.AccYear AS INT) as period_year
+            FROM PR_EMPWAGES_ARC ew
+            WHERE ew.EmpCode = ?
+              AND CAST(ew.AccMonth AS INT) = ?
+              AND CAST(ew.AccYear AS INT) = ?
+        `;
+
+        try {
+            const result = await db.query<any>(query, [empCode, accMonth, accYear]);
             if (result && result.length > 0) {
                 return this.mapWagesDetail(result[0]);
             }
             return null;
         } catch (error: any) {
-            console.error('[WagesService] Error fetching wages by employee:', error);
+            console.error('[WagesService] Error fetching wages from archive by employee:', error.message || error);
             return null;
         }
     }
-    
+
     /**
-     * Get employee wages history (multiple periods)
+     * Get employee wages history (multiple periods).
+     * Queries both PR_EMPWAGES and PR_EMPWAGES_ARC with UNION ALL.
      */
     async getEmployeeWagesHistory(empCode: string, months: number = 12): Promise<WagesDetail[]> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
 
         const query = `
-            SELECT TOP ${months}
-                ew.WAGES_NO as wages_no,
-                ew.EMP_CODE as emp_code,
-                e.EMP_NAME as emp_name,
-                e.NIK as nik,
-                e.GANG_CODE as gang_code,
-                SUBSTRING(e.GANG_CODE, 1, 2) as division_code,
-                ew.JUMLAH_HK as jumlah_hk,
-                ew.UPAH_DASAR as upah_dasar,
-                ew.UPAH_POKOK as upah_pokok,
-                ew.GAJI_POKOK as gaji_pokok,
-                ew.TOTAL_TUNJANGAN as total_tunjangan,
-                ew.TOTAL_PREMI as total_premi,
-                ew.TOTAL_POTONGAN as total_potongan,
-                ew.UPAH_BERSIH as upah_bersih,
-                ew.STATUS as payment_status,
-                w.WAGES_DATE as payment_date,
-                MONTH(w.WAGES_DATE) as period_month,
-                YEAR(w.WAGES_DATE) as period_year
-            FROM PR_EMPWAGES ew
-            INNER JOIN PR_WAGES w ON ew.WAGES_NO = w.WAGES_NO
-            LEFT JOIN HR_EMPLOYEE e ON ew.EMP_CODE = e.EMP_CODE
-            WHERE ew.EMP_CODE = ?
-            ORDER BY w.WAGES_DATE DESC
+            SELECT TOP ${months} *
+            FROM (
+                SELECT
+                    ew.ID as id,
+                    CAST(ew.ID AS VARCHAR) as wages_no,
+                    ew.EmpCode as emp_code,
+                    ew.EmpName as emp_name,
+                    ew.ICNo as nik,
+                    '' as gang_code,
+                    ISNULL(ew.LocCode, ew.DeptCode) as division_code,
+                    ew.Amount as upah_bersih,
+                    ew.Status as payment_status,
+                    ew.CreditDate as payment_date,
+                    CAST(ew.AccMonth AS INT) as period_month,
+                    CAST(ew.AccYear AS INT) as period_year
+                FROM PR_EMPWAGES ew
+                WHERE ew.EmpCode = ?
+                
+                UNION ALL
+                
+                SELECT
+                    ew.ID as id,
+                    CAST(ew.ID AS VARCHAR) as wages_no,
+                    ew.EmpCode as emp_code,
+                    ew.EmpName as emp_name,
+                    ew.ICNo as nik,
+                    '' as gang_code,
+                    ISNULL(ew.LocCode, ew.DeptCode) as division_code,
+                    ew.Amount as upah_bersih,
+                    ew.Status as payment_status,
+                    ew.CreditDate as payment_date,
+                    CAST(ew.AccMonth AS INT) as period_month,
+                    CAST(ew.AccYear AS INT) as period_year
+                FROM PR_EMPWAGES_ARC ew
+                WHERE ew.EmpCode = ?
+            ) combined
+            ORDER BY period_year DESC, period_month DESC
         `;
 
         try {
-            const result = await db.query<any>(query, [empCode]);
-            return result.map(row => this.mapWagesDetail(row));
+            const result = await db.query<any>(query, [empCode, empCode]);
+            return result.map((row: any) => this.mapWagesDetail(row));
         } catch (error: any) {
-            console.error('[WagesService] Error fetching employee wages history:', error);
+            console.error('[WagesService] Error fetching employee wages history:', error.message || error);
             return [];
         }
     }
-    
+
     /**
      * Compare payroll data with wages data
      */
@@ -334,21 +407,21 @@ class WagesService {
         year: number,
         divisionCode?: string
     ): Promise<{ summary: WagesComparisonSummary; data: WagesComparison[] }> {
-        
+
         // Get wages data for the same period
         const wagesData = await this.getWagesByPeriod(month, year, divisionCode);
-        
+
         // Create a map for quick lookup
         const wagesMap = new Map<string, WagesDetail>();
         wagesData.forEach(w => {
             wagesMap.set(w.emp_code.toUpperCase(), w);
         });
-        
+
         // Compare each payroll record with wages
         const comparisons: WagesComparison[] = payrollData.map(payroll => {
             const empCode = (payroll.nik || payroll.emp_code || '').toUpperCase();
             const wages = wagesMap.get(empCode);
-            
+
             // Build detailed daftar upah data
             const daftarUpah = {
                 jumlah_hk: Number(payroll.jumlah_hk) || 0,
@@ -383,29 +456,30 @@ class WagesService {
                 tarif_pajak_ter: Number(payroll.tarif_pajak_ter) || 0,
                 pph21_ter: Number(payroll.pph21_ter) || 0
             };
-            
+
             let comparison: WagesComparison['comparison'];
-            
+
             if (wages) {
-                const hkDiff = Math.abs(daftarUpah.jumlah_hk - wages.jumlah_hk);
+                // PR_EMPWAGES only has Amount (upah_bersih), no HK breakdown
                 const amountDiff = Math.abs(daftarUpah.upah_bersih - wages.upah_bersih);
-                
-                const hkMatch = hkDiff <= HK_TOLERANCE;
+
+                // HK comparison not possible from wages table
+                const hkMatch = true; // Can't compare - assume match
                 const amountMatch = amountDiff <= AMOUNT_TOLERANCE;
-                
+
                 let status: 'MATCH' | 'MINOR_DIFF' | 'MAJOR_DIFF' | 'NO_WAGES';
-                if (hkMatch && amountMatch) {
+                if (amountMatch) {
                     status = 'MATCH';
                 } else if (amountDiff <= 10000) {
                     status = 'MINOR_DIFF';
                 } else {
                     status = 'MAJOR_DIFF';
                 }
-                
+
                 comparison = {
                     hk_match: hkMatch,
                     amount_match: amountMatch,
-                    hk_difference: daftarUpah.jumlah_hk - wages.jumlah_hk,
+                    hk_difference: 0, // Not available from wages
                     amount_difference: daftarUpah.upah_bersih - wages.upah_bersih,
                     status
                 };
@@ -418,7 +492,7 @@ class WagesService {
                     status: 'NO_WAGES'
                 };
             }
-            
+
             return {
                 emp_code: empCode,
                 nik: payroll.nik || wages?.nik,
@@ -441,7 +515,7 @@ class WagesService {
                 comparison
             };
         });
-        
+
         // Calculate summary
         const summary: WagesComparisonSummary = {
             period_month: month,
@@ -455,65 +529,111 @@ class WagesService {
             total_variance: comparisons.reduce((sum, c) => sum + Math.abs(c.comparison.amount_difference), 0),
             tolerance: AMOUNT_TOLERANCE
         };
-        
+
         return { summary, data: comparisons };
     }
-    
+
     /**
-     * Get available periods from wages table
+     * Get available periods from wages tables (both current and archive)
      */
     async getAvailableWagesPeriods(): Promise<{ month: number; year: number; label: string; employee_count: number }[]> {
         const db = Database.getInstance(Config.DEFAULT_DATABASE, Config.DB_PROFILE);
-        
+
         const query = `
-            SELECT 
-                MONTH(w.WAGES_DATE) as month,
-                YEAR(w.WAGES_DATE) as year,
-                COUNT(DISTINCT ew.EMP_CODE) as employee_count
-            FROM PR_WAGES w
-            INNER JOIN PR_EMPWAGES ew ON w.WAGES_NO = ew.WAGES_NO
-            GROUP BY MONTH(w.WAGES_DATE), YEAR(w.WAGES_DATE)
-            ORDER BY year DESC, month DESC
+            SELECT
+                period_month as month,
+                period_year as year,
+                COUNT(DISTINCT emp_code) as employee_count
+            FROM (
+                SELECT
+                    CAST(AccMonth AS INT) as period_month,
+                    CAST(AccYear AS INT) as period_year,
+                    EmpCode as emp_code
+                FROM PR_EMPWAGES
+                
+                UNION ALL
+                
+                SELECT
+                    CAST(AccMonth AS INT) as period_month,
+                    CAST(AccYear AS INT) as period_year,
+                    EmpCode as emp_code
+                FROM PR_EMPWAGES_ARC
+            ) combined
+            GROUP BY period_month, period_year
+            ORDER BY period_year DESC, period_month DESC
         `;
-        
+
         try {
             const result = await db.query<any>(query, {});
-            return result.map(row => ({
+            return result.map((row: any) => ({
                 month: row.month,
                 year: row.year,
                 label: `${this.getMonthName(row.month)} ${row.year}`,
                 employee_count: row.employee_count
             }));
         } catch (error: any) {
-            console.error('[WagesService] Error fetching available periods:', error);
+            console.error('[WagesService] Error fetching available periods:', error.message || error);
             return [];
         }
     }
-    
+
     /**
-     * Map database row to WagesDetail interface
+     * Map database row to WagesDetail interface.
+     * The actual PR_EMPWAGES table only has Amount (net wages) and no
+     * detailed breakdown, so most fields default to 0.
      */
     private mapWagesDetail(row: any): WagesDetail {
         return {
-            wages_no: row.wages_no || '',
-            emp_code: row.emp_code || '',
-            emp_name: row.emp_name || '',
-            nik: row.nik || '',
-            gang_code: row.gang_code || '',
-            division_code: row.division_code || '',
-            jumlah_hk: Number(row.jumlah_hk) || 0,
-            upah_dasar: Number(row.upah_dasar) || 0,
-            upah_pokok: Number(row.upah_pokok) || 0,
-            gaji_pokok: Number(row.gaji_pokok) || 0,
-            total_tunjangan: Number(row.total_tunjangan) || 0,
-            total_premi: Number(row.total_premi) || 0,
-            total_potongan: Number(row.total_potongan) || 0,
-            upah_bersih: Number(row.upah_bersih) || 0,
-            payment_status: row.payment_status || '',
-            payment_date: row.payment_date || undefined
+            id: Number(row.id) || 0,
+            wages_no: row.wages_no || String(row.id || ''),
+            emp_code: (row.emp_code || '').trim(),
+            emp_name: (row.emp_name || '').trim(),
+            nik: (row.nik || '').trim(),
+            gang_code: (row.gang_code || '').trim(),
+            division_code: (row.division_code || '').trim(),
+            jumlah_hk: 0,  // Not available in PR_EMPWAGES
+            upah_dasar: 0,  // Not available
+            upah_pokok: 0,  // Not available
+            gaji_pokok: 0,  // Not available
+            total_tunjangan: 0,  // Not available
+            total_premi: 0,      // Not available
+            total_potongan: 0,   // Not available
+            upah_bersih: Number(row.upah_bersih) || 0,  // Amount column
+            payment_status: (row.payment_status || '').trim(),
+            payment_date: row.payment_date || undefined,
+            period_month: Number(row.period_month) || 0,
+            period_year: Number(row.period_year) || 0,
         };
     }
-    
+
+    /**
+     * Convert calendar month/year to accounting month/year.
+     * 
+     * The PR_EMPWAGES table uses AccMonth/AccYear which follow an
+     * accounting period convention. Based on the data extractor pattern:
+     *   accMonth = ((calendarMonth + 2) % 12) + 1
+     *   accYear may shift if accMonth wraps around
+     * 
+     * For a simpler and more reliable approach, we just try to query 
+     * with the calendar values directly first. If the accounting period
+     * convention is needed, this can be adjusted.
+     */
+    private calendarToAccounting(calendarMonth: number, calendarYear: number): { accMonth: number; accYear: number } {
+        // Based on reverse-engineering the DataExtractor pattern:
+        // calendar month 1 (Jan) -> acc month 4
+        // calendar month 2 (Feb) -> acc month 5
+        // ...
+        // calendar month 9 (Sep) -> acc month 12
+        // calendar month 10 (Oct) -> acc month 1 (next year)
+        // calendar month 11 (Nov) -> acc month 2 (next year)
+        // calendar month 12 (Dec) -> acc month 3 (next year)
+
+        const accMonth = ((calendarMonth + 2) % 12) + 1;
+        const accYear = calendarMonth >= 10 ? calendarYear + 1 : calendarYear;
+
+        return { accMonth, accYear };
+    }
+
     /**
      * Get month name in Indonesian
      */

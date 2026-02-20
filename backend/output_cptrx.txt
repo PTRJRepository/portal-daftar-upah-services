@@ -1,0 +1,25 @@
+﻿[Config] Loading .env from: D:\Gawean Rebinmas\Monitoring Database\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\.env
+[Config] dotenv result: Success
+[Config] === ENV DEBUG ===
+[Config] env.DB_PROFILE = SERVER_PROFILE_2
+[Config] env.RUN_MODE = prod
+[Config] =================
+[DB] Initialized with Profile: SERVER_PROFILE_2, DB: db_ptrj
+[DB] Gateway Base: http://10.0.0.110:8001
+[DB] Query Target: http://10.0.0.110:8001/v1/query
+--- Fetching one row from HR_CPTRX ---
+[DB] Sending query to server=SERVER_PROFILE_2, database=db_ptrj
+Columns in HR_CPTRX:
+[
+  [0m[32m"CPID"[0m[0m[0m[2m,[0m [0m[32m"EmpCode"[0m[0m[0m[2m,[0m [0m[32m"CPCode"[0m[0m[0m[2m,[0m [0m[32m"DateFrom"[0m[0m[0m[2m,[0m [0m[32m"DateTo"[0m[0m[0m[2m,[0m [0m[32m"CeaseDate"[0m[0m[0m[2m,[0m [0m[32m"Remark"[0m[0m[0m[2m,[0m [0m[32m"CompCode"[0m[0m[0m[2m,[0m [0m[32m"LocCode"[0m[0m[0m[2m,[0m
+  [0m[32m"DeptCode"[0m[0m[0m[2m,[0m [0m[32m"LevelCode"[0m[0m[0m[2m,[0m [0m[32m"RptTo"[0m[0m[0m[2m,[0m [0m[32m"SalSchemeCode"[0m[0m[0m[2m,[0m [0m[32m"SalGradeCode"[0m[0m[0m[2m,[0m [0m[32m"PosCode"[0m[0m[0m[2m,[0m [0m[32m"Probation"[0m[0m[0m[2m,[0m [0m[32m"PayType"[0m[0m[0m[2m,[0m
+  [0m[32m"CurrentRate"[0m[0m[0m[2m,[0m [0m[32m"IncrementAmt"[0m[0m[0m[2m,[0m [0m[32m"NewRate"[0m[0m[0m[2m,[0m [0m[32m"Status"[0m[0m[0m[2m,[0m [0m[32m"CreateDate"[0m[0m[0m[2m,[0m [0m[32m"UpdateDate"[0m[0m[0m[2m,[0m [0m[32m"UpdateID"[0m[0m[0m[2m,[0m [0m[32m"PriceBonusCode"[0m[0m[0m[2m,[0m
+  [0m[32m"AddBonusCode"[0m[0m[0m[2m,[0m [0m[32m"LoaderPriceCode"[0m[0m[0m[2m,[0m [0m[32m"HarvesterPriceCode"[0m[0m[0m[2m,[0m [0m[32m"MinSalary"[0m[0m[0m[2m,[0m [0m[32m"SalaryADCode"[0m[0m[0m[2m,[0m [0m[32m"DailyRateADCode"[0m[0m[0m[2m,[0m
+  [0m[32m"PieceRateADCode"[0m[0m[0m[2m,[0m [0m[32m"SalSafeNetADCode"[0m[0m[0m[2m,[0m [0m[32m"BonusADCode"[0m[0m[0m[2m,[0m [0m[32m"HouseADCode"[0m[0m[0m[2m,[0m [0m[32m"HardshipADCode"[0m[0m[0m[2m,[0m [0m[32m"IncAwardADCode"[0m[0m[0m[2m,[0m
+  [0m[32m"TransADCode"[0m[0m[0m[2m,[0m [0m[32m"OTADCode"[0m[0m[0m[2m,[0m [0m[32m"TripADCode"[0m[0m[0m[2m,[0m [0m[32m"VacationLeaveADCode"[0m[0m[0m[2m,[0m [0m[32m"ContractPayADCode"[0m[0m[0m[2m,[0m [0m[32m"BIKAccomADCode"[0m[0m[0m[2m,[0m
+  [0m[32m"BIKVehADCode"[0m[0m[0m[2m,[0m [0m[32m"BIKHPADCode"[0m[0m[0m[2m,[0m [0m[32m"GratuityADCode"[0m[0m[0m[2m,[0m [0m[32m"RetrenchCompADCode"[0m[0m[0m[2m,[0m [0m[32m"ESOSADCode"[0m[0m[0m[2m,[0m [0m[32m"AttAllowanceADCode"[0m[0m[0m[2m,[0m
+  [0m[32m"INADCode"[0m[0m[0m[2m,[0m [0m[32m"CTADCode"[0m[0m[0m[2m,[0m [0m[32m"WSADCode"[0m[0m[0m[2m,[0m [0m[32m"LoanADCode"[0m[0m[0m[2m,[0m [0m[32m"BFEmpADCode"[0m[0m[0m[2m,[0m [0m[32m"OutPayEmpADCode"[0m[0m[0m[2m,[0m [0m[32m"LevyHoldADCode"[0m[0m[0m[2m,[0m
+  [0m[32m"LevyPayADCode"[0m[0m[0m[2m,[0m [0m[32m"LevySubsiADCode"[0m[0m[0m[2m,[0m [0m[32m"LevyDeficitADCode"[0m[0m[0m[2m,[0m [0m[32m"LevyAdjustADCode"[0m[0m[0m[2m,[0m [0m[32m"TaxADCode"[0m[0m[0m[2m,[0m
+  [0m[32m"OffDay"[0m[0m[0m[2m,[0m [0m[32m"FirstMthWorkDay"[0m[0m[0m[2m,[0m [0m[32m"ProrateAttdIncInd"[0m[0m[0m[2m,[0m [0m[32m"IsInShift"[0m[0m[0m[2m,[0m [0m[32m"EmpType"[0m[0m[0m[2m,[0m [0m[32m"HSCode"[0m[0m[0m[2m,[0m [0m[32m"AllowMinWages"[0m[0m[0m[2m,[0m
+  [0m[32m"MinWages"[0m[0m[0m[2m,[0m [0m[32m"SupplierCode"[0m[0m[0m[2m,[0m [0m[32m"SafetyNetFlg"[0m[0m[0m[2m,[0m [0m[32m"SafetyNet"[0m[0m[0m[2m,[0m [0m[32m"JoinDate"[0m[0m[0m[2m,[0m [0m[32m"IsPieceRateWorker"[0m[0m
+]
