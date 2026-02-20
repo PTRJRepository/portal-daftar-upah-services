@@ -31,44 +31,35 @@ export default function SalaryHistoryTable({ empCode, months = 12, onPeriodClick
         setLoading(true);
         setError(null);
 
-        // Fetch both payroll history and wages history
-        Promise.all([
-            getEmployeeHistory(token, empCode, { months, includeCurrent: false }),
-            fetchEmployeeWagesHistory(token, empCode, months).catch(() => ({ data: [] }))
-        ])
-            .then(([payrollRes, wagesRes]) => {
+        // Fetch payroll history (now includes wages_data from backend)
+        getEmployeeHistory(token, empCode, { months, includeCurrent: false })
+            .then(payrollRes => {
                 const payroll = payrollRes.data || [];
-                const wages = wagesRes.data || [];
 
-                // Create a map of wages by period for quick lookup
-                const wagesMap = new Map();
-                wages.forEach(w => {
-                    const key = `${w.period_month || w.payment_date?.getMonth?.() + 1}_${w.period_year || w.payment_date?.getFullYear?.()}`;
-                    wagesMap.set(key, w);
-                });
+                // Process payroll data - wages_data is now included from backend
+                const processed = payroll.map(p => {
+                    const wagesFromBackend = p.wages_data;
 
-                // Merge payroll with wages data
-                const merged = payroll.map(p => {
-                    const periodKey = `${p.period_month}_${p.period_year}`;
-                    const wage = wagesMap.get(periodKey);
                     return {
                         ...p,
-                        wages: wage || null,
-                        wages_status: wage ? getWagesStatus(p.upah_bersih, wage.upah_bersih) : 'NO_WAGES'
+                        wages: wagesFromBackend || null,
+                        wages_status: wagesFromBackend
+                            ? getWagesStatus(p.upah_bersih, wagesFromBackend?.upah_bersih_pr_wages)
+                            : 'NO_WAGES'
                     };
                 });
 
-                setHistoryData(merged);
-                setWagesData(wages);
+                setHistoryData(processed);
+                setWagesData(processed.filter(p => p.wages));
             })
             .catch(err => setError(err.message || 'Failed to load data'))
             .finally(() => setLoading(false));
     }, [empCode, months, token]);
 
     // Helper to determine wages comparison status
-    const getWagesStatus = (upahBersih, wagesBersih) => {
-        if (!wagesBersih) return 'NO_WAGES';
-        const diff = Math.abs((upahBersih || 0) - wagesBersih);
+    const getWagesStatus = (upahBersih, wagesBersihPrWages) => {
+        if (!wagesBersihPrWages) return 'NO_WAGES';
+        const diff = Math.abs((upahBersih || 0) - wagesBersihPrWages);
         if (diff <= 1000) return 'MATCH';
         if (diff <= 10000) return 'MINOR_DIFF';
         return 'MAJOR_DIFF';
@@ -343,10 +334,10 @@ export default function SalaryHistoryTable({ empCode, months = 12, onPeriodClick
 
                                         {/* Wages Verification */}
                                         {expandedColumns.wages && <>
-                                            <td className="sht-td-num sht-td-dim">{row.wages ? fmt(row.wages.jumlah_hk) : '-'}</td>
-                                            <td className="sht-td-num sht-td-dim">{row.wages ? fmt(row.wages.upah_bersih) : '-'}</td>
-                                            <td className={`sht-td-num ${row.wages && row.wages.upah_bersih !== row.upah_bersih ? 'sht-td-diff' : ''}`}>
-                                                {row.wages ? fmt((row.upah_bersih || 0) - row.wages.upah_bersih) : '-'}
+                                            <td className="sht-td-num sht-td-dim">{row.wages_data ? fmt(row.wages_data.jumlah_hk_pr_wages) : '-'}</td>
+                                            <td className="sht-td-num sht-td-dim">{row.wages_data ? fmtCurrency(row.wages_data.upah_bersih_pr_wages) : '-'}</td>
+                                            <td className={`sht-td-num ${row.wages_data && row.wages_data.upah_bersih_pr_wages !== row.upah_bersih ? 'sht-td-diff' : ''}`}>
+                                                {row.wages_data ? fmtCurrency((row.upah_bersih || 0) - row.wages_data.upah_bersih_pr_wages) : '-'}
                                             </td>
                                         </>}
                                         <td>
@@ -463,9 +454,9 @@ function ExpandedPayslipDetail({ row, fmt, fmtCurrency }) {
     const totalTunjangan = n('total_tunjangan');
 
     // --- Wages Comparison ---
-    const wages = row.wages;
-    const wagesDiff = wages ? (upahBersih - (wages.upah_bersih || 0)) : null;
-    const wagesHkDiff = wages ? (n('jumlah_hk') - (wages.jumlah_hk || 0)) : null;
+    const wages = row.wages_data; // Use wages_data from backend (PR_WAGES)
+    const wagesDiff = wages ? (upahBersih - (wages.upah_bersih_pr_wages || 0)) : null;
+    const wagesHkDiff = wages ? (n('jumlah_hk') - (wages.jumlah_hk_pr_wages || 0)) : null;
     const wagesBadge = getStatusBadge(row.wages_status);
 
     return (
@@ -601,11 +592,11 @@ function ExpandedPayslipDetail({ row, fmt, fmtCurrency }) {
                         </div>
                         <div className="sht-wages-item">
                             <span className="sht-wages-label">Wages HK</span>
-                            <span className="sht-wages-value">{fmt(wages.jumlah_hk)}</span>
+                            <span className="sht-wages-value">{wages ? fmt(wages.jumlah_hk_pr_wages) : '-'}</span>
                         </div>
                         <div className={`sht-wages-item ${wagesHkDiff !== 0 ? 'sht-wages-diff' : 'sht-wages-match'}`}>
                             <span className="sht-wages-label">Selisih HK</span>
-                            <span className="sht-wages-value">{wagesHkDiff > 0 ? '+' : ''}{wagesHkDiff}</span>
+                            <span className="sht-wages-value">{wagesHkDiff !== null ? (wagesHkDiff > 0 ? '+' : '') + wagesHkDiff : '-'}</span>
                         </div>
 
                         <div className="sht-wages-separator"></div>
@@ -618,12 +609,12 @@ function ExpandedPayslipDetail({ row, fmt, fmtCurrency }) {
                             <span>vs</span>
                         </div>
                         <div className="sht-wages-item">
-                            <span className="sht-wages-label">Wages Bersih</span>
-                            <span className="sht-wages-value sht-text-green">{fmtCurrency(wages.upah_bersih)}</span>
+                            <span className="sht-wages-label">Wages Bersih (PR_WAGES)</span>
+                            <span className="sht-wages-value sht-text-green">{wages ? fmtCurrency(wages.upah_bersih_pr_wages) : '-'}</span>
                         </div>
-                        <div className={`sht-wages-item ${Math.abs(wagesDiff) > 1000 ? 'sht-wages-diff' : 'sht-wages-match'}`}>
+                        <div className={`sht-wages-item ${wagesDiff !== null && Math.abs(wagesDiff) > 1000 ? 'sht-wages-diff' : 'sht-wages-match'}`}>
                             <span className="sht-wages-label">Selisih</span>
-                            <span className="sht-wages-value">{wagesDiff > 0 ? '+' : ''}{fmtCurrency(wagesDiff)}</span>
+                            <span className="sht-wages-value">{wagesDiff !== null ? (wagesDiff > 0 ? '+' : '') + fmtCurrency(wagesDiff) : '-'}</span>
                         </div>
 
                         <div className="sht-wages-status-panel">

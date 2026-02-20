@@ -315,7 +315,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     .get("/:emp_code/history", async ({ params, query, set }) => {
         try {
             const empCode = params.emp_code;
-            const months = parseInt(query.months || "12"); // Number of months to fetch
+            const requestedMonths = parseInt(query.months || "12"); // Number of months to fetch
             const includeCurrent = query.include_current !== "false";
 
             // Get current period first
@@ -323,11 +323,15 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             const currentPeriod = await currentPeriodService.getCurrentPeriod();
 
             // Calculate periods to fetch
+            // When includeCurrent is false, we need to fetch requestedMonths + 1 to exclude current period
+            // and still get the full requested number of historical months
+            const monthsToFetch = includeCurrent ? requestedMonths : requestedMonths + 1;
+
             const periods = [];
-            let startMonth = currentPeriod.month - 1;
+            let startMonth = currentPeriod.month;
             let startYear = currentPeriod.year;
 
-            for (let i = 0; i < months; i++) {
+            for (let i = 0; i < monthsToFetch; i++) {
                 let m = startMonth - i;
                 let y = startYear;
 
@@ -344,9 +348,21 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
 
             // Fetch data for each period
             const results = [];
+
+            // Import wagesService for fetching PR_WAGES data
+            const { wagesService } = await import("../services/wagesService");
+
             for (const period of periods) {
                 try {
+                    // Fetch payroll checkroll data
                     const result = await employeeDetailService.getEmployeeCheckroll(
+                        empCode,
+                        period.month,
+                        period.year
+                    );
+
+                    // Fetch PR_WAGES data for actual upah bersih
+                    const wagesData = await wagesService.getWagesByEmployee(
                         empCode,
                         period.month,
                         period.year
@@ -384,6 +400,20 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
 
                             // Harvest summary from checkroll
                             harvest_summary: result.harvest?.summary || null,
+
+                            // PR_WAGES data (actual paid amount from PR_WAGES table)
+                            wages_data: wagesData ? {
+                                wages_no: wagesData.wages_no,
+                                payment_date: wagesData.payment_date,
+                                payment_status: wagesData.payment_status,
+                                upah_bersih_pr_wages: wagesData.upah_bersih,  // Actual paid amount
+                                gaji_pokok_pr_wages: wagesData.gaji_pokok,
+                                total_tunjangan_pr_wages: wagesData.total_tunjangan,
+                                total_premi_pr_wages: wagesData.total_premi,
+                                total_potongan_pr_wages: wagesData.total_potongan,
+                                jumlah_hk_pr_wages: wagesData.jumlah_hk,
+                                upah_dasar_pr_wages: wagesData.upah_dasar,
+                            } : null,
                         });
                     }
                 } catch (err) {

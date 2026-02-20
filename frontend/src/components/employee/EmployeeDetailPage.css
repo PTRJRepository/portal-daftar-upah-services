@@ -3,7 +3,7 @@
     display: flex;
     flex-direction: column;
     /* Changed to column to stack payslip and matrices */
-    align-items: center;
+    align-items: stretch;  /* Changed from center to stretch for full width */
     min-height: 100vh;
     background-color: #e5e7eb;
     /* Gray background */
@@ -716,15 +716,28 @@
     width: 100%;
     max-width: 100%;
     margin: 0 auto 2rem auto;
-    padding: 0 1rem;
+    padding: 0;
+    overflow-x: auto;  /* Allow horizontal scroll for wide tables */
 }
 
 /* Full width container for salary history */
-.salary-history-section .sht-table-container,
-.salary-history-section .sht-table-toolbar,
+.salary-history-section .sht-table-container {
+    width: 100%;
+    min-width: fit-content;  /* Ensure container fits table content */
+    border-radius: 12px;
+    overflow: visible;
+}
+
+.salary-history-section .sht-table-toolbar {
+    width: 100%;
+    border-radius: 12px 12px 0 0;
+}
+
 .salary-history-section .sht-table-scroll {
     width: 100%;
-    border-radius: 12px;
+    border-radius: 0 0 12px 12px;
+    overflow-x: auto;
+    overflow-y: visible;
 }
 
 /* Mobile Responsive */
