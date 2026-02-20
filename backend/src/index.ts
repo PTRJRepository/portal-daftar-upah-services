@@ -14,6 +14,7 @@ import { aggregationSeederRoutes } from "./api/aggregationSeederRoutes";
 import { spreadsheetRoutes } from "./api/spreadsheetRoutes";
 import { dashboardRoutes } from "./api/dashboardRoutes";
 import { historyRoutes } from "./api/historyRoutes";
+import { wagesRoutes } from "./api/wagesRoutes";
 import { Database } from "./db/client";
 import { staticPlugin } from "@elysiajs/static";
 
@@ -208,6 +209,8 @@ const app = new Elysia()
     .use(dashboardRoutes)
     // History routes
     .use(historyRoutes)
+    // Wages comparison routes
+    .use(wagesRoutes)
 
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
@@ -226,6 +229,7 @@ const app = new Elysia()
         .use(summaryRoutes)
         .use(dashboardRoutes)
         .use(historyRoutes)
+        .use(wagesRoutes)
         .use(devConfigRoutes)
     )
 

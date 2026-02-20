@@ -74,30 +74,48 @@ export function AuthProvider({ children }) {
 
         if (hasProdToken()) {
           const prodToken = getProdToken()
-          const prodUser = getProdUser()
-          const prodDivision = getUserDivision()
-          // ... rest of logic kept for re-checks if needed ...
+          // Verify token validity with backend
+          // This prevents "zombie sessions" where localStorage has an expired token but the app loads anyway
+          try {
+            console.log('[AuthContext] Verifying production token...')
+            // We use the same verification logic as external/gateway tokens
+            const claims = await verifyExternalToken(prodToken)
 
-          // Check if user is admin (role is ADMIN or divisi is ALL)
-          const userRole = (prodUser?.role || '').toUpperCase()
-          const userDivisi = (prodUser?.divisi || '').toUpperCase()
-          const isAdmin = userRole === 'ADMIN' || userDivisi === 'ALL'
+            if (claims && claims.valid) {
+              const prodUser = getProdUser()
+              const prodDivision = getUserDivision()
+              // ... rest of logic kept for re-checks if needed ...
 
-          // Set auth state from localStorage
-          setToken(prodToken)
-          setUser({
-            ...prodUser,
-            divisi: isAdmin ? null : prodDivision,
-            divisions: isAdmin ? [] : (prodDivision ? [prodDivision] : []),
-            isExternal: true,
-            isProdMode: true,
-            isAdmin: isAdmin
-          })
-          setIsExternalAuth(true)
-          setLockedDivision(isAdmin ? null : prodDivision)
-          axios.defaults.headers.common['Authorization'] = `Bearer ${prodToken}`
-          setLoading(false)
-          return true
+              // Check if user is admin (role is ADMIN or divisi is ALL)
+              const userRole = (prodUser?.role || '').toUpperCase()
+              const userDivisi = (prodUser?.divisi || '').toUpperCase()
+              const isAdmin = userRole === 'ADMIN' || userDivisi === 'ALL'
+
+              // Set auth state from localStorage
+              setToken(prodToken)
+              setUser({
+                ...prodUser,
+                divisi: isAdmin ? null : prodDivision,
+                divisions: isAdmin ? [] : (prodDivision ? [prodDivision] : []),
+                isExternal: true,
+                isProdMode: true,
+                isAdmin: isAdmin
+              })
+              setIsExternalAuth(true)
+              setLockedDivision(isAdmin ? null : prodDivision)
+              axios.defaults.headers.common['Authorization'] = `Bearer ${prodToken}`
+              setLoading(false)
+              return true
+            } else {
+              console.warn('[AuthContext] Production token verification failed (expired or invalid)')
+              redirectToExternalLogin()
+              return false
+            }
+          } catch (e) {
+            console.error('[AuthContext] Error verifying production token:', e)
+            redirectToExternalLogin()
+            return false
+          }
         }
 
         console.log('[AuthContext] No specific production token found, checking for internal cookies...')
@@ -339,7 +357,8 @@ export function AuthProvider({ children }) {
       error,
       checkAuth,
       isExternalAuth,
-      lockedDivision
+      lockedDivision,
+      isKeraniUser: (user?.role || '').toLowerCase() === 'kerani'
     }}>
       {children}
     </AuthCtx.Provider>

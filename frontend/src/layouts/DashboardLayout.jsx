@@ -20,7 +20,7 @@ const Icons = {
 };
 
 const DashboardLayout = () => {
-    const { user, logout } = useAuth();
+    const { user, logout, isKeraniUser } = useAuth();
     const { isAdminUser } = useReport();
     const navigate = useNavigate();
     const location = useLocation();
@@ -193,44 +193,50 @@ const DashboardLayout = () => {
                         {!collapsed && <span>Laporan Operasional</span>}
                     </NavLink>
 
-                    <NavLink to="/executive" style={getLinkStyle} title={collapsed ? "Analisis Keseluruhan" : ""}>
-                        <Icons.TrendingUp />
-                        {!collapsed && <span>Analisis Keseluruhan</span>}
-                    </NavLink>
-
-                    {/* Section Separator / Label */}
-                    {!collapsed ? (
-                        <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
-                            Analysis & Summary
-                        </div>
-                    ) : (
-                        <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
+                    {!isKeraniUser && (
+                        <NavLink to="/executive" style={getLinkStyle} title={collapsed ? "Analisis Keseluruhan" : ""}>
+                            <Icons.TrendingUp />
+                            {!collapsed && <span>Analisis Keseluruhan</span>}
+                        </NavLink>
                     )}
 
-                    <NavLink to="/summary" style={getLinkStyle} title={collapsed ? "Summary Report" : ""}>
-                        <Icons.BarChart />
-                        {!collapsed && <span>Summary Report</span>}
-                    </NavLink>
+                    {/* Section Separator / Label - Hidden for Kerani */}
+                    {!isKeraniUser && (
+                        <>
+                            {!collapsed ? (
+                                <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                                    Analysis & Summary
+                                </div>
+                            ) : (
+                                <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
+                            )}
 
-                    <NavLink to="/wages-rebinmas" style={getLinkStyle} title={collapsed ? "Wages Rebinmas" : ""}>
-                        <Icons.DollarSign />
-                        {!collapsed && <span>Wages Rebinmas</span>}
-                    </NavLink>
+                            <NavLink to="/summary" style={getLinkStyle} title={collapsed ? "Summary Report" : ""}>
+                                <Icons.BarChart />
+                                {!collapsed && <span>Summary Report</span>}
+                            </NavLink>
 
-                    <NavLink to="/wages-ijl" style={getLinkStyle} title={collapsed ? "Wages IJL" : ""}>
-                        <Icons.PalmTree />
-                        {!collapsed && <span>Wages IJL</span>}
-                    </NavLink>
+                            <NavLink to="/wages-rebinmas" style={getLinkStyle} title={collapsed ? "Wages Rebinmas" : ""}>
+                                <Icons.DollarSign />
+                                {!collapsed && <span>Wages Rebinmas</span>}
+                            </NavLink>
 
-                    <NavLink to="/analysis" style={getLinkStyle} title={collapsed ? "Analysis OT & Premi" : ""}>
-                        <Icons.TrendingUp />
-                        {!collapsed && <span>Analysis OT & Premi</span>}
-                    </NavLink>
+                            <NavLink to="/wages-ijl" style={getLinkStyle} title={collapsed ? "Wages IJL" : ""}>
+                                <Icons.PalmTree />
+                                {!collapsed && <span>Wages IJL</span>}
+                            </NavLink>
 
-                    <NavLink to="/comprehensive" style={getLinkStyle} title={collapsed ? "Laporan Analisis Payroll" : ""}>
-                        <Icons.Activity />
-                        {!collapsed && <span>Laporan Analisis Payroll</span>}
-                    </NavLink>
+                            <NavLink to="/analysis" style={getLinkStyle} title={collapsed ? "Analysis OT & Premi" : ""}>
+                                <Icons.TrendingUp />
+                                {!collapsed && <span>Analysis OT & Premi</span>}
+                            </NavLink>
+
+                            <NavLink to="/comprehensive" style={getLinkStyle} title={collapsed ? "Laporan Analisis Payroll" : ""}>
+                                <Icons.Activity />
+                                {!collapsed && <span>Laporan Analisis Payroll</span>}
+                            </NavLink>
+                        </>
+                    )}
 
                     {isAdminUser && (
                         <>

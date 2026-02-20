@@ -35,7 +35,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         }
     })
     // --- Divisions ---as
-    .get("/divisions", async () => {
+    .get("/divisions", async ({ currentUser }) => {
+        if (currentUser) {
+            return authService.getAccessibleDivisions(currentUser);
+        }
         const divisions = await gangService.getAllDivisions();
         return divisions;
     })
@@ -65,7 +68,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const search = query.search || undefined;
 
             // Permission check
-            if (currentUser && currentUser.role !== UserRole.ADMIN) {
+            if (currentUser && (currentUser.role !== UserRole.ADMIN)) {
                 if (division && !currentUser.divisions.includes(division)) {
                     set.status = 403;
                     return { message: "Division not accessible" };
@@ -338,7 +341,35 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "Unauthorized" };
             }
 
-            // PERMISSION CHECK - RELAXED TO MATCH PYTHON BACKEND
+            // PERMISSION CHECK - Enforce for KERANI
+            // ADMIN = All access
+            // USER = All access (Legacy behavior retained for backward compatibility if needed, or strictly enforce?)
+            // KERANI = RESTRICTED to assigned divisions
+
+            if (currentUser.role === UserRole.KERANI) {
+                const requestedDiv = String(divisionCode).trim().toUpperCase();
+                const hasPermission = currentUser.divisions.some(d => {
+                    const div = String(d).trim().toUpperCase();
+                    if (div === requestedDiv) return true;
+
+                    // Check alias
+                    try {
+                        const alias = gangService.convertDivisionToLocCode(div);
+                        if (alias === requestedDiv) return true;
+                    } catch (e) {
+                        // ignore 
+                    }
+                    return false;
+                });
+
+                if (!hasPermission) {
+                    console.warn(`[PayrollRoutes] KERANI ${currentUser.username} denied. Divs: ${JSON.stringify(currentUser.divisions)}, Req: ${requestedDiv}`);
+                    // console.log(`[DEBUG] permission check failed`);
+                    set.status = 403;
+                    return { error: `Access refused: You do not have permission for division ${divisionCode}` };
+                }
+            }
+
             /*
             if (currentUser.role !== UserRole.ADMIN) {
                 console.log(`[PayrollRoutes DEBUG Report] Permission Check for User: ${currentUser.username}, Requested: '${divisionCode}', UserDivs: ${JSON.stringify(currentUser.divisions)}`);
@@ -510,9 +541,33 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "Unauthorized" };
             }
 
+            // PERMISSION CHECK - Enforce for KERANI
             // The Python backend (payroll_locked.py) does NOT check if the user has the division in their token.
-            // It allows any authenticated user to request any locked division.
-            // We are mirroring that behavior here to resolve 403 errors for users like 'kerani_arec'.
+            // However, for KERANI, we need to be STRICT.
+
+            if (currentUser.role === UserRole.KERANI) {
+                const requestedDiv = String(divisionCode).trim().toUpperCase();
+                const hasPermission = currentUser.divisions.some(d => {
+                    const div = String(d).trim().toUpperCase();
+                    if (div === requestedDiv) return true;
+
+                    // Check alias
+                    try {
+                        const alias = gangService.convertDivisionToLocCode(div);
+                        if (alias === requestedDiv) return true;
+                    } catch (e) {
+                        // ignore 
+                    }
+                    return false;
+                });
+
+                if (!hasPermission) {
+                    console.warn(`[PayrollRoutes] KERANI ${currentUser.username} attempted to access unauthorized gangs for division: ${divisionCode}`);
+                    set.status = 403;
+                    return { error: `Access denied. You have ${JSON.stringify(currentUser.divisions)}, but requested ${divisionCode}` };
+                }
+            }
+
             /*
             if (currentUser.role !== UserRole.ADMIN) {
                 console.log(`[PayrollRoutes DEBUG] Permission Check for User: ${currentUser.username}, Requested: '${divisionCode}', UserDivs: ${JSON.stringify(currentUser.divisions)}`);

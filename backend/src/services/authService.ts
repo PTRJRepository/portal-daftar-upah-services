@@ -190,7 +190,10 @@ export class AuthService {
             // Normalize Role
             let roleStr = (payload as any).role || "user";
             if (typeof roleStr === "string") roleStr = roleStr.toLowerCase();
-            let role = (roleStr === "admin" ? UserRole.ADMIN : UserRole.USER);
+
+            let role = UserRole.USER;
+            if (roleStr === "admin") role = UserRole.ADMIN;
+            else if (roleStr === "kerani") role = UserRole.KERANI;
 
             // Try to find user locally
             const user = await this.getUser(username);
@@ -230,6 +233,17 @@ export class AuthService {
                         divisions = rawDivs.split(',').map(d => d.trim());
                     } else if (rawDivs.trim() !== '') {
                         divisions = [rawDivs.trim()];
+                    }
+                }
+
+                // FALLBACK FOR KERANI: If no divisions found in token, try to infer from username
+                // Pattern: kerani_pg2a -> PG2A
+                if (divisions.length === 0 && role === UserRole.KERANI) {
+                    const parts = username.split('_');
+                    if (parts.length > 1) {
+                        const inferredDiv = parts[1].toUpperCase();
+                        // console.log(`[AuthService] Inferred division '${inferredDiv}' from username '${username}' for KERANI user.`);
+                        divisions.push(inferredDiv);
                     }
                 }
 
@@ -304,6 +318,7 @@ export class AuthService {
         if (user.role === UserRole.ADMIN) {
             return AuthService.ALL_DIVISIONS;
         }
+        // For USER and KERANI, return assigned divisions
         return user.divisions;
     }
 

@@ -153,148 +153,157 @@ const OperationalReportWrapper = () => {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Toolbar */}
+      {/* Toolbar - Compact Single Line */}
       <div style={{
-        padding: '0.75rem 1rem',
+        height: '56px', // Fixed height for consistency
+        padding: '0 1rem',
         borderBottom: '1px solid #e2e8f0',
-        backgroundColor: 'white',
+        backgroundColor: '#ffffff',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
         gap: '1rem',
-        flexWrap: 'wrap'
+        flexShrink: 0
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button
-            onClick={() => navigate('/')}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '1.2rem',
-              color: '#64748b',
-              padding: '0.25rem',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-            title="Kembali ke Dashboard"
-          >
-            ←
-          </button>
-          <div style={{ fontWeight: '700', fontSize: '1.1rem', color: '#0f172a' }}>
-            Operational
+        {/* Left Side: Navigation & Filters */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
+          {/* Back & Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+            <button
+              onClick={() => navigate('/')}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '4px',
+                borderRadius: '4px'
+              }}
+              title="Dashboard"
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+            </button>
+            <span style={{ fontWeight: '600', fontSize: '0.95rem', color: '#1e293b', whiteSpace: 'nowrap' }}>
+              Operational
+            </span>
+            <div style={{ width: '1px', height: '20px', backgroundColor: '#cbd5e1', margin: '0 0.25rem' }}></div>
           </div>
 
-          {/* Division Selector */}
+          {/* Selectors Group */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {/* Division */}
             <select
               value={division}
               onChange={(e) => canChangeDivision && setDivision(e.target.value)}
               disabled={!canChangeDivision}
+              title={!canChangeDivision ? "Locked" : "Division"}
               style={{
-                padding: '0.4rem 2rem 0.4rem 0.8rem', // Extra padding for arrow
+                height: '32px',
+                padding: '0 2rem 0 0.75rem',
                 border: '1px solid #cbd5e1',
                 borderRadius: '6px',
-                fontSize: '0.9rem',
+                fontSize: '0.85rem',
                 color: '#334155',
-                backgroundColor: !canChangeDivision ? '#f1f5f9' : 'white',
+                backgroundColor: !canChangeDivision ? '#f8fafc' : 'white',
                 cursor: !canChangeDivision ? 'not-allowed' : 'pointer',
                 fontWeight: '500',
-                maxWidth: '200px',
-                appearance: 'none', // Remove default arrow
-                backgroundImage: !canChangeDivision ? 'none' : `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: 'right 0.5rem center',
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: '1.5em 1.5em'
-              }}
-              title={!canChangeDivision ? "Anda tidak memiliki akses untuk mengganti divisi" : "Pilih Divisi"}
-            >
-              {allDivisions.map(d => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
-
-          <span style={{ color: '#cbd5e1' }}>/</span>
-
-          {/* Gang Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <select
-              value={gang || ""} // Handle potentially null gang
-              onChange={(e) => setGang(e.target.value)}
-              disabled={gangLoading}
-              style={{
-                padding: '0.4rem 2rem 0.4rem 0.8rem',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                fontSize: '0.9rem',
-                color: '#334155',
-                backgroundColor: gangLoading ? '#f1f5f9' : 'white',
-                cursor: gangLoading ? 'wait' : 'pointer',
-                fontWeight: '500',
-                maxWidth: '250px',
                 appearance: 'none',
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
                 backgroundPosition: 'right 0.5rem center',
                 backgroundRepeat: 'no-repeat',
-                backgroundSize: '1.5em 1.5em'
+                backgroundSize: '1em 1em',
+                minWidth: '80px'
               }}
             >
-              {gangLoading ? (
-                <option>Memuat...</option>
-              ) : (
+              {allDivisions.map(d => (<option key={d} value={d}>{d}</option>))}
+            </select>
+
+            {/* Gang */}
+            <select
+              value={gang || ""}
+              onChange={(e) => setGang(e.target.value)}
+              disabled={gangLoading}
+              style={{
+                height: '32px',
+                padding: '0 2rem 0 0.75rem',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                fontSize: '0.85rem',
+                color: '#334155',
+                backgroundColor: gangLoading ? '#f8fafc' : 'white',
+                cursor: gangLoading ? 'wait' : 'pointer',
+                fontWeight: '500',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                backgroundPosition: 'right 0.5rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1em 1em',
+                maxWidth: '160px',
+                textOverflow: 'ellipsis'
+              }}
+            >
+              {gangLoading ? <option>Loading...</option> : (
                 <>
-                  <option value="ALL">SEMUA GANG</option>
+                  <option value="ALL">All Gangs</option>
                   {gangs.map(g => (
-                    <option key={g.gang_code} value={g.gang_code}>
-                      {g.gang_code} - {g.description || '-'}
-                    </option>
+                    <option key={g.gang_code} value={g.gang_code}>{g.gang_code} - {g.description || ''}</option>
                   ))}
                 </>
               )}
             </select>
-          </div>
 
-          <div style={{
-            fontSize: '0.9rem',
-            color: '#64748b',
-            fontWeight: '600',
-            padding: '0.2rem 0.6rem',
-            background: '#f1f5f9',
-            borderRadius: '4px',
-            whiteSpace: 'nowrap',
-            border: '1px solid #e2e8f0'
-          }}>
-            {month}-{year}
-          </div>
+            {/* Current Period Badge */}
+            <div style={{
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 0.75rem',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '6px',
+              color: '#1d4ed8',
+              fontWeight: '600',
+              fontSize: '0.85rem',
+              whiteSpace: 'nowrap'
+            }}>
+              {month}-{year}
+            </div>
 
-          {/* Quick Period Selectors */}
-          <div style={{ display: 'flex', gap: '0.25rem' }}>
-            {previousPeriods.map((p, idx) => (
-              <button
-                key={`${p.month}-${p.year}`}
-                onClick={() => {
-                  setMonth(p.month);
-                  setYear(p.year);
-                }}
-                style={{
-                  fontSize: '0.75rem',
-                  color: '#3b82f6',
-                  background: 'white',
-                  border: '1px solid #bfdbfe',
-                  borderRadius: '4px',
-                  padding: '0.15rem 0.5rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  whiteSpace: 'nowrap'
-                }}
-                title={`Lihat data ${p.label}`}
-                onMouseOver={(e) => { e.target.style.background = '#eff6ff'; }}
-                onMouseOut={(e) => { e.target.style.background = 'white'; }}
-              >
-                {p.label}
-              </button>
-            ))}
+            {/* Quick Period Buttons */}
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {previousPeriods.slice(0, 3).map((p) => (
+                <button
+                  key={`${p.month}-${p.year}`}
+                  onClick={() => { setMonth(p.month); setYear(p.year); }}
+                  style={{
+                    height: '32px',
+                    padding: '0 0.75rem',
+                    fontSize: '0.75rem',
+                    color: '#475569',
+                    background: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.borderColor = '#94a3b8';
+                    e.currentTarget.style.color = '#0f172a';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.borderColor = '#e2e8f0';
+                    e.currentTarget.style.color = '#475569';
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -372,30 +381,40 @@ const OperationalReportWrapper = () => {
 }
 
 function AppInner() {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, loading, isKeraniUser } = useAuth()
   const inProdMode = isProdMode()
 
-  // URL Path Management
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  // URL Path Management & Role Redirects
   useEffect(() => {
     if (!loading) {
-      const currentPath = window.location.pathname
+      // Use location.pathname from React Router to get path relative to basename
+      const currentPath = location.pathname
+      const isLoginPath = currentPath === '/login' || currentPath.endsWith('/login')
 
-      if (!isAuthenticated) {
-        // ALWAYS Redirect to external login (relative path on same origin)
-        console.log('[App] Not authenticated, redirecting to external login/login page')
+      // 1. External Login Redirect (Prod Mode)
+      if (!isAuthenticated && !isLoginPath) {
+        console.log('[App] Not authenticated, redirecting to login')
+        if (!window.location.host.includes('localhost') && !window.location.host.includes('127.0.0.1')) {
+          redirectToExternalLogin()
+        }
+      }
 
-        // Prevent infinite loop if we are already at the root /login
-        const isLoginPath = currentPath === '/login' || currentPath.endsWith('/login');
+      // 2. KERANI Role Redirect
+      // Kerani can ONLY access: /operational, /employee/detail, /payslip-print
+      if (isAuthenticated && isKeraniUser) {
+        const allowedPaths = ['/operational', '/employee/detail', '/payslip-print', '/login'];
+        const isAllowed = allowedPaths.some(p => currentPath.startsWith(p));
 
-        if (!isLoginPath) {
-          // If in Prod Mode and not authenticated, we usually redirect to external login
-          if (!window.location.host.includes('localhost') && !window.location.host.includes('127.0.0.1')) {
-            redirectToExternalLogin()
-          }
+        if (!isAllowed) {
+          console.log('[App] Kerani user restricted to Operational page. Redirecting from:', currentPath);
+          navigate('/operational', { replace: true });
         }
       }
     }
-  }, [isAuthenticated, loading, inProdMode])
+  }, [isAuthenticated, loading, inProdMode, isKeraniUser, navigate, location])
 
   if (loading) {
     return <LoadingScreen isLoading={true} message="Menyiapkan sistem..." />
