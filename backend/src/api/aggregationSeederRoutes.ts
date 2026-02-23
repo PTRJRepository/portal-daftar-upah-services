@@ -29,15 +29,15 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
             await db.query("SELECT 1");
             return {
                 success: true,
-                message: "extend_db_ptrj connection successful (server_profile_1)",
-                profile: "SERVER_PROFILE_1",
+                message: `extend_db_ptrj connection successful (${Config.DB_EXTEND_PROFILE})`,
+                profile: Config.DB_EXTEND_PROFILE,
                 timestamp: new Date().toISOString()
             };
         } catch (error: any) {
             return {
                 success: false,
                 message: `Connection failed: ${error.message}`,
-                profile: "SERVER_PROFILE_1",
+                profile: Config.DB_EXTEND_PROFILE,
                 timestamp: new Date().toISOString()
             };
         }
@@ -73,6 +73,32 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
             year: t.Numeric(),
             force: t.Optional(t.Boolean())
         })
+    })
+    .get("/seed/progress", async ({ headers, set }) => {
+        // Verify authentication
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        try {
+            // Import HistorySeederService to get its static progress
+            const { HistorySeederService } = await import("../services/historySeederService");
+            const progress = HistorySeederService.getProgress();
+
+            return {
+                success: true,
+                data: progress
+            };
+        } catch (error: any) {
+            console.error("[AggregationSeeder] Progress Error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch progress"
+            };
+        }
     })
     .get("/history", async ({ query, headers }) => {
         // Verify authentication

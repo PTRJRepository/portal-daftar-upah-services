@@ -13,7 +13,8 @@ export default function DashboardHome() {
     division, setDivision,
     gang, setGang,
     gangs, allDivisions,
-    gangLoading, isLockedMode, isAdminUser
+    gangLoading, isLockedMode, isAdminUser,
+    currentPeriod
   } = useReport();
 
   const navigate = useNavigate();
@@ -25,6 +26,12 @@ export default function DashboardHome() {
   const handleGenerateOperational = () => {
     if (division && gang) {
       navigate('/operational');
+    }
+  };
+
+  const handleGenerateReportPajak = () => {
+    if (division && gang) {
+      navigate('/report-pajak');
     }
   };
 
@@ -86,6 +93,31 @@ export default function DashboardHome() {
           }}>
             <span style={{ fontSize: '1.25rem' }}>⚙️</span> FILTER PARAMETER
           </h2>
+
+          {/* CURRENT PERIOD INFO BANNER */}
+          {currentPeriod && (
+            <div style={{
+              backgroundColor: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderLeft: '4px solid #3b82f6',
+              borderRadius: '6px',
+              padding: '1rem',
+              marginBottom: '2rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.75rem'
+            }}>
+              <div style={{ fontSize: '1.25rem', marginTop: '-2px' }}>ℹ️</div>
+              <div>
+                <h4 style={{ margin: '0 0 0.25rem 0', color: '#1e293b', fontSize: '0.95rem', fontWeight: '600' }}>
+                  Info Database Aktif: {new Date(currentPeriod.year, currentPeriod.month - 1).toLocaleString('id-ID', { month: 'long', year: 'numeric' })}
+                </h4>
+                <p style={{ margin: 0, color: '#475569', fontSize: '0.85rem', lineHeight: '1.4' }}>
+                  Database utama <b>hanya menyimpan data operasional untuk bulan yang sedang berjalan</b>. Untuk melihat rekapan data penggajian, data karyawan, dan kemandoran bulan-bulan sebelumnya secara akurat, gunakan Laporan/History (Aggregation Seeder).
+                </p>
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2.5rem', alignItems: 'flex-start' }}>
             {/* Left Column: Calendar (Fixed Width) */}
@@ -185,7 +217,31 @@ export default function DashboardHome() {
           </div>
 
           {/* QUICK ACTION BUTTON - Moved INSIDE/NEAR FILTER for accessibility */}
-          <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+            <button
+              onClick={handleGenerateReportPajak}
+              disabled={!division || !gang || gangLoading}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '1rem 2rem',
+                backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#8b5cf6',
+                color: (!division || !gang || gangLoading) ? '#94a3b8' : 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '700',
+                fontSize: '1rem',
+                cursor: (!division || !gang || gangLoading) ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(139, 92, 246, 0.3)'
+              }}
+            >
+              {gangLoading ? 'Memuat Data...' : 'REPORT PAJAK'}
+              <span>📊</span>
+            </button>
             <button
               onClick={handleGenerateOperational}
               disabled={!division || !gang || gangLoading}
@@ -194,7 +250,7 @@ export default function DashboardHome() {
                 alignItems: 'center',
                 gap: '0.5rem',
                 padding: '1rem 2rem',
-                backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#0ea5e9', // Sky Blue Button
+                backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#0ea5e9',
                 color: (!division || !gang || gangLoading) ? '#94a3b8' : 'white',
                 border: 'none',
                 borderRadius: '6px',

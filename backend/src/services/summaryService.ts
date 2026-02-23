@@ -43,9 +43,9 @@ export class SummaryService {
     private extendDb: Database;
 
     private constructor() {
-        // Enforce SERVER_PROFILE_1 for summary reports
-        this.db = Database.getInstance(undefined, "SERVER_PROFILE_1");
-        this.extendDb = Database.getInstance("extend_db_ptrj", "SERVER_PROFILE_1");
+        // Enforce DB_PROFILE for summary reports
+        this.db = Database.getInstance(undefined, Config.DB_PROFILE);
+        this.extendDb = Database.getInstance("extend_db_ptrj", Config.DB_EXTEND_PROFILE);
     }
 
     public static getInstance(): SummaryService {
@@ -445,7 +445,7 @@ export class SummaryService {
             // Read from area_produktif.json file
             const areaFile = file(join(process.cwd(), "data", "area_produktif.json"));
             if (await areaFile.exists()) {
-                const areaData = await areaFile.json<any[]>();
+                const areaData = await areaFile.json() as any[];
                 const map: Record<string, number> = {};
                 for (const item of areaData) {
                     const div = (item.divisi || '').trim();

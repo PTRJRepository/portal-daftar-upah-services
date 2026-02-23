@@ -12,9 +12,10 @@
 
 import { Elysia, t } from "elysia";
 import { historyDatabaseService } from "../services/historyDatabaseService";
-import { historySeederService, SeederOptions } from "../services/historySeederService";
+import { historySeederService, SeederOptions, HistorySeederService } from "../services/historySeederService";
 import { Config } from "../config";
 import { currentPeriodService } from "../services/currentPeriodService";
+import { ptkpTaxService } from "../services/ptkpTaxService";
 
 // Helper to get month name in Indonesian
 function getMonthName(month: number): string {
@@ -47,6 +48,11 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
         };
     })
 
+    // Seeder progress (poll every 2s from frontend)
+    .get("/seed/progress", () => {
+        return HistorySeederService.getProgress();
+    })
+
     // Seed history data
     .post("/seed", async ({ body, headers, set }) => {
         // Verify authentication
@@ -65,7 +71,7 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
             };
         }
 
-        const { period_month, period_year, division_code, gang_code, force } = body;
+        const { period_month, period_year, division_code, gang_code, force, seederMode } = body;
         const createdBy = headers["x-user-id"] || "system";
         const ipAddress = getClientIP(headers);
         const userAgent = headers["user-agent"] || "unknown";
@@ -79,7 +85,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
                 createdBy,
                 ipAddress,
                 userAgent,
-                force: force || false
+                force: force || false,
+                seederMode: seederMode || 'PAYROLL'
             };
 
             const result = await historySeederService.seedPayrollHistory(options);
@@ -113,9 +120,16 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
         body: t.Object({
             period_month: t.Numeric(),
             period_year: t.Numeric(),
-            division_code: t.String(),
+            division_code: t.Optional(t.String()),
             gang_code: t.Optional(t.String()),
-            force: t.Optional(t.Boolean())
+            force: t.Optional(t.Boolean()),
+            seederMode: t.Optional(t.Union([
+                t.Literal('ALL'),
+                t.Literal('PAYROLL'),
+                t.Literal('EMPLOYEE_HR'),
+                t.Literal('GANG_HR'),
+                t.Literal('ALL_HR')
+            ]))
         })
     })
 
@@ -252,7 +266,7 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
             // Delete payroll history (cascade will delete details)
             const db = historyDatabaseService.getPayrollDatabase();
             await db.query(
-                "DELETE FROM dbo.payroll_history_master WHERE history_id = ?",
+                "DELETE FROM dbo.payroll_history_header WHERE history_id = ?",
                 [history_id]
             );
 
@@ -441,7 +455,7 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
             const periods = await db.query<{ period_year: number; period_month: number }>(`
                 SELECT DISTINCT period_year, period_month
-                FROM dbo.payroll_history_master
+                FROM dbo.payroll_history_header
                 ORDER BY period_year DESC, period_month DESC
             `);
 
@@ -520,14 +534,152 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
         }
     })
 
+    // ============================================================================
+    // PTKP TAX AGGREGATION ENDPOINTS
+    // ============================================================================
+
+    // Update PTKP status for a given year
+    .post("/ptkp/update", async ({ body, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const { period_year } = body;
+        const createdBy = headers["x-user-id"] || "system";
+
+        try {
+            console.log(`[HistoryRoutes] Starting PTKP update for year ${period_year}`);
+            const result = await ptkpTaxService.updatePtkpForYear(period_year, createdBy);
+
+            if (!result.success) {
+                set.status = 500;
+            }
+
+            return {
+                success: result.success,
+                data: {
+                    period_year: result.period_year,
+                    total_employees: result.total_employees,
+                    records_inserted: result.records_inserted,
+                    records_updated: result.records_updated,
+                    records_skipped: result.records_skipped,
+                    summary: result.summary
+                },
+                errors: result.errors.length > 0 ? result.errors : undefined
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] PTKP update error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to update PTKP"
+            };
+        }
+    }, {
+        body: t.Object({
+            period_year: t.Numeric()
+        })
+    })
+
+    // Preview PTKP update (dry run)
+    .get("/ptkp/preview/:year", async ({ params, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const year = parseInt(params.year);
+        try {
+            const preview = await ptkpTaxService.previewPtkpUpdate(year);
+            return {
+                success: true,
+                data: preview
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] PTKP preview error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to preview PTKP"
+            };
+        }
+    })
+
+    // Get PTKP data for a specific year
+    .get("/ptkp/:year", async ({ params, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const year = parseInt(params.year);
+        try {
+            const records = await ptkpTaxService.getPtkpByYear(year);
+            return {
+                success: true,
+                data: records,
+                count: records.length,
+                period_year: year
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Get PTKP error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch PTKP data"
+            };
+        }
+    })
+
+    // Get PTKP history for an employee
+    .get("/ptkp/employee/:empCode", async ({ params, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        try {
+            const records = await ptkpTaxService.getPtkpByEmployee(params.empCode);
+            return {
+                success: true,
+                data: records,
+                count: records.length,
+                emp_code: params.empCode
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Get employee PTKP error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch employee PTKP data"
+            };
+        }
+    })
+
     // EMPLOYEE HISTORY REDIRECT - Redirect to employee routes for history
     // NOTE: Employee history is now handled by /payroll/employee/:emp_code/history endpoint in employee.ts
-    .get("/employee/:empCode", async ({ params }) => {
-        // Return message indicating to use employee endpoint instead
-        return {
-            success: false,
-            error: "Please use /payroll/employee/:emp_code/history instead",
-            redirect: `/payroll/employee/${params.empCode}/history`,
-            message: "Employee history has been moved to the employee-specific endpoint"
-        };
+    .get("/employee/:empCode", async ({ params, set }) => {
+        try {
+            const data = await historyDatabaseService.getEmployeeHistoricalData(params.empCode);
+            if (!data) {
+                set.status = 404;
+                return { success: false, error: "History data not found" };
+            }
+            return {
+                success: true,
+                data
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Employee historical data error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch employee historical data"
+            };
+        }
     })

@@ -1,0 +1,26 @@
+﻿Proxy configuration: {
+  isDev: false,
+  backendTarget: 'http://localhost:8002',
+  isProxyMode: undefined,
+  basePath: '/upah/',
+  envVars: {
+    VITE_BACKEND_HOST: undefined,
+    BACKEND_HOST: undefined,
+    VITE_BACKEND_PORT: undefined,
+    BACKEND_PORT: undefined,
+    DEV_MODE: undefined,
+    VITE_DEV_MODE: undefined,
+    VITE_BASE_PATH: undefined
+  }
+}
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32mΓ£ô[39m 82 modules transformed.
+[31mx[39m Build failed in 806ms
+[31merror during build:
+[31mCould not resolve "../config" from "src/pages/EmployeeDirectoryPage.jsx"[31m
+file: [36mD:/Gawean Rebinmas/Monitoring Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/frontend/src/pages/EmployeeDirectoryPage.jsx[31m
+    at getRollupError (file:///D:/Gawean%20Rebinmas/Monitoring%20Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/frontend/node_modules/rollup/dist/es/shared/parseAst.js:401:41)
+    at error (file:///D:/Gawean%20Rebinmas/Monitoring%20Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/frontend/node_modules/rollup/dist/es/shared/parseAst.js:397:42)
+    at ModuleLoader.handleInvalidResolvedId (file:///D:/Gawean%20Rebinmas/Monitoring%20Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/frontend/node_modules/rollup/dist/es/shared/node-entry.js:21576:24)
+    at file:///D:/Gawean%20Rebinmas/Monitoring%20Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/frontend/node_modules/rollup/dist/es/shared/node-entry.js:21536:26[39m

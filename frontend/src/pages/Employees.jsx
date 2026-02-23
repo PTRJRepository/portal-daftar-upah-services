@@ -13,7 +13,8 @@ export default function Employees({ token }) {
   }, [token])
   const currencyFormatter = p => p.value ? `Rp ${Number(p.value).toLocaleString('id-ID')}` : ''
   const columnDefs = useMemo(() => [
-    { field: 'nik', headerName: 'NIK' },
+    { field: 'nik', headerName: 'Emp Code' },
+    { field: 'actual_nik', headerName: 'NIK (KTP)' },
     { field: 'nama', headerName: 'Nama' },
     { field: 'jenis_kelamin', headerName: 'Jenis Kelamin' },
     { field: 'loc_code', headerName: 'Lokasi' },

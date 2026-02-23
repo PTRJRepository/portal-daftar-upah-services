@@ -8,7 +8,7 @@ import { calculatePph21Ter } from "./pph21TerService";
 import { currentPeriodService } from "./currentPeriodService";
 import { PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
 import { harvesterService } from "./harvesterService";
-
+import { historyDatabaseService } from "./historyDatabaseService";
 // Import new unified component services
 import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
 
@@ -21,6 +21,7 @@ interface EmployeeRow {
     pay_rate: number;
     beras_rate: number;
     join_date: string | null;
+    actual_nik?: string;
 }
 
 interface CutiData {
@@ -60,6 +61,7 @@ interface ShortageDetail {
 }
 
 interface PayrollRow {
+    emp_code?: string;
     nik: string;
     nama: string;
     jabatan_estate?: string;
@@ -255,6 +257,26 @@ export class DataExtractorService {
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
 
         console.log(`[DataExtractor] Current period: ${currentMonth}/${currentYear}, Selected: ${month}/${year}, IsHistorical: ${isHistorical}`);
+
+        // --- DEEP HISTORY INTERCEPTOR ---
+        // If it's a historical period and history mode is on, try to fetch from the snapshot tables first.
+        if (isHistorical && historyDatabaseService.isHistoryMode()) {
+            try {
+                const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
+                    month, year, gangCode, divisionCode, specificEmpCode
+                );
+
+                if (historyData && historyData.data_rows.length > 0) {
+                    console.log(`[DataExtractor] Intercepted deep history request for ${month}/${year}. Returning seeded snapshot data. (${historyData.data_rows.length} rows)`);
+                    return historyData;
+                } else {
+                    console.log(`[DataExtractor] No seeded history found for ${month}/${year}. Falling back to live/archive calculation...`);
+                }
+            } catch (err) {
+                console.error(`[DataExtractor] Failed to fetch historical snapshot, falling back:`, err);
+            }
+        }
+        // ------------------------------------
 
         // [GANG MAPPING] Fetch all gangs to build mapping maps
         // We need this because Frontend sends "Code" (e.g. AB1) but Database uses "Description" (e.g. Divisi AB1)
@@ -586,7 +608,8 @@ export class DataExtractorService {
             const tarif_pajak_ter = pph21TerResult.rate_percent; // Rate as percentage (e.g., 5 for 5%)
             const pph21_ter = pph21TerResult.tax_amount;
             const row: PayrollRow = {
-                nik: emp.emp_code,
+                emp_code: emp.emp_code,  // Actual EmpCode (e.g. A0023)
+                nik: emp.actual_nik || emp.emp_code,  // Actual NIK KTP (e.g. 1902050504860001)
                 nama: emp.emp_name,
                 jabatan_estate: empJobTitle,
                 jenis_kelamin: emp.gender === "2" || emp.gender === "P" ? "P" : "L",
@@ -744,6 +767,7 @@ export class DataExtractorService {
             rows = await db.query<any>(`
                 SELECT DISTINCT
                     RTRIM(e.EmpCode) as emp_code,
+                    e.NewICNo as actual_nik,
                     e.EmpName as emp_name,
                     e.Gender as gender,
                     RTRIM(e.LocCode) as loc_code,
@@ -768,6 +792,7 @@ export class DataExtractorService {
             rows = await db.query<any>(`
                 SELECT DISTINCT
                     RTRIM(e.EmpCode) as emp_code,
+                    e.NewICNo as actual_nik,
                     e.EmpName as emp_name,
                     e.Gender as gender,
                     RTRIM(e.LocCode) as loc_code,
@@ -798,6 +823,7 @@ export class DataExtractorService {
 
             return {
                 emp_code: r.emp_code?.trim() || "",
+                actual_nik: r.actual_nik?.trim() || r.emp_code?.trim() || "",
                 emp_name: r.emp_name?.trim() || "",
                 gender: String(r.gender || "1"),
                 loc_code: r.loc_code?.trim() || "",
@@ -1119,9 +1145,16 @@ export class DataExtractorService {
                   UPPER(t.DocDesc) LIKE '%INSENTIF%' OR
                   UPPER(t.DocDesc) LIKE '%PANEN%' OR
                   UPPER(t.DocDesc) LIKE '%KINERJA%' OR
-                  UPPER(t.DocDesc) LIKE '%RAWAT%'
+                  UPPER(t.DocDesc) LIKE '%RAWAT%' OR
+                  UPPER(t.DocDesc) LIKE '%TUNJANGAN%'
               )
               AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
+              AND UPPER(t.DocDesc) NOT LIKE '%JABATAN%'
+              AND UPPER(t.DocDesc) NOT LIKE '%BERAS%'
+              AND UPPER(t.DocDesc) NOT LIKE '%LEMBUR%'
+              AND UPPER(t.DocDesc) NOT LIKE '%MASA%'
+              AND UPPER(t.DocDesc) NOT LIKE '%POTONGAN%'
+              AND UPPER(t.DocDesc) NOT LIKE '%KOREKSI%'
               AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
               AND ln.Amount > 0
             GROUP BY RTRIM(t.EmpCode), t.DocDesc
@@ -1488,21 +1521,9 @@ export class DataExtractorService {
         const currentPeriod = await currentPeriodService.getCurrentPeriod();
         const currentYear = currentPeriod.year;
 
-        // For historical years (before current year), use Config-based upah dasar
-        // For 2025, this returns 129220 as defined in .env (UPAH_DASAR_2025)
-        if (year < currentYear) {
-            const historicalRate = Config.getUpahDasar(year);
-            console.log(`[DataExtractor] Using historical upah dasar from Config for year ${year}: ${historicalRate}`);
-
-            // Still need to get emp_code list for the result
-            const result: Record<string, number> = {};
-            for (const empCode of empCodes) {
-                result[empCode.trim()] = historicalRate;
-            }
-            return result;
-        }
-
-        // For current year, query HR_CPTRX for employee-specific rates
+        // For historical years (before current year), we still query HR_CPTRX
+        // to get the employee-specific rate, but if the queried rate is <= 134500 (current standard),
+        // we'll override it with the historical standard rate for that year.
         const rows = await db.query<{ emp_code: string; upah_dasar: number }>(`
             WITH LatestCPTRX AS(
                 SELECT EmpCode, NewRate, ROW_NUMBER() OVER(PARTITION BY EmpCode ORDER BY UpdateDate DESC) as rn
@@ -1516,7 +1537,15 @@ export class DataExtractorService {
 
         const result: Record<string, number> = {};
         for (const r of rows) {
-            result[r.emp_code?.trim() || ""] = r.upah_dasar || 0;
+            let rate = r.upah_dasar || 0;
+
+            // For historical years (before current year), override rate if it's the standard minimum
+            // or less (e.g., 2026 standard is 134500) and replace it with historical year's standard rate.
+            if (year < currentYear && rate <= 134500) {
+                rate = Config.getUpahDasar(year);
+            }
+
+            result[r.emp_code?.trim() || ""] = rate;
         }
         return result;
     }

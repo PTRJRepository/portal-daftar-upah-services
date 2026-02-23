@@ -10,7 +10,7 @@
 
 import { Database } from "../db/client";
 import { Config } from "../config";
-import { historyDatabaseService, PayrollHistoryMaster, PayrollHistoryDetail, HistoryTaskreg, HistoryAdtrans, HistoryGangMember, HistoryMetadata } from "./historyDatabaseService";
+import { historyDatabaseService, PayrollHistoryMaster, PayrollHistoryDetail, HistoryTaskreg, HistoryAdtrans, HistoryGangMember, HistoryMetadata, HistoryHrEmployee, HistoryHrGang } from "./historyDatabaseService";
 import { dataExtractorService } from "./dataExtractorService";
 import { gangService } from "./gangService";
 import { PayrollDataService } from "./payrollDataService";
@@ -29,6 +29,8 @@ export interface SeederResult {
         taskreg: number;
         adtrans: number;
         gang_member: number;
+        hr_employee?: number;
+        hr_gang?: number;
     };
     errors: string[];
 }
@@ -36,15 +38,45 @@ export interface SeederResult {
 export interface SeederOptions {
     periodMonth: number;
     periodYear: number;
-    divisionCode: string;
+    divisionCode?: string;
     gangCode?: string;  // Optional, if not provided will seed all gangs in division
     createdBy: string;
     ipAddress?: string;
     userAgent?: string;
     force?: boolean;  // Overwrite existing data
+    seederMode?: 'ALL' | 'PAYROLL' | 'EMPLOYEE_HR' | 'GANG_HR' | 'ALL_HR';
+}
+export interface SeederProgress {
+    is_running: boolean;
+    current_step: string;
+    current_division?: string;
+    current_gang?: string;
+    period?: string;
+    gangs_total: number;
+    gangs_done: number;
+    employees_processed: number;
+    started_at?: string;
+    last_update?: string;
 }
 
 export class HistorySeederService {
+    // Static progress tracker
+    private static progress: SeederProgress = {
+        is_running: false,
+        current_step: 'idle',
+        gangs_total: 0,
+        gangs_done: 0,
+        employees_processed: 0
+    };
+
+    public static getProgress(): SeederProgress {
+        return { ...HistorySeederService.progress };
+    }
+
+    private static updateProgress(update: Partial<SeederProgress>) {
+        Object.assign(HistorySeederService.progress, update, { last_update: new Date().toISOString() });
+    }
+
     private static instance: HistorySeederService;
 
     private constructor() { }
@@ -65,7 +97,7 @@ export class HistorySeederService {
             history_id: '',
             period_month: options.periodMonth,
             period_year: options.periodYear,
-            division_code: options.divisionCode,
+            division_code: options.divisionCode || 'ALL',
             gang_code: options.gangCode || 'ALL',
             total_employees: 0,
             records_inserted: {
@@ -79,9 +111,15 @@ export class HistorySeederService {
         };
 
         try {
-            // Generate history_id
-            const historyId = historyDatabaseService.generateHistoryId();
-            result.history_id = historyId;
+            // Reset progress
+            HistorySeederService.updateProgress({
+                is_running: true,
+                current_step: 'Memulai seeding...',
+                period: `${options.periodMonth}/${options.periodYear}`,
+                current_division: options.divisionCode || 'ALL',
+                gangs_total: 0, gangs_done: 0, employees_processed: 0,
+                started_at: new Date().toISOString()
+            });
 
             // Check if history mode is enabled
             if (!historyDatabaseService.isHistoryMode()) {
@@ -89,36 +127,80 @@ export class HistorySeederService {
                 return result;
             }
 
-            // 1. Get payroll data from real-time database
-            const payrollData = await this.fetchPayrollData(options);
+            // Generate history_id
+            const historyId = historyDatabaseService.generateHistoryId();
+            result.history_id = historyId;
 
-            if (!payrollData || payrollData.length === 0) {
-                result.errors.push('No payroll data found for the specified period');
-                return result;
-            }
+            // Delete existing history for this period/location to prevent duplication
+            await historyDatabaseService.deleteHistoryForPeriodAndLocation(
+                options.periodMonth,
+                options.periodYear,
+                options.divisionCode,
+                options.gangCode
+            );
 
-            // 2. Seed master and detail
-            for (const gangData of payrollData) {
-                try {
-                    await this.seedGangHistory(historyId, gangData, options, result);
-                } catch (error: any) {
-                    result.errors.push(`Error seeding gang ${gangData.gang_code}: ${error.message}`);
+            const seederMode = options.seederMode || 'PAYROLL';
+
+            // PAYROLL SEEDER
+            if (seederMode === 'ALL' || seederMode === 'PAYROLL') {
+                // 1. Get payroll data from real-time database
+                HistorySeederService.updateProgress({ current_step: 'Mengambil data payroll live...' });
+                const payrollData = await this.fetchPayrollData(options);
+
+                if (!payrollData || payrollData.length === 0) {
+                    if (seederMode === 'PAYROLL') {
+                        result.errors.push('No payroll data found for the specified period');
+                        return result;
+                    }
+                } else {
+                    // 2. Seed master and detail
+                    HistorySeederService.updateProgress({ gangs_total: payrollData.length, current_step: 'Menyimpan data payroll per gang...' });
+                    for (let gi = 0; gi < payrollData.length; gi++) {
+                        const gangData = payrollData[gi];
+                        try {
+                            HistorySeederService.updateProgress({
+                                current_step: `Menyimpan gang ${gangData.gang_code || '?'} (${gi + 1}/${payrollData.length})`,
+                                current_gang: gangData.gang_code,
+                                gangs_done: gi
+                            });
+                            await this.seedGangHistory(historyId, gangData, options, result);
+                        } catch (error: any) {
+                            result.errors.push(`Error seeding gang ${gangData.gang_code}: ${error.message}`);
+                        }
+                    }
+                    HistorySeederService.updateProgress({ gangs_done: payrollData.length, current_step: 'Menyimpan data transaksi...' });
+
+                    // 3. Seed transaction data
+                    await this.seedTransactionData(historyId, options, result);
+
+                    // 4. Seed gang member data
+                    await this.seedGangMemberData(historyId, options, result);
                 }
             }
 
-            // 3. Seed transaction data
-            await this.seedTransactionData(historyId, options, result);
+            // EXTENDED HR SEEDERS
 
-            // 4. Seed gang member data
-            await this.seedGangMemberData(historyId, options, result);
+            // EMPLOYEE HR SEEDER
+            if (seederMode === 'ALL' || seederMode === 'ALL_HR' || seederMode === 'EMPLOYEE_HR') {
+                HistorySeederService.updateProgress({ current_step: 'Menyimpan data HR Karyawan...' });
+                await this.seedEmployeeHrHistory(historyId, options, result);
+            }
+
+            // GANG HR SEEDER
+            if (seederMode === 'ALL' || seederMode === 'ALL_HR' || seederMode === 'GANG_HR') {
+                HistorySeederService.updateProgress({ current_step: 'Menyimpan data HR Gang...' });
+                await this.seedGangHrHistory(historyId, options, result);
+            }
 
             // 5. Save metadata
             await this.saveSeederMetadata(historyId, options, result);
 
             result.success = result.errors.length === 0;
+            HistorySeederService.updateProgress({ is_running: false, current_step: result.success ? '✅ Selesai!' : '⚠️ Selesai dengan error' });
 
         } catch (error: any) {
             result.errors.push(`Fatal error: ${error.message}`);
+            HistorySeederService.updateProgress({ is_running: false, current_step: `❌ Error: ${error.message}` });
         }
 
         return result;
@@ -184,7 +266,7 @@ export class HistorySeederService {
             history_id: historyId,
             period_month: options.periodMonth,
             period_year: options.periodYear,
-            division_code: options.divisionCode,
+            division_code: options.divisionCode || 'ALL',
             gang_code: gangData.gang_code,
             gang_description: gangData.gang_code, // Will be updated with actual description
             total_employees: employees.length,
@@ -278,9 +360,9 @@ export class HistorySeederService {
         return {
             history_id: historyId,
             master_id: masterId,
-            emp_code: emp.nik || emp.emp_code,
+            emp_code: emp.emp_code || emp.nik,  // EmpCode (e.g. A0023), fallback to nik
             emp_name: emp.nama || emp.emp_name,
-            nik: emp.nik,
+            nik: emp.nik,  // PayrollRow.nik = actual KTP (NewICNo)
             gender: emp.jenis_kelamin || emp.gender,
             gang_code: emp.gang_code,
             division_code: emp.division_code,
@@ -523,7 +605,7 @@ export class HistorySeederService {
 
         try {
             // Get current period gang members
-            const gangMembers = await db.query<any>(`
+            let sql = `
                 SELECT 
                     g.GangCode, g.Description as GangDesc, g.LocCode,
                     gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate
@@ -531,15 +613,25 @@ export class HistorySeederService {
                 JOIN HR_GANGLN gl ON g.GangCode = gl.GangCode
                 JOIN HR_EMPLOYEE e ON gl.GangMember = e.EmpCode
                 LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
-                WHERE g.LocCode = '${options.divisionCode}'
-            `);
+                WHERE 1=1
+            `;
+
+            if (options.divisionCode) {
+                sql += ` AND g.LocCode = '${options.divisionCode}'`;
+            }
+
+            if (options.gangCode && options.gangCode !== 'ALL') {
+                sql += ` AND g.GangCode = '${options.gangCode}'`;
+            }
+
+            const gangMembers = await db.query<any>(sql);
 
             for (const row of gangMembers) {
                 const gangMemberData: HistoryGangMember = {
                     history_id: historyId,
                     gang_code: row.GangCode?.trim(),
                     gang_description: row.GangDesc?.trim(),
-                    division_code: options.divisionCode,
+                    division_code: options.divisionCode || 'ALL',
                     loc_code: row.LocCode?.trim(),
                     emp_code: row.EmpCode?.trim(),
                     emp_name: row.EmpName?.trim(),
@@ -555,6 +647,181 @@ export class HistorySeederService {
             }
         } catch (error: any) {
             result.errors.push(`Error seeding gang members: ${error.message}`);
+        }
+    }
+
+    /**
+     * EXTENDED: Seed Employee HR History
+     */
+    private async seedEmployeeHrHistory(
+        historyId: string,
+        options: SeederOptions,
+        result: SeederResult
+    ): Promise<void> {
+        const db = Database.getInstance();
+
+        try {
+            let sql = `
+                SELECT 
+                    e.NewICNo as nik,
+                    e.EmpCode as emp_code,
+                    e.EmpName as emp_name,
+                    em.CompCode as company_code,
+                    g.LocCode as division_code,
+                    g.LocCode as loc_code,
+                    g.GangCode as gang_code,
+                    NULL as job_code,
+                    NULL as position,
+                    em.AppJoinGrpDate as join_date,
+                    em.TerminateDate as terminate_date,
+                    e.Status as status,
+                    e.HREmpType as employee_type,
+                    e.Gender as gender,
+                    e.Religion as religion,
+                    e.MaritalStatus as marital_status,
+                    e.PlaceOfBirth as birth_place,
+                    e.DOB as birth_date,
+                    NULL as tax_status,
+                    0 as upah_dasar,
+                    -- PTKP Beras Logic
+                    (SELECT TOP 1 CAST(RiceRation AS VARCHAR) FROM HR_PAYROLL p WHERE p.EmpCode = e.EmpCode) as ptkp_beras,
+                    NULL as ptkp_pajak,
+                    COALESCE((
+                        SELECT SUM(Hours)/7.0
+                        FROM PR_TASKREG tr 
+                        JOIN PR_TASKREGLN trl ON tr.ID = trl.MasterID
+                        WHERE trl.EmpCode = e.EmpCode 
+                          AND MONTH(trl.TrxDate) = ${options.periodMonth} 
+                          AND YEAR(trl.TrxDate) = ${options.periodYear}
+                    ), 0) as total_hk
+                FROM HR_EMPLOYEE e
+                JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
+                LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                WHERE 1=1
+            `;
+
+            if (options.divisionCode) {
+                sql += ` AND g.LocCode = '${options.divisionCode}'`;
+            }
+
+            if (options.gangCode && options.gangCode !== 'ALL') {
+                sql += ` AND g.GangCode = '${options.gangCode}'`;
+            }
+
+            const employees = await db.query<any>(sql);
+
+            if (!result.records_inserted['hr_employee']) {
+                result.records_inserted['hr_employee'] = 0;
+            }
+
+            for (const row of employees) {
+                const hrData: HistoryHrEmployee = {
+                    history_id: historyId,
+                    period_month: options.periodMonth,
+                    period_year: options.periodYear,
+                    nik: row.nik?.trim(),
+                    emp_code: row.emp_code?.trim(),
+                    emp_name: row.emp_name?.trim(),
+                    company_code: row.company_code?.trim(),
+                    division_code: row.division_code?.trim(),
+                    loc_code: row.loc_code?.trim(),
+                    gang_code: row.gang_code?.trim(),
+                    job_code: row.job_code?.trim(),
+                    position: row.position?.trim(),
+                    join_date: row.join_date,
+                    terminate_date: row.terminate_date,
+                    status: row.status?.trim(),
+                    employee_type: row.employee_type?.trim(),
+                    gender: row.gender?.trim(),
+                    religion: row.religion?.trim(),
+                    birth_place: row.birth_place?.trim(),
+                    birth_date: row.birth_date,
+                    marital_status: row.marital_status?.trim(),
+                    tax_status: row.tax_status?.trim(),
+                    ptkp_beras: row.ptkp_beras?.trim(),
+                    ptkp_pajak: row.ptkp_pajak?.trim() || row.tax_status?.trim(), // simplified mapping
+                    upah_dasar: row.upah_dasar || 0,
+                    total_hk: row.total_hk || 0,
+                    source_table: 'HR_EMPLOYEE_JOIN'
+                };
+
+                await historyDatabaseService.saveHrEmployeeHistory(hrData);
+                result.records_inserted['hr_employee']++;
+            }
+        } catch (error: any) {
+            result.errors.push(`Error seeding Employee HR: ${error.message}`);
+        }
+    }
+
+    /**
+     * EXTENDED: Seed Gang HR History
+     */
+    private async seedGangHrHistory(
+        historyId: string,
+        options: SeederOptions,
+        result: SeederResult
+    ): Promise<void> {
+        const db = Database.getInstance();
+
+        try {
+            let sql = `
+                SELECT 
+                    g.LocCode as division_code,
+                    g.LocCode as loc_code,
+                    g.GangCode as gang_code,
+                    g.Description as gang_description,
+                    g.GangLeader as mandor_code,
+                    m1.EmpName as mandor_name,
+                    NULL as mandor_1_code,
+                    NULL as mandor_1_name,
+                    NULL as assistant_code,
+                    NULL as assistant_name,
+                    (SELECT COUNT(*) FROM HR_GANGLN gl WHERE gl.GangCode = g.GangCode) as total_members
+                FROM HR_GANG g
+                LEFT JOIN HR_EMPLOYEE m1 ON g.GangLeader = m1.EmpCode
+                WHERE 1=1
+            `;
+
+            if (options.divisionCode) {
+                sql += ` AND g.LocCode = '${options.divisionCode}'`;
+            }
+
+            if (options.gangCode && options.gangCode !== 'ALL') {
+                sql += ` AND g.GangCode = '${options.gangCode}'`;
+            }
+
+            const gangs = await db.query<any>(sql);
+
+            if (!result.records_inserted['hr_gang']) {
+                result.records_inserted['hr_gang'] = 0;
+            }
+
+            for (const row of gangs) {
+                const hrGang: HistoryHrGang = {
+                    history_id: historyId,
+                    period_month: options.periodMonth,
+                    period_year: options.periodYear,
+                    division_code: row.division_code?.trim(),
+                    loc_code: row.loc_code?.trim(),
+                    gang_code: row.gang_code?.trim(),
+                    gang_description: row.gang_description?.trim(),
+                    mandor_code: row.mandor_code?.trim(),
+                    mandor_name: row.mandor_name?.trim(),
+                    mandor_1_code: row.mandor_1_code?.trim(),
+                    mandor_1_name: row.mandor_1_name?.trim(),
+                    assistant_code: row.assistant_code?.trim(),
+                    assistant_name: row.assistant_name?.trim(),
+                    total_members: row.total_members || 0,
+                    is_active: true, // Assuming active if present in current gang iteration
+                    source_table: 'HR_GANG'
+                };
+
+                await historyDatabaseService.saveHrGangHistory(hrGang);
+                result.records_inserted['hr_gang']++;
+            }
+        } catch (error: any) {
+            result.errors.push(`Error seeding Gang HR: ${error.message}`);
         }
     }
 

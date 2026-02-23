@@ -166,6 +166,10 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
       },
+      '/tax-report': {
+        target: backendTarget,
+        changeOrigin: true,
+      },
       '/backend': {
         target: backendTarget,
         changeOrigin: true,

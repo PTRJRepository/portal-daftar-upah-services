@@ -215,6 +215,59 @@ export interface HistoryGangMember {
     created_at?: Date;
 }
 
+export interface HistoryHrEmployee {
+    id?: number;
+    history_id: string;
+    period_month: number;
+    period_year: number;
+    nik?: string;
+    emp_code: string;
+    emp_name?: string;
+    company_code?: string;
+    division_code?: string;
+    loc_code?: string;
+    gang_code?: string;
+    job_code?: string;
+    position?: string;
+    join_date?: Date;
+    terminate_date?: Date;
+    status?: string;
+    employee_type?: string;
+    gender?: string;
+    religion?: string;
+    birth_place?: string;
+    birth_date?: Date;
+    marital_status?: string;
+    tax_status?: string;
+    ptkp_beras?: string;
+    ptkp_pajak?: string;
+    upah_dasar?: number;
+    total_hk?: number;
+    source_table: string;
+    created_at?: Date;
+}
+
+export interface HistoryHrGang {
+    id?: number;
+    history_id: string;
+    period_month: number;
+    period_year: number;
+    division_code?: string;
+    loc_code?: string;
+    gang_code: string;
+    gang_description?: string;
+    mandor_code?: string;
+    mandor_name?: string;
+    mandor_1_code?: string;
+    mandor_1_name?: string;
+    assistant_code?: string;
+    assistant_name?: string;
+    total_members?: number;
+    is_active?: boolean;
+    source_table: string;
+    created_at?: Date;
+}
+
 export interface HistoryMetadata {
     id?: number;
     history_id: string;
@@ -302,14 +355,14 @@ export class HistoryDatabaseService {
 
         // Check if record exists
         const existing = await db.queryOne<{ id: number }>(`
-            SELECT id FROM dbo.payroll_history_master
+            SELECT id FROM dbo.payroll_history_header
             WHERE period_month = ? AND period_year = ? AND division_code = ? AND gang_code = ?
         `, [data.period_month, data.period_year, data.division_code, data.gang_code]);
 
         if (existing) {
             // Update existing
             await db.query(`
-                UPDATE dbo.payroll_history_master SET
+                UPDATE dbo.payroll_history_header SET
                     history_id = ?,
                     gang_description = ?,
                     total_employees = ?,
@@ -396,7 +449,7 @@ export class HistoryDatabaseService {
         } else {
             // Insert new
             const result = await db.query(`
-                INSERT INTO dbo.payroll_history_master (
+                INSERT INTO dbo.payroll_history_header (
                     history_id, period_month, period_year, division_code, gang_code, gang_description,
                     total_employees, total_hk, total_hari_kerja,
                     total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu, total_cuti_nasional,
@@ -440,7 +493,7 @@ export class HistoryDatabaseService {
         const db = this.getPayrollDatabase();
 
         let sql = `
-            SELECT * FROM dbo.payroll_history_master
+            SELECT * FROM dbo.payroll_history_header
             WHERE period_month = ? AND period_year = ?
         `;
         const params: any[] = [periodMonth, periodYear];
@@ -474,7 +527,7 @@ export class HistoryDatabaseService {
         const db = this.getPayrollDatabase();
 
         await db.query(`
-            UPDATE dbo.payroll_history_master
+            UPDATE dbo.payroll_history_header
             SET is_locked = 1, lock_reason = ?
             WHERE period_month = ? AND period_year = ? AND division_code = ? AND gang_code = ?
         `, [reason, periodMonth, periodYear, divisionCode, gangCode]);
@@ -509,8 +562,8 @@ export class HistoryDatabaseService {
                 shortage_details, shortage_total_hours
             ) OUTPUT INSERTED.id VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?
             )
         `, [
             data.history_id, data.master_id, data.emp_code, data.emp_name, data.nik, data.gender,
@@ -546,6 +599,183 @@ export class HistoryDatabaseService {
     }
 
     /**
+     * Get historical payroll data mapped to match DataExtractorService's exact format.
+     * Use this to seamlessly read from deep history tables when the UI requests a legacy period.
+     */
+    public async getHistoricalPayrollDataAsExtractorFormat(
+        periodMonth: number,
+        periodYear: number,
+        gangCode: string = "ALL",
+        divisionCode?: string,
+        specificEmpCode: string | null = null
+    ): Promise<{
+        data_rows: any[];
+        dynamic_premi_headers: string[];
+        dynamic_potongan_headers: string[];
+        premi_title_map: Record<string, string>;
+        potongan_title_map: Record<string, string>;
+        meta: { execution_time_ms: number; row_count: number; is_history_snapshot: boolean }
+    } | null> {
+        const startTime = Date.now();
+        const db = this.getPayrollDatabase();
+
+        let masterQuery = `SELECT id, dynamic_premi_data, dynamic_potongan_data FROM dbo.payroll_history_header WHERE period_month = ? AND period_year = ?`;
+        const masterParams: any[] = [periodMonth, periodYear];
+        console.log(`[DEBUG] getHistoricalPayrollDataAsExtractorFormat params: M:${periodMonth} Y:${periodYear} Gang:${gangCode} Div:${divisionCode}`);
+
+        if (divisionCode) {
+            masterQuery += ` AND (division_code = ? OR division_code = 'ALL')`;
+            masterParams.push(divisionCode);
+        }
+        if (gangCode && gangCode !== "ALL") {
+            masterQuery += ` AND (gang_code = ? OR gang_code = 'ALL')`;
+            masterParams.push(gangCode);
+        }
+
+        const masters = await db.query<{ id: number, dynamic_premi_data: string, dynamic_potongan_data: string }>(masterQuery, masterParams);
+
+        if (masters.length === 0) return null; // No history data seeded yet
+
+        const masterIds = masters.map(m => m.id);
+
+        // Map dynamic headers
+        const dynamicPremiSet = new Set<string>();
+        const dynamicPotonganSet = new Set<string>();
+        for (const m of masters) {
+            try {
+                if (m.dynamic_premi_data) {
+                    const pData = JSON.parse(m.dynamic_premi_data);
+                    pData.forEach((k: string) => dynamicPremiSet.add(k));
+                }
+                if (m.dynamic_potongan_data) {
+                    const potData = JSON.parse(m.dynamic_potongan_data);
+                    potData.forEach((k: string) => dynamicPotonganSet.add(k));
+                }
+            } catch (e) {
+                console.error("[historyDatabaseService] Error parsing dynamic headers for master_id", m.id, e);
+            }
+        }
+
+        let detailQuery = `SELECT * FROM dbo.payroll_history_detail WHERE master_id IN (${masterIds.join(',')})`;
+        const detailParams: any[] = [];
+
+        if (specificEmpCode) {
+            detailQuery += ` AND emp_code = ?`;
+            detailParams.push(specificEmpCode);
+        }
+        if (gangCode && gangCode !== "ALL") {
+            // Jika gang spesifik, cukup filter by gang
+            detailQuery += ` AND gang_code = ?`;
+            detailParams.push(gangCode);
+        } else if (divisionCode && divisionCode !== "ALL") {
+            // Jika gang ALL tapi divisi spesifik (misal: RBM), loc_code bisa jadi P1A, RBM-A dsb.
+            // Sebisa mungkin kita tidak filter strict loc_code = 'RBM' krn bisa kosong. 
+            // Kita coba biarkan fetch semua row dari master (yang sudah difilter by division_code master sebelumnya)
+            // ATAU kita fallback ke pencarian wildcard.
+            // Sementara kita abaikan filter loc_code jika gang=ALL agar semua data estate RBM muncul.
+        }
+
+        console.log(`[DEBUG] detailQuery: ${detailQuery}`, detailParams);
+        const details = await db.query<any>(detailQuery, detailParams);
+
+        const data_rows = details.map(d => {
+            const row: any = {
+                nik: d.nik,
+                nama: d.emp_name,
+                emp_code: d.emp_code,
+                jenis_kelamin: d.gender,
+                status_ptkp: d.status_ptkp,
+                kategori_ter: d.kategori_ter,
+                loc_code: d.loc_code,
+                gang_code: d.gang_code,
+                division_code: d.division_code,
+                upah_dasar: parseFloat(d.upah_dasar) || 0,
+                jumlah_hk: parseFloat(d.jumlah_hk) || 0,
+                total_jam_kerja: parseFloat(d.total_jam_kerja) || 0,
+                hari_kerja: parseFloat(d.hari_kerja) || 0,
+                gaji_pokok: parseFloat(d.gaji_pokok) || 0,
+                gaji_pokok_ideal: parseFloat(d.gaji_pokok_ideal) || 0,
+                gaji_pokok_aktual: parseFloat(d.gaji_pokok_aktual) || 0,
+                koreksi_hk: parseFloat(d.koreksi_hk) || 0,
+                cuti_tahunan_hari: parseFloat(d.cuti_tahunan_hari) || 0,
+                cuti_sakit_haid_hari: parseFloat(d.cuti_sakit_haid_hari) || 0,
+                cuti_minggu_hari: parseFloat(d.cuti_minggu_hari) || 0,
+                cuti_nasional_hari: parseFloat(d.cuti_nasional_hari) || 0,
+                task_code: d.task_code,
+                task_desc: d.task_desc,
+                beras_rate: parseFloat(d.beras_rate) || 0,
+                beras_jumlah: parseFloat(d.beras_jumlah) || 0,
+                jabatan_rate: parseFloat(d.jabatan_rate) || 0,
+                jabatan_jumlah: parseFloat(d.jabatan_jumlah) || 0,
+                masa_kerja_tahun: parseFloat(d.masa_kerja_tahun) || 0,
+                masa_kerja_rate: parseFloat(d.masa_kerja_rate) || 0,
+                masa_kerja_jumlah: parseFloat(d.masa_kerja_jumlah) || 0,
+                lembur_jam: parseFloat(d.lembur_jam) || 0,
+                lembur_rate: parseFloat(d.lembur_rate) || 0,
+                lembur_jumlah: parseFloat(d.lembur_jumlah) || 0,
+                lembur_records: d.lembur_records ? JSON.parse(d.lembur_records) : [],
+                total_tunjangan: parseFloat(d.total_tunjangan) || 0,
+                premi_brondol: parseFloat(d.premi_brondol) || 0,
+                premi_pph: parseFloat(d.premi_pph) || 0,
+                total_premi: parseFloat(d.total_premi) || 0,
+                pot_koreksi: parseFloat(d.pot_koreksi) || 0,
+                pot_spsi: parseFloat(d.pot_spsi) || 0,
+                pot_pph21: parseFloat(d.pot_pph21) || 0,
+                pot_bpjs_kesehatan_pekerja: parseFloat(d.pot_bpjs_kesehatan_pekerja) || 0,
+                pot_bpjs_kesehatan_majikan: parseFloat(d.pot_bpjs_kesehatan_majikan) || 0,
+                pot_bpjs_pensiun_pekerja: parseFloat(d.pot_bpjs_pensiun_pekerja) || 0,
+                pot_bpjs_pensiun_majikan: parseFloat(d.pot_bpjs_pensiun_majikan) || 0,
+                pot_bpjs_pekerja_total: parseFloat(d.pot_bpjs_pekerja_total) || 0,
+                pot_astek: parseFloat(d.pot_astek_pekerja) || 0,
+                pot_astek_maj: parseFloat(d.pot_astek_majikan) || 0,
+                total_potongan: parseFloat(d.total_potongan) || 0,
+                total_potongan_bersih: parseFloat(d.total_potongan_bersih) || 0,
+                jumlah_upah_kotor: parseFloat(d.jumlah_upah_kotor) || 0,
+                upah_kotor_pajak: parseFloat(d.upah_kotor_pajak) || 0,
+                penghasilan_bruto: parseFloat(d.penghasilan_bruto) || 0,
+                tarif_pajak_ter: parseFloat(d.tarif_pajak_ter) || 0,
+                pph21_ter: parseFloat(d.pph21_ter) || 0,
+                upah_bersih: parseFloat(d.upah_bersih) || 0,
+                shortage_details: d.shortage_details ? JSON.parse(d.shortage_details) : undefined,
+                shortage_total_hours: parseFloat(d.shortage_total_hours) || 0
+            };
+
+            // Dynamic fields
+            try {
+                if (d.premi_detail) {
+                    const pd = JSON.parse(d.premi_detail);
+                    Object.keys(pd).forEach(k => row[k] = parseFloat(pd[k]) || 0);
+                }
+                if (d.potongan_detail) {
+                    const pd = JSON.parse(d.potongan_detail);
+                    Object.keys(pd).forEach(k => row[k] = parseFloat(pd[k]) || 0);
+                }
+            } catch (e) { }
+
+            return row;
+        });
+
+        const premiTitles: Record<string, string> = {};
+        dynamicPremiSet.forEach(k => premiTitles[k] = k.replace('PREMI_', '').replace(/_/g, ' '));
+
+        const potonganTitles: Record<string, string> = {};
+        dynamicPotonganSet.forEach(k => potonganTitles[k] = k.replace('POTONGAN_', '').replace(/_/g, ' '));
+
+        return {
+            data_rows,
+            dynamic_premi_headers: Array.from(dynamicPremiSet),
+            dynamic_potongan_headers: Array.from(dynamicPotonganSet),
+            premi_title_map: premiTitles,
+            potongan_title_map: potonganTitles,
+            meta: {
+                execution_time_ms: Date.now() - startTime,
+                row_count: data_rows.length,
+                is_history_snapshot: true
+            }
+        };
+    }
+
+    /**
      * Delete payroll history details by master_id (for re-insert)
      */
     public async deletePayrollHistoryDetails(masterId: number): Promise<void> {
@@ -555,6 +785,71 @@ export class HistoryDatabaseService {
             DELETE FROM dbo.payroll_history_detail
             WHERE master_id = ?
         `, [masterId]);
+    }
+
+    /**
+     * Delete all history data for a specific period and location
+     * Used to prevent duplicates when re-seeding
+     */
+    public async deleteHistoryForPeriodAndLocation(periodMonth: number, periodYear: number, divisionCode?: string, gangCode?: string): Promise<void> {
+        const payrollDb = this.getPayrollDatabase();
+        const transDb = this.getTransactionDatabase();
+
+        console.log(`[HistoryDB] Deleting history for ${periodMonth} / ${periodYear}, Div: ${divisionCode || 'ALL'}, Gang: ${gangCode || 'ALL'} `);
+
+        // 1. Delete Employee & Gang HR history
+        let hrEmployeeSql = `DELETE FROM dbo.history_hr_employee WHERE period_month = ? AND period_year = ? `;
+        let hrGangSql = `DELETE FROM dbo.history_hr_gang WHERE period_month = ? AND period_year = ? `;
+        const hrParams: any[] = [periodMonth, periodYear];
+
+        if (divisionCode) {
+            hrEmployeeSql += ` AND loc_code = ? `;
+            hrGangSql += ` AND loc_code = ? `;
+            hrParams.push(divisionCode);
+        }
+        if (gangCode && gangCode !== 'ALL') {
+            hrEmployeeSql += ` AND gang_code = ? `;
+            hrGangSql += ` AND gang_code = ? `;
+            hrParams.push(gangCode);
+        }
+
+        await payrollDb.query(hrEmployeeSql, hrParams);
+        await payrollDb.query(hrGangSql, hrParams);
+
+        // 2. Find matching headers to delete detail and transactions
+        let findHeadersSql = `SELECT id, history_id FROM dbo.payroll_history_header WHERE period_month = ? AND period_year = ? `;
+        const headerParams: any[] = [periodMonth, periodYear];
+
+        if (divisionCode) {
+            findHeadersSql += ` AND division_code = ? `;
+            headerParams.push(divisionCode);
+        }
+        if (gangCode && gangCode !== 'ALL') {
+            findHeadersSql += ` AND gang_code = ? `;
+            headerParams.push(gangCode);
+        }
+
+        const headers = await payrollDb.query<{ id: number, history_id: string }>(findHeadersSql, headerParams);
+
+        if (headers.length > 0) {
+            const masterIds = headers.map(h => h.id);
+            const historyIds = headers.map(h => `'${h.history_id}'`);
+
+            // Delete Details
+            const masterIdsStr = masterIds.join(',');
+            await payrollDb.query(`DELETE FROM dbo.payroll_history_detail WHERE master_id IN(${masterIdsStr})`);
+
+            // Delete Headers
+            await payrollDb.query(`DELETE FROM dbo.payroll_history_header WHERE id IN(${masterIdsStr})`);
+
+            // Delete Transactions
+            if (historyIds.length > 0) {
+                const historyIdsStr = historyIds.join(',');
+                await transDb.query(`DELETE FROM dbo.history_taskreg WHERE history_id IN(${historyIdsStr})`);
+                await transDb.query(`DELETE FROM dbo.history_adtrans WHERE history_id IN(${historyIdsStr})`);
+                await transDb.query(`DELETE FROM dbo.history_gang_member WHERE history_id IN(${historyIdsStr})`);
+            }
+        }
     }
 
     // ============================================================================
@@ -568,15 +863,15 @@ export class HistoryDatabaseService {
         const db = this.getTransactionDatabase();
 
         const result = await db.query(`
-            INSERT INTO dbo.history_taskreg (
-                history_id, original_master_id, reg_no, reg_date, emp_code, gang_code, division_code,
-                original_line_id, line_no, trx_date, task_code, task_desc, hours, ot, rate, amount,
-                tapping_type, location_code, status, is_cuti_tahunan, is_cuti_sakit, is_cuti_minggu,
-                is_cuti_nasional, is_hari_kerja, is_lembur, period_month, period_year, source_table
-            ) OUTPUT INSERTED.id VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-        `, [
+            INSERT INTO dbo.history_taskreg(
+            history_id, original_master_id, reg_no, reg_date, emp_code, gang_code, division_code,
+            original_line_id, line_no, trx_date, task_code, task_desc, hours, ot, rate, amount,
+            tapping_type, location_code, status, is_cuti_tahunan, is_cuti_sakit, is_cuti_minggu,
+            is_cuti_nasional, is_hari_kerja, is_lembur, period_month, period_year, source_table
+        ) OUTPUT INSERTED.id VALUES(
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+            `, [
             data.history_id, data.original_master_id, data.reg_no, data.reg_date, data.emp_code,
             data.gang_code, data.division_code, data.original_line_id, data.line_no, data.trx_date,
             data.task_code, data.task_desc, data.hours, data.ot, data.rate, data.amount,
@@ -595,15 +890,15 @@ export class HistoryDatabaseService {
         const db = this.getTransactionDatabase();
 
         const result = await db.query(`
-            INSERT INTO dbo.history_adtrans (
+            INSERT INTO dbo.history_adtrans(
                 history_id, original_master_id, doc_no, doc_date, doc_desc, emp_code, gang_code,
                 division_code, original_line_id, line_no, task_code, task_desc, amount, quantity,
                 uom, category, sub_category, is_dynamic, dynamic_header_name, is_premi_pph,
                 is_koreksi, is_potongan, is_premi, period_month, period_year, source_table
-            ) OUTPUT INSERTED.id VALUES (
+            ) OUTPUT INSERTED.id VALUES(
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
-        `, [
+                `, [
             data.history_id, data.original_master_id, data.doc_no, data.doc_date, data.doc_desc,
             data.emp_code, data.gang_code, data.division_code, data.original_line_id, data.line_no,
             data.task_code, data.task_desc, data.amount, data.quantity, data.uom, data.category,
@@ -622,12 +917,12 @@ export class HistoryDatabaseService {
         const db = this.getTransactionDatabase();
 
         const result = await db.query(`
-            INSERT INTO dbo.history_gang_member (
-                history_id, gang_code, gang_description, division_code, loc_code, emp_code,
-                emp_name, join_date, is_active, period_month, period_year, source_table
-            ) OUTPUT INSERTED.id VALUES (
+            INSERT INTO dbo.history_gang_member(
+                    history_id, gang_code, gang_description, division_code, loc_code, emp_code,
+                    emp_name, join_date, is_active, period_month, period_year, source_table
+                ) OUTPUT INSERTED.id VALUES(
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
+                )
         `, [
             data.history_id, data.gang_code, data.gang_description, data.division_code,
             data.loc_code, data.emp_code, data.emp_name, data.join_date, data.is_active,
@@ -643,9 +938,65 @@ export class HistoryDatabaseService {
     public async deleteTransactionHistory(historyId: string): Promise<void> {
         const db = this.getTransactionDatabase();
 
-        await db.query(`DELETE FROM dbo.history_taskreg WHERE history_id = ?`, [historyId]);
-        await db.query(`DELETE FROM dbo.history_adtrans WHERE history_id = ?`, [historyId]);
-        await db.query(`DELETE FROM dbo.history_gang_member WHERE history_id = ?`, [historyId]);
+        await db.query(`DELETE FROM dbo.history_taskreg WHERE history_id = ? `, [historyId]);
+        await db.query(`DELETE FROM dbo.history_adtrans WHERE history_id = ? `, [historyId]);
+        await db.query(`DELETE FROM dbo.history_gang_member WHERE history_id = ? `, [historyId]);
+    }
+
+    // ============================================================================
+    // HR HISTORY OPERATIONS
+    // ============================================================================
+
+    /**
+     * Insert HR Employee history
+     */
+    public async saveHrEmployeeHistory(data: HistoryHrEmployee): Promise<number> {
+        const db = this.getPayrollDatabase(); // HR history goes to extend_db_ptrj
+
+        const result = await db.query(`
+            INSERT INTO dbo.history_hr_employee(
+                    history_id, period_month, period_year, nik, emp_code, emp_name,
+                    company_code, division_code, loc_code, gang_code, job_code, position,
+                    join_date, terminate_date, status, employee_type, gender, religion,
+                    tax_status, ptkp_beras, ptkp_pajak,
+                    upah_dasar, total_hk, source_table
+                ) OUTPUT INSERTED.id VALUES(
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                    `, [
+            data.history_id, data.period_month, data.period_year, data.nik, data.emp_code,
+            data.emp_name, data.company_code, data.division_code, data.loc_code, data.gang_code,
+            data.job_code, data.position, data.join_date, data.terminate_date, data.status,
+            data.employee_type, data.gender, data.religion,
+            data.tax_status, data.ptkp_beras, data.ptkp_pajak,
+            data.upah_dasar, data.total_hk, data.source_table
+        ]);
+
+        return result[0]?.id;
+    }
+
+    /**
+     * Insert HR Gang history
+     */
+    public async saveHrGangHistory(data: HistoryHrGang): Promise<number> {
+        const db = this.getPayrollDatabase(); // HR history goes to extend_db_ptrj
+
+        const result = await db.query(`
+            INSERT INTO dbo.history_hr_gang(
+                        history_id, period_month, period_year, division_code, loc_code,
+                        gang_code, gang_description, mandor_code, mandor_name, mandor_1_code,
+                        mandor_1_name, assistant_code, assistant_name, total_members, is_active, source_table
+                    ) OUTPUT INSERTED.id VALUES(
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
+                        `, [
+            data.history_id, data.period_month, data.period_year, data.division_code, data.loc_code,
+            data.gang_code, data.gang_description, data.mandor_code, data.mandor_name,
+            data.mandor_1_code, data.mandor_1_name, data.assistant_code, data.assistant_name,
+            data.total_members, data.is_active, data.source_table
+        ]);
+
+        return result[0]?.id;
     }
 
     // ============================================================================
@@ -659,14 +1010,14 @@ export class HistoryDatabaseService {
         const db = this.getTransactionDatabase();
 
         const result = await db.query(`
-            INSERT INTO dbo.history_metadata (
-                history_id, operation, entity_type, entity_id, period_month, period_year,
-                division_code, gang_code, description, old_values, new_values, record_count,
-                status, error_message, performed_by, ip_address, user_agent, session_id
-            ) OUTPUT INSERTED.id VALUES (
+            INSERT INTO dbo.history_metadata(
+                            history_id, operation, entity_type, entity_id, period_month, period_year,
+                            division_code, gang_code, description, old_values, new_values, record_count,
+                            status, error_message, performed_by, ip_address, user_agent, session_id
+                        ) OUTPUT INSERTED.id VALUES(
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-        `, [
+                        )
+                            `, [
             data.history_id, data.operation, data.entity_type, data.entity_id, data.period_month,
             data.period_year, data.division_code, data.gang_code, data.description, data.old_values,
             data.new_values, data.record_count, data.status || 'SUCCESS', data.error_message,
@@ -683,10 +1034,70 @@ export class HistoryDatabaseService {
         const db = this.getTransactionDatabase();
 
         return await db.query<HistoryMetadata>(`
-            SELECT * FROM dbo.history_metadata
+        SELECT * FROM dbo.history_metadata
             WHERE history_id = ?
             ORDER BY performed_at DESC
-        `, [historyId]);
+                `, [historyId]);
+    }
+
+    // ============================================================================
+    // EMPLOYEE HR INFO SPECIFIC
+    // ============================================================================
+
+    /**
+     * Get aggregated historical data for a specific employee across all seeded periods
+     */
+    public async getEmployeeHistoricalData(empCode: string): Promise<any> {
+        const db = this.getPayrollDatabase(); // history is in extend_db_ptrj
+
+        let careerUrl = `
+            SELECT 
+                period_month, 
+                period_year,
+                emp_code,
+                emp_name,
+                nik,
+                division_code,
+                loc_code,
+                gang_code,
+                job_code,
+                position,
+                status,
+                employee_type,
+                upah_dasar
+            FROM dbo.history_hr_employee
+            WHERE RTRIM(emp_code) = ? OR RTRIM(nik) = ?
+            ORDER BY period_year DESC, period_month DESC
+        `;
+
+        let payrollUrl = `
+            SELECT 
+                h.period_month, 
+                h.period_year,
+                d.*
+            FROM dbo.payroll_history_detail d
+            JOIN dbo.payroll_history_header h ON d.master_id = h.id
+            WHERE RTRIM(d.emp_code) = ? OR RTRIM(d.nik) = ?
+            ORDER BY h.period_year DESC, h.period_month DESC
+        `;
+
+        // Run both queries concurrently
+        const [hrHistory, payrollHistory] = await Promise.all([
+            db.query(careerUrl, [empCode, empCode]).catch((e) => {
+                console.error("[historyDatabaseService] Error fetching HR history:", e);
+                return [];
+            }),
+            db.query(payrollUrl, [empCode, empCode]).catch((e) => {
+                console.error("[historyDatabaseService] Error fetching Payroll history:", e);
+                return [];
+            })
+        ]);
+
+        return {
+            emp_code: empCode,
+            career: hrHistory,
+            payroll: payrollHistory
+        };
     }
 }
 

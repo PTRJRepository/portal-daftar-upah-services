@@ -1,0 +1,29 @@
+{
+  "no": 1,
+  "emp_code": "A0187",
+  "emp_name": "SUHAYAT ( ZALIAH )",
+  "gender": "L",
+  "status_ptkp": "-",
+  "kategori_ter": "-",
+  "monthly_income": {
+    "1": 6171915.0289
+  },
+  "monthly_pph21": {
+    "1": 0
+  },
+  "total_income": 6171915.0289,
+  "thr": 0,
+  "bonus": 0,
+  "medical_claim": 0,
+  "bpjs_kesehatan_4pct": 157504,
+  "astek_jht": 257519.04,
+  "total_penghasilan_setahun": 6171915.0289,
+  "biaya_jabatan": 308595.751445,
+  "astek_pensiun_pekerja_setahun": 78752,
+  "bpjs_pensiun_pekerja_setahun": 39376,
+  "total_potongan_tahunan": 426723.751445,
+  "penghasilan_netto_setahun": 5745191.277455,
+  "ptkp": 54000000,
+  "penghasilan_kena_pajak": 0,
+  "pph21_kena_pajak": 0
+}

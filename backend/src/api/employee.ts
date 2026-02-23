@@ -1,9 +1,11 @@
 import { Elysia, t } from "elysia";
 import { AuthService } from "../services/authService";
+import { Database } from "../db/client";
 import { employeeDetailService } from "../services/employeeDetailService";
 import { lemburCalculator } from "../services/lemburCalculator";
 import { employeeRepository } from "../services/employeeRepository";
 import { dataExtractorService } from "../services/dataExtractorService";
+import { Config } from "../config";
 import { User } from "../types/user";
 
 const authService = AuthService.getInstance();
@@ -213,17 +215,33 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     // --- Checkroll (Full Implementation) ---
     .get("/:emp_code/checkroll", async ({ params, query, set }) => {
         try {
-            const empCode = params.emp_code;
+            let empCode = params.emp_code;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
 
+            // NIK-to-EmpCode resolution: if the param looks like a KTP number (all digits, >10 chars),
+            // resolve it to the actual EmpCode via HR_EMPLOYEE.NewICNo
+            const isNik = /^\d{10,}$/.test(empCode);
+            if (isNik) {
+                console.log(`[API] Detected NIK (KTP): ${empCode}, resolving to EmpCode...`);
+                const db = (await import('../db/client')).Database.getInstance();
+                const rows = await db.query<{ EmpCode: string }>(
+                    `SELECT TOP 1 EmpCode FROM HR_EMPLOYEE WHERE RTRIM(NewICNo) = RTRIM(?) ORDER BY EmpCode`,
+                    [empCode]
+                );
+                if (rows.length > 0) {
+                    const resolvedCode = rows[0].EmpCode.trim();
+                    console.log(`[API] Resolved NIK ${empCode} -> EmpCode ${resolvedCode}`);
+                    empCode = resolvedCode;
+                } else {
+                    console.warn(`[API] NIK ${empCode} not found in HR_EMPLOYEE.NewICNo`);
+                    set.status = 404;
+                    return { error: `Employee with NIK ${empCode} not found`, emp_code: empCode };
+                }
+            }
+
             const result = await employeeDetailService.getEmployeeCheckroll(empCode, month, year);
             console.log("[API DEBUG] Checkroll Result Keys:", Object.keys(result));
-            if (result.debug_info) {
-                console.log("[API DEBUG] Debug Info:", JSON.stringify(result.debug_info));
-            } else {
-                console.log("[API DEBUG] WARNING: debug_info MISSING in result!");
-            }
 
             if (result.error) {
                 set.status = 404;
@@ -314,12 +332,27 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     // --- Employee History (Multiple Periods) ---
     .get("/:emp_code/history", async ({ params, query, set }) => {
         try {
-            const requestedEmpCode = params.emp_code;
+            let requestedEmpCode = params.emp_code;
             const requestedMonths = parseInt(query.months || "12"); // Number of months to fetch
             const includeCurrent = query.include_current !== "false";
 
             // RESOLVE ALL HISTORICAL EMPCODES BY NIK
             const db = require("../db/client").Database.getInstance();
+
+            // NIK-to-EmpCode resolution for history endpoint
+            const isNik = /^\d{10,}$/.test(requestedEmpCode);
+            if (isNik) {
+                console.log(`[EmployeeHistory] Detected NIK (KTP): ${requestedEmpCode}, resolving...`);
+                const nikRows = await db.query(`SELECT TOP 1 RTRIM(EmpCode) as EmpCode FROM HR_EMPLOYEE WHERE RTRIM(NewICNo) = RTRIM(?) ORDER BY EmpCode`, [requestedEmpCode]);
+                if (nikRows.length > 0) {
+                    console.log(`[EmployeeHistory] Resolved NIK ${requestedEmpCode} -> ${nikRows[0].EmpCode}`);
+                    requestedEmpCode = nikRows[0].EmpCode;
+                } else {
+                    set.status = 404;
+                    return { error: `Employee with NIK ${requestedEmpCode} not found` };
+                }
+            }
+
             let targetNik = null;
             let targetName = null;
 
@@ -383,28 +416,32 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
                 }
             }
 
-            // Fetch data for each period
-            const results = [];
-
-            for (const period of periods) {
+            // Fetch data for each period concurrently
+            const periodPromises = periods.map(async (period) => {
                 try {
                     let bestPayrollResult: any = null;
                     let activeEmpCodeForMonth = null;
 
                     // Try all historical codes. We take the first one that successfully returns payroll_data.
-                    // Usually an employee only has 1 active code per month.
                     for (const checkCode of historicalEmpCodes) {
                         try {
-                            const result = await employeeDetailService.getEmployeeCheckroll(
-                                checkCode,
+                            const result = await dataExtractorService.extractPayrollData(
                                 period.month,
-                                period.year
+                                period.year,
+                                "ALL",
+                                undefined,
+                                checkCode,
+                                Config.DB_PROFILE
                             );
 
-                            if (!result.error && result.payroll_data) {
-                                bestPayrollResult = result;
-                                activeEmpCodeForMonth = checkCode;
-                                break; // Found the active record for this month
+                            if (result && result.data_rows && result.data_rows.length > 0) {
+                                // Find exactly our code (handles whitespace/case issues just in case)
+                                const row = result.data_rows.find((r: any) => (r.nik || '').trim().toUpperCase() === checkCode.trim().toUpperCase());
+                                if (row) {
+                                    bestPayrollResult = { payroll_data: row };
+                                    activeEmpCodeForMonth = checkCode;
+                                    break; // Found the active record for this month
+                                }
                             }
                         } catch (innerErr) {
                             // ignore and try next code
@@ -413,7 +450,6 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
 
                     if (bestPayrollResult && bestPayrollResult.payroll_data) {
                         const data = bestPayrollResult.payroll_data;
-                        const result = bestPayrollResult;
 
                         // Try to fetch PR_WAGES data (non-blocking)
                         let wagesData = null;
@@ -432,9 +468,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
                         }
 
                         // Spread ALL payroll_data fields (PayrollRow has 80+ fields)
-                        // This ensures frontend gets complete daftar upah data including:
-                        // PPH21, BPJS breakdown, pay rates, koreksi, premi detail, etc.
-                        results.push({
+                        return {
                             // Period metadata
                             period_month: period.month,
                             period_year: period.year,
@@ -448,18 +482,15 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
                             nik: data.nik || activeEmpCodeForMonth,
                             nama: data.nama || data.emp_name || '-',
 
-                            // Attendance summary from checkroll
-                            attendance_summary: result.attendance?.summary || null,
-                            cuti_tahunan_hari: data.cuti_tahunan_hari || result.attendance?.summary?.cuti_tahunan || 0,
-                            cuti_sakit_haid_hari: data.cuti_sakit_haid_hari || result.attendance?.summary?.cuti_sakit || 0,
-                            cuti_minggu_hari: data.cuti_minggu_hari || result.attendance?.summary?.cuti_minggu || 0,
-                            cuti_nasional_hari: data.cuti_nasional_hari || result.attendance?.summary?.libur || 0,
+                            // Empty summaries since we skip the heavy matrix compilation
+                            attendance_summary: null,
+                            cuti_tahunan_hari: data.cuti_tahunan_hari || 0,
+                            cuti_sakit_haid_hari: data.cuti_sakit_haid_hari || 0,
+                            cuti_minggu_hari: data.cuti_minggu_hari || 0,
+                            cuti_nasional_hari: data.cuti_nasional_hari || 0,
 
-                            // Overtime summary from checkroll
-                            overtime_summary: result.overtime?.summary || null,
-
-                            // Harvest summary from checkroll
-                            harvest_summary: result.harvest?.summary || null,
+                            overtime_summary: null,
+                            harvest_summary: null,
 
                             // PR_WAGES data (actual paid amount from PR_WAGES table)
                             wages_data: wagesData ? {
@@ -474,13 +505,16 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
                                 jumlah_hk_pr_wages: wagesData.jumlah_hk,
                                 upah_dasar_pr_wages: wagesData.upah_dasar,
                             } : null,
-                        });
+                        };
                     }
                 } catch (err) {
                     console.error(`[EmployeeHistory] Failed to fetch period ${period.month}/${period.year}:`, err);
-                    // Continue with next period
                 }
-            }
+                return null;
+            });
+
+            const resolvedResults = await Promise.all(periodPromises);
+            const results = resolvedResults.filter(r => r !== null);
 
             // Sort by period (most recent first)
             results.sort((a, b) => {
@@ -506,6 +540,40 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             months: t.Optional(t.String()),
             include_current: t.Optional(t.String())
         })
+    })
+    .get("/:emp_code/hr-changelog", async ({ params, set }) => {
+        try {
+            const requestedEmpCode = params.emp_code?.trim()?.toUpperCase();
+            if (!requestedEmpCode) {
+                set.status = 400;
+                return { error: "Employee code is required" };
+            }
+
+            console.log(`[EmployeeHistory] Fetching HR Changelog for '${requestedEmpCode}'`);
+
+            const db = Database.getInstance();
+            let finalEmpCode = requestedEmpCode;
+
+            // Resolve NIK if provided
+            if (/^\d{10,}$/.test(requestedEmpCode)) {
+                try {
+                    const empQuery = await db.query(`SELECT RTRIM(EmpCode) as EmpCode FROM HR_EMPLOYEE WHERE RTRIM(NewICNo) = ?`, [requestedEmpCode]);
+                    if (empQuery.length > 0) {
+                        finalEmpCode = empQuery[0].EmpCode?.trim();
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            const { employeeDetailService } = await import("../services/employeeDetailService");
+            const changelog = await employeeDetailService.getHrChangelog(finalEmpCode);
+            return changelog;
+        } catch (error: any) {
+            console.error("[EmployeeHistory] Failed to fetch HR changelog:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to fetch HR changelog" };
+        }
     });
 
 // Helper function for month name

@@ -28,11 +28,20 @@ export interface OvertimeDay {
 
 export interface EmployeeInfo {
     nik: string;
+    actual_nik?: string;
     nama: string;
     jenis_kelamin: string;
     loc_code: string;
     gang_code: string;
     upah_dasar: number;
+    join_date?: string;
+    status?: string;
+    employee_type?: string;
+    marital_status?: string;
+    religion?: string;
+    birth_place?: string;
+    birth_date?: string;
+    gang_description?: string;
 }
 
 export interface AttendanceSummary {
@@ -104,26 +113,46 @@ export class EmployeeDetailService {
         return holidays;
     }
 
-    // --- Employee Info ---
+    // --- Employee Info (Enriched) ---
     public async getEmployeeInfo(empCode: string): Promise<EmployeeInfo | null> {
         try {
             const rows = await this.db.query<{
                 EmpCode: string;
+                NewICNo: string;
                 EmpName: string;
                 Gender: string | number;
                 LocCode: string;
                 GangCode: string;
+                GangDescription: string;
                 PayRate: number;
+                AppJoinGrpDate: string;
+                Status: string;
+                EmployeeType: string;
+                Religion: string;
+                MaritalStatus: string;
+                BirthPlace: string;
+                BirthDate: string;
             }>(`
                 SELECT DISTINCT
                     e.EmpCode,
+                    e.NewICNo,
                     e.EmpName,
                     e.Gender,
                     e.LocCode,
                     g.GangCode,
-                    p.PayRate
+                    g.Description as GangDescription,
+                    p.PayRate,
+                    em.AppJoinGrpDate,
+                    e.Status,
+                    e.HREmpType as EmployeeType,
+                    e.Religion,
+                    e.PlaceOfBirth as BirthPlace,
+                    e.DOB as BirthDate,
+                    e.MaritalStatus
                 FROM HR_EMPLOYEE e
-                LEFT JOIN HR_GANGLN g ON RTRIM(g.GangMember) = RTRIM(e.EmpCode)
+                LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
                 LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                 WHERE RTRIM(e.EmpCode) = RTRIM(?)
             `, [empCode]);
@@ -139,11 +168,20 @@ export class EmployeeDetailService {
 
             return {
                 nik: row.EmpCode,
+                actual_nik: row.NewICNo?.trim() || undefined,
                 nama: row.EmpName,
                 jenis_kelamin: gender,
                 loc_code: row.LocCode,
                 gang_code: row.GangCode,
-                upah_dasar: row.PayRate || 0
+                gang_description: row.GangDescription?.trim() || undefined,
+                upah_dasar: row.PayRate || 0,
+                join_date: row.AppJoinGrpDate || undefined,
+                status: row.Status?.trim() || undefined,
+                employee_type: row.EmployeeType?.trim() || undefined,
+                marital_status: row.MaritalStatus?.trim() || undefined,
+                religion: row.Religion?.trim() || undefined,
+                birth_place: row.BirthPlace?.trim() || undefined,
+                birth_date: row.BirthDate || undefined,
             };
         } catch (e) {
             console.error("[EmployeeDetailService] Failed to get employee info:", e);
@@ -454,6 +492,34 @@ export class EmployeeDetailService {
         };
     }
 
+    // --- Get Upah Dasar from History (extend_db_ptrj) ---
+    private async getUpahDasarFromHistory(empCode: string, month: number, year: number): Promise<number | null> {
+        try {
+            const extDb = Database.getExtendedInstance(); // extend_db_ptrj with SERVER_PROFILE_1
+
+            const rows = await extDb.query<{
+                upah_dasar: number;
+            }>(`
+                SELECT upah_dasar
+                FROM history_hr_employee
+                WHERE RTRIM(emp_code) = RTRIM(?)
+                  AND period_month = ?
+                  AND period_year = ?
+            `, [empCode, month, year]);
+
+            if (rows.length > 0 && rows[0].upah_dasar) {
+                console.log(`[EmployeeDetailService] Found upah_dasar from history: ${rows[0].upah_dasar} for ${empCode} (${month}/${year})`);
+                return rows[0].upah_dasar;
+            }
+
+            console.log(`[EmployeeDetailService] No upah_dasar found in history for ${empCode} (${month}/${year})`);
+            return null;
+        } catch (e) {
+            console.error("[EmployeeDetailService] Failed to get upah_dasar from history:", e);
+            return null;
+        }
+    }
+
     // --- Complete Checkroll ---
     public async getEmployeeCheckroll(rawEmpCode: string, month: number, year: number): Promise<any> {
         const empCode = (rawEmpCode || '').trim().toUpperCase();
@@ -462,6 +528,13 @@ export class EmployeeDetailService {
         const employeeInfo = await this.getEmployeeInfo(empCode);
         if (!employeeInfo) {
             return { emp_code: empCode, error: "Employee not found" };
+        }
+
+        // OVERRIDE: Get upah_dasar from history table (extend_db_ptrj) instead of HR_PAYROLL
+        const historyUpahDasar = await this.getUpahDasarFromHistory(empCode, month, year);
+        if (historyUpahDasar !== null) {
+            employeeInfo.upah_dasar = historyUpahDasar;
+            console.log(`[EmployeeDetailService] Overriding upah_dasar with history value: ${historyUpahDasar}`);
         }
 
         const attendanceData = await this.getDailyAttendance(empCode, month, year);
@@ -482,10 +555,12 @@ export class EmployeeDetailService {
             debugInfo = {
                 target_nik: targetNik,
                 rows_fetched: payrollResult?.data_rows?.length || 0,
-                available_niks: payrollResult?.data_rows?.map(r => r.nik || 'N/A').slice(0, 5)
+                available_niks: payrollResult?.data_rows?.map(r => `${r.emp_code || '?'}/${r.nik || 'N/A'}`).slice(0, 5)
             };
 
+            // Match by emp_code first (exact match), then by nik (KTP)
             const empPayroll = payrollResult.data_rows.find(row =>
+                (row.emp_code || '').trim().toUpperCase() === targetNik ||
                 (row.nik || '').trim().toUpperCase() === targetNik
             );
             if (empPayroll) {
@@ -514,6 +589,94 @@ export class EmployeeDetailService {
             payroll_data: payrollData,
             debug_info: debugInfo
         };
+    }
+
+    // --- HR Changelog ---
+    public async getHrChangelog(empCode: string): Promise<any[]> {
+        try {
+            const extDb = Database.getInstance(Config.DB_EXTEND_TRANS_DATABASE); // extend_db_ptrj
+
+            // Get all historical HR records for this employee, ordered by period
+            const historyQuery = await extDb.query<{
+                period_year: number;
+                period_month: number;
+                ptkp_beras: string;
+                upah_dasar: number;
+                status: string;
+                employee_type: string;
+                gang_code: string;
+                division_code: string;
+            }>(`
+                SELECT 
+                    period_year, 
+                    period_month, 
+                    ptkp_beras, 
+                    upah_dasar, 
+                    status, 
+                    employee_type, 
+                    gang_code, 
+                    division_code
+                FROM history_hr_employee
+                WHERE RTRIM(emp_code) = RTRIM(?)
+                ORDER BY period_year ASC, period_month ASC
+            `, [empCode]);
+
+            if (historyQuery.length === 0) return [];
+
+            const changelog = [];
+            let previousPeriod: any = null;
+
+            for (const current of historyQuery) {
+                if (previousPeriod) {
+                    const changes = [];
+                    if (previousPeriod.ptkp_beras !== current.ptkp_beras) {
+                        changes.push({ field: 'Tunjangan Beras', old: previousPeriod.ptkp_beras || 'Tidak Ada', new: current.ptkp_beras || 'Tidak Ada' });
+                    }
+                    if (previousPeriod.upah_dasar !== current.upah_dasar) {
+                        changes.push({ field: 'Upah Dasar', old: previousPeriod.upah_dasar, new: current.upah_dasar });
+                    }
+                    if (previousPeriod.status !== current.status) {
+                        changes.push({ field: 'Status Karyawan', old: previousPeriod.status || '-', new: current.status || '-' });
+                    }
+                    if (previousPeriod.employee_type !== current.employee_type) {
+                        changes.push({ field: 'Tipe Karyawan', old: previousPeriod.employee_type || '-', new: current.employee_type || '-' });
+                    }
+                    if (previousPeriod.gang_code !== current.gang_code) {
+                        changes.push({ field: 'Kode Gang', old: previousPeriod.gang_code || '-', new: current.gang_code || '-' });
+                    }
+
+                    if (changes.length > 0) {
+                        changelog.push({
+                            period: `${current.period_year}-${current.period_month.toString().padStart(2, '0')}`,
+                            month: current.period_month,
+                            year: current.period_year,
+                            changes
+                        });
+                    }
+                } else {
+                    // Initial seeded record - log base values
+                    const initialChanges = [];
+                    if (current.ptkp_beras) initialChanges.push({ field: 'Tunjangan Beras', old: null, new: current.ptkp_beras });
+                    if (current.upah_dasar) initialChanges.push({ field: 'Upah Dasar', old: null, new: current.upah_dasar });
+                    if (current.gang_code) initialChanges.push({ field: 'Kode Gang', old: null, new: current.gang_code });
+
+                    changelog.push({
+                        period: `${current.period_year}-${current.period_month.toString().padStart(2, '0')}`,
+                        month: current.period_month,
+                        year: current.period_year,
+                        changes: initialChanges,
+                        is_initial: true
+                    });
+                }
+                previousPeriod = current;
+            }
+
+            // Reverse to show latest changes first
+            return changelog.reverse();
+        } catch (e) {
+            console.error("[EmployeeDetailService] Failed to generate HR changelog:", e);
+            return [];
+        }
     }
 }
 

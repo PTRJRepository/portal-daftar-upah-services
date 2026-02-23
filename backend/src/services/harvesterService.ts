@@ -64,9 +64,9 @@ export class HarvesterService {
                     EmpCode,
                     EmpName,
                     SUM(TotalBunches) as TotalBunches,
-                    SUM(Ripe) as Ripe,
-                    SUM(Unripe) as Unripe,
-                    SUM(TotalRound) as TotalRound,
+                    0 as Ripe,
+                    0 as Unripe,
+                    0 as TotalRound,
                     COUNT(*) as TrxCount
                 FROM PR_HARVESTERLN_ACC
                 WHERE EmpCode = ?
@@ -80,9 +80,9 @@ export class HarvesterService {
                     EmpCode,
                     EmpName,
                     SUM(TotalBunches) as TotalBunches,
-                    SUM(Ripe) as Ripe,
-                    SUM(Unripe) as Unripe,
-                    SUM(TotalRound) as TotalRound,
+                    0 as Ripe,
+                    0 as Unripe,
+                    0 as TotalRound,
                     COUNT(*) as TrxCount
                 FROM PR_HARVESTERLN_ARC
                 WHERE EmpCode = ?
@@ -145,21 +145,24 @@ export class HarvesterService {
         // 1. Coba ambil dari Staging
         try {
             const stagingMap = await this.getBatchEmployeeBunchesFromStaging(empCodes, month, year);
-            if (stagingMap.size > 0) {
+
+            // Check if stagingMap actually has any non-zero data
+            let hasStagingData = false;
+            for (const val of stagingMap.values()) {
+                if (val.total_bunches > 0 || val.bunches_transactions > 0) {
+                    hasStagingData = true;
+                    break;
+                }
+            }
+
+            if (hasStagingData) {
                 // Merge staging results into resultMap
                 for (const [key, val] of stagingMap) {
                     if (val.total_bunches > 0 || val.bunches_transactions > 0) {
                         resultMap.set(key, val);
                     }
                 }
-                // Jika kita mengasumsikan staging lengkap, kita bisa return disini.
-                // Namun jika staging parsial (hanya sebagian karyawan), kita mungkin perlu fallback per karyawan.
-                // Untuk simplifikasi: jika staging ada data, kita pakai staging data untuk karyawan tersebut.
-                // Jika tidak ada di staging (tetap 0), biarkan 0 (atau bisa coba legacy).
-
-                // Mari periksa apakah kita perlu fallback ke legacy untuk karyawan yang tidak ada di staging?
-                // Jika User minta "Gunakan DB Staging", asumsinya DB Staging replace Legacy.
-                // Jadi kita return hasil merge staging.
+                // Jika staging ada data, kita pakai staging data untuk karyawan tersebut.
                 return resultMap;
             }
         } catch (e) {
@@ -167,63 +170,34 @@ export class HarvesterService {
         }
 
         try {
-            // Build IN clause untuk empCodes
-            const placeholders = empCodes.map(() => "?").join(",");
-
             console.log("[HarvesterService] Fetching bunches (LEGACY) for", empCodes.length, "employees, month:", month, "year:", year);
 
-            // Query dari semua tabel harvester yang mungkin ada data
-            // PR_HARVESTERLN (aktif), PR_HARVESTERLN_ACC (aktif), PR_HARVESTERLN_ARC (archive)
-            const sql = `
-                SELECT
-                    EmpCode,
-                    EmpName,
-                    SUM(TotalBunches) as TotalBunches,
-                    SUM(Ripe) as Ripe,
-                    SUM(Unripe) as Unripe,
-                    SUM(TotalRound) as TotalRound,
-                    COUNT(*) as TrxCount
-                FROM PR_HARVESTERLN
-                WHERE EmpCode IN (${placeholders})
-                    AND MONTH(TrxDate) = ?
-                    AND YEAR(TrxDate) = ?
-                GROUP BY EmpCode, EmpName
+            // CHUNKING: SQL Server supports max 2100 params.
+            // Legacy query uses empCodes 3x (3 UNION ALLs) + 6 (month/year x3), so max chunk = floor((2100 - 6) / 3) ≈ 698
+            const CHUNK_SIZE = 600;
+            const allLegacyResults: HarvestDataRaw[] = [];
 
-                UNION ALL
+            for (let ci = 0; ci < empCodes.length; ci += CHUNK_SIZE) {
+                const chunk = empCodes.slice(ci, ci + CHUNK_SIZE);
+                const placeholders = chunk.map(() => "?").join(",");
 
-                SELECT
-                    EmpCode,
-                    EmpName,
-                    SUM(TotalBunches) as TotalBunches,
-                    SUM(Ripe) as Ripe,
-                    SUM(Unripe) as Unripe,
-                    SUM(TotalRound) as TotalRound,
-                    COUNT(*) as TrxCount
-                FROM PR_HARVESTERLN_ACC
-                WHERE EmpCode IN (${placeholders})
-                    AND MONTH(TrxDate) = ?
-                    AND YEAR(TrxDate) = ?
-                GROUP BY EmpCode, EmpName
+                const sql = `
+                    SELECT EmpCode, EmpName, SUM(TotalBunches) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    FROM PR_HARVESTERLN WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
+                    UNION ALL
+                    SELECT EmpCode, EmpName, SUM(TotalBunches) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    FROM PR_HARVESTERLN_ACC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
+                    UNION ALL
+                    SELECT EmpCode, EmpName, SUM(TotalBunches) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    FROM PR_HARVESTERLN_ARC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
+                `;
 
-                UNION ALL
+                const params = [...chunk, month, year, ...chunk, month, year, ...chunk, month, year];
+                const chunkResults = await this.db.query<HarvestDataRaw>(sql, params);
+                allLegacyResults.push(...chunkResults);
+            }
 
-                SELECT
-                    EmpCode,
-                    EmpName,
-                    SUM(TotalBunches) as TotalBunches,
-                    SUM(Ripe) as Ripe,
-                    SUM(Unripe) as Unripe,
-                    SUM(TotalRound) as TotalRound,
-                    COUNT(*) as TrxCount
-                FROM PR_HARVESTERLN_ARC
-                WHERE EmpCode IN (${placeholders})
-                    AND MONTH(TrxDate) = ?
-                    AND YEAR(TrxDate) = ?
-                GROUP BY EmpCode, EmpName
-            `;
-
-            const params = [...empCodes, month, year, ...empCodes, month, year, ...empCodes, month, year];
-            const results = await this.db.query<HarvestDataRaw>(sql, params);
+            const results = allLegacyResults;
 
             // Aggregate results karena UNION ALL bisa menghasilkan multiple baris per EmpCode
             const aggregatedMap = new Map<string, HarvestDataRaw>();
@@ -429,8 +403,7 @@ export class HarvesterService {
 
         try {
             // Gunakan profile yang sama dengan main DB (Server 2), tapi arahkan ke staging database
-            // Nama database staging: staging_PTRJ_iFES_Plantware
-            const stagingDb = Database.getInstance("staging_PTRJ_iFES_Plantware", Config.DB_PROFILE);
+            const stagingDb = Database.getInstance(Config.DB_STAGING_DATABASE, Config.DB_STAGING_PROFILE);
 
             const sql = `
                 SELECT
@@ -446,7 +419,7 @@ export class HarvesterService {
                     SUM(ISNULL(LOOSEFRUIT, 0)) as Loosefruit,
                     0 as TotalRound, -- Tidak ada kolom Round di Ffbscannerdata
                     COUNT(*) as TrxCount
-                FROM [staging_PTRJ_iFES_Plantware].[dbo].[Ffbscannerdata]
+                FROM [${Config.DB_STAGING_DATABASE}].[dbo].[Ffbscannerdata]
                 WHERE WORKERCODE = ?
                     AND MONTH(TRANSDATE) = ?
                     AND YEAR(TRANSDATE) = ?
@@ -505,35 +478,43 @@ export class HarvesterService {
         if (empCodes.length === 0) return resultMap;
 
         try {
-            const stagingDb = Database.getInstance("staging_PTRJ_iFES_Plantware", Config.DB_PROFILE);
-            const placeholders = empCodes.map(() => "?").join(",");
+            const stagingDb = Database.getInstance(Config.DB_STAGING_DATABASE, Config.DB_STAGING_PROFILE);
 
-            // Note: Parameter limit rule might apply, but usually OK for batch sizes used
-            const sql = `
-                SELECT
-                    WORKERCODE as EmpCode,
-                    SUM(ISNULL(RIPE, 0) + ISNULL(UNRIPE, 0) + ISNULL(UNDERRIPE, 0) + ISNULL(OVERRIPE, 0) + ISNULL(ROTTEN, 0) + ISNULL(ABNORMAL, 0)) as TotalBunches,
-                    SUM(ISNULL(RIPE, 0)) as Ripe,
-                    SUM(ISNULL(UNRIPE, 0)) as Unripe,
-                    SUM(ISNULL(UNDERRIPE, 0)) as Underripe,
-                    SUM(ISNULL(OVERRIPE, 0)) as Overripe,
-                    SUM(ISNULL(ROTTEN, 0)) as Rotten,
-                    SUM(ISNULL(ABNORMAL, 0)) as Abnormal,
-                    SUM(ISNULL(LOOSEFRUIT, 0)) as Loosefruit,
-                    0 as TotalRound,
-                    COUNT(*) as TrxCount
-                FROM [staging_PTRJ_iFES_Plantware].[dbo].[Ffbscannerdata]
-                WHERE WORKERCODE IN (${placeholders})
-                    AND MONTH(TRANSDATE) = ?
-                    AND YEAR(TRANSDATE) = ?
-                    AND (TRANSSTATUS = 'OK' OR TRANSSTATUS LIKE 'OK%')
-                GROUP BY WORKERCODE
-            `;
+            // CHUNKING: SQL Server max 2100 params. Staging uses empCodes 1x + 2 (month, year)
+            const STAGING_CHUNK = 1800;
+            const allStagingResults: HarvestDataRaw[] = [];
 
-            const params = [...empCodes, month, year];
-            const results = await stagingDb.query<HarvestDataRaw>(sql, params);
+            for (let ci = 0; ci < empCodes.length; ci += STAGING_CHUNK) {
+                const chunk = empCodes.slice(ci, ci + STAGING_CHUNK);
+                const placeholders = chunk.map(() => "?").join(",");
 
-            for (const row of results) {
+                const sql = `
+                    SELECT
+                        WORKERCODE as EmpCode,
+                        SUM(ISNULL(RIPE, 0) + ISNULL(UNRIPE, 0) + ISNULL(UNDERRIPE, 0) + ISNULL(OVERRIPE, 0) + ISNULL(ROTTEN, 0) + ISNULL(ABNORMAL, 0)) as TotalBunches,
+                        SUM(ISNULL(RIPE, 0)) as Ripe,
+                        SUM(ISNULL(UNRIPE, 0)) as Unripe,
+                        SUM(ISNULL(UNDERRIPE, 0)) as Underripe,
+                        SUM(ISNULL(OVERRIPE, 0)) as Overripe,
+                        SUM(ISNULL(ROTTEN, 0)) as Rotten,
+                        SUM(ISNULL(ABNORMAL, 0)) as Abnormal,
+                        SUM(ISNULL(LOOSEFRUIT, 0)) as Loosefruit,
+                        0 as TotalRound,
+                        COUNT(*) as TrxCount
+                    FROM [${Config.DB_STAGING_DATABASE}].[dbo].[Ffbscannerdata]
+                    WHERE WORKERCODE IN (${placeholders})
+                        AND MONTH(TRANSDATE) = ?
+                        AND YEAR(TRANSDATE) = ?
+                        AND (TRANSSTATUS = 'OK' OR TRANSSTATUS LIKE 'OK%')
+                    GROUP BY WORKERCODE
+                `;
+
+                const params = [...chunk, month, year];
+                const chunkResults = await stagingDb.query<HarvestDataRaw>(sql, params);
+                allStagingResults.push(...chunkResults);
+            }
+
+            for (const row of allStagingResults) {
                 resultMap.set(row.EmpCode, {
                     total_bunches: row.TotalBunches || 0,
                     bunches_ripe: row.Ripe || 0,
@@ -548,7 +529,7 @@ export class HarvesterService {
                 });
             }
 
-            console.log(`[HarvesterService] Fetched batch from Staging: ${results.length} rows`);
+            console.log(`[HarvesterService] Fetched batch from Staging: ${allStagingResults.length} rows`);
 
         } catch (error: any) {
             console.error("[HarvesterService] Error fetching batch bunches from staging:", error.message);

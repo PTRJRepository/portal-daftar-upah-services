@@ -1,0 +1,272 @@
+[
+    {
+        "nama": "YOYO",
+        "nik": "1902010509730003",
+        "npwp": "972282958305000",
+        "alamat": "JL MURAI RT. 029 RW. 010 DS PERAWAS TANJUNGPANDAN",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/0"
+    },
+    {
+        "nama": "JAMILA",
+        "nik": "1902056811690001",
+        "npwp": "972282982305000",
+        "alamat": "JL MANGGAR RT. 005 RW. 003 DS AIR BATU BUDING KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "P",
+        "status_keluarga": "TK/0"
+    },
+    {
+        "nama": "JUNI MI'UN",
+        "nik": "1902050107700052",
+        "npwp": "972283055305000",
+        "alamat": "JL MANGGAR DSN KEPAYANG RT. 004 RW. 002 DS KACANG BUTOR BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/0"
+    },
+    {
+        "nama": "SUHANDI",
+        "nik": "1906042606860003",
+        "npwp": "972282974305000",
+        "alamat": "JL KOPERASI RT. 004 RW. 002 DESA PEMBAHARUAN KEC. KELAPA KAMPIT",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/1"
+    },
+    {
+        "nama": "MINARNI",
+        "nik": "1902056103760002",
+        "npwp": "972280226305000",
+        "alamat": "AIR BATU BUDING RT. 004 RW. 002 DS AIR BATU BUDING KEC. BADAU",
+        "jabatan": "KRANI DIVISI",
+        "jenis_kelamin": "P",
+        "status_keluarga": "TK/0"
+    },
+    {
+        "nama": "SUPRIADI",
+        "nik": "1902052812870001",
+        "npwp": "972283014305000",
+        "alamat": "JL AIR BEGANTUNG RT. 009 RW. 003 DS KACANG BUTOR KEC.BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/2"
+    },
+    {
+        "nama": "HARIAH",
+        "nik": "1902014909730007",
+        "npwp": "972283048305000",
+        "alamat": "PELATARAN AIR KETEKOK RT. 001 RW. 001 DS AIR KETEKOK TANJUNGPANDAN",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "P",
+        "status_keluarga": "TK/0"
+    },
+    {
+        "nama": "YUSMARDIAN",
+        "nik": "1906042403820005",
+        "npwp": "972280150305000",
+        "alamat": "DSN SENYUBUK RT. 001 RW. 001 DESA MENTAWAK KEC. KELAPA KAMPIT",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/2"
+    },
+    {
+        "nama": "YULHANI",
+        "nik": "1902051010760007",
+        "npwp": "972285720305000",
+        "alamat": "JL MANGGAR AIR BEGANTUNG RT. 008 RW. 003 DESA KACANG BUTOR BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "TK/1"
+    },
+    {
+        "nama": "HENDRIX",
+        "nik": "1906041308920003",
+        "npwp": "743653768305000",
+        "alamat": "DSN MERDEKA RT. 006 RW. 002 DS SENYUBUK KEC. KELAPA KAMPIT",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/1"
+    },
+    {
+        "nama": "NANDI",
+        "nik": "1902053006780001",
+        "npwp": "972282966305000",
+        "alamat": "JL. MANGGAR DSN. KACANG BUTOR RT.001 RW.001 DS. KACANG BUTOR KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/1"
+    },
+    {
+        "nama": "KAMELIA",
+        "nik": "1902051606760003",
+        "npwp": "972280218305000",
+        "alamat": "JL MANGGAR DSN PARIT GUNUNG RT. 006 RW. 003 DS AIR BATU BUDING BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/0"
+    },
+    {
+        "nama": "SISWANTO",
+        "nik": "1902051902910001",
+        "npwp": "972285506305000",
+        "alamat": "JL. MANGGAR DSN. PARIT GUNUNG RT.006 RW.003 DS. AIR BATU BUDING KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/1"
+    },
+    {
+        "nama": "YUSMARNO",
+        "nik": "1902012406780003",
+        "npwp": "972285704305000",
+        "alamat": "JL PASIR PUTIH RT. 012 RW. 005 DS AIR RAYAK KEC. TANJUNGPANDAN",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/2"
+    },
+    {
+        "nama": "MEGI EFRISA",
+        "nik": "1604220103030001",
+        "npwp": "269338422305000",
+        "alamat": "DS. TANJUNG AGUNG KEL. TANJUNG AGUNG KEC. PAGAR GUNUNG KAB. LAHAT",
+        "jabatan": "MANDOR",
+        "jenis_kelamin": "L",
+        "status_keluarga": "TK/0"
+    },
+    {
+        "nama": "SURATMAN",
+        "nik": "1902052707850001",
+        "npwp": "972285225305000",
+        "alamat": "DUSUN KEPAYANG RT. 004 RW. 002 DESA KACANG BUTOR KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/0"
+    },
+    {
+        "nama": "ARDI",
+        "nik": "1902050512820004",
+        "npwp": "972280259305000",
+        "alamat": "JL.MANGGAR RT.009 RW.003 DESA KACANG BUTOR KEC. BADAU",
+        "jabatan": "OPERATOR",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/2"
+    },
+    {
+        "nama": "EDI ISHAK",
+        "nik": "1902051212790002",
+        "npwp": "972286066305000",
+        "alamat": "DSN AIR BEGANTUNG RT. 010 RW. 003 DS KACANG BUTOR KEC. BADAU",
+        "jabatan": "OPERATOR",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/2"
+    },
+    {
+        "nama": "SUDIRMAN",
+        "nik": "1902051205770002",
+        "npwp": "743653420305000",
+        "alamat": "JL. MANGGAR RT. 004 RW. 002 DESA AIR BATU BUDING BADAU",
+        "jabatan": "OPERATOR",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/0"
+    },
+    {
+        "nama": "APRIYADI",
+        "nik": "1902051707890001",
+        "npwp": "972285597305000",
+        "alamat": "JL MANGGAR AIR BEGANTUNG RT. 008 RW. 003 DESA KACANG BUTOR BADAU",
+        "jabatan": "OPERATOR",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/2"
+    },
+    {
+        "nama": "MAHADI",
+        "nik": "1902012503820003",
+        "npwp": "972280192305000",
+        "alamat": "PULAU BAYAN RT. 005 RW. 002 DESA SUNGAI SAMAK KEC. BADAU",
+        "jabatan": "OPERATOR",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/1"
+    },
+    {
+        "nama": "SISWANTO",
+        "nik": "1902051405840001",
+        "npwp": "972283733305000",
+        "alamat": "DSN AIR BATU BUDING RT. 002 RW. 001 DESA AIR BATU BUDING KEC. BADAU",
+        "jabatan": "OPERATOR",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/1"
+    },
+    {
+        "nama": "ANTON GIANTO N",
+        "nik": "1902051210800001",
+        "npwp": null,
+        "alamat": "JL.MANGGAR RT.011 RW.004 DESA KACANG BUTOR KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/1"
+    },
+    {
+        "nama": "SARTONO",
+        "nik": "1902052010820004",
+        "npwp": "972375018305000",
+        "alamat": "DSN. PARIT GUNUNG RT.005 RW.003 DESA AIR BATU BUDING KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/1"
+    },
+    {
+        "nama": "SUBHAN HADI",
+        "nik": "5203192202830002",
+        "npwp": null,
+        "alamat": "KEBON DATU RT/RW 000/000 DS. PEMANTANG KEC. SAKRA BARAT",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/2"
+    },
+    {
+        "nama": "MUHAMMAD MUKHLIS",
+        "nik": "1902010808030003",
+        "npwp": "1902010808030003",
+        "alamat": "JL.PEMUDA II RT/RW 021/007 DS. AIR RAYAK KEC. TANJUNG PANDAN",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "L",
+        "status_keluarga": "TK/0"
+    },
+    {
+        "nama": "RUKMANSYAH",
+        "nik": "1671012609890004",
+        "npwp": "83.619.497.7-307.000",
+        "alamat": "JL.PEMUDA - AIK RAYAK BARAT II RT/RW 010/004 DS. AIR RAYAK KEC. TANJUNG PANDAN",
+        "jabatan": "MANDOR",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/2"
+    },
+    {
+        "nama": "IMAM AL AKBAR",
+        "nik": "1902041310900002",
+        "npwp": "74.594.488.9.305.000",
+        "alamat": "JL.SIJUK RT.009 RW.004 DESA AIR SERUK KEC.SIJUK",
+        "jabatan": "KRANI GUDANG",
+        "jenis_kelamin": "L",
+        "status_keluarga": "K/0"
+    },
+    {
+        "nama": "RITA",
+        "nik": "1902055510740001",
+        "npwp": "97.237.539.8.305.000",
+        "alamat": "DSN. AIR BEGANTUNG RT.010 RW.003 DESA KACANG BUTOR KEC. BADAU",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "P",
+        "status_keluarga": "TK/0"
+    },
+    {
+        "nama": "EKA FRANSISKA",
+        "nik": "1906044503910002",
+        "npwp": "97.387.489.4-305.000",
+        "alamat": "DSN CENDIL RT. 006 RW. 002 DESA CENDIL KEC. KELAPA KAMPIT",
+        "jabatan": "KARYAWAN PERAWATAN",
+        "jenis_kelamin": "P",
+        "status_keluarga": "TK/0"
+    }
+]

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pajak Perbulan Simulator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-content">
+                <div class="header-titles">
+                    <h1>PT. REBINMAS JAYA</h1>
+                    <h2>PPh 21 Simulator Januari s/d Desember Tahun 2025</h2>
+                </div>
+                <div class="header-actions">
+                    <button id="btn-calculate" class="btn-primary">Kalkulasi Data</button>
+                    <button id="btn-export" class="btn-secondary">Export to CSV</button>
+                </div>
+            </div>
+            <div class="stats-cards">
+                <div class="card">
+                    <span class="card-label">Total Karyawan</span>
+                    <span class="card-value" id="stat-karyawan">0</span>
+                </div>
+                <div class="card">
+                    <span class="card-label">Total Penghasilan Setahun</span>
+                    <span class="card-value" id="stat-penghasilan">Rp 0</span>
+                </div>
+                <div class="card">
+                    <span class="card-label">Total PKP</span>
+                    <span class="card-value" id="stat-pkp">Rp 0</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="table-container">
+            <div class="table-scroll-wrapper">
+                <table id="tax-table">
+                    <thead>
+                        <tr class="header-main">
+                            <th rowspan="2" class="sticky-col-1">No</th>
+                            <th rowspan="2" class="sticky-col-2">Name</th>
+                            <th rowspan="2">L/P</th>
+                            <th rowspan="2">Stat</th>
+                            <th rowspan="2">BL</th>
+                            <th colspan="12" class="text-center group-header">PENGHASILAN SETAHUN</th>
+                            <th rowspan="2" class="text-right">TOTAL<br>Jan s/d Des</th>
+                            <th rowspan="2" class="text-right">THR</th>
+                            <th rowspan="2" class="text-right">BONUS</th>
+                            <th rowspan="2" class="text-right">Medical<br>Claim</th>
+                            <th rowspan="2" class="text-right highlight-col">Total<br>Penghasilan<br>Setahun</th>
+                            <th rowspan="2" class="text-right highlight-col">PTKP</th>
+                            <th rowspan="2" class="text-right highlight-col-alt">Penghasilan<br>Kena<br>Pajak</th>
+                        </tr>
+                        <tr class="header-sub">
+                            <th class="text-right">Januari</th>
+                            <th class="text-right">Februari</th>
+                            <th class="text-right">Maret</th>
+                            <th class="text-right">April</th>
+                            <th class="text-right">Mei</th>
+                            <th class="text-right">Juni</th>
+                            <th class="text-right">Juli</th>
+                            <th class="text-right">Agustus</th>
+                            <th class="text-right">September</th>
+                            <th class="text-right">Oktober</th>
+                            <th class="text-right">November</th>
+                            <th class="text-right">Desember</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Data will be populated here -->
+                    </tbody>
+                    <tfoot id="table-foot">
+                        <!-- Totals will be populated here -->
+                    </tfoot>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Data dependencies injected via script -->
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>

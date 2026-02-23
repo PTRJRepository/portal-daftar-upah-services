@@ -36,7 +36,8 @@
   --ag-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --ag-font-size: 13px;
   --ag-header-height: 44px;
-  --ag-row-height: 32px; /* Compact for accounting */
+  --ag-row-height: 32px;
+  /* Compact for accounting */
   --ag-header-background-color: #ffffff;
   --ag-header-foreground-color: var(--neutral-700);
   --ag-border-color: var(--neutral-200);
@@ -47,12 +48,14 @@
   --ag-range-selection-background-color: rgba(34, 197, 94, 0.1);
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden; /* Prevent scrolling on body, let content handle it */
+  overflow: hidden;
+  /* Prevent scrolling on body, let content handle it */
 }
 
 body {
@@ -66,24 +69,50 @@ body {
 #root {
   width: 100%;
   height: 100%;
-  overflow: hidden; /* Let internal containers handle scrolling */
+  overflow: hidden;
+  /* Let internal containers handle scrolling */
 }
 
 /* Layout Utilities */
-.flex-center { display: flex; align-items: center; justify-content: center; }
-.flex-between { display: flex; align-items: center; justify-content: space-between; }
-.flex-col { display: flex; flexDirection: column; }
-.gap-2 { gap: 0.5rem; }
-.gap-4 { gap: 1rem; }
-.w-full { width: 100%; }
-.h-full { height: 100%; }
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.gap-4 {
+  gap: 1rem;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.h-full {
+  height: 100%;
+}
 
 /* Card Style */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 /* Buttons */
@@ -102,18 +131,26 @@ body {
 }
 
 .btn-primary {
-  background-color: var(--primary-700); /* Darker green for professional look */
+  background-color: var(--primary-700);
+  /* Darker green for professional look */
   color: white;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
-.btn-primary:hover { background-color: var(--primary-800); }
+
+.btn-primary:hover {
+  background-color: var(--primary-800);
+}
 
 .btn-secondary {
   background-color: white;
   border-color: var(--neutral-300);
   color: var(--neutral-700);
 }
-.btn-secondary:hover { background-color: var(--neutral-50); border-color: var(--neutral-400); }
+
+.btn-secondary:hover {
+  background-color: var(--neutral-50);
+  border-color: var(--neutral-400);
+}
 
 .btn-icon {
   padding: 0.4rem;
@@ -122,7 +159,11 @@ body {
   background: transparent;
   border: 1px solid transparent;
 }
-.btn-icon:hover { background: var(--neutral-100); color: var(--neutral-700); }
+
+.btn-icon:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-700);
+}
 
 /* Inputs */
 .input-field {
@@ -134,6 +175,7 @@ body {
   background: white;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
+
 .input-field:focus {
   outline: none;
   border-color: var(--primary-500);
@@ -153,8 +195,8 @@ body {
 }
 
 .ag-header-group-cell-label {
-    justify-content: center;
-    font-weight: 800;
+  justify-content: center;
+  font-weight: 800;
 }
 
 /* Column Specific Styling - Clean & Professional */
@@ -173,55 +215,75 @@ body {
 
 /* 2. Absensi - Warm Orange/Amber */
 .header-section-absensi {
-  background-color: #fff7ed !important; /* Orange-50 */
-  border-bottom: 3px solid #f97316 !important; /* Orange-500 */
+  background-color: #fff7ed !important;
+  /* Orange-50 */
+  border-bottom: 3px solid #f97316 !important;
+  /* Orange-500 */
 }
+
 .cell-absensi {
   background-color: #fffaf5;
-  color: #c2410c; /* Orange-700 */
+  color: #c2410c;
+  /* Orange-700 */
   font-weight: 500;
 }
 
 /* 3. Income (Upah Dasar/Pokok) - Blue */
 .header-section-income {
-  background-color: #eff6ff !important; /* Blue-50 */
-  border-bottom: 3px solid #3b82f6 !important; /* Blue-500 */
+  background-color: #eff6ff !important;
+  /* Blue-50 */
+  border-bottom: 3px solid #3b82f6 !important;
+  /* Blue-500 */
 }
+
 .cell-income {
   background-color: #f0f9ff;
-  color: #1e40af; /* Blue-800 */
+  color: #1e40af;
+  /* Blue-800 */
 }
 
 /* 4. Premi - Green (Plantation Core) */
 .header-section-premi {
-  background-color: #f0fdf4 !important; /* Green-50 */
-  border-bottom: 3px solid #22c55e !important; /* Green-500 */
+  background-color: #f0fdf4 !important;
+  /* Green-50 */
+  border-bottom: 3px solid #22c55e !important;
+  /* Green-500 */
 }
+
 .cell-premi {
   background-color: #f0fdf4;
-  color: #15803d; /* Green-700 */
+  color: #15803d;
+  /* Green-700 */
   font-weight: 500;
 }
 
 /* 5. Deduction (Potongan) - Red */
 .header-section-deduction {
-  background-color: #fef2f2 !important; /* Red-50 */
-  border-bottom: 3px solid #ef4444 !important; /* Red-500 */
+  background-color: #fef2f2 !important;
+  /* Red-50 */
+  border-bottom: 3px solid #ef4444 !important;
+  /* Red-500 */
 }
+
 .cell-deduction {
   background-color: #fef2f2;
-  color: #b91c1c; /* Red-700 */
+  color: #b91c1c;
+  /* Red-700 */
 }
 
 /* 6. Net Salary - Teal/Emerald Standout */
 .header-section-net {
-  background-color: #ecfdf5 !important; /* Emerald-50 */
-  border-bottom: 3px solid #059669 !important; /* Emerald-600 */
+  background-color: #ecfdf5 !important;
+  /* Emerald-50 */
+  border-bottom: 3px solid #059669 !important;
+  /* Emerald-600 */
 }
+
 .cell-net-salary {
   background-color: #ecfdf5;
   font-weight: 700;
-  color: #064e3b; /* Emerald-900 */
+  color: #064e3b;
+  /* Emerald-900 */
   border-left: 1px solid #a7f3d0;
 }
 
@@ -255,7 +317,7 @@ body {
   font-size: 11px;
   color: var(--neutral-600);
   font-family: var(--ag-font-family);
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .stat-item {
@@ -284,8 +346,8 @@ body {
 }
 
 .ag-row-selected .ag-cell {
-    /* Ensure cells inherit the bold weight */
-    font-weight: bold !important;
+  /* Ensure cells inherit the bold weight */
+  font-weight: bold !important;
 }
 
 
@@ -354,7 +416,8 @@ html {
 
 body {
   height: 100%;
-  height: 100dvh; /* Dynamic viewport height for mobile browsers */
+  height: 100dvh;
+  /* Dynamic viewport height for mobile browsers */
   overflow: hidden;
   position: relative;
   position: fixed;
@@ -365,7 +428,8 @@ body {
 
 #root {
   height: 100vh;
-  height: 100dvh; /* Dynamic viewport height */
+  height: 100dvh;
+  /* Dynamic viewport height */
   width: 100vw;
   position: relative;
   overflow: hidden;
@@ -379,12 +443,12 @@ body::after {
 }
 
 /* Remove any default margins/padding that might cause spacing */
-body > *:first-child {
+body>*:first-child {
   margin-top: 0 !important;
 }
 
 /* Ensure layout containers take full height */
-body > #root {
+body>#root {
   min-height: 100vh;
   min-height: 100dvh;
   height: 100vh;
@@ -403,14 +467,13 @@ body > #root {
 }
 
 /* Additional fix: Remove any potential spacing from proxy template */
-body > div:first-child {
+body>div:first-child {
   margin-top: 0 !important;
   padding-top: 0 !important;
 }
 
 /* Ensure DashboardLayout takes full height */
-body > #root > div {
+body>#root>div {
   height: 100vh !important;
   height: 100dvh !important;
 }
-

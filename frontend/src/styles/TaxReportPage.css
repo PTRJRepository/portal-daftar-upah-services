@@ -1,0 +1,348 @@
+/* TaxReportPage.css - Tax Report Styles */
+
+.tax-report-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background-color: #f8fafc;
+}
+
+/* Toolbar */
+.tax-report-toolbar {
+    height: 56px;
+    padding: 0 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background-color: #ffffff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.tax-report-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    overflow: hidden;
+}
+
+.tax-report-back-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.tax-report-back-btn:hover {
+    background-color: #f1f5f9;
+}
+
+.tax-report-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #1e293b;
+    white-space: nowrap;
+}
+
+.tax-report-divider {
+    width: 1px;
+    height: 20px;
+    background-color: #cbd5e1;
+    margin: 0 0.25rem;
+}
+
+.tax-report-badge {
+    height: 32px;
+    display: flex;
+    align-items: center;
+    padding: 0 0.75rem;
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    border-radius: 6px;
+    color: #92400e;
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+/* Tabs */
+.tax-report-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid #e2e8f0;
+    background: #ffffff;
+    padding: 0 1rem;
+    flex-shrink: 0;
+}
+
+.tax-report-tab {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #64748b;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.tax-report-tab:hover {
+    color: #1e293b;
+    background-color: #f8fafc;
+}
+
+.tax-report-tab.active {
+    color: #1e3a8a;
+    border-bottom-color: #1e3a8a;
+    background-color: #eff6ff;
+}
+
+/* Content */
+.tax-report-content {
+    flex: 1;
+    overflow: auto;
+    padding: 1.5rem;
+}
+
+/* Period selector */
+.tax-report-period-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tax-report-period-bar label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #475569;
+    letter-spacing: 0.025em;
+}
+
+.tax-report-period-bar select {
+    height: 36px;
+    padding: 0 2rem 0 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #334155;
+    background-color: white;
+    cursor: pointer;
+    font-weight: 500;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1em 1em;
+}
+
+.tax-report-period-bar select:focus {
+    outline: none;
+    border-color: #1e3a8a;
+    box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+}
+
+/* Table wrapper */
+.tax-report-table-wrapper {
+    overflow-x: auto;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Table */
+.tax-report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.tax-report-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #1e3a8a;
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.6rem 0.75rem;
+    text-align: center;
+    border: 1px solid #1e40af;
+}
+
+.tax-report-table thead th.sub-header {
+    background: #2563eb;
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+}
+
+.tax-report-table thead th.header-only {
+    background: #6366f1;
+    color: #e0e7ff;
+    font-style: italic;
+}
+
+.tax-report-table tbody td {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+}
+
+.tax-report-table tbody tr:nth-child(even) {
+    background-color: #f8fafc;
+}
+
+.tax-report-table tbody tr:hover {
+    background-color: #eff6ff;
+}
+
+.tax-report-table .text-left {
+    text-align: left;
+}
+
+.tax-report-table .text-center {
+    text-align: center;
+}
+
+.tax-report-table .text-right {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.tax-report-table .col-name {
+    text-align: left;
+    min-width: 140px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    background: inherit;
+}
+
+.tax-report-table thead th.col-name {
+    z-index: 15;
+    background: #1e3a8a;
+}
+
+.tax-report-table .col-no {
+    text-align: center;
+    width: 40px;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    background: inherit;
+}
+
+.tax-report-table thead th.col-no {
+    z-index: 15;
+    background: #1e3a8a;
+}
+
+.tax-report-table .col-npwp {
+    width: 150px;
+    min-width: 150px;
+    text-align: center;
+}
+
+/* Footer row */
+.tax-report-table tfoot td {
+    padding: 0.6rem 0.75rem;
+    font-weight: 700;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+}
+
+/* Empty state */
+.tax-report-empty {
+    text-align: center;
+    padding: 3rem;
+    color: #64748b;
+}
+
+.tax-report-empty h3 {
+    font-size: 1.1rem;
+    color: #475569;
+    margin-bottom: 0.5rem;
+}
+
+.tax-report-empty p {
+    font-size: 0.9rem;
+    color: #94a3b8;
+}
+
+/* Loading */
+.tax-report-loading {
+    text-align: center;
+    padding: 3rem;
+    color: #3b82f6;
+    font-weight: 600;
+}
+
+.tax-report-loading .spinner {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border: 3px solid #bfdbfe;
+    border-top: 3px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 0.75rem;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Section title */
+.tax-report-section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 2rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tax-report-section-title:first-of-type {
+    margin-top: 0;
+}
+
+/* Negative values */
+.tax-report-table .negative {
+    color: #dc2626;
+}
+
+.tax-report-table .positive {
+    color: #16a34a;
+    font-weight: 600;
+}

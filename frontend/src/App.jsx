@@ -11,11 +11,13 @@ import './styles/print-overrides.css'
 // Lazy load pages
 const DashboardHome = lazy(() => import('./pages/DashboardHome'))
 const EmployeeDetailRoute = lazy(() => import('./pages/EmployeeDetailRoute'))
+const HrInfoRoute = lazy(() => import('./pages/HrInfoRoute'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const PayslipPrintPage = lazy(() => import('./pages/PayslipPrintPage'))
 
 // Report Pages
 const CustomPayrollTable = lazy(() => import('./components/CustomPayrollTable'))
+const EmployeeDirectoryPage = lazy(() => import('./pages/EmployeeDirectoryPage'))
 const SummaryReportPage = lazy(() => import('./pages/SummaryReportPage'))
 const WagesSummaryRebinmasPage = lazy(() => import('./pages/WagesSummaryRebinmasPage'))
 const WagesSummaryIJLPage = lazy(() => import('./pages/WagesSummaryIJLPage'))
@@ -26,6 +28,7 @@ const PayrollAnalysisPage = lazy(() => import('./pages/PayrollAnalysisPage'))
 const ExecutivePayrollPage = lazy(() => import('./pages/ExecutivePayrollPage'))
 const GangComparisonReportPage = lazy(() => import('./pages/GangComparisonReportPage'))
 const WagesComparisonPage = lazy(() => import('./pages/WagesComparisonPage'))
+const TaxReportPage = lazy(() => import('./pages/TaxReportPage'))
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
@@ -434,11 +437,20 @@ function AppInner() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Employee Detail Route */}
+        {/* Employee Detail Route - From Daftar Upah (Operational: payslip, attendance matrix) */}
         <Route path="/employee/detail" element={
           <ProtectedRoute>
             <div style={{ height: '100vh', width: '100vw' }}>
               <EmployeeDetailRoute />
+            </div>
+          </ProtectedRoute>
+        } />
+
+        {/* HR Info Route - From Employee Directory (Managerial: profile, career history) */}
+        <Route path="/hr-info" element={
+          <ProtectedRoute>
+            <div style={{ height: '100vh', width: '100vw', overflow: 'auto', backgroundColor: '#f8fafc' }}>
+              <HrInfoRoute />
             </div>
           </ProtectedRoute>
         } />
@@ -466,6 +478,7 @@ function AppInner() {
           <Route index element={<DashboardHome />} />
 
           <Route path="operational" element={<OperationalReportWrapper />} />
+          <Route path="employee-directory" element={<SummaryReportWrapper component={EmployeeDirectoryPage} />} />
 
           <Route path="summary" element={<SummaryReportWrapper component={SummaryReportPage} />} />
           <Route path="wages-rebinmas" element={<SummaryReportWrapper component={WagesSummaryRebinmasPage} />} />
@@ -476,6 +489,7 @@ function AppInner() {
           <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
           <Route path="spreadsheet-sync" element={<SummaryReportWrapper component={SpreadsheetSyncPage} />} />
           <Route path="wages-comparison" element={<SummaryReportWrapper component={WagesComparisonPage} />} />
+          <Route path="report-pajak" element={<TaxReportPage />} />
 
           {/* Development/Test Pages */}
           <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />

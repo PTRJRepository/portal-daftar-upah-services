@@ -21,6 +21,7 @@ export interface Employee {
     gang_code: string;
     phone?: string;
     upah_dasar?: number;
+    actual_nik?: string; // Expose permanent ICNo for history linking
 }
 
 // Division to GangCode prefix mapping
@@ -230,18 +231,20 @@ export class EmployeeRepository {
             const rows = await this.db.query<any>(`
                 SELECT DISTINCT TOP ${limit}
                     e.EmpCode AS nik,
+                    e.NewICNo AS actual_nik,
                     e.EmpName AS nama,
                     e.Gender AS jenis_kelamin,
                     e.LocCode AS loc_code,
                     g.GangCode AS gang_code
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
-                WHERE e.EmpCode LIKE ? OR e.EmpName LIKE ?
+                WHERE e.EmpCode LIKE ? OR e.EmpName LIKE ? OR e.NewICNo LIKE ?
                 ORDER BY e.EmpName
-            `, [`%${term}%`, `%${term}%`]);
+            `, [`%${term}%`, `%${term}%`, `%${term}%`]);
 
             return rows.map((r: any) => ({
                 nik: r.nik?.trim() || "",
+                actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
                 nama: r.nama?.trim() || "",
                 jenis_kelamin: mapGender(r.jenis_kelamin),
                 loc_code: r.loc_code?.trim() || "",

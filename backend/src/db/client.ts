@@ -1,4 +1,5 @@
 import { Config } from "../config";
+import { debug, info, error as logError } from "../utils/logger";
 
 interface QueryResponse {
     success: boolean;
@@ -38,9 +39,8 @@ export class Database {
         }
         this.baseUrl = rawUrl;
 
-        console.log(`[DB] Initialized with Profile: ${this.serverProfile}, DB: ${this.databaseName}`);
-        console.log(`[DB] Gateway Base: ${this.baseUrl}`);
-        console.log(`[DB] Query Target: ${this.baseUrl}/v1/query`);
+        debug("DB", `Initialized with Profile: ${this.serverProfile}, DB: ${this.databaseName}`);
+        debug("DB", `Gateway Base: ${this.baseUrl}`);
     }
 
     /**
@@ -92,7 +92,7 @@ export class Database {
             // Replace each ? occurrence with @p0, @p1, etc.
             newSql = newSql.replace(/\?/g, () => {
                 const key = `p${paramIndex}`;
-                newParams[key] = params[paramIndex];
+                newParams[key] = params[paramIndex] === undefined ? null : params[paramIndex];
                 paramIndex++;
                 return `@${key}`;
             });
@@ -106,7 +106,7 @@ export class Database {
         for (const [key, value] of Object.entries(params)) {
             // Add @ prefix if not already present
             const newKey = key.startsWith('@') ? key : `@${key}`;
-            newParams[newKey] = value;
+            newParams[newKey] = value === undefined ? null : value;
         }
 
         return { sql, params: newParams };
@@ -128,9 +128,9 @@ export class Database {
                     database: this.databaseName
                 };
 
-                // Debug log untuk setiap query (bisa di-disable nanti)
+                // Debug log untuk setiap query (hanya jika LOG_LEVEL=DEBUG)
                 if (attempt === 0) {
-                    console.log(`[DB] Sending query to server=${this.serverProfile}, database=${this.databaseName}`);
+                    debug("DB_QUERY", `Query to ${this.serverProfile}/${this.databaseName}`);
                 }
 
                 const response = await fetch(`${this.baseUrl}/v1/query`, {
@@ -144,7 +144,7 @@ export class Database {
 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    console.error(`[DB] Gateway Error (${response.status}):`, errorText);
+                    logError("DB", `Gateway Error (${response.status}): ${errorText}`, new Error(`HTTP ${response.status}`));
                     throw new Error(`Gateway returned ${response.status}: ${response.statusText} - ${errorText}`);
                 }
 
@@ -157,7 +157,7 @@ export class Database {
                 return (result.data?.recordset || []) as T[];
 
             } catch (error) {
-                console.error(`[DB] Query failed (Attempt ${attempt + 1}):`, error);
+                logError("DB", `Query failed (Attempt ${attempt + 1}/${maxRetries + 1})`, error);
                 if (attempt >= maxRetries) throw error;
                 await new Promise(r => setTimeout(r, delay));
                 delay = Math.min(delay * 2, 2000);
@@ -191,12 +191,12 @@ export class Database {
 
             const result = (await response.json()) as QueryResponse;
             if (!result.success) {
-                console.error("[DB] Transaction failed:", result.error);
+                logError("DB_TRANSACTION", `Transaction failed: ${result.error}`);
                 return false;
             }
             return !!result.data?.transactionCommitted;
         } catch (e) {
-            console.error("[DB] Transaction request failed:", e);
+            logError("DB_TRANSACTION", "Transaction request failed", e);
             return false;
         }
     }

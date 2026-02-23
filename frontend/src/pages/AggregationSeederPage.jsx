@@ -22,7 +22,10 @@ import {
 import {
     checkHistoryHealth,
     seedPayrollHistory,
-    formatMonthName
+    getSeederProgress,
+    formatMonthName,
+    previewPtkpTax,
+    updatePtkpTax
 } from '../services/historyService';
 import '../styles/aggregation-seeder.css';
 
@@ -34,6 +37,7 @@ export default function AggregationSeederPage({ onBack }) {
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
     const [syncType, setSyncType] = useState('DAFTAR_UPAH');
+    const [historySeederType, setHistorySeederType] = useState('PAYROLL');
 
     // Data
     const [divisions, setDivisions] = useState(['ALL']);
@@ -48,6 +52,8 @@ export default function AggregationSeederPage({ onBack }) {
     const [historyConnectionStatus, setHistoryConnectionStatus] = useState('checking');
     const [logs, setLogs] = useState([]);
     const [showSummary, setShowSummary] = useState(false);
+    const [seederProgress, setSeederProgress] = useState(null);
+    const [isPtkpRunning, setIsPtkpRunning] = useState(false);
 
     // Log ref for auto-scroll
     const logEndRef = useRef(null);
@@ -62,6 +68,21 @@ export default function AggregationSeederPage({ onBack }) {
     useEffect(() => {
         logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [logs]);
+
+    // Poll seeder progress while running
+    useEffect(() => {
+        if (!isHistoryRunning) return;
+        const interval = setInterval(async () => {
+            try {
+                const progress = await getSeederProgress(token);
+                if (progress) setSeederProgress(progress);
+                if (progress && !progress.is_running) {
+                    clearInterval(interval);
+                }
+            } catch (e) { /* ignore */ }
+        }, 2000);
+        return () => clearInterval(interval);
+    }, [isHistoryRunning, token]);
 
     // Check connection on mount
     useEffect(() => {
@@ -99,6 +120,24 @@ export default function AggregationSeederPage({ onBack }) {
             } catch (e) {
                 setHistoryConnectionStatus('error');
                 addLog(`❌ History DB connection error: ${e.message}`, 'error');
+            }
+
+            // Fetch active database period and set as default
+            try {
+                const baseUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '';
+                const periodRes = await fetch(`${baseUrl}/payroll/current-period`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (periodRes.ok) {
+                    const periodData = await periodRes.json();
+                    if (periodData.month && periodData.year) {
+                        setMonth(periodData.month);
+                        setYear(periodData.year);
+                        addLog(`📅 Database aktif: ${formatMonthName(periodData.month)} ${periodData.year}`);
+                    }
+                }
+            } catch (e) {
+                // Non-critical, keep system date defaults
             }
         }
         checkConnection();
@@ -259,28 +298,49 @@ export default function AggregationSeederPage({ onBack }) {
         addLog(`📊 Division: ${division === 'ALL' ? 'All Divisions' : division}`);
 
         try {
+            // Start progress poller
+            let lastStatus = '';
+            const poller = setInterval(async () => {
+                try {
+                    const progress = await getSeederProgress(token);
+                    if (progress?.data?.is_running) {
+                        const p = progress.data;
+                        const statusMsg = `⏳ [${p.current_division}] Gangs: ${p.gangs_done}/${p.gangs_total} | Emp: ${p.employees_processed} | ${p.current_step}`;
+                        if (statusMsg !== lastStatus) {
+                            addLog(statusMsg, 'debug');
+                            lastStatus = statusMsg;
+                        }
+                    }
+                } catch (e) { }
+            }, 2000);
+
             const result = await seedPayrollHistory(
                 token,
                 month,
                 year,
                 division === 'ALL' ? null : division,
                 null, // gang_code - seed all gangs
-                false // force
+                false, // force
+                historySeederType
             );
+
+            clearInterval(poller); // Stop poller
 
             if (result.success) {
                 addLog('='.repeat(40), 'info');
-                addLog('✅ History seeding complete!', 'success');
+                addLog(`✅ History seeding complete! Mode: ${historySeederType}`, 'success');
                 addLog(`📊 Total employees: ${result.data?.total_employees || 0}`);
 
                 const records = result.data?.records_inserted;
                 if (records) {
                     addLog(`📋 Records inserted:`);
-                    addLog(`  • Master: ${records.master}`);
-                    addLog(`  • Detail: ${records.detail}`);
-                    addLog(`  • Taskreg: ${records.taskreg}`);
-                    addLog(`  • ADTrans: ${records.adtrans}`);
-                    addLog(`  • Gang Member: ${records.gang_member}`);
+                    if (records.master !== undefined) addLog(`  • Master: ${records.master}`);
+                    if (records.detail !== undefined) addLog(`  • Detail: ${records.detail}`);
+                    if (records.taskreg !== undefined) addLog(`  • Taskreg: ${records.taskreg}`);
+                    if (records.adtrans !== undefined) addLog(`  • ADTrans: ${records.adtrans}`);
+                    if (records.gang_member !== undefined) addLog(`  • Gang Member: ${records.gang_member}`);
+                    if (records.hr_employee !== undefined) addLog(`  • HR Employee: ${records.hr_employee}`);
+                    if (records.hr_gang !== undefined) addLog(`  • HR Gang: ${records.hr_gang}`);
                 }
 
                 if (result.data?.history_id) {
@@ -302,6 +362,77 @@ export default function AggregationSeederPage({ onBack }) {
     // Clear logs
     const handleClearLogs = () => {
         setLogs([]);
+    };
+
+    // Run PTKP Preview
+    const handlePreviewPtkp = async () => {
+        if (isPtkpRunning) return;
+        if (historyConnectionStatus !== 'connected') {
+            addLog('❌ History DB not connected. Cannot preview PTKP.', 'error');
+            return;
+        }
+
+        setIsPtkpRunning(true);
+        addLog('='.repeat(40), 'info');
+        addLog(`🔍 Previewing PTKP Update for Year ${year}...`);
+
+        try {
+            const res = await previewPtkpTax(token, year);
+            if (res.success) {
+                const { total_employees, existing_records, distribution } = res.data;
+                addLog(`✅ Preview successful`, 'success');
+                addLog(`👥 Total Karyawan Aktif: ${total_employees}`);
+                addLog(`📂 Data Lama di Tabel: ${existing_records}`);
+
+                addLog('📊 Distribusi PTKP Baru:');
+                Object.entries(distribution).forEach(([ptkp, count]) => {
+                    addLog(`   • Status ${ptkp}: ${count} Karyawan`);
+                });
+            } else {
+                addLog(`❌ Preview failed: ${res.error}`, 'error');
+            }
+        } catch (e) {
+            addLog(`❌ Preview error: ${e.message}`, 'error');
+        } finally {
+            setIsPtkpRunning(false);
+        }
+    };
+
+    // Run PTKP Update
+    const handleRunPtkpUpdate = async () => {
+        if (isPtkpRunning) return;
+        if (historyConnectionStatus !== 'connected') {
+            addLog('❌ History DB not connected. Cannot update PTKP.', 'error');
+            return;
+        }
+
+        if (!window.confirm(`Anda yakin ingin melakukan update PTKP untuk tahun ${year}? Semua perhitungan pada tahun ini akan terpengaruh.`)) {
+            return;
+        }
+
+        setIsPtkpRunning(true);
+        addLog('='.repeat(40), 'info');
+        addLog(`🚀 Starting PTKP Update for Year ${year}...`);
+
+        try {
+            const res = await updatePtkpTax(token, year);
+            if (res.success) {
+                const { records_inserted, records_updated, records_skipped } = res.data;
+                addLog(`✅ Update PTKP Selesai!`, 'success');
+                addLog(`📋 Inserted: ${records_inserted}`);
+                addLog(`🔄 Updated: ${records_updated}`);
+                addLog(`⏭️ Skipped: ${records_skipped}`);
+            } else {
+                addLog(`❌ Update PTKP failed: ${res.error}`, 'error');
+                if (res.errors?.length > 0) {
+                    res.errors.forEach(err => addLog(`   • ${err}`, 'error'));
+                }
+            }
+        } catch (e) {
+            addLog(`❌ Update error: ${e.message}`, 'error');
+        } finally {
+            setIsPtkpRunning(false);
+        }
     };
 
     // Month options
@@ -435,7 +566,91 @@ export default function AggregationSeederPage({ onBack }) {
 
                     <hr className="agg-divider" />
 
-                    {/* History Seeder Button (Terpisah) */}
+                    <h3 className="agg-panel-subtitle" style={{ marginTop: '20px', fontSize: '14px', color: '#6b7280' }}>⚙️ History Operations</h3>
+
+                    <div className="agg-form-group">
+                        <label>History Seeder Type</label>
+                        <select
+                            value={historySeederType}
+                            onChange={(e) => setHistorySeederType(e.target.value)}
+                            disabled={isHistoryRunning || isRunning}
+                        >
+                            <option value="PAYROLL">Payroll & Transactions (Master/Detail)</option>
+                            <option value="EMPLOYEE_HR">Data Karyawan (HR Employee)</option>
+                            <option value="GANG_HR">Data Kemandoran (HR Gang)</option>
+                            <option value="ALL_HR">Semua Data HR</option>
+                            <option value="ALL">Semua Data (Payroll + HR)</option>
+                        </select>
+                        <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '6px', lineHeight: '1.5', padding: '8px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+                            {historySeederType === 'PAYROLL' && (
+                                <span>📋 <strong>Payroll & Transactions</strong> — Menyimpan snapshot lengkap daftar upah ke tabel history (header + detail). Termasuk gaji pokok, tunjangan, potongan, lembur, dan panen. <em>Proses ini membutuhkan waktu ±2-5 menit untuk seluruh divisi.</em></span>
+                            )}
+                            {historySeederType === 'EMPLOYEE_HR' && (
+                                <span>👤 <strong>Data Karyawan</strong> — Menyimpan data master karyawan (NIK, nama, jabatan, divisi, tanggal masuk). Digunakan untuk profil HR dan career tracking.</span>
+                            )}
+                            {historySeederType === 'GANG_HR' && (
+                                <span>👥 <strong>Data Kemandoran</strong> — Menyimpan struktur gang/kemandoran dan relasinya ke divisi.</span>
+                            )}
+                            {historySeederType === 'ALL_HR' && (
+                                <span>🏢 <strong>Semua Data HR</strong> — Menjalankan seed Employee + Gang sekaligus. Tidak termasuk data payroll/upah.</span>
+                            )}
+                            {historySeederType === 'ALL' && (
+                                <span>⚡ <strong>Semua Data</strong> — Menjalankan Payroll + Employee + Gang sekaligus. <em>Proses terlama, bisa memakan waktu ±5-10 menit.</em></span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Seeder Progress Indicator */}
+                    {(isHistoryRunning || (seederProgress && seederProgress.is_running)) && seederProgress && (
+                        <div style={{
+                            padding: '10px 12px',
+                            backgroundColor: '#ede9fe',
+                            borderRadius: '6px',
+                            border: '1px solid #c4b5fd',
+                            marginTop: '8px',
+                            fontSize: '12px'
+                        }}>
+                            <div style={{ fontWeight: 600, color: '#6d28d9', marginBottom: '6px' }}>
+                                🔄 {seederProgress.current_step}
+                            </div>
+                            {seederProgress.current_division && (
+                                <div style={{ color: '#7c3aed', marginBottom: '4px' }}>
+                                    📍 Divisi: {seederProgress.current_division} | Periode: {seederProgress.period}
+                                </div>
+                            )}
+                            {seederProgress.gangs_total > 0 && (
+                                <>
+                                    <div style={{
+                                        width: '100%', height: '8px', backgroundColor: '#ddd5f3',
+                                        borderRadius: '4px', overflow: 'hidden', marginBottom: '4px'
+                                    }}>
+                                        <div style={{
+                                            width: `${Math.round((seederProgress.gangs_done / seederProgress.gangs_total) * 100)}%`,
+                                            height: '100%', backgroundColor: '#7c3aed',
+                                            borderRadius: '4px', transition: 'width 0.5s ease'
+                                        }} />
+                                    </div>
+                                    <div style={{ color: '#6b7280' }}>
+                                        Gang: {seederProgress.gangs_done}/{seederProgress.gangs_total}
+                                        {seederProgress.current_gang && ` — ${seederProgress.current_gang}`}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Show completion status */}
+                    {seederProgress && !seederProgress.is_running && seederProgress.current_step !== 'idle' && !isHistoryRunning && (
+                        <div style={{
+                            padding: '8px 12px', borderRadius: '6px', marginTop: '8px', fontSize: '12px',
+                            backgroundColor: seederProgress.current_step.includes('✅') ? '#ecfdf5' : '#fef2f2',
+                            border: `1px solid ${seederProgress.current_step.includes('✅') ? '#a7f3d0' : '#fecaca'}`,
+                            color: seederProgress.current_step.includes('✅') ? '#065f46' : '#991b1b'
+                        }}>
+                            {seederProgress.current_step}
+                        </div>
+                    )}
+
                     <button
                         onClick={handleRunHistorySeeder}
                         disabled={isHistoryRunning || isRunning || historyConnectionStatus !== 'connected'}
@@ -448,8 +663,47 @@ export default function AggregationSeederPage({ onBack }) {
                         }}
                         title="Simpan data lengkap ke history tables (terpisah dari aggregation)"
                     >
-                        {isHistoryRunning ? '⏳ Saving History...' : '💾 Save to History (Terpisah)'}
+                        {isHistoryRunning ? '⏳ Saving History...' : '💾 Save to History'}
                     </button>
+
+                    <hr className="agg-divider" />
+
+                    <h3 className="agg-panel-subtitle" style={{ marginTop: '20px', fontSize: '14px', color: '#6b7280' }}>💳 Master PTKP Operations</h3>
+                    <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '6px', lineHeight: '1.5', padding: '8px', backgroundColor: '#fdf4ff', borderRadius: '4px', border: '1px solid #fbcfe8', marginBottom: '12px' }}>
+                        Update dan kalkulasi status Penghasilan Tidak Kena Pajak (PTKP) tahunan berdasarkan Data Karyawan. Update ini dipengaruhi oleh 'Tahun' yang dipilih di parameter atas.
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                            onClick={handlePreviewPtkp}
+                            disabled={isPtkpRunning || isHistoryRunning || isRunning || historyConnectionStatus !== 'connected'}
+                            className="agg-btn"
+                            style={{
+                                flex: 1,
+                                backgroundColor: '#f0fdf4',
+                                borderColor: '#bbf7d0',
+                                color: '#166534',
+                            }}
+                            title="Preview data karyawan dan distribusi PTKP pajak (Tidak mengubah database)"
+                        >
+                            {isPtkpRunning ? '⏳ Previewing...' : '🔍 Preview PTKP'}
+                        </button>
+
+                        <button
+                            onClick={handleRunPtkpUpdate}
+                            disabled={isPtkpRunning || isHistoryRunning || isRunning || historyConnectionStatus !== 'connected'}
+                            className="agg-btn"
+                            style={{
+                                flex: 2,
+                                backgroundColor: '#db2777',
+                                borderColor: '#be185d',
+                                color: 'white',
+                            }}
+                            title="Update Master PTKP untuk seluruh karyawan di tahun yang dipilih"
+                        >
+                            {isPtkpRunning ? '⏳ Updating...' : '📝 Execute PTKP Update'}
+                        </button>
+                    </div>
 
                     <hr className="agg-divider" />
 

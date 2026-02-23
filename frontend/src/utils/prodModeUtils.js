@@ -31,12 +31,10 @@ export const isProdMode = () => {
  * In direct mode, returns ''
  */
 export const getBasePath = () => {
-    // Check various conditions that indicate proxy mode
-    const isProxyBuild = import.meta.env.BASE_PATH && import.meta.env.BASE_PATH !== '/'
-    const isProxyHost = import.meta.env.VITE_BACKEND_HOST && import.meta.env.VITE_BACKEND_HOST !== 'localhost'
-    const isProxyAccess = window.location.port === '3001' || window.location.pathname.startsWith('/upah/')
-
-    if (isProxyBuild || isProxyHost || isProxyAccess) {
+    // If the browser URL actually starts with /upah, we must be in proxy mode
+    // and React Router needs /upah as its basename. Otherwise, if testing locally
+    // at root (e.g., /login), the basename must be empty string to avoid Router crash.
+    if (window.location.pathname.startsWith('/upah')) {
         return '/upah'
     }
     return ''
@@ -150,15 +148,22 @@ export const getUserDivision = () => {
  * Redirect to external login page (for production mode)
  */
 export const redirectToExternalLogin = () => {
-    // Use relative path '/login' which the proxy will route to the root login page
-    // This allows it to work regardless of the domain or port
-    const loginUrl = '/login'
+    // Determine the login URL dynamically based on the current base path
+    // If we're behind the proxy (/upah), we want to redirect to the root gateway login
+    const basePath = getBasePath()
+    const loginUrl = basePath ? '/login' : '/login'
     console.log('[ProdMode] Redirecting to external login:', loginUrl)
 
     // Add return URL to guide the user back after login
-    // We utilize the relative path functionality of the browser
     const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
-    window.location.href = `${loginUrl}?returnUrl=${returnUrl}`
+
+    if (basePath === '/upah') {
+        // In proxy mode, redirect to the root gateway
+        window.location.href = `${window.location.origin}/login?returnUrl=${returnUrl}`
+    } else {
+        // Local dev mode
+        window.location.href = `/login?returnUrl=${returnUrl}`
+    }
 }
 
 /**

@@ -5,7 +5,7 @@ async function testHistory() {
 
     // Call the employee API route handler logically, or just mock what it does.
     try {
-        const response = await fetch("http://localhost:3000/payroll/employee/A0233/history?months=12");
+        const response = await fetch("http://localhost:8002/payroll/employee/A0233/history?months=12");
         const json = await response.json();
 
         console.log(`Success: ${json.success}, Records: ${json.count}`);

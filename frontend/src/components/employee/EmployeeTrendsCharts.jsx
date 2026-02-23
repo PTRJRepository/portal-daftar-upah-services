@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getEmployeeHistory, formatMonthName, formatCurrency } from '../../services/historyService';
+import { getEmployeeHistory, formatMonthName } from '../../services/historyService';
 import './EmployeeTrendsCharts.css';
 
 export function EmployeeTrendsCharts({ empCode }) {

@@ -118,3 +118,47 @@ export async function getEmployeeHistory(token, empCode, options = {}) {
         throw error
     }
 }
+
+/**
+ * Get employee HR history changelog
+ * @param {string} token - JWT token
+ * @param {string} empCode - Employee code
+ * @returns {Promise<Array>} Changelog data
+ */
+export async function getHrChangelog(token, empCode) {
+    try {
+        const baseUrl = getBaseUrl()
+        const response = await axios.get(`${baseUrl}/${empCode}/hr-changelog`, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        return response.data
+    } catch (error) {
+        console.error('[EmployeeDetailService] Failed to get HR changelog:', error)
+        throw error
+    }
+}
+
+/**
+ * Get true historical data for HR Info across all seeded months
+ * @param {string} token - JWT token
+ * @param {string} empCode - Employee code
+ * @returns {Promise<Object>} Object containing career and payroll history arrays
+ */
+export async function getEmployeeHistoricalData(token, empCode) {
+    try {
+        // Check for explicit backend URL in environment variables
+        const backendHost = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL
+        let host = '';
+        if (backendHost) {
+            host = backendHost.endsWith('/') ? backendHost.slice(0, -1) : backendHost;
+        }
+
+        const response = await axios.get(`${host}/payroll/history/employee/${empCode}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        return response.data?.data || { career: [], payroll: [] };
+    } catch (error) {
+        console.error('[EmployeeDetailService] Failed to get employee historical data:', error)
+        throw error
+    }
+}

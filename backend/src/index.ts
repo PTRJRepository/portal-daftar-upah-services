@@ -15,26 +15,14 @@ import { spreadsheetRoutes } from "./api/spreadsheetRoutes";
 import { dashboardRoutes } from "./api/dashboardRoutes";
 import { historyRoutes } from "./api/historyRoutes";
 import { wagesRoutes } from "./api/wagesRoutes";
+import { logsRoutes } from "./api/logsRoutes";
+import { taxReportRoutes } from "./api/taxReportRoutes";
 import { Database } from "./db/client";
 import { staticPlugin } from "@elysiajs/static";
 
 
 // Initialize Database access
-console.log("\n\n=== BACKEND CONFIGURATION VERIFICATION ===");
-console.log(`RUN_MODE: ${Config.RUN_MODE}`);
-console.log(`DB_PROFILE: ${Config.DB_PROFILE}`);
-console.log(`DEFAULT_DATABASE: ${Config.DEFAULT_DATABASE}`);
-console.log(`DB_EXTEND_PROFILE: ${Config.DB_EXTEND_PROFILE}`);
-console.log(`DB_EXTEND_DATABASE: ${Config.DB_EXTEND_DATABASE}`);
-console.log(`DB_EXTEND_TRANS_DATABASE: ${process.env.DB_EXTEND_TRANS_DATABASE || "extend_db_ptrj_transaksi"}`);
-console.log(`DB_VENUS_PROFILE: ${Config.DB_VENUS_PROFILE}`);
-console.log(`DB_VENUS_DATABASE: ${Config.DB_VENUS_DATABASE}`);
-console.log(`DB_API_URL: ${Config.DB_API_URL}`);
-console.log("==========================================\n\n");
-
 Database.getInstance();
-
-console.log("\n\n!!! BACKEND STARTUP - DEBUG VERSION A0374 (Step 830) !!!\n\n");
 const app = new Elysia()
     // CORS Configuration
     .use(cors({
@@ -53,11 +41,22 @@ const app = new Elysia()
     .onAfterHandle(({ request, set }) => {
         const startTime = (request as any).__startTime || performance.now();
         const duration = Math.round(performance.now() - startTime);
-        const method = request.method;
         const url = new URL(request.url);
 
-        // Only log non-health endpoints
-        if (!url.pathname.includes("/health")) {
+        // Skip logging for health, static assets, and favicon
+        if (url.pathname.includes("/health") ||
+            url.pathname.includes("/assets/") ||
+            url.pathname.includes("/images/") ||
+            url.pathname.includes("/vite.svg") ||
+            url.pathname.includes("favicon")) {
+            return;
+        }
+
+        // Log slow requests (> 1s) with warning, normal requests with info
+        const method = request.method;
+        if (duration > 1000) {
+            console.warn(`SLOW ${method} ${url.pathname} ${duration}ms`);
+        } else {
             console.log(`${method} ${url.pathname} ${duration}ms`);
         }
     })
@@ -68,8 +67,7 @@ const app = new Elysia()
             if (url.pathname.startsWith(Config.PROXY_STRIP_PREFIX)) {
                 const newPath = url.pathname.slice(Config.PROXY_STRIP_PREFIX.length) || "/";
                 // Note: Elysia doesn't support path rewriting in middleware directly
-                // This is logged for debugging; actual routing handles this via prefix
-                console.log(`🔀 Proxy prefix detected: ${url.pathname} -> ${newPath}`);
+                // Actual routing handles this via prefix grouping below
             }
         }
     })
@@ -92,7 +90,6 @@ const app = new Elysia()
         if (await file.exists()) {
             return file;
         }
-        console.log(`[ASSETS] File not found: ${filePath}`);
         set.status = 404;
         return "Asset not found";
     })
@@ -104,7 +101,6 @@ const app = new Elysia()
         if (await file.exists()) {
             return file;
         }
-        console.log(`[IMAGES] File not found: ${filePath}`);
         set.status = 404;
         return "Image not found";
     })
@@ -121,11 +117,8 @@ const app = new Elysia()
     .get("/upah/assets/*", async ({ params, set }) => {
         const p = params["*"];
         const filePath = `../frontend/dist/assets/${p}`;
-        console.log(`[UPAH/ASSETS] Request: ${p}, Resolving: ${filePath}`);
-
         const file = Bun.file(filePath);
         const exists = await file.exists();
-        console.log(`[UPAH/ASSETS] Exists: ${exists}`);
 
         if (exists) {
             // Set correct content-type based on extension
@@ -137,7 +130,6 @@ const app = new Elysia()
             }
             return file;
         }
-        console.log(`[UPAH/ASSETS] 404 Not found`);
         set.status = 404;
         return "Asset not found";
     })
@@ -149,7 +141,6 @@ const app = new Elysia()
         if (await file.exists()) {
             return file;
         }
-        console.log(`[UPAH/IMAGES] File not found: ${filePath}`);
         set.status = 404;
         return "Image not found";
     })
@@ -169,7 +160,6 @@ const app = new Elysia()
         if (await file.exists()) {
             return file;
         }
-        console.log(`[UPAH/*] File not found: ${filePath}`);
         set.status = 404;
         return "File not found";
     })
@@ -211,6 +201,10 @@ const app = new Elysia()
     .use(historyRoutes)
     // Wages comparison routes
     .use(wagesRoutes)
+    // Logs routes (dev only)
+    .use(logsRoutes)
+    // Tax Report routes
+    .use(taxReportRoutes)
 
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
@@ -230,19 +224,19 @@ const app = new Elysia()
         .use(dashboardRoutes)
         .use(historyRoutes)
         .use(wagesRoutes)
+        .use(logsRoutes)
         .use(devConfigRoutes)
+        .use(taxReportRoutes)
     )
 
     // SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)
     .get("*", async ({ request, set }) => {
         const url = new URL(request.url);
         const pathname = url.pathname;
-        console.log(`!!! CATCH-ALL HIT for ${pathname} !!!`);
 
         // If it looks like an API call, return 404
         const isApi = pathname.startsWith("/backend") || pathname.startsWith("/api") || pathname.includes("/payroll/");
         if (isApi) {
-            console.log(`-> Returning 404 for API: ${pathname}`);
             set.status = 404;
             return { error: "Route not found", path: pathname };
         }
@@ -250,13 +244,11 @@ const app = new Elysia()
         // If it looks like a static file (has extension), return 404 - static plugin should have handled it
         const hasExtension = pathname.includes(".");
         if (hasExtension) {
-            console.log(`-> Returning 404 for missing static file: ${pathname}`);
             set.status = 404;
             return "File not found";
         }
 
         // Otherwise, serve index.html for SPA routing
-        console.log("-> Serving index.html for SPA route...");
         return Bun.file("../frontend/dist/index.html");
     })
     // Start server

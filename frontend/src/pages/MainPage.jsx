@@ -60,7 +60,7 @@ export default function MainPage({ lockedDiv = null }) {
   const [exportLoading, setExportLoading] = useState(false)
   const [canAccessReports, setCanAccessReports] = useState(DEV_MODE) // Default to DEV_MODE, will be checked via API
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  
+
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
 
@@ -91,14 +91,14 @@ export default function MainPage({ lockedDiv = null }) {
       alert('Silakan pilih minimal 1 karyawan terlebih dahulu')
       return
     }
-    
+
     const params = new URLSearchParams({
       emp_codes: selectedEmployees.join(','),
       month: month,
       year: year,
       division: division
     })
-    
+
     const payslipPath = buildAppPath(`/payslip-print?${params.toString()}`)
     window.open(payslipPath, '_blank', 'noopener,noreferrer')
   }
@@ -803,6 +803,30 @@ export default function MainPage({ lockedDiv = null }) {
                       onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
                     >
                       Wages Report (IJL)
+                      <span style={{ fontSize: '1.2em' }}>›</span>
+                    </button>
+
+                    <button
+                      onClick={() => window.open(buildAppPath('/report-pajak'), '_blank')}
+                      style={{
+                        padding: '0.9rem',
+                        backgroundColor: '#ffffff',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#7c3aed'; e.currentTarget.style.backgroundColor = '#f5f3ff'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                    >
+                      Report Pajak (Tahunan & Bulanan)
                       <span style={{ fontSize: '1.2em' }}>›</span>
                     </button>
 

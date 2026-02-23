@@ -3,19 +3,12 @@ import { config } from "dotenv";
 import { join } from "path";
 
 // Load .env file FIRST before any other code
-// Use explicit path to ensure .env is found
 const envPath = join(import.meta.dir, "../.env");
-console.log("[Config] Loading .env from:", envPath);
-
-// Try loading dotenv
 const dotenvResult = config({ path: envPath });
-console.log("[Config] dotenv result:", dotenvResult.error ? dotenvResult.error.message : "Success");
 
-// Debug: Verify env loading BEFORE any Config class access
-console.log("[Config] === ENV DEBUG ===");
-console.log("[Config] env.DB_PROFILE =", env.DB_PROFILE);
-console.log("[Config] env.RUN_MODE =", env.RUN_MODE);
-console.log("[Config] =================");
+if (dotenvResult.error) {
+    console.error("[Config] Failed to load .env file:", dotenvResult.error.message);
+}
 
 export type RunMode = "dev" | "prod";
 
@@ -49,6 +42,10 @@ export class Config {
     public static readonly DB_EXTEND_DATABASE: string = env.DB_EXTEND_DATABASE || "extend_db_ptrj";
     public static readonly DB_EXTEND_PROFILE: string = env.DB_EXTEND_PROFILE || "SERVER_PROFILE_1";
 
+    // Staging Database (for FFB scanner data)
+    public static readonly DB_STAGING_DATABASE: string = env.DB_STAGING_DATABASE || "staging_PTRJ_iFES_Plantware";
+    public static readonly DB_STAGING_PROFILE: string = env.DB_STAGING_PROFILE || "SERVER_PROFILE_2";
+
     // Extended Transaction Database (for history detail - Taskreg, ADTrans)
     public static readonly DB_EXTEND_TRANS_DATABASE: string = env.DB_EXTEND_TRANS_DATABASE || "extend_db_ptrj_transaksi";
 
@@ -80,22 +77,22 @@ export class Config {
     // 2. Extract YEAR dari tanggal tersebut
     // 3. Gunakan getUpahDasar(year) untuk mendapatkan upah dasar yang sesuai
     // ============================================================
-    
+
     // Payrate per tahun (dari .env)
     public static readonly UPAH_DASAR_2024: number = parseFloat(env.UPAH_DASAR_2024 || "125000");
     public static readonly UPAH_DASAR_2025: number = parseFloat(env.UPAH_DASAR_2025 || "129220");
     public static readonly UPAH_DASAR_2026: number = parseFloat(env.UPAH_DASAR_2026 || "129220");
-    
+
     // Default upah dasar (fallback)
     public static readonly UPAH_DASAR: number = parseFloat(env.UPAH_DASAR || "129220");
-    
+
     // Tunjangan rates per tahun
     public static readonly BERAS_RATE_2025: number = parseFloat(env.BERAS_RATE_2025 || "35000");
     public static readonly BERAS_RATE_2026: number = parseFloat(env.BERAS_RATE_2026 || "35000");
-    
+
     public static readonly JABATAN_RATE_2025: number = parseFloat(env.JABATAN_RATE_2025 || "150000");
     public static readonly JABATAN_RATE_2026: number = parseFloat(env.JABATAN_RATE_2026 || "150000");
-    
+
     public static readonly MASA_KERJA_RATE_2025: number = parseFloat(env.MASA_KERJA_RATE_2025 || "25000");
     public static readonly MASA_KERJA_RATE_2026: number = parseFloat(env.MASA_KERJA_RATE_2026 || "25000");
 
@@ -155,8 +152,11 @@ export class Config {
     public static readonly DEFAULT_MONTH: number = parseInt(env.DEFAULT_MONTH || "12");
     public static readonly DEFAULT_YEAR: number = parseInt(env.DEFAULT_YEAR || "2025");
 
-    // Logging
-    public static readonly LOG_LEVEL: string = env.LOG_LEVEL || "info";
+    // Logging Configuration
+    public static readonly LOG_LEVEL: string = env.LOG_LEVEL || "INFO";
+    public static readonly LOG_TO_FILE: boolean = (env.LOG_TO_FILE !== "false");
+    public static readonly LOG_FILE_PATH: string = env.LOG_FILE_PATH || join(import.meta.dir, "../logs/error.log");
+    public static readonly CLEAR_LOGS_ON_STARTUP: boolean = (env.CLEAR_LOGS_ON_STARTUP !== "false");
 
     // Helper Methods
     public static get isDev(): boolean {

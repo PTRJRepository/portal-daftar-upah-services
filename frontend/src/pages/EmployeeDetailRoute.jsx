@@ -6,33 +6,53 @@ import LoadingScreen from '../components/common/LoadingScreen'
 export default function EmployeeDetailRoute() {
     const { token, loading: authLoading } = useAuth()
     const [params, setParams] = useState(null)
+    const [loadingParams, setLoadingParams] = useState(true)
 
     useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search)
-        const rawNik = urlParams.get('nik')
-        const nik = rawNik ? rawNik.trim() : null
-        const month = parseInt(urlParams.get('month') || '0', 10)
-        const year = parseInt(urlParams.get('year') || '0', 10)
-        const rawDivision = urlParams.get('division')
-        const division = (rawDivision && rawDivision !== 'undefined' && rawDivision !== 'null') ? rawDivision : null
+        const fetchParams = async () => {
+            const urlParams = new URLSearchParams(window.location.search)
+            const rawNik = urlParams.get('nik')
+            const nik = rawNik ? rawNik.trim() : null
+            let month = parseInt(urlParams.get('month') || '0', 10)
+            let year = parseInt(urlParams.get('year') || '0', 10)
+            const rawDivision = urlParams.get('division')
+            const division = (rawDivision && rawDivision !== 'undefined' && rawDivision !== 'null') ? rawDivision : null
 
-        // Validate params
-        const isValidNik = nik && nik !== 'undefined' && nik !== 'null'
+            const isValidNik = nik && nik !== 'undefined' && nik !== 'null'
 
-        if (isValidNik && month && year) {
-            console.log(`[EmployeeDetailRoute] Params: nik=${nik}, month=${month}, year=${year}, div=${division}`)
-            setParams({
-                nik,
-                month,
-                year,
-                division
-            })
-        } else {
-            console.error('[EmployeeDetailRoute] Invalid params:', { rawNik, nik, month, year, division })
+            if (isValidNik) {
+                if (!month || !year) {
+                    try {
+                        const baseUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '';
+                        const periodRes = await fetch(`${baseUrl}/payroll/current-period`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        if (periodRes.ok) {
+                            const periodData = await periodRes.json();
+                            if (periodData.month && periodData.year) {
+                                month = periodData.month;
+                                year = periodData.year;
+                                console.log(`[EmployeeDetailRoute] Defaulting to active period: ${month}/${year}`);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("[EmployeeDetailRoute] Failed to load current period:", e);
+                    }
+                }
+
+                if (month && year) {
+                    setParams({ nik, month, year, division });
+                }
+            }
+            setLoadingParams(false);
+        };
+
+        if (token && !authLoading) {
+            fetchParams();
         }
-    }, [])
+    }, [token, authLoading])
 
-    if (authLoading) {
+    if (authLoading || loadingParams) {
         return <LoadingScreen isLoading={true} message="Authenticating..." />
     }
 

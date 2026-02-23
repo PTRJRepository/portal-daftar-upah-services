@@ -193,6 +193,11 @@ const DashboardLayout = () => {
                         {!collapsed && <span>Laporan Operasional</span>}
                     </NavLink>
 
+                    <NavLink to="/employee-directory" style={getLinkStyle} title={collapsed ? "HR Employee Directory" : ""}>
+                        <Icons.Activity />
+                        {!collapsed && <span>HR Employee Directory</span>}
+                    </NavLink>
+
                     {!isKeraniUser && (
                         <NavLink to="/executive" style={getLinkStyle} title={collapsed ? "Analisis Keseluruhan" : ""}>
                             <Icons.TrendingUp />
@@ -234,6 +239,11 @@ const DashboardLayout = () => {
                             <NavLink to="/analysis" style={getLinkStyle} title={collapsed ? "Analysis OT & Premi" : ""}>
                                 <Icons.TrendingUp />
                                 {!collapsed && <span>Analysis OT & Premi</span>}
+                            </NavLink>
+
+                            <NavLink to="/report-pajak" style={getLinkStyle} title={collapsed ? "Report Pajak" : ""}>
+                                <Icons.Clipboard />
+                                {!collapsed && <span>Report Pajak</span>}
                             </NavLink>
 
                             <NavLink to="/comprehensive" style={getLinkStyle} title={collapsed ? "Laporan Analisis Payroll" : ""}>

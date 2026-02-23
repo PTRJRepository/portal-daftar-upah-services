@@ -9,6 +9,7 @@ import { getEmployeeCheckroll } from '../../services/employeeDetailService'
 import LoadingScreen from '../common/LoadingScreen'
 import SalaryHistoryTable from './SalaryHistoryTable'
 import ThumbprintVerification from './ThumbprintVerification'
+import { EmployeeTrendsCharts } from './EmployeeTrendsCharts'
 import './EmployeeDetailPage.css'
 
 // Helper to format currency
@@ -122,7 +123,9 @@ export default function EmployeeDetailPage({
             setError('')
 
             try {
-                const data = await getEmployeeCheckroll(token, empCode, month, year, division)
+                // Fetch checkroll
+                const data = await getEmployeeCheckroll(token, empCode, month, year, division);
+
                 console.log('[EmployeeDetailPage] Received Checkroll Data:', data)
                 setCheckrollData(data)
             } catch (e) {
@@ -136,15 +139,28 @@ export default function EmployeeDetailPage({
     }, [token, empCode, month, year, division])
 
     if (loading) {
-        return <LoadingScreen isLoading={true} message="Memuat slip gaji..." />
+        return <LoadingScreen isLoading={true} message="Memuat Data History HR..." />
     }
 
     if (error) {
+        const isHistoricalMissing = error.toLowerCase().includes('tidak ditemukan') || error.includes('404');
         return (
-            <div className="payslip-wrapper">
-                <div className="error-screen">
-                    <p>❌ {error}</p>
-                    <button onClick={onBack} className="btn btn-secondary">Kembali</button>
+            <div className="payslip-wrapper" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="error-screen" style={{ textAlign: 'center', padding: '3rem', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                    <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>{isHistoricalMissing ? '⏳' : '❌'}</div>
+                    <h2 style={{ color: '#1e293b', marginBottom: '1rem' }}>
+                        {isHistoricalMissing ? 'Data Historis Belum Tersedia' : 'Gagal Memuat Data'}
+                    </h2>
+                    <p style={{ color: '#64748b', marginBottom: '2rem', maxWidth: '400px', lineHeight: '1.6' }}>
+                        {isHistoricalMissing
+                            ? `Data penggajian untuk bulan ${getMonthName(month)} ${year} belum di-archive (Seeding) ke dalam database historis. Silakan minta Admin HR untuk melakukan "Aggregation Seeder" pada periode ini.`
+                            : error}
+                    </p>
+                    <button onClick={onBack} style={{
+                        padding: '10px 24px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600'
+                    }}>
+                        Kembali ke Direktori
+                    </button>
                 </div>
             </div>
         )
@@ -734,35 +750,8 @@ export default function EmployeeDetailPage({
                         </div>
                     )}
                 </div>
-            </div>
 
-            {/* SALARY HISTORY SECTION */}
-            <div className="salary-history-section no-print">
-                {/* Thumbprint Verification */}
-                <ThumbprintVerification
-                    division={division}
-                    month={month}
-                    year={year}
-                    upahBersih={upahBersih}
-                />
-
-                {/* Salary History Table */}
-                <SalaryHistoryTable
-                    key={`sht-${empCode}-${Date.now()}`}
-                    empCode={empCode}
-                    months={12}
-                    onPeriodClick={(record) => {
-                        // Navigate to different period - could implement period switching
-                        console.log('Navigate to period:', record.period_month, record.period_year);
-                    }}
-                />
-            </div>
-
-            {/* ACTION BUTTONS (No Print) */}
-            <div className="action-buttons no-print">
-                <button onClick={onBack} className="btn btn-secondary">Tutup / Kembali</button>
-                <button onClick={() => window.print()} className="btn btn-primary">🖨️ Cetak Slip Gaji</button>
-                {/* Harvest Matrix (Only if data exists) */}
+                {/* Harvest Matrix (Moved from action-buttons) */}
                 {harvest && harvest.length > 0 && (
                     <div className="matrix-card">
                         <div className="matrix-header gradient-header-orange">
@@ -813,6 +802,33 @@ export default function EmployeeDetailPage({
                     </div>
                 )}
             </div>
-        </div>
+
+            {/* SALARY HISTORY SECTION */}
+            <div className="salary-history-section no-print">
+                {/* Thumbprint Verification */}
+                <ThumbprintVerification
+                    division={division}
+                    month={month}
+                    year={year}
+                    upahBersih={upahBersih}
+                />
+
+                {/* Salary History Table */}
+                <SalaryHistoryTable
+                    key={`sht-${empCode}-${Date.now()}`}
+                    empCode={empCode}
+                    months={12}
+                    onPeriodClick={(record) => {
+                        // Navigate to different period - could implement period switching
+                        console.log('Navigate to period:', record.period_month, record.period_year);
+                    }}
+                />
+            </div>
+            {/* ACTION BUTTONS (No Print) */}
+            <div className="action-buttons no-print">
+                <button onClick={onBack} className="btn btn-secondary">Tutup / Kembali</button>
+                <button onClick={() => window.print()} className="btn btn-primary">🖨️ Cetak Slip Gaji</button>
+            </div>
+        </div >
     )
 }

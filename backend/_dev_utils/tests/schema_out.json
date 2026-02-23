@@ -1,0 +1,9 @@
+{
+  "allowance_tables": [],
+  "special_columns": [
+    {
+      "TableName": "HR_EMPLOYMENT",
+      "ColumnName": "CompCode"
+    }
+  ]
+}

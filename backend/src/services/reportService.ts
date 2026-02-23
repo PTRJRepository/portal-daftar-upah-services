@@ -144,7 +144,7 @@ export class ReportService {
 
             // 2. Attendance (Reordered WHERE to match params: cond, start, end)
             this.runQueryWithMode(`
-                SELECT tr.EmpCode, COUNT(*) as hk_count
+                SELECT tr.EmpCode, COUNT(DISTINCT tr.TrxDate) as hk_count, SUM(tr.Amount) as total_amount
                 FROM PR_TASKREGLN_ARC tr
                 JOIN PR_TASKREG_ARC tm ON tr.MasterID = tm.ID
                 JOIN HR_GANGLN g ON g.GangMember = tr.EmpCode
@@ -358,7 +358,7 @@ export class ReportService {
                 potongan_upah_kotor: { dynamic: {}, total: 0 },
                 potongan_upah_bersih: { dynamic: {}, total: 0 },
                 jumlah_hk: 0, hari_kerja: 0,
-                gaji_pokok: 0, upah_pokok: 0, upah_dasar: 0,
+                gaji_pokok: 0, gaji_pokok_aktual: 0, gaji_pokok_ideal: 0, upah_pokok: 0, upah_dasar: 0,
                 beras_jumlah: 0, jabatan_jumlah: 0, masa_kerja_jumlah: 0, lembur_jumlah: 0,
                 total_tunjangan: 0, total_premi: 0, jumlah_upah_kotor: 0,
                 pot_pph21: 0, pot_spsi: 0, pot_koreksi: 0,
@@ -372,7 +372,10 @@ export class ReportService {
 
         attendance.forEach(r => {
             const emp = employeeMap.get(r.EmpCode.trim());
-            if (emp) emp.jumlah_hk = r.hk_count;
+            if (emp) {
+                emp.jumlah_hk = r.hk_count;
+                emp.gaji_pokok_aktual = r.total_amount || 0;
+            }
         });
 
         // Filter 0 HK
@@ -384,7 +387,8 @@ export class ReportService {
             const emp = employeeMap.get(r.EmpCode.trim());
             if (emp) {
                 emp.upah_dasar = r.upah_dasar;
-                emp.gaji_pokok = r.upah_dasar * emp.jumlah_hk;
+                emp.gaji_pokok_ideal = r.upah_dasar * emp.jumlah_hk;
+                emp.gaji_pokok = emp.gaji_pokok_aktual || 0;
             }
         });
 
@@ -398,7 +402,7 @@ export class ReportService {
 
                 const totalCuti = (r.cuti_tahunan_hari || 0) + (r.cuti_sakit_haid_hari || 0) + (r.cuti_minggu_hari || 0) + (r.cuti_nasional_hari || 0);
                 emp.hari_kerja = Math.max(0, emp.jumlah_hk - totalCuti);
-                emp.upah_pokok = emp.hari_kerja * emp.upah_dasar;
+                emp.upah_pokok = emp.gaji_pokok; // aligned with dataExtractorService
             }
         });
 

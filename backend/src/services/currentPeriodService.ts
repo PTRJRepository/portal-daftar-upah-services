@@ -56,13 +56,13 @@ export class CurrentPeriodService {
         }
 
         try {
-            // Query PR_TASKREGLN_ARC for the latest TrxDate
+            // Per user request: Query PR_TASKREGLN (base) for the latest TrxDate
             const rows = await this.db.query<{
                 TrxDate: string;
             }>(`
                 SELECT TOP 1
                     TrxDate
-                FROM [db_ptrj].[dbo].[PR_TASKREGLN_ARC]
+                FROM [db_ptrj].[dbo].[PR_TASKREGLN]
                 ORDER BY TrxDate DESC
             `);
 
@@ -89,24 +89,16 @@ export class CurrentPeriodService {
             const latest = rows[0];
             const latestTrxDate = new Date(latest.TrxDate);
 
-            // Use TrxDate directly to determine the latest calendar period
-            const latestCalendarMonth = latestTrxDate.getMonth() + 1;
-            const latestCalendarYear = latestTrxDate.getFullYear();
-
-            // Current period = latest period + 1 month
-            let currentMonth = latestCalendarMonth + 1;
-            let currentYear = latestCalendarYear;
-
-            if (currentMonth > 12) {
-                currentMonth = 1;
-                currentYear += 1;
-            }
+            // Use TrxDate directly to determine the latest calendar period (base)
+            // No need to +1 month since we are using the live transaction table
+            const currentMonth = latestTrxDate.getMonth() + 1;
+            const currentYear = latestTrxDate.getFullYear();
 
             const result: CurrentPeriodResponse = {
                 month: currentMonth,
                 year: currentYear,
                 latest_trx_date: latest.TrxDate,
-                latest_acc_month: null, // Acc columns not available in ARC
+                latest_acc_month: null, // Acc columns not available here
                 latest_acc_year: null,
                 is_cached: false
             };

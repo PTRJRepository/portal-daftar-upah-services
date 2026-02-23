@@ -1,0 +1,24 @@
+{
+    "conditions": [
+        {
+            "condition": "TK/0",
+            "value": 54000000
+        },
+        {
+            "condition": "K/0",
+            "value": 58500000
+        },
+        {
+            "condition": "K/1",
+            "value": 63000000
+        },
+        {
+            "condition": "K/2",
+            "value": 67500000
+        },
+        {
+            "condition": "K/3",
+            "value": 72000000
+        }
+    ]
+}

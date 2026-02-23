@@ -1,0 +1,50 @@
+﻿scripts/test_full_history.ts(11,33): error TS18046: 'json' is of type 'unknown'.
+scripts/test_full_history.ts(11,59): error TS18046: 'json' is of type 'unknown'.
+scripts/test_full_history.ts(13,13): error TS18046: 'json' is of type 'unknown'.
+scripts/test_full_history.ts(13,26): error TS18046: 'json' is of type 'unknown'.
+scripts/test_full_history.ts(15,29): error TS18046: 'json' is of type 'unknown'.
+src/services/luasAreaService.ts(115,54): error TS2558: Expected 0 type arguments, but got 1.
+src/services/payroll/BasePayrollComponentService.ts(29,23): error TS2420: Class 'BasePayrollComponentService<TInput, TOutput>' incorrectly implements interface 'IPayrollComponentService<TInput, TOutput>'.
+  Property 'calculateBatch' is protected in type 'BasePayrollComponentService<TInput, TOutput>' but public in type 'IPayrollComponentService<TInput, TOutput>'.
+src/services/payroll/BasePayrollComponentService.ts(55,24): error TS2385: Overload signatures must all be public, private or protected.
+src/services/payroll/BasePayrollComponentService.ts(55,24): error TS2516: All declarations of an abstract method must be consecutive.
+src/services/payroll/BasePayrollComponentService.ts(60,24): error TS2385: Overload signatures must all be public, private or protected.
+src/services/payroll/BasePayrollComponentService.ts(60,24): error TS2516: All declarations of an abstract method must be consecutive.
+src/services/payroll/components/LemburService.ts(105,17): error TS2741: Property 'value' is missing in type '{ meta: PayrollComponentMetadata; total_hours: number; total_amount: number; records: LemburRecord[]; breakdown: { by_day_type: Record<string, { hours: number; amount: number; count: number; }>; by_task: Record<string, { hours: number; amount: number; count: number; }>; }; }' but required in type 'PayrollComponent<LemburOutput>'.
+src/services/payroll/components/LemburService.ts(161,25): error TS2741: Property 'value' is missing in type '{ meta: PayrollComponentMetadata; total_hours: number; total_amount: number; records: LemburRecord[]; breakdown: { by_day_type: Record<string, { hours: number; amount: number; count: number; }>; by_task: Record<string, { hours: number; amount: number; count: number; }>; }; }' but required in type 'PayrollComponent<LemburOutput>'.
+src/services/payroll/components/PotonganService.ts(45,53): error TS2551: Property 'calculateBPJS' does not exist on type 'PayrollService'. Did you mean 'calculate'?
+src/services/payroll/components/PotonganService.ts(46,53): error TS2551: Property 'calculateSPSI' does not exist on type 'PayrollService'. Did you mean 'calculate'?
+src/services/payroll/components/PotonganService.ts(120,17): error TS2552: Cannot find name 'dynamic_potongan'. Did you mean 'dynamicPotongan'?
+src/services/payroll/components/PotonganService.ts(134,17): error TS2739: Type 'PotonganOutput' is missing the following properties from type 'PayrollComponent<PotonganOutput>': value, meta
+src/services/payroll/components/PotonganService.ts(184,66): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/services/payroll/components/PotonganService.ts(185,9): error TS2322: Type 'Pph21TerResult' is not assignable to type 'number'.
+src/services/payroll/components/Pph21TerService.ts(37,15): error TS7022: 'db' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+src/services/payroll/components/Pph21TerService.ts(37,25): error TS2729: Property 'db' is used before its initialization.
+src/services/payroll/components/Pph21TerService.ts(67,17): error TS2741: Property 'value' is missing in type '{ meta: PayrollComponentMetadata; ptkp_status: string; ter_category: string; gross_income: number; rate_percent: number; rate_decimal: number; tax_amount: number; }' but required in type 'PayrollComponent<Pph21Output>'.
+src/services/payroll/components/Pph21TerService.ts(132,43): error TS2307: Cannot find module '../../db/client' or its corresponding type declarations.
+src/services/payroll/components/Pph21TerService.ts(135,28): error TS2347: Untyped function calls may not accept type arguments.
+src/services/payroll/components/Pph21TerService.ts(143,43): error TS2307: Cannot find module '../../db/client' or its corresponding type declarations.
+src/services/payroll/components/Pph21TerService.ts(147,28): error TS2347: Untyped function calls may not accept type arguments.
+src/services/payroll/components/PremiService.ts(87,17): error TS2741: Property 'value' is missing in type '{ meta: PayrollComponentMetadata; total_premi: number; breakdown: Record<string, PayrollComponent<number>>; brondol: PayrollComponent<number>; pruning: PayrollComponent<number>; dynamic_premi: PayrollComponent<number>[]; }' but required in type 'PayrollComponent<PremiOutput>'.
+src/services/payroll/components/PremiService.ts(131,25): error TS2741: Property 'value' is missing in type '{ meta: PayrollComponentMetadata; total_premi: number; breakdown: Record<string, PayrollComponent<number>>; brondol: PayrollComponent<number>; pruning: PayrollComponent<number>; dynamic_premi: PayrollComponent<number>[]; }' but required in type 'PayrollComponent<PremiOutput>'.
+src/services/payroll/components/TunjanganService.ts(39,58): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/services/payroll/components/TunjanganService.ts(40,58): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/services/payroll/components/TunjanganService.ts(82,17): error TS2322: Type 'PayrollComponent<LemburOutput>' is not assignable to type 'PayrollComponent<PayrollComponent<LemburOutput>>'.
+  Type 'LemburOutput' is missing the following properties from type 'PayrollComponent<LemburOutput>': value, meta
+src/services/payroll/components/TunjanganService.ts(96,17): error TS2739: Type 'TunjanganOutput' is missing the following properties from type 'PayrollComponent<TunjanganOutput>': value, meta
+src/services/payroll/index.ts(16,45): error TS2345: Argument of type 'LemburService' is not assignable to parameter of type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+  Property 'calculateBatch' is protected in type 'LemburService' but public in type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+src/services/payroll/index.ts(17,44): error TS2345: Argument of type 'PremiService' is not assignable to parameter of type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+  Property 'calculateBatch' is protected in type 'PremiService' but public in type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+src/services/payroll/index.ts(18,48): error TS2345: Argument of type 'TunjanganService' is not assignable to parameter of type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+  Property 'calculateBatch' is protected in type 'TunjanganService' but public in type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+src/services/payroll/index.ts(19,47): error TS2345: Argument of type 'PotonganService' is not assignable to parameter of type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+  Property 'calculateBatch' is protected in type 'PotonganService' but public in type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+src/services/payroll/index.ts(20,48): error TS2345: Argument of type 'Pph21TerService' is not assignable to parameter of type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+  Property 'calculateBatch' is protected in type 'Pph21TerService' but public in type 'IPayrollComponentService<PayrollCalculationInput, any>'.
+src/services/payroll/PayrollComponentRegistry.ts(124,13): error TS2322: Type 'PayrollCalculationResult<any> | { component_name: string; input: PayrollCalculationInput; output: { value: null; meta: {}; }; errors: string[]; }' is not assignable to type 'PayrollCalculationResult<any>'.
+  Type '{ component_name: string; input: PayrollCalculationInput; output: { value: null; meta: {}; }; errors: string[]; }' is not assignable to type 'PayrollCalculationResult<any>'.
+    The types of 'output.meta' are incompatible between these types.
+      Property 'source' is missing in type '{}' but required in type 'PayrollComponentMetadata'.
+src/services/payroll/PayrollComponentRegistry.ts(154,32): error TS2552: Cannot find name 'emp_code'. Did you mean 'empCode'?
+src/services/payroll/PayrollComponentRegistry.ts(164,48): error TS2741: Property 'source' is missing in type '{}' but required in type 'PayrollComponentMetadata'.

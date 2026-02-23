@@ -1,0 +1,100 @@
+﻿Server Error - {"success":fa
+lse,"db":"db_ptrj","server":
+"SERVER_PROFILE_1","executio
+n_ms":10.27180004119873,"dat
+a":null,"error":"Database 
+error: Invalid column name 
+'TotalRound'."}
+    at query (D:\Gawean 
+Rebinmas\Monitoring Database
+\Plantware_Auto_Report\Dafta
+r_Upah_baru\payroll_daftar_u
+pah\refactor_production\back
+end\src\db\client.ts:148:31)
+    at async 
+getBatchEmployeeBunches 
+(D:\Gawean 
+Rebinmas\Monitoring Database
+\Plantware_Auto_Report\Dafta
+r_Upah_baru\payroll_daftar_u
+pah\refactor_production\back
+end\src\services\harvesterSe
+rvice.ts:229:43)
+    at async 
+getBunchesBatch (D:\Gawean 
+Rebinmas\Monitoring Database
+\Plantware_Auto_Report\Dafta
+r_Upah_baru\payroll_daftar_u
+pah\refactor_production\back
+end\src\services\dataExtract
+orService.ts:1599:43)
+    at async 
+extractPayrollData 
+(D:\Gawean 
+Rebinmas\Monitoring Database
+\Plantware_Auto_Report\Dafta
+r_Upah_baru\payroll_daftar_u
+pah\refactor_production\back
+end\src\services\dataExtract
+orService.ts:321:214)
+    at async 
+fetchPayrollData (D:\Gawean 
+Rebinmas\Monitoring Database
+\Plantware_Auto_Report\Dafta
+r_Upah_baru\payroll_daftar_u
+pah\refactor_production\back
+end\src\services\historySeed
+erService.ts:156:52)
+    at async 
+seedPayrollHistory 
+(D:\Gawean 
+Rebinmas\Monitoring Database
+\Plantware_Auto_Report\Dafta
+r_Upah_baru\payroll_daftar_u
+pah\refactor_production\back
+end\src\services\historySeed
+erService.ts:100:48)
+    at async runTest 
+(D:\Gawean 
+Rebinmas\Monitoring Database
+\Plantware_Auto_Report\Dafta
+r_Upah_baru\payroll_daftar_u
+pah\refactor_production\_dev
+_utils\scripts\test_payroll_
+history_icno.ts:50:51)
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+Seed Result: Success
+
+3. Fetching Historical Data using NIK: 1902051212790002 (1/2026)
+[DB] Sending query to server=SERVER_PROFILE_1, database=extend_db_ptrj
+Historical Data Fetched (3 records found for this NIK):
+  -> Record for EmpCode: 1902051212790002, Name: EDI ISHAK ( ROHIMA )
+  -> Record for EmpCode: 1902051212790002, Name: EDI ISHAK ( ROHIMA )
+  -> Record for EmpCode: 1902051212790002, Name: EDI ISHAK ( ROHIMA )
+
+--- Aggregated Historical Totals ---
+- Gaji Pokok: Rp 12508500
+- Total Potongan: Rp 671217
+- PPH21: Rp 163917
+- Upah Bersih: Rp 21091591.9074
+
+=== COMPARISON ===
+Gaji Pokok Match: Γ¥î NO (Diff: 8339000)
+Total Potongan Match: Γ¥î NO (Diff: 447478)
+Upah Bersih Match: Γ¥î NO (Diff: 14061061.27156185)

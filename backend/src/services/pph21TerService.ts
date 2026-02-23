@@ -61,8 +61,10 @@ class Pph21TerService {
                 path.resolve(process.cwd(), 'Additional_services/hitung_pajak/rule_TER_pajak.json'),
                 // Path from refactor_production root (if running from backend)
                 path.resolve(process.cwd(), '../Additional_services/hitung_pajak/rule_TER_pajak.json'),
-                // Absolute path as fallback
+                // Absolute path as fallback using Node's __dirname
                 path.resolve(__dirname, '../../Additional_services/hitung_pajak/rule_TER_pajak.json'),
+                // Absolute path using Bun's import.meta.dir (which correctly points to refactor_production/Additional_services)
+                path.resolve(import.meta.dir, '../../../Additional_services/hitung_pajak/rule_TER_pajak.json'),
             ];
 
             let jsonPath = '';

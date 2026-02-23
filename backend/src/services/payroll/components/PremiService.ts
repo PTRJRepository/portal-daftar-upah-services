@@ -56,6 +56,10 @@ export class PremiService extends BasePayrollComponentService<PremiInput, PremiO
         'TUNJANGAN JABATAN',
         'TUNJANGAN MASA KERJA',
         'TUNJANGAN BERAS',
+        'JABATAN',
+        'BERAS',
+        'MASA',
+        'POTONGAN',
     ];
 
     constructor() {

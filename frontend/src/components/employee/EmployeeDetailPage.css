@@ -3,7 +3,8 @@
     display: flex;
     flex-direction: column;
     /* Changed to column to stack payslip and matrices */
-    align-items: stretch;  /* Changed from center to stretch for full width */
+    align-items: stretch;
+    /* Changed from center to stretch for full width */
     min-height: 100vh;
     background-color: #e5e7eb;
     /* Gray background */
@@ -254,12 +255,17 @@
 }
 
 .matrix-card {
-    background-color: white;
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
     overflow: hidden;
     break-inside: avoid;
-    /* Prevent breaking inside method in print */
+    transition: box-shadow 0.2s ease-in-out;
+}
+
+.matrix-card:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
 }
 
 .matrix-header {
@@ -272,13 +278,15 @@
 }
 
 .gradient-header-blue {
-    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-    color: white;
+    background: #ffffff;
+    color: #0f172a;
+    border-left: 4px solid #2563eb;
 }
 
 .gradient-header-purple {
-    background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
-    color: white;
+    background: #ffffff;
+    color: #0f172a;
+    border-left: 4px solid #7c3aed;
 }
 
 .matrix-header h3 {
@@ -704,8 +712,9 @@
 }
 
 .gradient-header-orange {
-    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-    color: white;
+    background: #ffffff;
+    color: #0f172a;
+    border-left: 4px solid #ea580c;
 }
 
 /* ============================================================================
@@ -717,13 +726,15 @@
     max-width: 100%;
     margin: 0 auto 2rem auto;
     padding: 0;
-    overflow-x: auto;  /* Allow horizontal scroll for wide tables */
+    overflow-x: auto;
+    /* Allow horizontal scroll for wide tables */
 }
 
 /* Full width container for salary history */
 .salary-history-section .sht-table-container {
     width: 100%;
-    min-width: fit-content;  /* Ensure container fits table content */
+    min-width: fit-content;
+    /* Ensure container fits table content */
     border-radius: 12px;
     overflow: visible;
 }

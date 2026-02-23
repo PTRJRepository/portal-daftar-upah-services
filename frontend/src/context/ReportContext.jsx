@@ -11,7 +11,7 @@ export const useReport = () => useContext(ReportContext);
 
 export const ReportProvider = ({ children }) => {
     const { user, token, lockedDivision } = useAuth();
-    const { month, setMonth, year, setYear } = useCurrentPeriod();
+    const { month, setMonth, year, setYear, data: currentPeriodData } = useCurrentPeriod();
 
     // State for filters
     const [division, setDivision] = useState('');
@@ -159,7 +159,8 @@ export const ReportProvider = ({ children }) => {
         gangLoading,
         divisionsLoading,
         isLockedMode,
-        isAdminUser
+        isAdminUser,
+        currentPeriod: currentPeriodData
     };
 
     return <ReportContext.Provider value={value}>{children}</ReportContext.Provider>;

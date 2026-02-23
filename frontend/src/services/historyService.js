@@ -49,7 +49,7 @@ export async function checkHistoryHealth(token) {
  * @param {string} gangCode - Gang code (optional)
  * @param {boolean} force - Force seeding even if data exists
  */
-export async function seedPayrollHistory(token, periodMonth, periodYear, divisionCode = null, gangCode = null, force = false) {
+export async function seedPayrollHistory(token, periodMonth, periodYear, divisionCode = null, gangCode = null, force = false, seederMode = 'PAYROLL') {
     const baseUrl = getBackendUrl();
     const url = `${baseUrl}/payroll/history/seed`;
 
@@ -58,7 +58,8 @@ export async function seedPayrollHistory(token, periodMonth, periodYear, divisio
         period_year: periodYear,
         ...(divisionCode && { division_code: divisionCode }),
         ...(gangCode && { gang_code: gangCode }),
-        force
+        force,
+        seederMode
     };
 
     const response = await fetch(url, {
@@ -73,6 +74,74 @@ export async function seedPayrollHistory(token, periodMonth, periodYear, divisio
     if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || `Failed to seed history: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+/**
+ * Get seeder progress (polling endpoint)
+ * @param {string} token - Auth token
+ */
+export async function getSeederProgress(token) {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/aggregation/seed/progress`;
+
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+    });
+
+    if (!response.ok) return null;
+    return response.json();
+}
+
+/**
+ * Update PTKP Tax for a period year
+ * @param {string} token - Auth token
+ * @param {number} periodYear - Year to update
+ */
+export async function updatePtkpTax(token, periodYear) {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/history/ptkp/update`;
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ period_year: periodYear }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || `Failed to update PTKP: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+/**
+ * Preview PTKP Tax update
+ * @param {string} token - Auth token
+ * @param {number} periodYear - Year to preview
+ */
+export async function previewPtkpTax(token, periodYear) {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/history/ptkp/preview/${periodYear}`;
+
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to preview PTKP: ${response.statusText}`);
     }
 
     return response.json();
