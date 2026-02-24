@@ -44,3 +44,45 @@ export async function fetchAnnualAstekBpjsReport(token, year, division, gang) {
     const response = await axios.get('/tax-report/astek-bpjs', { params, headers });
     return response.data;
 }
+
+/**
+ * Download monthly PPH21 tax report as Excel Document
+ */
+export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang) {
+    const params = { year, month };
+    if (division) params.division = division;
+    if (gang && gang !== 'ALL') params.gang = gang;
+
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    // Use responseType: 'blob' to handle binary data properly
+    const response = await axios.get('/tax-report/monthly/excel', {
+        params,
+        headers,
+        responseType: 'blob'
+    });
+
+    // Create a download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+
+    // Extract filename from Content-Disposition header if available
+    let fileName = `PPH21_${division || 'ALL'}_${gang || 'ALL'}_${month}_${year}.xlsx`;
+    const contentDisposition = response.headers['content-disposition'];
+    if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+        const matches = filenameRegex.exec(contentDisposition);
+        if (matches != null && matches[1]) {
+            fileName = matches[1].replace(/['"]/g, '');
+        }
+    }
+
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+
+    // Cleanup
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(link);
+}

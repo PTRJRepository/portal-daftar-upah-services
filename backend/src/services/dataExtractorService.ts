@@ -11,6 +11,7 @@ import { harvesterService } from "./harvesterService";
 import { historyDatabaseService } from "./historyDatabaseService";
 // Import new unified component services
 import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
+import { manualAdjustmentService } from "./manualAdjustmentService";
 
 interface EmployeeRow {
     emp_code: string;
@@ -356,8 +357,12 @@ export class DataExtractorService {
 
             EmployeeEstateService.getEmployeeJobs(),
             this.getTaskCodes(empCodes, startDate, endDate, serverProfile),
-            this.getBunchesBatch(empCodes, month, year) // Add bunches data fetch
+            this.getBunchesBatch(empCodes, month, year), // Add bunches data fetch
+            manualAdjustmentService.getAdjustments(month, year, gangCode || undefined)
         ]);
+
+        // Destructure features
+        const manualAdjustments = arguments[arguments.length - 1] as any[];
 
         // Destructure premi result - uses DocDesc as title
         const { amounts: premi, titleMap: premiTitleMap } = premiResult;
@@ -480,6 +485,23 @@ export class DataExtractorService {
                 }
             }
 
+            // [NEW] Inject PREMI Manual Adjustments
+            const empAdjustments = manualAdjustments ? manualAdjustments.filter(a => String(a.emp_code).trim() === String(emp.emp_code).trim()) : [];
+            const empPremiAdjustments = empAdjustments.filter(a => a.adjustment_type === 'PREMI');
+
+            for (const adj of empPremiAdjustments) {
+                const adjName = adj.adjustment_name.toUpperCase().replace(/ /g, '_');
+                const key = `PREMI_${adjName}`;
+
+                // Add to premiums list
+                empPremi[key] = (empPremi[key] || 0) + adj.amount;
+                total_premi += adj.amount;
+                dynamicPremiSet.add(key);
+
+                // Add to title map so it looks nice on frontend
+                premiTitleMap[key] = adj.adjustment_name;
+            }
+
             const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
             // [NEW] Premi PPH from TaskDesc = 'ACCRUALS-CHECKROLL' (treated as potongan upah bersih)
@@ -504,6 +526,21 @@ export class DataExtractorService {
                 }
             }
 
+            // [NEW] Inject POTONGAN_KOTOR Manual Adjustments (acts like KOREKSI)
+            const empPotKotorAdjustments = empAdjustments.filter(a => a.adjustment_type === 'POTONGAN_KOTOR');
+            for (const adj of empPotKotorAdjustments) {
+                const adjName = adj.adjustment_name.toUpperCase().replace(/ /g, '_');
+                const key = `KOREKSI_${adjName}`; // Treated as koreksi so it deducts before Pajak
+
+                empPotongan[key] = (empPotongan[key] || 0) + adj.amount;
+
+                koreksiVariations[key] = (koreksiVariations[key] || 0) + adj.amount;
+                pot_koreksi += adj.amount;
+
+                dynamicPotonganSet.add(key);
+                potonganTitleMap[key] = adj.adjustment_name;
+            }
+
             let other_potongan = 0;
             let db_bpjs_kes = 0;
 
@@ -524,6 +561,19 @@ export class DataExtractorService {
 
                 other_potongan += Math.abs(val as number);
                 dynamicPotonganSet.add(key);
+            }
+
+            // [NEW] Inject POTONGAN_BERSIH Manual Adjustments
+            const empPotBersihAdjustments = empAdjustments.filter(a => a.adjustment_type === 'POTONGAN_BERSIH');
+            for (const adj of empPotBersihAdjustments) {
+                const adjName = adj.adjustment_name.toUpperCase().replace(/ /g, '_');
+                const key = `POTONGAN_${adjName}`;
+
+                empPotongan[key] = (empPotongan[key] || 0) + adj.amount;
+                other_potongan += adj.amount;
+
+                dynamicPotonganSet.add(key);
+                potonganTitleMap[key] = adj.adjustment_name;
             }
 
             const carumanBase = (empUpahDasar * 30) + empMasaKerjaJumlah;
@@ -1155,6 +1205,7 @@ export class DataExtractorService {
               AND UPPER(t.DocDesc) NOT LIKE '%MASA%'
               AND UPPER(t.DocDesc) NOT LIKE '%POTONGAN%'
               AND UPPER(t.DocDesc) NOT LIKE '%KOREKSI%'
+              AND UPPER(t.DocDesc) NOT LIKE '%SPSI%'
               AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
               AND ln.Amount > 0
             GROUP BY RTRIM(t.EmpCode), t.DocDesc

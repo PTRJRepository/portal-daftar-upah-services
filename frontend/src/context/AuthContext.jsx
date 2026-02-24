@@ -145,7 +145,7 @@ export function AuthProvider({ children }) {
               role: claims.role || storedUser?.role || 'user',
               divisions: claims.divisions || [claims.division].filter(Boolean),
               // Ensure we have the division info for auto-selection
-              divisi: claims.division || storedUser?.divisi || storedUser?.divisions?.[0],
+              divisi: claims.division || storedUser?.division || storedUser?.kode_lokasi || storedUser?.unit || storedUser?.divisi || storedUser?.divisions?.[0],
               isExternal: true
             })
             setIsExternalAuth(true)

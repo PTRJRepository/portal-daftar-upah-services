@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReport } from '../context/ReportContext';
-import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport } from '../services/taxReportService';
+import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport, downloadMonthlyTaxReportExcel } from '../services/taxReportService';
+import { Calculator, BarChart2, CalendarDays, Activity, FileWarning, Search, ChevronDown, ChevronRight, DollarSign, Download } from 'lucide-react';
 import '../styles/TaxReportPage.css';
 
 const MONTH_NAMES = [
@@ -26,6 +27,7 @@ const formatPercent = (val) => {
 function MonthlyTaxTab({ token, year: contextYear, month: contextMonth, division, gang }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [downloadingExcel, setDownloadingExcel] = useState(false);
     const [error, setError] = useState(null);
     const [selectedMonth, setSelectedMonth] = useState(contextMonth);
     const [selectedYear, setSelectedYear] = useState(contextYear);
@@ -54,6 +56,17 @@ function MonthlyTaxTab({ token, year: contextYear, month: contextMonth, division
         }
     }, [token, selectedYear, selectedMonth, division, gang]);
 
+    const handleDownloadExcel = async () => {
+        setDownloadingExcel(true);
+        try {
+            await downloadMonthlyTaxReportExcel(token, selectedYear, selectedMonth, division, gang);
+        } catch (err) {
+            alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
+        } finally {
+            setDownloadingExcel(false);
+        }
+    };
+
     useEffect(() => { loadData(); }, [loadData]);
 
     // Year options
@@ -79,23 +92,49 @@ function MonthlyTaxTab({ token, year: contextYear, month: contextMonth, division
     return (
         <div>
             {/* Period Selector */}
-            <div className="tax-report-period-bar">
-                <label>📅 Periode:</label>
-                <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))}>
-                    {MONTH_NAMES.map((name, idx) => (
-                        <option key={idx} value={idx + 1}>{name}</option>
-                    ))}
-                </select>
-                <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}>
-                    {yearOptions.map(y => (
-                        <option key={y} value={y}>{y}</option>
-                    ))}
-                </select>
+            <div className="tax-report-period-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <label>📅 Periode:</label>
+                    <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))}>
+                        {MONTH_NAMES.map((name, idx) => (
+                            <option key={idx} value={idx + 1}>{name}</option>
+                        ))}
+                    </select>
+                    <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}>
+                        {yearOptions.map(y => (
+                            <option key={y} value={y}>{y}</option>
+                        ))}
+                    </select>
+                </div>
+
+                {data && data.employees.length > 0 && (
+                    <button
+                        onClick={handleDownloadExcel}
+                        disabled={downloadingExcel}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            backgroundColor: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            padding: '8px 16px',
+                            borderRadius: '6px',
+                            fontWeight: '600',
+                            cursor: downloadingExcel ? 'not-allowed' : 'pointer',
+                            opacity: downloadingExcel ? 0.7 : 1,
+                            transition: 'background-color 0.2s'
+                        }}
+                    >
+                        <Download size={16} />
+                        {downloadingExcel ? 'Mengunduh...' : 'Unduh Excel (Formula)'}
+                    </button>
+                )}
             </div>
 
             {!data || data.employees.length === 0 ? (
                 <div className="tax-report-empty">
-                    <h3>📋 Tidak Ada Data</h3>
+                    <h3><FileWarning size={24} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '8px' }} /> Tidak Ada Data</h3>
                     <p>Data pajak untuk {MONTH_NAMES[selectedMonth - 1]} {selectedYear} belum tersedia. Pastikan data sudah di-seed melalui Aggregation Seeder.</p>
                 </div>
             ) : (
@@ -126,8 +165,8 @@ function MonthlyTaxTab({ token, year: contextYear, month: contextMonth, division
                                             className={isExpanded ? 'active-row' : ''}
                                         >
                                             <td className="text-center col-no">
-                                                <span style={{ display: 'inline-block', width: '12px', fontSize: '10px', marginRight: '4px' }}>
-                                                    {isExpanded ? '▼' : '▶'}
+                                                <span style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '4px' }}>
+                                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                                 </span>
                                                 {idx + 1}
                                             </td>
@@ -307,14 +346,14 @@ function AnnualTaxTab({ token, year: contextYear, division, gang }) {
 
             {!data || data.employees.length === 0 ? (
                 <div className="tax-report-empty">
-                    <h3>📋 Tidak Ada Data</h3>
+                    <h3><FileWarning size={24} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '8px' }} /> Tidak Ada Data</h3>
                     <p>Data pajak untuk tahun {selectedYear} belum tersedia.</p>
                 </div>
             ) : (
                 <>
                     {/* Section 1: Penghasilan Setahun */}
-                    <h3 className="tax-report-section-title">
-                        <span>💰</span> Penghasilan Setahun — {selectedYear}
+                    <h3 className="tax-report-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <DollarSign size={20} /> Penghasilan Setahun — {selectedYear}
                     </h3>
                     <div className="tax-report-table-wrapper" style={{ marginBottom: '2rem' }}>
                         <table className="tax-report-table">
@@ -387,8 +426,8 @@ function AnnualTaxTab({ token, year: contextYear, division, gang }) {
                     </div>
 
                     {/* Section 2: Potongan & Perhitungan Pajak */}
-                    <h3 className="tax-report-section-title">
-                        <span>📊</span> Potongan & Perhitungan Pajak — {selectedYear}
+                    <h3 className="tax-report-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <BarChart2 size={20} /> Potongan & Perhitungan Pajak — {selectedYear}
                     </h3>
                     <div className="tax-report-table-wrapper">
                         <table className="tax-report-table">
@@ -536,7 +575,7 @@ function AstekBpjsTab({ token, year: contextYear, division, gang }) {
 
             {!data || data.employees.length === 0 ? (
                 <div className="tax-report-empty">
-                    <h3>📋 Tidak Ada Data</h3>
+                    <h3><FileWarning size={24} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '8px' }} /> Tidak Ada Data</h3>
                     <p>Data ASTEK & BPJS untuk tahun {selectedYear} belum tersedia.</p>
                 </div>
             ) : (
@@ -669,7 +708,7 @@ function MonthlyPph21GridTab({ token, year: contextYear, division, gang }) {
 
             {!data || data.employees.length === 0 ? (
                 <div className="tax-report-empty">
-                    <h3>📋 Tidak Ada Data</h3>
+                    <h3><FileWarning size={24} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '8px' }} /> Tidak Ada Data</h3>
                     <p>Historis potongan PPh21 untuk tahun {selectedYear} belum tersedia.</p>
                 </div>
             ) : (
@@ -732,10 +771,10 @@ export default function TaxReportPage() {
     const [activeTab, setActiveTab] = useState('monthly');
 
     const tabs = [
-        { key: 'monthly', label: '💰 Kalkulasi PPH21', icon: '💰' },
-        { key: 'annual', label: '📊 Pajak Tahunan', icon: '📊' },
-        { key: 'pph21_grid', label: '📅 Historis PPH21 Setahun', icon: '📅' },
-        { key: 'astek', label: '🏥 ASTEK & BPJS', icon: '🏥' },
+        { key: 'monthly', label: 'Kalkulasi PPH21', icon: <Calculator size={18} /> },
+        { key: 'annual', label: 'Pajak Tahunan', icon: <BarChart2 size={18} /> },
+        { key: 'pph21_grid', label: 'Historis PPH21 Setahun', icon: <CalendarDays size={18} /> },
+        { key: 'astek', label: 'ASTEK & BPJS', icon: <Activity size={18} /> },
     ];
 
     return (
@@ -765,8 +804,9 @@ export default function TaxReportPage() {
                         key={tab.key}
                         className={`tax-report-tab ${activeTab === tab.key ? 'active' : ''}`}
                         onClick={() => setActiveTab(tab.key)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
-                        {tab.label}
+                        {tab.icon} <span>{tab.label}</span>
                     </button>
                 ))}
             </div>

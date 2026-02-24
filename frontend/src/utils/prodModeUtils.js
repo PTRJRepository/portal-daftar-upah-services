@@ -109,10 +109,13 @@ export const getUserDivision = () => {
         const user = getProdUser()
         if (!user) return null
 
-        // Priority 1: Explicit divisi field
-        if (user.divisi) {
-            return user.divisi
-        }
+        // Priority 1: Explicit division fields (check multiple common keys from proxy)
+        if (user.division) return user.division
+        if (user.kode_lokasi) return user.kode_lokasi
+        if (user.unit) return user.unit
+        if (user.location) return user.location
+        if (user.loc_code) return user.loc_code
+        if (user.divisi) return user.divisi
 
         // Priority 2: First division in divisions array  
         if (user.divisions && user.divisions.length > 0) {

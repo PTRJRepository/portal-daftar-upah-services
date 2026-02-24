@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useReport } from '../context/ReportContext';
 import MonthSelector from '../components/common/MonthSelector';
 import { isProdMode } from '../utils/prodModeUtils';
+import { Settings, Info, BarChart2, ArrowRight, FlaskConical, DollarSign, Calculator } from 'lucide-react';
 
 export default function DashboardHome() {
   const { user } = useAuth();
@@ -91,7 +92,7 @@ export default function DashboardHome() {
             alignItems: 'center',
             gap: '0.5rem'
           }}>
-            <span style={{ fontSize: '1.25rem' }}>⚙️</span> FILTER PARAMETER
+            <Settings size={20} className="text-blue-800" /> FILTER PARAMETER
           </h2>
 
           {/* CURRENT PERIOD INFO BANNER */}
@@ -107,7 +108,7 @@ export default function DashboardHome() {
               alignItems: 'flex-start',
               gap: '0.75rem'
             }}>
-              <div style={{ fontSize: '1.25rem', marginTop: '-2px' }}>ℹ️</div>
+              <div style={{ color: '#3b82f6', marginTop: '2px' }}><Info size={20} /></div>
               <div>
                 <h4 style={{ margin: '0 0 0.25rem 0', color: '#1e293b', fontSize: '0.95rem', fontWeight: '600' }}>
                   Info Database Aktif: {new Date(currentPeriod.year, currentPeriod.month - 1).toLocaleString('id-ID', { month: 'long', year: 'numeric' })}
@@ -240,7 +241,7 @@ export default function DashboardHome() {
               }}
             >
               {gangLoading ? 'Memuat Data...' : 'REPORT PAJAK'}
-              <span>📊</span>
+              <Calculator size={18} />
             </button>
             <button
               onClick={handleGenerateOperational}
@@ -264,7 +265,7 @@ export default function DashboardHome() {
               }}
             >
               {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DATA UPAH'}
-              <span>→</span>
+              <ArrowRight size={18} />
             </button>
           </div>
         </div>
@@ -284,7 +285,7 @@ export default function DashboardHome() {
               transition: 'all 0.3s ease'
             }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#f59e0b' }}>🧪</span> Development & Testing
+                <FlaskConical size={20} color="#f59e0b" /> Development & Testing
               </h3>
 
               <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -318,7 +319,7 @@ export default function DashboardHome() {
           }}
           >
             <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ color: '#8b5cf6' }}>📊</span> Laporan Analisis & Summary
+              <BarChart2 size={20} color="#8b5cf6" /> Laporan Analisis & Summary
             </h3>
 
             <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -351,7 +352,7 @@ export default function DashboardHome() {
           }}
           >
             <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ color: '#10b981' }}>💰</span> Laporan Keuangan
+              <DollarSign size={20} color="#10b981" /> Laporan Keuangan
             </h3>
 
             <div style={{ display: 'grid', gap: '0.75rem' }}>

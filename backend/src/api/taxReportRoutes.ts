@@ -11,6 +11,7 @@ import { Elysia, t } from "elysia";
 import { AuthService } from "../services/authService";
 import { User } from "../types/user";
 import { taxReportService } from "../services/taxReportService";
+import { generateMonthlyTaxExcel } from "../services/taxReportExcelService";
 
 const authService = AuthService.getInstance();
 
@@ -55,6 +56,45 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             console.error("[TaxReport] Error fetching monthly tax report:", error);
             set.status = 500;
             return { error: error.message || "Failed to fetch monthly tax report" };
+        }
+    })
+
+    // ========================================================
+    // GET /tax-report/monthly/excel
+    // Download Monthly PPH21 tax report as Excel with formulas
+    // ========================================================
+    .get("/monthly/excel", async ({ query, set }) => {
+        try {
+            const year = parseInt(query.year as string);
+            const month = parseInt(query.month as string);
+            const division = query.division as string || undefined;
+            const gang = query.gang as string || undefined;
+
+            if (!year || !month || month < 1 || month > 12) {
+                set.status = 400;
+                return { error: "Invalid year or month parameter" };
+            }
+
+            // Fetch the base data
+            const data = await taxReportService.getMonthlyTaxReport(year, month, division, gang);
+
+            if (!data || data.employees.length === 0) {
+                set.status = 404;
+                return { error: "No data available for the selected period" };
+            }
+
+            // Generate Excel Buffer
+            const excelBuffer = await generateMonthlyTaxExcel(data, year, month, division || 'ALL', gang || 'ALL');
+
+            // Set headers for file download
+            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            set.headers["Content-Disposition"] = `attachment; filename="PPH21_${division || 'ALL'}_${gang || 'ALL'}_${month}_${year}.xlsx"`;
+
+            return excelBuffer;
+        } catch (error: any) {
+            console.error("[TaxReport] Error generating Excel report:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to generate Excel report" };
         }
     })
 

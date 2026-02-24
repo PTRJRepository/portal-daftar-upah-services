@@ -170,6 +170,34 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             deductions: t.Optional(t.Record(t.String(), t.Number()))
         })
     })
+    // --- Save Manual Edit ---
+    .post("/manual-edit", async ({ body, currentUser, set }) => {
+        try {
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const data = body as any;
+
+            const username = currentUser?.username || 'system';
+            const resultId = await manualAdjustmentService.saveAdjustment(data, username);
+
+            return { success: true, id: resultId, message: "Manual adjustment saved successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-edit error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            emp_code: t.String(),
+            gang_code: t.String(),
+            division_code: t.Optional(t.String()),
+            adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH
+            adjustment_name: t.String(),
+            amount: t.Number(),
+            remarks: t.Optional(t.String())
+        })
+    })
     // --- BPJS Calculation (New) ---
     .get("/bpjs-calculate", async ({ query }) => {
         const masaKerjaJumlah = parseFloat(query.masa_kerja_jumlah || "0");

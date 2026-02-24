@@ -100,9 +100,9 @@
 }
 
 .tax-report-tab.active {
-    color: #1e3a8a;
-    border-bottom-color: #1e3a8a;
-    background-color: #eff6ff;
+    color: #0f172a;
+    border-bottom-color: #0f172a;
+    background-color: #f1f5f9;
 }
 
 /* Content */
@@ -151,8 +151,8 @@
 
 .tax-report-period-bar select:focus {
     outline: none;
-    border-color: #1e3a8a;
-    box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+    border-color: #64748b;
+    box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.1);
 }
 
 /* Table wrapper */
@@ -176,26 +176,26 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: #1e3a8a;
-    color: #ffffff;
-    font-weight: 600;
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: 700;
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
     padding: 0.6rem 0.75rem;
     text-align: center;
-    border: 1px solid #1e40af;
+    border: 1px solid #cbd5e1;
 }
 
 .tax-report-table thead th.sub-header {
-    background: #2563eb;
+    background: #f8fafc;
     font-size: 0.75rem;
     padding: 0.4rem 0.6rem;
 }
 
 .tax-report-table thead th.header-only {
-    background: #6366f1;
-    color: #e0e7ff;
+    background: #e2e8f0;
+    color: #334155;
     font-style: italic;
 }
 
@@ -210,7 +210,7 @@
 }
 
 .tax-report-table tbody tr:hover {
-    background-color: #eff6ff;
+    background-color: #f1f5f9;
 }
 
 .tax-report-table .text-left {
@@ -240,7 +240,7 @@
 
 .tax-report-table thead th.col-name {
     z-index: 15;
-    background: #1e3a8a;
+    background: #f1f5f9;
 }
 
 .tax-report-table .col-no {
@@ -254,7 +254,7 @@
 
 .tax-report-table thead th.col-no {
     z-index: 15;
-    background: #1e3a8a;
+    background: #f1f5f9;
 }
 
 .tax-report-table .col-npwp {

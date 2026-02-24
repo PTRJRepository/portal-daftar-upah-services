@@ -1,16 +1,16 @@
 :root {
-  /* Brand Colors - Plantation Green (Sawit Theme) */
-  --primary-50: #f0fdf4;
-  --primary-100: #dcfce7;
-  --primary-200: #bbf7d0;
-  --primary-300: #86efac;
-  --primary-400: #4ade80;
-  --primary-500: #22c55e;
-  --primary-600: #16a34a;
-  --primary-700: #15803d;
-  --primary-800: #166534;
-  --primary-900: #14532d;
-  --primary-950: #052e16;
+  /* Brand Colors - Elegant Corporate Slate/Blue */
+  --primary-50: #f8fafc;
+  --primary-100: #f1f5f9;
+  --primary-200: #e2e8f0;
+  --primary-300: #cbd5e1;
+  --primary-400: #94a3b8;
+  --primary-500: #64748b;
+  --primary-600: #475569;
+  --primary-700: #334155;
+  --primary-800: #1e293b;
+  --primary-900: #0f172a;
+  --primary-950: #020617;
 
   /* Neutral / Slate - Professional Grey */
   --neutral-50: #f8fafc;
@@ -25,9 +25,10 @@
   --neutral-900: #0f172a;
 
   /* Components */
-  --bg-body: var(--neutral-50);
+  --bg-body: var(--neutral-300);
+  /* Darker backdrop to make paper cards pop */
   --bg-card: #ffffff;
-  --border-color: var(--neutral-200);
+  --border-color: var(--neutral-300);
   --text-main: var(--neutral-800);
   --text-secondary: var(--neutral-600);
   --text-muted: var(--neutral-400);
@@ -40,12 +41,13 @@
   /* Compact for accounting */
   --ag-header-background-color: #ffffff;
   --ag-header-foreground-color: var(--neutral-700);
-  --ag-border-color: var(--neutral-200);
+  --ag-border-color: var(--neutral-300);
   --ag-odd-row-background-color: #ffffff;
-  --ag-row-hover-color: var(--primary-50);
-  --ag-selected-row-background-color: rgba(34, 197, 94, 0.15);
+  --ag-row-hover-color: var(--neutral-100);
+  --ag-selected-row-background-color: rgba(15, 23, 42, 0.05);
+  /* very light slate */
   --ag-range-selection-border-color: var(--primary-600);
-  --ag-range-selection-background-color: rgba(34, 197, 94, 0.1);
+  --ag-range-selection-background-color: rgba(15, 23, 42, 0.05);
 }
 
 html,
@@ -63,6 +65,7 @@ body {
   background-color: var(--bg-body);
   color: var(--text-main);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Root container - takes full viewport height */
@@ -107,12 +110,19 @@ body {
   height: 100%;
 }
 
-/* Card Style */
+/* Card Style - Professional Paper Look */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  /* Sharper corners for corporate look */
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  /* Floating paper shadow */
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 /* Buttons */
@@ -121,24 +131,28 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 4px;
+  /* Sharper */
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   border: 1px solid transparent;
   gap: 0.5rem;
+  font-family: var(--ag-font-family);
 }
 
 .btn-primary {
-  background-color: var(--primary-700);
-  /* Darker green for professional look */
+  background-color: var(--primary-900);
+  /* Slate-900 for professional look */
   color: white;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  border-color: var(--primary-900);
 }
 
 .btn-primary:hover {
-  background-color: var(--primary-800);
+  background-color: #000000;
+  transform: translateY(-1px);
 }
 
 .btn-secondary {
@@ -210,81 +224,66 @@ body {
 /* 1. Identitas - Neutral/Grey */
 .header-section-identitas {
   background-color: var(--neutral-50) !important;
-  border-bottom: 3px solid var(--neutral-400) !important;
+  border-bottom: 2px solid var(--neutral-300) !important;
 }
 
-/* 2. Absensi - Warm Orange/Amber */
+/* 2. Absensi */
 .header-section-absensi {
-  background-color: #fff7ed !important;
-  /* Orange-50 */
-  border-bottom: 3px solid #f97316 !important;
-  /* Orange-500 */
+  background-color: var(--neutral-100) !important;
+  border-bottom: 2px solid var(--neutral-400) !important;
 }
 
 .cell-absensi {
-  background-color: #fffaf5;
-  color: #c2410c;
-  /* Orange-700 */
+  background-color: #fafafa;
+  color: var(--neutral-700);
   font-weight: 500;
 }
 
-/* 3. Income (Upah Dasar/Pokok) - Blue */
+/* 3. Income (Upah Dasar/Pokok) */
 .header-section-income {
-  background-color: #eff6ff !important;
-  /* Blue-50 */
-  border-bottom: 3px solid #3b82f6 !important;
-  /* Blue-500 */
+  background-color: #f8fafc !important;
+  border-bottom: 2px solid #94a3b8 !important;
 }
 
 .cell-income {
-  background-color: #f0f9ff;
-  color: #1e40af;
-  /* Blue-800 */
+  background-color: #ffffff;
+  color: var(--neutral-800);
 }
 
-/* 4. Premi - Green (Plantation Core) */
+/* 4. Premi */
 .header-section-premi {
-  background-color: #f0fdf4 !important;
-  /* Green-50 */
-  border-bottom: 3px solid #22c55e !important;
-  /* Green-500 */
+  background-color: #f1f5f9 !important;
+  border-bottom: 2px solid #64748b !important;
 }
 
 .cell-premi {
-  background-color: #f0fdf4;
-  color: #15803d;
-  /* Green-700 */
+  background-color: #f8fafc;
+  color: var(--neutral-800);
   font-weight: 500;
 }
 
-/* 5. Deduction (Potongan) - Red */
+/* 5. Deduction (Potongan) - Subtle Red */
 .header-section-deduction {
   background-color: #fef2f2 !important;
-  /* Red-50 */
-  border-bottom: 3px solid #ef4444 !important;
-  /* Red-500 */
+  border-bottom: 2px solid #fca5a5 !important;
 }
 
 .cell-deduction {
-  background-color: #fef2f2;
-  color: #b91c1c;
-  /* Red-700 */
+  background-color: #fffafb;
+  color: #991b1b;
 }
 
-/* 6. Net Salary - Teal/Emerald Standout */
+/* 6. Net Salary - Standout Slate */
 .header-section-net {
-  background-color: #ecfdf5 !important;
-  /* Emerald-50 */
-  border-bottom: 3px solid #059669 !important;
-  /* Emerald-600 */
+  background-color: #e2e8f0 !important;
+  border-bottom: 2px solid #475569 !important;
 }
 
 .cell-net-salary {
-  background-color: #ecfdf5;
+  background-color: #f1f5f9;
   font-weight: 700;
-  color: #064e3b;
-  /* Emerald-900 */
-  border-left: 1px solid #a7f3d0;
+  color: #0f172a;
+  border-left: 1px solid #cbd5e1;
 }
 
 /* Grand Total Row */
@@ -338,16 +337,16 @@ body {
   color: var(--neutral-800);
 }
 
-/* Highlighted Row Styling (Added for user request) */
+/* Highlighted Row Styling */
 .ag-row-selected {
   background-color: var(--ag-selected-row-background-color) !important;
-  font-weight: bold !important;
+  font-weight: 600 !important;
   color: var(--primary-900) !important;
 }
 
 .ag-row-selected .ag-cell {
   /* Ensure cells inherit the bold weight */
-  font-weight: bold !important;
+  font-weight: 600 !important;
 }
 
 
