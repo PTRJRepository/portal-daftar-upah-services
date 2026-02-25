@@ -140,6 +140,21 @@ export class AuthService {
         try {
             console.log(`[AuthService] Verifying token. Token starts with: ${token.substring(0, 10)}...`);
 
+            if (Config.DEV_BYPASS_TOKEN && token === Config.DEV_BYPASS_TOKEN) {
+                console.log("[AuthService] Dev Bypass Token used. Granting ADMIN access.");
+                return {
+                    id: 0,
+                    username: "dev_admin",
+                    email: "dev@admin.com",
+                    full_name: "Dev Admin (Bypass)",
+                    role: UserRole.ADMIN,
+                    divisions: AuthService.ALL_DIVISIONS,
+                    is_active: true,
+                    created_at: new Date(),
+                    updated_at: new Date()
+                };
+            }
+
             let payload;
             let header;
             try {

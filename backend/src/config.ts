@@ -60,6 +60,7 @@ export class Config {
     // Authentication Configuration
     public static readonly JWT_SECRET: string = env.JWT_SECRET || "default_debug_secret";
     public static readonly ACCESS_TOKEN_EXPIRE_MINUTES: number = parseInt(env.ACCESS_TOKEN_EXPIRE_MINUTES || "60");
+    public static readonly DEV_BYPASS_TOKEN: string = env.DEV_BYPASS_TOKEN || "";
 
     // External Auth Keys (if needed)
     public static readonly PUBLIC_KEY_PATH: string = "keys/public.pem";

@@ -370,6 +370,26 @@ class TaxReportService {
             exgratiaMap = maps.exgratiaMap;
         }
 
+        // [DEBUG] Log first row from history to check if tunjangan/premi fields are populated
+        if (historyData.data_rows.length > 0) {
+            const sampleRow = historyData.data_rows[0];
+            console.log(`[TAX_DEBUG] Sample row from history DB for ${sampleRow.emp_code}:`, {
+                beras_jumlah: sampleRow.beras_jumlah,
+                jabatan_jumlah: sampleRow.jabatan_jumlah,
+                masa_kerja_jumlah: sampleRow.masa_kerja_jumlah,
+                lembur_jumlah: sampleRow.lembur_jumlah,
+                total_tunjangan: sampleRow.total_tunjangan,
+                total_premi: sampleRow.total_premi,
+                premi_brondol: sampleRow.premi_brondol,
+                premi_pph: sampleRow.premi_pph,
+                gaji_pokok_aktual: sampleRow.gaji_pokok_aktual,
+                gaji_pokok: sampleRow.gaji_pokok,
+                upah_dasar: sampleRow.upah_dasar,
+                jumlah_upah_kotor: sampleRow.jumlah_upah_kotor,
+                pot_koreksi: sampleRow.pot_koreksi,
+            });
+        }
+
         const employees: MonthlyTaxRow[] = historyData.data_rows.map((row: any, idx: number) => {
             const empCodeTrimmed = row.emp_code?.trim() || '';
             const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';

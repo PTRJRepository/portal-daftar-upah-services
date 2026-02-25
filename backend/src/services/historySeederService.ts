@@ -410,10 +410,10 @@ export class HistorySeederService {
             pot_bpjs_pensiun_pekerja: emp.pot_bpjs_pensiun_pekerja || 0,
             pot_bpjs_pensiun_majikan: emp.pot_bpjs_pensiun_majikan || 0,
             pot_bpjs_pekerja_total: emp.pot_bpjs_pekerja_total || 0,
-            pot_astek_pekerja: emp.pot_astek_pekerja || 0,
-            pot_astek_majikan: emp.pot_astek_majikan || 0,
+            pot_astek_pekerja: emp.pot_astek_pekerja || emp.pot_astek || 0,
+            pot_astek_majikan: emp.pot_astek_majikan || emp.pot_astek_maj || 0,
             pot_astek_jumlah: emp.pot_astek_jumlah || 0,
-            potongan_detail: undefined,
+            potongan_detail: this.extractDynamicPotonganDetail(emp),
             total_potongan: emp.total_potongan || 0,
             total_potongan_bersih: emp.total_potongan_bersih || 0,
             jumlah_upah_kotor: emp.jumlah_upah_kotor || 0,
@@ -427,6 +427,20 @@ export class HistorySeederService {
             shortage_details: emp.shortage_details ? JSON.stringify(emp.shortage_details) : undefined,
             shortage_total_hours: emp.shortage_total_hours
         };
+    }
+
+    /**
+     * Extract dynamic potongan fields (KOREKSI_*, POTONGAN_*) from employee row
+     * and serialize as JSON for storage in history detail.
+     */
+    private extractDynamicPotonganDetail(emp: any): string | undefined {
+        const potonganData: Record<string, number> = {};
+        for (const key of Object.keys(emp)) {
+            if ((key.startsWith('KOREKSI') || key.startsWith('POTONGAN_')) && typeof emp[key] === 'number' && emp[key] !== 0) {
+                potonganData[key] = emp[key];
+            }
+        }
+        return Object.keys(potonganData).length > 0 ? JSON.stringify(potonganData) : undefined;
     }
 
     /**
