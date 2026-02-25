@@ -95,13 +95,6 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    // Year options
-    const yearOptions = useMemo(() => {
-        const years = [];
-        for (let y = year; y >= year - 3; y--) years.push(y);
-        return years;
-    }, [year]);
-
     if (loading) return (
         <div className="tax-report-loading">
             <span className="spinner"></span> Memuat data pajak bulanan...
@@ -117,22 +110,8 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
 
     return (
         <div>
-            {/* Period Selector */}
-            <div className="tax-report-period-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <label>📅 Periode:</label>
-                    <select value={month} onChange={e => setMonth(Number(e.target.value))}>
-                        {MONTH_NAMES.map((name, idx) => (
-                            <option key={idx} value={idx + 1}>{name}</option>
-                        ))}
-                    </select>
-                    <select value={year} onChange={e => setYear(Number(e.target.value))}>
-                        {yearOptions.map(y => (
-                            <option key={y} value={y}>{y}</option>
-                        ))}
-                    </select>
-                </div>
-
+            {/* Export & Actions */}
+            <div className="tax-report-actions-bar" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1rem' }}>
                 {data && data.employees.length > 0 && (
                     <button
                         onClick={handleDownloadExcel}
@@ -178,6 +157,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
                                 <th>HK</th>
                                 <th>Upah Dasar</th>
                                 <th title="Upah Dasar × HK">GP Ideal</th>
+                                <th title="Upah Dasar × 30">GP Standar</th>
                                 <th>GP Aktual</th>
                                 <th title="GP Aktual - GP Ideal">Koreksi HK</th>
                                 <th>Upah Kotor</th>
@@ -211,6 +191,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
                                             <td className="text-right">{formatNumber(emp.hk)}</td>
                                             <td className="text-right">{formatNumber(emp.upah_dasar)}</td>
                                             <td className="text-right">{formatNumber(emp.gaji_pokok_ideal)}</td>
+                                            <td className="text-right">{formatNumber((emp.upah_dasar || 0) * 30)}</td>
                                             <td className="text-right">{formatNumber(emp.gaji_pokok_aktual)}</td>
                                             <td className="text-right" style={{ color: (emp.koreksi_hk || 0) < 0 ? '#dc2626' : undefined }}>{formatNumber(emp.koreksi_hk)}</td>
                                             <td className="text-right">{formatNumber(emp.upah_kotor)}</td>
@@ -231,8 +212,10 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
                                                             <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                                                                 <tbody>
                                                                     <tr><td style={{ padding: '4px 0' }}>Hari Kerja (HK)</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.hk)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Upah Dasar</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.upah_dasar)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Ideal <span style={{ color: '#64748b', fontSize: '10px' }}>(HK × Upah Dasar)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.hk || 0) * (emp.upah_dasar || 0))}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Standar <span style={{ color: '#64748b', fontSize: '10px' }}>(UD × 30)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.upah_dasar || 0) * 30)}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Aktual</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.gaji_pokok_aktual)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Total <span style={{ color: '#64748b', fontSize: '10px' }}>(HK × Pokok)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.hk || 0) * (emp.gaji_pokok_aktual || 0))}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0' }}>Koreksi HK</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.koreksi_hk)}</td></tr>
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
 
@@ -250,8 +233,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
                                                                     <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Premi</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_premi)}</td></tr>
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
 
-                                                                    <tr><td style={{ paddingTop: '8px', color: '#dc2626' }}>Potongan SPSI</td><td className="text-right" style={{ paddingTop: '8px', color: '#dc2626' }}>-{formatNumber(emp.pot_spsi)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0', color: '#dc2626' }}>Potongan Koreksi</td><td className="text-right" style={{ padding: '4px 0', color: '#dc2626' }}>-{formatNumber(emp.pot_koreksi)}</td></tr>
+                                                                    <tr><td style={{ paddingTop: '8px', color: '#dc2626' }}>Potongan Koreksi</td><td className="text-right" style={{ paddingTop: '8px', color: '#dc2626' }}>-{formatNumber(emp.pot_koreksi)}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>Total Potongan (Kotor)</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>-{formatNumber(emp.total_potongan_kotor)}</td></tr>
 
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px solid #94a3b8' }}></td></tr>
@@ -327,6 +309,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
                                 <td></td>
                                 <td></td>
                                 <td></td>
+                                <td></td>
                                 <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + e.upah_kotor, 0))}</td>
                                 <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + e.penghasilan_bruto, 0))}</td>
                                 <td></td>
@@ -365,12 +348,6 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const yearOptions = useMemo(() => {
-        const years = [];
-        for (let y = year; y >= year - 3; y--) years.push(y);
-        return years;
-    }, [year]);
-
     if (loading) return (
         <div className="tax-report-loading">
             <span className="spinner"></span> Memuat data pajak tahunan (12 bulan)...
@@ -386,25 +363,11 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
 
     return (
         <div>
-            {/* Year Selector */}
-            <div className="tax-report-period-bar">
-                <label>📅 Periode:</label>
-                <select value={month} onChange={e => setMonth(Number(e.target.value))}>
-                    {MONTH_NAMES.map((name, idx) => (
-                        <option key={idx} value={idx + 1}>{name}</option>
-                    ))}
-                </select>
-                <select value={year} onChange={e => setYear(Number(e.target.value))}>
-                    {yearOptions.map(y => (
-                        <option key={y} value={y}>{y}</option>
-                    ))}
-                </select>
-                {data && (
-                    <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                        Data tersedia: {data.available_months.map(m => MONTH_NAMES[m - 1]).join(', ') || 'Belum ada'}
-                    </span>
-                )}
-            </div>
+            {data && (
+                <div style={{ marginBottom: '1rem', fontSize: '0.85rem', color: '#64748b' }}>
+                    Data tersedia: {data.available_months.map(m => MONTH_NAMES[m - 1]).join(', ') || 'Belum ada'}
+                </div>
+            )}
 
             {!data || data.employees.length === 0 ? (
                 <div className="tax-report-empty">
@@ -702,12 +665,6 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const yearOptions = useMemo(() => {
-        const years = [];
-        for (let y = year; y >= year - 3; y--) years.push(y);
-        return years;
-    }, [year]);
-
     if (loading) return (
         <div className="tax-report-loading">
             <span className="spinner"></span> Memuat data ASTEK & BPJS...
@@ -723,24 +680,11 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
 
     return (
         <div>
-            <div className="tax-report-period-bar">
-                <label>📅 Periode:</label>
-                <select value={month} onChange={e => setMonth(Number(e.target.value))}>
-                    {MONTH_NAMES.map((name, idx) => (
-                        <option key={idx} value={idx + 1}>{name}</option>
-                    ))}
-                </select>
-                <select value={year} onChange={e => setYear(Number(e.target.value))}>
-                    {yearOptions.map(y => (
-                        <option key={y} value={y}>{y}</option>
-                    ))}
-                </select>
-                {data && (
-                    <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                        Data tersedia: {data.available_months.map(m => MONTH_NAMES[m - 1]).join(', ') || 'Belum ada'}
-                    </span>
-                )}
-            </div>
+            {data && (
+                <div style={{ marginBottom: '1rem', fontSize: '0.85rem', color: '#64748b' }}>
+                    Data tersedia: {data.available_months.map(m => MONTH_NAMES[m - 1]).join(', ') || 'Belum ada'}
+                </div>
+            )}
 
             {data && data.employees.length > 0 && (
                 <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
@@ -946,12 +890,6 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
         setPopupLoading(false);
     }, []);
 
-    const yearOptions = useMemo(() => {
-        const years = [];
-        for (let y = year; y >= year - 3; y--) years.push(y);
-        return years;
-    }, [year]);
-
     if (loading) return (
         <div className="tax-report-loading">
             <span className="spinner"></span> Memuat data histori PPH21...
@@ -967,24 +905,11 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
 
     return (
         <div>
-            <div className="tax-report-period-bar">
-                <label>📅 Periode:</label>
-                <select value={month} onChange={e => setMonth(Number(e.target.value))}>
-                    {MONTH_NAMES.map((name, idx) => (
-                        <option key={idx} value={idx + 1}>{name}</option>
-                    ))}
-                </select>
-                <select value={year} onChange={e => setYear(Number(e.target.value))}>
-                    {yearOptions.map(y => (
-                        <option key={y} value={y}>{y}</option>
-                    ))}
-                </select>
-                {data && (
-                    <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                        Data tersedia: {data.available_months.map(m => MONTH_NAMES[m - 1]).join(', ') || 'Belum ada'}
-                    </span>
-                )}
-            </div>
+            {data && (
+                <div style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#64748b' }}>
+                    Data tersedia: {data.available_months.map(m => MONTH_NAMES[m - 1]).join(', ') || 'Belum ada'}
+                </div>
+            )}
 
             <div style={{ marginBottom: '0.75rem', fontSize: '0.82rem', color: '#64748b', fontStyle: 'italic' }}>
                 💡 Klik angka PPh21 pada cell untuk melihat detail perhitungan.
@@ -1102,6 +1027,9 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
                                     <tbody>
                                         <tr className="pph21-popup-section-title"><td colSpan={2}>📋 Penghasilan</td></tr>
                                         <tr><td>Hari Kerja (HK)</td><td className="text-right">{popupData.hk || 0} hari</td></tr>
+                                        <tr><td>Upah Dasar</td><td className="text-right">{formatNumber(popupData.upah_dasar || 0)}</td></tr>
+                                        <tr><td>Gaji Pokok Ideal <span style={{ color: '#64748b', fontSize: '10px' }}>(HK × UD)</span></td><td className="text-right">{formatNumber((popupData.hk || 0) * (popupData.upah_dasar || 0))}</td></tr>
+                                        <tr><td>Gaji Pokok Standar <span style={{ color: '#64748b', fontSize: '10px' }}>(UD × 30)</span></td><td className="text-right">{formatNumber((popupData.upah_dasar || 0) * 30)}</td></tr>
                                         <tr><td>Gaji Pokok Aktual</td><td className="text-right">{formatNumber(popupData.gaji_pokok_aktual || 0)}</td></tr>
                                         <tr><td>Tunjangan Beras</td><td className="text-right">{formatNumber(popupData.tunjangan_beras || 0)}</td></tr>
                                         <tr><td>Tunjangan Jabatan</td><td className="text-right">{formatNumber(popupData.tunjangan_jabatan || 0)}</td></tr>
@@ -1429,11 +1357,20 @@ export default function TaxReportPage() {
         { key: 'december', label: 'Pajak Desember', icon: <FileWarning size={18} /> },
     ];
 
+    const yearOptions = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        const baseYear = year > currentYear ? year : currentYear;
+        const years = [];
+        for (let y = baseYear + 1; y >= baseYear - 4; y--) years.push(y);
+        if (!years.includes(year)) years.push(year);
+        return years.sort((a, b) => b - a);
+    }, [year]);
+
     return (
         <div className="tax-report-container">
             {/* Toolbar */}
             <div className="tax-report-toolbar">
-                <div className="tax-report-toolbar-left">
+                <div className="tax-report-toolbar-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                         className="tax-report-back-btn"
                         onClick={() => navigate('/')}
@@ -1445,7 +1382,33 @@ export default function TaxReportPage() {
                     <div className="tax-report-divider"></div>
 
                     {/* Filter Controls */}
-                    <div className="tax-report-filters">
+                    <div className="tax-report-filters" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {/* Period Selector */}
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <select
+                                value={month}
+                                onChange={e => setMonth(Number(e.target.value))}
+                                className="tax-report-select"
+                                style={{ fontWeight: '500' }}
+                            >
+                                {MONTH_NAMES.map((name, idx) => (
+                                    <option key={idx} value={idx + 1}>{name}</option>
+                                ))}
+                            </select>
+                            <select
+                                value={year}
+                                onChange={e => setYear(Number(e.target.value))}
+                                className="tax-report-select"
+                                style={{ fontWeight: '500' }}
+                            >
+                                {yearOptions.map(y => (
+                                    <option key={y} value={y}>{y}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="tax-report-divider" style={{ height: '24px', width: '1px', backgroundColor: '#cbd5e1', margin: '0 4px' }}></div>
+
                         {/* Division Selector */}
                         <select
                             value={selectedDivision}
@@ -1476,11 +1439,6 @@ export default function TaxReportPage() {
                             ))}
                         </select>
                     </div>
-                </div>
-
-                {/* Period Display */}
-                <div className="tax-report-badge">
-                    {selectedDivision || '-'} • {selectedGang || 'ALL'} • {month}-{year}
                 </div>
             </div>
 

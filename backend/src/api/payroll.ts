@@ -201,11 +201,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     // --- BPJS Calculation (New) ---
     .get("/bpjs-calculate", async ({ query }) => {
         const masaKerjaJumlah = parseFloat(query.masa_kerja_jumlah || "0");
-        const components = payrollService.calculateBpjsComponents(masaKerjaJumlah);
+        const upahDasar = parseFloat(query.upah_dasar || "0");
+        const components = payrollService.calculateBpjsComponents(masaKerjaJumlah, upahDasar);
         return components;
     }, {
         query: t.Object({
-            masa_kerja_jumlah: t.Optional(t.String())
+            masa_kerja_jumlah: t.Optional(t.String()),
+            upah_dasar: t.Optional(t.String())
         })
     })
     // --- Report: Division Raw Tree ---

@@ -57,12 +57,9 @@ export interface PayrollRow {
 export class PayrollService {
     private static instance: PayrollService;
     private db: Database;
-    private gajiPokokMin: number;
 
     private constructor() {
         this.db = Database.getInstance();
-        // Base for BPJS calculation - upah minimum
-        this.gajiPokokMin = parseFloat(process.env.CONSTANTS_UPAH_MINIMUM_DASAR || "3876600");
     }
 
     public static getInstance(): PayrollService {
@@ -138,14 +135,14 @@ export class PayrollService {
     }
 
     /**
-     * Calculate BPJS components based on explicit user requirement:
-     * BASE = Upah Minimum (config) + Masa Kerja Amount
+     * Calculate BPJS components.
+     * BASE = (Upah Dasar × 30) + Masa Kerja Amount  (always 30 days, not actual HK)
      * 
      * BPJS Pensiun: Pekerja 1%, Majikan 2%
      * BPJS Kesehatan: Pekerja 1%, Majikan 4%
      */
-    public calculateBpjsComponents(masaKerjaJumlah: number): BPJSComponents {
-        const bpjsBase = this.gajiPokokMin + masaKerjaJumlah;
+    public calculateBpjsComponents(masaKerjaJumlah: number, upahDasar: number = 0): BPJSComponents {
+        const bpjsBase = (upahDasar * 30) + masaKerjaJumlah;
 
         // BPJS Kesehatan (Health)
         const kesehatanPekerja = Math.round(bpjsBase * 0.01 * 100) / 100; // 1%
