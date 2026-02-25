@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { historyDatabaseService } from './historyDatabaseService';
 import { ptkpTaxService, mapPTKPToTER } from './ptkpTaxService';
+import { pph21TerService } from './pph21TerService';
 
 // ============================================================
 // PTKP Rule from JSON
@@ -167,6 +168,7 @@ export interface MonthlyTaxRow {
     no: number;
     emp_code: string;
     emp_name: string;
+    nik: string;
     gender: string;
     status_ptkp: string;
     kategori_ter: string;
@@ -197,12 +199,19 @@ export interface MonthlyTaxRow {
 
     bpjs_kes_majikan?: number;
     astek_jht_majikan?: number;
+
+    // New fields for enriched report
+    upah_dasar?: number;
+    gaji_pokok_ideal?: number;  // upah_dasar × HK
+    thr_amount?: number;
+    exgratia_amount?: number;
 }
 
 export interface AnnualIncomeRow {
     no: number;
     emp_code: string;
     emp_name: string;
+    nik: string;
     gender: string;
     status_ptkp: string;
     kategori_ter: string;
@@ -241,11 +250,52 @@ export interface AnnualIncomeRow {
     pph21_kena_pajak: number;
 }
 
+export interface DecemberTaxRow {
+    no: number;
+    emp_code: string;
+    emp_name: string;
+    nik: string;
+    npwp: string;
+    alamat: string;
+    jabatan: string;
+    gender: string;
+    status_ptkp: string;
+    kategori_ter: string;
+    masa_kerja_tahun: string;
+    masa_kerja_bulan: string;
+    gaji_pokok_des: number;
+    tunjangan_des: number;
+    premi_asuransi_des: number;
+    tunjangan_pph_des: number;
+    bruto_des: number;
+    thr: number;
+    bonus: number;
+    tantiem: number;
+    gaji_pokok_setahun: number;
+    tunjangan_lainnya_setahun: number;
+    premi_asuransi_setahun: number;
+    tunjangan_pph_setahun: number;
+    natura_setahun: number;
+    thr_bonus_tantiem_setahun: number;
+    bruto_setahun: number;
+    biaya_jabatan: number;
+    iuran_jht_jp_setahun: number;
+    netto_setahun: number;
+    ptkp: number;
+    pkp: number;
+    pph21_setahun: number;
+    pph21_jan_nov: number;
+    pph21_desember: number;
+}
+
 export interface AstekBpjsMonthlyRow {
     no: number;
     emp_code: string;
     emp_name: string;
+    nik: string;
     monthly_data: Record<string, {
+        upah_dasar: number;
+        gaji_pokok: number;  // upah_dasar × 30
         astek_pekerja: number;
         astek_majikan: number;
         bpjs_kes_pekerja: number;
@@ -255,6 +305,8 @@ export interface AstekBpjsMonthlyRow {
         masa_kerja?: number;
     }>;
     total: {
+        upah_dasar: number;
+        gaji_pokok: number;
         astek_pekerja: number;
         astek_majikan: number;
         bpjs_kes_pekerja: number;
@@ -304,48 +356,126 @@ class TaxReportService {
         }
 
         let totalPph21 = 0;
-        const employees: MonthlyTaxRow[] = historyData.data_rows.map((row: any, idx: number) => {
-            const pph21 = row.pph21_ter || row.pot_pph21 || 0;
-            totalPph21 += pph21;
 
+        // Load THR and Exgratia for the specific month if it matches the active THR month
+        const activeThr = loadActiveThrPeriode();
+        const isThrMonth = activeThr && activeThr.month === month && activeThr.year === year;
+
+        let thrMap: Map<string, number> | null = null;
+        let exgratiaMap: Map<string, number> | null = null;
+
+        if (isThrMonth) {
+            const maps = loadThrBonusMaps();
+            thrMap = maps.thrMap;
+            exgratiaMap = maps.exgratiaMap;
+        }
+
+        const employees: MonthlyTaxRow[] = historyData.data_rows.map((row: any, idx: number) => {
             const empCodeTrimmed = row.emp_code?.trim() || '';
             const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
             const kategoriTer = mapPTKPToTER(masterPtkp);
+
+            // Fetch breakdown for pure calculation
+            const gajiPokokAktual = row.gaji_pokok_aktual || row.gaji_pokok || 0;
+            const upahDasar = row.upah_dasar || 0;
+            const gajiPokokIdeal = upahDasar * (row.jumlah_hk || row.hk || 0);
+            const tunjanganBeras = row.beras_jumlah || 0;
+            const tunjanganJabatan = row.jabatan_jumlah || 0;
+            const tunjanganMasaKerja = row.masa_kerja_jumlah || 0;
+            const tunjanganLembur = row.lembur_jumlah || 0;
+            const totalPremi = row.total_premi || 0;
+            const astekPekerja = row.pot_astek || 0;
+            const bpjsKesMajikan = row.pot_bpjs_kesehatan_majikan || 0;
+
+            let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
+                gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
+                tunjanganLembur, totalPremi, astekPekerja, bpjsKesMajikan
+            );
+
+            let thrAmount = 0;
+            let exgratiaAmount = 0;
+
+            if (isThrMonth) {
+                // 1. Dynamic THR Calculation
+                const masaKerjaTahun = row.masa_kerja_tahun || 0;
+                if (masaKerjaTahun >= 1) {
+                    const upahDasar = row.upah_dasar || 0;
+                    const berasRate = row.beras_rate || 0;
+                    thrAmount = (upahDasar * 30) + (berasRate * 30) + tunjanganMasaKerja;
+                }
+
+                // 2. Exgratia Calculation
+                const rawEmpNik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+                let rawEmpName = String(row.nama || row.emp_name || '').toUpperCase();
+                rawEmpName = rawEmpName.replace(/\s*\([^)]*\)\s*/g, '').trim();
+                const firstName = rawEmpName.split(' ')[0].trim();
+
+                if (exgratiaMap && thrMap) {
+                    if (exgratiaMap.has(rawEmpNik)) {
+                        exgratiaAmount = exgratiaMap.get(rawEmpNik)!;
+                    } else if (exgratiaMap.has(rawEmpName)) {
+                        exgratiaAmount = exgratiaMap.get(rawEmpName)!;
+                    } else {
+                        for (const [jsonName, jsonThr] of thrMap.entries()) {
+                            if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
+                                exgratiaAmount = exgratiaMap.get(jsonName) || 0;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                penghasilanBruto += (thrAmount + exgratiaAmount);
+            }
+
+            // Purely calculated PPh21
+            const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
+            const pph21 = pphResult.tax_amount;
+            const tarifPajakTer = pphResult.rate_percent;
+
+            totalPph21 += pph21;
 
             return {
                 no: idx + 1,
                 emp_code: row.emp_code,
                 emp_name: row.nama || row.emp_name || '',
+                nik: row.nik || '',
                 gender: row.jenis_kelamin || '',
                 status_ptkp: masterPtkp,
                 kategori_ter: kategoriTer,
                 gang_code: row.gang_code || '',
-                upah_kotor: row.jumlah_upah_kotor || 0,
-                penghasilan_bruto: row.penghasilan_bruto || 0,
-                tarif_pajak_ter: row.tarif_pajak_ter || 0,
+                upah_kotor: row.jumlah_upah_kotor || row.upah_kotor || 0,
+                penghasilan_bruto: penghasilanBruto,
+                tarif_pajak_ter: tarifPajakTer,
                 pph21_ter: pph21,
 
                 // Detailed breakdowns
-                hk: row.jumlah_hk || 0,
-                gaji_pokok_aktual: row.gaji_pokok_aktual || 0,
+                hk: row.jumlah_hk || row.hk || 0,
+                gaji_pokok_aktual: gajiPokokAktual,
                 koreksi_hk: row.koreksi_hk || 0,
 
-                tunjangan_beras: row.beras_jumlah || 0,
-                tunjangan_jabatan: row.jabatan_jumlah || 0,
-                tunjangan_masa_kerja: row.masa_kerja_jumlah || 0,
-                tunjangan_lembur: row.lembur_jumlah || 0,
+                tunjangan_beras: tunjanganBeras,
+                tunjangan_jabatan: tunjanganJabatan,
+                tunjangan_masa_kerja: tunjanganMasaKerja,
+                tunjangan_lembur: tunjanganLembur,
                 total_tunjangan: row.total_tunjangan || 0,
 
-                premi_brondol: row.premi_brondol || 0,
+                premi_brondol: totalPremi - (row.premi_pph || 0),
                 premi_pph: row.premi_pph || 0,
-                total_premi: row.total_premi || 0,
+                total_premi: totalPremi,
 
                 pot_spsi: row.pot_spsi || 0,
                 pot_koreksi: row.pot_koreksi || 0,
                 total_potongan_kotor: row.pot_koreksi || 0,
 
-                bpjs_kes_majikan: row.pot_bpjs_kesehatan_majikan || 0,
+                bpjs_kes_majikan: bpjsKesMajikan,
                 astek_jht_majikan: row.pot_astek_maj || 0,
+
+                // Enriched fields
+                upah_dasar: upahDasar,
+                gaji_pokok_ideal: gajiPokokIdeal,
+                thr_amount: thrAmount,
+                exgratia_amount: exgratiaAmount,
             };
         });
 
@@ -399,7 +529,7 @@ class TaxReportService {
             monthly_astek_majikan: Record<string, number>;
             monthly_astek_jumlah: Record<string, number>;
             monthly_thr_factors: Record<string, { masa_kerja_tahun: number, upah_dasar: number, beras_rate: number, masa_kerja_jumlah: number }>;
-            monthly_details: Record<string, { hk: number, gaji_pokok: number, masa_kerja: number }>;
+            monthly_details: Record<string, { hk: number, gaji_pokok: number, masa_kerja: number, upah_dasar: number }>;
             was_in_target_gang: boolean;
         }>();
 
@@ -442,7 +572,8 @@ class TaxReportService {
                 emp.monthly_details[String(month)] = {
                     hk: row.jumlah_hk || row.hk || 0,
                     gaji_pokok: row.gaji_pokok_aktual || row.gaji_pokok || 0,
-                    masa_kerja: row.masa_kerja_jumlah || 0
+                    masa_kerja: row.masa_kerja_jumlah || 0,
+                    upah_dasar: row.upah_dasar || 0
                 };
 
                 emp.monthly_thr_factors[String(month)] = {
@@ -512,8 +643,8 @@ class TaxReportService {
                     monthlyGajiKotor[String(m)] = gajiKotor;
                     monthlyMasaKerja[String(m)] = details.masa_kerja;
 
-                    // Kalkulasi Manual (Opsi B): (Gaji Pokok Aktual + Masa Kerja) * Persentase
-                    const dasarAstek = details.gaji_pokok + details.masa_kerja;
+                    // Kalkulasi: (Upah Dasar × 30 + Masa Kerja) × Persentase
+                    const dasarAstek = (details.upah_dasar * 30) + details.masa_kerja;
                     const bpjsKesVal = dasarAstek * 0.04;     // BPJS Kes 4%
                     const astek084Val = dasarAstek * 0.0084;  // Astek Ins 0.84%
                     const astek2Val = dasarAstek * 0.02;      // Astek Ins 2%
@@ -616,6 +747,7 @@ class TaxReportService {
                 no: idx,
                 emp_code: empCode,
                 emp_name: emp.emp_name,
+                nik: emp.nik,
                 gender: emp.gender,
                 status_ptkp: emp.status_ptkp,
                 kategori_ter: emp.kategori_ter,
@@ -676,7 +808,10 @@ class TaxReportService {
 
         const employeeMap = new Map<string, {
             emp_name: string;
+            nik: string;
             monthly_data: Record<string, {
+                upah_dasar: number;
+                gaji_pokok: number;
                 astek_pekerja: number;
                 astek_majikan: number;
                 bpjs_kes_pekerja: number;
@@ -697,6 +832,7 @@ class TaxReportService {
                 if (!employeeMap.has(empCode)) {
                     employeeMap.set(empCode, {
                         emp_name: row.nama || row.emp_name || '',
+                        nik: row.nik || '',
                         monthly_data: {},
                         was_in_target_gang: false,
                     });
@@ -704,12 +840,15 @@ class TaxReportService {
 
                 const emp = employeeMap.get(empCode)!;
 
-                // Manual Calculation for Astek and BPJS (Opsi B: Tanpa HK, hanya Gaji Pokok + Masa Kerja)
-                const gajiPokok = row.gaji_pokok_aktual || row.gaji_pokok || 0;
+                // Kalkulasi BPJS/ASTEK: (Upah Dasar × 30 + Masa Kerja) × Persentase
+                const upahDasar = row.upah_dasar || 0;
+                const gajiPokokBpjs = upahDasar * 30;  // Gaji Pokok = Upah Dasar × 30
                 const masaKerja = row.masa_kerja_jumlah || 0;
-                const dasarPajak = gajiPokok + masaKerja;
+                const dasarPajak = gajiPokokBpjs + masaKerja;
 
                 emp.monthly_data[String(month)] = {
+                    upah_dasar: upahDasar,
+                    gaji_pokok: gajiPokokBpjs,           // Upah Dasar × 30
                     astek_pekerja: dasarPajak * 0.02,           // JHT 2%
                     astek_majikan: dasarPajak * 0.0084,         // JKK/JKM 0.84%
                     bpjs_kes_pekerja: dasarPajak * 0.01,        // BPJS Kes 1%
@@ -736,6 +875,8 @@ class TaxReportService {
             idx++;
 
             const total = {
+                upah_dasar: 0,
+                gaji_pokok: 0,
                 astek_pekerja: 0,
                 astek_majikan: 0,
                 bpjs_kes_pekerja: 0,
@@ -746,6 +887,8 @@ class TaxReportService {
             };
 
             for (const monthData of Object.values(emp.monthly_data)) {
+                total.upah_dasar += monthData.upah_dasar || 0;
+                total.gaji_pokok += monthData.gaji_pokok || 0;
                 total.astek_pekerja += monthData.astek_pekerja;
                 total.astek_majikan += monthData.astek_majikan;
                 total.bpjs_kes_pekerja += monthData.bpjs_kes_pekerja;
@@ -759,6 +902,7 @@ class TaxReportService {
                 no: idx,
                 emp_code: empCode,
                 emp_name: emp.emp_name,
+                nik: emp.nik,
                 monthly_data: emp.monthly_data,
                 total,
             });
@@ -800,6 +944,261 @@ class TaxReportService {
         }
 
         return Math.round(tax);
+    }
+
+    public async getDecemberTaxReport(
+        year: number,
+        divisionCode?: string,
+        gangCode?: string
+    ): Promise<{ employees: DecemberTaxRow[]; year: number; available_months: number[] }> {
+        // Collect all monthly data
+        const availableMonths: number[] = [];
+        const monthPromises = [];
+        for (let m = 1; m <= 12; m++) {
+            monthPromises.push(
+                historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
+                    m, year, gangCode || 'ALL', divisionCode || undefined
+                ).then(data => ({ month: m, data }))
+            );
+        }
+
+        const allMonthData = await Promise.all(monthPromises);
+        const { thrMap, exgratiaMap } = loadThrBonusMaps();
+        const activeThr = loadActiveThrPeriode();
+
+        // Fetch PTKP mapping for this year
+        const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
+        const ptkpMap = new Map<string, string>();
+        for (const p of ptkpMaster) {
+            ptkpMap.set(p.emp_code.trim(), p.ptkp_status);
+        }
+
+        const employeeMap = new Map<string, any>();
+
+        for (const { month, data } of allMonthData) {
+            if (!data || data.data_rows.length === 0) continue;
+            availableMonths.push(month);
+            for (const row of data.data_rows) {
+                const empCode = row.emp_code;
+                if (!employeeMap.has(empCode)) {
+                    employeeMap.set(empCode, {
+                        emp_code: empCode,
+                        emp_name: row.nama || row.emp_name || '',
+                        nik: row.nik_ktp || row.nik || '',
+                        npwp: row.pajak_npwp || '',
+                        alamat: row.alamat || '',
+                        jabatan: row.jabatan || '',
+                        gender: row.jenis_kelamin || '',
+                        status_ptkp: row.status_ptkp || '',
+                        kategori_ter: row.kategori_ter || '',
+                        monthly_income: {},
+                        monthly_details: {},
+                        monthly_pph21: {},
+                        monthly_premi_asuransi: {},
+                        monthly_iuran_pensiun: {},
+                        monthly_thr_factors: {},
+                        was_in_target_gang: false,
+                        masa_kerja_tahun: '00',
+                        masa_kerja_bulan: '00'
+                    });
+                }
+
+                const emp = employeeMap.get(empCode);
+
+                if (month === 12) {
+                    const mkTahunStr = String(row.masa_kerja_tahun || '0').padStart(2, '0');
+                    const mkBulanStr = String(row.masa_kerja_bulan || '0').padStart(2, '0');
+                    emp.masa_kerja_tahun = mkTahunStr;
+                    emp.masa_kerja_bulan = mkBulanStr;
+                }
+
+                if (!gangCode || gangCode === 'ALL' || row.gang_code === gangCode) {
+                    if (month === 12) {
+                        emp.was_in_target_gang = true;
+                    }
+                }
+
+                const empCodeTrimmed = empCode?.trim() || '';
+                const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
+                const kategoriTer = mapPTKPToTER(masterPtkp);
+
+                // Fetch breakdown for pure calculation
+                const gajiPokokAktual = row.gaji_pokok_aktual || row.gaji_pokok || 0;
+                const tunjanganBeras = row.beras_jumlah || 0;
+                const tunjanganJabatan = row.jabatan_jumlah || 0;
+                const tunjanganMasaKerja = row.masa_kerja_jumlah || 0;
+                const tunjanganLembur = row.lembur_jumlah || 0;
+                const totalPremi = row.total_premi || 0;
+                const astekPekerja = row.pot_astek || 0;
+                const bpjsKesMajikan = row.pot_bpjs_kesehatan_majikan || 0;
+
+                const penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
+                    gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
+                    tunjanganLembur, totalPremi, astekPekerja, bpjsKesMajikan
+                );
+
+                // Purely calculated PPh21
+                const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
+
+                const hk = row.jumlah_hk || row.hk || 0;
+                const gp = gajiPokokAktual;
+                const mk = tunjanganMasaKerja;
+                const upahDasar = row.upah_dasar || 0;
+                const dasarPajak = (upahDasar * 30) + mk;  // Gaji Pokok = Upah Dasar × 30
+
+                emp.monthly_income[String(month)] = row.upah_kotor || row.gross_salary || row.total_income || 0;
+                emp.monthly_details[String(month)] = { hk, gaji_pokok: gp, masa_kerja: mk };
+                emp.monthly_pph21[String(month)] = pphResult.tax_amount;
+
+                // Premi Asuransi: BPJS Kes 4% + Astek 0.84% — base = Upah Dasar × 30 + Masa Kerja
+                emp.monthly_premi_asuransi[String(month)] = (dasarPajak * 0.04) + (dasarPajak * 0.0084);
+                // Iuran Pensiun & JHT: BPJS Pensiun 1% + Astek 2% — base = Upah Dasar × 30 + Masa Kerja
+                emp.monthly_iuran_pensiun[String(month)] = (dasarPajak * 0.01) + (dasarPajak * 0.02);
+
+                if (activeThr && month === activeThr.month) {
+                    emp.monthly_thr_factors[String(month)] = {
+                        masa_kerja_tahun: row.masa_kerja_tahun || 0,
+                        upah_dasar: row.upah_dasar || 0,
+                        beras_rate: row.r_beras || row.beras_rate || 0,
+                        masa_kerja_jumlah: mk
+                    };
+                }
+
+                // Update PTKP/TER if newer month has data
+                if (masterPtkp) emp.status_ptkp = masterPtkp;
+                if (kategoriTer) emp.kategori_ter = kategoriTer;
+            }
+        }
+
+        const employees: DecemberTaxRow[] = [];
+        let idx = 0;
+
+        for (const [empCode, emp] of employeeMap) {
+            // Only include those active in target gang in December
+            if (!emp.was_in_target_gang) continue;
+
+            // Check if they have december income
+            if (!emp.monthly_income['12']) continue;
+
+            idx++;
+
+            let pph21JanNov = 0;
+            let gajiPokokSetahun = 0;
+            let premiAsuransiSetahun = 0;
+            let iuranSetahun = 0;
+
+            for (let m = 1; m <= 11; m++) {
+                if (emp.monthly_income[String(m)]) {
+                    gajiPokokSetahun += emp.monthly_income[String(m)];
+                    premiAsuransiSetahun += emp.monthly_premi_asuransi[String(m)] || 0;
+                    iuranSetahun += emp.monthly_iuran_pensiun[String(m)] || 0;
+                    pph21JanNov += emp.monthly_pph21[String(m)] || 0;
+                }
+            }
+
+            // December logic
+            const incDes = emp.monthly_income['12'] || 0;
+            const detDes = emp.monthly_details['12'];
+            const gpDes = detDes ? (detDes.gaji_pokok + detDes.masa_kerja) : 0;
+
+            const detGajiPokokDes = detDes ? detDes.gaji_pokok : 0;
+            const tunjanganDes = Math.max(0, incDes - detGajiPokokDes);
+            const premiDes = emp.monthly_premi_asuransi['12'] || 0;
+            const iuranDes = emp.monthly_iuran_pensiun['12'] || 0;
+            const brutoDes = incDes + premiDes;
+
+            gajiPokokSetahun += incDes;
+            premiAsuransiSetahun += premiDes;
+            iuranSetahun += iuranDes;
+
+            // THR & Bonus
+            const rawEmpNik = String(emp.nik || '').trim().toUpperCase();
+            let rawEmpName = String(emp.emp_name || '').toUpperCase().replace(/\s*\(.*?\)\s*/g, '').trim();
+            const firstName = rawEmpName.split(' ')[0].trim();
+
+            let thr = 0;
+            if (activeThr) {
+                let thrFactors = emp.monthly_thr_factors[String(activeThr.month)];
+                if (!thrFactors) {
+                    for (let m = 12; m >= 1; m--) {
+                        if (emp.monthly_thr_factors[String(m)]) {
+                            thrFactors = emp.monthly_thr_factors[String(m)];
+                            break;
+                        }
+                    }
+                }
+                if (thrFactors && thrFactors.masa_kerja_tahun >= 1) {
+                    thr = (thrFactors.upah_dasar * 30) + (thrFactors.beras_rate * 30) + thrFactors.masa_kerja_jumlah;
+                }
+            }
+
+            let bonus = 0;
+            if (exgratiaMap.has(rawEmpNik)) bonus = exgratiaMap.get(rawEmpNik) || 0;
+            else if (exgratiaMap.has(rawEmpName)) bonus = exgratiaMap.get(rawEmpName) || 0;
+            else {
+                for (const [jsonName, jsonThr] of thrMap.entries()) {
+                    if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
+                        bonus = exgratiaMap.get(jsonName) || 0;
+                        break;
+                    }
+                }
+            }
+
+            const thrBonusTantiemSetahun = thr + bonus;
+            const brutoSetahun = gajiPokokSetahun + premiAsuransiSetahun + thrBonusTantiemSetahun;
+
+            const biayaJabatan = Math.min(brutoSetahun * 0.05, 6000000);
+            const nettoSetahun = Math.max(0, brutoSetahun - biayaJabatan - iuranSetahun);
+
+            const ptkpValue = getPtkpValue(emp.status_ptkp);
+
+            // Round down to thousands
+            const pkpRaw = Math.max(0, nettoSetahun - ptkpValue);
+            const pkp = Math.floor(pkpRaw / 1000) * 1000;
+
+            const pph21Setahun = this.calculateProgressivePph21(pkp);
+            const pph21Desember = Math.max(0, pph21Setahun - pph21JanNov);
+
+            employees.push({
+                no: idx,
+                emp_code: emp.emp_code,
+                emp_name: emp.emp_name,
+                nik: emp.nik,
+                npwp: emp.npwp,
+                alamat: emp.alamat,
+                jabatan: emp.jabatan,
+                gender: emp.gender,
+                status_ptkp: emp.status_ptkp,
+                kategori_ter: emp.kategori_ter,
+                masa_kerja_tahun: emp.masa_kerja_tahun,
+                masa_kerja_bulan: emp.masa_kerja_bulan,
+                gaji_pokok_des: detGajiPokokDes,
+                tunjangan_des: tunjanganDes,
+                premi_asuransi_des: premiDes,
+                tunjangan_pph_des: 0,
+                bruto_des: brutoDes,
+                thr: thr,
+                bonus: bonus,
+                tantiem: 0,
+                gaji_pokok_setahun: gajiPokokSetahun,
+                tunjangan_lainnya_setahun: 0,
+                premi_asuransi_setahun: premiAsuransiSetahun,
+                tunjangan_pph_setahun: 0,
+                natura_setahun: 0,
+                thr_bonus_tantiem_setahun: thrBonusTantiemSetahun,
+                bruto_setahun: brutoSetahun,
+                biaya_jabatan: biayaJabatan,
+                iuran_jht_jp_setahun: iuranSetahun,
+                netto_setahun: nettoSetahun,
+                ptkp: ptkpValue,
+                pkp: pkp,
+                pph21_setahun: pph21Setahun,
+                pph21_jan_nov: pph21JanNov,
+                pph21_desember: pph21Desember
+            });
+        }
+
+        return { employees, year, available_months: Array.from(new Set(availableMonths)).sort((a, b) => a - b) };
     }
 }
 

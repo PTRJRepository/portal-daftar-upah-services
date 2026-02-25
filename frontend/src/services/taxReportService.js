@@ -13,7 +13,7 @@ export async function fetchMonthlyTaxReport(token, year, month, division, gang) 
     // Usually other services pass it directly like this:
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
-    const response = await axios.get('/tax-report/monthly', { params, headers });
+    const response = await axios.get('/tax-report/monthly', { params, headers, timeout: 120000 });
     return response.data;
 }
 
@@ -28,7 +28,7 @@ export async function fetchAnnualTaxReport(token, year, month, division, gang) {
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
-    const response = await axios.get('/tax-report/annual', { params, headers });
+    const response = await axios.get('/tax-report/annual', { params, headers, timeout: 120000 });
     return response.data;
 }
 
@@ -43,7 +43,21 @@ export async function fetchAnnualAstekBpjsReport(token, year, month, division, g
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
-    const response = await axios.get('/tax-report/astek-bpjs', { params, headers });
+    const response = await axios.get('/tax-report/astek-bpjs', { params, headers, timeout: 120000 });
+    return response.data;
+}
+
+/**
+ * Fetch December tax report
+ */
+export async function fetchDecemberTaxReport(token, year, division, gang) {
+    const params = { year };
+    if (division) params.division = division;
+    if (gang && gang !== 'ALL') params.gang = gang;
+
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    const response = await axios.get('/tax-report/december', { params, headers, timeout: 120000 });
     return response.data;
 }
 

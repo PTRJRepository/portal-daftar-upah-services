@@ -148,4 +148,28 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             set.status = 500;
             return { error: error.message || "Failed to fetch ASTEK/BPJS report" };
         }
+    })
+
+    // ========================================================
+    // GET /tax-report/december
+    // Dedicated December Tax Report with annualized aggregation
+    // ========================================================
+    .get("/december", async ({ query, set }) => {
+        try {
+            const year = parseInt(query.year as string);
+            const division = query.division as string || undefined;
+            const gang = query.gang as string || undefined;
+
+            if (!year) {
+                set.status = 400;
+                return { error: "Invalid year parameter" };
+            }
+
+            const result = await taxReportService.getDecemberTaxReport(year, division, gang);
+            return result;
+        } catch (error: any) {
+            console.error("[TaxReport] Error fetching December tax report:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to fetch December tax report" };
+        }
     });

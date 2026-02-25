@@ -3,6 +3,7 @@ import { dataExtractorService } from "./dataExtractorService";
 import { lemburCalculator, getDayTypeDisplayName } from "./lemburCalculator";
 import { harvesterService } from "./harvesterService";
 import { Config } from "../config";
+import { ptkpTaxService } from "./ptkpTaxService";
 
 export interface AttendanceDay {
     date: string;
@@ -42,6 +43,7 @@ export interface EmployeeInfo {
     birth_place?: string;
     birth_date?: string;
     gang_description?: string;
+    status_ptkp?: string;
 }
 
 export interface AttendanceSummary {
@@ -535,6 +537,30 @@ export class EmployeeDetailService {
         if (historyUpahDasar !== null) {
             employeeInfo.upah_dasar = historyUpahDasar;
             console.log(`[EmployeeDetailService] Overriding upah_dasar with history value: ${historyUpahDasar}`);
+        }
+
+        // Get PTKP Status
+        try {
+            const extDb = Database.getExtendedInstance();
+            const ptkpRows = await extDb.query<{ ptkp_pajak: string }>(`
+                SELECT TOP 1 ptkp_pajak
+                FROM history_hr_employee
+                WHERE RTRIM(emp_code) = RTRIM(?)
+                  AND period_year = ? AND period_month = ?
+            `, [empCode, year, month]);
+
+            if (ptkpRows.length > 0 && ptkpRows[0].ptkp_pajak) {
+                employeeInfo.status_ptkp = ptkpRows[0].ptkp_pajak;
+            } else {
+                // Fallback to ptkpTaxService
+                const ptkpRecords = await ptkpTaxService.getPtkpByYear(year);
+                const ptkpRecord = ptkpRecords.find(p => p.emp_code.trim() === empCode);
+                if (ptkpRecord) {
+                    employeeInfo.status_ptkp = ptkpRecord.ptkp_status;
+                }
+            }
+        } catch (e) {
+            console.error("[EmployeeDetailService] Failed to get PTKP status:", e);
         }
 
         const attendanceData = await this.getDailyAttendance(empCode, month, year);

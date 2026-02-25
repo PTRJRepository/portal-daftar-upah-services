@@ -238,9 +238,26 @@ export const getTerCategoryOnly = (ptkpStatus: string) => {
     return 'TER B';
 };
 
+export const calculatePenghasilanBruto = (
+    gajiPokokAktual: number,
+    berasJumlah: number,
+    jabatanJumlah: number,
+    masaKerjaJumlah: number,
+    lemburJumlah: number,
+    totalPremi: number,
+    astekPekerja: number,
+    bpjsKesehatanMajikan: number
+) => {
+    return Pph21TerService.getInstance().calculatePenghasilanBruto(
+        gajiPokokAktual, berasJumlah, jabatanJumlah, masaKerjaJumlah,
+        lemburJumlah, totalPremi, astekPekerja, bpjsKesehatanMajikan
+    );
+};
+
 export const pph21TerService = {
     calculatePph21Ter,
-    getTerCategory: getTerCategoryOnly
+    getTerCategory: getTerCategoryOnly,
+    calculatePenghasilanBruto
 };
 
 
