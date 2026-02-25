@@ -963,15 +963,104 @@ export default function CustomPayrollTable({
 
         if (showDeductionDetails) {
             // POTONGAN UPAH BERSIH > CARUMAN ASTEK
-            cols.push({ field: 'pot_astek', headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'PEKERJA'], w: 75, className: 'text-right' });
-            cols.push({ field: 'pot_astek_maj', headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'MAJIKAN'], w: 75, className: 'text-right' });
+            cols.push({
+                field: 'pot_astek',
+                headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'PEKERJA'],
+                w: 75,
+                className: 'text-right',
+                render: (row) => {
+                    const val = row.pot_astek || 0;
+                    if (val === 0) return '-';
+                    const estimatedBase = val * 50; // 2% of base
+                    return (
+                        <div title={`Potongan Astek Pekerja (2%)\nEstimasi Dasar Perhitungan: 2% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
+                            {formatNumber(val)}
+                        </div>
+                    );
+                }
+            });
+            cols.push({
+                field: 'pot_astek_maj',
+                headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'MAJIKAN'],
+                w: 75,
+                className: 'text-right',
+                render: (row) => {
+                    const val = row.pot_astek_maj || 0;
+                    if (val === 0) return '-';
+                    return (
+                        <div title="Potongan Astek Majikan (JHT 3.7%, JKK, JKM)" style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
+                            {formatNumber(val)}
+                        </div>
+                    );
+                }
+            });
 
             // POTONGAN UPAH BERSIH > POTONGAN BPJS > KESEHATAN
-            cols.push({ field: 'pot_bpjs_kesehatan_pekerja', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'PEKERJA'], w: 75, className: 'text-right' });
-            cols.push({ field: 'pot_bpjs_kesehatan_majikan', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'MAJIKAN'], w: 75, className: 'text-right' });
+            cols.push({
+                field: 'pot_bpjs_kesehatan_pekerja',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'PEKERJA'],
+                w: 75,
+                className: 'text-right',
+                render: (row) => {
+                    const val = row.pot_bpjs_kesehatan_pekerja || 0;
+                    if (val === 0) return '-';
+                    const estimatedBase = val * 100; // 1% of base
+                    return (
+                        <div title={`Potongan BPJS Kesehatan Pekerja (1%)\nEstimasi Dasar Perhitungan: 1% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
+                            {formatNumber(val)}
+                        </div>
+                    );
+                }
+            });
+            cols.push({
+                field: 'pot_bpjs_kesehatan_majikan',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'MAJIKAN'],
+                w: 75,
+                className: 'text-right',
+                render: (row) => {
+                    const val = row.pot_bpjs_kesehatan_majikan || 0;
+                    if (val === 0) return '-';
+                    const estimatedBase = val * 25; // 4% of base
+                    return (
+                        <div title={`Potongan BPJS Kesehatan Majikan (4%)\nEstimasi Dasar Perhitungan: 4% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
+                            {formatNumber(val)}
+                        </div>
+                    );
+                }
+            });
             // POTONGAN UPAH BERSIH > POTONGAN BPJS > PENSIUN
-            cols.push({ field: 'pot_bpjs_pensiun_pekerja', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'PEKERJA'], w: 75, className: 'text-right' });
-            cols.push({ field: 'pot_bpjs_pensiun_majikan', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'MAJIKAN'], w: 75, className: 'text-right' });
+            cols.push({
+                field: 'pot_bpjs_pensiun_pekerja',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'PEKERJA'],
+                w: 75,
+                className: 'text-right',
+                render: (row) => {
+                    const val = row.pot_bpjs_pensiun_pekerja || 0;
+                    if (val === 0) return '-';
+                    const estimatedBase = val * 100; // 1% of base
+                    return (
+                        <div title={`Potongan BPJS Pensiun Pekerja (1%)\nEstimasi Dasar Perhitungan: 1% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
+                            {formatNumber(val)}
+                        </div>
+                    );
+                }
+            });
+            cols.push({
+                field: 'pot_bpjs_pensiun_majikan',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'MAJIKAN'],
+                w: 75,
+                className: 'text-right',
+                render: (row) => {
+                    const val = row.pot_bpjs_pensiun_majikan || 0;
+                    if (val === 0) return '-';
+                    const estimatedBase = val * 50; // 2% of base
+                    return (
+                        <div title={`Potongan BPJS Pensiun Majikan (2%)\nEstimasi Dasar Perhitungan: 2% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
+                            {formatNumber(val)}
+                        </div>
+                    );
+                }
+            });
             // POTONGAN UPAH BERSIH > POTONGAN BPJS > JUMLAH
             cols.push({ field: 'pot_bpjs_pekerja_total', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', null, 'JUMLAH'], w: 80, className: 'text-right font-bold' });
             // Other deductions
