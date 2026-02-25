@@ -50,6 +50,71 @@ function getPtkpValue(ptkpStatus: string): number {
 }
 
 // ============================================================
+// THR and Exgratia from JSON
+// ============================================================
+interface ThrBonusMaps {
+    thrMap: Map<string, number>;
+    exgratiaMap: Map<string, number>;
+}
+
+let thrBonusMaps: ThrBonusMaps | null = null;
+
+function loadThrBonusMaps(): ThrBonusMaps {
+    if (thrBonusMaps) return thrBonusMaps;
+
+    thrBonusMaps = {
+        thrMap: new Map(),
+        exgratiaMap: new Map()
+    };
+
+    const baseDataDir = path.resolve(process.cwd(), '../Additional_services/pajak_kalkulator/data_statis');
+    const alternativeDataDir = path.resolve(__dirname, '../../../../Additional_services/pajak_kalkulator/data_statis');
+
+    // Use the first existing directory base
+    const dir = fs.existsSync(baseDataDir) ? baseDataDir : (fs.existsSync(alternativeDataDir) ? alternativeDataDir : null);
+
+    if (!dir) {
+        console.warn('THR/Bonus data directory not found. THR and Exgratia will be 0.');
+        return thrBonusMaps;
+    }
+
+    const filesToLoad = [
+        path.join(dir, 'infra', 'thr_bonus_infra.json'),
+        path.join(dir, '1b', 'thr_bonus_1b.json'),
+        path.join(dir, '2a', 'thr_bonus_2a.json')
+    ];
+
+    const allBonusData: any[] = [];
+
+    for (const p of filesToLoad) {
+        if (fs.existsSync(p)) {
+            try {
+                const raw = fs.readFileSync(p, 'utf-8');
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    allBonusData.push(...parsed);
+                }
+            } catch (err) {
+                console.error(`Failed to load ${p}:`, err);
+            }
+        } else {
+            console.warn(`File not found: ${p}`);
+        }
+    }
+
+    // Build Maps
+    for (const item of allBonusData) {
+        const keyStr = String(item.nik || item.nama || '').trim().toUpperCase();
+        if (keyStr) {
+            thrBonusMaps.thrMap.set(keyStr, item.thr || 0);
+            thrBonusMaps.exgratiaMap.set(keyStr, item.exgratia || item.bonus || 0);
+        }
+    }
+
+    return thrBonusMaps;
+}
+
+// ============================================================
 // Interfaces
 // ============================================================
 
@@ -234,6 +299,7 @@ class TaxReportService {
      */
     public async getAnnualTaxReport(
         year: number,
+        targetMonth?: number,
         divisionCode?: string,
         gangCode?: string
     ): Promise<{ employees: AnnualIncomeRow[]; year: number; available_months: number[] }> {
@@ -263,6 +329,7 @@ class TaxReportService {
         // Build employee map
         const employeeMap = new Map<string, {
             emp_name: string;
+            nik: string;
             gender: string;
             status_ptkp: string;
             kategori_ter: string;
@@ -272,6 +339,7 @@ class TaxReportService {
             monthly_bpjs_pensiun_pekerja: Record<string, number>;
             monthly_bpjs_kes_majikan: Record<string, number>;
             monthly_astek_jumlah: Record<string, number>;
+            was_in_target_gang: boolean;
         }>();
 
         for (const { month, data } of allMonthData) {
@@ -283,6 +351,7 @@ class TaxReportService {
                 if (!employeeMap.has(empCode)) {
                     employeeMap.set(empCode, {
                         emp_name: row.nama || row.emp_name || '',
+                        nik: row.nik || '',
                         gender: row.jenis_kelamin || '',
                         status_ptkp: row.status_ptkp || '',
                         kategori_ter: row.kategori_ter || '',
@@ -292,12 +361,13 @@ class TaxReportService {
                         monthly_bpjs_pensiun_pekerja: {},
                         monthly_bpjs_kes_majikan: {},
                         monthly_astek_jumlah: {},
+                        was_in_target_gang: false,
                     });
                 }
 
                 const emp = employeeMap.get(empCode)!;
-                // Use penghasilan_bruto as monthly income (gross income for tax)
-                emp.monthly_income[String(month)] = row.penghasilan_bruto || row.jumlah_upah_kotor || 0;
+                // Use jumlah_upah_kotor as monthly income per user instruction ("upah kotor bukan plus dengan astek dan bpjs")
+                emp.monthly_income[String(month)] = row.jumlah_upah_kotor || row.penghasilan_bruto || 0;
                 emp.monthly_pph21[String(month)] = row.pph21_ter || row.pot_pph21 || 0;
                 emp.monthly_astek_pekerja[String(month)] = row.pot_astek || 0;
                 emp.monthly_bpjs_pensiun_pekerja[String(month)] = row.pot_bpjs_pensiun_pekerja || 0;
@@ -311,18 +381,58 @@ class TaxReportService {
                 // Update PTKP/TER if newer month has data
                 if (masterPtkp) emp.status_ptkp = masterPtkp;
                 if (kategoriTer) emp.kategori_ter = kategoriTer;
+
+                // Check if employee matches target criteria
+                if ((targetMonth === undefined || month === targetMonth) &&
+                    (!gangCode || gangCode === 'ALL' || row.gang_code === gangCode)) {
+                    emp.was_in_target_gang = true;
+                }
             }
         }
+
+        // Load THR and Exgratia mappings
+        const { thrMap, exgratiaMap } = loadThrBonusMaps();
 
         // Calculate annual totals
         const employees: AnnualIncomeRow[] = [];
         let idx = 0;
 
         for (const [empCode, emp] of employeeMap) {
+            if (!emp.was_in_target_gang) continue; // Only include employees from the target gang & month
+
             idx++;
 
             // Total income from all months
             const totalIncome = Object.values(emp.monthly_income).reduce((sum, v) => sum + v, 0);
+
+            // Fetch THR and Exgratia
+            const rawEmpNik = String(emp.nik || '').trim().toUpperCase();
+            let rawEmpName = String(emp.emp_name || '').toUpperCase();
+
+            // Remove alias in brackets e.g. "HERI GUNAWAN (SALMAH)" -> "HERI GUNAWAN"
+            rawEmpName = rawEmpName.replace(/\s*\(.*?\)\s*/g, '').trim();
+            const firstName = rawEmpName.split(' ')[0].trim();
+
+            let thr = 0;
+            let exgratia = 0;
+
+            if (thrMap.has(rawEmpNik)) {
+                thr = thrMap.get(rawEmpNik)!;
+                exgratia = exgratiaMap.get(rawEmpNik)!;
+            } else if (thrMap.has(rawEmpName)) {
+                thr = thrMap.get(rawEmpName)!;
+                exgratia = exgratiaMap.get(rawEmpName)!;
+            } else {
+                // Fallback: match by first name if JSON only contains first names, 
+                // or if JSON name is a substring of the DB name.
+                for (const [jsonName, jsonThr] of thrMap.entries()) {
+                    if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
+                        thr = jsonThr;
+                        exgratia = exgratiaMap.get(jsonName) || 0;
+                        break;
+                    }
+                }
+            }
 
             // BPJS Kesehatan 4% of total income (employer portion accumulated)
             const bpjsKes4pct = Object.values(emp.monthly_bpjs_kes_majikan).reduce((sum, v) => sum + v, 0);
@@ -331,7 +441,7 @@ class TaxReportService {
             const astekJht = Object.values(emp.monthly_astek_jumlah).reduce((sum, v) => sum + v, 0);
 
             // Total penghasilan setahun
-            const totalPenghasilanSetahun = totalIncome;
+            const totalPenghasilanSetahun = totalIncome + thr + exgratia;
 
             // Biaya Jabatan: 5% of total, max 6.000.000
             const biayaJabatan = Math.min(totalPenghasilanSetahun * 0.05, 6000000);
@@ -367,8 +477,8 @@ class TaxReportService {
                 monthly_income: emp.monthly_income,
                 monthly_pph21: emp.monthly_pph21,
                 total_income: totalIncome,
-                thr: 0, // Header only
-                bonus: 0, // Header only
+                thr: thr, // Fetched from static JSON
+                bonus: exgratia, // Mapped Exgratia to bonus field
                 medical_claim: 0, // Header only
                 bpjs_kesehatan_4pct: bpjsKes4pct,
                 astek_jht: astekJht,
@@ -392,6 +502,7 @@ class TaxReportService {
      */
     public async getAnnualAstekBpjsReport(
         year: number,
+        targetMonth?: number,
         divisionCode?: string,
         gangCode?: string
     ): Promise<{ employees: AstekBpjsMonthlyRow[]; year: number; available_months: number[] }> {
@@ -419,6 +530,7 @@ class TaxReportService {
                 bpjs_pensiun_pekerja: number;
                 bpjs_pensiun_majikan: number;
             }>;
+            was_in_target_gang: boolean;
         }>();
 
         for (const { month, data } of allMonthData) {
@@ -431,6 +543,7 @@ class TaxReportService {
                     employeeMap.set(empCode, {
                         emp_name: row.nama || row.emp_name || '',
                         monthly_data: {},
+                        was_in_target_gang: false,
                     });
                 }
 
@@ -443,6 +556,12 @@ class TaxReportService {
                     bpjs_pensiun_pekerja: row.pot_bpjs_pensiun_pekerja || 0,
                     bpjs_pensiun_majikan: row.pot_bpjs_pensiun_majikan || 0,
                 };
+
+                // Check if employee matches target criteria
+                if ((targetMonth === undefined || month === targetMonth) &&
+                    (!gangCode || gangCode === 'ALL' || row.gang_code === gangCode)) {
+                    emp.was_in_target_gang = true;
+                }
             }
         }
 
@@ -450,6 +569,8 @@ class TaxReportService {
         let idx = 0;
 
         for (const [empCode, emp] of employeeMap) {
+            if (!emp.was_in_target_gang) continue; // Filter by target criteria
+
             idx++;
 
             const total = {

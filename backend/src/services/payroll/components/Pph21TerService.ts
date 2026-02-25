@@ -31,10 +31,15 @@ export interface Pph21Output {
     rate_decimal: number;
     tax_amount: number;
 }
-
 export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph21Output> {
     public readonly componentName = 'pph21_ter';
-    protected db = this.db; // Using parent's db
+    protected db: import('../../../db/client').Database;
+
+    constructor() {
+        super();
+        const { Database } = require('../../../db/client');
+        this.db = Database.getInstance();
+    }
 
     protected async calculateSingle(input: Pph21Input): Promise<PayrollCalculationResult<Pph21Output>> {
         try {
@@ -52,29 +57,29 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
             // Calculate PPH21 using the main TER service (with full progressive brackets)
             const terResult = mainPph21TerService.calculatePph21Ter(penghasilan_bruto, ptkp_status);
 
-            const output: Pph21Output = {
-                ptkp_status: terResult.ptkp_status,
-                ter_category: terResult.ter_category,
-                gross_income: terResult.gross_income,
-                rate_percent: terResult.rate_percent,
-                rate_decimal: terResult.rate,
-                tax_amount: terResult.tax_amount,
+            const output: PayrollComponent<Pph21Output> = {
+                value: {
+                    ptkp_status: terResult.ptkp_status,
+                    ter_category: terResult.ter_category,
+                    gross_income: terResult.gross_income,
+                    rate_percent: terResult.rate_percent,
+                    rate_decimal: terResult.rate,
+                    tax_amount: terResult.tax_amount,
+                },
+                meta: this.buildMetadata('CALCULATION', 'PPH21 Tax using TER Method (PP 58/2023)', {
+                    calculation_basis: `penghasilan_bruto (${penghasilan_bruto}) × tarif (${terResult.rate_percent}% for ${terResult.ter_category})`,
+                    dependencies: ['penghasilan_bruto', 'beras_rate'],
+                    version: 2,
+                    taxable: false,
+                    ptkp_status,
+                    ter_category: terResult.ter_category,
+                }),
             };
 
             return {
                 component_name: this.componentName,
                 input,
-                output: {
-                    ...output,
-                    meta: this.buildMetadata('CALCULATION', 'PPH21 Tax using TER Method (PP 58/2023)', {
-                        calculation_basis: `penghasilan_bruto (${penghasilan_bruto}) × tarif (${terResult.rate_percent}% for ${terResult.ter_category})`,
-                        dependencies: ['penghasilan_bruto', 'beras_rate'],
-                        version: 2,
-                        taxable: false,
-                        ptkp_status,
-                        ter_category: terResult.ter_category,
-                    }),
-                },
+                output,
                 cached: false,
             };
         } catch (error) {
@@ -82,7 +87,7 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
         }
     }
 
-    protected async calculateBatch(inputs: Pph21Input[]): Promise<BatchPayrollCalculationResult<Pph21Output>> {
+    protected async calculateBatchInternal(inputs: Pph21Input[]): Promise<BatchPayrollCalculationResult<Pph21Output>> {
         const results = new Map<string, PayrollCalculationResult<Pph21Output>>();
         let cachedCount = 0;
         let errorCount = 0;
@@ -115,7 +120,7 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
         };
     }
 
-    protected getCalculationBasis(input: Pph21Input): string {
+    protected getBasisDescription(input: Pph21Input): string {
         return 'TER Method (PP 58/2023): penghasilan_bruto × tarif (progressive based on bruto + PTKP status)';
     }
 
@@ -129,7 +134,7 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
 
     // Helper methods
     private async getBerasRate(empCode: string, serverProfile?: string): Promise<number> {
-        const { Database } = await import('../../db/client');
+        const { Database } = await import('../../../db/client');
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : Database.getInstance();
 
         const rows = await db.query<{ beras_rate: number }>(`
@@ -140,7 +145,7 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
     }
 
     private async batchGetBerasRate(empCodes: string[], serverProfile?: string): Promise<Record<string, number>> {
-        const { Database } = await import('../../db/client');
+        const { Database } = await import('../../../db/client');
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : Database.getInstance();
 
         const empList = empCodes.map(e => `'${e}'`).join(',');

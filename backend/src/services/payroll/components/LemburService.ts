@@ -92,26 +92,26 @@ export class LemburService extends BasePayrollComponentService<LemburInput, Lemb
 
             // Transform to our standard format
             const records = this.transformRecords(calculatorResult.records);
-            const output: LemburOutput = {
-                total_hours: calculatorResult.total_hours || 0,
-                total_amount: calculatorResult.total_payment || 0,
-                records,
-                breakdown: this.createBreakdown(records),
+            const output: PayrollComponent<LemburOutput> = {
+                value: {
+                    total_hours: calculatorResult.total_hours || 0,
+                    total_amount: calculatorResult.total_payment || 0,
+                    records,
+                    breakdown: this.createBreakdown(records),
+                },
+                meta: this.buildMetadata('CALCULATION', 'Overtime payment from PR_TASKREGLN with OT=1', {
+                    taxable: true,
+                    calculation_basis: this.getCalculationBasis(input),
+                    dependencies: ['PR_TASKREGLN', 'PR_TASKCODE', 'HR_GPH'],
+                    confidence_level: 'high',
+                    version: 1,
+                }),
             };
 
             return {
                 component_name: this.componentName,
                 input,
-                output: {
-                    ...output,
-                    meta: this.buildMetadata('CALCULATION', 'Overtime payment from PR_TASKREGLN with OT=1', {
-                        taxable: true,
-                        calculation_basis: this.getCalculationBasis(input),
-                        dependencies: ['PR_TASKREGLN', 'PR_TASKCODE', 'HR_GPH'],
-                        confidence_level: 'high',
-                        version: 1,
-                    }),
-                },
+                output,
             };
         } catch (error) {
             return this.createErrorResult(input, error as Error);
@@ -121,7 +121,7 @@ export class LemburService extends BasePayrollComponentService<LemburInput, Lemb
     /**
      * Calculate overtime for multiple employees
      */
-    protected async calculateBatch(inputs: LemburInput[]): Promise<BatchPayrollCalculationResult<LemburOutput>> {
+    protected async calculateBatchInternal(inputs: LemburInput[]): Promise<BatchPayrollCalculationResult<LemburOutput>> {
         const startTime = performance.now();
         const results = new Map<string, PayrollCalculationResult<LemburOutput>>();
         const errors: string[] = [];
@@ -148,26 +148,26 @@ export class LemburService extends BasePayrollComponentService<LemburInput, Lemb
                     if (!empData) continue;
 
                     const records = this.transformBatchRecords(empData.records || []);
-                    const output: LemburOutput = {
-                        total_hours: empData.total_hours || 0,
-                        total_amount: empData.total_payment || 0,
-                        records,
-                        breakdown: this.createBreakdown(records),
+                    const output: PayrollComponent<LemburOutput> = {
+                        value: {
+                            total_hours: empData.total_hours || 0,
+                            total_amount: empData.total_payment || 0,
+                            records,
+                            breakdown: this.createBreakdown(records),
+                        },
+                        meta: this.buildMetadata('CALCULATION', 'Batch overtime calculation', {
+                            taxable: true,
+                            calculation_basis: this.getCalculationBasis(periodInput),
+                            dependencies: ['PR_TASKREGLN', 'PR_TASKCODE', 'HR_GPH'],
+                            confidence_level: 'high',
+                            version: 1,
+                        }),
                     };
 
                     results.set(periodInput.emp_code, {
                         component_name: this.componentName,
                         input: periodInput,
-                        output: {
-                            ...output,
-                            meta: this.buildMetadata('CALCULATION', 'Batch overtime calculation', {
-                                taxable: true,
-                                calculation_basis: this.getCalculationBasis(periodInput),
-                                dependencies: ['PR_TASKREGLN', 'PR_TASKCODE', 'HR_GPH'],
-                                confidence_level: 'high',
-                                version: 1,
-                            }),
-                        },
+                        output,
                     });
                 }
             } catch (error) {
@@ -197,7 +197,7 @@ export class LemburService extends BasePayrollComponentService<LemburInput, Lemb
     /**
      * Get calculation basis description
      */
-    protected getCalculationBasis(input: LemburInput): string {
+    protected getBasisDescription(input: LemburInput): string {
         const upj = input.upj || this.defaultUpj;
         return `UPJ: ${upj}, Period: ${input.month}/${input.year}, Source: PR_TASKREGLN WHERE OT=1`;
     }

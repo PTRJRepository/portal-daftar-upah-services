@@ -213,6 +213,9 @@ export class HistorySeederService {
         // Use dataExtractorService to get payroll data
         const authToken = 'system'; // Internal token for seeder
 
+        // IMPORTANT: Pass useHistoryDb=false to force reading from the LIVE database.
+        // Without this, extractPayrollData intercepts historical periods and tries to
+        // read from the history DB (which is empty — it's the DB we're trying to seed!).
         const rawData = await dataExtractorService.extractPayrollData(
             options.periodMonth,
             options.periodYear,
@@ -220,7 +223,8 @@ export class HistorySeederService {
             options.divisionCode,
             null,
             Config.DB_PROFILE,
-            false
+            false,  // includeVirtualGangs
+            false   // useHistoryDb — always read from live DB for seeding
         );
 
         // Group by gang

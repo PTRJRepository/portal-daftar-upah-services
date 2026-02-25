@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import '../styles/CustomPayrollTable.css';
-import { getLockedRawTree } from '../services/lockedDivisionService';
+import { getLockedRawTree, saveLockedManualEdit } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
 import { PayrollAggregator } from '../utils/PayrollAggregator';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
@@ -45,7 +45,9 @@ export default function CustomPayrollTable({
     token, month, year, division, gangCode, onViewEmployeeDetail, fontSize = 100,
     onExportReady = null, refreshTrigger = 0,
     selectedEmployees = [], onToggleEmployeeSelection = () => { },
-    onSelectAllEmployees = () => { }
+    onSelectAllEmployees = () => { },
+    isEditMode = false,
+    useHistoryDb = false
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -60,6 +62,11 @@ export default function CustomPayrollTable({
     const [activePremiFields, setActivePremiFields] = useState([]);
     const [activePotFields, setActivePotFields] = useState([]);
     const [allEmployeeNiks, setAllEmployeeNiks] = useState([]);
+
+    // Manual Edit State
+    const [editedCells, setEditedCells] = useState({}); // { 'nik-field': { value, originalValue, gang_code, type, name } }
+    const [addedColumns, setAddedColumns] = useState([]); // Track new columns added in edit mode
+    const [isSavingEdits, setIsSavingEdits] = useState(false);
 
     // Tunjangan Mode & Rates
     const [tunjanganMode, setTunjanganMode] = useState('DB'); // 'DB' or 'CALC'
@@ -132,6 +139,177 @@ export default function CustomPayrollTable({
             .catch(console.error);
     }, []);
 
+    const handleAddColumn = (groupLabel) => {
+        const name = window.prompt(`Masukkan nama kolom baru untuk ${groupLabel}:\n(Contoh: PINJAMAN, BPJS, INSENTIF)`);
+        if (!name || name.trim() === '') return;
+
+        const upperName = name.trim().toUpperCase();
+        let prefix = '';
+        let category = '';
+
+        if (groupLabel === 'PREMI') {
+            prefix = 'premi_';
+            category = 'premi';
+        } else if (groupLabel === 'POTONGAN UPAH KOTOR') {
+            prefix = 'koreksi_';
+            category = 'potongan';
+        } else if (groupLabel === 'POTONGAN UPAH BERSIH') {
+            prefix = 'potongan_';
+            category = 'potongan';
+        }
+
+        // Clean up title for backend/saving. Only alphanumeric and spaces
+        const cleanName = upperName.replace(/[^A-Z0-9\s]/g, '').trim();
+        const fieldName = `${prefix}${cleanName.toLowerCase().replace(/\s+/g, '_')}`;
+
+        // Add to dynamic headers map
+        setDynamicHeaders(prev => {
+            const next = { ...prev };
+            // For POTONGAN UPAH KOTOR, ensure it starts with KOREKSI so it goes to the right group
+            const title = groupLabel === 'POTONGAN UPAH KOTOR' && !cleanName.startsWith('KOREKSI')
+                ? `KOREKSI ${cleanName}`
+                : cleanName;
+
+            next[category] = { ...next[category], [title]: fieldName };
+            return next;
+        });
+
+        // Add to active fields to make it visible
+        if (category === 'premi') {
+            setActivePremiFields(prev => [...prev, fieldName]);
+        } else {
+            setActivePotFields(prev => [...prev, fieldName]);
+        }
+
+        // Track the added column so we can persist it even if empty
+        const firstEmp = rows.find(r => r.type === 'employee');
+        if (firstEmp) {
+            setAddedColumns(prev => [...prev, {
+                nik: firstEmp.nik,
+                gang_code: firstEmp.gang_code,
+                type: category === 'premi' ? 'PREMI' : (groupLabel === 'POTONGAN UPAH KOTOR' ? 'POTONGAN_KOTOR' : 'POTONGAN_BERSIH'),
+                name: cleanName
+            }]);
+        }
+    };
+
+    // Handle Manual Cell Edit
+    const handleCellEdit = (nik, field, value, originalValue, gang_code, type, name) => {
+        const key = `${nik}-${field}`;
+        const numValue = value === '' ? 0 : parseFloat(value);
+
+        if (isNaN(numValue)) return;
+
+        setEditedCells(prev => ({
+            ...prev,
+            [key]: {
+                nik,
+                field,
+                value: numValue,
+                originalValue,
+                gang_code,
+                type,
+                name
+            }
+        }));
+
+        // Optimistically update the UI
+        setRows(prevRows => prevRows.map(row => {
+            if (row.nik === nik) {
+                return { ...row, [field]: numValue };
+            }
+            return row;
+        }));
+    };
+
+    // Save Manual Edits
+    const handleSaveEdits = async () => {
+        const editsArray = Object.values(editedCells);
+
+        // Include new columns that act as empty placeholders
+        const pendingColumns = addedColumns.filter(newCol =>
+            !editsArray.some(e => e.name === newCol.name && e.type === newCol.type)
+        );
+
+        for (const pending of pendingColumns) {
+            editsArray.push({
+                ...pending,
+                value: 0,
+                remarks: 'INIT_COLUMN - Kolom ditambahkan tanpa nilai'
+            });
+        }
+
+        if (editsArray.length === 0) {
+            setAddedColumns([]);
+            loadData();
+            return;
+        }
+
+        setIsSavingEdits(true);
+        try {
+            const numEdits = editsArray.length;
+            let successCount = 0;
+
+            for (const edit of editsArray) {
+                const payload = {
+                    period_month: month,
+                    period_year: year,
+                    emp_code: edit.nik,
+                    gang_code: edit.gang_code,
+                    division_code: division,
+                    adjustment_type: edit.type,
+                    adjustment_name: edit.name,
+                    amount: edit.value,
+                    remarks: edit.remarks || `Edited via UI on ${new Date().toLocaleString()}`
+                };
+
+                let resOk = false;
+                let resJson = null;
+
+                if (isProdMode()) {
+                    try {
+                        resJson = await saveLockedManualEdit(token, payload);
+                        resOk = true;
+                    } catch (err) {
+                        console.error("Prod Mode specific manual edit failed:", err);
+                    }
+                } else {
+                    const res = await fetch('/payroll/manual-edit', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (res.ok) {
+                        resOk = true;
+                        resJson = await res.json();
+                    }
+                }
+
+                if (resOk && resJson?.success) {
+                    successCount++;
+                }
+            }
+
+            if (successCount > 0) {
+                alert(`Berhasil menyimpan ${successCount} penyesuaian (kolom/nilai).`);
+                setEditedCells({}); // Clear edits after successful save
+                setAddedColumns([]);
+                loadData(); // Reload to get fresh data with recalculated totals
+            } else {
+                alert('Gagal menyimpan perubahan. Silakan coba lagi.');
+            }
+        } catch (error) {
+            console.error('Error saving edits:', error);
+            alert('Terjadi kesalahan saat menyimpan perubahan: ' + error.message);
+        } finally {
+            setIsSavingEdits(false);
+        }
+    };
+
     // --- DATA FETCHING ---
     const handleJobTitleChange = async (empCode, newTitle) => {
         // Optimistic update
@@ -192,9 +370,9 @@ export default function CustomPayrollTable({
         try {
             let data;
             if (isProdMode()) {
-                data = await getLockedRawTree(token, division, month, year);
+                data = await getLockedRawTree(token, division, month, year, useHistoryDb);
             } else {
-                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}`;
+                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}`;
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) throw new Error(await response.text());
                 data = await response.json();
@@ -339,7 +517,7 @@ export default function CustomPayrollTable({
 
     useEffect(() => {
         if (month && year && division) loadData();
-    }, [month, year, division, gangCode, token, refreshTrigger]);
+    }, [month, year, division, gangCode, token, refreshTrigger, useHistoryDb]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -574,9 +752,40 @@ export default function CustomPayrollTable({
             });
         }
 
-        // PENGGAJIAN - Only GP Aktual and Koreksi
-        // Removed: upah_dasar, gaji_pokok_ideal
-        cols.push({ field: 'gaji_pokok_aktual', headers: ['PENGGAJIAN', null, null, 'GP AKTUAL'], w: 85, className: 'text-right' });
+        // PENGGAJIAN
+        cols.push({ field: 'gaji_pokok_ideal', headers: ['PENGGAJIAN', null, null, 'GP IDEAL'], w: 85, className: 'text-right' });
+        cols.push({
+            field: 'gaji_pokok_aktual',
+            headers: ['PENGGAJIAN', null, null, 'GP AKTUAL'],
+            w: 95,
+            className: 'text-right',
+            render: (row) => {
+                const val = row.gaji_pokok_aktual || 0;
+                if (val === 0) return '-';
+
+                // Add warning if aktual > ideal for employees
+                const ideal = row.gaji_pokok_ideal || 0;
+                if (row.type === 'employee' && val > ideal) {
+                    return (
+                        <div
+                            title={`⚠️ Gaji Tidak Benar: Aktual (${formatNumber(val)}) melebihi Ideal (${formatNumber(ideal)})`}
+                            style={{
+                                color: '#dc2626',
+                                fontWeight: 'bold',
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            <span style={{ fontSize: '11px' }}>⚠️</span>
+                            <span>{formatNumber(val)}</span>
+                        </div>
+                    );
+                }
+                return formatNumber(val);
+            }
+        });
         cols.push({
             field: 'koreksi_hk',
             headers: ['PENGGAJIAN', null, null, 'KOREKSI HK'],
@@ -664,20 +873,45 @@ export default function CustomPayrollTable({
 
         // PREMI (dynamic) - only show if has values in current gang
         Object.entries(dynamicHeaders.premi)
-            .filter(([label, field]) => activePremiFields.includes(field))
+            .filter(([label, field]) => activePremiFields.includes(field) || isEditMode) // Show all in edit mode to allow adding new ones
             .forEach(([label, field]) => {
-                cols.push({ field, headers: ['PREMI', null, null, label.replace('PREMI ', '')], w: 80, className: 'text-right' });
+                const displayName = label.replace('PREMI ', '');
+                cols.push({
+                    field,
+                    headers: ['PREMI', null, null, displayName],
+                    w: 90,
+                    className: 'text-right',
+                    render: (row) => {
+                        const val = row[field] || 0;
+                        if (isEditMode && row.type === 'employee') {
+                            const editKey = `${row.nik}-${field}`;
+                            const isEdited = !!editedCells[editKey];
+                            return (
+                                <input
+                                    type="number"
+                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                    value={val === 0 ? '' : val}
+                                    onChange={(e) => handleCellEdit(row.nik, field, e.target.value, val, row.gang_code, 'PREMI', displayName)}
+                                    placeholder="0"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            );
+                        }
+                        if (val === 0) return '-';
+                        return formatNumber(val);
+                    }
+                });
             });
         cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold' });
 
         // POTONGAN UPAH KOTOR - KOREKSI columns (all variations)
         // Display each KOREKSI variation as a separate column
         const koreksiFields = Object.entries(dynamicHeaders.potongan)
-            .filter(([label, field]) => field.toUpperCase().startsWith('KOREKSI') && activePotFields.includes(field))
+            .filter(([label, field]) => field.toUpperCase().startsWith('KOREKSI') && (activePotFields.includes(field) || isEditMode)) // Show in edit mode
             .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
 
         // If no KOREKSI variations found but koreksi data exists, show main column
-        if (koreksiFields.length === 0) {
+        if (koreksiFields.length === 0 && !isEditMode) {
             cols.push({
                 field: 'pot_koreksi',
                 headers: ['POTONGAN UPAH KOTOR', null, null, 'KOREKSI'],
@@ -692,8 +926,27 @@ export default function CustomPayrollTable({
                 cols.push({
                     field,
                     headers: ['POTONGAN UPAH KOTOR', null, null, displayLabel],
-                    w: 80,
-                    className: 'text-right'
+                    w: 90,
+                    className: 'text-right',
+                    render: (row) => {
+                        const val = row[field] || 0;
+                        if (isEditMode && row.type === 'employee') {
+                            const editKey = `${row.nik}-${field}`;
+                            const isEdited = !!editedCells[editKey];
+                            return (
+                                <input
+                                    type="number"
+                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                    value={val === 0 ? '' : val}
+                                    onChange={(e) => handleCellEdit(row.nik, field, e.target.value, val, row.gang_code, 'POTONGAN_KOTOR', displayLabel)}
+                                    placeholder="0"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            );
+                        }
+                        if (val === 0) return '-';
+                        return formatNumber(val);
+                    }
                 });
             }
         }
@@ -765,7 +1018,7 @@ export default function CustomPayrollTable({
                     // INCLUDE: POTONGAN X, and other dynamic items
                     return true;
                 })
-                .filter(([label, field]) => activePotFields.includes(field))
+                .filter(([label, field]) => activePotFields.includes(field) || isEditMode) // Show all in edit mode
                 .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
 
             console.log("[DEBUG] potonganBersihFields:", potonganBersihFields);
@@ -778,8 +1031,27 @@ export default function CustomPayrollTable({
                 cols.push({
                     field,
                     headers: ['POTONGAN UPAH BERSIH', null, null, displayLabel],
-                    w: 80,
-                    className: 'text-right'
+                    w: 90,
+                    className: 'text-right',
+                    render: (row) => {
+                        const val = row[field] || 0;
+                        if (isEditMode && row.type === 'employee') {
+                            const editKey = `${row.nik}-${field}`;
+                            const isEdited = !!editedCells[editKey];
+                            return (
+                                <input
+                                    type="number"
+                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                    value={val === 0 ? '' : val}
+                                    onChange={(e) => handleCellEdit(row.nik, field, e.target.value, val, row.gang_code, 'POTONGAN_BERSIH', displayLabel)}
+                                    placeholder="0"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            );
+                        }
+                        if (val === 0) return '-';
+                        return formatNumber(val);
+                    }
                 });
             }
         }
@@ -1062,6 +1334,64 @@ export default function CustomPayrollTable({
 
     return (
         <div className="payroll-table-container" style={{ fontSize: `${11 * scale}px` }} onMouseUp={handleMouseUp}>
+            {/* Edit Mode Save Banner */}
+            {isEditMode && (Object.keys(editedCells).length > 0 || addedColumns.length > 0) && (
+                <div style={{
+                    position: 'absolute',
+                    top: '10px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 1000,
+                    backgroundColor: '#fffbeb',
+                    border: '1px solid #f59e0b',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    color: '#b45309',
+                    fontWeight: 600
+                }}>
+                    <span>⚠️ Terdapat {Object.keys(editedCells).length + addedColumns.length} penyesuaian (kolom/nilai) belum disimpan</span>
+                    <button
+                        onClick={handleSaveEdits}
+                        disabled={isSavingEdits}
+                        style={{
+                            backgroundColor: '#f59e0b',
+                            color: 'white',
+                            border: 'none',
+                            padding: '4px 12px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold'
+                        }}
+                    >
+                        {isSavingEdits ? 'Menyimpan...' : 'Simpan Perubahan'}
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (confirm('Batal semua perubahan dan penambahan kolom?')) {
+                                setEditedCells({});
+                                setAddedColumns([]);
+                                loadData();
+                            }
+                        }}
+                        disabled={isSavingEdits}
+                        style={{
+                            backgroundColor: 'transparent',
+                            color: '#b45309',
+                            border: '1px solid #f59e0b',
+                            padding: '4px 12px',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Batal
+                    </button>
+                </div>
+            )}
+
             <table className="payroll-table" ref={tableRef}>
                 <thead>
                     {headerRows.map((hRow, rIdx) => (
@@ -1109,6 +1439,15 @@ export default function CustomPayrollTable({
                                                                     cell.label === 'POTONGAN UPAH BERSIH' ? isDeductionExpanded : false
                                                 ) ? '▼' : '▶'}
                                             </span>
+                                            {isEditMode && cell.label === 'POTONGAN UPAH BERSIH' && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleAddColumn(cell.label); }}
+                                                    style={{ marginLeft: 6, opacity: 0.9, background: '#f59e0b', color: 'white', border: 'none', borderRadius: '50%', width: 16, height: 16, fontSize: 12, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                    title={`Tambah kolom ${cell.label} baru`}
+                                                >
+                                                    +
+                                                </button>
+                                            )}
                                         </div>
                                     ) : cell.label === '%TOGGLE_JUMLAH%' ? (
                                         <div className="flex flex-col items-center justify-center gap-0.5 w-full h-full">
@@ -1138,7 +1477,19 @@ export default function CustomPayrollTable({
                                                 className="w-4 h-4 cursor-pointer"
                                             />
                                         </div>
-                                    ) : cell.label}
+                                    ) : (
+                                        <div className="flex items-center justify-center gap-1 h-full w-full relative group">
+                                            {cell.label}
+                                            {isEditMode && ['PREMI', 'POTONGAN UPAH KOTOR'].includes(cell.label) && (
+                                                <button onClick={(e) => { e.stopPropagation(); handleAddColumn(cell.label); }}
+                                                    style={{ marginLeft: 6, opacity: 0.9, background: '#f59e0b', color: 'white', border: 'none', borderRadius: '50%', width: 16, height: 16, fontSize: 12, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                    title={`Tambah kolom ${cell.label} baru`}
+                                                >
+                                                    +
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </th>
                             ))}
                         </tr>

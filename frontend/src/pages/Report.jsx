@@ -51,6 +51,9 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [overrideYear, setOverrideYear] = useState(null)
   const [overrideGangCode, setOverrideGangCode] = useState(null)
 
+  // Database mode state
+  const [useHistory, setUseHistory] = useState(false)
+
   // State for gang selector
   const [availableGangs, setAvailableGangs] = useState([])
   const [overrideDivision, setOverrideDivision] = useState(null)
@@ -251,7 +254,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const renderDivisionOptimized = async (token, division, month, year) => {
     try {
       setLoadingStatus(`Fetching optimized division data for ${division}...`)
-      const groupedData = await fetchReportDivisionOptimized(token, { division, month, year })
+      const groupedData = await fetchReportDivisionOptimized(token, { division, month, year, use_history: useHistory })
 
       let flatRows = []
       const sortedGangs = Object.keys(groupedData).sort()
@@ -591,7 +594,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         if (String(finalGangCode).toUpperCase() === 'ALL') {
           await renderDivisionOptimized(activeToken, finalDivision, activeMonth, activeYear)
         } else {
-          const data = await fetchReportRowsSimple(activeToken, { month: activeMonth, year: activeYear, gang_code: finalGangCode, division: finalDivision, skip: 0, limit: INFINITE_BATCH_SIZE })
+          const data = await fetchReportRowsSimple(activeToken, { month: activeMonth, year: activeYear, gang_code: finalGangCode, division: finalDivision, skip: 0, limit: INFINITE_BATCH_SIZE, use_history: useHistory })
 
           const computed = applyComputeToRows(data, computeRulesRef.current)
           const filtered = computed.filter(row => (row.jumlah_hk || 0) > 0)
@@ -675,7 +678,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
     // Trigger run when dependencies change
     run()
-  }, [authToken, activeMonth, activeYear, finalGangCode, columnDefs])
+  }, [authToken, activeMonth, activeYear, finalGangCode, columnDefs, useHistory])
 
   useEffect(() => {
     let active = true
@@ -1065,42 +1068,60 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       title="Daftar Upah Karyawan"
       subtitle={`${(overrideMonth || finalMonth) ? new Date(2000, (overrideMonth || finalMonth) - 1).toLocaleString('id-ID', { month: 'long' }) : '-'} ${(overrideYear || finalYear) || '-'} • Gang ${finalGangCode || '-'}`}
       actions={
-        <ReportToolbar
-          month={activeMonth}
-          year={activeYear}
-          division={finalDivision}
-          divisions={allDivisions || []}
-          gangCode={finalGangCode}
-          availableGangs={availableGangs}
-          onMonthYearChange={(m, y) => {
-            setRows([])
-            setPinnedBottom([])
-            setOverrideMonth(m)
-            setOverrideYear(y)
-            dataInitRef.current = false
-          }}
-          onDivisionChange={(newDivision) => {
-            if (newDivision && newDivision !== finalDivision) {
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-card)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0, fontWeight: 500, fontSize: '0.875rem' }} title="Ambil data dari database riwayat terpisah (history seed)">
+              <input
+                type="checkbox"
+                checked={useHistory}
+                onChange={(e) => {
+                  setUseHistory(e.target.checked);
+                  setRows([]);
+                  setPinnedBottom([]);
+                  dataInitRef.current = false;
+                }}
+                style={{ width: '16px', height: '16px', accentColor: 'var(--primary-600)' }}
+              />
+              Mode History
+            </label>
+          </div>
+          <ReportToolbar
+            month={activeMonth}
+            year={activeYear}
+            division={finalDivision}
+            divisions={allDivisions || []}
+            gangCode={finalGangCode}
+            availableGangs={availableGangs}
+            onMonthYearChange={(m, y) => {
               setRows([])
               setPinnedBottom([])
-              setOverrideDivision(newDivision)
-              setOverrideGangCode(null) // Reset gang when division changes
+              setOverrideMonth(m)
+              setOverrideYear(y)
               dataInitRef.current = false
-            }
-          }}
-          onGangChange={(newGangCode) => {
-            if (newGangCode && newGangCode !== finalGangCode) {
-              setRows([])
-              setPinnedBottom([])
-              setOverrideGangCode(newGangCode)
-              dataInitRef.current = false
-            }
-          }}
-          onExport={exportCsv}
-          onAutoSize={autoSizeAll}
-          onBack={onBack}
-          disableControls={loading}
-        />
+            }}
+            onDivisionChange={(newDivision) => {
+              if (newDivision && newDivision !== finalDivision) {
+                setRows([])
+                setPinnedBottom([])
+                setOverrideDivision(newDivision)
+                setOverrideGangCode(null) // Reset gang when division changes
+                dataInitRef.current = false
+              }
+            }}
+            onGangChange={(newGangCode) => {
+              if (newGangCode && newGangCode !== finalGangCode) {
+                setRows([])
+                setPinnedBottom([])
+                setOverrideGangCode(newGangCode)
+                dataInitRef.current = false
+              }
+            }}
+            onExport={exportCsv}
+            onAutoSize={autoSizeAll}
+            onBack={onBack}
+            disableControls={loading}
+          />
+        </div>
       }
     >
       {/* Gang Filter Component */}

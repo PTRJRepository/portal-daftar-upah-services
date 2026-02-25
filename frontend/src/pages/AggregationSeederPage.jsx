@@ -303,8 +303,8 @@ export default function AggregationSeederPage({ onBack }) {
             const poller = setInterval(async () => {
                 try {
                     const progress = await getSeederProgress(token);
-                    if (progress?.data?.is_running) {
-                        const p = progress.data;
+                    if (progress?.is_running) {
+                        const p = progress;
                         const statusMsg = `⏳ [${p.current_division}] Gangs: ${p.gangs_done}/${p.gangs_total} | Emp: ${p.employees_processed} | ${p.current_step}`;
                         if (statusMsg !== lastStatus) {
                             addLog(statusMsg, 'debug');
@@ -640,7 +640,7 @@ export default function AggregationSeederPage({ onBack }) {
                     )}
 
                     {/* Show completion status */}
-                    {seederProgress && !seederProgress.is_running && seederProgress.current_step !== 'idle' && !isHistoryRunning && (
+                    {seederProgress && !seederProgress.is_running && seederProgress.current_step && seederProgress.current_step !== 'idle' && !isHistoryRunning && (
                         <div style={{
                             padding: '8px 12px', borderRadius: '6px', marginTop: '8px', fontSize: '12px',
                             backgroundColor: seederProgress.current_step.includes('✅') ? '#ecfdf5' : '#fef2f2',

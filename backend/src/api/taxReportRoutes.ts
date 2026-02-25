@@ -105,6 +105,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     .get("/annual", async ({ query, set }) => {
         try {
             const year = parseInt(query.year as string);
+            const monthStr = query.month as string | undefined;
+            const month = monthStr ? parseInt(monthStr) : undefined;
             const division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
 
@@ -113,7 +115,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year parameter" };
             }
 
-            const result = await taxReportService.getAnnualTaxReport(year, division, gang);
+            const result = await taxReportService.getAnnualTaxReport(year, month, division, gang);
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching annual tax report:", error);
@@ -129,6 +131,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     .get("/astek-bpjs", async ({ query, set }) => {
         try {
             const year = parseInt(query.year as string);
+            const monthStr = query.month as string | undefined;
+            const month = monthStr ? parseInt(monthStr) : undefined;
             const division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
 
@@ -137,7 +141,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year parameter" };
             }
 
-            const result = await taxReportService.getAnnualAstekBpjsReport(year, division, gang);
+            const result = await taxReportService.getAnnualAstekBpjsReport(year, month, division, gang);
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching ASTEK/BPJS report:", error);

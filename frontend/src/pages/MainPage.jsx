@@ -61,6 +61,9 @@ export default function MainPage({ lockedDiv = null }) {
   const [canAccessReports, setCanAccessReports] = useState(DEV_MODE) // Default to DEV_MODE, will be checked via API
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
+  // Edit Mode State (New)
+  const [isEditMode, setIsEditMode] = useState(false)
+
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
 
@@ -1045,6 +1048,33 @@ export default function MainPage({ lockedDiv = null }) {
             </button>
           )}
 
+          {/* Edit Mode Toggle Button */}
+          {isReportGenerated && (
+            <button
+              onClick={() => setIsEditMode(!isEditMode)}
+              style={{
+                background: isEditMode ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'white',
+                color: isEditMode ? '#ffffff' : '#334155',
+                border: '1px solid #cbd5e1',
+                padding: '0.4rem 0.8rem',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                height: '36px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                transition: 'all 0.2s'
+              }}
+              title={isEditMode ? "Matikan Edit Mode" : "Aktifkan Edit Mode"}
+            >
+              <span>{isEditMode ? '🔓' : '🔒'}</span>
+              <span>{isEditMode ? 'Edit Aktif' : 'Edit Mode'}</span>
+            </button>
+          )}
+
           {/* Print Slip Gaji Button */}
           {selectedEmployees.length > 0 && (
             <button
@@ -1129,6 +1159,7 @@ export default function MainPage({ lockedDiv = null }) {
               selectedEmployees={selectedEmployees}
               onToggleEmployeeSelection={handleToggleEmployeeSelection}
               onSelectAllEmployees={handleSelectAllEmployees}
+              isEditMode={isEditMode}
             />
           </div>
         ) : (

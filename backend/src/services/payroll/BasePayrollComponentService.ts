@@ -27,8 +27,7 @@ import { PayrollComponent, PayrollComponentMetadata } from '../../types/payroll/
  * Abstract base class for all payroll component services
  */
 export abstract class BasePayrollComponentService<TInput extends PayrollCalculationInput = PayrollCalculationInput, TOutput = any>
-    implements IPayrollComponentService<TInput, TOutput>
-{
+    implements IPayrollComponentService<TInput, TOutput> {
     // Abstract properties that subclasses MUST define
     public abstract readonly componentName: string;
 
@@ -49,15 +48,12 @@ export abstract class BasePayrollComponentService<TInput extends PayrollCalculat
      */
     protected abstract calculateSingle(input: TInput): Promise<PayrollCalculationResult<TOutput>>;
 
-    /**
-     * Calculate for multiple employees in batch
-     */
-    protected abstract calculateBatch(inputs: TInput[]): Promise<BatchPayrollCalculationResult<TOutput>>;
+    protected abstract calculateBatchInternal(inputs: TInput[]): Promise<BatchPayrollCalculationResult<TOutput>>;
 
     /**
      * Get calculation basis description for this component
      */
-    protected abstract getCalculationBasis(input: TInput): string;
+    protected abstract getBasisDescription(input: TInput): string;
 
     /**
      * Get cache key for this input
@@ -126,7 +122,7 @@ export abstract class BasePayrollComponentService<TInput extends PayrollCalculat
         // Process each group
         for (const [periodKey, periodInputs] of groupedInputs.entries()) {
             try {
-                const batchResult = await this.calculateBatch(periodInputs);
+                const batchResult = await this.calculateBatchInternal(periodInputs);
 
                 // Add results to map
                 for (const [empCode, result] of batchResult.results.entries()) {
@@ -159,7 +155,7 @@ export abstract class BasePayrollComponentService<TInput extends PayrollCalculat
      * Get calculation basis description
      */
     public getCalculationBasis(input: TInput): string {
-        return this.getCalculationBasis(input);
+        return this.getBasisDescription(input);
     }
 
     /**

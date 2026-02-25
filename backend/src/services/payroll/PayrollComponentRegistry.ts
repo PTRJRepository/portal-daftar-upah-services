@@ -110,7 +110,7 @@ class PayrollComponentRegistry {
                     result: {
                         component_name: name,
                         input,
-                        output: { value: null, meta: {} },
+                        output: { value: null, meta: {} as any },
                         errors: [error instanceof Error ? error.message : String(error)],
                     },
                 };
@@ -151,7 +151,7 @@ class PayrollComponentRegistry {
 
                 // Add results for each employee
                 for (const [empCode, result] of batchResult.results.entries()) {
-                    allResults[emp_code][componentName] = result;
+                    allResults[empCode][componentName] = result;
                 }
             } catch (error) {
                 console.error(`[PayrollComponentRegistry] Error in batch ${componentName}:`, error);
@@ -161,7 +161,7 @@ class PayrollComponentRegistry {
                     allResults[input.emp_code][componentName] = {
                         component_name: componentName,
                         input,
-                        output: { value: null, meta: {} },
+                        output: { value: null, meta: {} as any },
                         errors: [error instanceof Error ? error.message : String(error)],
                     };
                 }

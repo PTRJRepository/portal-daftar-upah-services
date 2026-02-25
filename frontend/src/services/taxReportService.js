@@ -20,8 +20,9 @@ export async function fetchMonthlyTaxReport(token, year, month, division, gang) 
 /**
  * Fetch annual tax report (penghasilan setahun + perhitungan pajak)
  */
-export async function fetchAnnualTaxReport(token, year, division, gang) {
+export async function fetchAnnualTaxReport(token, year, month, division, gang) {
     const params = { year };
+    if (month) params.month = month;
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
 
@@ -34,8 +35,9 @@ export async function fetchAnnualTaxReport(token, year, division, gang) {
 /**
  * Fetch annual ASTEK & BPJS report
  */
-export async function fetchAnnualAstekBpjsReport(token, year, division, gang) {
+export async function fetchAnnualAstekBpjsReport(token, year, month, division, gang) {
     const params = { year };
+    if (month) params.month = month;
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
 

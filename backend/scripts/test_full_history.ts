@@ -1,4 +1,5 @@
 import { Database } from '../src/db/client';
+import { PayrollComponent } from '../src/types/payroll/PayrollComponent';
 
 async function testHistory() {
     process.env.DB_PROFILE = "SERVER_PROFILE_2";
@@ -6,7 +7,7 @@ async function testHistory() {
     // Call the employee API route handler logically, or just mock what it does.
     try {
         const response = await fetch("http://localhost:8002/payroll/employee/A0233/history?months=12");
-        const json = await response.json();
+        const json: any = await response.json();
 
         console.log(`Success: ${json.success}, Records: ${json.count}`);
 

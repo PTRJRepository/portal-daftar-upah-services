@@ -1,0 +1,174 @@
+[
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_GROSS_WITHOUT_OT_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_GROSS_WITHOUT_OT_ARC_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "PR_PAYSETUP",
+    "COLUMN_NAME": "taxadcode"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_GROSS_WITHOUT_OT_ALL_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_GROSS_WITHOUT_OT_ALL_ARC_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_GROSS_ONLY_OT_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "PR_PROCESS_CHKROLLYEAREND_DETAILS_VIEW",
+    "COLUMN_NAME": "tskTAX"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_GROSS_ONLY_OT_ARC_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_ARC_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "EmployerTaxNo"
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "TaxBranchCode"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_GROSS_WITHOUT_OT_REST_ALL_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "PR_AD",
+    "COLUMN_NAME": "TaxDeductInd"
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "TaxAmt"
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "TaxCode"
+  },
+  {
+    "TABLE_NAME": "HR_STATUTORY",
+    "COLUMN_NAME": "TaxBranch"
+  },
+  {
+    "TABLE_NAME": "HR_STATUTORY",
+    "COLUMN_NAME": "TAXInd"
+  },
+  {
+    "TABLE_NAME": "HR_STATUTORY",
+    "COLUMN_NAME": "TaxNo"
+  },
+  {
+    "TABLE_NAME": "HR_STATUTORY",
+    "COLUMN_NAME": "TaxScheme"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "HR_BENEFIT_IN_KIND",
+    "COLUMN_NAME": "TaxBenefitCode"
+  },
+  {
+    "TABLE_NAME": "HR_EMPBIK",
+    "COLUMN_NAME": "TaxBenefitCode"
+  },
+  {
+    "TABLE_NAME": "HR_PAYROLL",
+    "COLUMN_NAME": "TaxADCode"
+  },
+  {
+    "TABLE_NAME": "PR_EMP_WAGES_GROSS_WITHOUT_OT_REST_VIEW",
+    "COLUMN_NAME": "tskTax"
+  },
+  {
+    "TABLE_NAME": "PR_PROCESS_CHKROLLBACKEND_BC_DETAILS_VIEW",
+    "COLUMN_NAME": "tskTAX"
+  },
+  {
+    "TABLE_NAME": "HR_EATAX",
+    "COLUMN_NAME": "EATaxCode"
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "EATaxCode"
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "EATaxTaskLnId"
+  },
+  {
+    "TABLE_NAME": "PR_PROCESS_CHKROLLBECKEND_DETAILS_VIEW",
+    "COLUMN_NAME": "tskTAX"
+  },
+  {
+    "TABLE_NAME": "PR_CHECKROLLMASTER_STATUTORY_BY_EMPTYPE",
+    "COLUMN_NAME": "EmpeTaxTaskCode"
+  },
+  {
+    "TABLE_NAME": "PR_CHECKROLLMASTER_STATUTORY_BY_EMPTYPE",
+    "COLUMN_NAME": "EmprTaxTaskCode"
+  },
+  {
+    "TABLE_NAME": "PR_HREMPLOYEE_RESULT_VIEW",
+    "COLUMN_NAME": "TaxInd"
+  },
+  {
+    "TABLE_NAME": "PR_HREMPLOYEE_RESULT_VIEW",
+    "COLUMN_NAME": "TaxScheme"
+  },
+  {
+    "TABLE_NAME": "PR_TASKCODE",
+    "COLUMN_NAME": "TAX"
+  },
+  {
+    "TABLE_NAME": "HR_CPTRX_TEMP",
+    "COLUMN_NAME": "TaxADCode"
+  },
+  {
+    "TABLE_NAME": "PR_HREMPLOYEE_ADBACKEND_RESULT_VIEW",
+    "COLUMN_NAME": "TaxInd"
+  },
+  {
+    "TABLE_NAME": "PR_HREMPLOYEE_ADBACKEND_RESULT_VIEW",
+    "COLUMN_NAME": "TaxScheme"
+  },
+  {
+    "TABLE_NAME": "PR_PROCESS_CHKROLLBECKEND_AD_BY_EMP_DETAILS_VIEW",
+    "COLUMN_NAME": "tskTAX"
+  },
+  {
+    "TABLE_NAME": "PR_CHECKROLLMASTER_STATUTORY",
+    "COLUMN_NAME": "TaxTaskCode"
+  },
+  {
+    "TABLE_NAME": "PR_ALLTRX_CHECKLIST_VIEW",
+    "COLUMN_NAME": "TAX"
+  },
+  {
+    "TABLE_NAME": "PR_TASKCODE_RESULT_VIEW",
+    "COLUMN_NAME": "tskTAX"
+  },
+  {
+    "TABLE_NAME": "HR_CPTRX",
+    "COLUMN_NAME": "TaxADCode"
+  },
+  {
+    "TABLE_NAME": "PR_PROCESS_CHKROLLBECKEND_AD_DETAILS_VIEW",
+    "COLUMN_NAME": "tskTAX"
+  }
+]

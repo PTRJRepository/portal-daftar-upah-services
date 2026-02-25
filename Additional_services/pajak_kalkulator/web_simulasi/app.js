@@ -19,28 +19,38 @@ async function loginAdmin() {
 async function loadData() {
     try {
         // Fetch static data
-        const [identitasRes, thrBonusRes, ptkpRes] = await Promise.all([
+        const [identitasRes, thrInfraRes, thr1bRes, thr2aRes, ptkpRes] = await Promise.all([
             fetch('../data_statis/infra/identitas_pajak_infra.json'),
             fetch('../data_statis/infra/thr_bonus_infra.json'),
+            fetch('../data_statis/1b/thr_bonus_1b.json'),
+            fetch('../data_statis/2a/thr_bonus_2a.json'),
             fetch('../../hitung_pajak/rule_PTKP_Tahunan.json')
         ]);
 
         const identitasData = await identitasRes.json();
-        const thrBonus = await thrBonusRes.json();
+        const thrInfra = await thrInfraRes.json();
+        const thr1b = await thr1bRes.json();
+        const thr2a = await thr2aRes.json();
         const ptkpRules = await ptkpRes.json();
+
+        const thrBonus = [...thrInfra, ...thr1b, ...thr2a];
 
         const ptkpMap = {};
         ptkpRules.conditions.forEach(c => { ptkpMap[c.condition] = c.value; });
 
         const thrMap = {};
-        const bonusMap = {};
+        const exgratiaMap = {};
         thrBonus.forEach(item => {
-            thrMap[item.nik] = item.thr || 0;
-            bonusMap[item.nik] = item.bonus || 0;
+            const keyStr = String(item.nik || item.nama || '').trim().toUpperCase();
+            if (keyStr) {
+                thrMap[keyStr] = item.thr || 0;
+                exgratiaMap[keyStr] = item.exgratia || item.bonus || 0;
+            }
         });
 
         // Setup UI
         const tbody = document.getElementById('table-body');
+
 
         let totalStatsPenghasilan = 0;
         let totalStatsPKP = 0;
@@ -172,11 +182,35 @@ async function loadData() {
                     monthCols += `<td class="text-right">${parseCurrency(inc)}</td>`;
                 });
 
-                const thr = thrMap[emp.nik] || 0;
-                const bonus = bonusMap[emp.nik] || 0;
+                const rawEmpNik = String(emp.nik || '').trim().toUpperCase();
+                let rawEmpName = String(emp.nama || '').toUpperCase();
+
+                // Remove alias in brackets e.g. "HERI GUNAWAN (SALMAH)" -> "HERI GUNAWAN"
+                rawEmpName = rawEmpName.replace(/\s*\(.*?\)\s*/g, '').trim();
+                const firstName = rawEmpName.split(' ')[0].trim();
+
+                let thr = 0;
+                let exgratia = 0;
+
+                if (thrMap[rawEmpNik] !== undefined) {
+                    thr = thrMap[rawEmpNik];
+                    exgratia = exgratiaMap[rawEmpNik] || 0;
+                } else if (thrMap[rawEmpName] !== undefined) {
+                    thr = thrMap[rawEmpName];
+                    exgratia = exgratiaMap[rawEmpName] || 0;
+                } else {
+                    for (const jsonName of Object.keys(thrMap)) {
+                        if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
+                            thr = thrMap[jsonName];
+                            exgratia = exgratiaMap[jsonName] || 0;
+                            break;
+                        }
+                    }
+                }
+
                 const medical = 0;
 
-                const totalSetahun = totalBulan + thr + bonus + medical;
+                const totalSetahun = totalBulan + thr + exgratia + medical;
                 const statusKeluarga = emp.status_keluarga || 'TK/0';
                 const valuePTKP = ptkpMap[statusKeluarga] || 54000000;
 
@@ -195,7 +229,7 @@ async function loadData() {
                     ${monthCols}
                     <td class="text-right" style="font-weight: 600;">${parseCurrency(totalBulan)}</td>
                     <td class="text-right">${parseCurrency(thr)}</td>
-                    <td class="text-right">${parseCurrency(bonus)}</td>
+                    <td class="text-right">${parseCurrency(exgratia)}</td>
                     <td class="text-right">${parseCurrency(medical)}</td>
                     <td class="text-right highlight-col">${parseCurrency(totalSetahun)}</td>
                     <td class="text-right highlight-col">${parseCurrency(valuePTKP)}</td>

@@ -30,9 +30,9 @@ async function createTable() {
                 CREATE INDEX IX_payroll_manual_adjustments_emp ON dbo.payroll_manual_adjustments (emp_code);
                 
                 PRINT 'Table payroll_manual_adjustments created successfully.'
-            } ELSE {
+            END ELSE BEGIN
                 PRINT 'Table payroll_manual_adjustments already exists.'
-            }
+            END
         `);
 
         console.log("Script executed successfully.");

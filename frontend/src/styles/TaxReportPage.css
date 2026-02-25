@@ -10,7 +10,7 @@
 
 /* Toolbar */
 .tax-report-toolbar {
-    height: 56px;
+    min-height: 56px;
     padding: 0 1rem;
     border-bottom: 1px solid #e2e8f0;
     background-color: #ffffff;
@@ -19,6 +19,7 @@
     align-items: center;
     gap: 1rem;
     flex-shrink: 0;
+    flex-wrap: wrap;
 }
 
 .tax-report-toolbar-left {
@@ -69,6 +70,47 @@
     font-weight: 600;
     font-size: 0.85rem;
     white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Filter Controls */
+.tax-report-filters {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.tax-report-select {
+    height: 32px;
+    padding: 0 2rem 0 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #334155;
+    background-color: white;
+    cursor: pointer;
+    font-weight: 500;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.4rem center;
+    background-repeat: no-repeat;
+    background-size: 1em 1em;
+    min-width: 140px;
+    max-width: 200px;
+}
+
+.tax-report-select:focus {
+    outline: none;
+    border-color: #64748b;
+    box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.1);
+}
+
+.tax-report-select:disabled {
+    background-color: #f1f5f9;
+    color: #94a3b8;
+    cursor: not-allowed;
+    opacity: 0.7;
 }
 
 /* Tabs */
@@ -233,9 +275,34 @@
     overflow: hidden;
     text-overflow: ellipsis;
     position: sticky;
-    left: 0;
+    left: 40px;
     z-index: 5;
-    background: inherit;
+    background: #ffffff;
+}
+
+/* Even rows: col-name should match row background */
+.tax-report-table tbody tr:nth-child(even) .col-name {
+    background: #f8fafc;
+}
+
+/* Hover state: col-name should match row hover background */
+.tax-report-table tbody tr:hover .col-name {
+    background: #f1f5f9;
+}
+
+/* Expanded detail row: ensure background is solid */
+.tax-report-table tbody tr.expanded-row-detail td {
+    background: #f8fafc;
+}
+
+/* Active row (clicked): highlight col-name too */
+.tax-report-table tbody tr.active-row .col-name {
+    background: #e0f2fe;
+}
+
+/* Active row even: blend the backgrounds */
+.tax-report-table tbody tr.active-row:nth-child(even) .col-name {
+    background: #dbeafe;
 }
 
 .tax-report-table thead th.col-name {
@@ -249,7 +316,27 @@
     position: sticky;
     left: 0;
     z-index: 5;
-    background: inherit;
+    background: #ffffff;
+}
+
+/* Even rows: col-no should match row background */
+.tax-report-table tbody tr:nth-child(even) .col-no {
+    background: #f8fafc;
+}
+
+/* Hover state: col-no should match row hover background */
+.tax-report-table tbody tr:hover .col-no {
+    background: #f1f5f9;
+}
+
+/* Active row: highlight col-no too */
+.tax-report-table tbody tr.active-row .col-no {
+    background: #e0f2fe;
+}
+
+/* Active row even: blend the backgrounds */
+.tax-report-table tbody tr.active-row:nth-child(even) .col-no {
+    background: #dbeafe;
 }
 
 .tax-report-table thead th.col-no {

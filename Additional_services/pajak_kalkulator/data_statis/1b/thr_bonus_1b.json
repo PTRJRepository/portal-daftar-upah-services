@@ -1,0 +1,667 @@
+[
+    {
+        "nama": "ARYADI",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3991100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SUPRI",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3994600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ROTIA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3998100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SURYANI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3998100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SAHINA YUNI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3994600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "NURLELA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 4033100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SUSINARTI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3991100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "JAHIMIN",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4069600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "GUSTAMI",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4049100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "AGUS TRIANTIKA",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4067100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "FIKA HOIRI",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4026100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "NOPI HARIKA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3991100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SARI IRIANTI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3971100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ROSNANI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3998100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "YESI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3962100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "WAKINI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3962100,
+        "exgratia": 900000
+    },
+    {
+        "nama": "WITA SARI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3962100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SARWANDI",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4024100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ANI MARIA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3991100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "YULIARDI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4093600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "YADI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4067100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "YEKILIA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3962100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "LESMANA GIRI",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3946600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "RAFIKA UDIN",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4011600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "MARDIANSYAH",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4079600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SUTRISNO",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4093600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SLAMET UNTUNG",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4034100,
+        "exgratia": 600000
+    },
+    {
+        "nama": "WAFIQ AMANDA",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 2300725,
+        "exgratia": 66667
+    },
+    {
+        "nama": "HERI GUNAWAN",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4093600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "BOBI SAPUTRA",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4046100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "JULIANSYAH",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4028100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ARDIANTO",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4132100,
+        "exgratia": 900000
+    },
+    {
+        "nama": "JUNI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4128600,
+        "exgratia": 600000
+    },
+    {
+        "nama": "DARMAWAN",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4076600,
+        "exgratia": 900000
+    },
+    {
+        "nama": "DEDI NOPRIADI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4061100,
+        "exgratia": 900000
+    },
+    {
+        "nama": "IRWANTO",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4066600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ISRIN YUNUPITA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3977100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ARYANI.K",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3971100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "HARYANTI ( K )",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3977100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "YUNIAR",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3998100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "NOVELA SYAKUR",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3965100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "KUDIN",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4005600,
+        "exgratia": 600000
+    },
+    {
+        "nama": "YULIATI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3974100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ROHAYA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3968100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ROSMIATI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3974100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ROSMINI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3968100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "KURI",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4101600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "BASTIAR",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4026600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ADIYANSA",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4034100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "RUDI SETIAWAN",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3949100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "MARYANTO",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4034600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SRI REJEKI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3998100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SARTIKA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3991100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "MIRNA",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3977100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ROZATI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3962100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SAHWEDI",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3951600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "RUKMAN",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4090100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "AGUSTIONO",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4093600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "TONGAM PARNINGTON SAMOSIR",
+        "jenis_kelamin": "L",
+        "kode": "K/3",
+        "thr": null,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ANUAR",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3994600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "YUNIAR ANDRIANTI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3991100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "LISA JAYANTI",
+        "jenis_kelamin": "P",
+        "kode": "TK/0",
+        "thr": 3980600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "RUSDIN",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4093600,
+        "exgratia": 600000
+    },
+    {
+        "nama": "FREDI S",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3946600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ARIPDAN",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4090100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "DEDI PURWANTO",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4053100,
+        "exgratia": 600000
+    },
+    {
+        "nama": "HARSONO",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4093600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "MIKO AGNESTA",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 1972050,
+        "exgratia": 150000
+    },
+    {
+        "nama": "HERI GUNAWAN",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4067100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "LEPI ERWANSYAH",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4067100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "NOVA RIZAL",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4067100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "MASKUR",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4040100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SUTRISNO",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4024600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SUHARDI",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4049100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "RUSDI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4093600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "MASJONI",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4101600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ROSMAN",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4090100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SUMARTO EVENDI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4067100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "HERMAN",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 3995100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ANDRES CAHYADI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4064100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SAMSIR",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4001100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "FEBRIANSYAH",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4034100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "WIDI JULIANSYAH",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3946600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ANGGA NURDIANSYAH",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4028600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ISMAIL",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3946600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "JOPI APRIAN HIDAYAT",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 3946600,
+        "exgratia": 200000
+    },
+    {
+        "nama": "BINTANG ADITYA REVALDO",
+        "jenis_kelamin": "L",
+        "kode": "TK/0",
+        "thr": 323050,
+        "exgratia": null
+    },
+    {
+        "nama": "SOLEHAN",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4026100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "WIRANTO",
+        "jenis_kelamin": "L",
+        "kode": "K/0",
+        "thr": 4000100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "RUSDIANA",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 4040100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "EDI ZULKARNADI",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": 3998100,
+        "exgratia": 600000
+    },
+    {
+        "nama": "ERLANDA",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4048100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "SUNARDI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4053100,
+        "exgratia": 200000
+    },
+    {
+        "nama": "ANDRI GUNAWAN",
+        "jenis_kelamin": "L",
+        "kode": "K/1",
+        "thr": null,
+        "exgratia": null
+    },
+    {
+        "nama": "JUPRI",
+        "jenis_kelamin": "L",
+        "kode": "K/2",
+        "thr": 4050600,
+        "exgratia": 200000
+    }
+]

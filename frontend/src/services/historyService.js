@@ -85,7 +85,7 @@ export async function seedPayrollHistory(token, periodMonth, periodYear, divisio
  */
 export async function getSeederProgress(token) {
     const baseUrl = getBackendUrl();
-    const url = `${baseUrl}/payroll/aggregation/seed/progress`;
+    const url = `${baseUrl}/payroll/history/seed/progress`;
 
     const response = await fetch(url, {
         headers: {

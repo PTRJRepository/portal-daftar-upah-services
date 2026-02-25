@@ -231,7 +231,8 @@ export class DataExtractorService {
         divisionCode?: string,
         specificEmpCode: string | null = null,
         serverProfile?: string,
-        includeVirtualGangs: boolean = false
+        includeVirtualGangs: boolean = false,
+        useHistoryDb?: boolean | null
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -257,11 +258,20 @@ export class DataExtractorService {
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
 
-        console.log(`[DataExtractor] Current period: ${currentMonth}/${currentYear}, Selected: ${month}/${year}, IsHistorical: ${isHistorical}`);
+        console.log(`[DataExtractor] Current period: ${currentMonth}/${currentYear}, Selected: ${month}/${year}, IsHistorical: ${isHistorical}, useHistoryDb: ${useHistoryDb}`);
 
         // --- DEEP HISTORY INTERCEPTOR ---
         // If it's a historical period and history mode is on, try to fetch from the snapshot tables first.
-        if (isHistorical && historyDatabaseService.isHistoryMode()) {
+        let shouldFetchHistory = isHistorical && historyDatabaseService.isHistoryMode();
+
+        // Explicit override from frontend
+        if (useHistoryDb === true) {
+            shouldFetchHistory = true;
+        } else if (useHistoryDb === false) {
+            shouldFetchHistory = false;
+        }
+
+        if (shouldFetchHistory) {
             try {
                 const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
                     month, year, gangCode, divisionCode, specificEmpCode
@@ -340,7 +350,9 @@ export class DataExtractorService {
 
         const startParallel = performance.now();
         // Fetch all required data in parallel
-        const [attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes, bunchesBatch] = await Promise.all([
+        const [
+            attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes, bunchesBatch, manualAdjustmentsRaw
+        ] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
             this.getPremi(empCodes, startDate, endDate, serverProfile),
@@ -361,8 +373,8 @@ export class DataExtractorService {
             manualAdjustmentService.getAdjustments(month, year, gangCode || undefined)
         ]);
 
-        // Destructure features
-        const manualAdjustments = arguments[arguments.length - 1] as any[];
+        // Cast manual adjustments to expected type
+        const manualAdjustments = (manualAdjustmentsRaw || []) as any[];
 
         // Destructure premi result - uses DocDesc as title
         const { amounts: premi, titleMap: premiTitleMap } = premiResult;
@@ -1811,7 +1823,8 @@ export class DataExtractorService {
         gangCode: string = "ALL",
         divisionCode?: string,
         specificEmpCode: string | null = null,
-        serverProfile?: string
+        serverProfile?: string,
+        useHistoryDb?: boolean | null
     ): Promise<{
         data_rows: PayrollRow[];
         components: {
@@ -1826,7 +1839,8 @@ export class DataExtractorService {
         const startTime = Date.now();
 
         // First, get the base data using the existing method
-        const baseResult = await this.extractPayrollData(month, year, gangCode, divisionCode, specificEmpCode, serverProfile);
+        // Also passing includeVirtualGangs as false by default to match existing signature, and then useHistoryDb.
+        const baseResult = await this.extractPayrollData(month, year, gangCode, divisionCode, specificEmpCode, serverProfile, false, useHistoryDb);
 
         // Then calculate components using the new component services
         const empCodes = baseResult.data_rows.map(row => row.nik);

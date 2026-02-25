@@ -35,7 +35,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         }
     })
     // --- Divisions ---as
-    .get("/divisions", async ({ currentUser }) => {
+    .get("/divisions", async ({ currentUser }): Promise<any> => {
         if (currentUser) {
             return authService.getAccessibleDivisions(currentUser);
         }
@@ -62,7 +62,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         }
     })
     // --- Gangs ---
-    .get("/gangs", async ({ query, currentUser, set }) => {
+    .get("/gangs", async ({ query, currentUser, set }): Promise<any> => {
         try {
             const division = query.division === "ALL" ? undefined : query.division;
             const search = query.search || undefined;
@@ -136,7 +136,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         })
     })
     // --- Columns (Full Implementation) ---
-    .get("/columns", async ({ query, set }) => {
+    .get("/columns", async ({ query, set }): Promise<any> => {
         try {
             const month = query.month ? parseInt(query.month) : undefined;
             const year = query.year ? parseInt(query.year) : undefined;
@@ -209,20 +209,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         })
     })
     // --- Report: Division Raw Tree ---
-    .get("/report/division-raw-tree", async ({ query, set }) => {
+    .get("/report/division-raw-tree", async ({ query, set }): Promise<any> => {
         try {
             const { dataExtractorService } = await import("../services/dataExtractorService");
 
             const divisionCode = query.division_code;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
+            const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
 
             if (!divisionCode || !month || !year) {
                 set.status = 400;
                 return { error: "division_code, month, and year are required" };
             }
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -345,11 +346,12 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         query: t.Object({
             division_code: t.String(),
             month: t.String(),
-            year: t.String()
+            year: t.String(),
+            use_history: t.Optional(t.String())
         })
     })
     // --- Locked Report: Raw Tree (Alias for Proxy/Frontend Compat) ---
-    .get("/locked/report/raw-tree", async ({ query, set, currentUser }) => {
+    .get("/locked/report/raw-tree", async ({ query, set, currentUser }): Promise<any> => {
         try {
             const { dataExtractorService } = await import("../services/dataExtractorService");
 
@@ -357,6 +359,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const divisionCode = query.div;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
+            const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
 
             if (!divisionCode || !month || !year) {
                 set.status = 400;
@@ -427,8 +430,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const includeVirtual = query.include_virtual === 'true';
 
             // Use Config.DB_PROFILE for payroll data (main payroll database)
-            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with ${Config.DB_PROFILE}, includeVirtual=${includeVirtual}`);
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual);
+            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with ${Config.DB_PROFILE}, includeVirtual=${includeVirtual}, useHistoryDb=${useHistoryDb}`);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -548,11 +551,46 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             div: t.String(),
             month: t.String(),
             year: t.String(),
-            include_virtual: t.Optional(t.String())
+            include_virtual: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
+        })
+    })
+    // --- Locked Manual Edit ---
+    .post("/locked/manual-edit", async ({ body, set, currentUser }) => {
+        try {
+            // PERMISSION CHECK
+            if (!currentUser) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const data = body as any;
+
+            const username = currentUser?.username || 'system';
+            const resultId = await manualAdjustmentService.saveAdjustment(data, username);
+
+            return { success: true, id: resultId, message: "Manual adjustment saved successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] locked/manual-edit error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            emp_code: t.String(),
+            gang_code: t.String(),
+            division_code: t.Optional(t.String()),
+            adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH
+            adjustment_name: t.String(),
+            amount: t.Number(),
+            remarks: t.Optional(t.String())
         })
     })
     // --- Locked Gangs List ---
-    .get("/locked/gangs", async ({ query, set, currentUser }) => {
+    .get("/locked/gangs", async ({ query, set, currentUser }): Promise<any> => {
         try {
             // Frontend service likely sends 'div' based on previous pattern, 
             // but let's support 'division' too just in case.
@@ -599,25 +637,25 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             /*
             if (currentUser.role !== UserRole.ADMIN) {
                 console.log(`[PayrollRoutes DEBUG] Permission Check for User: ${currentUser.username}, Requested: '${divisionCode}', UserDivs: ${JSON.stringify(currentUser.divisions)}`);
-    
+     
                 // Normalize for comparison
                 const requestedDiv = String(divisionCode).trim().toUpperCase();
-    
+     
                 // Check if ANY user division (or its alias) matches the requests
                 // This handles P1A vs PG1A mismatches
                 const hasPermission = currentUser.divisions.some(d => {
                     const div = String(d).trim().toUpperCase();
                     if (div === requestedDiv) return true;
-    
+     
                     // Helper: Convert P1A -> PG1A and vice versa is tricky if GangService only does one way.
                     // But GangService has convertDivisionToLocCode (PG1A -> P1A).
                     // So if User has PG1A, convert to P1A and check.
                     const alias = gangService.convertDivisionToLocCode(div);
                     if (alias === requestedDiv) return true;
-    
+     
                     return false;
                 });
-    
+     
                 if (!hasPermission) {
                     console.warn(`[PayrollRoutes] User ${currentUser.username} attempted to access unauthorized gangs for division: ${divisionCode}`);
                     set.status = 403;
@@ -640,16 +678,17 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         })
     })
     // --- Report: Gang Grid ---
-    .get("/report", async ({ query, set }) => {
+    .get("/report", async ({ query, set }): Promise<any> => {
         try {
             const { dataExtractorService } = await import("../services/dataExtractorService");
 
             const gangCode = query.gang_code || "ALL";
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
             const year = parseInt(query.year || String(new Date().getFullYear()));
+            const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
 
             // Use Config.DB_PROFILE for payroll data
-            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, Config.DB_PROFILE);
+            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, Config.DB_PROFILE, false, useHistoryDb);
 
             return {
                 gang_code: gangCode,
@@ -671,7 +710,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             month: t.Optional(t.String()),
             year: t.Optional(t.String()),
             skip: t.Optional(t.String()),
-            limit: t.Optional(t.String())
+            limit: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
         })
     })
 
@@ -685,16 +725,17 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      * This endpoint demonstrates the new architecture where all calculations
      * return PayrollComponent with traceable metadata
      */
-    .get("/report-with-components", async ({ query, set }) => {
+    .get("/report-with-components", async ({ query, set }): Promise<any> => {
         try {
             const { dataExtractorService } = await import("../services/dataExtractorService");
 
             const gangCode = query.gang_code || "ALL";
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
             const year = parseInt(query.year || String(new Date().getFullYear()));
+            const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
 
             // Use new component-based extraction method
-            const result = await dataExtractorService.extractPayrollDataWithComponents(month, year, gangCode, undefined, null, Config.DB_PROFILE);
+            const result = await dataExtractorService.extractPayrollDataWithComponents(month, year, gangCode, undefined, null, Config.DB_PROFILE, useHistoryDb);
 
             return {
                 gang_code: gangCode,
@@ -713,7 +754,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         query: t.Object({
             gang_code: t.Optional(t.String()),
             month: t.Optional(t.String()),
-            year: t.Optional(t.String())
+            year: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
         })
     })
 
@@ -721,7 +763,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      * Get detailed component breakdown for a single employee
      * Returns all calculations with full metadata traceability
      */
-    .get("/employee/:emp_code/components", async ({ params, query, set }) => {
+    .get("/employee/:emp_code/components", async ({ params, query, set }): Promise<any> => {
         try {
             const { dataExtractorService } = await import("../services/dataExtractorService");
 

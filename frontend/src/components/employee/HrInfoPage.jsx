@@ -112,58 +112,137 @@ export default function HrInfoPage({
     const n = (v) => parseFloat(v) || 0;
     const getMonthName = (m) => ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'][m - 1] || m;
 
-    // Styles
-    const card = { backgroundColor: 'white', borderRadius: '12px', padding: '1.5rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.04)', marginBottom: '1.5rem' };
-    const th = (bg = '#f8fafc', color = '#475569', border = '#e2e8f0') => ({ padding: '0.5rem 0.6rem', borderBottom: `1px solid ${border}`, backgroundColor: bg, color, fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'center' });
-    const td = (align = 'left') => ({ padding: '0.5rem 0.6rem', fontSize: '0.8rem', textAlign: align, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' });
+    // Styles (More Corporate/Elegant)
+    const card = {
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        padding: '2rem',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+        marginBottom: '2rem'
+    };
+    const th = (bg = '#f8fafc', color = '#475569', border = '#e2e8f0') => ({
+        padding: '0.75rem 1rem',
+        borderBottom: `2px solid ${border}`,
+        backgroundColor: bg,
+        color,
+        fontSize: '0.8rem',
+        fontWeight: 700,
+        whiteSpace: 'nowrap',
+        textAlign: 'center',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em'
+    });
+    const td = (align = 'left') => ({
+        padding: '0.75rem 1rem',
+        fontSize: '0.85rem',
+        textAlign: align,
+        borderBottom: '1px solid #f1f5f9',
+        whiteSpace: 'nowrap'
+    });
 
     const tabs = [
-        { id: 'profil', label: '👤 Profil', icon: '' },
-        { id: 'karir', label: '📊 Karir & Mutasi', icon: '' },
-        { id: 'gaji', label: '💰 Riwayat Gaji', icon: '' },
-        { id: 'beras', label: '🍚 Tunjangan Beras', icon: '' },
-        { id: 'analisis', label: '📋 Analisis Lengkap', icon: '' },
+        { id: 'profil', label: '👤 Profil' },
+        { id: 'karir', label: '📊 Karir & Mutasi' },
+        { id: 'jabatan', label: '💼 Tunjangan Jabatan' },
+        { id: 'beras', label: '🍚 Tunjangan Beras' },
+        { id: 'gaji', label: '💰 Riwayat Gaji' },
+        { id: 'analisis', label: '📋 Analisis Lengkap' },
     ];
 
     return (
-        <div style={{ padding: '1.5rem 2rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        <div style={{ padding: '2rem 3rem', maxWidth: '1600px', margin: '0 auto', fontFamily: '"Inter", system-ui, -apple-system, sans-serif' }}>
 
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <div>
-                    <h1 style={{ margin: 0, color: '#0f172a', fontSize: '1.6rem', fontWeight: 'bold' }}>Managerial HR Profile</h1>
-                    <p style={{ margin: '0.25rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>Riwayat Komprehensif Karyawan</p>
+                    <h1 style={{ margin: 0, color: '#0f172a', fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.025em' }}>Managerial HR Profile</h1>
+                    <p style={{ margin: '0.5rem 0 0', color: '#64748b', fontSize: '1rem' }}>Sistem Informasi Karyawan Enterprise</p>
                 </div>
-                <button onClick={onBack} style={{ padding: '8px 16px', backgroundColor: 'white', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                    ← Kembali
+                <button onClick={onBack} style={{
+                    padding: '10px 20px',
+                    backgroundColor: 'white',
+                    color: '#334155',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                    transition: 'all 0.2s ease'
+                }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                >
+                    ← Kembali ke Direktori
                 </button>
             </div>
 
-            {/* ID Banner */}
-            <div style={{ ...card, display: 'flex', alignItems: 'center', gap: '1rem', padding: '1.25rem' }}>
-                <div style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', color: '#4f46e5', fontWeight: 'bold', flexShrink: 0 }}>
+            {/* ID Banner - Corporate Profile Style */}
+            <div style={{
+                ...card,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2rem',
+                padding: '2rem',
+                background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+                borderLeft: '4px solid #0f172a'
+            }}>
+                <div style={{
+                    width: '80px', height: '80px',
+                    borderRadius: '16px',
+                    backgroundColor: '#e2e8f0',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '2rem', color: '#334155', fontWeight: 'bold', flexShrink: 0,
+                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)'
+                }}>
                     {(empInfo.nama || 'NN').substring(0, 2).toUpperCase()}
                 </div>
                 <div style={{ flex: 1 }}>
-                    <h2 style={{ margin: 0, color: '#1e293b', fontSize: '1.15rem' }}>{empInfo.nama || '-'}</h2>
-                    <div style={{ display: 'flex', gap: '1.5rem', color: '#64748b', fontSize: '0.82rem', marginTop: '4px', flexWrap: 'wrap' }}>
-                        <span><strong>EmpCode:</strong> {empInfo.nik || empCode}</span>
-                        <span><strong>NIK KTP:</strong> {empInfo.actual_nik || '-'}</span>
-                        <span><strong>Divisi:</strong> {empInfo.loc_code || division || '-'}</span>
-                        <span><strong>Gang:</strong> {empInfo.gang_code || '-'}</span>
-                        <span style={{ color: empInfo.status === '1' ? '#059669' : '#ef4444', fontWeight: 600 }}>{empInfo.status === '1' ? '● Aktif' : '● Non-Aktif'}</span>
+                    <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.5rem', fontWeight: 800 }}>{empInfo.nama || '-'}</h2>
+                    <div style={{ display: 'flex', gap: '2rem', color: '#475569', fontSize: '0.95rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ color: '#94a3b8' }}>ID:</span> <strong style={{ color: '#0f172a' }}>{empInfo.nik || empCode}</strong></span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ color: '#94a3b8' }}>NIK:</span> <strong style={{ color: '#0f172a' }}>{empInfo.actual_nik || '-'}</strong></span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ color: '#94a3b8' }}>Divisi:</span> <strong style={{ color: '#0f172a' }}>{empInfo.loc_code || division || '-'}</strong></span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ color: '#94a3b8' }}>Gang:</span> <strong style={{ color: '#0f172a' }}>{empInfo.gang_code || '-'}</strong></span>
+                        <span style={{
+                            padding: '4px 12px',
+                            borderRadius: 'full',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            backgroundColor: empInfo.status === '1' ? '#dcfce7' : '#fee2e2',
+                            color: empInfo.status === '1' ? '#166534' : '#991b1b',
+                            borderRadius: '9999px'
+                        }}>
+                            {empInfo.status === '1' ? 'AKTIF' : 'NON-AKTIF'}
+                        </span>
                     </div>
                 </div>
             </div>
 
-            {/* Tab Navigation */}
-            <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid #e2e8f0', marginBottom: '1.5rem', overflowX: 'auto' }}>
+            {/* Tab Navigation - Pill Style */}
+            <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                marginBottom: '2rem',
+                overflowX: 'auto',
+                padding: '0.5rem',
+                backgroundColor: '#f1f5f9',
+                borderRadius: '12px',
+                border: '1px solid #e2e8f0'
+            }}>
                 {tabs.map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-                        padding: '10px 20px', border: 'none', borderBottom: activeTab === tab.id ? '3px solid #3b82f6' : '3px solid transparent',
-                        backgroundColor: 'transparent', color: activeTab === tab.id ? '#1e40af' : '#64748b',
-                        cursor: 'pointer', fontWeight: activeTab === tab.id ? 700 : 500, fontSize: '0.88rem',
-                        transition: 'all 0.2s', whiteSpace: 'nowrap', marginBottom: '-2px'
+                        padding: '12px 24px',
+                        border: 'none',
+                        borderRadius: '8px',
+                        backgroundColor: activeTab === tab.id ? '#ffffff' : 'transparent',
+                        color: activeTab === tab.id ? '#0f172a' : '#64748b',
+                        cursor: 'pointer',
+                        fontWeight: activeTab === tab.id ? 700 : 600,
+                        fontSize: '0.95rem',
+                        transition: 'all 0.2s',
+                        whiteSpace: 'nowrap',
+                        boxShadow: activeTab === tab.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
                     }}>
                         {tab.label}
                     </button>
@@ -219,36 +298,79 @@ export default function HrInfoPage({
             {/* ==================== TAB: KARIR ==================== */}
             {activeTab === 'karir' && (
                 <div style={card}>
-                    <h3 style={{ margin: '0 0 1rem 0', color: '#3730a3', fontSize: '1rem' }}>📊 Riwayat Karir & Mutasi Divisi <span style={{ fontSize: '0.65rem', padding: '2px 8px', backgroundColor: '#dbeafe', color: '#1e40af', borderRadius: '12px', fontWeight: 600, marginLeft: '8px' }}>Seeded History DB</span></h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h3 style={{ margin: 0, color: '#0f172a', fontSize: '1.25rem', fontWeight: 700 }}>📊 Riwayat Karir & Mutasi Divisi</h3>
+                        <span style={{ fontSize: '0.75rem', padding: '4px 12px', backgroundColor: '#f1f5f9', color: '#475569', borderRadius: 'full', fontWeight: 600, border: '1px solid #e2e8f0' }}>Seeded History DB</span>
+                    </div>
                     {historyLoading ? (
-                        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-                            <div className="spinner" style={{ border: '3px solid #e2e8f0', borderTopColor: '#3b82f6', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
+                        <div style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
+                            <div className="spinner" style={{ border: '3px solid #e2e8f0', borderTopColor: '#0f172a', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
                             Memuat riwayat karir...
                         </div>
                     ) : careerHistory.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Belum ada data karir historis.</div>
+                        <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px' }}>Belum ada data karir historis.</div>
                     ) : (
-                        <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #c7d2fe' }}>
+                        <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
                                         {['Periode', 'EmpCode', 'Nama', 'Divisi', 'Lokasi', 'Gang', 'Tipe', 'Status', 'Upah Dasar'].map(h => (
-                                            <th key={h} style={th('#eef2ff', '#3730a3', '#c7d2fe')}>{h}</th>
+                                            <th key={h} style={th('#f8fafc', '#475569', '#e2e8f0')}>{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {careerHistory.map((c, i) => (
-                                        <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                                            <td style={{ ...td(), fontWeight: 600, color: '#334155' }}>{getMonthName(c.period_month)} {c.period_year}</td>
+                                        <tr key={i} style={{ backgroundColor: 'white', transition: 'background-color 0.15s ease' }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc' }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white' }}>
+                                            <td style={{ ...td(), fontWeight: 700, color: '#0f172a' }}>{getMonthName(c.period_month)} {c.period_year}</td>
                                             <td style={td()}>{c.emp_code || '-'}</td>
                                             <td style={td()}>{c.emp_name || '-'}</td>
                                             <td style={td()}>{c.division_code || '-'}</td>
                                             <td style={td()}>{c.loc_code || '-'}</td>
                                             <td style={td()}>{c.gang_code || '-'}</td>
                                             <td style={td()}>{c.employee_type || '-'}</td>
-                                            <td style={td()}>{c.status || '-'}</td>
-                                            <td style={{ ...td('right'), fontWeight: 600 }}>Rp {fmt(c.upah_dasar)}</td>
+                                            <td style={td()}>
+                                                <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: c.status === '1' ? '#dcfce7' : '#f1f5f9', color: c.status === '1' ? '#166534' : '#475569' }}>
+                                                    {c.status || '-'}
+                                                </span>
+                                            </td>
+                                            <td style={{ ...td('right'), fontWeight: 600, color: '#0f172a' }}>Rp {fmt(c.upah_dasar)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ==================== TAB: JABATAN ==================== */}
+            {activeTab === 'jabatan' && (
+                <div style={card}>
+                    <h3 style={{ margin: '0 0 1.5rem 0', color: '#0f172a', fontSize: '1.25rem', fontWeight: 700 }}>💼 Riwayat Tunjangan Jabatan</h3>
+                    {historyLoading ? (
+                        <div style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
+                            <div className="spinner" style={{ border: '3px solid #e2e8f0', borderTopColor: '#0f172a', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
+                            Memuat riwayat tunjangan jabatan...
+                        </div>
+                    ) : payrollHistory.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px' }}>Belum ada data tunjangan jabatan.</div>
+                    ) : (
+                        <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>
+                                        <th style={th('#f8fafc', '#475569', '#e2e8f0')}>Periode</th>
+                                        <th style={th('#f8fafc', '#475569', '#e2e8f0')}>EmpCode</th>
+                                        <th style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), textAlign: 'right' }}>Jumlah Tunjangan Jabatan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {payrollHistory.map((p, i) => (
+                                        <tr key={i} style={{ backgroundColor: 'white', transition: 'background-color 0.15s ease' }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc' }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white' }}>
+                                            <td style={{ ...td(), fontWeight: 700, color: '#0f172a' }}>{p.period_label || `${getMonthName(n(p.period_month))} ${p.period_year}`}</td>
+                                            <td style={td()}>{(p.nik || p.emp_code || '-').toString().trim()}</td>
+                                            <td style={{ ...td('right'), fontWeight: 700, color: '#0ea5e9', fontSize: '0.95rem' }}>Rp {fmt(p.jabatan_jumlah || 0)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -261,29 +383,32 @@ export default function HrInfoPage({
             {/* ==================== TAB: BERAS ==================== */}
             {activeTab === 'beras' && (
                 <div style={card}>
-                    <h3 style={{ margin: '0 0 1rem 0', color: '#92400e', fontSize: '1rem' }}>🍚 Riwayat Tunjangan Beras</h3>
+                    <h3 style={{ margin: '0 0 1.5rem 0', color: '#0f172a', fontSize: '1.25rem', fontWeight: 700 }}>🍚 Riwayat Tunjangan Beras</h3>
                     {historyLoading ? (
-                        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat riwayat beras...</div>
+                        <div style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
+                            <div className="spinner" style={{ border: '3px solid #e2e8f0', borderTopColor: '#0f172a', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
+                            Memuat riwayat beras...
+                        </div>
                     ) : payrollHistory.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Belum ada data tunjangan beras.</div>
+                        <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px' }}>Belum ada data tunjangan beras.</div>
                     ) : (
-                        <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                        <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
-                                        <th style={th('#fffbeb', '#92400e', '#fde68a')}>Periode</th>
-                                        <th style={th('#fffbeb', '#92400e', '#fde68a')}>EmpCode</th>
-                                        <th style={{ ...th('#fffbeb', '#92400e', '#fde68a'), textAlign: 'right' }}>Rate Beras</th>
-                                        <th style={{ ...th('#fffbeb', '#92400e', '#fde68a'), textAlign: 'right' }}>Jumlah Tunjangan</th>
+                                        <th style={th('#f8fafc', '#475569', '#e2e8f0')}>Periode</th>
+                                        <th style={th('#f8fafc', '#475569', '#e2e8f0')}>EmpCode</th>
+                                        <th style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), textAlign: 'right' }}>Rate Beras</th>
+                                        <th style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), textAlign: 'right' }}>Jumlah Tunjangan</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {payrollHistory.map((p, i) => (
-                                        <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'white' : '#fffbeb' }}>
-                                            <td style={{ ...td(), fontWeight: 600, color: '#78350f' }}>{p.period_label || `${getMonthName(n(p.period_month))} ${p.period_year}`}</td>
+                                        <tr key={i} style={{ backgroundColor: 'white', transition: 'background-color 0.15s ease' }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc' }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white' }}>
+                                            <td style={{ ...td(), fontWeight: 700, color: '#0f172a' }}>{p.period_label || `${getMonthName(n(p.period_month))} ${p.period_year}`}</td>
                                             <td style={td()}>{(p.nik || p.emp_code || '-').toString().trim()}</td>
-                                            <td style={{ ...td('right') }}>Rp {fmt(p.beras_rate)}</td>
-                                            <td style={{ ...td('right'), fontWeight: 600, color: '#d97706' }}>Rp {fmt(p.beras_jumlah)}</td>
+                                            <td style={{ ...td('right'), color: '#64748b' }}>Rp {fmt(p.beras_rate)}</td>
+                                            <td style={{ ...td('right'), fontWeight: 700, color: '#f59e0b', fontSize: '0.95rem' }}>Rp {fmt(p.beras_jumlah)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -296,34 +421,37 @@ export default function HrInfoPage({
             {/* ==================== TAB: GAJI ==================== */}
             {activeTab === 'gaji' && (
                 <div style={card}>
-                    <h3 style={{ margin: '0 0 1rem 0', color: '#166534', fontSize: '1rem' }}>💰 Riwayat Penggajian (Simple View)</h3>
+                    <h3 style={{ margin: '0 0 1.5rem 0', color: '#0f172a', fontSize: '1.25rem', fontWeight: 700 }}>💰 Riwayat Penggajian (Simple View)</h3>
                     {historyLoading ? (
-                        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat riwayat penggajian...</div>
+                        <div style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
+                            <div className="spinner" style={{ border: '3px solid #e2e8f0', borderTopColor: '#0f172a', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
+                            Memuat riwayat penggajian...
+                        </div>
                     ) : payrollHistory.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Belum ada data penggajian.</div>
+                        <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px' }}>Belum ada data penggajian.</div>
                     ) : (
-                        <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
                                         {['Periode', 'EmpCode', 'HK', 'Gaji Pokok', 'Total Tunjangan', 'Total Premi', 'Upah Kotor', 'Total Potongan', 'PPH21', 'Upah Bersih'].map(h => (
-                                            <th key={h} style={{ ...th('#f0fdf4', '#166534', '#bbf7d0'), textAlign: h === 'Periode' || h === 'EmpCode' ? 'left' : 'right' }}>{h}</th>
+                                            <th key={h} style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), textAlign: h === 'Periode' || h === 'EmpCode' ? 'left' : 'right' }}>{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {payrollHistory.map((p, i) => (
-                                        <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'white' : '#f0fdf4' }}>
-                                            <td style={{ ...td(), fontWeight: 600, color: '#14532d' }}>{p.period_label || `${getMonthName(n(p.period_month))} ${p.period_year}`}</td>
+                                        <tr key={i} style={{ backgroundColor: 'white', transition: 'background-color 0.15s ease' }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc' }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white' }}>
+                                            <td style={{ ...td(), fontWeight: 700, color: '#0f172a' }}>{p.period_label || `${getMonthName(n(p.period_month))} ${p.period_year}`}</td>
                                             <td style={{ ...td(), color: '#64748b', fontSize: '0.75rem' }}>{(p.nik || p.emp_code || '-').toString().trim()}</td>
                                             <td style={{ ...td('right') }}>{n(p.jumlah_hk || p.hari_kerja)}</td>
-                                            <td style={{ ...td('right') }}>Rp {fmt(p.gaji_pokok_aktual || p.gaji_pokok)}</td>
-                                            <td style={{ ...td('right') }}>Rp {fmt(p.total_tunjangan)}</td>
-                                            <td style={{ ...td('right') }}>Rp {fmt(p.total_premi)}</td>
-                                            <td style={{ ...td('right'), fontWeight: 700, color: '#14532d' }}>Rp {fmt(p.jumlah_upah_kotor)}</td>
-                                            <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.total_potongan || p.total_potongan_bersih)}</td>
-                                            <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pph21_ter || p.pot_pph21)}</td>
-                                            <td style={{ ...td('right'), fontWeight: 700, color: '#059669' }}>Rp {fmt(p.upah_bersih)}</td>
+                                            <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.gaji_pokok_aktual || p.gaji_pokok)}</td>
+                                            <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.total_tunjangan)}</td>
+                                            <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.total_premi)}</td>
+                                            <td style={{ ...td('right'), fontWeight: 700, color: '#0f172a' }}>Rp {fmt(p.jumlah_upah_kotor)}</td>
+                                            <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.total_potongan || p.total_potongan_bersih)}</td>
+                                            <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.pph21_ter || p.pot_pph21)}</td>
+                                            <td style={{ ...td('right'), fontWeight: 800, color: '#10b981', fontSize: '0.95rem' }}>Rp {fmt(p.upah_bersih)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -336,96 +464,98 @@ export default function HrInfoPage({
             {/* ==================== TAB: ANALISIS LENGKAP ==================== */}
             {activeTab === 'analisis' && (
                 <div>
-                    <h3 style={{ margin: '0 0 1rem 0', color: '#334155', fontSize: '1.1rem' }}>📋 Analisis Daftar Upah Lengkap — Semua Komponen</h3>
+                    <h3 style={{ margin: '0 0 1.5rem 0', color: '#0f172a', fontSize: '1.25rem', fontWeight: 700 }}>📋 Analisis Daftar Upah Lengkap — Semua Komponen</h3>
                     {historyLoading ? (
-                        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Memuat analisis lengkap...</div>
+                        <div style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
+                            <div className="spinner" style={{ border: '3px solid #e2e8f0', borderTopColor: '#0f172a', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
+                            Memuat analisis lengkap...
+                        </div>
                     ) : payrollHistory.length === 0 ? (
-                        <div style={{ ...card, textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Belum ada data.</div>
+                        <div style={{ ...card, textAlign: 'center', padding: '3rem', color: '#94a3b8', background: '#f8fafc' }}>Belum ada data.</div>
                     ) : (
-                        <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
+                        <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: 'white', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '2000px' }}>
                                 <thead>
                                     {/* Row 1: Group headers */}
                                     <tr>
-                                        <th rowSpan={2} style={{ ...th('#f8fafc', '#334155', '#e2e8f0'), position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#f8fafc' }}>Periode</th>
-                                        <th rowSpan={2} style={th('#f8fafc', '#334155', '#e2e8f0')}>EmpCode</th>
-                                        <th colSpan={4} style={{ ...th('#eef2ff', '#3730a3', '#c7d2fe') }}>PENGGAJIAN</th>
-                                        <th colSpan={5} style={{ ...th('#fffbeb', '#92400e', '#fde68a') }}>TUNJANGAN</th>
-                                        <th colSpan={3} style={{ ...th('#fdf2f8', '#831843', '#fbcfe8') }}>PREMI</th>
-                                        <th rowSpan={2} style={{ ...th('#f0fdf4', '#166534', '#bbf7d0'), textAlign: 'right' }}>UPAH KOTOR</th>
-                                        <th colSpan={7} style={{ ...th('#fef2f2', '#991b1b', '#fecaca') }}>POTONGAN</th>
-                                        <th rowSpan={2} style={{ ...th('#fef2f2', '#991b1b', '#fecaca'), textAlign: 'right' }}>TOT. POT</th>
-                                        <th colSpan={3} style={{ ...th('#ecfdf5', '#065f46', '#a7f3d0') }}>PAJAK & HASIL</th>
+                                        <th rowSpan={2} style={{ ...th('#f8fafc', '#0f172a', '#e2e8f0'), position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#f8fafc', borderRight: '2px solid #e2e8f0' }}>Periode</th>
+                                        <th rowSpan={2} style={{ ...th('#f8fafc', '#0f172a', '#e2e8f0'), borderRight: '2px solid #e2e8f0' }}>EmpCode</th>
+                                        <th colSpan={4} style={{ ...th('#f1f5f9', '#334155', '#e2e8f0'), borderRight: '2px solid #e2e8f0' }}>PENGGAJIAN</th>
+                                        <th colSpan={5} style={{ ...th('#f8fafc', '#334155', '#e2e8f0'), borderRight: '2px solid #e2e8f0' }}>TUNJANGAN</th>
+                                        <th colSpan={3} style={{ ...th('#f1f5f9', '#334155', '#e2e8f0'), borderRight: '2px solid #e2e8f0' }}>PREMI</th>
+                                        <th rowSpan={2} style={{ ...th('#f8fafc', '#0f172a', '#cbd5e1'), textAlign: 'right', borderRight: '2px solid #cbd5e1' }}>UPAH KOTOR</th>
+                                        <th colSpan={7} style={{ ...th('#f1f5f9', '#334155', '#e2e8f0'), borderRight: '2px solid #e2e8f0' }}>POTONGAN</th>
+                                        <th rowSpan={2} style={{ ...th('#f8fafc', '#ef4444', '#cbd5e1'), textAlign: 'right', borderRight: '2px solid #cbd5e1' }}>TOT. POT</th>
+                                        <th colSpan={3} style={{ ...th('#f1f5f9', '#334155', '#e2e8f0') }}>PAJAK & HASIL</th>
                                     </tr>
                                     {/* Row 2: Sub headers */}
                                     <tr>
                                         {/* PENGGAJIAN */}
-                                        <th style={{ ...th('#eef2ff', '#4338ca', '#c7d2fe'), fontSize: '0.68rem' }}>HK</th>
-                                        <th style={{ ...th('#eef2ff', '#4338ca', '#c7d2fe'), fontSize: '0.68rem', textAlign: 'right' }}>Upah Dasar</th>
-                                        <th style={{ ...th('#eef2ff', '#4338ca', '#c7d2fe'), fontSize: '0.68rem', textAlign: 'right' }}>Gaji Pokok</th>
-                                        <th style={{ ...th('#eef2ff', '#4338ca', '#c7d2fe'), fontSize: '0.68rem', textAlign: 'right' }}>Koreksi HK</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem' }}>HK</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Upah Dasar</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Gaji Pokok</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right', borderRight: '2px solid #e2e8f0' }}>Koreksi HK</th>
                                         {/* TUNJANGAN */}
-                                        <th style={{ ...th('#fffbeb', '#b45309', '#fde68a'), fontSize: '0.68rem', textAlign: 'right' }}>Beras</th>
-                                        <th style={{ ...th('#fffbeb', '#b45309', '#fde68a'), fontSize: '0.68rem', textAlign: 'right' }}>Jabatan</th>
-                                        <th style={{ ...th('#fffbeb', '#b45309', '#fde68a'), fontSize: '0.68rem', textAlign: 'right' }}>Masa Kerja</th>
-                                        <th style={{ ...th('#fffbeb', '#b45309', '#fde68a'), fontSize: '0.68rem', textAlign: 'right' }}>Lembur</th>
-                                        <th style={{ ...th('#fffbeb', '#b45309', '#fde68a'), fontSize: '0.68rem', textAlign: 'right' }}>Tot. Tunj</th>
+                                        <th style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Beras</th>
+                                        <th style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Jabatan</th>
+                                        <th style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Masa Kerja</th>
+                                        <th style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Lembur</th>
+                                        <th style={{ ...th('#f8fafc', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right', borderRight: '2px solid #e2e8f0' }}>Tot. Tunj</th>
                                         {/* PREMI */}
-                                        <th style={{ ...th('#fdf2f8', '#9d174d', '#fbcfe8'), fontSize: '0.68rem', textAlign: 'right' }}>Brondol</th>
-                                        <th style={{ ...th('#fdf2f8', '#9d174d', '#fbcfe8'), fontSize: '0.68rem', textAlign: 'right' }}>PPH</th>
-                                        <th style={{ ...th('#fdf2f8', '#9d174d', '#fbcfe8'), fontSize: '0.68rem', textAlign: 'right' }}>Tot. Premi</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Brondol</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>PPH</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right', borderRight: '2px solid #e2e8f0' }}>Tot. Premi</th>
                                         {/* POTONGAN */}
-                                        <th style={{ ...th('#fef2f2', '#b91c1c', '#fecaca'), fontSize: '0.68rem', textAlign: 'right' }}>SPSI</th>
-                                        <th style={{ ...th('#fef2f2', '#b91c1c', '#fecaca'), fontSize: '0.68rem', textAlign: 'right' }}>BPJS Kes (P)</th>
-                                        <th style={{ ...th('#fef2f2', '#b91c1c', '#fecaca'), fontSize: '0.68rem', textAlign: 'right' }}>BPJS Kes (M)</th>
-                                        <th style={{ ...th('#fef2f2', '#b91c1c', '#fecaca'), fontSize: '0.68rem', textAlign: 'right' }}>BPJS Pen (P)</th>
-                                        <th style={{ ...th('#fef2f2', '#b91c1c', '#fecaca'), fontSize: '0.68rem', textAlign: 'right' }}>BPJS Pen (M)</th>
-                                        <th style={{ ...th('#fef2f2', '#b91c1c', '#fecaca'), fontSize: '0.68rem', textAlign: 'right' }}>Astek (P)</th>
-                                        <th style={{ ...th('#fef2f2', '#b91c1c', '#fecaca'), fontSize: '0.68rem', textAlign: 'right' }}>Astek (M)</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>SPSI</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>BPJS Kes (P)</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>BPJS Kes (M)</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>BPJS Pen (P)</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>BPJS Pen (M)</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Astek (P)</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right', borderRight: '2px solid #e2e8f0' }}>Astek (M)</th>
                                         {/* PAJAK & HASIL */}
-                                        <th style={{ ...th('#ecfdf5', '#065f46', '#a7f3d0'), fontSize: '0.68rem', textAlign: 'right' }}>Bruto Pajak</th>
-                                        <th style={{ ...th('#ecfdf5', '#065f46', '#a7f3d0'), fontSize: '0.68rem', textAlign: 'right' }}>PPH21</th>
-                                        <th style={{ ...th('#ecfdf5', '#065f46', '#a7f3d0'), fontSize: '0.68rem', textAlign: 'right', fontWeight: 700 }}>UPAH BERSIH</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>Bruto Pajak</th>
+                                        <th style={{ ...th('#f1f5f9', '#475569', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right' }}>PPH21</th>
+                                        <th style={{ ...th('#f1f5f9', '#10b981', '#e2e8f0'), fontSize: '0.7rem', textAlign: 'right', fontWeight: 800 }}>UPAH BERSIH</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {payrollHistory.map((p, i) => {
-                                        const bg = i % 2 === 0 ? 'white' : '#fafafa';
                                         return (
-                                            <tr key={i} style={{ backgroundColor: bg }}>
-                                                <td style={{ ...td(), fontWeight: 600, color: '#334155', position: 'sticky', left: 0, backgroundColor: bg, zIndex: 1 }}>{p.period_label || `${getMonthName(n(p.period_month))} ${p.period_year}`}</td>
-                                                <td style={{ ...td(), color: '#64748b', fontSize: '0.72rem' }}>{(p.nik || p.emp_code || '-').toString().trim()}</td>
+                                            <tr key={i} style={{ backgroundColor: 'white', transition: 'background-color 0.15s ease' }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc'; e.currentTarget.cells[0].style.backgroundColor = '#f8fafc'; }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white'; e.currentTarget.cells[0].style.backgroundColor = 'white'; }}>
+                                                <td style={{ ...td(), fontWeight: 700, color: '#0f172a', position: 'sticky', left: 0, backgroundColor: 'white', zIndex: 1, borderRight: '2px solid #e2e8f0', transition: 'background-color 0.15s ease' }}>{p.period_label || `${getMonthName(n(p.period_month))} ${p.period_year}`}</td>
+                                                <td style={{ ...td(), color: '#64748b', fontSize: '0.75rem', borderRight: '2px solid #e2e8f0' }}>{(p.nik || p.emp_code || '-').toString().trim()}</td>
                                                 {/* PENGGAJIAN */}
-                                                <td style={td('center')}>{n(p.jumlah_hk || p.hari_kerja)}</td>
-                                                <td style={td('right')}>Rp {fmt(p.upah_dasar)}</td>
-                                                <td style={td('right')}>Rp {fmt(p.gaji_pokok_aktual || p.gaji_pokok)}</td>
-                                                <td style={{ ...td('right'), color: n(p.koreksi_hk) !== 0 ? '#b91c1c' : '#94a3b8' }}>{fmt(p.koreksi_hk)}</td>
+                                                <td style={{ ...td('center'), color: '#475569' }}>{n(p.jumlah_hk || p.hari_kerja)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.upah_dasar)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.gaji_pokok_aktual || p.gaji_pokok)}</td>
+                                                <td style={{ ...td('right'), color: n(p.koreksi_hk) !== 0 ? '#ef4444' : '#94a3b8', borderRight: '2px solid #e2e8f0' }}>{fmt(p.koreksi_hk)}</td>
                                                 {/* TUNJANGAN */}
-                                                <td style={td('right')}>Rp {fmt(p.beras_jumlah)}</td>
-                                                <td style={td('right')}>Rp {fmt(p.jabatan_jumlah)}</td>
-                                                <td style={td('right')}>Rp {fmt(p.masa_kerja_jumlah)}</td>
-                                                <td style={td('right')}>Rp {fmt(p.lembur_jumlah)}</td>
-                                                <td style={{ ...td('right'), fontWeight: 600 }}>Rp {fmt(p.total_tunjangan)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.beras_jumlah)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.jabatan_jumlah)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.masa_kerja_jumlah)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.lembur_jumlah)}</td>
+                                                <td style={{ ...td('right'), fontWeight: 600, color: '#334155', borderRight: '2px solid #e2e8f0' }}>Rp {fmt(p.total_tunjangan)}</td>
                                                 {/* PREMI */}
-                                                <td style={td('right')}>Rp {fmt(p.premi_brondol)}</td>
-                                                <td style={td('right')}>Rp {fmt(p.premi_pph)}</td>
-                                                <td style={{ ...td('right'), fontWeight: 600 }}>Rp {fmt(p.total_premi)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.premi_brondol)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.premi_pph)}</td>
+                                                <td style={{ ...td('right'), fontWeight: 600, color: '#334155', borderRight: '2px solid #e2e8f0' }}>Rp {fmt(p.total_premi)}</td>
                                                 {/* UPAH KOTOR */}
-                                                <td style={{ ...td('right'), fontWeight: 700, color: '#14532d' }}>Rp {fmt(p.jumlah_upah_kotor)}</td>
+                                                <td style={{ ...td('right'), fontWeight: 800, color: '#0f172a', borderRight: '2px solid #cbd5e1', backgroundColor: '#f8fafc' }}>Rp {fmt(p.jumlah_upah_kotor)}</td>
                                                 {/* POTONGAN */}
-                                                <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pot_spsi)}</td>
-                                                <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pot_bpjs_kesehatan_pekerja)}</td>
-                                                <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pot_bpjs_kesehatan_majikan)}</td>
-                                                <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pot_bpjs_pensiun_pekerja)}</td>
-                                                <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pot_bpjs_pensiun_majikan)}</td>
-                                                <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pot_astek_pekerja)}</td>
-                                                <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pot_astek_majikan)}</td>
+                                                <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.pot_spsi)}</td>
+                                                <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.pot_bpjs_kesehatan_pekerja)}</td>
+                                                <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.pot_bpjs_kesehatan_majikan)}</td>
+                                                <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.pot_bpjs_pensiun_pekerja)}</td>
+                                                <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.pot_bpjs_pensiun_majikan)}</td>
+                                                <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.pot_astek_pekerja)}</td>
+                                                <td style={{ ...td('right'), color: '#ef4444', borderRight: '2px solid #e2e8f0' }}>Rp {fmt(p.pot_astek_majikan)}</td>
                                                 {/* TOT POTONGAN */}
-                                                <td style={{ ...td('right'), fontWeight: 600, color: '#b91c1c' }}>Rp {fmt(p.total_potongan || p.total_potongan_bersih)}</td>
+                                                <td style={{ ...td('right'), fontWeight: 800, color: '#ef4444', borderRight: '2px solid #cbd5e1', backgroundColor: '#fef2f2' }}>Rp {fmt(p.total_potongan || p.total_potongan_bersih)}</td>
                                                 {/* PAJAK & HASIL */}
-                                                <td style={td('right')}>Rp {fmt(p.penghasilan_bruto || p.upah_kotor_pajak)}</td>
-                                                <td style={{ ...td('right'), color: '#b91c1c' }}>Rp {fmt(p.pph21_ter || p.pot_pph21)}</td>
-                                                <td style={{ ...td('right'), fontWeight: 700, color: '#059669', fontSize: '0.85rem' }}>Rp {fmt(p.upah_bersih)}</td>
+                                                <td style={{ ...td('right'), color: '#475569' }}>Rp {fmt(p.penghasilan_bruto || p.upah_kotor_pajak)}</td>
+                                                <td style={{ ...td('right'), color: '#ef4444' }}>Rp {fmt(p.pph21_ter || p.pot_pph21)}</td>
+                                                <td style={{ ...td('right'), fontWeight: 800, color: '#10b981', fontSize: '0.9rem', backgroundColor: '#ecfdf5' }}>Rp {fmt(p.upah_bersih)}</td>
                                             </tr>
                                         )
                                     })}

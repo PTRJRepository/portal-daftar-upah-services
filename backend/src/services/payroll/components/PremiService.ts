@@ -85,19 +85,21 @@ export class PremiService extends BasePayrollComponentService<PremiInput, PremiO
             // Process and categorize
             const output = this.processPremiData(premiData, allExcludes);
 
+            const resultOutput: PayrollComponent<PremiOutput> = {
+                value: output,
+                meta: this.buildMetadata('DATABASE_PLANTWARE', 'Premium from PR_ADTRANS', {
+                    taxable: true,
+                    calculation_basis: this.getCalculationBasis(input),
+                    dependencies: ['PR_ADTRANS', 'PR_TASKCODE'],
+                    confidence_level: 'high',
+                    version: 1,
+                }),
+            };
+
             return {
                 component_name: this.componentName,
                 input,
-                output: {
-                    ...output,
-                    meta: this.buildMetadata('DATABASE_PLANTWARE', 'Premium from PR_ADTRANS', {
-                        taxable: true,
-                        calculation_basis: this.getCalculationBasis(input),
-                        dependencies: ['PR_ADTRANS', 'PR_TASKCODE'],
-                        confidence_level: 'high',
-                        version: 1,
-                    }),
-                },
+                output: resultOutput,
             };
         } catch (error) {
             return this.createErrorResult(input, error as Error);
@@ -107,7 +109,7 @@ export class PremiService extends BasePayrollComponentService<PremiInput, PremiO
     /**
      * Calculate premi for multiple employees (batch)
      */
-    protected async calculateBatch(inputs: PremiInput[]): Promise<BatchPayrollCalculationResult<PremiOutput>> {
+    protected async calculateBatchInternal(inputs: PremiInput[]): Promise<BatchPayrollCalculationResult<PremiOutput>> {
         const startTime = performance.now();
         const results = new Map<string, PayrollCalculationResult<PremiOutput>>();
         const errors: string[] = [];
@@ -129,19 +131,21 @@ export class PremiService extends BasePayrollComponentService<PremiInput, PremiO
                     const empData = batchData[periodInput.emp_code] || {};
                     const output = this.processPremiData(empData, allExcludes);
 
+                    const resultOutput: PayrollComponent<PremiOutput> = {
+                        value: output,
+                        meta: this.buildMetadata('DATABASE_PLANTWARE', 'Batch premium calculation', {
+                            taxable: true,
+                            calculation_basis: this.getCalculationBasis(periodInput),
+                            dependencies: ['PR_ADTRANS', 'PR_TASKCODE'],
+                            confidence_level: 'high',
+                            version: 1,
+                        }),
+                    };
+
                     results.set(periodInput.emp_code, {
                         component_name: this.componentName,
                         input: periodInput,
-                        output: {
-                            ...output,
-                            meta: this.buildMetadata('DATABASE_PLANTWARE', 'Batch premium calculation', {
-                                taxable: true,
-                                calculation_basis: this.getCalculationBasis(periodInput),
-                                dependencies: ['PR_ADTRANS', 'PR_TASKCODE'],
-                                confidence_level: 'high',
-                                version: 1,
-                            }),
-                        },
+                        output: resultOutput,
                     });
                 }
             } catch (error) {
@@ -171,7 +175,7 @@ export class PremiService extends BasePayrollComponentService<PremiInput, PremiO
     /**
      * Get calculation basis description
      */
-    protected getCalculationBasis(input: PremiInput): string {
+    protected getBasisDescription(input: PremiInput): string {
         return `SUM(Amount) from PR_ADTRANS WHERE DocDesc LIKE '%PREMI%' AND TrxDate IN period ${input.month}/${input.year}`;
     }
 

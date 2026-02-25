@@ -3,21 +3,70 @@ import { useAuth } from '../context/AuthContext'
 import { fetchCurrentPeriod } from '../services/gangService'
 import { isHistoricalPeriod as checkIsHistorical } from '../services/historyService'
 
+// localStorage keys for shared period persistence
+const STORAGE_KEYS = {
+  MONTH: 'report_period_month',
+  YEAR: 'report_period_year'
+}
+
+/**
+ * Load from localStorage with error handling
+ */
+const loadFromStorage = (key, defaultValue) => {
+  try {
+    const stored = localStorage.getItem(key)
+    return stored !== null ? parseInt(stored) : defaultValue
+  } catch {
+    return defaultValue
+  }
+}
+
+/**
+ * Save to localStorage with error handling
+ */
+const saveToStorage = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (e) {
+    console.warn(`[useCurrentPeriod] Failed to save ${key}:`, e)
+  }
+}
+
 /**
  * Custom hook to fetch and use the current payroll period
  *
  * The current period is determined by the backend from PR_TASKREGLN_ARC
  * and is calculated as: latest period + 1 month
  *
+ * Period is persisted to localStorage and shared across all pages via ReportContext.
+ *
  * @returns {Object} { month, year, setMonth, setYear, loading, error, refetch, display, isCurrent }
  */
 export function useCurrentPeriod() {
   const { token } = useAuth()
-  const [month, setMonth] = useState(new Date().getMonth() + 1)
-  const [year, setYear] = useState(new Date().getFullYear())
+
+  // Initialize state from localStorage or use current date
+  const [monthState, setMonthState] = useState(() =>
+    loadFromStorage(STORAGE_KEYS.MONTH, new Date().getMonth() + 1)
+  )
+  const [yearState, setYearState] = useState(() =>
+    loadFromStorage(STORAGE_KEYS.YEAR, new Date().getFullYear())
+  )
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [data, setData] = useState(null)
+
+  // Wrapped setters that persist to localStorage
+  const setMonth = useCallback((val) => {
+    setMonthState(val)
+    saveToStorage(STORAGE_KEYS.MONTH, val)
+  }, [])
+
+  const setYear = useCallback((val) => {
+    setYearState(val)
+    saveToStorage(STORAGE_KEYS.YEAR, val)
+  }, [])
 
   const loadCurrentPeriod = useCallback(async () => {
     if (!token) {
@@ -25,26 +74,39 @@ export function useCurrentPeriod() {
       return
     }
 
+    // Check if we already have values from localStorage
+    const hasStoredMonth = localStorage.getItem(STORAGE_KEYS.MONTH) !== null
+    const hasStoredYear = localStorage.getItem(STORAGE_KEYS.YEAR) !== null
+
     try {
       const currentPeriod = await fetchCurrentPeriod(token)
       console.log('[useCurrentPeriod] Loaded current period from API:', currentPeriod)
+
+      // Only update from API if no localStorage values exist
       if (currentPeriod && currentPeriod.month && currentPeriod.year) {
-        setMonth(currentPeriod.month)
-        setYear(currentPeriod.year)
         setData(currentPeriod)
-        console.log(`[useCurrentPeriod] Set period to month=${currentPeriod.month}, year=${currentPeriod.year}`)
+
+        if (!hasStoredMonth || !hasStoredYear) {
+          setMonth(currentPeriod.month)
+          setYear(currentPeriod.year)
+          console.log(`[useCurrentPeriod] No localStorage found, set period to month=${currentPeriod.month}, year=${currentPeriod.year}`)
+        } else {
+          console.log(`[useCurrentPeriod] Using localStorage values: month=${monthState}, year=${yearState}`)
+        }
       }
     } catch (e) {
       console.error('[useCurrentPeriod] Failed to load current period from API:', e)
       setError(e)
-      // Fallback to current calendar date on error
-      const now = new Date()
-      setMonth(now.getMonth() + 1)
-      setYear(now.getFullYear())
+      // Fallback to current calendar date on error (only if no localStorage)
+      if (!hasStoredMonth || !hasStoredYear) {
+        const now = new Date()
+        setMonth(now.getMonth() + 1)
+        setYear(now.getFullYear())
+      }
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, monthState, yearState])
 
   useEffect(() => {
     loadCurrentPeriod()
@@ -52,12 +114,12 @@ export function useCurrentPeriod() {
 
   // Display name for the current period
   const display = useMemo(() => {
-    return getMonthName(month) + ' ' + year
-  }, [month, year])
+    return getMonthName(monthState) + ' ' + yearState
+  }, [monthState, yearState])
 
   return {
-    month,
-    year,
+    month: monthState,
+    year: yearState,
     setMonth,
     setYear,
     loading,
@@ -65,7 +127,7 @@ export function useCurrentPeriod() {
     refetch: loadCurrentPeriod,
     display,
     data,
-    isCurrent: (checkMonth, checkYear) => month === checkMonth && year === checkYear
+    isCurrent: (checkMonth, checkYear) => monthState === checkMonth && yearState === checkYear
   }
 }
 

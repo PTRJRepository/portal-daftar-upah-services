@@ -49,6 +49,8 @@ const OperationalReportWrapper = () => {
   const [exportHandler, setExportHandler] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [useHistoryDb, setUseHistoryDb] = useState(false);
 
   // Layout state for selectors
   // If not admin and locked mode, division is read-only
@@ -341,6 +343,58 @@ const OperationalReportWrapper = () => {
             🖨️ Print Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}
           </button>
 
+          {/* DB Mode Toggle */}
+          <button
+            onClick={() => setUseHistoryDb(!useHistoryDb)}
+            style={{
+              background: useHistoryDb ? 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)' : 'white',
+              color: useHistoryDb ? '#ffffff' : '#334155',
+              border: '1px solid #cbd5e1',
+              padding: '0.4rem 0.8rem',
+              borderRadius: '6px',
+              fontSize: '0.85rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              height: '36px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              transition: 'all 0.2s',
+              whiteSpace: 'nowrap'
+            }}
+            title={useHistoryDb ? "Kembali ke Database Origin" : "Gunakan Database History"}
+          >
+            <span>{useHistoryDb ? '📚' : '⚡'}</span>
+            <span>{useHistoryDb ? 'History DB' : 'Origin DB'}</span>
+          </button>
+
+          {/* Edit Mode Toggle Button */}
+          <button
+            onClick={() => setIsEditMode(!isEditMode)}
+            style={{
+              background: isEditMode ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'white',
+              color: isEditMode ? '#ffffff' : '#334155',
+              border: '1px solid #cbd5e1',
+              padding: '0.4rem 0.8rem',
+              borderRadius: '6px',
+              fontSize: '0.85rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              height: '36px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              transition: 'all 0.2s',
+              whiteSpace: 'nowrap'
+            }}
+            title={isEditMode ? "Matikan Edit Mode" : "Aktifkan Edit Mode"}
+          >
+            <span>{isEditMode ? '🔓' : '🔒'}</span>
+            <span>{isEditMode ? 'Edit Aktif' : 'Edit Mode'}</span>
+          </button>
+
           {/* Export Button */}
           <button
             onClick={handleExportExcel}
@@ -378,6 +432,8 @@ const OperationalReportWrapper = () => {
           selectedEmployees={selectedEmployees}
           onToggleEmployeeSelection={handleToggleEmployeeSelection}
           onSelectAllEmployees={handleSelectAllEmployees}
+          isEditMode={isEditMode}
+          useHistoryDb={useHistoryDb}
         />
       </div>
     </div>

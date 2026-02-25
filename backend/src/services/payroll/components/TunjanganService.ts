@@ -10,13 +10,13 @@ import { PayrollCalculationInput, PayrollCalculationResult, BatchPayrollCalculat
 import { PayrollComponent } from '../../../types/payroll/PayrollComponent';
 import { lemburService } from './LemburService';
 
-export interface TunjanganInput extends PayrollCalculationInput {}
+export interface TunjanganInput extends PayrollCalculationInput { }
 
 export interface TunjanganOutput {
     beras: PayrollComponent<number>;
     jabatan: PayrollComponent<number>;
     masa_kerja: PayrollComponent<number>;
-    lembur: PayrollComponent<Awaited<ReturnType<typeof lemburService.calculate>>['output']>;
+    lembur: Awaited<ReturnType<typeof lemburService.calculate>>['output'];
     total: PayrollComponent<number>;
 }
 
@@ -54,40 +54,45 @@ export class TunjanganService extends BasePayrollComponentService<TunjanganInput
 
             const total = berasJumlah + jabatanJumlah + masaKerjaJumlah + lemburResult.output.value.total_amount;
 
-            const output: TunjanganOutput = {
-                beras: {
-                    value: berasJumlah,
-                    meta: this.buildMetadata('CALCULATION', 'Beras allowance', {
-                        calculation_basis: 'beras_rate × jumlah_hk',
-                        dependencies: ['HR_PAYROLL.beras_rate', 'attendance.jumlah_hk'],
-                        taxable: true,
-                    }),
+            const output: PayrollComponent<TunjanganOutput> = {
+                value: {
+                    beras: {
+                        value: berasJumlah,
+                        meta: this.buildMetadata('CALCULATION', 'Beras allowance', {
+                            calculation_basis: 'beras_rate × jumlah_hk',
+                            dependencies: ['HR_PAYROLL.beras_rate', 'attendance.jumlah_hk'],
+                            taxable: true,
+                        }),
+                    },
+                    jabatan: {
+                        value: jabatanJumlah,
+                        meta: this.buildMetadata('DATABASE_PLANTWARE', 'Position allowance', {
+                            calculation_basis: `jabatan_rate × hari_kerja = ${jabatanRate} × ${hari_kerja}`,
+                            dependencies: ['PR_ADTRANS'],
+                            taxable: true,
+                        }),
+                    },
+                    masa_kerja: {
+                        value: masaKerjaJumlah,
+                        meta: this.buildMetadata('DATABASE_PLANTWARE', 'Seniority allowance', {
+                            calculation_basis: `masa_kerja_rate × hari_kerja = ${masaKerjaRate} × ${hari_kerja}`,
+                            dependencies: ['PR_ADTRANS', 'masa_kerja_tahun'],
+                            taxable: true,
+                        }),
+                    },
+                    lembur: lemburResult.output,
+                    total: {
+                        value: total,
+                        meta: this.buildMetadata('CALCULATION', 'Total tunjangan', {
+                            calculation_basis: 'beras + jabatan + masa_kerja + lembur',
+                            dependencies: ['beras', 'jabatan', 'masa_kerja', 'lembur'],
+                            taxable: true,
+                        }),
+                    },
                 },
-                jabatan: {
-                    value: jabatanJumlah,
-                    meta: this.buildMetadata('DATABASE_PLANTWARE', 'Position allowance', {
-                        calculation_basis: `jabatan_rate × hari_kerja = ${jabatanRate} × ${hari_kerja}`,
-                        dependencies: ['PR_ADTRANS'],
-                        taxable: true,
-                    }),
-                },
-                masa_kerja: {
-                    value: masaKerjaJumlah,
-                    meta: this.buildMetadata('DATABASE_PLANTWARE', 'Seniority allowance', {
-                        calculation_basis: `masa_kerja_rate × hari_kerja = ${masaKerjaRate} × ${hari_kerja}`,
-                        dependencies: ['PR_ADTRANS', 'masa_kerja_tahun'],
-                        taxable: true,
-                    }),
-                },
-                lembur: lemburResult.output,
-                total: {
-                    value: total,
-                    meta: this.buildMetadata('CALCULATION', 'Total tunjangan', {
-                        calculation_basis: 'beras + jabatan + masa_kerja + lembur',
-                        dependencies: ['beras', 'jabatan', 'masa_kerja', 'lembur'],
-                        taxable: true,
-                    }),
-                },
+                meta: this.buildMetadata('CALCULATION', 'Tunjangan Calculation', {
+                    dependencies: ['lemburComponent', 'beras', 'jabatan', 'masa_kerja'],
+                }),
             };
 
             return {
@@ -100,7 +105,7 @@ export class TunjanganService extends BasePayrollComponentService<TunjanganInput
         }
     }
 
-    protected async calculateBatch(inputs: TunjanganInput[]): Promise<BatchPayrollCalculationResult<TunjanganOutput>> {
+    protected async calculateBatchInternal(inputs: TunjanganInput[]): Promise<BatchPayrollCalculationResult<TunjanganOutput>> {
         // For simplicity, delegate to individual calculations
         const results = new Map<string, PayrollCalculationResult<TunjanganOutput>>();
         let cachedCount = 0;
@@ -123,7 +128,7 @@ export class TunjanganService extends BasePayrollComponentService<TunjanganInput
         };
     }
 
-    protected getCalculationBasis(input: TunjanganInput): string {
+    protected getBasisDescription(input: TunjanganInput): string {
         return 'Combined allowances: beras (HR_PAYROLL), jabatan, masa_kerja (PR_ADTRANS), lembur (PR_TASKREGLN)';
     }
 
@@ -147,13 +152,13 @@ export class TunjanganService extends BasePayrollComponentService<TunjanganInput
     private async getTunjanganAmount(
         empCode: string,
         month: number,
-        year: string,
+        year: number,
         pattern: string,
         serverProfile?: string
     ): Promise<number> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
-        const daysInMonth = new Date(parseInt(year), month, 0).getDate();
+        const daysInMonth = new Date(year, month, 0).getDate();
         const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth}`;
 
         const rows = await db.query<{ Amount: number }>(`

@@ -104,11 +104,14 @@ export async function getLockedReport(token, div, gangCode, month, year, skip = 
  * @param {number} month - Month
  * @param {number} year - Year
  */
-export async function getLockedRawTree(token, div, month, year) {
+export async function getLockedRawTree(token, div, month, year, useHistoryDb = false) {
     try {
+        const params = { div, month, year };
+        if (useHistoryDb) params.use_history = 'true';
+
         const response = await axios.get(`${BASE_URL}/report/raw-tree`, {
             headers: { Authorization: `Bearer ${token}` },
-            params: { div, month, year }
+            params
         })
         return response.data
     } catch (error) {
@@ -123,4 +126,21 @@ export default {
     getLockedGangs,
     getLockedReport,
     getLockedRawTree
+}
+
+/**
+ * Save manual adjustment for locked division
+ * @param {string} token - JWT token
+ * @param {object} payload - Adjustment data
+ */
+export async function saveLockedManualEdit(token, payload) {
+    try {
+        const response = await axios.post(`${BASE_URL}/manual-edit`, payload, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        return response.data
+    } catch (error) {
+        console.error('[LockedDivisionService] Failed to save manual edit:', error)
+        throw error
+    }
 }

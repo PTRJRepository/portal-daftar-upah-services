@@ -36,7 +36,7 @@ async function requestWithRetry(url, config, retries = 2, delayMs = 300, timeout
   throw lastErr
 }
 
-export async function fetchReportRows(token, { month, year, gang_code, division, fields, skip, limit, benchmark = false, monitor = false }) {
+export async function fetchReportRows(token, { month, year, gang_code, division, fields, skip, limit, benchmark = false, monitor = false, use_history = null }) {
   const params = {}
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
@@ -48,6 +48,7 @@ export async function fetchReportRows(token, { month, year, gang_code, division,
   if (typeof limit === 'number') params.limit = limit
   if (benchmark) params.benchmark = true
   if (monitor) params.monitor = true
+  if (use_history !== null) params.use_history = use_history
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
   const r = await requestWithRetry('/payroll/report', config, 2, 300, 60000)
@@ -58,7 +59,7 @@ export async function fetchReportRows(token, { month, year, gang_code, division,
  * Optimized fetch function that uses the real data endpoint for best performance
  * Uses the same query as the reference engine - returns actual employee data
  */
-export async function fetchReportRowsSimple(token, { month, year, gang_code, division, skip = 0, limit = 50 }) {
+export async function fetchReportRowsSimple(token, { month, year, gang_code, division, skip = 0, limit = 50, use_history = null }) {
   const params = {}
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
@@ -67,6 +68,7 @@ export async function fetchReportRowsSimple(token, { month, year, gang_code, div
   if (division) params.division = division
   if (typeof skip === 'number') params.skip = skip
   if (typeof limit === 'number') params.limit = limit
+  if (use_history !== null) params.use_history = use_history
 
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
@@ -88,12 +90,13 @@ export async function fetchReportRowsSimple(token, { month, year, gang_code, div
   }
 }
 
-export async function fetchReportDivisionOptimized(token, { division, month, year }) {
+export async function fetchReportDivisionOptimized(token, { division, month, year, use_history = null }) {
   const params = {}
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
   if (norm.year) params.year = norm.year
   if (division) params.division = division
+  if (use_history !== null) params.use_history = use_history
 
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
@@ -161,10 +164,10 @@ export async function fetchReportCount(token, { month, year, gang_code, division
  * Smart batching for large field requests to prevent connection pool exhaustion
  * Splits requests with many fields into smaller batches of 15 fields each
  */
-export async function fetchReportRowsBatched(token, { month, year, gang_code, division, fields, skip, limit, benchmark = false, monitor = false }) {
+export async function fetchReportRowsBatched(token, { month, year, gang_code, division, fields, skip, limit, benchmark = false, monitor = false, use_history = null }) {
   // If no fields or small field count, use regular request
   if (!fields || fields.length <= 15) {
-    return await fetchReportRows(token, { month, year, gang_code, division, fields, skip, limit, benchmark, monitor })
+    return await fetchReportRows(token, { month, year, gang_code, division, fields, skip, limit, benchmark, monitor, use_history })
   }
 
   console.log(`[PayrollService] Using smart batching for ${fields.length} fields`)
@@ -197,7 +200,8 @@ export async function fetchReportRowsBatched(token, { month, year, gang_code, di
         skip: skip || 0,
         limit: limit || 1000,
         benchmark,
-        monitor
+        monitor,
+        use_history
       })
 
       if (batchData && batchData.length > 0) {
@@ -254,13 +258,14 @@ export async function fetchReportRowsBatched(token, { month, year, gang_code, di
  * Fetch payroll data with component metadata
  * Returns PayrollComponent<T> structure for each payroll item
  */
-export async function fetchPayrollWithComponents(token, { month, year, gang_code, division }) {
+export async function fetchPayrollWithComponents(token, { month, year, gang_code, division, use_history = null }) {
   const params = {}
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
   if (norm.year) params.year = norm.year
   if (gang_code) params.gang_code = gang_code
   if (division) params.division = division
+  if (use_history !== null) params.use_history = use_history
 
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }

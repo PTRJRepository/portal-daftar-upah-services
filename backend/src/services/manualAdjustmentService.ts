@@ -80,7 +80,7 @@ export class ManualAdjustmentService {
         `, [data.period_month, data.period_year, data.emp_code, data.adjustment_type, data.adjustment_name]);
 
         if (existing) {
-            if (parsedAmount === 0) {
+            if (parsedAmount === 0 && !data.remarks?.includes('INIT_COLUMN')) {
                 // If amount is 0, delete it from the table
                 await db.query(`DELETE FROM dbo.payroll_manual_adjustments WHERE id = ?`, [existing.id]);
                 return existing.id;
@@ -94,7 +94,7 @@ export class ManualAdjustmentService {
                 return existing.id;
             }
         } else {
-            if (parsedAmount === 0) return 0; // Don't insert zero
+            if (parsedAmount === 0 && !data.remarks?.includes('INIT_COLUMN')) return 0; // Don't insert zero
 
             // Insert
             const result = await db.query(`

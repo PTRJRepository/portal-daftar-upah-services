@@ -1,0 +1,23 @@
+﻿scripts/test_full_history.ts(11,33): error TS18046: 'json' is of type 'unknown'.
+scripts/test_full_history.ts(11,59): error TS18046: 'json' is of type 'unknown'.
+scripts/test_full_history.ts(13,13): error TS18046: 'json' is of type 'unknown'.
+scripts/test_full_history.ts(13,26): error TS18046: 'json' is of type 'unknown'.
+scripts/test_full_history.ts(15,29): error TS18046: 'json' is of type 'unknown'.
+src/services/luasAreaService.ts(115,54): error TS2558: Expected 0 type arguments, but got 1.
+src/services/payroll/components/PotonganService.ts(18,12): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(20,20): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(21,18): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(22,16): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(24,11): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(25,12): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(26,38): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(27,12): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(130,17): error TS2739: Type 'PotonganOutput' is missing the following properties from type 'PayrollComponent<PotonganOutput>': value, meta
+src/services/payroll/components/PotonganService.ts(192,31): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/components/PotonganService.ts(209,38): error TS2304: Cannot find name 'PayrollComponent'.
+src/services/payroll/PayrollComponentRegistry.ts(124,13): error TS2322: Type 'PayrollCalculationResult<any> | { component_name: string; input: PayrollCalculationInput; output: { value: null; meta: {}; }; errors: string[]; }' is not assignable to type 'PayrollCalculationResult<any>'.
+  Type '{ component_name: string; input: PayrollCalculationInput; output: { value: null; meta: {}; }; errors: string[]; }' is not assignable to type 'PayrollCalculationResult<any>'.
+    The types of 'output.meta' are incompatible between these types.
+      Property 'source' is missing in type '{}' but required in type 'PayrollComponentMetadata'.
+src/services/payroll/PayrollComponentRegistry.ts(154,32): error TS2552: Cannot find name 'emp_code'. Did you mean 'empCode'?
+src/services/payroll/PayrollComponentRegistry.ts(164,48): error TS2741: Property 'source' is missing in type '{}' but required in type 'PayrollComponentMetadata'.
