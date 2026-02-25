@@ -210,6 +210,10 @@ export interface AnnualIncomeRow {
     monthly_income: Record<string, number>; // "1" -> Jan, "2" -> Feb, etc.
     monthly_gaji_kotor: Record<string, number>;
     monthly_masa_kerja: Record<string, number>;
+    monthly_bpjs_kesehatan: Record<string, number>;
+    monthly_astek_ins_084: Record<string, number>;
+    monthly_astek_ins_2: Record<string, number>;
+    monthly_pensiun_1: Record<string, number>;
     // Monthly actual PPH21 from history database
     monthly_pph21: Record<string, number>; // "1" -> Jan, "2" -> Feb, etc.
     total_income: number;
@@ -490,6 +494,10 @@ class TaxReportService {
 
             const monthlyGajiKotor: Record<string, number> = {};
             const monthlyMasaKerja: Record<string, number> = {};
+            const monthlyBpjsKesehatan: Record<string, number> = {};
+            const monthlyAstekIns084: Record<string, number> = {};
+            const monthlyAstekIns2: Record<string, number> = {};
+            const monthlyPensiun1: Record<string, number> = {};
 
             // Calculate Jan-Nov totals and manual Astek/Pensiun
             for (let m = 1; m <= 11; m++) {
@@ -504,15 +512,30 @@ class TaxReportService {
                     monthlyGajiKotor[String(m)] = gajiKotor;
                     monthlyMasaKerja[String(m)] = details.masa_kerja;
 
-                    const dasarAstek = (details.hk * details.gaji_pokok) + details.masa_kerja;
-                    astek084pct += dasarAstek * 0.0084;
-                    astekIns2pct += dasarAstek * 0.02;
-                    pensiun1pct += dasarAstek * 0.01;
+                    // Kalkulasi Manual (Opsi B): (Gaji Pokok Aktual + Masa Kerja) * Persentase
+                    const dasarAstek = details.gaji_pokok + details.masa_kerja;
+                    const bpjsKesVal = dasarAstek * 0.04;     // BPJS Kes 4%
+                    const astek084Val = dasarAstek * 0.0084;  // Astek Ins 0.84%
+                    const astek2Val = dasarAstek * 0.02;      // Astek Ins 2%
+                    const pensiun1Val = dasarAstek * 0.01;    // Pensiun 1%
+
+                    astek084pct += astek084Val;
+                    astekIns2pct += astek2Val;
+                    pensiun1pct += pensiun1Val;
+
+                    monthlyBpjsKesehatan[String(m)] = bpjsKesVal;
+                    monthlyAstekIns084[String(m)] = astek084Val;
+                    monthlyAstekIns2[String(m)] = astek2Val;
+                    monthlyPensiun1[String(m)] = pensiun1Val;
                 } else if (income > 0) {
                     // Fallback if no details
                     gajiJanNov += income;
                     monthlyGajiKotor[String(m)] = income;
                     monthlyMasaKerja[String(m)] = 0;
+                    monthlyBpjsKesehatan[String(m)] = 0;
+                    monthlyAstekIns084[String(m)] = 0;
+                    monthlyAstekIns2[String(m)] = 0;
+                    monthlyPensiun1[String(m)] = 0;
                 }
             }
 
@@ -600,6 +623,10 @@ class TaxReportService {
                 monthly_income: emp.monthly_income,
                 monthly_gaji_kotor: monthlyGajiKotor,
                 monthly_masa_kerja: monthlyMasaKerja,
+                monthly_bpjs_kesehatan: monthlyBpjsKesehatan,
+                monthly_astek_ins_084: monthlyAstekIns084,
+                monthly_astek_ins_2: monthlyAstekIns2,
+                monthly_pensiun_1: monthlyPensiun1,
                 monthly_pph21: emp.monthly_pph21,
                 total_income: totalIncome,
                 gaji_jan_nov: gajiJanNov,
@@ -677,19 +704,18 @@ class TaxReportService {
 
                 const emp = employeeMap.get(empCode)!;
 
-                // Manual Calculation for Astek and Pensiun
-                const hk = row.jumlah_hk || row.hk || 0;
+                // Manual Calculation for Astek and BPJS (Opsi B: Tanpa HK, hanya Gaji Pokok + Masa Kerja)
                 const gajiPokok = row.gaji_pokok_aktual || row.gaji_pokok || 0;
                 const masaKerja = row.masa_kerja_jumlah || 0;
-                const dasarAstek = (hk * gajiPokok) + masaKerja;
+                const dasarPajak = gajiPokok + masaKerja;
 
                 emp.monthly_data[String(month)] = {
-                    astek_pekerja: dasarAstek * 0.02, // 2%
-                    astek_majikan: dasarAstek * 0.0084, // 0.84%
-                    bpjs_kes_pekerja: row.pot_bpjs_kesehatan_pekerja || 0,
-                    bpjs_kes_majikan: row.pot_bpjs_kesehatan_majikan || 0,
-                    bpjs_pensiun_pekerja: dasarAstek * 0.01, // 1%
-                    bpjs_pensiun_majikan: row.pot_bpjs_pensiun_majikan || 0,
+                    astek_pekerja: dasarPajak * 0.02,           // JHT 2%
+                    astek_majikan: dasarPajak * 0.0084,         // JKK/JKM 0.84%
+                    bpjs_kes_pekerja: dasarPajak * 0.01,        // BPJS Kes 1%
+                    bpjs_kes_majikan: dasarPajak * 0.04,        // BPJS Kes 4%
+                    bpjs_pensiun_pekerja: dasarPajak * 0.01,    // Pensiun 1%
+                    bpjs_pensiun_majikan: dasarPajak * 0.02,    // Pensiun 2%
                     masa_kerja: masaKerja
                 };
 

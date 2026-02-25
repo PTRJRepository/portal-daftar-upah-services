@@ -428,11 +428,19 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
                                     onChange={(e) => setPenghasilanMode(e.target.value)}
                                     style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '1rem', backgroundColor: '#fff' }}
                                 >
-                                    <option value="gaji">Gaji Kotor</option>
-                                    <option value="masa_kerja">Masa Kerja</option>
+                                    <optgroup label="PENGHASILAN">
+                                        <option value="gaji">Gaji Kotor</option>
+                                        <option value="masa_kerja">Masa Kerja (Info)</option>
+                                    </optgroup>
+                                    <optgroup label="BPJS & ASTEK">
+                                        <option value="bpjs_kesehatan">BPJS Kesehatan 4% (Majikan)</option>
+                                        <option value="astek_ins_084">Astek Ins 0.84% (Majikan)</option>
+                                        <option value="astek_ins_2">Astek Ins 2% (Pekerja)</option>
+                                        <option value="pensiun_1">Pensiun 1% (Pekerja)</option>
+                                    </optgroup>
                                 </select>
                                 <span style={{ marginLeft: '1rem', fontStyle: 'italic', color: '#64748b', fontSize: '0.9em' }}>
-                                    *Hanya sebagai informasi uraian tambahan. Tidak menghitung BPJS Kesehatan dan Astek.
+                                    *Pilih uraian untuk melihat rincian bulanannya secara spesifik.
                                 </span>
                             </div>
                         )}
@@ -447,13 +455,24 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
                                             <th rowSpan={2}>Stat</th>
                                             <th rowSpan={2}>BL</th>
                                             <th colSpan={12} style={{ textAlign: 'center' }}>
-                                                PENGHASILAN SETAHUN ({penghasilanMode === 'gaji' ? 'GAJI KOTOR' : 'MASA KERJA'})
+                                                URAIAN BULANAN ({
+                                                    penghasilanMode === 'gaji' ? 'GAJI KOTOR' :
+                                                        penghasilanMode === 'masa_kerja' ? 'MASA KERJA' :
+                                                            penghasilanMode === 'bpjs_kesehatan' ? 'BPJS KES 4%' :
+                                                                penghasilanMode === 'astek_ins_084' ? 'ASTEK INS 0.84%' :
+                                                                    penghasilanMode === 'astek_ins_2' ? 'ASTEK INS 2%' : 'PENSIUN 1%'
+                                                })
                                             </th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>
-                                                {penghasilanMode === 'gaji' ? 'TOTAL\nGaji Setahun' : 'TOTAL\nMasa Kerja'}
+                                                {penghasilanMode === 'gaji' ? 'TOTAL\nGaji Setahun' :
+                                                    penghasilanMode === 'masa_kerja' ? 'TOTAL\nMasa Kerja' :
+                                                        penghasilanMode === 'bpjs_kesehatan' ? 'TOTAL\nBPJS Kes 4%' :
+                                                            penghasilanMode === 'astek_ins_084' ? 'TOTAL\nAstek 0.84%' :
+                                                                penghasilanMode === 'astek_ins_2' ? 'TOTAL\nAstek 2%' : 'TOTAL\nPensiun 1%'}
                                             </th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>T H R</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>BONUS /<br />Ex-Gratia</th>
+                                            <th rowSpan={2} style={{ textAlign: 'center', backgroundColor: '#f8fafc', color: '#64748b', fontStyle: 'italic', fontWeight: 'normal', fontSize: '0.9em' }}>Total<br />Masa Kerja<br />(Info)</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>Total<br />Penghasilan<br />Setahun</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>PTKP</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>Penghasilan<br />Kena<br />Pajak</th>
@@ -469,7 +488,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
                                         <tr>
                                             <th className="col-no" rowSpan={2}>No</th>
                                             <th className="col-name" rowSpan={2}>Name</th>
-                                            <th colSpan={5} style={{ textAlign: 'center' }}>PENGHASILAN SETAHUN</th>
+                                            <th colSpan={6} style={{ textAlign: 'center' }}>PENGHASILAN SETAHUN</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>Total<br />Penghasilan<br />Bruto</th>
                                             <th colSpan={4} style={{ textAlign: 'center' }}>POTONGAN</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>Penghasilan<br />Neto Setahun/<br />disetahunkan</th>
@@ -483,6 +502,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
                                             <th className="sub-header" style={{ textAlign: 'center' }}>BONUS /<br />Ex-Gratia</th>
                                             <th className="sub-header" style={{ textAlign: 'center' }}>BPJS<br />Kesehatan (4%)</th>
                                             <th className="sub-header" style={{ textAlign: 'center' }}>Astek Ins<br />0,84%</th>
+                                            <th className="sub-header" style={{ textAlign: 'center', backgroundColor: '#f8fafc', color: '#64748b', fontStyle: 'italic', fontWeight: 'normal', fontSize: '0.9em' }}>Total<br />Masa Kerja<br />(Info)</th>
 
                                             <th className="sub-header" style={{ textAlign: 'center' }}>Astek Ins<br />2% from Inc</th>
                                             <th className="sub-header" style={{ textAlign: 'center' }}>Bi.Jabatan<br />5%per year</th>
@@ -507,13 +527,28 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
                                                 {Array.from({ length: 12 }, (_, m) => {
                                                     const val = penghasilanMode === 'gaji'
                                                         ? (emp.monthly_gaji_kotor?.[m + 1] || 0)
-                                                        : (emp.monthly_masa_kerja?.[m + 1] || 0);
+                                                        : penghasilanMode === 'masa_kerja'
+                                                            ? (emp.monthly_masa_kerja?.[m + 1] || 0)
+                                                            : penghasilanMode === 'bpjs_kesehatan'
+                                                                ? (emp.monthly_bpjs_kesehatan?.[m + 1] || 0)
+                                                                : penghasilanMode === 'astek_ins_084'
+                                                                    ? (emp.monthly_astek_ins_084?.[m + 1] || 0)
+                                                                    : penghasilanMode === 'astek_ins_2'
+                                                                        ? (emp.monthly_astek_ins_2?.[m + 1] || 0)
+                                                                        : (emp.monthly_pensiun_1?.[m + 1] || 0);
                                                     return <td key={m} className="text-right">{formatNumber(val) || '-'}</td>;
                                                 })}
 
-                                                <td className="text-right"><strong>{formatNumber(penghasilanMode === 'gaji' ? emp.gaji_jan_nov : emp.masa_kerja_jan_nov)}</strong></td>
+                                                <td className="text-right"><strong>{formatNumber(
+                                                    penghasilanMode === 'gaji' ? emp.gaji_jan_nov :
+                                                        penghasilanMode === 'masa_kerja' ? emp.masa_kerja_jan_nov :
+                                                            penghasilanMode === 'bpjs_kesehatan' ? emp.bpjs_kesehatan_4pct :
+                                                                penghasilanMode === 'astek_ins_084' ? emp.astek_084pct :
+                                                                    penghasilanMode === 'astek_ins_2' ? emp.astek_ins_2pct : emp.pensiun_1pct
+                                                )}</strong></td>
                                                 <td className="text-right">{formatNumber(emp.thr)}</td>
                                                 <td className="text-right">{formatNumber(emp.bonus)}</td>
+                                                <td className="text-right" style={{ backgroundColor: '#f8fafc', color: '#64748b' }}>{formatNumber(emp.masa_kerja_jan_nov)}</td>
 
                                                 <td className="text-right"><strong>{formatNumber((emp.gaji_jan_nov || 0) + (emp.thr || 0) + (emp.bonus || 0))}</strong></td>
 
@@ -527,6 +562,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
                                                 <td className="text-right">{formatNumber(emp.bonus)}</td>
                                                 <td className="text-right">{formatNumber(emp.bpjs_kesehatan_4pct)}</td>
                                                 <td className="text-right">{formatNumber(emp.astek_084pct)}</td>
+                                                <td className="text-right" style={{ backgroundColor: '#f8fafc', color: '#64748b' }}>{formatNumber(emp.masa_kerja_jan_nov)}</td>
                                                 <td className="text-right"><strong>{formatNumber((emp.gaji_jan_nov || 0) + (emp.thr || 0) + (emp.bonus || 0) + (emp.bpjs_kesehatan_4pct || 0) + (emp.astek_084pct || 0))}</strong></td>
 
                                                 <td className="text-right">{formatNumber(emp.astek_ins_2pct)}</td>
@@ -551,15 +587,30 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
                                             const monthTotal = data.employees.reduce((s, e) => {
                                                 const val = penghasilanMode === 'gaji'
                                                     ? (e.monthly_gaji_kotor?.[m + 1] || 0)
-                                                    : (e.monthly_masa_kerja?.[m + 1] || 0);
+                                                    : penghasilanMode === 'masa_kerja'
+                                                        ? (e.monthly_masa_kerja?.[m + 1] || 0)
+                                                        : penghasilanMode === 'bpjs_kesehatan'
+                                                            ? (e.monthly_bpjs_kesehatan?.[m + 1] || 0)
+                                                            : penghasilanMode === 'astek_ins_084'
+                                                                ? (e.monthly_astek_ins_084?.[m + 1] || 0)
+                                                                : penghasilanMode === 'astek_ins_2'
+                                                                    ? (e.monthly_astek_ins_2?.[m + 1] || 0)
+                                                                    : (e.monthly_pensiun_1?.[m + 1] || 0);
                                                 return s + val;
                                             }, 0);
                                             return <td key={m} className="text-right"><strong>{formatNumber(monthTotal) || '-'}</strong></td>;
                                         })}
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (penghasilanMode === 'gaji' ? (e.gaji_jan_nov || 0) : (e.masa_kerja_jan_nov || 0)), 0))}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (
+                                            penghasilanMode === 'gaji' ? (e.gaji_jan_nov || 0) :
+                                                penghasilanMode === 'masa_kerja' ? (e.masa_kerja_jan_nov || 0) :
+                                                    penghasilanMode === 'bpjs_kesehatan' ? (e.bpjs_kesehatan_4pct || 0) :
+                                                        penghasilanMode === 'astek_ins_084' ? (e.astek_084pct || 0) :
+                                                            penghasilanMode === 'astek_ins_2' ? (e.astek_ins_2pct || 0) : (e.pensiun_1pct || 0)
+                                        ), 0))}</strong></td>
 
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.thr || 0), 0))}</strong></td>
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.bonus || 0), 0))}</strong></td>
+                                        <td className="text-right" style={{ backgroundColor: '#f8fafc', color: '#64748b' }}><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.masa_kerja_jan_nov || 0), 0))}</strong></td>
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + ((e.gaji_jan_nov || 0) + (e.thr || 0) + (e.bonus || 0)), 0))}</strong></td>
 
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.ptkp || 0), 0))}</strong></td>
@@ -573,6 +624,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.bonus || 0), 0))}</strong></td>
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.bpjs_kesehatan_4pct || 0), 0))}</strong></td>
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.astek_084pct || 0), 0))}</strong></td>
+                                        <td className="text-right" style={{ backgroundColor: '#f8fafc', color: '#64748b' }}><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.masa_kerja_jan_nov || 0), 0))}</strong></td>
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + ((e.gaji_jan_nov || 0) + (e.thr || 0) + (e.bonus || 0) + (e.bpjs_kesehatan_4pct || 0) + (e.astek_084pct || 0)), 0))}</strong></td>
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.astek_ins_2pct || 0), 0))}</strong></td>
                                         <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.biaya_jabatan || 0), 0))}</strong></td>
@@ -600,6 +652,7 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [astekMode, setAstekMode] = useState('total');
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -656,6 +709,34 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
                 )}
             </div>
 
+            {data && data.employees.length > 0 && (
+                <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
+                    <label style={{ marginRight: '1rem', fontWeight: 'bold', color: '#334155' }}>Tampilkan Uraian Bulanan:</label>
+                    <select
+                        value={astekMode}
+                        onChange={(e) => setAstekMode(e.target.value)}
+                        style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '1rem', backgroundColor: '#fff' }}
+                    >
+                        <option value="total">Total Seluruh BPJS & Astek (Info)</option>
+                        <optgroup label="BPJS Kesehatan">
+                            <option value="bpjs_kes_majikan">BPJS Kes 4% (Majikan)</option>
+                            <option value="bpjs_kes_pekerja">BPJS Kes 1% (Pekerja)</option>
+                        </optgroup>
+                        <optgroup label="Astek / Jamsostek">
+                            <option value="astek_majikan">Astek 0.84% (Majikan)</option>
+                            <option value="astek_pekerja">Astek 2% (Pekerja)</option>
+                        </optgroup>
+                        <optgroup label="BPJS Pensiun">
+                            <option value="bpjs_pensiun_majikan">Pensiun 2% (Majikan)</option>
+                            <option value="bpjs_pensiun_pekerja">Pensiun 1% (Pekerja)</option>
+                        </optgroup>
+                    </select>
+                    <span style={{ marginLeft: '1rem', fontStyle: 'italic', color: '#64748b', fontSize: '0.9em' }}>
+                        *Pilih uraian untuk melihat rincian bulanannya secara spesifik.
+                    </span>
+                </div>
+            )}
+
             {!data || data.employees.length === 0 ? (
                 <div className="tax-report-empty">
                     <h3><FileWarning size={24} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '8px' }} /> Tidak Ada Data</h3>
@@ -668,7 +749,16 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
                             <tr>
                                 <th className="col-no" rowSpan={2}>No</th>
                                 <th className="col-name" rowSpan={2}>Name</th>
-                                <th colSpan={12} style={{ textAlign: 'center' }}>PENGHASILAN SETAHUN</th>
+                                <th colSpan={12} style={{ textAlign: 'center' }}>
+                                    URAIAN BULANAN ({
+                                        astekMode === 'total' ? 'TOTAL BPJS & ASTEK' :
+                                            astekMode === 'bpjs_kes_majikan' ? 'BPJS Kes 4%' :
+                                                astekMode === 'bpjs_kes_pekerja' ? 'BPJS Kes 1%' :
+                                                    astekMode === 'astek_majikan' ? 'Astek 0.84%' :
+                                                        astekMode === 'astek_pekerja' ? 'Astek 2%' :
+                                                            astekMode === 'bpjs_pensiun_majikan' ? 'Pensiun 2%' : 'Pensiun 1%'
+                                    })
+                                </th>
                                 <th rowSpan={2}>TOTAL<br />Jan s/d Des</th>
                                 <th rowSpan={2}>TOTAL<br />Masa Kerja</th>
                             </tr>
@@ -680,14 +770,19 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
                         </thead>
                         <tbody>
                             {data.employees.map((emp, idx) => {
-                                // Calculate total ASTEK+BPJS per month
+                                // Calculate ASTEK+BPJS per month based on mode
                                 const monthlyTotals = {};
                                 let grandTotal = 0;
                                 for (let m = 1; m <= 12; m++) {
                                     const md = emp.monthly_data?.[String(m)];
-                                    const total = md
-                                        ? md.astek_pekerja + md.astek_majikan + md.bpjs_kes_pekerja + md.bpjs_kes_majikan + md.bpjs_pensiun_pekerja + md.bpjs_pensiun_majikan
-                                        : 0;
+                                    let total = 0;
+                                    if (md) {
+                                        if (astekMode === 'total') {
+                                            total = md.astek_pekerja + md.astek_majikan + md.bpjs_kes_pekerja + md.bpjs_kes_majikan + md.bpjs_pensiun_pekerja + md.bpjs_pensiun_majikan;
+                                        } else {
+                                            total = md[astekMode] || 0;
+                                        }
+                                    }
                                     monthlyTotals[m] = total;
                                     grandTotal += total;
                                 }
@@ -713,13 +808,20 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
                                 {Array.from({ length: 12 }, (_, m) => {
                                     const monthTotal = data.employees.reduce((s, emp) => {
                                         const md = emp.monthly_data?.[String(m + 1)];
-                                        return s + (md ? md.astek_pekerja + md.astek_majikan + md.bpjs_kes_pekerja + md.bpjs_kes_majikan + md.bpjs_pensiun_pekerja + md.bpjs_pensiun_majikan : 0);
+                                        if (!md) return s;
+                                        if (astekMode === 'total') {
+                                            return s + md.astek_pekerja + md.astek_majikan + md.bpjs_kes_pekerja + md.bpjs_kes_majikan + md.bpjs_pensiun_pekerja + md.bpjs_pensiun_majikan;
+                                        }
+                                        return s + (md[astekMode] || 0);
                                     }, 0);
                                     return <td key={m} className="text-right">{formatNumber(monthTotal)}</td>;
                                 })}
                                 <td className="text-right">
                                     <strong>{formatNumber(data.employees.reduce((s, emp) => {
-                                        return s + (emp.total?.astek_pekerja || 0) + (emp.total?.astek_majikan || 0) + (emp.total?.bpjs_kes_pekerja || 0) + (emp.total?.bpjs_kes_majikan || 0) + (emp.total?.bpjs_pensiun_pekerja || 0) + (emp.total?.bpjs_pensiun_majikan || 0);
+                                        if (astekMode === 'total') {
+                                            return s + (emp.total?.astek_pekerja || 0) + (emp.total?.astek_majikan || 0) + (emp.total?.bpjs_kes_pekerja || 0) + (emp.total?.bpjs_kes_majikan || 0) + (emp.total?.bpjs_pensiun_pekerja || 0) + (emp.total?.bpjs_pensiun_majikan || 0);
+                                        }
+                                        return s + (emp.total?.[astekMode] || 0);
                                     }, 0))}</strong>
                                 </td>
                                 <td className="text-right">
