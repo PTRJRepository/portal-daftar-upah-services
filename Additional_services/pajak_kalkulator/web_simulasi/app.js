@@ -117,129 +117,52 @@ async function loadData() {
         });
 
         // BATCH PROCESSING TO AVOID OVERLOADING
-        const CONCURRENCY = 3;
+        const annualTaxRes = await fetch(`${API_BASE}/report/tax/annual?year=2025&division=INFRA`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const annualData = await annualTaxRes.json();
 
-        async function fetchHistoryForEmp(emp) {
-            try {
-                // 1. Resolve NIK to EmpCode
-                const authHeader = { 'Authorization': `Bearer ${token}` };
-                let targetEmpCode = null;
+        if (annualData.success && annualData.data && annualData.data.employees) {
+            tbody.innerHTML = ''; // clear loading rows
 
-                try {
-                    const nikRes = await fetch(`${API_BASE}/payroll/employee/by-nik/${emp.nik}`, { headers: authHeader });
-                    if (nikRes.ok) {
-                        const nikData = await nikRes.json();
-                        targetEmpCode = nikData.EmpCode || nikData.emp_code;
-                    }
-                } catch (e) {
-                    console.warn("Failed NIK lookup, using NIK directly", e);
-                }
+            let index = 0;
+            for (const emp of annualData.data.employees) {
+                const tr = document.createElement('tr');
 
-                if (!targetEmpCode) {
-                    targetEmpCode = emp.emp_code || emp.nik; // Use history emp_code or fallback
-                }
-
-                // 2. Fetch History (For 2025)
-                // We ask for 12 months, starting from Dec 2025 to capture Jan-Dec 2025
-                // Wait, if current is considered Dec 2025, we want the whole 2025.
-                // The history route returns requested number of months backwards. If we are in 2026, we fetch period using specific parameters?
-                // The /history endpoint uses the current period backward.
-                // If we want exactly 2025, we can just fetch history and filter client-side.
-                const histRes = await fetch(`${API_BASE}/payroll/employee/${targetEmpCode}/history?months=24&include_current=true`, { headers: authHeader });
-                const historyFetchData = await histRes.json();
-
-                let monthlyIncomes = new Array(12).fill(0);
-
-                if (historyFetchData.success && historyFetchData.data) {
-                    historyFetchData.data.forEach(p => {
-                        // Filter for 2025 specifically
-                        if (p.period_year === 2025) {
-                            let m = p.period_month;
-                            if (m >= 1 && m <= 12) {
-                                monthlyIncomes[m - 1] = p.jumlah_upah_kotor || p.penghasilan_bruto || p.upah_kotor || p.total_upah_kotor || 0;
-                            }
-                        }
-                    });
-                }
-
-                return monthlyIncomes;
-            } catch (error) {
-                console.error(`Error fetching history for ${emp.nama} (${emp.nik}):`, error);
-                return new Array(12).fill(0);
-            }
-        }
-
-        // Process sequentially with chunks
-        for (let i = 0; i < rowElements.length; i += CONCURRENCY) {
-            const chunk = rowElements.slice(i, i + CONCURRENCY);
-            await Promise.all(chunk.map(async (item) => {
-                const { emp, tr } = item;
-                const monthlyIncomes = await fetchHistoryForEmp(emp);
-
-                let totalBulan = monthlyIncomes.reduce((a, b) => a + b, 0);
                 let monthCols = '';
-                monthlyIncomes.forEach(inc => {
-                    monthCols += `<td class="text-right">${parseCurrency(inc)}</td>`;
-                });
-
-                const rawEmpNik = String(emp.nik || '').trim().toUpperCase();
-                let rawEmpName = String(emp.nama || '').toUpperCase();
-
-                // Remove alias in brackets e.g. "HERI GUNAWAN (SALMAH)" -> "HERI GUNAWAN"
-                rawEmpName = rawEmpName.replace(/\s*\(.*?\)\s*/g, '').trim();
-                const firstName = rawEmpName.split(' ')[0].trim();
-
-                let thr = 0;
-                let exgratia = 0;
-
-                if (thrMap[rawEmpNik] !== undefined) {
-                    thr = thrMap[rawEmpNik];
-                    exgratia = exgratiaMap[rawEmpNik] || 0;
-                } else if (thrMap[rawEmpName] !== undefined) {
-                    thr = thrMap[rawEmpName];
-                    exgratia = exgratiaMap[rawEmpName] || 0;
-                } else {
-                    for (const jsonName of Object.keys(thrMap)) {
-                        if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
-                            thr = thrMap[jsonName];
-                            exgratia = exgratiaMap[jsonName] || 0;
-                            break;
-                        }
-                    }
+                for (let i = 1; i <= 12; i++) {
+                    monthCols += `<td class="text-right">${parseCurrency(emp.monthly_income[i] || 0)}</td>`;
                 }
 
-                const medical = 0;
-
-                const totalSetahun = totalBulan + thr + exgratia + medical;
-                const statusKeluarga = emp.status_keluarga || 'TK/0';
-                const valuePTKP = ptkpMap[statusKeluarga] || 54000000;
-
-                let pkp = totalSetahun - valuePTKP;
-                if (pkp < 0) pkp = 0;
-
-                totalStatsPenghasilan += totalSetahun;
-                totalStatsPKP += pkp;
+                totalStatsPenghasilan += emp.total_penghasilan_setahun;
+                totalStatsPKP += emp.penghasilan_kena_pajak;
 
                 tr.innerHTML = `
-                    <td class="sticky-col-1 text-center">${item.index + 1}</td>
-                    <td class="sticky-col-2">${emp.nama}</td>
-                    <td class="text-center">${emp.jenis_kelamin || '-'}</td>
-                    <td class="text-center">${statusKeluarga}</td>
+                    <td class="sticky-col-1 text-center">${index + 1}</td>
+                    <td class="sticky-col-2">${emp.emp_name}</td>
+                    <td class="text-center">${emp.gender || '-'}</td>
+                    <td class="text-center">${emp.status_ptkp || 'TK/0'}</td>
                     <td class="text-center">12</td>
                     ${monthCols}
-                    <td class="text-right" style="font-weight: 600;">${parseCurrency(totalBulan)}</td>
-                    <td class="text-right">${parseCurrency(thr)}</td>
-                    <td class="text-right">${parseCurrency(exgratia)}</td>
-                    <td class="text-right">${parseCurrency(medical)}</td>
-                    <td class="text-right highlight-col">${parseCurrency(totalSetahun)}</td>
-                    <td class="text-right highlight-col">${parseCurrency(valuePTKP)}</td>
-                    <td class="text-right highlight-col-alt">${parseCurrency(pkp)}</td>
+                    <td class="text-right" style="font-weight: 600;">${parseCurrency(emp.total_income)}</td>
+                    <td class="text-right">${parseCurrency(emp.thr)}</td>
+                    <td class="text-right">${parseCurrency(emp.bonus)}</td>
+                    <td class="text-right">${parseCurrency(emp.medical_claim)}</td>
+                    <td class="text-right highlight-col">${parseCurrency(emp.total_penghasilan_setahun)}</td>
+                    <td class="text-right highlight-col">${parseCurrency(emp.ptkp)}</td>
+                    <td class="text-right highlight-col-alt">${parseCurrency(emp.penghasilan_kena_pajak)}</td>
                 `;
-            }));
+                tbody.appendChild(tr);
+                index++;
+            }
 
             // Update live stats
+            document.getElementById('stat-karyawan').innerText = annualData.data.employees.length;
             document.getElementById('stat-penghasilan').innerText = parseCurrency(totalStatsPenghasilan);
             document.getElementById('stat-pkp').innerText = parseCurrency(totalStatsPKP);
+        } else {
+            console.warn("No data returned from /report/tax/annual API");
+            tbody.innerHTML = '<tr><td colspan="19" class="text-center" style="color: red;">Gagal memuat data histori dari backend.</td></tr>';
         }
 
     } catch (error) {

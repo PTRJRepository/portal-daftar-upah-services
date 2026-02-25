@@ -115,6 +115,51 @@ function loadThrBonusMaps(): ThrBonusMaps {
 }
 
 // ============================================================
+// THR Periode Rule from JSON
+// ============================================================
+interface ThrPeriode {
+    year: number;
+    month: number;
+    type: string;
+    name: string;
+    description: string;
+    is_active: boolean;
+}
+
+let activeThrPeriode: ThrPeriode | null = null;
+let isThrPeriodeLoaded = false;
+
+function loadActiveThrPeriode(): ThrPeriode | null {
+    if (isThrPeriodeLoaded) return activeThrPeriode;
+
+    // Attempt to load from <project_root>/backend/data/thr_periode.json
+    const possiblePaths = [
+        path.resolve(process.cwd(), 'data/thr_periode.json'),
+        path.resolve(__dirname, '../../data/thr_periode.json')
+    ];
+
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            try {
+                const raw = fs.readFileSync(p, 'utf-8');
+                const parsed: ThrPeriode[] = JSON.parse(raw);
+                activeThrPeriode = parsed.find(p => p.is_active) || null;
+                break;
+            } catch (err) {
+                console.error(`Failed to load ${p}:`, err);
+            }
+        }
+    }
+
+    if (!activeThrPeriode) {
+        console.warn('Active THR Periode not found or file missing.');
+    }
+
+    isThrPeriodeLoaded = true;
+    return activeThrPeriode;
+}
+
+// ============================================================
 // Interfaces
 // ============================================================
 
@@ -284,7 +329,7 @@ class TaxReportService {
 
                 pot_spsi: row.pot_spsi || 0,
                 pot_koreksi: row.pot_koreksi || 0,
-                total_potongan_kotor: (row.pot_spsi || 0) + (row.pot_koreksi || 0),
+                total_potongan_kotor: row.pot_koreksi || 0,
 
                 bpjs_kes_majikan: row.pot_bpjs_kesehatan_majikan || 0,
                 astek_jht_majikan: row.pot_astek_maj || 0,
@@ -339,6 +384,7 @@ class TaxReportService {
             monthly_bpjs_pensiun_pekerja: Record<string, number>;
             monthly_bpjs_kes_majikan: Record<string, number>;
             monthly_astek_jumlah: Record<string, number>;
+            monthly_thr_factors: Record<string, { masa_kerja_tahun: number, upah_dasar: number, beras_rate: number, masa_kerja_jumlah: number }>;
             was_in_target_gang: boolean;
         }>();
 
@@ -361,6 +407,7 @@ class TaxReportService {
                         monthly_bpjs_pensiun_pekerja: {},
                         monthly_bpjs_kes_majikan: {},
                         monthly_astek_jumlah: {},
+                        monthly_thr_factors: {},
                         was_in_target_gang: false,
                     });
                 }
@@ -373,6 +420,13 @@ class TaxReportService {
                 emp.monthly_bpjs_pensiun_pekerja[String(month)] = row.pot_bpjs_pensiun_pekerja || 0;
                 emp.monthly_bpjs_kes_majikan[String(month)] = row.pot_bpjs_kesehatan_majikan || 0;
                 emp.monthly_astek_jumlah[String(month)] = (row.pot_astek || 0) + (row.pot_astek_maj || 0);
+
+                emp.monthly_thr_factors[String(month)] = {
+                    masa_kerja_tahun: row.masa_kerja_tahun || 0,
+                    upah_dasar: row.upah_dasar || 0,
+                    beras_rate: row.beras_rate || 0,
+                    masa_kerja_jumlah: row.masa_kerja_jumlah || 0
+                };
 
                 const empCodeTrimmed = empCode?.trim() || '';
                 const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
@@ -392,6 +446,9 @@ class TaxReportService {
 
         // Load THR and Exgratia mappings
         const { thrMap, exgratiaMap } = loadThrBonusMaps();
+
+        // Load active THR Periode
+        const activeThr = loadActiveThrPeriode();
 
         // Calculate annual totals
         const employees: AnnualIncomeRow[] = [];
@@ -416,22 +473,47 @@ class TaxReportService {
             let thr = 0;
             let exgratia = 0;
 
+            // 1. Dynamic THR Calculation
+            if (activeThr) {
+                // Get factors from the specific THR month, fallback to latest available month
+                let thrFactors = emp.monthly_thr_factors[String(activeThr.month)];
+                if (!thrFactors) {
+                    for (let m = 12; m >= 1; m--) {
+                        if (emp.monthly_thr_factors[String(m)]) {
+                            thrFactors = emp.monthly_thr_factors[String(m)];
+                            break;
+                        }
+                    }
+                }
+
+                if (thrFactors && thrFactors.masa_kerja_tahun >= 1) {
+                    thr = (thrFactors.upah_dasar * 30) + (thrFactors.beras_rate * 30) + thrFactors.masa_kerja_jumlah;
+                }
+            }
+
+            // 2. Static THR Fallback/Addition (or Exgratia)
+            let staticThr = 0;
             if (thrMap.has(rawEmpNik)) {
-                thr = thrMap.get(rawEmpNik)!;
+                staticThr = thrMap.get(rawEmpNik)!;
                 exgratia = exgratiaMap.get(rawEmpNik)!;
             } else if (thrMap.has(rawEmpName)) {
-                thr = thrMap.get(rawEmpName)!;
+                staticThr = thrMap.get(rawEmpName)!;
                 exgratia = exgratiaMap.get(rawEmpName)!;
             } else {
                 // Fallback: match by first name if JSON only contains first names, 
                 // or if JSON name is a substring of the DB name.
                 for (const [jsonName, jsonThr] of thrMap.entries()) {
                     if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
-                        thr = jsonThr;
+                        staticThr = jsonThr;
                         exgratia = exgratiaMap.get(jsonName) || 0;
                         break;
                     }
                 }
+            }
+
+            // Fallback to static static THR if dynamic THR is 0
+            if (thr === 0) {
+                thr = staticThr;
             }
 
             // BPJS Kesehatan 4% of total income (employer portion accumulated)

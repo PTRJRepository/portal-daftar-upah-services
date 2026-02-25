@@ -98,9 +98,9 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
     // Year options
     const yearOptions = useMemo(() => {
         const years = [];
-        for (let y = contextYear; y >= contextYear - 3; y--) years.push(y);
+        for (let y = year; y >= year - 3; y--) years.push(y);
         return years;
-    }, [contextYear]);
+    }, [year]);
 
     if (loading) return (
         <div className="tax-report-loading">
@@ -563,9 +563,9 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
 
     const yearOptions = useMemo(() => {
         const years = [];
-        for (let y = contextYear; y >= contextYear - 3; y--) years.push(y);
+        for (let y = year; y >= year - 3; y--) years.push(y);
         return years;
-    }, [contextYear]);
+    }, [year]);
 
     if (loading) return (
         <div className="tax-report-loading">
