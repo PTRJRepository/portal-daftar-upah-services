@@ -462,7 +462,7 @@ class TaxReportService {
             // Total income from all months
             const totalIncome = Object.values(emp.monthly_income).reduce((sum, v) => sum + v, 0);
 
-            // Fetch THR and Exgratia
+            // Fetch variables for specific lookup
             const rawEmpNik = String(emp.nik || '').trim().toUpperCase();
             let rawEmpName = String(emp.emp_name || '').toUpperCase();
 
@@ -471,7 +471,6 @@ class TaxReportService {
             const firstName = rawEmpName.split(' ')[0].trim();
 
             let thr = 0;
-            let exgratia = 0;
 
             // 1. Dynamic THR Calculation
             if (activeThr) {
@@ -491,29 +490,19 @@ class TaxReportService {
                 }
             }
 
-            // 2. Static THR Fallback/Addition (or Exgratia)
-            let staticThr = 0;
-            if (thrMap.has(rawEmpNik)) {
-                staticThr = thrMap.get(rawEmpNik)!;
+            // 2. Fetch Exgratia (Bonus) from Static JSON
+            let exgratia = 0;
+            if (exgratiaMap.has(rawEmpNik)) {
                 exgratia = exgratiaMap.get(rawEmpNik)!;
-            } else if (thrMap.has(rawEmpName)) {
-                staticThr = thrMap.get(rawEmpName)!;
+            } else if (exgratiaMap.has(rawEmpName)) {
                 exgratia = exgratiaMap.get(rawEmpName)!;
             } else {
-                // Fallback: match by first name if JSON only contains first names, 
-                // or if JSON name is a substring of the DB name.
                 for (const [jsonName, jsonThr] of thrMap.entries()) {
                     if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
-                        staticThr = jsonThr;
                         exgratia = exgratiaMap.get(jsonName) || 0;
                         break;
                     }
                 }
-            }
-
-            // Fallback to static static THR if dynamic THR is 0
-            if (thr === 0) {
-                thr = staticThr;
             }
 
             // BPJS Kesehatan 4% of total income (employer portion accumulated)
