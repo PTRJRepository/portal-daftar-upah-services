@@ -112,7 +112,7 @@ export class LuasAreaService {
         try {
             const areaFile = file(this.baseDataPath);
             if (await areaFile.exists()) {
-                const areaData = await areaFile.json<any[]>();
+                const areaData = (await areaFile.json()) as any[];
                 const map: Record<string, number> = {};
                 for (const item of areaData) {
                     const div = (item.divisi || '').trim();

@@ -13,6 +13,7 @@ import { historyDatabaseService } from './historyDatabaseService';
 import { ptkpTaxService, mapPTKPToTER } from './ptkpTaxService';
 import { pph21TerService } from './pph21TerService';
 import { divisionDefinition } from './divisionDefinition';
+import { OtherIncomesService } from './otherIncomesService';
 
 // ============================================================
 // PTKP Rule from JSON
@@ -388,6 +389,27 @@ class TaxReportService {
             exgratiaMap = maps.exgratiaMap;
         }
 
+        // --- Fetch Database Other Incomes ---
+        const dbOtherIncomes = await OtherIncomesService.getIncomes(year, month, effectiveDivisionCode, gangCode);
+        const dbThrMap = new Map<string, number>();
+        const dbExgratiaMap = new Map<string, number>();
+        const dbCustomIncomeMap = new Map<string, number>();
+
+        for (const inc of dbOtherIncomes) {
+            if (inc.is_taxable) {
+                const currentNik = String(inc.nik || '').trim().toUpperCase();
+                const amt = Number(inc.amount) || 0;
+                const type = String(inc.income_type || '').toUpperCase();
+
+                if (type === 'THR') {
+                    dbThrMap.set(currentNik, (dbThrMap.get(currentNik) || 0) + amt);
+                } else if (type === 'BONUS' || type === 'EXGRATIA') {
+                    dbExgratiaMap.set(currentNik, (dbExgratiaMap.get(currentNik) || 0) + amt);
+                } else {
+                    dbCustomIncomeMap.set(currentNik, (dbCustomIncomeMap.get(currentNik) || 0) + amt);
+                }
+            }
+        }
 
         const employees: MonthlyTaxRow[] = historyData.data_rows.map((row: any, idx: number) => {
             const empCodeTrimmed = row.emp_code?.trim() || '';
@@ -416,9 +438,12 @@ class TaxReportService {
 
             let thrAmount = 0;
             let exgratiaAmount = 0;
+            let otherIncomeAmount = 0;
 
+            const rawEmpNik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+
+            // 1. Dynamic THR Calculation (Fallback)
             if (isThrMonth) {
-                // 1. Dynamic THR Calculation
                 const masaKerjaTahun = row.masa_kerja_tahun || 0;
                 if (masaKerjaTahun >= 1) {
                     const upahDasar = row.upah_dasar || 0;
@@ -426,8 +451,7 @@ class TaxReportService {
                     thrAmount = (upahDasar * 30) + (berasRate * 30) + tunjanganMasaKerja;
                 }
 
-                // 2. Exgratia Calculation
-                const rawEmpNik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+                // 2. Exgratia Calculation (Fallback)
                 let rawEmpName = String(row.nama || row.emp_name || '').toUpperCase();
                 rawEmpName = rawEmpName.replace(/\s*\([^)]*\)\s*/g, '').trim();
                 const firstName = rawEmpName.split(' ')[0].trim();
@@ -446,9 +470,20 @@ class TaxReportService {
                         }
                     }
                 }
-
-                penghasilanBruto += (thrAmount + exgratiaAmount);
             }
+
+            // 3. Database Overrides & Custom Incomes
+            if (dbThrMap.has(rawEmpNik)) {
+                thrAmount = dbThrMap.get(rawEmpNik)!;
+            }
+            if (dbExgratiaMap.has(rawEmpNik)) {
+                exgratiaAmount = dbExgratiaMap.get(rawEmpNik)!;
+            }
+            if (dbCustomIncomeMap.has(rawEmpNik)) {
+                otherIncomeAmount = dbCustomIncomeMap.get(rawEmpNik)!;
+            }
+
+            penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
 
             // Purely calculated PPh21
             const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
@@ -570,6 +605,29 @@ class TaxReportService {
         const { thrMap, exgratiaMap } = loadThrBonusMaps();
         const activeThr = loadActiveThrPeriode();
 
+        // --- Fetch Database Other Incomes for the Year ---
+        const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivisionCode, gangCode);
+        const dbIncomeByMonthNik = new Map<string, { thr: number, exgratia: number, custom: number }>();
+        const dbIncomeByNik = new Map<string, { thr: number, exgratia: number, custom: number }>();
+
+        for (const inc of dbOtherIncomesYear) {
+            if (inc.is_taxable) {
+                const nik = String(inc.nik || '').trim().toUpperCase();
+                const amt = Number(inc.amount) || 0;
+                const type = String(inc.income_type || '').toUpperCase();
+                const monthKey = `${inc.period_month}_${nik}`;
+
+                if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                const mData = dbIncomeByMonthNik.get(monthKey)!;
+                if (!dbIncomeByNik.has(nik)) dbIncomeByNik.set(nik, { thr: 0, exgratia: 0, custom: 0 });
+                const yData = dbIncomeByNik.get(nik)!;
+
+                if (type === 'THR') { mData.thr += amt; yData.thr += amt; }
+                else if (type === 'BONUS' || type === 'EXGRATIA') { mData.exgratia += amt; yData.exgratia += amt; }
+                else { mData.custom += amt; yData.custom += amt; }
+            }
+        }
+
         for (const { month, data } of allMonthData) {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
@@ -624,21 +682,24 @@ class TaxReportService {
 
                 // If this is the THR month, add THR + Exgratia to bruto before PPh21 calc
                 const isThrMonth = activeThr && activeThr.month === month && activeThr.year === year;
+                let thrAmount = 0;
+                let exgratiaAmount = 0;
+                let otherIncomeAmount = 0;
+
+                const rawEmpNik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+
                 if (isThrMonth) {
                     const masaKerjaTahun = row.masa_kerja_tahun || 0;
-                    let thrAmount = 0;
                     if (masaKerjaTahun >= 1) {
                         const upahDasar = row.upah_dasar || 0;
                         const berasRate = row.beras_rate || 0;
                         thrAmount = (upahDasar * 30) + (berasRate * 30) + tunjanganMasaKerja;
                     }
 
-                    const rawEmpNik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
                     let rawEmpName = String(row.nama || row.emp_name || '').toUpperCase();
                     rawEmpName = rawEmpName.replace(/\s*\([^)]*\)\s*/g, '').trim();
                     const firstName = rawEmpName.split(' ')[0].trim();
 
-                    let exgratiaAmount = 0;
                     if (exgratiaMap.has(rawEmpNik)) {
                         exgratiaAmount = exgratiaMap.get(rawEmpNik)!;
                     } else if (exgratiaMap.has(rawEmpName)) {
@@ -651,9 +712,18 @@ class TaxReportService {
                             }
                         }
                     }
-
-                    penghasilanBruto += (thrAmount + exgratiaAmount);
                 }
+
+                // 3. Database Overrides & Custom Incomes
+                const dbKey = `${month}_${rawEmpNik}`;
+                if (dbIncomeByMonthNik.has(dbKey)) {
+                    const dbData = dbIncomeByMonthNik.get(dbKey)!;
+                    if (dbData.thr > 0) thrAmount = dbData.thr;
+                    if (dbData.exgratia > 0) exgratiaAmount = dbData.exgratia;
+                    if (dbData.custom > 0) otherIncomeAmount = dbData.custom;
+                }
+
+                penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
 
                 const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
                 emp.monthly_pph21[String(month)] = pphResult.tax_amount;
@@ -765,8 +835,9 @@ class TaxReportService {
             const firstName = rawEmpName.split(' ')[0].trim();
 
             let thr = 0;
+            let customIncomeYear = 0;
 
-            // 1. Dynamic THR Calculation
+            // 1. Dynamic THR Calculation (Fallback)
             if (activeThr) {
                 // Get factors from the specific THR month, fallback to latest available month
                 let thrFactors = emp.monthly_thr_factors[String(activeThr.month)];
@@ -784,7 +855,7 @@ class TaxReportService {
                 }
             }
 
-            // 2. Fetch Exgratia (Bonus) from Static JSON
+            // 2. Fetch Exgratia (Bonus) from Static JSON (Fallback)
             let exgratia = 0;
             if (exgratiaMap.has(rawEmpNik)) {
                 exgratia = exgratiaMap.get(rawEmpNik)!;
@@ -799,6 +870,14 @@ class TaxReportService {
                 }
             }
 
+            // 3. Database Overrides & Custom Incomes
+            if (dbIncomeByNik.has(rawEmpNik)) {
+                const dbData = dbIncomeByNik.get(rawEmpNik)!;
+                if (dbData.thr > 0) thr = dbData.thr;
+                if (dbData.exgratia > 0) exgratia = dbData.exgratia;
+                if (dbData.custom > 0) customIncomeYear = dbData.custom;
+            }
+
             // BPJS Kesehatan 4% of total income (employer portion accumulated - typically Jan-Nov based on requirements, but using raw history if not strictly told otherwise. We will use 1-11 to be safe)
             let bpjsKes4pct = 0;
             for (let m = 1; m <= 11; m++) {
@@ -809,7 +888,7 @@ class TaxReportService {
             const astekJht = Object.values(emp.monthly_astek_jumlah).reduce((sum, v) => sum + v, 0);
 
             // Total penghasilan setahun (Gaji + Masa Kerja + BPJS 4% + Astek 0.84% + THR + Bonus) as per image structure calculation
-            const totalPenghasilanSetahun = gajiJanNov + masaKerjaJanNov + bpjsKes4pct + astek084pct + thr + exgratia;
+            const totalPenghasilanSetahun = gajiJanNov + masaKerjaJanNov + bpjsKes4pct + astek084pct + thr + exgratia + customIncomeYear;
 
             // Biaya Jabatan: 5% of Total Penghasilan Setahun, max 6.000.000
             const biayaJabatan = Math.min(totalPenghasilanSetahun * 0.05, 6000000);

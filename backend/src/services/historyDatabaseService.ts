@@ -13,6 +13,7 @@
 
 import { Database } from "../db/client";
 import { Config } from "../config";
+import { gangService } from "./gangService";
 
 // Environment variable untuk database transaksi
 const DB_EXTEND_TRANS_DATABASE = Config.DB_EXTEND_TRANS_DATABASE;
@@ -499,8 +500,9 @@ export class HistoryDatabaseService {
         const params: any[] = [periodMonth, periodYear];
 
         if (divisionCode) {
-            sql += ` AND division_code = ?`;
-            params.push(divisionCode);
+            const locCode = gangService.convertDivisionToLocCode(divisionCode);
+            sql += ` AND (division_code = ? OR division_code = ?)`;
+            params.push(divisionCode, locCode);
         }
 
         if (gangCode) {
@@ -624,8 +626,9 @@ export class HistoryDatabaseService {
         console.log(`[DEBUG] getHistoricalPayrollDataAsExtractorFormat params: M:${periodMonth} Y:${periodYear} Gang:${gangCode} Div:${divisionCode}`);
 
         if (divisionCode) {
-            masterQuery += ` AND (division_code = ? OR division_code = 'ALL')`;
-            masterParams.push(divisionCode);
+            const locCode = gangService.convertDivisionToLocCode(divisionCode);
+            masterQuery += ` AND (division_code = ? OR division_code = ? OR division_code = 'ALL')`;
+            masterParams.push(divisionCode, locCode);
         }
         if (gangCode && gangCode !== "ALL") {
             masterQuery += ` AND (gang_code = ? OR gang_code = 'ALL')`;

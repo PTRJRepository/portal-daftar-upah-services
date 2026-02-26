@@ -208,6 +208,11 @@ const DashboardLayout = () => {
                         {!collapsed && <span>HR Employee Directory</span>}
                     </NavLink>
 
+                    <NavLink to="/pendapatan-tidak-tetap" style={getLinkStyle} title={collapsed ? "Pendapatan Lainnya" : ""}>
+                        <Icons.DollarSign />
+                        {!collapsed && <span>Pendapatan Lainnya</span>}
+                    </NavLink>
+
                     <NavLink to="/report-pajak" style={getLinkStyle} title={collapsed ? "Report Pajak" : ""}>
                         <Icons.Clipboard />
                         {!collapsed && <span>Report Pajak</span>}

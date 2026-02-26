@@ -29,6 +29,7 @@ const ExecutivePayrollPage = lazy(() => import('./pages/ExecutivePayrollPage'))
 const GangComparisonReportPage = lazy(() => import('./pages/GangComparisonReportPage'))
 const WagesComparisonPage = lazy(() => import('./pages/WagesComparisonPage'))
 const TaxReportPage = lazy(() => import('./pages/TaxReportPage'))
+const OtherIncomesPage = lazy(() => import('./pages/OtherIncomesPage'))
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
@@ -465,8 +466,17 @@ function AppInner() {
       // 2. KERANI Role Redirect
       // Kerani can ONLY access: /operational, /employee/detail, /payslip-print
       if (isAuthenticated && isKeraniUser) {
-        const allowedPaths = ['/operational', '/employee/detail', '/payslip-print', '/login'];
-        const isAllowed = allowedPaths.some(p => currentPath.startsWith(p));
+        const allowedPaths = [
+          '/',
+          '/operational',
+          '/employee/detail',
+          '/payslip-print',
+          '/login',
+          '/report-pajak',
+          '/employee-directory',
+          '/pendapatan-tidak-tetap'
+        ];
+        const isAllowed = allowedPaths.some(p => currentPath === p || currentPath.startsWith(p));
 
         if (!isAllowed) {
           console.log('[App] Kerani user restricted to Operational page. Redirecting from:', currentPath);
@@ -545,6 +555,7 @@ function AppInner() {
           <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
           <Route path="spreadsheet-sync" element={<SummaryReportWrapper component={SpreadsheetSyncPage} />} />
           <Route path="wages-comparison" element={<SummaryReportWrapper component={WagesComparisonPage} />} />
+          <Route path="pendapatan-tidak-tetap" element={<SummaryReportWrapper component={OtherIncomesPage} />} />
           <Route path="report-pajak" element={<TaxReportPage />} />
 
           {/* Development/Test Pages */}

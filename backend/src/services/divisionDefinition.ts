@@ -9,7 +9,7 @@ interface VirtualDivisionConfig {
     description: string;
 }
 
-interface Gang {
+export interface Gang {
     gang_code: string;
     description: string;
     loc_code: string;

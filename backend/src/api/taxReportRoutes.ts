@@ -198,11 +198,15 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // GET /tax-report/december/excel
     // Download December tax report with monthly breakdown as Excel
     // ========================================================
-    .get("/december/excel", async ({ query, set }) => {
+    .get("/december/excel", async ({ query, set, currentUser }) => {
         try {
             const year = parseInt(query.year as string);
-            const division = query.division as string || undefined;
+            let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                division = currentUser.divisions[0];
+            }
 
             if (!year) {
                 set.status = 400;

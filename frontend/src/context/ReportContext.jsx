@@ -30,8 +30,9 @@ export const ReportProvider = ({ children }) => {
         (user?.role && user.role.toUpperCase() === 'ADMIN') ||
         (user?.divisi && user.divisi.toUpperCase() === 'ALL');
 
+    const isKeraniUser = (user?.role || '').toLowerCase() === 'kerani';
     const externalLockedDiv = isAdminUser ? null : (lockedDivision || null); // removed prop drilling support for now, rely on context/auth
-    const isLockedMode = !isAdminUser && !!(externalLockedDiv || prodDivision);
+    const isLockedMode = !isAdminUser && (!!(externalLockedDiv || prodDivision) || isKeraniUser);
 
     // Load Divisions
     useEffect(() => {

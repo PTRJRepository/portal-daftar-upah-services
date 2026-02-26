@@ -13,6 +13,7 @@ import { historyDatabaseService } from "./historyDatabaseService";
 import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
 import { manualAdjustmentService } from "./manualAdjustmentService";
 import { employeeHrDataService } from "./employeeHrDataService";
+import { OtherIncomesService } from "./otherIncomesService";
 
 interface EmployeeRow {
     emp_code: string;
@@ -164,6 +165,7 @@ interface PayrollRow {
     // PPH21 TER fields
     tarif_pajak_ter: number; // TER rate as percentage (e.g., 5 for 5%)
     pph21_ter: number; // Calculated PPH21 amount using TER method
+    pendapatan_tidak_tetap_thp: number;
     upah_bersih: number;
     pot_astek: number;
     pot_astek_maj: number;
@@ -381,6 +383,17 @@ export class DataExtractorService {
         const { amounts: premi, titleMap: premiTitleMap } = premiResult;
         // Destructure potongan result - uses TaskDesc as title
         const { amounts: potongan, titleMap: potonganTitleMap } = potonganResult;
+
+        // Fetch db other incomes mapping for THP
+        const dbOtherIncomes = await OtherIncomesService.getIncomes(year, month, divisionCode, gangCode);
+        const dbThpIncomesMap = new Map<string, number>();
+
+        for (const inc of dbOtherIncomes) {
+            if (inc.is_paid_in_thp) {
+                const nik = String(inc.nik || '').trim().toUpperCase();
+                dbThpIncomesMap.set(nik, (dbThpIncomesMap.get(nik) || 0) + Number(inc.amount));
+            }
+        }
 
         const dataRows: PayrollRow[] = [];
         const dynamicPremiSet = new Set<string>();
@@ -619,8 +632,10 @@ export class DataExtractorService {
             const upah_kotor_pajak = jumlah_upah_kotor + pot_astek_pekerja + pot_bpjs_kesehatan_pekerja;
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
-            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
-            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph;
+            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph + pendapatan_tidak_tetap_thp
+            const rawEmpNik = String(emp.actual_nik || emp.emp_code || '').trim().toUpperCase();
+            const pendapatan_tidak_tetap_thp = dbThpIncomesMap.get(rawEmpNik) || 0;
+            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph + pendapatan_tidak_tetap_thp;
 
             // [UPDATED] Calculate Ideal and Actual Salary for Penggajian Group
             // gaji_pokok_ideal = upah_dasar × jumlah_hk (HK aktual yang dijalani karyawan)
@@ -769,6 +784,7 @@ export class DataExtractorService {
                 total_potongan_bersih: total_potongan - pot_premi_pph,
                 // [NEW] premi_pph is separate field for display with + sign
                 premi_pph: pot_premi_pph,
+                pendapatan_tidak_tetap_thp,
                 upah_bersih,
                 // REMOVED: premi: empPremi - causes double-counting in frontend
                 // Individual premi fields are already added via ...empPremi below

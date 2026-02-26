@@ -279,7 +279,6 @@ export default function HrInfoPage({
                         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ color: '#94a3b8' }}>Gang:</span> <strong style={{ color: '#0f172a' }}>{empInfo.gang_code || '-'}</strong></span>
                         <span style={{
                             padding: '4px 12px',
-                            borderRadius: 'full',
                             fontSize: '0.85rem',
                             fontWeight: 700,
                             backgroundColor: empInfo.status === '1' ? '#dcfce7' : '#fee2e2',
