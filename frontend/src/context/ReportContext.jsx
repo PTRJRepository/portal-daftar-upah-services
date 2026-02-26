@@ -7,15 +7,37 @@ import { isProdMode, getUserDivision } from '../utils/prodModeUtils';
 
 const ReportContext = createContext();
 
+const STORAGE_KEYS = {
+    DIVISION: 'tax_report_division',
+    GANG: 'tax_report_gang'
+};
+
+const loadFromStorage = (key, defaultValue) => {
+    try {
+        const stored = localStorage.getItem(key);
+        return stored !== null ? JSON.parse(stored) : defaultValue;
+    } catch {
+        return defaultValue;
+    }
+};
+
+const saveToStorage = (key, value) => {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+        console.warn('Failed to save to localStorage:', e);
+    }
+};
+
 export const useReport = () => useContext(ReportContext);
 
 export const ReportProvider = ({ children }) => {
     const { user, token, lockedDivision } = useAuth();
     const { month, setMonth, year, setYear, data: currentPeriodData } = useCurrentPeriod();
 
-    // State for filters
-    const [division, setDivision] = useState('');
-    const [gang, setGang] = useState('');
+    // State for filters - Initialize from localStorage
+    const [division, setDivision] = useState(() => loadFromStorage(STORAGE_KEYS.DIVISION, ''));
+    const [gang, setGang] = useState(() => loadFromStorage(STORAGE_KEYS.GANG, ''));
     const [gangs, setGangs] = useState([]);
     const [allDivisions, setAllDivisions] = useState([]);
 
@@ -31,7 +53,7 @@ export const ReportProvider = ({ children }) => {
         (user?.divisi && user.divisi.toUpperCase() === 'ALL');
 
     const isKeraniUser = (user?.role || '').toLowerCase() === 'kerani';
-    const externalLockedDiv = isAdminUser ? null : (lockedDivision || null); // removed prop drilling support for now, rely on context/auth
+    const externalLockedDiv = isAdminUser ? null : (lockedDivision || null);
     const isLockedMode = !isAdminUser && (!!(externalLockedDiv || prodDivision) || isKeraniUser);
 
     // Load Divisions
@@ -53,34 +75,52 @@ export const ReportProvider = ({ children }) => {
         loadDivisions();
     }, [token]);
 
+    // Persist filters to localStorage
+    useEffect(() => {
+        if (division) saveToStorage(STORAGE_KEYS.DIVISION, division);
+    }, [division]);
+
+    useEffect(() => {
+        if (gang) saveToStorage(STORAGE_KEYS.GANG, gang);
+    }, [gang]);
+
     // Initial Division Selection Logic
     useEffect(() => {
-        let initialDivision = '';
+        let targetDivision = '';
 
         // Priority 1: External locked division
         if (externalLockedDiv) {
-            initialDivision = externalLockedDiv;
+            targetDivision = externalLockedDiv;
         }
         // Priority 2: PRODUCTION MODE - Division is LOCKED
         else if (inProdMode && prodDivision) {
-            initialDivision = prodDivision;
+            targetDivision = prodDivision;
         }
-        // Priority 3: Non-Admin User - Auto-select from Token
+        // Priority 3: Kerani specific division from user token/info
+        else if (isKeraniUser && (user?.divisions?.length > 0 || user?.divisi)) {
+            targetDivision = user?.divisions?.[0] || user?.divisi;
+        }
+        // Priority 4: Non-Admin User - Auto-select from Token (General)
         else if (!isAdminUser && (user?.divisions?.length > 0 || user?.divisi)) {
-            initialDivision = user?.divisions?.[0] || user?.divisi;
-        }
-        // Priority 4: Try first division from API (Fallback for Admins)
-        else if (allDivisions.length > 0 && !division) {
-            // Only auto-select if nothing selected yet
-            // initialDivision = allDivisions[0]; // Maybe don't auto-select for admin to force choice? 
-            // Let's keep existing behavior:
-            initialDivision = allDivisions[0];
+            targetDivision = user?.divisions?.[0] || user?.divisi;
         }
 
-        if (initialDivision && !division) {
-            setDivision(initialDivision);
+        // Enforcement & Initialization
+        if (isLockedMode && targetDivision && division !== targetDivision) {
+            // FORCE locked division if it doesn't match current state
+            console.log('[ReportContext] Enforcing locked division:', targetDivision);
+            setDivision(targetDivision);
         }
-    }, [user, inProdMode, prodDivision, externalLockedDiv, allDivisions, isAdminUser, division]);
+        else if (!division && targetDivision) {
+            // Initialize if empty and we have a target
+            setDivision(targetDivision);
+        }
+        else if (!division && allDivisions.length > 0) {
+            // Final fallback: First from API
+            console.log('[ReportContext] Setting fallback division:', allDivisions[0]);
+            setDivision(allDivisions[0]);
+        }
+    }, [user, inProdMode, prodDivision, externalLockedDiv, allDivisions, isAdminUser, isLockedMode, isKeraniUser]);
 
     // Track latest gang value to avoid stale closures in async calls
     const gangRef = React.useRef(gang);

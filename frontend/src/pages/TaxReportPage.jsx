@@ -10,8 +10,6 @@ import '../styles/TaxReportPage.css';
 // LocalStorage keys for tax report persistence
 // Note: Month/Year are now shared globally via ReportContext (report_period_month, report_period_year)
 const STORAGE_KEYS = {
-    DIVISION: 'tax_report_division',
-    GANG: 'tax_report_gang',
     ACTIVE_TAB: 'tax_report_active_tab'
 };
 
@@ -93,7 +91,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
         }
     };
 
-    useEffect(() => { loadData(); }, [token, year, division, gang]);
+    useEffect(() => { loadData(); }, [token, year, month, division, gang]);
 
     if (loading) return (
         <div className="tax-report-loading">
@@ -242,16 +240,16 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang }
                                                                         <td className="text-right" style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px', color: '#0f172a' }}>{formatNumber(emp.upah_kotor)}</td>
                                                                     </tr>
 
-                                                                    {/* THR & Exgratia if applicable */}
-                                                                    {(emp.thr_amount > 0 || emp.exgratia_amount > 0) && (
+                                                                    {/* Other Incomes (THR, Bonus, Custom DB, etc) */}
+                                                                    {emp.other_incomes && emp.other_incomes.length > 0 && (
                                                                         <>
                                                                             <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
-                                                                            {emp.thr_amount > 0 && (
-                                                                                <tr><td style={{ padding: '4px 0', color: '#059669' }}>THR</td><td className="text-right" style={{ padding: '4px 0', color: '#059669' }}>{formatNumber(emp.thr_amount)}</td></tr>
-                                                                            )}
-                                                                            {emp.exgratia_amount > 0 && (
-                                                                                <tr><td style={{ padding: '4px 0', color: '#059669' }}>Exgratia</td><td className="text-right" style={{ padding: '4px 0', color: '#059669' }}>{formatNumber(emp.exgratia_amount)}</td></tr>
-                                                                            )}
+                                                                            {emp.other_incomes.map((inc, i) => (
+                                                                                <tr key={i}>
+                                                                                    <td style={{ padding: '4px 0', color: '#059669' }}>{inc.name || inc.type}</td>
+                                                                                    <td className="text-right" style={{ padding: '4px 0', color: '#059669' }}>{formatNumber(inc.amount)}</td>
+                                                                                </tr>
+                                                                            ))}
                                                                         </>
                                                                     )}
                                                                 </tbody>
@@ -346,7 +344,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang })
         }
     }, [token, year, month, division, gang]);
 
-    useEffect(() => { loadData(); }, [token, year, division, gang]);
+    useEffect(() => { loadData(); }, [token, year, month, division, gang]);
 
     if (loading) return (
         <div className="tax-report-loading">
@@ -648,7 +646,7 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang })
         }
     }, [token, year, month, division, gang]);
 
-    useEffect(() => { loadData(); }, [token, year, division, gang]);
+    useEffect(() => { loadData(); }, [token, year, month, division, gang]);
 
     if (loading) return (
         <div className="tax-report-loading">
@@ -831,7 +829,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
         }
     }, [token, year, month, division, gang]);
 
-    useEffect(() => { loadData(); }, [token, year, division, gang]);
+    useEffect(() => { loadData(); }, [token, year, month, division, gang]);
 
     // Handler for clicking a PPh21 cell
     const handleCellClick = useCallback(async (emp, monthIdx) => {
@@ -1422,68 +1420,24 @@ function DecemberTaxTab({ token, year, division, gang }) {
 
 export default function TaxReportPage() {
     const { token, user } = useAuth();
-    const { month, setMonth, year, setYear, allDivisions, isLockedMode } = useReport();
+    const {
+        month, setMonth,
+        year, setYear,
+        division, setDivision,
+        gang, setGang,
+        gangs, gangLoading,
+        allDivisions,
+        isLockedMode
+    } = useReport();
     const navigate = useNavigate();
 
-    // Local state with localStorage persistence
+    // Local state for non-shared filters
     const [activeTab, setActiveTab] = useState(() => loadFromStorage(STORAGE_KEYS.ACTIVE_TAB, 'monthly'));
-    // Note: month and year are now shared via ReportContext
-    const [selectedDivision, setSelectedDivision] = useState(() => loadFromStorage(STORAGE_KEYS.DIVISION, ''));
-    const [selectedGang, setSelectedGang] = useState(() => loadFromStorage(STORAGE_KEYS.GANG, ''));
-
-    // Gangs list for selected division
-    const [gangs, setGangs] = useState([]);
-    const [gangsLoading, setGangsLoading] = useState(false);
 
     // Save to localStorage when values change
     useEffect(() => {
         saveToStorage(STORAGE_KEYS.ACTIVE_TAB, activeTab);
     }, [activeTab]);
-
-    // Note: month and year are now automatically persisted by useCurrentPeriod hook
-
-    useEffect(() => {
-        saveToStorage(STORAGE_KEYS.DIVISION, selectedDivision);
-    }, [selectedDivision]);
-
-    useEffect(() => {
-        saveToStorage(STORAGE_KEYS.GANG, selectedGang);
-    }, [selectedGang]);
-
-    // Initialize division from context if not set in localStorage
-    useEffect(() => {
-        if (!selectedDivision && allDivisions.length > 0) {
-            // Use first division from context
-            setSelectedDivision(allDivisions[0]);
-        }
-    }, [allDivisions, selectedDivision]);
-
-    // Load gangs when division changes
-    useEffect(() => {
-        async function loadGangs() {
-            if (!selectedDivision || !token) {
-                setGangs([]);
-                return;
-            }
-
-            setGangsLoading(true);
-            try {
-                const list = await fetchGangs(token, selectedDivision, null, true);
-                setGangs(list || []);
-
-                // Reset gang if current selection is not in new list
-                if (selectedGang && !list.some(g => g.gang_code === selectedGang)) {
-                    setSelectedGang('');
-                }
-            } catch (e) {
-                console.error('Failed to load gangs:', e);
-                setGangs([]);
-            } finally {
-                setGangsLoading(false);
-            }
-        }
-        loadGangs();
-    }, [selectedDivision, token]);
 
     const tabs = [
         { key: 'monthly', label: 'Kalkulasi PPH21', icon: <Calculator size={18} /> },
@@ -1547,10 +1501,10 @@ export default function TaxReportPage() {
 
                         {/* Division Selector */}
                         <select
-                            value={selectedDivision}
+                            value={division}
                             onChange={(e) => {
-                                setSelectedDivision(e.target.value);
-                                setSelectedGang(''); // Reset gang when division changes
+                                setDivision(e.target.value);
+                                setGang(''); // Reset gang when division changes
                             }}
                             className="tax-report-select"
                             disabled={isLockedMode}
@@ -1563,15 +1517,15 @@ export default function TaxReportPage() {
 
                         {/* Gang Selector */}
                         <select
-                            value={selectedGang}
-                            onChange={(e) => setSelectedGang(e.target.value)}
+                            value={gang}
+                            onChange={(e) => setGang(e.target.value)}
                             className="tax-report-select"
-                            disabled={!selectedDivision || gangsLoading}
+                            disabled={!division || gangLoading}
                         >
                             <option value="">SEMUA GANG</option>
-                            {gangs.map((gang) => (
-                                <option key={gang.gang_code} value={gang.gang_code}>
-                                    {gang.gang_code} - {gang.gang_name}
+                            {gangs.map((g) => (
+                                <option key={g.gang_code} value={g.gang_code}>
+                                    {g.gang_code} - {g.gang_name}
                                 </option>
                             ))}
                         </select>
@@ -1602,8 +1556,8 @@ export default function TaxReportPage() {
                         year={year}
                         setMonth={setMonth}
                         setYear={setYear}
-                        division={selectedDivision}
-                        gang={selectedGang}
+                        division={division}
+                        gang={gang}
                     />
                 )}
                 {activeTab === 'annual' && (
@@ -1613,8 +1567,8 @@ export default function TaxReportPage() {
                         year={year}
                         setMonth={setMonth}
                         setYear={setYear}
-                        division={selectedDivision}
-                        gang={selectedGang}
+                        division={division}
+                        gang={gang}
                     />
                 )}
                 {activeTab === 'pph21_grid' && (
@@ -1624,8 +1578,8 @@ export default function TaxReportPage() {
                         year={year}
                         setMonth={setMonth}
                         setYear={setYear}
-                        division={selectedDivision}
-                        gang={selectedGang}
+                        division={division}
+                        gang={gang}
                     />
                 )}
                 {activeTab === 'astek' && (
@@ -1635,16 +1589,16 @@ export default function TaxReportPage() {
                         year={year}
                         setMonth={setMonth}
                         setYear={setYear}
-                        division={selectedDivision}
-                        gang={selectedGang}
+                        division={division}
+                        gang={gang}
                     />
                 )}
                 {activeTab === 'december' && (
                     <DecemberTaxTab
                         token={token}
                         year={year}
-                        division={selectedDivision}
-                        gang={selectedGang}
+                        division={division}
+                        gang={gang}
                     />
                 )}
             </div>

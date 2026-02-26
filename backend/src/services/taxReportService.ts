@@ -129,37 +129,16 @@ interface ThrPeriode {
     is_active: boolean;
 }
 
-let activeThrPeriode: ThrPeriode | null = null;
-let isThrPeriodeLoaded = false;
-
 function loadActiveThrPeriode(): ThrPeriode | null {
-    if (isThrPeriodeLoaded) return activeThrPeriode;
-
-    // Attempt to load from <project_root>/backend/data/thr_periode.json
-    const possiblePaths = [
-        path.resolve(process.cwd(), 'data/thr_periode.json'),
-        path.resolve(__dirname, '../../data/thr_periode.json')
-    ];
-
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            try {
-                const raw = fs.readFileSync(p, 'utf-8');
-                const parsed: ThrPeriode[] = JSON.parse(raw);
-                activeThrPeriode = parsed.find(p => p.is_active) || null;
-                break;
-            } catch (err) {
-                console.error(`Failed to load ${p}:`, err);
-            }
-        }
-    }
-
-    if (!activeThrPeriode) {
-        console.warn('Active THR Periode not found or file missing.');
-    }
-
-    isThrPeriodeLoaded = true;
-    return activeThrPeriode;
+    // Hardcode THR to March as requested by user
+    return {
+        year: 2026,
+        month: 3,
+        type: 'THR',
+        name: 'THR 2026',
+        description: 'Fixed THR Period (March)',
+        is_active: true
+    };
 }
 
 // ============================================================
@@ -207,6 +186,7 @@ export interface MonthlyTaxRow {
     gaji_pokok_ideal?: number;  // upah_dasar × HK
     thr_amount?: number;
     exgratia_amount?: number;
+    other_incomes?: { type: string; name: string; amount: number }[];
 }
 
 export interface AnnualIncomeRow {
@@ -273,6 +253,7 @@ export interface DecemberTaxRow {
     thr: number;
     bonus: number;
     tantiem: number;
+    other_incomes?: { type: string; name: string; amount: number }[];
     gaji_pokok_setahun: number;
     tunjangan_lainnya_setahun: number;
     premi_asuransi_setahun: number;
@@ -426,10 +407,9 @@ class TaxReportService {
             const totalPremi = row.total_premi || 0;
 
             // [ALIGNED WITH DAFTAR UPAH] Calculate ASTEK 0.84% and BPJS Kes 4% from carumanBase
-            // carumanBase = (upah_dasar × 30) + masa_kerja_jumlah  (same as dataExtractorService.ts line 591)
             const carumanBase = (upahDasar * 30) + tunjanganMasaKerja;
-            const astek084 = Math.round(carumanBase * 0.0084);             // ASTEK/BPJS Pensiun Majikan 0.84%
-            const bpjsKesehatanMajikan4Pct = Math.round(carumanBase * 0.04); // BPJS Kesehatan Majikan 4%
+            const astek084 = Math.round(carumanBase * 0.0084);
+            const bpjsKesehatanMajikan4Pct = Math.round(carumanBase * 0.04);
 
             let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                 gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
@@ -483,6 +463,22 @@ class TaxReportService {
                 otherIncomeAmount = dbCustomIncomeMap.get(rawEmpNik)!;
             }
 
+            const empOtherIncomes = dbOtherIncomes
+                .filter(inc => String(inc.nik || '').trim().toUpperCase() === rawEmpNik)
+                .map(inc => ({
+                    type: inc.income_type,
+                    name: inc.income_name,
+                    amount: Number(inc.amount) || 0
+                }));
+
+            // If we have THR/Exgratia from JSON but not in DB, add them to the list for UI display
+            if (thrAmount > 0 && !dbThrMap.has(rawEmpNik)) {
+                empOtherIncomes.push({ type: 'THR', name: 'THR (Formula)', amount: thrAmount });
+            }
+            if (exgratiaAmount > 0 && !dbExgratiaMap.has(rawEmpNik)) {
+                empOtherIncomes.push({ type: 'BONUS', name: 'Exgratia (Static)', amount: exgratiaAmount });
+            }
+
             penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
 
             // Purely calculated PPh21
@@ -506,7 +502,7 @@ class TaxReportService {
                 tarif_pajak_ter: tarifPajakTer,
                 pph21_ter: pph21,
 
-                // Detailed breakdowns — ALL passthrough from history DB (same source as Daftar Upah)
+                // Detailed breakdowns
                 hk: row.jumlah_hk || row.hk || 0,
                 gaji_pokok_aktual: gajiPokokAktual,
                 koreksi_hk: row.koreksi_hk || 0,
@@ -517,7 +513,6 @@ class TaxReportService {
                 tunjangan_lembur: tunjanganLembur,
                 total_tunjangan: row.total_tunjangan || 0,
 
-                // [FIX] Use stored premi_brondol from history DB directly (was recalculated before, causing negative values)
                 premi_brondol: row.premi_brondol || 0,
                 premi_pph: row.premi_pph || 0,
                 total_premi: totalPremi,
@@ -526,7 +521,6 @@ class TaxReportService {
                 pot_koreksi: row.pot_koreksi || 0,
                 total_potongan_kotor: row.pot_koreksi || 0,
 
-                // [FIX] Use stored BPJS/ASTEK values from history when available, fallback to calculated
                 bpjs_kes_majikan: row.pot_bpjs_kesehatan_majikan || bpjsKesehatanMajikan4Pct,
                 astek_jht_majikan: row.pot_astek_maj || row.pot_astek_majikan || astek084,
 
@@ -536,6 +530,7 @@ class TaxReportService {
                 carumanBase: carumanBase,
                 thr_amount: thrAmount,
                 exgratia_amount: exgratiaAmount,
+                other_incomes: empOtherIncomes
             };
         });
 
@@ -1390,6 +1385,10 @@ class TaxReportService {
                 thr: thr,
                 bonus: bonus,
                 tantiem: 0,
+                other_incomes: (thr > 0 || bonus > 0) ? [
+                    ...(thr > 0 ? [{ type: 'THR', name: 'THR', amount: thr }] : []),
+                    ...(bonus > 0 ? [{ type: 'BONUS', name: 'Bonus/Exgratia', amount: bonus }] : [])
+                ] : [],
                 gaji_pokok_setahun: gajiPokokSetahun,
                 tunjangan_lainnya_setahun: 0,
                 premi_asuransi_setahun: premiAsuransiSetahun,
