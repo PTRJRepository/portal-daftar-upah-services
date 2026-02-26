@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ReportProvider, useReport } from './context/ReportContext'
 import LoadingScreen from './components/common/LoadingScreen'
+import ErrorBoundary from './components/common/ErrorBoundary'
 import { isProdMode, getUserDivision, redirectToExternalLogin, buildAppPath, getBasePath } from './utils/prodModeUtils'
 import DashboardLayout from './layouts/DashboardLayout'
 import ReportToolbar from './components/common/ReportToolbar'
@@ -464,13 +465,14 @@ function AppInner() {
       }
 
       // 2. KERANI Role Redirect
-      // Kerani can ONLY access: /operational, /employee/detail, /payslip-print
+      // Kerani can ONLY access: /operational, /employee/detail, /payslip-print, /hr-info, /report-pajak, /employee-directory, /pendapatan-tidak-tetap
       if (isAuthenticated && isKeraniUser) {
         const allowedPaths = [
           '/',
           '/operational',
           '/employee/detail',
           '/payslip-print',
+          '/hr-info',
           '/login',
           '/report-pajak',
           '/employee-directory',
@@ -499,73 +501,75 @@ function AppInner() {
   };
 
   return (
-    <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat halaman..." />}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat halaman..." />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
 
-        {/* Employee Detail Route - From Daftar Upah (Operational: payslip, attendance matrix) */}
-        <Route path="/employee/detail" element={
-          <ProtectedRoute>
-            <div style={{ height: '100vh', width: '100vw' }}>
-              <EmployeeDetailRoute />
-            </div>
-          </ProtectedRoute>
-        } />
+          {/* Employee Detail Route - From Daftar Upah (Operational: payslip, attendance matrix) */}
+          <Route path="/employee/detail" element={
+            <ProtectedRoute>
+              <div style={{ height: '100vh', width: '100vw' }}>
+                <EmployeeDetailRoute />
+              </div>
+            </ProtectedRoute>
+          } />
 
-        {/* HR Info Route - From Employee Directory (Managerial: profile, career history) */}
-        <Route path="/hr-info" element={
-          <ProtectedRoute>
-            <div style={{ height: '100vh', width: '100vw', overflow: 'auto', backgroundColor: '#f8fafc' }}>
-              <HrInfoRoute />
-            </div>
-          </ProtectedRoute>
-        } />
+          {/* HR Info Route - From Employee Directory (Managerial: profile, career history) */}
+          <Route path="/hr-info" element={
+            <ProtectedRoute>
+              <div style={{ height: '100vh', width: '100vw', overflow: 'auto', backgroundColor: '#f8fafc' }}>
+                <HrInfoRoute />
+              </div>
+            </ProtectedRoute>
+          } />
 
-        {/* Payslip Print Route */}
-        <Route path="/payslip-print" element={
-          <ProtectedRoute>
-            <PayslipPrintPage />
-          </ProtectedRoute>
-        } />
+          {/* Payslip Print Route */}
+          <Route path="/payslip-print" element={
+            <ProtectedRoute>
+              <PayslipPrintPage />
+            </ProtectedRoute>
+          } />
 
-        {/* Gang Comparison Report Route */}
-        <Route path="/gang-comparison-report" element={
-          <ProtectedRoute>
-            <GangComparisonReportPage />
-          </ProtectedRoute>
-        } />
+          {/* Gang Comparison Report Route */}
+          <Route path="/gang-comparison-report" element={
+            <ProtectedRoute>
+              <GangComparisonReportPage />
+            </ProtectedRoute>
+          } />
 
-        {/* Dashboard Layout Routes */}
-        <Route path="/" element={
-          <ProtectedRoute>
-            <DashboardLayout />
-          </ProtectedRoute>
-        }>
-          <Route index element={<DashboardHome />} />
+          {/* Dashboard Layout Routes */}
+          <Route path="/" element={
+            <ProtectedRoute>
+              <DashboardLayout />
+            </ProtectedRoute>
+          }>
+            <Route index element={<DashboardHome />} />
 
-          <Route path="operational" element={<OperationalReportWrapper />} />
-          <Route path="employee-directory" element={<SummaryReportWrapper component={EmployeeDirectoryPage} />} />
+            <Route path="operational" element={<OperationalReportWrapper />} />
+            <Route path="employee-directory" element={<SummaryReportWrapper component={EmployeeDirectoryPage} />} />
 
-          <Route path="summary" element={<SummaryReportWrapper component={SummaryReportPage} />} />
-          <Route path="wages-rebinmas" element={<SummaryReportWrapper component={WagesSummaryRebinmasPage} />} />
-          <Route path="wages-ijl" element={<SummaryReportWrapper component={WagesSummaryIJLPage} />} />
-          <Route path="analysis" element={<SummaryReportWrapper component={AnalysisReportPage} />} />
-          <Route path="comprehensive" element={<SummaryReportWrapper component={PayrollAnalysisPage} />} />
-          <Route path="executive" element={<SummaryReportWrapper component={ExecutivePayrollPage} />} />
-          <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
-          <Route path="spreadsheet-sync" element={<SummaryReportWrapper component={SpreadsheetSyncPage} />} />
-          <Route path="wages-comparison" element={<SummaryReportWrapper component={WagesComparisonPage} />} />
-          <Route path="pendapatan-tidak-tetap" element={<SummaryReportWrapper component={OtherIncomesPage} />} />
-          <Route path="report-pajak" element={<TaxReportPage />} />
+            <Route path="summary" element={<SummaryReportWrapper component={SummaryReportPage} />} />
+            <Route path="wages-rebinmas" element={<SummaryReportWrapper component={WagesSummaryRebinmasPage} />} />
+            <Route path="wages-ijl" element={<SummaryReportWrapper component={WagesSummaryIJLPage} />} />
+            <Route path="analysis" element={<SummaryReportWrapper component={AnalysisReportPage} />} />
+            <Route path="comprehensive" element={<SummaryReportWrapper component={PayrollAnalysisPage} />} />
+            <Route path="executive" element={<SummaryReportWrapper component={ExecutivePayrollPage} />} />
+            <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
+            <Route path="spreadsheet-sync" element={<SummaryReportWrapper component={SpreadsheetSyncPage} />} />
+            <Route path="wages-comparison" element={<SummaryReportWrapper component={WagesComparisonPage} />} />
+            <Route path="pendapatan-tidak-tetap" element={<SummaryReportWrapper component={OtherIncomesPage} />} />
+            <Route path="report-pajak" element={<TaxReportPage />} />
 
-          {/* Development/Test Pages */}
-          <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />
+            {/* Development/Test Pages */}
+            <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />
 
-        </Route>
+          </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 

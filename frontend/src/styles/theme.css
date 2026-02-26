@@ -110,6 +110,20 @@ body {
   height: 100%;
 }
 
+/* Sidebar Backdrop Interactive Pointer */
+.sidebar-backdrop {
+  transition: background-color 0.4s ease, backdrop-filter 0.4s ease;
+}
+
+.sidebar-backdrop:hover {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+  cursor: pointer;
+}
+
+.sidebar-backdrop:active {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
 /* Card Style - Professional Paper Look */
 .card {
   background: var(--bg-card);

@@ -111,12 +111,13 @@ export class OtherIncomesService {
         }
     }
 
-    static async addIncome(data: OtherIncome): Promise<boolean> {
+    static async addIncome(data: OtherIncome): Promise<OtherIncome | null> {
         const db = Database.getExtendedInstance();
         try {
-            await db.query(`
+            const result = await db.query(`
                 INSERT INTO employee_other_incomes 
                 (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at)
+                OUTPUT INSERTED.*
                 VALUES 
                 (@nik, @emp_name, @division_code, @gang_code, @period_year, @period_month, @income_type, @income_name, @amount, @is_paid_in_thp, @is_taxable, GETDATE(), GETDATE())
             `, {
@@ -132,10 +133,10 @@ export class OtherIncomesService {
                 is_paid_in_thp: data.is_paid_in_thp ? 1 : 0,
                 is_taxable: data.is_taxable ? 1 : 0
             });
-            return true;
+            return result && result.length > 0 ? (result[0] as OtherIncome) : null;
         } catch (e) {
             console.error("Failed to add income:", e);
-            return false;
+            return null;
         }
     }
 

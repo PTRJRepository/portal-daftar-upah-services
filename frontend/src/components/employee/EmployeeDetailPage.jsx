@@ -108,8 +108,74 @@ export default function EmployeeDetailPage({
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [checkrollData, setCheckrollData] = useState(null)
+    const [historyModalNik, setHistoryModalNik] = useState({ isOpen: false, data: null, loading: false })
 
     const empCode = employeeData?.nik || employeeData?.NIK || ''
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8002`;
+
+    const handleEditNik = async (empInfo) => {
+        const currentNik = empInfo.actual_nik || empInfo.nik || empCode;
+        const newNik = window.prompt("Ubah NIK untuk " + (empInfo.nama || empInfo.EmpName || empCode) + ".\n\nMasukkan NIK baru (KTP) atau kosongkan jika ingin kembali ke data awal (Plantware):", currentNik);
+
+        if (newNik === null) return; // cancelled
+
+        try {
+            const res = await fetch(`${backendUrl}/employee-hr-data/${empCode}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ field: 'nik_ktp', value: newNik.trim() })
+            });
+            const json = await res.json();
+            if (json.success) {
+                alert("NIK berhasil diperbarui!");
+                onBack(); // close detail page to refresh list, or can fetch data again
+            } else {
+                alert("Gagal menyimpan NIK: " + json.error);
+            }
+        } catch (e) {
+            alert("Error: " + e.message);
+        }
+    };
+
+    const openNikHistory = async () => {
+        setHistoryModalNik({ isOpen: true, data: null, loading: true });
+        try {
+            const res = await fetch(`${backendUrl}/employee-hr-data/${empCode}/history`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const json = await res.json();
+            if (json.success) {
+                setHistoryModalNik({ isOpen: true, data: json.data || [], loading: false });
+            } else {
+                throw new Error(json.error);
+            }
+        } catch (e) {
+            alert("Gagal memuat history NIK: " + e.message);
+            setHistoryModalNik(prev => ({ ...prev, loading: false }));
+        }
+    };
+
+    const handleRollbackNik = async () => {
+        if (!window.confirm("Yakin ingin MENGHAPUS versi terbaru ini dan ROLLBACK NIK ke versi sebelumnya?")) return;
+        try {
+            const res = await fetch(`${backendUrl}/employee-hr-data/${empCode}/rollback`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const json = await res.json();
+            if (json.success) {
+                alert("Berhasil di-rollback!");
+                onBack();
+            } else {
+                alert("Gagal rollback: " + json.error);
+            }
+        } catch (e) {
+            alert("Error: " + e.message);
+        }
+    };
 
     useEffect(() => {
         async function loadData() {
@@ -296,9 +362,13 @@ export default function EmployeeDetailPage({
                 {/* EMPLOYEE INFO */}
                 <div className="employee-info-grid">
                     <div className="info-row">
-                        <span className="label">NIK</span>
+                        <span className="label">ID / NIK KTP</span>
                         <span className="separator">:</span>
-                        <span className="value bold">{empCode}</span>
+                        <span className="value bold" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {empCode} / {empInfo.actual_nik || '-'}
+                            <button onClick={e => { e.stopPropagation(); handleEditNik(empInfo); }} style={{ background: 'none', border: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '10px', padding: '2px 4px', borderRadius: '4px', backgroundColor: 'white' }} title="Edit NIK">✏️ Edit</button>
+                            <button onClick={e => { e.stopPropagation(); openNikHistory(); }} style={{ background: 'none', border: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '10px', padding: '2px 4px', borderRadius: '4px', backgroundColor: 'white' }} title="Riwayat Versi NIK">⏱️ Riwayat</button>
+                        </span>
                     </div>
                     <div className="info-row">
                         <span className="label">NAMA</span>
@@ -829,6 +899,47 @@ export default function EmployeeDetailPage({
                 <button onClick={onBack} className="btn btn-secondary">Tutup / Kembali</button>
                 <button onClick={() => window.print()} className="btn btn-primary">🖨️ Cetak Slip Gaji</button>
             </div>
+
+            {/* History Modal for NIK */}
+            {historyModalNik.isOpen && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setHistoryModalNik({ isOpen: false, data: null, loading: false })}>
+                    <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '500px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+                            <h3 style={{ margin: 0, color: '#0f172a', fontSize: '1.25rem' }}>Riwayat Perubahan NIK</h3>
+                            <button onClick={() => setHistoryModalNik({ isOpen: false, data: null, loading: false })} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#64748b' }}>×</button>
+                        </div>
+
+                        <div style={{ marginBottom: '16px', fontWeight: '600', color: '#334155' }}>Karyawan: {empCode}</div>
+
+                        {historyModalNik.loading ? (
+                            <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Memuat riwayat...</div>
+                        ) : historyModalNik.data && historyModalNik.data.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {historyModalNik.data.map((h, index) => (
+                                    <div key={h.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', backgroundColor: index === 0 ? '#f8fafc' : 'white' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem', color: '#64748b' }}>
+                                            <span><strong>Versi:</strong> {h.version} {index === 0 && <span style={{ color: '#10b981' }}>(Terbaru)</span>}</span>
+                                            <span>{new Date(h.changed_at).toLocaleString('id-ID')}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f1f5f9', padding: '8px 12px', borderRadius: '6px' }}>
+                                            <div style={{ fontSize: '0.9rem' }}>
+                                                <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: '8px' }}>{h.old_value || '(Kosong)'}</span>
+                                                <span style={{ fontWeight: 700, color: '#0f172a' }}>{h.new_value}</span>
+                                            </div>
+                                            {index === 0 && (
+                                                <button onClick={handleRollbackNik} style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}>🗑️ Rollback</button>
+                                            )}
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '8px' }}>Oleh: {h.changed_by}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', backgroundColor: '#f8fafc', borderRadius: '8px' }}>Belum ada riwayat perubahan NIK (masih menggunakan NIK dari Plantware).</div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div >
     )
 }

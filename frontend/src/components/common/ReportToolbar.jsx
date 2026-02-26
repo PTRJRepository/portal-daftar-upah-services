@@ -110,6 +110,7 @@ export default function ReportToolbar({
                 <input
                     type="month"
                     className="input-field"
+                    title="Pilih Bulan & Tahun Periode"
                     style={{ height: '36px', minWidth: '160px' }}
                     value={getMonthValue()}
                     onChange={handleDateChange}
@@ -124,6 +125,7 @@ export default function ReportToolbar({
                     </label>
                     <select
                         className="input-field"
+                        title="Pilih Divisi"
                         style={{ height: '36px', minWidth: '140px' }}
                         value={division || ''}
                         onChange={(e) => onDivisionChange && onDivisionChange(e.target.value)}
@@ -140,6 +142,7 @@ export default function ReportToolbar({
                 </label>
                 <select
                     className="input-field"
+                    title="Pilih Kemandoran / Gang"
                     style={{ height: '36px', minWidth: '280px', maxWidth: '400px' }}
                     value={gangCode || ''}
                     onChange={(e) => onGangChange(e.target.value)}

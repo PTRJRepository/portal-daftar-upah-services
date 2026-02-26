@@ -18,6 +18,10 @@ export default function DashboardHome() {
     currentPeriod
   } = useReport();
 
+  // Role check: show report_pajak for kerani and non-admin users
+  const userRole = (user?.role || '').toLowerCase();
+  const canSeeReportPajak = userRole === 'kerani' || (userRole !== 'admin');
+
   const navigate = useNavigate();
 
   // Determine report access (simplified, similar to previous MainPage)
@@ -219,30 +223,32 @@ export default function DashboardHome() {
 
           {/* QUICK ACTION BUTTON - Moved INSIDE/NEAR FILTER for accessibility */}
           <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-            <button
-              onClick={handleGenerateReportPajak}
-              disabled={!division || !gang || gangLoading}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '1rem 2rem',
-                backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#8b5cf6',
-                color: (!division || !gang || gangLoading) ? '#94a3b8' : 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: '700',
-                fontSize: '1rem',
-                cursor: (!division || !gang || gangLoading) ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(139, 92, 246, 0.3)'
-              }}
-            >
-              {gangLoading ? 'Memuat Data...' : 'REPORT PAJAK'}
-              <Calculator size={18} />
-            </button>
+            {canSeeReportPajak && (
+              <button
+                onClick={handleGenerateReportPajak}
+                disabled={!division || !gang || gangLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '1rem 2rem',
+                  backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#8b5cf6',
+                  color: (!division || !gang || gangLoading) ? '#94a3b8' : 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '700',
+                  fontSize: '1rem',
+                  cursor: (!division || !gang || gangLoading) ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(139, 92, 246, 0.3)'
+                }}
+              >
+                {gangLoading ? 'Memuat Data...' : 'REPORT PAJAK'}
+                <Calculator size={18} />
+              </button>
+            )}
             <button
               onClick={handleGenerateOperational}
               disabled={!division || !gang || gangLoading}

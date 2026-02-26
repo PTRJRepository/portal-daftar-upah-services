@@ -167,8 +167,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   // Refresh grid cells when edit mode toggles so the pencil icon appears immediately
   useEffect(() => {
     if (gridRef.current && gridRef.current.api) {
-      // Force refreshing the cells to re-evaluate the editable function and cell renders
-      gridRef.current.api.refreshCells({ force: true })
+      // Use redrawRows to fully unmount and mount React cell renderers
+      gridRef.current.api.redrawRows()
     }
   }, [editModeNik])
 

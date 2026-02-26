@@ -1621,7 +1621,7 @@ export default function CustomPayrollTable({
                                                 key={cIdx}
                                                 className={`${col.className} ${selected ? 'cell-selected' : ''} ${groupClass}`}
                                                 style={{ left: col.left, width: col.w, minWidth: col.w, ...cellGroupInline }}
-                                                onMouseDown={(e) => { e.preventDefault(); handleMouseDown(e, rIdx, cIdx, row.id); }}
+                                                onMouseDown={(e) => { handleMouseDown(e, rIdx, cIdx, row.id); }}
                                                 onMouseOver={() => handleMouseOver(rIdx, cIdx)}
                                             >
                                                 {col.render(row)}
@@ -1634,7 +1634,7 @@ export default function CustomPayrollTable({
                                             key={cIdx}
                                             className={`${col.className} ${selected ? 'cell-selected' : ''} ${groupClass}`}
                                             style={{ left: col.left, width: col.w, minWidth: col.w, ...cellGroupInline }}
-                                            onMouseDown={(e) => { e.preventDefault(); handleMouseDown(e, rIdx, cIdx, row.id); }}
+                                            onMouseDown={(e) => { handleMouseDown(e, rIdx, cIdx, row.id); }}
                                             onMouseOver={() => handleMouseOver(rIdx, cIdx)}
                                         >
                                             {displayVal ?? '-'}

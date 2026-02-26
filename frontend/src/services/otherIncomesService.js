@@ -14,7 +14,7 @@ export const otherIncomesService = {
             if (gangCode) params.append('gangCode', gangCode);
 
             const response = await api.get(`/other-incomes?${params.toString()}`);
-            return response.data;
+            return response.data?.data || [];
         } catch (error) {
             console.error('Error fetching other incomes:', error);
             throw error;
@@ -24,7 +24,7 @@ export const otherIncomesService = {
     addIncome: async (data) => {
         try {
             const response = await api.post('/other-incomes', data);
-            return response.data;
+            return response.data?.data;
         } catch (error) {
             console.error('Error adding other income:', error);
             throw error;

@@ -20,6 +20,7 @@ const OtherIncomesPage = () => {
         if (!division) return;
         setLoading(true);
         setError(null);
+        setRowData([]); // Reset data to ensure clean render
         try {
             const data = await otherIncomesService.getIncomes(year, month, division, gang === 'ALL' ? '' : gang);
             setRowData(data);

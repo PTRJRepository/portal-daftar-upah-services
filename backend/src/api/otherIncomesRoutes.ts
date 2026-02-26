@@ -31,8 +31,12 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
                 return { success: false, error: "Missing required fields" };
             }
 
-            const success = await OtherIncomesService.addIncome(data);
-            return { success };
+            const newIncome = await OtherIncomesService.addIncome(data);
+            if (newIncome) {
+                return { success: true, data: newIncome };
+            } else {
+                return { success: false, error: "Failed to create income" };
+            }
         } catch (error: any) {
             logError("OtherIncomesAPI", "Failed to create income", error);
             return { success: false, error: error.message };
