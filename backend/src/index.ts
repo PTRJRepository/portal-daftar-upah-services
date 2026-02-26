@@ -17,12 +17,20 @@ import { historyRoutes } from "./api/historyRoutes";
 import { wagesRoutes } from "./api/wagesRoutes";
 import { logsRoutes } from "./api/logsRoutes";
 import { taxReportRoutes } from "./api/taxReportRoutes";
+import { employeeHrDataRoutes } from "./api/employeeHrDataRoutes";
 import { Database } from "./db/client";
+import { employeeHrDataService } from "./services/employeeHrDataService";
 import { staticPlugin } from "@elysiajs/static";
 
 
 // Initialize Database access
 Database.getInstance();
+
+// Background initialization
+setTimeout(() => {
+    employeeHrDataService.ensureTablesExist().catch(console.error);
+}, 1000);
+
 const app = new Elysia()
     // CORS Configuration
     .use(cors({
@@ -205,6 +213,8 @@ const app = new Elysia()
     .use(logsRoutes)
     // Tax Report routes
     .use(taxReportRoutes)
+    // Employee HR Data (NIK override, etc)
+    .use(employeeHrDataRoutes)
 
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
@@ -227,6 +237,7 @@ const app = new Elysia()
         .use(logsRoutes)
         .use(devConfigRoutes)
         .use(taxReportRoutes)
+        .use(employeeHrDataRoutes)
     )
 
     // SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)

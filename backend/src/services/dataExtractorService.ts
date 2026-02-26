@@ -12,6 +12,7 @@ import { historyDatabaseService } from "./historyDatabaseService";
 // Import new unified component services
 import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
 import { manualAdjustmentService } from "./manualAdjustmentService";
+import { employeeHrDataService } from "./employeeHrDataService";
 
 interface EmployeeRow {
     emp_code: string;
@@ -872,6 +873,10 @@ export class DataExtractorService {
             `);
         }
 
+        // Fetch HR data overrides (e.g. NIK KTP)
+        const empCodes = rows.map((r: any) => r.emp_code?.trim()).filter(Boolean);
+        const hrDataMap = await employeeHrDataService.getHrDataBulk(empCodes);
+
         return rows.map((r: any) => {
             const rawGangCode = r.gang_code?.trim() || "";
             // Check if we need to map Description (e.g. "DIVISI AB1") back to Code (e.g. "AB1")
@@ -883,9 +888,15 @@ export class DataExtractorService {
                 }
             }
 
+            const empCodeClean = r.emp_code?.trim().toUpperCase() || "";
+            const hrOverride = hrDataMap.get(empCodeClean);
+
+            // If there's an override for NIK, use it. Otherwise use NewICNo, otherwise use EmpCode
+            const finalNik = hrOverride?.nik_ktp?.trim() || r.actual_nik?.trim() || r.emp_code?.trim() || "";
+
             return {
                 emp_code: r.emp_code?.trim() || "",
-                actual_nik: r.actual_nik?.trim() || r.emp_code?.trim() || "",
+                actual_nik: finalNik,
                 emp_name: r.emp_name?.trim() || "",
                 gender: String(r.gender || "1"),
                 loc_code: r.loc_code?.trim() || "",

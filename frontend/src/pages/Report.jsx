@@ -6,6 +6,7 @@ import 'ag-grid-community/styles/ag-theme-alpine.css'
 // Import new theme styling
 import '../styles/theme.css'
 import '../styles/ag-grid-professional.css'
+import '../styles/report-edit-mode.css'
 
 import { fetchReportRowsBatched, fetchReportRowsSimple, fetchReportCount, fetchReportDivisionOptimized } from '../services/payrollService'
 import { fetchColumnDefinitions } from '../services/headerService'
@@ -18,6 +19,7 @@ import ReportToolbar from '../components/common/ReportToolbar'
 import GangFilter from '../components/common/GangFilter'
 import { GangFilterProvider } from '../context/GangFilterContext'
 import { useGangFilter } from '../context/GangFilterContext'
+import { exportReportToExcelPro } from '../utils/exportReportToExcelPro'
 
 // Check if running in development mode
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true' || import.meta.env.DEV_MODE === 'true'
@@ -87,6 +89,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const autoHideMapRef = useRef({})
 
   const [loading, setLoading] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [loadingStatus, setLoadingStatus] = useState('')
   const [firstBatchReady, setFirstBatchReady] = useState(false)
   const [firstBatchAttempted, setFirstBatchAttempted] = useState(false)
@@ -98,6 +101,68 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [jobTitles, setJobTitles] = useState({})
   const [unsavedJobs, setUnsavedJobs] = useState({})
   const [isSavingJobs, setIsSavingJobs] = useState(false)
+
+  // --- NIK EDIT MODE STATE ---
+  const [editModeNik, setEditModeNik] = useState(false)
+  const [pendingNikEdits, setPendingNikEdits] = useState({})
+  const [isSavingNik, setIsSavingNik] = useState(false)
+  const [historyModalNik, setHistoryModalNik] = useState({ isOpen: false, data: null, empCode: null, loading: false })
+
+  const handleNikChange = useCallback((empcode, newVal, oldVal, rowData) => {
+    if (newVal === oldVal) return;
+    setPendingNikEdits(prev => ({
+      ...prev,
+      [empcode]: { emp_code: empcode, nama: rowData.nama, old_nik: oldVal, new_nik: newVal }
+    }))
+  }, [])
+
+  const handleSaveNikEdits = async () => {
+    if (Object.keys(pendingNikEdits).length === 0) return
+    setIsSavingNik(true)
+    try {
+      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+      const promises = Object.values(pendingNikEdits).map(edit =>
+        fetch(`${backendUrl}/employee-hr-data/${edit.emp_code}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authToken ? `Bearer ${authToken}` : ''
+          },
+          body: JSON.stringify({ field: 'nik_ktp', value: String(edit.new_nik) })
+        }).then(res => res.json())
+      )
+
+      const results = await Promise.all(promises)
+      const failed = results.filter(r => !r.success)
+      if (failed.length > 0) {
+        alert(`Failed to save ${failed.length} NIK records.`)
+      } else {
+        setPendingNikEdits({})
+        alert('Successfully saved NIK updates!')
+      }
+    } catch (e) {
+      alert('Error saving NIK edits: ' + e.message)
+    } finally {
+      setIsSavingNik(false)
+    }
+  }
+
+  const openNikHistory = async (empcode) => {
+    setHistoryModalNik({ isOpen: true, data: null, empCode: empcode, loading: true })
+    try {
+      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+      const res = await fetch(`${backendUrl}/employee-hr-data/${empcode}/history`)
+      const json = await res.json()
+      if (json.success) {
+        setHistoryModalNik({ isOpen: true, data: json.data, empCode: empcode, loading: false })
+      } else {
+        throw new Error(json.error)
+      }
+    } catch (e) {
+      alert("Failed to load history: " + e.message)
+      setHistoryModalNik(prev => ({ ...prev, loading: false }))
+    }
+  }
 
   // Fetch job titles
   useEffect(() => {
@@ -416,6 +481,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   }, []);
 
   const onCellClicked = useCallback((params) => {
+    if (params.context.editModeNik && params.colDef.field === 'nik') return; // Do not toggle Row Selection if editing NIK
+
     if (params.colDef.field === 'nik' || params.colDef.field === 'nama') {
       params.node.setSelected(!params.node.isSelected())
     }
@@ -486,9 +553,50 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
               const lpCol = kids.find(c => c.field === 'jenis_kelamin')
 
               const usedFields = new Set(['nik', 'nama', 'jenis_kelamin', 'no'])
+
               const otherCols = kids.filter(c => !usedFields.has(c.field))
 
-              if (nikCol) { nikCol.pinned = 'left'; nikCol.width = 100; }
+              if (nikCol) {
+                nikCol.pinned = 'left';
+                nikCol.width = 150;
+                nikCol.minWidth = 150;
+
+                // Edit Mode config via context so we don't need to rebuild columns
+                nikCol.editable = (params) => params.context.editModeNik;
+                nikCol.cellStyle = (params) => {
+                  return params.context.editModeNik ? {
+                    backgroundColor: '#fffbeb',
+                    border: '1px solid #eab308',
+                    cursor: 'text'
+                  } : {};
+                }
+                nikCol.valueSetter = (params) => {
+                  const newVal = String(params.newValue || '').trim();
+                  const oldVal = String(params.oldValue || '').trim();
+                  if (newVal !== oldVal) {
+                    params.data[params.colDef.field] = newVal;
+                    params.context.onNikChange(params.data.emp_code, newVal, oldVal, params.data);
+                    return true;
+                  }
+                  return false;
+                };
+
+                // Cell renderer for history button
+                nikCol.cellRenderer = (params) => {
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', height: '100%' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{params.value}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); params.context.openNikHistory(params.data.emp_code); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', fontSize: '12px', opacity: 0.6 }}
+                        title="Lihat Riwayat Versi"
+                      >
+                        ⏱️
+                      </button>
+                    </div>
+                  );
+                };
+              }
               if (namaCol) { namaCol.pinned = 'left'; namaCol.width = 220; }
               if (lpCol) { lpCol.width = 50; lpCol.minWidth = 50; }
 
@@ -1044,8 +1152,27 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     } catch { }
   }
 
-  const exportCsv = () => {
-    gridRef.current.api.exportDataAsCsv({ fileName: 'daftar_upah.csv' })
+  const handleExportExcel = async () => {
+    if (!rows || rows.length === 0) {
+      alert('Tidak ada data untuk di-export.');
+      return;
+    }
+    try {
+      setIsExporting(true);
+      setLoadingStatus('Generating Excel Worksheet in progress. This could take a while...');
+      await exportReportToExcelPro(rows, columnDefs, {
+        division: finalDivision,
+        gangCode: finalGangCode,
+        month: activeMonth,
+        year: activeYear
+      });
+    } catch (err) {
+      console.error('Failed to export to Excel:', err);
+      alert('Gagal membuat file Excel: ' + err.message);
+    } finally {
+      setIsExporting(false);
+      setLoadingStatus('');
+    }
   }
   const autoSizeAll = () => {
     const allIds = []
@@ -1116,10 +1243,12 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                 dataInitRef.current = false
               }
             }}
-            onExport={exportCsv}
+            onExport={handleExportExcel}
             onAutoSize={autoSizeAll}
             onBack={onBack}
-            disableControls={loading}
+            disableControls={loading || isExporting}
+            editMode={editModeNik}
+            onEditModeToggle={() => setEditModeNik(p => !p)}
           />
         </div>
       }
@@ -1189,7 +1318,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
         <AgGridReact
           ref={gridRef}
-          context={{ jobTitles, onJobChange: handleJobChange }}
+          context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory }}
           columnDefs={columnDefs}
           rowData={rows}
           columnTypes={columnTypes}
@@ -1255,21 +1384,112 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         />
       </div>
 
-      {/* Save Button for Jabatan */}
-      {Object.keys(unsavedJobs).length > 0 && (
-        <div style={{ padding: '10px', display: 'flex', justifyContent: 'flex-end', backgroundColor: '#f0f9ff', borderTop: '1px solid #bae6fd' }}>
+      {/* Save Button for NIK Edits */}
+      {Object.keys(pendingNikEdits).length > 0 && (
+        <div className="report-save-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ color: '#0369a1', fontWeight: 'bold' }}>
-              {Object.keys(unsavedJobs).length} changes to save
+            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <span style={{ color: '#854d0e', fontWeight: '600' }}>
+              Pending: {Object.keys(pendingNikEdits).length} NIK telah diubah (Versioned Edit Mode)
             </span>
+          </div>
+          <div className="report-save-bar-actions">
+            <button
+              className="btn btn-secondary"
+              onClick={() => { setPendingNikEdits({}); loadColumnDefinitions(); }}
+              disabled={isSavingNik}
+              style={{ backgroundColor: 'white' }}
+            >
+              Batal
+            </button>
             <button
               className="btn btn-primary"
-              onClick={handleSaveJobs}
-              disabled={isSavingJobs}
-              style={{ backgroundColor: '#0284c7', color: 'white' }}
+              onClick={handleSaveNikEdits}
+              disabled={isSavingNik}
+              style={{ backgroundColor: '#eab308', color: '#854d0e', borderColor: '#ca8a04' }}
             >
-              {isSavingJobs ? 'Saving...' : '💾 SAVE JABATAN'}
+              {isSavingNik ? 'Menyimpan...' : '💾 SIMPAN PERUBAHAN NIK'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal for NIK */}
+      {historyModalNik.isOpen && (
+        <div className="history-modal-overlay" onClick={() => setHistoryModalNik({ isOpen: false, data: null, empCode: null, loading: false })}>
+          <div className="history-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="history-modal-header">
+              <h3 style={{ margin: 0 }}>Riwayat Perubahan NIK</h3>
+              <button
+                onClick={() => setHistoryModalNik({ isOpen: false, data: null, empCode: null, loading: false })}
+                style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}
+              >✕</button>
+            </div>
+
+            <div style={{ marginBottom: '16px', fontWeight: '600', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Karyawan: {historyModalNik.empCode}</span>
+            </div>
+
+            {historyModalNik.loading ? (
+              <div style={{ textAlign: 'center', padding: '20px' }}>Loading history...</div>
+            ) : historyModalNik.data && historyModalNik.data.length > 0 ? (
+              <div className="history-list">
+                {historyModalNik.data.map((h, index) => (
+                  <div key={h.id} className="history-item">
+                    <div className="history-meta" style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '8px' }}>
+                      <span><strong>Versi:</strong> {h.version} {index === 0 && <span style={{ color: '#10b981', fontSize: '10px', marginLeft: '4px' }}>(Terbaru)</span>}</span>
+                      <span><strong>Diubah oleh:</strong> {h.changed_by}</span>
+                      <span>{new Date(h.changed_at).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div className="history-changes">
+                        <span className="history-old">{h.old_value || '(Kosong/Tidak Ada)'}</span>
+                        <span>➔</span>
+                        <span className="history-new">{h.new_value}</span>
+                      </div>
+
+                      {/* Delete Version Button - only on the latest version */}
+                      {index === 0 && (
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm(`Yakin ingin MENGHAPUS versi ini dan ROLLBACK NIK ke versi sebelumnya?`)) return;
+
+                            try {
+                              const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
+                              const res = await fetch(`${backendUrl}/employee-hr-data/${historyModalNik.empCode}/rollback`, {
+                                method: 'POST',
+                                headers: { 'Authorization': authToken ? `Bearer ${authToken}` : '' }
+                              });
+                              const json = await res.json();
+                              if (json.success) {
+                                alert("Berhasil di-rollback!");
+                                setHistoryModalNik({ isOpen: false, data: null, empCode: null, loading: false });
+                                // Force refresh grid data
+                                setRows([]);
+                                setPinnedBottom([]);
+                                dataInitRef.current = false;
+                              } else {
+                                alert("Gagal rollback: " + json.error);
+                              }
+                            } catch (e) {
+                              alert("Error: " + e.message);
+                            }
+                          }}
+                          className="btn btn-danger"
+                          style={{
+                            padding: '4px 8px', fontSize: '11px', backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fca5a5'
+                          }}
+                        >
+                          🗑️ Hapus Setelan Versi Ini
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="history-empty">Belum ada riwayat perubahan NIK (versi default Plantware).</div>
+            )}
           </div>
         </div>
       )}

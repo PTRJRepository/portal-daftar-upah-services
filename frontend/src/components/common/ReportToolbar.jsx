@@ -12,7 +12,10 @@ export default function ReportToolbar({
     onGangChange,
     onBack,
     onRefresh,
-    disableControls = false
+    disableControls = false,
+    editMode = false,
+    onEditModeToggle,
+    onExport
 }) {
     // Helper to format month-year for input type="month"
     const getMonthValue = () => {
@@ -155,6 +158,59 @@ export default function ReportToolbar({
                     )}
                 </select>
             </div>
+
+            {/* Export Toggle */}
+            {onExport && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: onEditModeToggle ? 'auto' : 'auto' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', visibility: 'hidden' }}>
+                        Aksi
+                    </label>
+                    <button
+                        className="btn btn-secondary"
+                        onClick={onExport}
+                        disabled={disableControls}
+                        title="Export to Excel/CSV"
+                        style={{
+                            borderColor: 'var(--success-500)',
+                            color: 'var(--success-700)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            height: '36px',
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        <span>📊</span> Export
+                    </button>
+                </div>
+            )}
+
+            {/* Edit Mode Toggle */}
+            {onEditModeToggle && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: onExport ? '0' : 'auto' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', visibility: 'hidden' }}>
+                        Mode
+                    </label>
+                    <button
+                        className={`btn ${editMode ? 'btn-danger' : 'btn-secondary'}`}
+                        onClick={onEditModeToggle}
+                        disabled={disableControls}
+                        title={editMode ? "Matikan Edit Mode NIK" : "Aktifkan Edit Mode NIK"}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            height: '36px',
+                            whiteSpace: 'nowrap',
+                            backgroundColor: editMode ? '#ef4444' : undefined,
+                            color: editMode ? 'white' : undefined
+                        }}
+                    >
+                        <span>{editMode ? '🔒' : '✏️'}</span>
+                        {editMode ? 'Disable Edit NIK' : 'Enable Edit NIK'}
+                    </button>
+                </div>
+            )}
         </div>
     )
 }
