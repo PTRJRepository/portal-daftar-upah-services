@@ -34,10 +34,20 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     // ========================
 
     // --- List Employees by Gang ---
-    .get("/list", async ({ query }) => {
+    .get("/list", async ({ query, currentUser }) => {
+        let division = query.division || undefined;
+        let gangCode = query.gang_code || undefined;
+
+        // Strictly lock division for Kerani
+        if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+            division = currentUser.divisions[0];
+            // If they pass a gang not starting with their division prefix, maybe nullify gangCode or just let the division filter handle it.
+            // EmployeeRepository will naturally restrict if both are passed, but division filter takes precedence if gangCode='ALL'
+        }
+
         const employees = await employeeRepository.list({
-            gangCode: query.gang_code || undefined,
-            division: query.division || undefined,
+            gangCode: gangCode,
+            division: division,
             skip: parseInt(query.skip || "0"),
             limit: parseInt(query.limit || "100")
         });
@@ -51,10 +61,18 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
         })
     })
     // --- Search Employees ---
-    .get("/search", async ({ query }) => {
+    .get("/search", async ({ query, currentUser }) => {
+        let division = undefined;
+
+        // Strictly lock division for Kerani
+        if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+            division = currentUser.divisions[0];
+        }
+
         const employees = await employeeRepository.search(
             query.q || "",
-            parseInt(query.limit || "50")
+            parseInt(query.limit || "50"),
+            division
         );
         return { count: employees.length, data: employees };
     }, {

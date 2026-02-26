@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { MonthlyTaxRow } from './taxReportService';
+import { MonthlyTaxRow, DecemberTaxRow } from './taxReportService';
 
 /**
  * Service to generate an Excel file containing detailed PPH21 Tax Calculations
@@ -236,6 +236,244 @@ export const generateMonthlyTaxExcel = async (
     }
 
     // Return the buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+};
+
+/**
+ * Service to generate an Excel file containing December Tax Calculations
+ * with a secondary sheet for Monthly Breakdown details.
+ */
+export const generateDecemberTaxExcel = async (
+    data: { employees: DecemberTaxRow[] },
+    year: number,
+    division: string,
+    gang: string
+): Promise<Buffer> => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'PT. Rebinmas Jaya - Auto Report System';
+    workbook.created = new Date();
+
+    const applyHeaderStyle = (cell: ExcelJS.Cell, bgColor: string, color: string = 'FFFFFF') => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+        cell.font = { color: { argb: color }, bold: true, size: 10, name: 'Arial' };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    };
+
+    const numFormat = '#,##0';
+
+    // ==========================================
+    // SHEET 1: PAJAK DESEMBER
+    // ==========================================
+    const mainSheetName = `Pajak Des - ${division} - ${gang || 'ALL'}`;
+    const mainSheet = workbook.addWorksheet(mainSheetName.substring(0, 31));
+
+    // Format matches frontend exactly.
+    // Row 1: Title
+    mainSheet.mergeCells('A1:AC1');
+    const titleCell = mainSheet.getCell('A1');
+    titleCell.value = `TABULASI PAJAK DESEMBER - DIVISI: ${division} | GANG: ${gang || 'ALL'} | TAHUN: ${year}`;
+    titleCell.font = { size: 14, bold: true, name: 'Arial' };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Row 3: Main Group Headers
+    mainSheet.getCell('A3').value = 'IDENTITAS'; mainSheet.mergeCells('A3:F3');
+    applyHeaderStyle(mainSheet.getCell('A3'), '1E293B'); // Dark Slate
+    mainSheet.getCell('G3').value = 'STATUS KARYAWAN'; mainSheet.mergeCells('G3:I3');
+    applyHeaderStyle(mainSheet.getCell('G3'), '1E293B');
+    mainSheet.getCell('J3').value = 'DESEMBER'; mainSheet.mergeCells('J3:N3');
+    applyHeaderStyle(mainSheet.getCell('J3'), '1E3A8A'); // Blue
+    mainSheet.getCell('O3').value = 'PENGHASILAN TIDAK TERATUR'; mainSheet.mergeCells('O3:Q3');
+    applyHeaderStyle(mainSheet.getCell('O3'), 'B45309'); // Amber/Orange
+    mainSheet.getCell('R3').value = 'DISETAHUNKAN'; mainSheet.mergeCells('R3:X3');
+    applyHeaderStyle(mainSheet.getCell('R3'), '0284C7'); // Light Blue
+    mainSheet.getCell('Y3').value = 'PENGURANG'; mainSheet.mergeCells('Y3:AA3');
+    applyHeaderStyle(mainSheet.getCell('Y3'), 'B91C1C'); // Red
+    mainSheet.getCell('AB3').value = 'KALKULASI PAJAK'; mainSheet.mergeCells('AB3:AG3');
+    applyHeaderStyle(mainSheet.getCell('AB3'), '15803D'); // Green
+
+    // Row 4: Sub Headers
+    const mainCols = [
+        /* A */ { header: 'NO', width: 5 }, /* B */ { header: 'NAMA KARYAWAN', width: 25 },
+        /* C */ { header: 'NIK / PASPOR', width: 18 }, /* D */ { header: 'NPWP', width: 20 },
+        /* E */ { header: 'ALAMAT', width: 25 }, /* F */ { header: 'JABATAN', width: 15 },
+        /* G */ { header: 'L/P', width: 5 }, /* H */ { header: 'PTKP', width: 8 },
+        /* I */ { header: 'TER', width: 8 },
+        /* J */ { header: 'Gaji Pokok', width: 15, group: 'blue' }, /* K */ { header: 'Total Tunjangan', width: 15, group: 'blue' },
+        /* L */ { header: 'Premi JKK/JKM/Kes', width: 15, group: 'blue' }, /* M */ { header: 'Tunjangan PPh', width: 15, group: 'blue' },
+        /* N */ { header: 'Ph. Bruto Des', width: 15, group: 'blue' },
+        /* O */ { header: 'THR', width: 15, group: 'orange' }, /* P */ { header: 'BONUS', width: 15, group: 'orange' },
+        /* Q */ { header: 'TANTIEM', width: 15, group: 'orange' },
+        /* R */ { header: 'Total Gaji Pokok', width: 15, group: 'lightblue' }, /* S */ { header: 'Total Tunj. Lainnya', width: 15, group: 'lightblue' },
+        /* T */ { header: 'Total Premi Asuransi', width: 18, group: 'lightblue' }, /* U */ { header: 'Total Tunj. PPh', width: 15, group: 'lightblue' },
+        /* V */ { header: 'Total Natura', width: 15, group: 'lightblue' }, /* W */ { header: 'Total THR/Bonus', width: 15, group: 'lightblue' },
+        /* X */ { header: 'Ph. Bruto Setahun', width: 18, group: 'lightblue' },
+        /* Y */ { header: 'Biaya Jabatan', width: 15, group: 'red' }, /* Z */ { header: 'Total Iuran JHT/JP', width: 18, group: 'red' },
+        /* AA */ { header: 'Ph. Netto Setahun', width: 18, group: 'red' },
+        /* AB */ { header: 'PTKP', width: 15, group: 'green' }, /* AC */ { header: 'PKP', width: 15, group: 'green' },
+        /* AD */ { header: 'PPh 21 Setahun', width: 18, group: 'green' }, /* AE */ { header: 'PPh 21 Non NPWP', width: 18, group: 'green' },
+        /* AF */ { header: 'PPh 21 Jan S.D Nop', width: 18, group: 'green' }, /* AG */ { header: 'PPh 21 Desember', width: 18, group: 'green' }
+    ];
+
+    mainSheet.columns = mainCols.map((col, idx) => ({ key: `col${idx}`, width: col.width }));
+
+    mainCols.forEach((col, index) => {
+        const cell = mainSheet.getCell(4, index + 1);
+        cell.value = col.header;
+
+        let bgColor = 'F8FAFC'; // Default gray
+        let fgColor = '0F172A';
+
+        if (col.group === 'blue') { bgColor = '1E3A8A'; fgColor = 'FFFFFF'; }
+        else if (col.group === 'orange') { bgColor = 'B45309'; fgColor = 'FFFFFF'; }
+        else if (col.group === 'lightblue') { bgColor = '0284C7'; fgColor = 'FFFFFF'; }
+        else if (col.group === 'red') { bgColor = 'B91C1C'; fgColor = 'FFFFFF'; }
+        else if (col.group === 'green') { bgColor = '15803D'; fgColor = 'FFFFFF'; }
+
+        applyHeaderStyle(cell, bgColor, fgColor);
+    });
+    mainSheet.getRow(4).height = 35;
+
+    let mainRowIdx = 5;
+    data.employees.forEach((emp, i) => {
+        const row = mainSheet.getRow(mainRowIdx);
+        const rowData = [
+            emp.no, emp.emp_name, emp.nik, emp.npwp, emp.alamat, emp.jabatan,
+            emp.gender, emp.status_ptkp, emp.kategori_ter,
+            emp.gaji_pokok_des, emp.tunjangan_des, emp.premi_asuransi_des, emp.tunjangan_pph_des, emp.bruto_des, // J-N
+            emp.thr, emp.bonus, emp.tantiem, // O-Q
+            emp.gaji_pokok_setahun, emp.tunjangan_lainnya_setahun, emp.premi_asuransi_setahun, emp.tunjangan_pph_setahun, emp.natura_setahun, emp.thr_bonus_tantiem_setahun, emp.bruto_setahun, // R-X
+            emp.biaya_jabatan, emp.iuran_jht_jp_setahun, emp.netto_setahun, // Y-AA
+            emp.ptkp, emp.pkp, emp.pph21_setahun, emp.pph21_setahun, emp.pph21_jan_nov, emp.pph21_desember // AB-AG
+        ];
+
+        rowData.forEach((val, idx) => {
+            const cell = row.getCell(idx + 1);
+            cell.value = val !== undefined && val !== null ? val : 0;
+            // First 9 cols are strings/text, rest are numbers
+            if (idx >= 9) {
+                cell.numFmt = numFormat;
+            }
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+
+        // Highlight December cell
+        row.getCell(33).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D1E7DD' } };
+        row.getCell(33).font = { color: { argb: '0F5132' }, bold: true };
+
+        mainRowIdx++;
+    });
+
+    // Main Sheet Footer Totals
+    const mainFooter = mainSheet.getRow(mainRowIdx);
+    mainSheet.mergeCells(`A${mainRowIdx}:I${mainRowIdx}`);
+    mainFooter.getCell('A').value = 'GRAND TOTAL';
+    mainFooter.getCell('A').alignment = { horizontal: 'right', vertical: 'middle' };
+    mainFooter.getCell('A').font = { bold: true };
+    mainFooter.getCell('A').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
+
+    for (let c = 10; c <= 33; c++) {
+        const cell = mainFooter.getCell(c);
+        if (c !== 28) { // Skip PTKP total if doesn't make sense, but frontend does it so let's match frontend SUMs
+            cell.value = { formula: `SUM(${mainSheet.getColumn(c).letter}5:${mainSheet.getColumn(c).letter}${mainRowIdx - 1})` };
+        }
+        cell.numFmt = numFormat;
+        cell.font = { bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
+        cell.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
+    }
+    // Set PPh21 Des Total highlight
+    mainFooter.getCell(33).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D1E7DD' } };
+    mainFooter.getCell(33).font = { color: { argb: '0F5132' }, bold: true };
+
+
+    // ==========================================
+    // SHEET 2: LAMPIRAN URAIAN BULANAN
+    // ==========================================
+    const detailSheetName = `Uraian Bulanan_Des_${year}`;
+    const detailSheet = workbook.addWorksheet(detailSheetName.substring(0, 31));
+
+    const detailCols = [
+        { header: 'NO', width: 5 }, { header: 'NAMA KARYAWAN', width: 25 }, { header: 'NIK', width: 15 },
+        { header: 'KOMPONEN', width: 20 },
+        { header: 'JAN', width: 12 }, { header: 'FEB', width: 12 }, { header: 'MAR', width: 12 },
+        { header: 'APR', width: 12 }, { header: 'MEI', width: 12 }, { header: 'JUN', width: 12 },
+        { header: 'JUL', width: 12 }, { header: 'AGU', width: 12 }, { header: 'SEP', width: 12 },
+        { header: 'OKT', width: 12 }, { header: 'NOV', width: 12 }, { header: 'DES', width: 12 },
+        { header: 'TOTAL SEMUA', width: 15 }
+    ];
+    detailSheet.columns = detailCols.map((col, idx) => ({ key: `col${idx}`, width: col.width }));
+
+    // Headers
+    detailSheet.getRow(1).height = 30;
+    detailCols.forEach((col, index) => {
+        const cell = detailSheet.getCell(1, index + 1);
+        cell.value = col.header;
+        applyHeaderStyle(cell, '1E293B', 'FFFFFF');
+    });
+
+    let detailRowIdx = 2;
+    const components = [
+        { key: 'gaji_pokok', label: '1. Gaji Pokok' },
+        { key: 'tunjangan', label: '2. Tunjangan' },
+        { key: 'premi_asuransi', label: '3. Premi Asuransi' },
+        { key: 'iuran_pensiun', label: '4. Iuran Pensiun' },
+        { key: 'pph21', label: '5. PPh 21' }
+    ];
+
+    data.employees.forEach((emp, i) => {
+        components.forEach((comp, cIdx) => {
+            const row = detailSheet.getRow(detailRowIdx);
+
+            // Employee info only on first row of their block, or merge
+            if (cIdx === 0) {
+                row.getCell(1).value = i + 1;
+                row.getCell(2).value = emp.emp_name;
+                row.getCell(3).value = emp.nik;
+            }
+
+            row.getCell(4).value = comp.label;
+
+            let rowTotalFormulaStr = '=SUM(';
+            // Monthly values
+            for (let m = 1; m <= 12; m++) {
+                const key = comp.key as keyof typeof emp.monthly_breakdown;
+                const val = emp.monthly_breakdown?.[key]?.[String(m)] || 0;
+                const cell = row.getCell(4 + m);
+                cell.value = val;
+                cell.numFmt = numFormat;
+                if (m === 1) rowTotalFormulaStr += `${cell.address}:`;
+                if (m === 12) rowTotalFormulaStr += `${cell.address})`;
+            }
+
+            // Total Column
+            const totalCell = row.getCell(17);
+            totalCell.value = { formula: rowTotalFormulaStr };
+            totalCell.numFmt = numFormat;
+            totalCell.font = { bold: true };
+
+            // Borders for all cells in row
+            for (let colId = 1; colId <= 17; colId++) {
+                row.getCell(colId).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            }
+
+            // Alternating employee background color for readability
+            if (i % 2 !== 0) {
+                for (let colId = 1; colId <= 17; colId++) {
+                    if (!row.getCell(colId).fill) {
+                        row.getCell(colId).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F8FAFC' } };
+                    }
+                }
+            }
+
+            detailRowIdx++;
+        });
+
+        // Add a thin empty row separator (optional but nice)
+        // detailRowIdx++; (not adding to save space, standard formatting is compact)
+    });
+
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
 };

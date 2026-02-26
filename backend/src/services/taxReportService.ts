@@ -287,6 +287,15 @@ export interface DecemberTaxRow {
     pph21_setahun: number;
     pph21_jan_nov: number;
     pph21_desember: number;
+
+    // Details for interactive popup
+    monthly_breakdown: {
+        gaji_pokok: Record<string, number>;
+        tunjangan: Record<string, number>;
+        premi_asuransi: Record<string, number>;
+        iuran_pensiun: Record<string, number>;
+        pph21: Record<string, number>;
+    };
 }
 
 export interface AstekBpjsMonthlyRow {
@@ -1191,6 +1200,33 @@ class TaxReportService {
                 }
             }
 
+            // Build detailed monthly breakdown for frontend (1-12)
+            const breakdown = {
+                gaji_pokok: {} as Record<string, number>,
+                tunjangan: {} as Record<string, number>,
+                premi_asuransi: {} as Record<string, number>,
+                iuran_pensiun: {} as Record<string, number>,
+                pph21: {} as Record<string, number>,
+            };
+
+            for (let m = 1; m <= 12; m++) {
+                const ms = String(m);
+                const inc = emp.monthly_income[ms] || 0;
+                const det = emp.monthly_details[ms];
+                const gp = det ? det.gaji_pokok : 0;
+                const tunj = Math.max(0, inc - gp);
+
+                breakdown.gaji_pokok[ms] = inc; // Frontend expects "Gaji Pokok" (Income) here, or we can use inc as Total Income
+                // Wait, in previous logic gajiPokokSetahun += incDes; so "Gaji Pokok" in breakdown means the total income before premi.
+                // Actually the current code does: gajiPokokSetahun += emp.monthly_income[String(m)];
+                // Let's pass the raw values so frontend can show them:
+                breakdown.gaji_pokok[ms] = inc;
+                breakdown.tunjangan[ms] = tunj;
+                breakdown.premi_asuransi[ms] = emp.monthly_premi_asuransi[ms] || 0;
+                breakdown.iuran_pensiun[ms] = emp.monthly_iuran_pensiun[ms] || 0;
+                breakdown.pph21[ms] = emp.monthly_pph21[ms] || 0;
+            }
+
             // December logic
             const incDes = emp.monthly_income['12'] || 0;
             const detDes = emp.monthly_details['12'];
@@ -1289,7 +1325,8 @@ class TaxReportService {
                 pkp: pkp,
                 pph21_setahun: pph21Setahun,
                 pph21_jan_nov: pph21JanNov,
-                pph21_desember: pph21Desember
+                pph21_desember: pph21Desember,
+                monthly_breakdown: breakdown
             });
         }
 

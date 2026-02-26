@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReport } from '../context/ReportContext';
-import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport, fetchDecemberTaxReport, downloadMonthlyTaxReportExcel } from '../services/taxReportService';
+import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport, fetchDecemberTaxReport, downloadMonthlyTaxReportExcel, downloadDecemberTaxReportExcel } from '../services/taxReportService';
 import { fetchDivisions, fetchGangs } from '../services/gangService';
 import { Calculator, BarChart2, CalendarDays, Activity, FileWarning, Search, ChevronDown, ChevronRight, DollarSign, Download, Filter } from 'lucide-react';
 import '../styles/TaxReportPage.css';
@@ -1063,7 +1063,34 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
 function DecemberTaxTab({ token, year, division, gang }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [downloadingExcel, setDownloadingExcel] = useState(false);
     const [error, setError] = useState(null);
+
+    // Popup state for detailed view
+    const [popupData, setPopupData] = useState(null);
+    const [popupMeta, setPopupMeta] = useState(null);
+
+    const openPopup = (emp, type) => {
+        let title = '';
+        let formula = '';
+        if (type === 'premi_asuransi') {
+            title = 'Total Premi Asuransi (12 Bulan)';
+            formula = 'Formula: BPJS Kes (4%) + Astek JKK/JKM (0.84%)';
+        } else if (type === 'iuran_pensiun') {
+            title = 'Total Iuran JHT/JP (12 Bulan)';
+            formula = 'Formula: Astek JHT (2%) + BPJS Pensiun (1%)';
+        } else if (type === 'pph21_setahun') {
+            title = 'Kalkulasi PPh 21 Setahun';
+        }
+
+        setPopupData(type === 'pph21_setahun' ? emp : emp.monthly_breakdown[type]);
+        setPopupMeta({ empName: emp.emp_name, empCode: emp.emp_code, type, title, formula, emp });
+    };
+
+    const closePopup = () => {
+        setPopupData(null);
+        setPopupMeta(null);
+    };
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -1077,6 +1104,17 @@ function DecemberTaxTab({ token, year, division, gang }) {
             setLoading(false);
         }
     }, [token, year, division, gang]);
+
+    const handleDownloadExcel = async () => {
+        setDownloadingExcel(true);
+        try {
+            await downloadDecemberTaxReportExcel(token, year, division, gang);
+        } catch (err) {
+            alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
+        } finally {
+            setDownloadingExcel(false);
+        }
+    };
 
     useEffect(() => { loadData(); }, [token, year, division, gang]);
 
@@ -1102,8 +1140,25 @@ function DecemberTaxTab({ token, year, division, gang }) {
                         🔄 Refresh
                     </button>
                     {data && data.employees.length > 0 && (
-                        <button className="tax-report-btn" style={{ backgroundColor: '#10b981', color: 'white' }} onClick={() => alert('Download Excel Pajak Desember akan segera hadir!')}>
-                            <Download size={14} /> Download Excel
+                        <button
+                            onClick={handleDownloadExcel}
+                            disabled={downloadingExcel}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 16px',
+                                borderRadius: '6px',
+                                fontWeight: '600',
+                                cursor: downloadingExcel ? 'not-allowed' : 'pointer',
+                                opacity: downloadingExcel ? 0.7 : 1,
+                                transition: 'background-color 0.2s'
+                            }}
+                        >
+                            <Download size={14} /> {downloadingExcel ? 'Mengunduh...' : 'Download Excel'}
                         </button>
                     )}
                 </div>
@@ -1115,21 +1170,21 @@ function DecemberTaxTab({ token, year, division, gang }) {
                 </div>
             ) : (
                 <div className="tax-report-table-wrapper" style={{ overflowX: 'auto', maxHeight: '70vh' }}>
-                    <table className="tax-report-table custom-december-table">
+                    <table className="tax-report-table">
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                             <tr>
-                                <th rowSpan="2" className="sticky-col first-col">No</th>
-                                <th rowSpan="2" className="sticky-col second-col" style={{ minWidth: '150px' }}>NAMA KARYAWAN</th>
+                                <th rowSpan="2" className="col-no">No</th>
+                                <th rowSpan="2" className="col-name" style={{ minWidth: '150px' }}>NAMA KARYAWAN</th>
                                 <th rowSpan="2">NIK / PASPOR</th>
                                 <th rowSpan="2">NPWP</th>
                                 <th rowSpan="2">ALAMAT</th>
                                 <th rowSpan="2">JABATAN</th>
                                 <th colSpan="3" className="group-header">STATUS KARYAWAN</th>
-                                <th colSpan="5" className="group-header" style={{ backgroundColor: '#2b5797', color: 'white' }}>DESEMBER</th>
-                                <th colSpan="3" className="group-header" style={{ backgroundColor: '#e3a21a', color: 'white' }}>PENGHASILAN TIDAK TERATUR</th>
-                                <th colSpan="7" className="group-header" style={{ backgroundColor: '#2d89ef', color: 'white' }}>DISETAHUNKAN</th>
-                                <th colSpan="3" className="group-header" style={{ backgroundColor: '#ee1111', color: 'white' }}>PENGURANG</th>
-                                <th colSpan="6" className="group-header" style={{ backgroundColor: '#00a300', color: 'white' }}>KALKULASI PAJAK</th>
+                                <th colSpan="5" className="group-header">DESEMBER</th>
+                                <th colSpan="3" className="group-header">PENGHASILAN TIDAK TERATUR</th>
+                                <th colSpan="7" className="group-header">DISETAHUNKAN</th>
+                                <th colSpan="3" className="group-header">PENGURANG</th>
+                                <th colSpan="6" className="group-header">KALKULASI PAJAK</th>
                             </tr>
                             <tr className="sub-header">
                                 {/* Status Karyawan */}
@@ -1138,82 +1193,103 @@ function DecemberTaxTab({ token, year, division, gang }) {
                                 <th>TER</th>
 
                                 {/* Desember */}
-                                <th style={{ color: '#2b5797', fontWeight: 600 }}>Gaji Pokok</th>
-                                <th style={{ color: '#2b5797', fontWeight: 600 }}>Total Tunjangan</th>
-                                <th style={{ color: '#2b5797', fontWeight: 600 }}>Premi JKK/JKM/Kes</th>
-                                <th style={{ color: '#2b5797', fontWeight: 600 }}>Tunjangan PPh</th>
-                                <th style={{ color: '#2b5797', fontWeight: 600 }}>Ph. Bruto Des</th>
+                                <th>Gaji Pokok</th>
+                                <th>Total Tunjangan</th>
+                                <th>Premi JKK/JKM/Kes</th>
+                                <th>Tunjangan PPh</th>
+                                <th>Ph. Bruto Des</th>
 
                                 {/* Penghasilan Tidak Teratur */}
-                                <th style={{ color: '#e3a21a', fontWeight: 600 }}>THR</th>
-                                <th style={{ color: '#e3a21a', fontWeight: 600 }}>BONUS</th>
-                                <th style={{ color: '#e3a21a', fontWeight: 600 }}>TANTIEM</th>
+                                <th>THR</th>
+                                <th>BONUS</th>
+                                <th>TANTIEM</th>
 
                                 {/* Disetahunkan */}
-                                <th style={{ color: '#2d89ef', fontWeight: 600 }}>Total Gaji Pokok</th>
-                                <th style={{ color: '#2d89ef', fontWeight: 600 }}>Total Tunj. Lainnya</th>
-                                <th style={{ color: '#2d89ef', fontWeight: 600 }}>Total Premi Asuransi</th>
-                                <th style={{ color: '#2d89ef', fontWeight: 600 }}>Total Tunj. PPh</th>
-                                <th style={{ color: '#2d89ef', fontWeight: 600 }}>Total Natura</th>
-                                <th style={{ color: '#2d89ef', fontWeight: 600 }}>Total THR/Bonus</th>
-                                <th style={{ color: '#2d89ef', fontWeight: 600 }}>Ph. Bruto Setahun</th>
+                                <th>Total Gaji Pokok</th>
+                                <th>Total Tunj. Lainnya</th>
+                                <th>Total Premi Asuransi</th>
+                                <th>Total Tunj. PPh</th>
+                                <th>Total Natura</th>
+                                <th>Total THR/Bonus</th>
+                                <th>Ph. Bruto Setahun</th>
 
                                 {/* Pengurang */}
-                                <th style={{ color: '#ee1111', fontWeight: 600 }}>Biaya Jabatan</th>
-                                <th style={{ color: '#ee1111', fontWeight: 600 }}>Total Iuran JHT/JP</th>
-                                <th style={{ color: '#ee1111', fontWeight: 600 }}>Ph. Netto Setahun</th>
+                                <th>Biaya Jabatan</th>
+                                <th>Total Iuran JHT/JP</th>
+                                <th>Ph. Netto Setahun</th>
 
                                 {/* Kalkulasi */}
-                                <th style={{ color: '#00a300', fontWeight: 600 }}>PTKP</th>
-                                <th style={{ color: '#00a300', fontWeight: 600 }}>PKP</th>
-                                <th style={{ color: '#00a300', fontWeight: 600 }}>PPh 21 Setahun</th>
-                                <th style={{ color: '#00a300', fontWeight: 600 }}>PPh 21 Non NPWP</th>
-                                <th style={{ color: '#00a300', fontWeight: 600 }}>PPh 21 Jan S.D Nop</th>
-                                <th style={{ color: '#00a300', fontWeight: 600, minWidth: '100px' }}>PPh 21 Desember</th>
+                                <th>PTKP</th>
+                                <th>PKP</th>
+                                <th>PPh 21 Setahun</th>
+                                <th>PPh 21 Non NPWP</th>
+                                <th>PPh 21 Jan S.D Nop</th>
+                                <th style={{ minWidth: '100px' }}>PPh 21 Desember</th>
                             </tr>
                         </thead>
                         <tbody>
                             {data.employees.map((emp) => (
                                 <tr key={emp.emp_code}>
-                                    <td className="sticky-col first-col text-center">{emp.no}</td>
-                                    <td className="sticky-col second-col">{emp.emp_name}</td>
-                                    <td className="text-center">{emp.nik}</td>
+                                    <td className="text-center col-no">{emp.no}</td>
+                                    <td className="col-name">{emp.emp_name}</td>
+                                    <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
                                     <td className="text-center">{emp.npwp}</td>
                                     <td style={{ maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={emp.alamat}>{emp.alamat}</td>
-                                    <td className="text-center">{emp.jabatan}</td>
+                                    <td className="text-center" style={{ fontSize: '11px' }}>{emp.jabatan || '-'}</td>
 
-                                    <td className="text-center">{emp.gender}</td>
+                                    <td className="text-center">{emp.gender === 'L' || emp.gender === 'M' ? 'L' : 'P'}</td>
                                     <td className="text-center">{emp.status_ptkp}</td>
                                     <td className="text-center">{emp.kategori_ter}</td>
 
-                                    <td className="text-right highlight-des">{formatNumber(emp.gaji_pokok_des)}</td>
-                                    <td className="text-right highlight-des">{formatNumber(emp.tunjangan_des)}</td>
-                                    <td className="text-right highlight-des">{formatNumber(emp.premi_asuransi_des)}</td>
-                                    <td className="text-right highlight-des">{formatNumber(emp.tunjangan_pph_des)}</td>
-                                    <td className="text-right highlight-des"><strong>{formatNumber(emp.bruto_des)}</strong></td>
+                                    <td className="text-right">{formatNumber(emp.gaji_pokok_des)}</td>
+                                    <td className="text-right">{formatNumber(emp.tunjangan_des)}</td>
+                                    <td className="text-right">{formatNumber(emp.premi_asuransi_des)}</td>
+                                    <td className="text-right">{formatNumber(emp.tunjangan_pph_des)}</td>
+                                    <td className="text-right"><strong>{formatNumber(emp.bruto_des)}</strong></td>
 
-                                    <td className="text-right highlight-irr">{formatNumber(emp.thr)}</td>
-                                    <td className="text-right highlight-irr">{formatNumber(emp.bonus)}</td>
-                                    <td className="text-right highlight-irr">{formatNumber(emp.tantiem)}</td>
+                                    <td className="text-right">{formatNumber(emp.thr)}</td>
+                                    <td className="text-right">{formatNumber(emp.bonus)}</td>
+                                    <td className="text-right">{formatNumber(emp.tantiem)}</td>
 
-                                    <td className="text-right highlight-annual">{formatNumber(emp.gaji_pokok_setahun)}</td>
-                                    <td className="text-right highlight-annual">{formatNumber(emp.tunjangan_lainnya_setahun)}</td>
-                                    <td className="text-right highlight-annual">{formatNumber(emp.premi_asuransi_setahun)}</td>
-                                    <td className="text-right highlight-annual">{formatNumber(emp.tunjangan_pph_setahun)}</td>
-                                    <td className="text-right highlight-annual">{formatNumber(emp.natura_setahun)}</td>
-                                    <td className="text-right highlight-annual">{formatNumber(emp.thr_bonus_tantiem_setahun)}</td>
-                                    <td className="text-right highlight-annual"><strong>{formatNumber(emp.bruto_setahun)}</strong></td>
+                                    <td className="text-right">{formatNumber(emp.gaji_pokok_setahun)}</td>
+                                    <td className="text-right">{formatNumber(emp.tunjangan_lainnya_setahun)}</td>
+                                    <td
+                                        className="text-right pph21-cell-clickable"
+                                        style={{ textDecoration: 'underline', color: '#3b82f6' }}
+                                        onClick={() => openPopup(emp, 'premi_asuransi')}
+                                        title={`Lihat Rincian Premi Asuransi untuk ${emp.emp_name}`}
+                                    >
+                                        {formatNumber(emp.premi_asuransi_setahun)}
+                                    </td>
+                                    <td className="text-right">{formatNumber(emp.tunjangan_pph_setahun)}</td>
+                                    <td className="text-right">{formatNumber(emp.natura_setahun)}</td>
+                                    <td className="text-right">{formatNumber(emp.thr_bonus_tantiem_setahun)}</td>
+                                    <td className="text-right"><strong>{formatNumber(emp.bruto_setahun)}</strong></td>
 
-                                    <td className="text-right highlight-deduct">{formatNumber(emp.biaya_jabatan)}</td>
-                                    <td className="text-right highlight-deduct">{formatNumber(emp.iuran_jht_jp_setahun)}</td>
-                                    <td className="text-right highlight-deduct"><strong>{formatNumber(emp.netto_setahun)}</strong></td>
+                                    <td className="text-right">{formatNumber(emp.biaya_jabatan)}</td>
+                                    <td
+                                        className="text-right pph21-cell-clickable"
+                                        style={{ textDecoration: 'underline', color: '#3b82f6' }}
+                                        onClick={() => openPopup(emp, 'iuran_pensiun')}
+                                        title={`Lihat Rincian Iuran JHT/JP untuk ${emp.emp_name}`}
+                                    >
+                                        {formatNumber(emp.iuran_jht_jp_setahun)}
+                                    </td>
+                                    <td className="text-right"><strong>{formatNumber(emp.netto_setahun)}</strong></td>
 
-                                    <td className="text-right highlight-calc">{formatNumber(emp.ptkp)}</td>
-                                    <td className="text-right highlight-calc">{formatNumber(emp.pkp)}</td>
-                                    <td className="text-right highlight-calc"><strong>{formatNumber(emp.pph21_setahun)}</strong></td>
-                                    <td className="text-right highlight-calc"><strong>{formatNumber(emp.pph21_setahun)}</strong></td>
-                                    <td className="text-right highlight-calc">{formatNumber(emp.pph21_jan_nov)}</td>
-                                    <td className="text-right" style={{ backgroundColor: '#abf0ac', color: '#0d4715', fontWeight: 700 }}>
+                                    <td className="text-right">{formatNumber(emp.ptkp)}</td>
+                                    <td className="text-right">{formatNumber(emp.pkp)}</td>
+                                    <td
+                                        className="text-right pph21-cell-clickable"
+                                        style={{ textDecoration: 'underline', color: '#3b82f6' }}
+                                        onClick={() => openPopup(emp, 'pph21_setahun')}
+                                        title={`Lihat Kalkulasi PPh21 untuk ${emp.emp_name}`}
+                                    >
+                                        <strong>{formatNumber(emp.pph21_setahun)}</strong>
+                                    </td>
+                                    <td className="text-right"><strong>{formatNumber(emp.pph21_setahun)}</strong></td>
+                                    <td className="text-right">{formatNumber(emp.pph21_jan_nov)}</td>
+                                    <td className="text-right" style={{ backgroundColor: '#f0fdf4', color: '#15803d', fontWeight: 800 }}>
                                         {formatNumber(emp.pph21_desember)}
                                     </td>
                                 </tr>
@@ -1249,12 +1325,94 @@ function DecemberTaxTab({ token, year, division, gang }) {
                                 <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.pph21_setahun, 0))}</strong></td>
                                 <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.pph21_setahun, 0))}</strong></td>
                                 <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.pph21_jan_nov, 0))}</strong></td>
-                                <td className="text-right" style={{ backgroundColor: '#abf0ac', color: '#0d4715', fontWeight: 700 }}>
+                                <td className="text-right" style={{ backgroundColor: '#f0fdf4', color: '#15803d', fontWeight: 800 }}>
                                     <strong>{formatNumber(data.employees.reduce((s, e) => s + e.pph21_desember, 0))}</strong>
                                 </td>
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+            )}
+
+            {/* Modal Popup Rincian */}
+            {popupMeta && (
+                <div className="pph21-popup-overlay" onClick={closePopup}>
+                    <div className="pph21-popup-modal" onClick={e => e.stopPropagation()}>
+                        <div className="pph21-popup-header">
+                            <h3>📊 {popupMeta.title}</h3>
+                            <button className="pph21-popup-close" onClick={closePopup}>✕</button>
+                        </div>
+
+                        <div className="pph21-popup-body">
+                            <div className="pph21-popup-info" style={{ marginBottom: '16px' }}>
+                                <div className="pph21-popup-info-row">
+                                    <span className="pph21-popup-label">Nama Karyawan</span>
+                                    <span className="pph21-popup-value"><strong>{popupMeta.empName}</strong></span>
+                                </div>
+                                {popupMeta.formula && (
+                                    <div className="pph21-popup-info-row" style={{ marginTop: '8px', color: '#64748b' }}>
+                                        <span className="pph21-popup-value" style={{ fontStyle: 'italic' }}>{popupMeta.formula}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {['premi_asuransi', 'iuran_pensiun'].includes(popupMeta.type) && popupData && (
+                                <table className="pph21-popup-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Bulan</th>
+                                            <th className="text-right">Nilai (Rp)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {Array.from({ length: 12 }, (_, i) => {
+                                            const m = i + 1;
+                                            return (
+                                                <tr key={m}>
+                                                    <td>{MONTH_NAMES[m - 1]}</td>
+                                                    <td className="text-right">{formatNumber(popupData[String(m)] || 0)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                        <tr className="pph21-popup-result">
+                                            <td><strong>TOTAL SETAHUN</strong></td>
+                                            <td className="text-right">
+                                                <strong>{formatNumber(Object.values(popupData).reduce((s, v) => s + (v || 0), 0))}</strong>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            )}
+
+                            {popupMeta.type === 'pph21_setahun' && popupMeta.emp && (
+                                <table className="pph21-popup-table">
+                                    <thead>
+                                        <tr><th colSpan={2} style={{ textAlign: 'left' }}>Alur Kalkulasi Pajak PPh 21 Setahun (Progresif)</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>Penghasilan Bruto Setahun</td><td className="text-right">{formatNumber(popupMeta.emp.bruto_setahun)}</td></tr>
+                                        <tr><td style={{ color: '#dc2626' }}>(-) Biaya Jabatan (5%)</td><td className="text-right" style={{ color: '#dc2626' }}>{formatNumber(popupMeta.emp.biaya_jabatan)}</td></tr>
+                                        <tr><td style={{ color: '#dc2626' }}>(-) Total Iuran JHT/JP</td><td className="text-right" style={{ color: '#dc2626' }}>{formatNumber(popupMeta.emp.iuran_jht_jp_setahun)}</td></tr>
+                                        <tr className="pph21-popup-highlight">
+                                            <td><strong>Penghasilan Netto Setahun</strong></td>
+                                            <td className="text-right"><strong>{formatNumber(popupMeta.emp.netto_setahun)}</strong></td>
+                                        </tr>
+                                        <tr><td colSpan={2} style={{ height: '4px' }}></td></tr>
+                                        <tr><td style={{ color: '#dc2626' }}>(-) PTKP ({popupMeta.emp.status_ptkp})</td><td className="text-right" style={{ color: '#dc2626' }}>{formatNumber(popupMeta.emp.ptkp)}</td></tr>
+                                        <tr className="pph21-popup-highlight" style={{ backgroundColor: '#fff3cd' }}>
+                                            <td><strong>PKP (Kena Pajak) Rounded</strong></td>
+                                            <td className="text-right"><strong>{formatNumber(popupMeta.emp.pkp)}</strong></td>
+                                        </tr>
+                                        <tr><td colSpan={2} style={{ height: '4px' }}></td></tr>
+                                        <tr className="pph21-popup-result" style={{ backgroundColor: '#d1e7dd', color: '#0f5132' }}>
+                                            <td><strong>PPh 21 Setahun (Progresif)</strong></td>
+                                            <td className="text-right"><strong>{formatNumber(popupMeta.emp.pph21_setahun)}</strong></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
@@ -1264,7 +1422,7 @@ function DecemberTaxTab({ token, year, division, gang }) {
 
 export default function TaxReportPage() {
     const { token, user } = useAuth();
-    const { month, setMonth, year, setYear, allDivisions } = useReport();
+    const { month, setMonth, year, setYear, allDivisions, isLockedMode } = useReport();
     const navigate = useNavigate();
 
     // Local state with localStorage persistence
@@ -1395,6 +1553,7 @@ export default function TaxReportPage() {
                                 setSelectedGang(''); // Reset gang when division changes
                             }}
                             className="tax-report-select"
+                            disabled={isLockedMode}
                         >
                             <option value="">Pilih Divisi...</option>
                             {allDivisions.map((div) => (

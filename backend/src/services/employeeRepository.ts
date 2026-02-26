@@ -224,11 +224,21 @@ export class EmployeeRepository {
     /**
      * Search employees by name or NIK
      */
-    public async search(term: string, limit: number = 50): Promise<Employee[]> {
+    public async search(term: string, limit: number = 50, division?: string): Promise<Employee[]> {
         if (!term || term.length < 2) return [];
 
         try {
-            const rows = await this.db.query<any>(`
+            let whereClause = `(e.EmpCode LIKE ? OR e.EmpName LIKE ? OR e.NewICNo LIKE ?)`;
+            let params: any[] = [`%${term}%`, `%${term}%`, `%${term}%`];
+
+            if (division && DIVISION_PREFIX_MAP[division]) {
+                const prefixes = DIVISION_PREFIX_MAP[division];
+                const conditions = prefixes.map(() => `UPPER(g.GangCode) LIKE ?`);
+                whereClause = `(${whereClause}) AND (${conditions.join(" OR ")})`;
+                prefixes.forEach(p => params.push(p + "%"));
+            }
+
+            const sql = `
                 SELECT DISTINCT TOP ${limit}
                     e.EmpCode AS nik,
                     e.NewICNo AS actual_nik,
@@ -238,9 +248,10 @@ export class EmployeeRepository {
                     g.GangCode AS gang_code
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
-                WHERE e.EmpCode LIKE ? OR e.EmpName LIKE ? OR e.NewICNo LIKE ?
+                WHERE ${whereClause}
                 ORDER BY e.EmpName
-            `, [`%${term}%`, `%${term}%`, `%${term}%`]);
+            `;
+            const rows = await this.db.query<any>(sql, params);
 
             return rows.map((r: any) => ({
                 nik: r.nik?.trim() || "",

@@ -102,3 +102,45 @@ export async function downloadMonthlyTaxReportExcel(token, year, month, division
     window.URL.revokeObjectURL(url);
     document.body.removeChild(link);
 }
+
+/**
+ * Download December tax report as Excel Document (includes Monthly Details Sheet)
+ */
+export async function downloadDecemberTaxReportExcel(token, year, division, gang) {
+    const params = { year };
+    if (division) params.division = division;
+    if (gang && gang !== 'ALL') params.gang = gang;
+
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    // Use responseType: 'blob' to handle binary data properly
+    const response = await axios.get('/tax-report/december/excel', {
+        params,
+        headers,
+        responseType: 'blob'
+    });
+
+    // Create a download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+
+    // Extract filename from Content-Disposition header if available
+    let fileName = `PAJAK_DESEMBER_${division || 'ALL'}_${gang || 'ALL'}_${year}.xlsx`;
+    const contentDisposition = response.headers['content-disposition'];
+    if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+        const matches = filenameRegex.exec(contentDisposition);
+        if (matches != null && matches[1]) {
+            fileName = matches[1].replace(/['"]/g, '');
+        }
+    }
+
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+
+    // Cleanup
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(link);
+}

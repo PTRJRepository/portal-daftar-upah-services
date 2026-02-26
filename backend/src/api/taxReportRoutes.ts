@@ -11,7 +11,7 @@ import { Elysia, t } from "elysia";
 import { AuthService } from "../services/authService";
 import { User } from "../types/user";
 import { taxReportService } from "../services/taxReportService";
-import { generateMonthlyTaxExcel } from "../services/taxReportExcelService";
+import { generateMonthlyTaxExcel, generateDecemberTaxExcel } from "../services/taxReportExcelService";
 
 const authService = AuthService.getInstance();
 
@@ -38,12 +38,16 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // GET /tax-report/monthly
     // Monthly PPH21 tax report for a specific period
     // ========================================================
-    .get("/monthly", async ({ query, set }) => {
+    .get("/monthly", async ({ query, set, currentUser }) => {
         try {
             const year = parseInt(query.year as string);
             const month = parseInt(query.month as string);
-            const division = query.division as string || undefined;
+            let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                division = currentUser.divisions[0];
+            }
 
             if (!year || !month || month < 1 || month > 12) {
                 set.status = 400;
@@ -63,12 +67,16 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // GET /tax-report/monthly/excel
     // Download Monthly PPH21 tax report as Excel with formulas
     // ========================================================
-    .get("/monthly/excel", async ({ query, set }) => {
+    .get("/monthly/excel", async ({ query, set, currentUser }) => {
         try {
             const year = parseInt(query.year as string);
             const month = parseInt(query.month as string);
-            const division = query.division as string || undefined;
+            let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                division = currentUser.divisions[0];
+            }
 
             if (!year || !month || month < 1 || month > 12) {
                 set.status = 400;
@@ -102,13 +110,17 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // GET /tax-report/annual
     // Annual tax report with PTKP, Biaya Jabatan, PKP
     // ========================================================
-    .get("/annual", async ({ query, set }) => {
+    .get("/annual", async ({ query, set, currentUser }) => {
         try {
             const year = parseInt(query.year as string);
             const monthStr = query.month as string | undefined;
             const month = monthStr ? parseInt(monthStr) : undefined;
-            const division = query.division as string || undefined;
+            let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                division = currentUser.divisions[0];
+            }
 
             if (!year) {
                 set.status = 400;
@@ -128,13 +140,17 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // GET /tax-report/astek-bpjs
     // Annual ASTEK & BPJS per-month report
     // ========================================================
-    .get("/astek-bpjs", async ({ query, set }) => {
+    .get("/astek-bpjs", async ({ query, set, currentUser }) => {
         try {
             const year = parseInt(query.year as string);
             const monthStr = query.month as string | undefined;
             const month = monthStr ? parseInt(monthStr) : undefined;
-            const division = query.division as string || undefined;
+            let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                division = currentUser.divisions[0];
+            }
 
             if (!year) {
                 set.status = 400;
@@ -154,11 +170,15 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // GET /tax-report/december
     // Dedicated December Tax Report with annualized aggregation
     // ========================================================
-    .get("/december", async ({ query, set }) => {
+    .get("/december", async ({ query, set, currentUser }) => {
         try {
             const year = parseInt(query.year as string);
-            const division = query.division as string || undefined;
+            let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                division = currentUser.divisions[0];
+            }
 
             if (!year) {
                 set.status = 400;
@@ -171,5 +191,43 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             console.error("[TaxReport] Error fetching December tax report:", error);
             set.status = 500;
             return { error: error.message || "Failed to fetch December tax report" };
+        }
+    })
+
+    // ========================================================
+    // GET /tax-report/december/excel
+    // Download December tax report with monthly breakdown as Excel
+    // ========================================================
+    .get("/december/excel", async ({ query, set }) => {
+        try {
+            const year = parseInt(query.year as string);
+            const division = query.division as string || undefined;
+            const gang = query.gang as string || undefined;
+
+            if (!year) {
+                set.status = 400;
+                return { error: "Invalid year parameter" };
+            }
+
+            // Fetch the base data
+            const data = await taxReportService.getDecemberTaxReport(year, division, gang);
+
+            if (!data || data.employees.length === 0) {
+                set.status = 404;
+                return { error: "No data available for the selected period" };
+            }
+
+            // Generate Excel Buffer
+            const excelBuffer = await generateDecemberTaxExcel(data, year, division || 'ALL', gang || 'ALL');
+
+            // Set headers for file download
+            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            set.headers["Content-Disposition"] = `attachment; filename="PAJAK_DESEMBER_${division || 'ALL'}_${gang || 'ALL'}_${year}.xlsx"`;
+
+            return excelBuffer;
+        } catch (error: any) {
+            console.error("[TaxReport] Error generating December Excel report:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to generate Excel report" };
         }
     });

@@ -164,6 +164,14 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
   }
 
+  // Refresh grid cells when edit mode toggles so the pencil icon appears immediately
+  useEffect(() => {
+    if (gridRef.current && gridRef.current.api) {
+      // Force refreshing the cells to re-evaluate the editable function and cell renders
+      gridRef.current.api.refreshCells({ force: true })
+    }
+  }, [editModeNik])
+
   // Fetch job titles
   useEffect(() => {
     async function loadJobTitles() {
@@ -581,18 +589,35 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                   return false;
                 };
 
-                // Cell renderer for history button
+                // Cell renderer for edit and history button
                 nikCol.cellRenderer = (params) => {
                   return (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', height: '100%' }}>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{params.value}</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); params.context.openNikHistory(params.data.emp_code); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', fontSize: '12px', opacity: 0.6 }}
-                        title="Lihat Riwayat Versi"
-                      >
-                        ⏱️
-                      </button>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {params.context.editModeNik && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              params.api.startEditingCell({
+                                rowIndex: params.node.rowIndex,
+                                colKey: params.column.getId()
+                              });
+                            }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', fontSize: '12px' }}
+                            title="Edit NIK"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); params.context.openNikHistory(params.data.emp_code); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', fontSize: '12px', opacity: 0.6 }}
+                          title="Lihat Riwayat Versi"
+                        >
+                          ⏱️
+                        </button>
+                      </div>
                     </div>
                   );
                 };
