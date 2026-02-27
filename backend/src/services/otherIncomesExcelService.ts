@@ -2,8 +2,12 @@ import * as ExcelJS from 'exceljs';
 import { OtherIncomesService } from './otherIncomesService';
 
 export class OtherIncomesExcelService {
-    public static async generateExcel(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<Buffer> {
-        const incomes = await OtherIncomesService.getIncomes(year, month, divisionCode, gangCode);
+    public static async generateExcel(year: number, month: number, divisionCode?: string, gangCode?: string, incomeType?: string): Promise<Buffer> {
+        let incomes = await OtherIncomesService.getIncomes(year, month, divisionCode, gangCode);
+
+        if (incomeType && incomeType !== 'TOTAL') {
+            incomes = incomes.filter(inc => inc.income_type === incomeType);
+        }
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Other Incomes');
@@ -11,7 +15,7 @@ export class OtherIncomesExcelService {
         // Title
         worksheet.mergeCells('A1', 'I1');
         const titleCell = worksheet.getCell('A1');
-        titleCell.value = `Laporan Pendapatan Tidak Tetap (Other Incomes) - ${month}/${year}`;
+        titleCell.value = `Laporan Pendapatan Tidak Tetap (${incomeType && incomeType !== 'TOTAL' ? incomeType : 'Semua Tipe'}) - ${month}/${year}`;
         titleCell.font = { bold: true, size: 14 };
         titleCell.alignment = { horizontal: 'center' };
 

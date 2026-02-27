@@ -490,3 +490,19 @@ body>#root>div {
   height: 100vh !important;
   height: 100dvh !important;
 }
+
+/* Print Override for Proxy Mode Fixes */
+@media print {
+
+  html,
+  body,
+  #root,
+  body>#root,
+  body>#root>div {
+    height: auto !important;
+    min-height: auto !important;
+    position: static !important;
+    overflow: visible !important;
+    width: auto !important;
+  }
+}

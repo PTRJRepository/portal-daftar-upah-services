@@ -45,27 +45,89 @@ export class OtherIncomesService {
                     CREATE INDEX IDX_OtherIncomes_Period ON employee_other_incomes(period_year, period_month);
                     CREATE INDEX IDX_OtherIncomes_NIK ON employee_other_incomes(nik);
                 END
+                
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'employee_other_incomes_formulas' AND TABLE_SCHEMA = 'dbo')
+                BEGIN
+                    CREATE TABLE employee_other_incomes_formulas (
+                        income_type VARCHAR(50) PRIMARY KEY,
+                        formula_string VARCHAR(500) NOT NULL,
+                        updated_at DATETIME DEFAULT GETDATE()
+                    );
+                    
+                    INSERT INTO employee_other_incomes_formulas (income_type, formula_string) 
+                    VALUES ('THR', '(UPAH_DASAR * 30) + (BERAS_RATE * 30) + MASA_KERJA_JUMLAH');
+                END
             `);
-            console.log("Verified 'employee_other_incomes' table.");
+            console.log("Verified 'employee_other_incomes' and 'employee_other_incomes_formulas' tables.");
         } catch (e) {
             console.error("Failed to init 'employee_other_incomes' table:", e);
+        }
+    }
+
+    static async getFormula(incomeType: string): Promise<{ formula: string; is_paid_in_thp: boolean; is_taxable: boolean }> {
+        const db = Database.getExtendedInstance();
+        try {
+            const rows = await db.query(`SELECT formula_string FROM employee_other_incomes_formulas WHERE income_type = ?`, [incomeType]);
+            if (rows && rows.length > 0) {
+                const raw = rows[0].formula_string;
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (parsed.formula !== undefined) {
+                        return {
+                            formula: parsed.formula,
+                            is_paid_in_thp: parsed.is_paid_in_thp ?? true,
+                            is_taxable: parsed.is_taxable ?? true
+                        };
+                    }
+                } catch {
+                    // Raw string legacy format
+                    return { formula: raw, is_paid_in_thp: true, is_taxable: true };
+                }
+            }
+            return { formula: '', is_paid_in_thp: true, is_taxable: true };
+        } catch (e) {
+            console.error("Failed to fetch formula:", e);
+            return { formula: '', is_paid_in_thp: true, is_taxable: true };
+        }
+    }
+
+    static async saveFormula(incomeType: string, formulaString: string | { formula: string; is_paid_in_thp: boolean; is_taxable: boolean }): Promise<boolean> {
+        const db = Database.getExtendedInstance();
+        try {
+            let configToSave = '';
+            if (typeof formulaString === 'string') {
+                configToSave = JSON.stringify({ formula: formulaString, is_paid_in_thp: true, is_taxable: true });
+            } else {
+                configToSave = JSON.stringify(formulaString);
+            }
+
+            const existing = await db.query(`SELECT income_type FROM employee_other_incomes_formulas WHERE income_type = ?`, [incomeType]);
+            if (existing && existing.length > 0) {
+                await db.query(`UPDATE employee_other_incomes_formulas SET formula_string = ?, updated_at = GETDATE() WHERE income_type = ?`, [configToSave, incomeType]);
+            } else {
+                await db.query(`INSERT INTO employee_other_incomes_formulas (income_type, formula_string, updated_at) VALUES (?, ?, GETDATE())`, [incomeType, configToSave]);
+            }
+            return true;
+        } catch (e) {
+            console.error("Failed to save formula:", e);
+            return false;
         }
     }
 
     static async getIncomes(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
         const db = Database.getExtendedInstance();
         try {
-            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = @year AND period_month = @month`;
-            const params: any = { year, month };
+            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
+            const params: any[] = [year, month];
 
             if (divisionCode && divisionCode !== 'ALL') {
-                sql += ` AND division_code = @divisionCode`;
-                params.divisionCode = divisionCode;
+                sql += ` AND division_code = ?`;
+                params.push(divisionCode);
             }
 
             if (gangCode && gangCode !== 'ALL') {
-                sql += ` AND gang_code = @gangCode`;
-                params.gangCode = gangCode;
+                sql += ` AND gang_code = ?`;
+                params.push(gangCode);
             }
 
             const rows = await db.query(sql, params);
@@ -79,17 +141,17 @@ export class OtherIncomesService {
     static async getIncomesForYear(year: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
         const db = Database.getExtendedInstance();
         try {
-            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = @year`;
-            const params: any = { year };
+            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ?`;
+            const params: any[] = [year];
 
             if (divisionCode && divisionCode !== 'ALL') {
-                sql += ` AND division_code = @divisionCode`;
-                params.divisionCode = divisionCode;
+                sql += ` AND division_code = ?`;
+                params.push(divisionCode);
             }
 
             if (gangCode && gangCode !== 'ALL') {
-                sql += ` AND gang_code = @gangCode`;
-                params.gangCode = gangCode;
+                sql += ` AND gang_code = ?`;
+                params.push(gangCode);
             }
 
             const rows = await db.query(sql, params);
@@ -103,8 +165,8 @@ export class OtherIncomesService {
     static async getIncomesByNik(year: number, month: number, nik: string): Promise<OtherIncome[]> {
         const db = Database.getExtendedInstance();
         try {
-            const sql = `SELECT * FROM employee_other_incomes WHERE period_year = @year AND period_month = @month AND nik = @nik`;
-            const rows = await db.query(sql, { year, month, nik });
+            const sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ?`;
+            const rows = await db.query(sql, [year, month, nik]);
             return rows as OtherIncome[];
         } catch (e) {
             console.error("Failed to fetch other incomes for nik:", e);
@@ -120,20 +182,20 @@ export class OtherIncomesService {
                 (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at)
                 OUTPUT INSERTED.*
                 VALUES 
-                (@nik, @emp_name, @division_code, @gang_code, @period_year, @period_month, @income_type, @income_name, @amount, @is_paid_in_thp, @is_taxable, GETDATE(), GETDATE())
-            `, {
-                nik: data.nik,
-                emp_name: data.emp_name,
-                division_code: data.division_code || null,
-                gang_code: data.gang_code || null,
-                period_year: data.period_year,
-                period_month: data.period_month,
-                income_type: data.income_type,
-                income_name: data.income_name || data.income_type,
-                amount: data.amount,
-                is_paid_in_thp: data.is_paid_in_thp ? 1 : 0,
-                is_taxable: data.is_taxable ? 1 : 0
-            });
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
+            `, [
+                data.nik,
+                data.emp_name,
+                data.division_code || null,
+                data.gang_code || null,
+                data.period_year,
+                data.period_month,
+                data.income_type,
+                data.income_name || data.income_type,
+                data.amount,
+                data.is_paid_in_thp ? 1 : 0,
+                data.is_taxable ? 1 : 0
+            ]);
             return result && result.length > 0 ? (result[0] as OtherIncome) : null;
         } catch (e) {
             console.error("Failed to add income:", e);
@@ -145,20 +207,21 @@ export class OtherIncomesService {
         const db = Database.getExtendedInstance();
         try {
             const updates: string[] = [];
-            const params: any = { id };
+            const params: any[] = [];
 
             const updatableFields = ['amount', 'is_paid_in_thp', 'is_taxable', 'income_name', 'income_type'];
             for (const field of updatableFields) {
                 if (data[field as keyof OtherIncome] !== undefined) {
-                    updates.push(`${field} = @${field}`);
+                    updates.push(`${field} = ?`);
                     const value = data[field as keyof OtherIncome];
-                    params[field] = typeof value === 'boolean' ? (value ? 1 : 0) : value;
+                    params.push(typeof value === 'boolean' ? (value ? 1 : 0) : value);
                 }
             }
 
             if (updates.length > 0) {
                 updates.push(`updated_at = GETDATE()`);
-                const sql = `UPDATE employee_other_incomes SET ${updates.join(', ')} WHERE id = @id`;
+                const sql = `UPDATE employee_other_incomes SET ${updates.join(', ')} WHERE id = ?`;
+                params.push(id);
                 await db.query(sql, params);
             }
             return true;
@@ -171,7 +234,7 @@ export class OtherIncomesService {
     static async deleteIncome(id: number): Promise<boolean> {
         const db = Database.getExtendedInstance();
         try {
-            await db.query(`DELETE FROM employee_other_incomes WHERE id = @id`, { id });
+            await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [id]);
             return true;
         } catch (e) {
             console.error("Failed to delete income:", e);
@@ -190,6 +253,15 @@ export class OtherIncomesService {
                 return { success: false, count: 0, message: "No history data found for the given period to calculate THR." };
             }
 
+            const formulaConfig = await this.getFormula('THR');
+            if (!formulaConfig || !formulaConfig.formula) {
+                return { success: false, count: 0, message: "Formula THR belum dikonfigurasi di pengaturan." };
+            }
+
+            const formulaString = formulaConfig.formula;
+            const isPaidInThp = formulaConfig.is_paid_in_thp ? 1 : 0;
+            const isTaxable = formulaConfig.is_taxable ? 1 : 0;
+
             let insertedCount = 0;
             const db = Database.getExtendedInstance();
 
@@ -204,29 +276,47 @@ export class OtherIncomesService {
                     const upahDasar = row.upah_dasar || 0;
                     const berasRate = row.beras_rate || 0;
                     const masaKerjaJumlah = row.masa_kerja_jumlah || 0;
+                    const hk = row.jumlah_hk || 0;
 
-                    const thrAmount = (upahDasar * 30) + (berasRate * 30) + masaKerjaJumlah;
+                    let thrAmount = 0;
+                    try {
+                        // Safe evaluation approach using Function constructor
+                        const mathVars = {
+                            UPAH_DASAR: upahDasar,
+                            BERAS_RATE: berasRate,
+                            MASA_KERJA_JUMLAH: masaKerjaJumlah,
+                            MASA_KERJA_TAHUN: masaKerjaTahun,
+                            HK: hk
+                        };
+                        const evaluator = new Function(...Object.keys(mathVars), `return ${formulaString};`);
+                        thrAmount = evaluator(...Object.values(mathVars));
+                    } catch (err) {
+                        console.error("Failed to evaluate THR Formula:", err);
+                        continue;
+                    }
 
                     if (thrAmount > 0) {
-                        const existing = await db.query(`SELECT id FROM employee_other_incomes WHERE period_year = @year AND period_month = @month AND nik = @nik AND income_type = 'THR'`, { year, month, nik });
+                        const existing = await db.query(`SELECT id FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ? AND income_type = 'THR'`, [year, month, nik]);
 
                         if (existing && existing.length > 0) {
-                            await db.query(`UPDATE employee_other_incomes SET amount = @amount, updated_at = GETDATE() WHERE id = @id`, { amount: thrAmount, id: existing[0].id });
+                            await db.query(`UPDATE employee_other_incomes SET amount = ?, updated_at = GETDATE() WHERE id = ?`, [thrAmount, existing[0].id]);
                         } else {
                             await db.query(`
-                                INSERT INTO employee_other_incomes 
+                                INSERT INTO employee_other_incomes
                                 (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at)
                                 VALUES 
-                                (@nik, @emp_name, @division_code, @gang_code, @period_year, @period_month, 'THR', 'THR (Otomatic)', @amount, 1, 1, GETDATE(), GETDATE())
-                            `, {
+                                (?, ?, ?, ?, ?, ?, 'THR', 'Tunjangan Hari Raya', ?, ?, ?, GETDATE(), GETDATE())
+                            `, [
                                 nik,
-                                emp_name: empName,
-                                division_code: divCode || null,
-                                gang_code: gCode || null,
-                                period_year: year,
-                                period_month: month,
-                                amount: thrAmount
-                            });
+                                empName,
+                                divCode || null,
+                                gCode || null,
+                                year,
+                                month,
+                                thrAmount,
+                                isPaidInThp,
+                                isTaxable
+                            ]);
                         }
                         insertedCount++;
                     }

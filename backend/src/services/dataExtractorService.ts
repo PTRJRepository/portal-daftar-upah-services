@@ -166,6 +166,7 @@ interface PayrollRow {
     tarif_pajak_ter: number; // TER rate as percentage (e.g., 5 for 5%)
     pph21_ter: number; // Calculated PPH21 amount using TER method
     pendapatan_tidak_tetap_thp: number;
+    pendapatan_tidak_tetap_taxable: number;
     upah_bersih: number;
     pot_astek: number;
     pot_astek_maj: number;
@@ -384,14 +385,18 @@ export class DataExtractorService {
         // Destructure potongan result - uses TaskDesc as title
         const { amounts: potongan, titleMap: potonganTitleMap } = potonganResult;
 
-        // Fetch db other incomes mapping for THP
+        // Fetch db other incomes mapping for THP and Tax
         const dbOtherIncomes = await OtherIncomesService.getIncomes(year, month, divisionCode, gangCode);
         const dbThpIncomesMap = new Map<string, number>();
+        const dbTaxableIncomesMap = new Map<string, number>();
 
         for (const inc of dbOtherIncomes) {
+            const nik = String(inc.nik || '').trim().toUpperCase();
             if (inc.is_paid_in_thp) {
-                const nik = String(inc.nik || '').trim().toUpperCase();
                 dbThpIncomesMap.set(nik, (dbThpIncomesMap.get(nik) || 0) + Number(inc.amount));
+            }
+            if (inc.is_taxable) {
+                dbTaxableIncomesMap.set(nik, (dbTaxableIncomesMap.get(nik) || 0) + Number(inc.amount));
             }
         }
 
@@ -628,13 +633,15 @@ export class DataExtractorService {
             // Use gaji_pokok_aktual (calculated earlier) for gross wage calculation
             const jumlah_upah_kotor = (gaji_pokok_aktual + total_tunjangan + total_premi) - pot_koreksi;
 
-            // [NEW] Upah Kotor Pajak = Jumlah Upah Kotor + Astek + BPJS Kesehatan (untuk header/pajak)
-            const upah_kotor_pajak = jumlah_upah_kotor + pot_astek_pekerja + pot_bpjs_kesehatan_pekerja;
+            const rawEmpNik = String(emp.actual_nik || emp.emp_code || '').trim().toUpperCase();
+            const pendapatan_tidak_tetap_thp = dbThpIncomesMap.get(rawEmpNik) || 0;
+            const pendapatan_tidak_tetap_taxable = dbTaxableIncomesMap.get(rawEmpNik) || 0;
+
+            // [NEW] Upah Kotor Pajak = Jumlah Upah Kotor + Astek + BPJS Kesehatan + Other Taxable Incomes (untuk header/pajak)
+            const upah_kotor_pajak = jumlah_upah_kotor + pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pendapatan_tidak_tetap_taxable;
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
             // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph + pendapatan_tidak_tetap_thp
-            const rawEmpNik = String(emp.actual_nik || emp.emp_code || '').trim().toUpperCase();
-            const pendapatan_tidak_tetap_thp = dbThpIncomesMap.get(rawEmpNik) || 0;
             const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph + pendapatan_tidak_tetap_thp;
 
             // [UPDATED] Calculate Ideal and Actual Salary for Penggajian Group
@@ -661,7 +668,7 @@ export class DataExtractorService {
             const bpjs_kesehatan_majikan_4_pct = Math.round((gaji_pokok_bulanan + empMasaKerjaJumlah) * 0.04);
 
             // [UPDATED] Penghasilan Bruto calculation for PPh21 TER
-            // IMPORTANT: Includes ASTEK (0.84%) + BPJS Kesehatan Majikan (4%)
+            // IMPORTANT: Includes ASTEK (0.84%) + BPJS Kesehatan Majikan (4%) + Taxable Other Incomes (THR, etc)
             // Per PP 58 Tahun 2023, penghasilan bruto untuk perhitungan PPh21 meliputi:
             // - Gaji Pokok Aktual
             // - Tunjangan (Beras, Jabatan, Masa Kerja)
@@ -669,6 +676,7 @@ export class DataExtractorService {
             // - Premi
             // - ASTEK/BPJS Pensiun Majikan (0.84%)
             // - BPJS Kesehatan Majikan (4%)
+            // - Other Taxable Incomes
             const penghasilan_bruto = gaji_pokok_aktual +
                 berasJumlah +
                 empJabatan +
@@ -676,7 +684,8 @@ export class DataExtractorService {
                 empLemburJumlahPure +
                 total_premi +
                 astek_084 +
-                bpjs_kesehatan_majikan_4_pct;
+                bpjs_kesehatan_majikan_4_pct +
+                pendapatan_tidak_tetap_taxable;
 
             const statusPtkp = mapBerasRateToPTKP(berasRate);
 
@@ -785,6 +794,7 @@ export class DataExtractorService {
                 // [NEW] premi_pph is separate field for display with + sign
                 premi_pph: pot_premi_pph,
                 pendapatan_tidak_tetap_thp,
+                pendapatan_tidak_tetap_taxable,
                 upah_bersih,
                 // REMOVED: premi: empPremi - causes double-counting in frontend
                 // Individual premi fields are already added via ...empPremi below

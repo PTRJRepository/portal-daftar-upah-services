@@ -65,6 +65,28 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
         }
     })
 
+    .get("/formulas/:type", async ({ params: { type } }) => {
+        try {
+            const formula = await OtherIncomesService.getFormula(type.toUpperCase());
+            return { success: true, formula };
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to fetch formula", error);
+            return { success: false, error: error.message };
+        }
+    })
+
+    .post("/formulas/:type", async ({ params: { type }, body }) => {
+        try {
+            const payload = body as any;
+            const formulaString = payload.formulaString;
+            const success = await OtherIncomesService.saveFormula(type.toUpperCase(), formulaString);
+            return { success };
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to save formula", error);
+            return { success: false, error: error.message };
+        }
+    })
+
     .post("/calculate-thr", async ({ body }) => {
         try {
             const data = body as { year: number, month: number, divisionCode?: string, gangCode?: string };
@@ -82,7 +104,7 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
 
     .get("/export", async ({ query, set }) => {
         try {
-            const { year, month, divisionCode, gangCode } = query as any;
+            const { year, month, divisionCode, gangCode, incomeType } = query as any;
             if (!year || !month) {
                 set.status = 400;
                 return "Year and month are required parameters";
@@ -92,7 +114,8 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
                 parseInt(year),
                 parseInt(month),
                 divisionCode,
-                gangCode
+                gangCode,
+                incomeType
             );
 
             const fileName = `Laporan_Other_Incomes_${month}_${year}.xlsx`;

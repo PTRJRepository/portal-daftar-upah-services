@@ -449,11 +449,11 @@ export default function CustomPayrollTable({
 
             gangKeys.forEach(gCode => {
                 const employees = gangsMap[gCode];
-                // Explicitly sort employees by NIK (EmpCode) ascending
+                // Explicitly sort employees by EmpCode ascending
                 employees.sort((a, b) => {
-                    const nikA = (a.nik || '').trim();
-                    const nikB = (b.nik || '').trim();
-                    return nikA.localeCompare(nikB, undefined, { numeric: true, sensitivity: 'base' });
+                    const codeA = String(a.emp_code || a.nik || '').trim();
+                    const codeB = String(b.emp_code || b.nik || '').trim();
+                    return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
                 });
 
                 processedRows.push({ type: 'gang_header', gang_code: gCode, id: `HEADER_${gCode}` });
@@ -546,8 +546,9 @@ export default function CustomPayrollTable({
             },
             // IDENTITAS
             { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 35, className: 'text-center', left: 35 },
-            { field: 'nik', headers: ['IDENTITAS', null, null, 'NIK'], w: 55, className: 'text-center sticky-col', left: 35 },
-            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 160, className: 'text-left sticky-col', left: 90 },
+            { field: 'emp_code', headers: ['IDENTITAS', null, null, 'EMP CODE'], w: 75, className: 'text-center sticky-col', left: 35 },
+            { field: 'nik', headers: ['IDENTITAS', null, null, 'NIK'], w: 55, className: 'text-center sticky-col', left: 110 },
+            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 160, className: 'text-left sticky-col', left: 165 },
 
             // PAJAK [Conditionally Expanded]
             ...(isTaxExpanded ? [

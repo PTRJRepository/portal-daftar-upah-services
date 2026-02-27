@@ -4,7 +4,7 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useReport } from '../context/ReportContext';
 import { otherIncomesService } from '../services/otherIncomesService';
-import { Save, Trash2, Plus, RefreshCw, AlertCircle, Calculator, Download } from 'lucide-react';
+import { Save, Trash2, Plus, RefreshCw, AlertCircle, Calculator, Download, Settings, X } from 'lucide-react';
 
 const INCOME_TYPES = ['THR', 'Bonus', 'Custom'];
 
@@ -15,6 +15,17 @@ const OtherIncomesPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+
+    // Formula Modal State
+    const [isFormulaModalOpen, setIsFormulaModalOpen] = useState(false);
+    const [formulaType, setFormulaType] = useState('THR');
+    const [formulaString, setFormulaString] = useState('');
+    const [isPaidInThpConfig, setIsPaidInThpConfig] = useState(true);
+    const [isTaxableConfig, setIsTaxableConfig] = useState(true);
+    const [isSavingFormula, setIsSavingFormula] = useState(false);
+
+    // Export State
+    const [exportType, setExportType] = useState('TOTAL');
 
     const fetchIncomes = useCallback(async () => {
         if (!division || gangLoading) return;
@@ -139,10 +150,52 @@ const OtherIncomesPage = () => {
 
     const handleExportExcel = async () => {
         try {
-            await otherIncomesService.exportExcel(year, month, division, gang === 'ALL' ? '' : gang);
+            await otherIncomesService.exportExcel(year, month, division, gang === 'ALL' ? '' : gang, exportType);
         } catch (err) {
             console.error('Failed to export excel:', err);
             alert('Gagal mengunduh laporan Excel.');
+        }
+    };
+
+    const handleOpenFormulaModal = async () => {
+        setIsFormulaModalOpen(true);
+        try {
+            const config = await otherIncomesService.getFormula(formulaType);
+            if (config && typeof config === 'object') {
+                setFormulaString(config.formula || '');
+                setIsPaidInThpConfig(config.is_paid_in_thp ?? true);
+                setIsTaxableConfig(config.is_taxable ?? true);
+            } else {
+                setFormulaString(config || '');
+                setIsPaidInThpConfig(true);
+                setIsTaxableConfig(true);
+            }
+        } catch (err) {
+            console.error('Failed to load formula:', err);
+            alert('Gagal memuat formula dari server.');
+        }
+    };
+
+    const handleSaveFormula = async () => {
+        if (!formulaString.trim()) {
+            alert('Formula tidak boleh kosong!');
+            return;
+        }
+
+        setIsSavingFormula(true);
+        try {
+            await otherIncomesService.saveFormula(formulaType, {
+                formula: formulaString,
+                is_paid_in_thp: isPaidInThpConfig,
+                is_taxable: isTaxableConfig
+            });
+            alert('Formula berhasil disimpan.');
+            setIsFormulaModalOpen(false);
+        } catch (err) {
+            console.error('Failed to save formula:', err);
+            alert('Gagal menyimpan formula.');
+        } finally {
+            setIsSavingFormula(false);
         }
     };
 
@@ -276,6 +329,18 @@ const OtherIncomesPage = () => {
 
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
+                            onClick={handleOpenFormulaModal}
+                            disabled={loading}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.5rem 1rem', background: '#e2e8f0', color: '#1e293b',
+                                border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer'
+                            }}
+                            title="Konfigurasi Formula THR"
+                        >
+                            <Settings size={16} /> Config Formula
+                        </button>
+                        <button
                             onClick={handleCalculateTHR}
                             disabled={loading}
                             style={{
@@ -287,15 +352,43 @@ const OtherIncomesPage = () => {
                         >
                             <Calculator size={16} /> Kalkulasi THR
                         </button>
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', padding: '2px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                            <select
+                                value={exportType}
+                                onChange={(e) => setExportType(e.target.value)}
+                                style={{
+                                    padding: '0.4rem', border: 'none', background: 'transparent',
+                                    outline: 'none', fontSize: '0.85rem', color: '#475569', fontWeight: '500'
+                                }}
+                            >
+                                <option value="TOTAL">Semua Tipe</option>
+                                {INCOME_TYPES.map(type => (
+                                    <option key={type} value={type}>Hanya {type}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={handleExportExcel}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    padding: '0.4rem 0.75rem', background: '#10b981', color: 'white',
+                                    border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem'
+                                }}
+                                title="Export Laporan Excel"
+                            >
+                                <Download size={14} /> Export
+                            </button>
+                        </div>
                         <button
-                            onClick={handleExportExcel}
+                            onClick={handleOpenFormulaModal}
+                            disabled={loading}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                padding: '0.5rem 1rem', background: '#10b981', color: 'white',
-                                border: 'none', borderRadius: '4px', cursor: 'pointer'
+                                padding: '0.5rem 1rem', background: 'white', border: '1px solid #cbd5e1',
+                                borderRadius: '4px', cursor: 'pointer'
                             }}
+                            title="Konfigurasi Formula THR"
                         >
-                            <Download size={16} /> Export Excel
+                            <Settings size={16} /> Config Formula
                         </button>
                         <button
                             onClick={fetchIncomes}
@@ -332,6 +425,114 @@ const OtherIncomesPage = () => {
                     />
                 </div>
             </div>
+
+            {/* Formula Configuration Modal */}
+            {isFormulaModalOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        backgroundColor: 'white', padding: '2rem', borderRadius: '8px',
+                        width: '500px', maxWidth: '90%', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                            <h2 style={{ margin: 0, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Settings size={20} /> Konfigurasi Formula
+                            </h2>
+                            <button onClick={() => setIsFormulaModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: '#475569', fontWeight: '500' }}>Tipe Pendapatan</label>
+                            <select
+                                value={formulaType}
+                                onChange={async (e) => {
+                                    const type = e.target.value;
+                                    setFormulaType(type);
+                                    try {
+                                        const config = await otherIncomesService.getFormula(type);
+                                        if (config && typeof config === 'object') {
+                                            setFormulaString(config.formula || '');
+                                            setIsPaidInThpConfig(config.is_paid_in_thp ?? true);
+                                            setIsTaxableConfig(config.is_taxable ?? true);
+                                        } else {
+                                            setFormulaString(config || '');
+                                            setIsPaidInThpConfig(true);
+                                            setIsTaxableConfig(true);
+                                        }
+                                    } catch (err) { }
+                                }}
+                                style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                            >
+                                <option value="THR">THR</option>
+                                {/* Add more formula types here if needed later */}
+                            </select>
+                        </div>
+
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: '#475569', fontWeight: '500' }}>Formula String</label>
+                            <textarea
+                                value={formulaString}
+                                onChange={(e) => setFormulaString(e.target.value)}
+                                placeholder="(UPAH_DASAR * 30) + (BERAS_RATE * 30) + MASA_KERJA_JUMLAH"
+                                style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1', height: '100px', resize: 'vertical', fontFamily: 'monospace' }}
+                            />
+                            <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#64748b', backgroundColor: '#f8fafc', padding: '0.75rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                                <strong>Variabel yang tersedia:</strong><br />
+                                <code>UPAH_DASAR</code>: Gaji Dasar Harian<br />
+                                <code>BERAS_RATE</code>: Tunjangan Beras Harian<br />
+                                <code>MASA_KERJA_JUMLAH</code>: Jumlah Rp Masa Kerja<br />
+                                <code>MASA_KERJA_TAHUN</code>: Detail Tahun Lama Bekerja<br />
+                                <code>HK</code>: Hari Kerja Bulan Tersebut<br />
+                                <br />
+                                <em>Gunakan pola matematika standar Javascript: +, -, *, /, (, )</em>
+                            </div>
+                        </div>
+
+                        <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '2rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#475569', fontWeight: '500' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={isPaidInThpConfig}
+                                    onChange={(e) => setIsPaidInThpConfig(e.target.checked)}
+                                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                />
+                                Tambahkan ke Take Home Pay (THP)
+                            </label>
+
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#475569', fontWeight: '500' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={isTaxableConfig}
+                                    onChange={(e) => setIsTaxableConfig(e.target.checked)}
+                                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                />
+                                Masuk dalam Kena Pajak
+                            </label>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                            <button
+                                onClick={() => setIsFormulaModalOpen(false)}
+                                style={{ padding: '0.5rem 1rem', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '500' }}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                onClick={handleSaveFormula}
+                                disabled={isSavingFormula}
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.5rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '500' }}
+                            >
+                                <Save size={16} /> {isSavingFormula ? 'Menyimpan...' : 'Simpan Formula'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

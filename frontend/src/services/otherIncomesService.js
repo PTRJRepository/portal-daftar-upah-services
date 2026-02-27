@@ -65,7 +65,27 @@ export const otherIncomesService = {
         }
     },
 
-    exportExcel: async (year, month, divisionCode, gangCode) => {
+    getFormula: async (type) => {
+        try {
+            const response = await api.get(`/other-incomes/formulas/${type}`);
+            return response.data?.formula || '';
+        } catch (error) {
+            console.error('Error fetching formula:', error);
+            throw error;
+        }
+    },
+
+    saveFormula: async (type, formulaString) => {
+        try {
+            const response = await api.post(`/other-incomes/formulas/${type}`, { formulaString });
+            return response.data;
+        } catch (error) {
+            console.error('Error saving formula:', error);
+            throw error;
+        }
+    },
+
+    exportExcel: async (year, month, divisionCode, gangCode, incomeType) => {
         try {
             const params = new URLSearchParams({
                 year: year.toString(),
@@ -74,6 +94,7 @@ export const otherIncomesService = {
 
             if (divisionCode) params.append('divisionCode', divisionCode);
             if (gangCode) params.append('gangCode', gangCode);
+            if (incomeType && incomeType !== 'TOTAL') params.append('incomeType', incomeType);
 
             const response = await api.get(`/other-incomes/export?${params.toString()}`, {
                 responseType: 'blob'
@@ -83,7 +104,8 @@ export const otherIncomesService = {
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Laporan_Other_Incomes_${month}_${year}.xlsx`);
+            const prefix = incomeType && incomeType !== 'TOTAL' ? incomeType : 'Other_Incomes';
+            link.setAttribute('download', `Laporan_${prefix}_${month}_${year}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();

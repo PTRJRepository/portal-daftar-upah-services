@@ -7,7 +7,7 @@ async function createTable() {
         const db = Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
 
         await db.query(`
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='payroll_manual_adjustments' AND xtype='U')
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='payroll_manual_adjustments' AND TABLE_SCHEMA='dbo')
             BEGIN
                 CREATE TABLE dbo.payroll_manual_adjustments (
                     id INT IDENTITY(1,1) PRIMARY KEY,

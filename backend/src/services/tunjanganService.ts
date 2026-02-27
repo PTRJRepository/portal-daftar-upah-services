@@ -7,7 +7,7 @@ export class TunjanganService {
         const db = Database.getExtendedInstance();
         try {
             await db.query(`
-                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='tunjangan_rate' AND xtype='U')
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='tunjangan_rate' AND TABLE_SCHEMA='dbo')
                 BEGIN
                     CREATE TABLE tunjangan_rate (
                         id INT IDENTITY(1,1) PRIMARY KEY,

@@ -60,21 +60,33 @@ body.print-mode-large {
         box-sizing: border-box !important;
     }
 
-    /* Prevent body overflow */
+    /* Ensure multi-page print - NEVER hide overflow on html/body when printing */
     html {
-        overflow: hidden !important;
+        overflow: visible !important;
+        height: auto !important;
+        position: static !important;
         width: 100% !important;
+        background-color: white !important;
     }
 
     body {
         margin: 0 !important;
         padding: 0 !important;
         overflow: visible !important;
+        height: auto !important;
+        position: static !important;
         width: 100% !important;
         min-width: 100% !important;
         max-width: 100% !important;
+        background-color: white !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+    }
+
+    #root {
+        overflow: visible !important;
+        height: auto !important;
+        position: static !important;
     }
 
     /* ============================================

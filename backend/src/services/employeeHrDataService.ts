@@ -36,7 +36,7 @@ export class EmployeeHrDataService {
             await this.db.transaction([
                 {
                     sql: `
-                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='employee_hr_data' AND xtype='U')
+                        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='employee_hr_data' AND TABLE_SCHEMA='dbo')
                         CREATE TABLE dbo.employee_hr_data (
                             id INT IDENTITY(1,1) PRIMARY KEY,
                             emp_code VARCHAR(50) NOT NULL UNIQUE,
@@ -50,7 +50,7 @@ export class EmployeeHrDataService {
                 },
                 {
                     sql: `
-                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='employee_hr_data_history' AND xtype='U')
+                        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='employee_hr_data_history' AND TABLE_SCHEMA='dbo')
                         CREATE TABLE dbo.employee_hr_data_history (
                             id INT IDENTITY(1,1) PRIMARY KEY,
                             emp_code VARCHAR(50) NOT NULL,
