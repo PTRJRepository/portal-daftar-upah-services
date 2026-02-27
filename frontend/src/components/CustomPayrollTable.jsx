@@ -1156,7 +1156,7 @@ export default function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, selectedEmployees, onToggleEmployeeSelection]);
 
     // === EXPORT TO EXCEL HANDLER ===
     const handleExportToExcel = useCallback(async () => {

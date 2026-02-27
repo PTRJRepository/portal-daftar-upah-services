@@ -1,4 +1,5 @@
 import { Database } from "../db/client";
+import { HistoryDatabaseService } from "./historyDatabaseService";
 
 export interface OtherIncome {
     id?: number;
@@ -175,6 +176,66 @@ export class OtherIncomesService {
         } catch (e) {
             console.error("Failed to delete income:", e);
             return false;
+        }
+    }
+
+    static async calculateAndSaveTHR(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<{ success: boolean; count: number; message?: string }> {
+        try {
+            const historyService = HistoryDatabaseService.getInstance();
+            const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(
+                month, year, gangCode || 'ALL', divisionCode || undefined
+            );
+
+            if (!historyData || historyData.data_rows.length === 0) {
+                return { success: false, count: 0, message: "No history data found for the given period to calculate THR." };
+            }
+
+            let insertedCount = 0;
+            const db = Database.getExtendedInstance();
+
+            for (const row of historyData.data_rows) {
+                const nik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+                const empName = row.nama || row.emp_name || '';
+                const divCode = row.division_code || divisionCode;
+                const gCode = row.gang_code || gangCode;
+                const masaKerjaTahun = row.masa_kerja_tahun || 0;
+
+                if (masaKerjaTahun >= 1 && nik) {
+                    const upahDasar = row.upah_dasar || 0;
+                    const berasRate = row.beras_rate || 0;
+                    const masaKerjaJumlah = row.masa_kerja_jumlah || 0;
+
+                    const thrAmount = (upahDasar * 30) + (berasRate * 30) + masaKerjaJumlah;
+
+                    if (thrAmount > 0) {
+                        const existing = await db.query(`SELECT id FROM employee_other_incomes WHERE period_year = @year AND period_month = @month AND nik = @nik AND income_type = 'THR'`, { year, month, nik });
+
+                        if (existing && existing.length > 0) {
+                            await db.query(`UPDATE employee_other_incomes SET amount = @amount, updated_at = GETDATE() WHERE id = @id`, { amount: thrAmount, id: existing[0].id });
+                        } else {
+                            await db.query(`
+                                INSERT INTO employee_other_incomes 
+                                (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at)
+                                VALUES 
+                                (@nik, @emp_name, @division_code, @gang_code, @period_year, @period_month, 'THR', 'THR (Otomatic)', @amount, 1, 1, GETDATE(), GETDATE())
+                            `, {
+                                nik,
+                                emp_name: empName,
+                                division_code: divCode || null,
+                                gang_code: gCode || null,
+                                period_year: year,
+                                period_month: month,
+                                amount: thrAmount
+                            });
+                        }
+                        insertedCount++;
+                    }
+                }
+            }
+            return { success: true, count: insertedCount };
+        } catch (e: any) {
+            console.error("Failed to calculate and save THR:", e);
+            return { success: false, count: 0, message: e.message };
         }
     }
 }

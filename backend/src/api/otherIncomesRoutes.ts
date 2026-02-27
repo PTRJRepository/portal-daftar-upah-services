@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { debug, error as logError } from "../utils/logger";
 import { OtherIncomesService, OtherIncome } from "../services/otherIncomesService";
+import { OtherIncomesExcelService } from "../services/otherIncomesExcelService";
 
 export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
 
@@ -61,5 +62,49 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
         } catch (error: any) {
             logError("OtherIncomesAPI", "Failed to delete income", error);
             return { success: false, error: error.message };
+        }
+    })
+
+    .post("/calculate-thr", async ({ body }) => {
+        try {
+            const data = body as { year: number, month: number, divisionCode?: string, gangCode?: string };
+            if (!data.year || !data.month) {
+                return { success: false, error: "Missing required fields: year and month" };
+            }
+
+            const result = await OtherIncomesService.calculateAndSaveTHR(data.year, data.month, data.divisionCode, data.gangCode);
+            return result;
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to calculate THR", error);
+            return { success: false, error: error.message };
+        }
+    })
+
+    .get("/export", async ({ query, set }) => {
+        try {
+            const { year, month, divisionCode, gangCode } = query as any;
+            if (!year || !month) {
+                set.status = 400;
+                return "Year and month are required parameters";
+            }
+
+            const buffer = await OtherIncomesExcelService.generateExcel(
+                parseInt(year),
+                parseInt(month),
+                divisionCode,
+                gangCode
+            );
+
+            const fileName = `Laporan_Other_Incomes_${month}_${year}.xlsx`;
+            set.headers = {
+                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition': `attachment; filename="${fileName}"`
+            };
+
+            return buffer;
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to export excel", error);
+            set.status = 500;
+            return error.message;
         }
     });

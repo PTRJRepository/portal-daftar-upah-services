@@ -46,7 +46,52 @@ export const otherIncomesService = {
             const response = await api.delete(`/other-incomes/${id}`);
             return response.data;
         } catch (error) {
+        } catch (error) {
             console.error('Error deleting other income:', error);
+            throw error;
+        }
+    },
+
+    calculateTHR: async (year, month, divisionCode, gangCode) => {
+        try {
+            const data = { year, month };
+            if (divisionCode) data.divisionCode = divisionCode;
+            if (gangCode) data.gangCode = gangCode;
+
+            const response = await api.post('/other-incomes/calculate-thr', data);
+            return response.data;
+        } catch (error) {
+            console.error('Error calculating THR:', error);
+            throw error;
+        }
+    },
+
+    exportExcel: async (year, month, divisionCode, gangCode) => {
+        try {
+            const params = new URLSearchParams({
+                year: year.toString(),
+                month: month.toString()
+            });
+
+            if (divisionCode) params.append('divisionCode', divisionCode);
+            if (gangCode) params.append('gangCode', gangCode);
+
+            const response = await api.get(`/other-incomes/export?${params.toString()}`, {
+                responseType: 'blob'
+            });
+
+            // Create download link
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Laporan_Other_Incomes_${month}_${year}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            return true;
+        } catch (error) {
+            console.error('Error exporting excel:', error);
             throw error;
         }
     }

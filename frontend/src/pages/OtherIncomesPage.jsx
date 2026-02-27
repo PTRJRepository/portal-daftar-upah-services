@@ -4,7 +4,7 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useReport } from '../context/ReportContext';
 import { otherIncomesService } from '../services/otherIncomesService';
-import { Save, Trash2, Plus, RefreshCw, AlertCircle } from 'lucide-react';
+import { Save, Trash2, Plus, RefreshCw, AlertCircle, Calculator, Download } from 'lucide-react';
 
 const INCOME_TYPES = ['THR', 'Bonus', 'Custom'];
 
@@ -17,7 +17,7 @@ const OtherIncomesPage = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     const fetchIncomes = useCallback(async () => {
-        if (!division) return;
+        if (!division || gangLoading) return;
         setLoading(true);
         setError(null);
         setRowData([]); // Reset data to ensure clean render
@@ -30,7 +30,7 @@ const OtherIncomesPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [year, month, division, gang]);
+    }, [year, month, division, gang, gangLoading]);
 
     useEffect(() => {
         fetchIncomes();
@@ -115,6 +115,37 @@ const OtherIncomesPage = () => {
         }
     };
 
+    const handleCalculateTHR = async () => {
+        if (!window.confirm(`Kalkulasi ulang THR untuk periode Bulan ${month} Tahun ${year}? Ini akan menyimpan hasil kalkulasi ke database.`)) {
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const result = await otherIncomesService.calculateTHR(year, month, division, gang === 'ALL' ? '' : gang);
+            if (result.success) {
+                alert(`Berhasil mengkalkulasi dan menyimpan ${result.count} data THR.`);
+                fetchIncomes();
+            } else {
+                alert(`Gagal mengkalkulasi THR: ${result.message || 'Error tidak diketahui'}`);
+            }
+        } catch (err) {
+            console.error('Failed to calculate THR:', err);
+            alert('Terjadi kesalahan saat mengkalkulasi THR.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleExportExcel = async () => {
+        try {
+            await otherIncomesService.exportExcel(year, month, division, gang === 'ALL' ? '' : gang);
+        } catch (err) {
+            console.error('Failed to export excel:', err);
+            alert('Gagal mengunduh laporan Excel.');
+        }
+    };
+
     const columnDefs = useMemo(() => [
         { field: 'nik', headerName: 'NIK', editable: params => params.data.isNew, width: 150 },
         { field: 'emp_name', headerName: 'Nama Karyawan', editable: params => params.data.isNew, width: 200 },
@@ -137,8 +168,8 @@ const OtherIncomesPage = () => {
             valueParser: params => Number(params.newValue) || 0,
             width: 150
         },
-        { field: 'is_paid_in_thp', headerName: 'Masuk THP?', editable: true, cellEditor: 'agCheckboxCellEditor', width: 120 },
-        { field: 'is_taxable', headerName: 'Kena Pajak?', editable: true, cellEditor: 'agCheckboxCellEditor', width: 120 },
+        { field: 'is_paid_in_thp', headerName: 'Masuk THP?', editable: true, cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor', width: 120 },
+        { field: 'is_taxable', headerName: 'Kena Pajak?', editable: true, cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor', width: 120 },
         {
             headerName: 'Aksi',
             width: 120,
@@ -244,6 +275,28 @@ const OtherIncomesPage = () => {
                     </div>
 
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={handleCalculateTHR}
+                            disabled={loading}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.5rem 1rem', background: '#f59e0b', color: 'white',
+                                border: 'none', borderRadius: '4px', cursor: 'pointer'
+                            }}
+                            title="Kalkulasi THR Otomatis dari Database Histori"
+                        >
+                            <Calculator size={16} /> Kalkulasi THR
+                        </button>
+                        <button
+                            onClick={handleExportExcel}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.5rem 1rem', background: '#10b981', color: 'white',
+                                border: 'none', borderRadius: '4px', cursor: 'pointer'
+                            }}
+                        >
+                            <Download size={16} /> Export Excel
+                        </button>
                         <button
                             onClick={fetchIncomes}
                             disabled={loading}
