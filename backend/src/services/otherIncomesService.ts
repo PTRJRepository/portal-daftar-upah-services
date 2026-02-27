@@ -16,6 +16,7 @@ export interface OtherIncome {
     is_taxable: boolean;
     created_at?: string;
     updated_at?: string;
+    details?: any; // For detailed reporting (formula variables)
 }
 
 export class OtherIncomesService {
@@ -112,6 +113,54 @@ export class OtherIncomesService {
             console.error("Failed to save formula:", e);
             return false;
         }
+    }
+
+    static async getIncomesWithDetails(year: number, month: number, divisionCode?: string, gangCode?: string, incomeType?: string): Promise<OtherIncome[]> {
+        let incomes = await this.getIncomes(year, month, divisionCode, gangCode);
+        if (incomeType && incomeType !== 'ALL') {
+            incomes = incomes.filter(inc => inc.income_type === incomeType);
+        }
+
+        const hasTHR = incomes.some(inc => inc.income_type === 'THR');
+        const historyDict: Record<string, any> = {};
+
+        if (hasTHR) {
+            try {
+                const historyService = HistoryDatabaseService.getInstance();
+                const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(
+                    month, year, gangCode || 'ALL', divisionCode || undefined
+                );
+                if (historyData && historyData.data_rows) {
+                    for (const row of historyData.data_rows) {
+                        const nik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+                        if (nik) {
+                            historyDict[nik] = {
+                                UPAH_DASAR: row.upah_dasar || 0,
+                                BERAS_RATE: row.beras_rate || 0,
+                                MASA_KERJA_JUMLAH: row.masa_kerja_jumlah || 0,
+                                MASA_KERJA_TAHUN: row.masa_kerja_tahun || 0,
+                                HK: row.jumlah_hk || 0
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch history for detailed incomes:", e);
+            }
+        }
+
+        const thrFormula = hasTHR ? await this.getFormula('THR') : null;
+
+        for (const inc of incomes) {
+            if (inc.income_type === 'THR') {
+                inc.details = {
+                    formula: thrFormula?.formula || '',
+                    variables: historyDict[inc.nik.trim().toUpperCase()] || null
+                };
+            }
+        }
+
+        return incomes;
     }
 
     static async getIncomes(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {

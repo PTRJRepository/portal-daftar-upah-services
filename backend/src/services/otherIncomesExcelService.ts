@@ -3,11 +3,9 @@ import { OtherIncomesService } from './otherIncomesService';
 
 export class OtherIncomesExcelService {
     public static async generateExcel(year: number, month: number, divisionCode?: string, gangCode?: string, incomeType?: string): Promise<Buffer> {
-        let incomes = await OtherIncomesService.getIncomes(year, month, divisionCode, gangCode);
+        let incomes = await OtherIncomesService.getIncomesWithDetails(year, month, divisionCode, gangCode, incomeType);
 
-        if (incomeType && incomeType !== 'TOTAL') {
-            incomes = incomes.filter(inc => inc.income_type === incomeType);
-        }
+        const isTHR = incomeType === 'THR';
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Other Incomes');
@@ -29,6 +27,9 @@ export class OtherIncomesExcelService {
         // Headers
         const headerRow = worksheet.getRow(4);
         const headers = ['No', 'NIK', 'Nama Karyawan', 'Gang', 'Tipe', 'Deskripsi', 'Jumlah (Rp)', 'Masuk THP?', 'Kena Pajak?'];
+        if (isTHR) {
+            headers.push('Formula', 'Upah Dasar (Rp)', 'Tunj Beras (Rp)', 'Masa Kerja (Rp)', 'Lama Kerja (Thn)', 'HK');
+        }
         headerRow.values = headers;
 
         headerRow.eachCell((cell) => {
@@ -57,8 +58,17 @@ export class OtherIncomesExcelService {
             { width: 30 }, // Deskripsi
             { width: 20 }, // Jumlah (Rp)
             { width: 15 }, // Masuk THP?
-            { width: 15 }  // Kena Pajak?
         ];
+        if (isTHR) {
+            worksheet.columns = worksheet.columns.concat([
+                { width: 40 }, // Formula
+                { width: 15 }, // Upah Dasar
+                { width: 15 }, // Tunj Beras
+                { width: 15 }, // Masa Kerja
+                { width: 15 }, // Lama Kerja
+                { width: 10 }  // HK
+            ]);
+        }
 
         // Data
         incomes.forEach((income, idx) => {
@@ -79,9 +89,18 @@ export class OtherIncomesExcelService {
             row.getCell(8).value = income.is_paid_in_thp ? 'Ya' : 'Tidak';
             row.getCell(9).value = income.is_taxable ? 'Ya' : 'Tidak';
 
+            if (isTHR && income.details) {
+                row.getCell(10).value = income.details.formula || '-';
+                row.getCell(11).value = income.details.variables?.UPAH_DASAR || 0;
+                row.getCell(12).value = income.details.variables?.BERAS_RATE || 0;
+                row.getCell(13).value = income.details.variables?.MASA_KERJA_JUMLAH || 0;
+                row.getCell(14).value = income.details.variables?.MASA_KERJA_TAHUN || 0;
+                row.getCell(15).value = income.details.variables?.HK || 0;
+            }
+
             // Apply borders to all data cells
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-                if (colNumber <= 9) {
+                if (colNumber <= (isTHR ? 15 : 9)) {
                     cell.border = {
                         top: { style: 'thin' },
                         left: { style: 'thin' },

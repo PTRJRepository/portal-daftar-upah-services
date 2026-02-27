@@ -442,6 +442,15 @@ const OperationalReportWrapper = () => {
   )
 }
 
+// Protected Route Wrapper
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
+
 function AppInner() {
   const { isAuthenticated, loading, isKeraniUser } = useAuth()
   const inProdMode = isProdMode()
@@ -491,14 +500,6 @@ function AppInner() {
   if (loading) {
     return <LoadingScreen isLoading={true} message="Menyiapkan sistem..." />
   }
-
-  // Protected Route Wrapper
-  const ProtectedRoute = ({ children }) => {
-    if (!isAuthenticated) {
-      return <Navigate to="/login" replace />;
-    }
-    return children;
-  };
 
   return (
     <ErrorBoundary>

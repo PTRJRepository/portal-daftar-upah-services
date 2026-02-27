@@ -256,12 +256,26 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
         set.status = 500;
         return { error: e.message };
     }
-}, {
-    query: t.Object({
-        emp_codes: t.String(),
-        month: t.String(),
-        year: t.String()
+};
+
+employeeRoutes
+    .get("/batch-checkroll", async ({ query, set }) => {
+        return handleBatchCheckroll(query.emp_codes || "", query.month, query.year, set);
+    }, {
+        query: t.Object({
+            emp_codes: t.String(),
+            month: t.String(),
+            year: t.String()
+        })
     })
+    .post("/batch-checkroll", async ({ body, set }) => {
+        return handleBatchCheckroll(body.emp_codes || [], String(body.month), String(body.year), set);
+    }, {
+        body: t.Object({
+            emp_codes: t.Array(t.String()),
+            month: t.Union([t.String(), t.Number()]),
+            year: t.Union([t.String(), t.Number()])
+        })
     })
 
     // ========================

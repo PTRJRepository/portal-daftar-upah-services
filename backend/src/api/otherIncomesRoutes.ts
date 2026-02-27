@@ -7,16 +7,17 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
 
     .get("/", async ({ query }) => {
         try {
-            const { year, month, divisionCode, gangCode } = query as any;
+            const { year, month, divisionCode, gangCode, incomeType } = query as any;
             if (!year || !month) {
                 return { success: false, error: "Year and month are required parameters" };
             }
 
-            const incomes = await OtherIncomesService.getIncomes(
+            const incomes = await OtherIncomesService.getIncomesWithDetails(
                 parseInt(year),
                 parseInt(month),
                 divisionCode,
-                gangCode
+                gangCode,
+                incomeType
             );
             return { success: true, data: incomes };
         } catch (error: any) {

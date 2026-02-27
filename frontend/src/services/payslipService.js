@@ -29,18 +29,17 @@ export async function getBatchEmployeeCheckroll(token, empCodes, month, year) {
             throw new Error('No employee codes provided')
         }
 
-        const params = {
-            emp_codes: empCodes.join(','),
+        const body = {
+            emp_codes: empCodes,
             month,
             year
         }
 
         const baseUrl = getBaseUrl()
-        console.log(`[PayslipService] Fetching batch checkroll for ${empCodes.length} employees`)
+        console.log(`[PayslipService] Fetching batch checkroll for ${empCodes.length} employees using POST`)
 
-        const response = await axios.get(`${baseUrl}/batch-checkroll`, {
-            headers: { Authorization: `Bearer ${token}` },
-            params
+        const response = await axios.post(`${baseUrl}/batch-checkroll`, body, {
+            headers: { Authorization: `Bearer ${token}` }
         })
 
         return response.data

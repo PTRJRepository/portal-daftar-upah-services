@@ -199,31 +199,46 @@ const OtherIncomesPage = () => {
         }
     };
 
-    const columnDefs = useMemo(() => [
-        { field: 'nik', headerName: 'NIK', editable: params => params.data.isNew, width: 150 },
-        { field: 'emp_name', headerName: 'Nama Karyawan', editable: params => params.data.isNew, width: 200 },
-        { field: 'gang_code', headerName: 'Gang', editable: params => params.data.isNew, width: 100 },
-        {
-            field: 'income_type',
-            headerName: 'Tipe',
-            editable: true,
-            cellEditor: 'agSelectCellEditor',
-            cellEditorParams: { values: INCOME_TYPES },
-            width: 120
-        },
-        { field: 'income_name', headerName: 'Deskripsi', editable: true, width: 200 },
-        {
-            field: 'amount',
-            headerName: 'Jumlah (Rp)',
-            editable: true,
-            type: 'numericColumn',
-            valueFormatter: params => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(params.value || 0),
-            valueParser: params => Number(params.newValue) || 0,
-            width: 150
-        },
-        { field: 'is_paid_in_thp', headerName: 'Masuk THP?', editable: true, cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor', width: 120 },
-        { field: 'is_taxable', headerName: 'Kena Pajak?', editable: true, cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor', width: 120 },
-        {
+    const columnDefs = useMemo(() => {
+        const baseColumns = [
+            { field: 'nik', headerName: 'NIK', editable: params => params.data.isNew, width: 150 },
+            { field: 'emp_name', headerName: 'Nama Karyawan', editable: params => params.data.isNew, width: 200 },
+            { field: 'gang_code', headerName: 'Gang', editable: params => params.data.isNew, width: 100 },
+            {
+                field: 'income_type',
+                headerName: 'Tipe',
+                editable: true,
+                cellEditor: 'agSelectCellEditor',
+                cellEditorParams: { values: INCOME_TYPES },
+                width: 120
+            },
+            { field: 'income_name', headerName: 'Deskripsi', editable: true, width: 200 },
+            {
+                field: 'amount',
+                headerName: 'Jumlah (Rp)',
+                editable: true,
+                type: 'numericColumn',
+                valueFormatter: params => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(params.value || 0),
+                valueParser: params => Number(params.newValue) || 0,
+                width: 150
+            },
+            { field: 'is_paid_in_thp', headerName: 'Masuk THP?', editable: true, cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor', width: 120 },
+            { field: 'is_taxable', headerName: 'Kena Pajak?', editable: true, cellRenderer: 'agCheckboxCellRenderer', cellEditor: 'agCheckboxCellEditor', width: 120 }
+        ];
+
+        const hasDetails = rowData.some(r => r.details);
+        if (hasDetails) {
+            baseColumns.push(
+                { field: 'details.variables.UPAH_DASAR', headerName: 'Upah Dasar', editable: false, width: 130, valueFormatter: params => params.value ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(params.value) : '-' },
+                { field: 'details.variables.BERAS_RATE', headerName: 'Tunj Beras', editable: false, width: 130, valueFormatter: params => params.value ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(params.value) : '-' },
+                { field: 'details.variables.MASA_KERJA_JUMLAH', headerName: 'Masa Kerja Rp', editable: false, width: 130, valueFormatter: params => params.value ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(params.value) : '-' },
+                { field: 'details.variables.MASA_KERJA_TAHUN', headerName: 'Lama (Thn)', editable: false, width: 100, valueFormatter: params => params.value || '-' },
+                { field: 'details.variables.HK', headerName: 'HK', editable: false, width: 80, valueFormatter: params => params.value || '-' },
+                { field: 'details.formula', headerName: 'Formula', editable: false, width: 250, tooltipField: 'details.formula' }
+            );
+        }
+
+        baseColumns.push({
             headerName: 'Aksi',
             width: 120,
             cellRenderer: (params) => (
@@ -247,8 +262,10 @@ const OtherIncomesPage = () => {
                     </button>
                 </div>
             )
-        }
-    ], [isSaving, year, month, division, gang]);
+        });
+
+        return baseColumns;
+    }, [isSaving, year, month, division, gang, rowData]);
 
     return (
         <div style={{ padding: '1.5rem', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
