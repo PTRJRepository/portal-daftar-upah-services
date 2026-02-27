@@ -48,13 +48,14 @@ export const ReportProvider = ({ children }) => {
     // Determine if we're in locked mode (Admin is never locked)
     const inProdMode = isProdMode();
     const prodDivision = inProdMode ? getUserDivision() : null;
+    const isVisitorUser = user?.isVisitor || (user?.role && user.role.toUpperCase() === 'VISITOR');
     const isAdminUser = user?.isAdmin === true ||
         (user?.role && user.role.toUpperCase() === 'ADMIN') ||
-        (user?.divisi && user.divisi.toUpperCase() === 'ALL');
+        (user?.divisi && user.divisi.toUpperCase() === 'ALL' && !isVisitorUser);
 
     const isKeraniUser = (user?.role || '').toLowerCase() === 'kerani';
-    const externalLockedDiv = isAdminUser ? null : (lockedDivision || null);
-    const isLockedMode = !isAdminUser && (!!(externalLockedDiv || prodDivision) || isKeraniUser);
+    const externalLockedDiv = isAdminUser || isVisitorUser ? null : (lockedDivision || null);
+    const isLockedMode = !isAdminUser && !isVisitorUser && (!!(externalLockedDiv || prodDivision) || isKeraniUser);
 
     // Load Divisions
     useEffect(() => {

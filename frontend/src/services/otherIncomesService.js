@@ -46,7 +46,6 @@ export const otherIncomesService = {
             const response = await api.delete(`/other-incomes/${id}`);
             return response.data;
         } catch (error) {
-        } catch (error) {
             console.error('Error deleting other income:', error);
             throw error;
         }

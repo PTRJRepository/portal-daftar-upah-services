@@ -209,6 +209,7 @@ export class AuthService {
             let role = UserRole.USER;
             if (roleStr === "admin") role = UserRole.ADMIN;
             else if (roleStr === "kerani") role = UserRole.KERANI;
+            else if (roleStr === "visitor") role = UserRole.VISITOR;
 
             // Try to find user locally
             const user = await this.getUser(username);
@@ -283,12 +284,19 @@ export class AuthService {
                     // USER REQUEST: Do NOT infer from username.
                 }
 
-                // CHECK FOR ADMIN / ALL ACCESS
+                // CHECK FOR ADMIN / VISITOR / ALL ACCESS
                 // If role is ADMIN or if divisions contains "ALL", grant full access
-                const isAdminOrAll = role === UserRole.ADMIN || divisions.some(d => d.toUpperCase() === "ALL");
+                // Note: If role is VISITOR, they get all divisions but DO NOT become ADMIN
+                const currentRole = role as UserRole;
+                const isAllDivisions = divisions.some(d => d.toUpperCase() === "ALL");
+                const isAdmin = currentRole === UserRole.ADMIN || (isAllDivisions && roleStr !== "visitor");
+                const isVisitor = roleStr === "visitor" || (isAllDivisions && roleStr === "visitor");
 
-                if (isAdminOrAll) {
+                if (isAdmin) {
                     role = UserRole.ADMIN;
+                    divisions = AuthService.ALL_DIVISIONS;
+                } else if (isVisitor) {
+                    role = UserRole.VISITOR;
                     divisions = AuthService.ALL_DIVISIONS;
                 } else {
                     // Deduplicate
@@ -330,7 +338,7 @@ export class AuthService {
     }
 
     public getAccessibleDivisions(user: User): string[] {
-        if (user.role === UserRole.ADMIN) {
+        if (user.role === UserRole.ADMIN || user.role === UserRole.VISITOR) {
             return AuthService.ALL_DIVISIONS;
         }
         // For USER and KERANI, return assigned divisions

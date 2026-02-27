@@ -28,18 +28,19 @@ export function AuthProvider({ children }) {
 
       const prodDivision = getUserDivision()
       const userRole = (u.role || '').toUpperCase()
-      const isAdmin = userRole === 'ADMIN' || (u.divisi || '').toUpperCase() === 'ALL'
+      const isAdmin = userRole === 'ADMIN' || (u.divisi && u.divisi.toUpperCase() === 'ALL' && userRole !== 'VISITOR')
 
       _initialUser = {
         ...u,
-        divisi: isAdmin ? null : prodDivision,
-        divisions: isAdmin ? [] : (prodDivision ? [prodDivision] : []),
+        divisi: isAdmin || userRole === 'VISITOR' ? null : prodDivision,
+        divisions: isAdmin || userRole === 'VISITOR' ? [] : (prodDivision ? [prodDivision] : []),
         isExternal: true,
         isProdMode: true,
-        isAdmin: isAdmin
+        isAdmin: isAdmin,
+        isVisitor: userRole === 'VISITOR'
       }
 
-      _initialLockedDiv = isAdmin ? null : prodDivision
+      _initialLockedDiv = isAdmin || userRole === 'VISITOR' ? null : prodDivision
 
       // Set default header immediately 
       axios.defaults.headers.common['Authorization'] = `Bearer ${t}`
@@ -86,23 +87,24 @@ export function AuthProvider({ children }) {
               const prodDivision = getUserDivision()
               // ... rest of logic kept for re-checks if needed ...
 
-              // Check if user is admin (role is ADMIN or divisi is ALL)
+              // Check if user is admin (role is ADMIN or divisi is ALL) - excluding VISITOR
               const userRole = (prodUser?.role || '').toUpperCase()
               const userDivisi = (prodUser?.divisi || '').toUpperCase()
-              const isAdmin = userRole === 'ADMIN' || userDivisi === 'ALL'
+              const isAdmin = userRole === 'ADMIN' || (userDivisi === 'ALL' && userRole !== 'VISITOR')
 
               // Set auth state from localStorage
               setToken(prodToken)
               setUser({
                 ...prodUser,
-                divisi: isAdmin ? null : prodDivision,
-                divisions: isAdmin ? [] : (prodDivision ? [prodDivision] : []),
+                divisi: isAdmin || userRole === 'VISITOR' ? null : prodDivision,
+                divisions: isAdmin || userRole === 'VISITOR' ? [] : (prodDivision ? [prodDivision] : []),
                 isExternal: true,
                 isProdMode: true,
-                isAdmin: isAdmin
+                isAdmin: isAdmin,
+                isVisitor: userRole === 'VISITOR'
               })
               setIsExternalAuth(true)
-              setLockedDivision(isAdmin ? null : prodDivision)
+              setLockedDivision(isAdmin || userRole === 'VISITOR' ? null : prodDivision)
               axios.defaults.headers.common['Authorization'] = `Bearer ${prodToken}`
               setLoading(false)
               return true
@@ -358,7 +360,8 @@ export function AuthProvider({ children }) {
       checkAuth,
       isExternalAuth,
       lockedDivision,
-      isKeraniUser: (user?.role || '').toLowerCase() === 'kerani'
+      isKeraniUser: (user?.role || '').toLowerCase() === 'kerani',
+      isVisitorUser: (user?.role || '').toLowerCase() === 'visitor' || user?.isVisitor
     }}>
       {children}
     </AuthCtx.Provider>
