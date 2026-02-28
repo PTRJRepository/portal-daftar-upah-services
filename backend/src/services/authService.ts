@@ -13,7 +13,7 @@ export class AuthService {
     // List of all available divisions (Source of Truth)
     public static readonly ALL_DIVISIONS = [
         "PG1A", "PG1B", "PG2A", "PG2B", "PGE", "DME", "ARA", "ARB1", "ARB2",
-        "INFRA", "AREC", "IJL", "STF-OFFICE", "SECURITY",
+        "INFRA", "IJL", "STF-OFFICE", "SECURITY",
         "ARC", "P1A", "P1B", "P2A", "P2B", "AB1", "AB2",
         "NRS", "WKS_PG", "WKS_AR", "WORKSHOP", "MILL"
     ];

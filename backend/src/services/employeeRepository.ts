@@ -35,7 +35,7 @@ const DIVISION_PREFIX_MAP: Record<string, string[]> = {
     "ARB1": ["G"],
     "ARB2": ["H"],
     "INFRA": ["I"],
-    "AREC": ["J"],
+    "ARC": ["J"],
     "IJL": ["L"],
     "STF-OFFICE": ["O"],
     "SECURITY": ["SEC"]

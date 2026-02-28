@@ -916,7 +916,7 @@ async function insertOrUpdateAggregation(
 const DIVISION_CODE_MAP: Record<string, string> = {
     "PG1A": "P1A", "PG1B": "P1B", "PG2A": "P2A", "PG2B": "P2B",
     "ARB1": "AB1", "ARB2": "AB2",
-    "INFRA": "INF", "AREC": "ARC",
+    "INFRA": "INF", "ARC": "ARC",
     // Ensure 3-letter codes map to themselves or remain as is if not in list
     "DME": "DME", "ARA": "ARA", "IJL": "IJL", "MILL": "MILL"
 };

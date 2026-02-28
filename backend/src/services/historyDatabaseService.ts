@@ -671,11 +671,10 @@ export class HistoryDatabaseService {
             detailQuery += ` AND gang_code = ?`;
             detailParams.push(gangCode);
         } else if (divisionCode && divisionCode !== "ALL") {
-            // Jika gang ALL tapi divisi spesifik (misal: RBM), loc_code bisa jadi P1A, RBM-A dsb.
-            // Sebisa mungkin kita tidak filter strict loc_code = 'RBM' krn bisa kosong. 
-            // Kita coba biarkan fetch semua row dari master (yang sudah difilter by division_code master sebelumnya)
-            // ATAU kita fallback ke pencarian wildcard.
-            // Sementara kita abaikan filter loc_code jika gang=ALL agar semua data estate RBM muncul.
+            // Jika gang ALL tapi divisi spesifik, pastikan kita hanya fetch pegawai dari divisi tersebut
+            const locCode = gangService.convertDivisionToLocCode(divisionCode);
+            detailQuery += ` AND (division_code = ? OR loc_code = ?)`;
+            detailParams.push(divisionCode, locCode);
         }
 
         console.log(`[DEBUG] detailQuery: ${detailQuery}`, detailParams);

@@ -210,7 +210,7 @@ function mapPTKPToTER(statusPTKP: string): string {
 const DIVISION_TO_LOCCODE: Record<string, string> = {
     "PG1A": "P1A", "PG1B": "P1B", "PG2A": "P2A", "PG2B": "P2B",
     "DME": "DME", "ARA": "ARA", "ARB1": "AB1", "ARB2": "AB2",
-    "INFRA": "INF", "AREC": "ARC", "IJL": "IJL"
+    "INFRA": "INF", "ARC": "ARC", "IJL": "IJL"
 };
 
 export class DataExtractorService {

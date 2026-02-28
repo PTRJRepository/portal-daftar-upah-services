@@ -63,6 +63,8 @@ const DashboardLayout = () => {
 
     const sidebarWidth = collapsed ? '72px' : '260px';
 
+    console.log('[DashboardLayout] Render', { location: location.pathname });
+
     return (
         <div style={{
             display: 'flex',

@@ -460,6 +460,7 @@ function AppInner() {
 
   // URL Path Management & Role Redirects
   useEffect(() => {
+    console.log('[AppInner] location changed:', location.pathname);
     if (!loading) {
       // Use location.pathname from React Router to get path relative to basename
       const currentPath = location.pathname
@@ -500,6 +501,8 @@ function AppInner() {
   if (loading) {
     return <LoadingScreen isLoading={true} message="Menyiapkan sistem..." />
   }
+
+  console.log('[AppInner] rendering Routes for location:', location.pathname);
 
   return (
     <ErrorBoundary>

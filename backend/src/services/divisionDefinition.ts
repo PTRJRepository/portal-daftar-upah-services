@@ -50,14 +50,21 @@ export class DivisionDefinition {
             "exclude_from_source": true,
             "description": "Divisi Workshop Air Ruak"
         },
-        /* "WORKSHOP": {
+        "WORKSHOP": {
             "name": "Workshop All",
             "source_division": null,
             "pattern": null,
-            "description_pattern": "workshop.*(parit|pge|p\\.g|air\\s*ruak|are|a\\.r)",
+            "description_pattern": "workshop.*(parit|pge|p\\.g|air\\s*ruak|are|a\\.r)|.*traksi.*air\\s*ruak",
             "exclude_from_source": false,
             "description": "Gabungan Workshop Parit Gunung dan Air Ruak"
-        } */
+        },
+        "ARC": {
+            "name": "Air Ruak Central",
+            "source_division": "ARC",
+            "pattern": "^J",
+            "exclude_from_source": false,
+            "description": "Divisi Air Ruak Central - Gang J"
+        }
     };
 
     private readonly DIVISION_ALIASES: Record<string, string> = {
@@ -65,7 +72,7 @@ export class DivisionDefinition {
         "NURSERY": "NRS"
     };
 
-    public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "MILL"];
+    public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "WORKSHOP", "ARC", "MILL"];
 
     private constructor() { }
 

@@ -22,7 +22,7 @@ export class GangService {
         "ARB1": ["G"],
         "ARB2": ["H"],
         "INFRA": ["I"],
-        "AREC": ["J"],
+        "ARC": ["J"],
         "IJL": ["L"],
         "STF-OFFICE": ["O"],
         "SECURITY": ["SEC"]
