@@ -166,51 +166,89 @@
   font-weight: 500;
 }
 
-.loading-quote-section {
+.loading-logs-container {
   border-top: 1px solid rgba(0, 0, 0, 0.05);
-  padding-top: 1.5rem;
+  padding-top: 1rem;
+  margin-top: 1.5rem;
+  text-align: left;
+  max-height: 140px;
+  overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
-.loading-quote-icon {
-  font-size: 1.25rem;
-  margin-bottom: 0.5rem;
-  opacity: 0.8;
-}
-
-.loading-quote-text {
-  font-size: 1rem;
-  font-style: italic;
-  color: #334155;
-  margin-bottom: 0.75rem;
-  line-height: 1.5;
-}
-
-.loading-quote-author {
-  font-size: 0.875rem;
+.loading-log-item {
+  font-size: 0.85rem;
   color: #64748b;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: slideUpFade 0.3s ease-out forwards;
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.loading-log-item:last-child {
+  color: #15803d;
   font-weight: 600;
+  font-size: 0.95rem;
 }
 
-.loading-spinner-container {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-}
-
-.loading-spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid rgba(0, 0, 0, 0.1);
-  border-top-color: #16a34a;
-  /* Green spinner */
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
+@keyframes slideUpFade {
   to {
-    transform: rotate(360deg);
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.logger-icon {
+  font-size: 1rem;
+}
+
+.loading-palm-container {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.palm-tree-svg {
+  width: 45px;
+  height: 45px;
+  transform-origin: bottom center;
+  animation: growPalm 2s cubic-bezier(0.175, 0.885, 0.32, 1.275) infinite alternate;
+}
+
+@keyframes growPalm {
+  0% {
+    transform: scaleY(0.8) scaleX(0.9) rotate(-3deg);
+  }
+
+  100% {
+    transform: scaleY(1.1) scaleX(1) rotate(3deg);
+  }
+}
+
+.palm-leaves {
+  animation: swayLeaves 3s ease-in-out infinite alternate;
+  transform-origin: top center;
+}
+
+@keyframes swayLeaves {
+  0% {
+    transform: rotate(-5deg);
+  }
+
+  100% {
+    transform: rotate(5deg);
   }
 }
 

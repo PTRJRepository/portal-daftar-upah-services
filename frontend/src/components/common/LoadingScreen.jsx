@@ -10,57 +10,28 @@ export default function LoadingScreen({
   month,
   year
 }) {
-  const [quote, setQuote] = useState({ text: 'Menyiapkan data...', author: '' })
+  const [logs, setLogs] = useState([])
   const [progress, setProgress] = useState(0)
-  const [currentStep, setCurrentStep] = useState(0)
-  const quoteIntervalRef = useRef(null)
+  const prevStepsRef = useRef("[]")
 
-  // Static quotes pool - will rotate through these
-  const localQuotes = [
-    { text: "Kerja keras tidak akan mengkhianati hasil.", author: "Anonim" },
-    { text: "Kualitas berarti melakukan hal yang benar ketika tidak ada yang melihat.", author: "Henry Ford" },
-    { text: "Satu-satunya cara untuk melakukan pekerjaan hebat adalah dengan mencintai apa yang Anda lakukan.", author: "Steve Jobs" },
-    { text: "Kesuksesan tidak datang kepadamu, kamulah yang harus pergi ke sana.", author: "Marva Collins" },
-    { text: "Bekerjalah dalam diam, biarkan kesuksesanmu yang bersuara.", author: "Frank Ocean" },
-    { text: "Fokus pada produktivitas, bukan kesibukan.", author: "Tim Ferriss" },
-    { text: "Tindakan adalah kunci dasar untuk semua kesuksesan.", author: "Pablo Picasso" },
-    { text: "Jangan takut untuk menyerah pada yang baik demi mendapatkan yang hebat.", author: "John D. Rockefeller" },
-    { text: "Peluang tidak datang, melainkan diciptakan.", author: "Chris Grosser" },
-    { text: "Sukses adalah hasil dari persiapan, kerja keras, dan belajar dari kegagalan.", author: "Colin Powell" },
-    { text: "Setiap pencapaian dimulai dengan keputusan untuk mencoba.", author: "John F. Kennedy" },
-    { text: "Kegagalan adalah bumbu yang memberi kesuksesan rasanya.", author: "Truman Capote" },
-    { text: "Hal-hal terbaik dalam hidup tidak selalu gratis, tapi yang gratis bisa menjadi yang terbaik.", author: "Anonim" },
-    { text: "Berani gagal adalah setengah jalan menuju sukses.", author: "Thomas Edison" },
-    { text: "Perubahan dimulai dari diri sendiri.", author: "Mahatma Gandhi" }
-  ]
-
-  // Get random quote, avoiding the current one
-  const getRandomQuote = (excludeText = '') => {
-    const availableQuotes = localQuotes.filter(q => q.text !== excludeText)
-    return availableQuotes[Math.floor(Math.random() * availableQuotes.length)]
-  }
-
-  // Set initial random quote and start rotation
+  // Handle Log History
   useEffect(() => {
-    if (!isLoading) {
-      if (quoteIntervalRef.current) {
-        clearInterval(quoteIntervalRef.current)
-      }
-      return
+    if (isLoading && message) {
+      setLogs(prev => {
+        if (prev[prev.length - 1] === message) return prev
+        const newLogs = [...prev, message]
+        return newLogs.slice(-4) // Keep last 4 messages visible
+      })
     }
+  }, [message, isLoading])
 
-    // Set initial quote
-    setQuote(getRandomQuote())
-
-    // Rotate quotes every 5 seconds
-    quoteIntervalRef.current = setInterval(() => {
-      setQuote(prev => getRandomQuote(prev.text))
-    }, 5000)
-
-    return () => {
-      if (quoteIntervalRef.current) {
-        clearInterval(quoteIntervalRef.current)
-      }
+  // Reset state on initial load
+  useEffect(() => {
+    if (isLoading && logs.length === 0 && message) {
+      setLogs([message])
+    }
+    if (!isLoading) {
+      setLogs([])
     }
   }, [isLoading])
 
@@ -71,37 +42,32 @@ export default function LoadingScreen({
       return
     }
 
-    const totalDuration = steps.length > 0
-      ? steps.reduce((sum, step) => sum + (step.duration || 1000), 0)
+    // Capture initial steps state safely
+    const stepsString = JSON.stringify(steps || [])
+    if (prevStepsRef.current === "[]" && stepsString !== "[]") {
+      prevStepsRef.current = stepsString
+    }
+
+    let parsedSteps = []
+    try {
+      parsedSteps = JSON.parse(prevStepsRef.current !== "[]" ? prevStepsRef.current : stepsString)
+    } catch (e) { }
+
+    const totalDuration = parsedSteps.length > 0
+      ? parsedSteps.reduce((sum, step) => sum + (step.duration || 1000), 0)
       : 10000 // Default 10 seconds if no steps
 
-    let elapsed = 0
+    let elapsed = (progress / 100) * totalDuration // Start from current progress roughly
     const interval = 50
 
     const timer = setInterval(() => {
       elapsed += interval
-      const newProgress = Math.min((elapsed / totalDuration) * 100, 95)
-      setProgress(newProgress)
-
-      // Update current step
-      if (steps.length > 0) {
-        let accumulatedTime = 0
-        for (let i = 0; i < steps.length; i++) {
-          accumulatedTime += steps[i].duration || 1000
-          if (elapsed < accumulatedTime) {
-            setCurrentStep(i)
-            break
-          }
-        }
-      }
-
-      if (elapsed >= totalDuration) {
-        clearInterval(timer)
-      }
+      const newProgress = Math.min((elapsed / totalDuration) * 100, 98)
+      setProgress(prev => Math.max(prev, newProgress)) // Never move backwards!
     }, interval)
 
     return () => clearInterval(timer)
-  }, [isLoading, steps])
+  }, [isLoading])
 
   if (!isLoading) return null
 
@@ -130,12 +96,6 @@ export default function LoadingScreen({
 
         {/* Progress Section */}
         <div className="loading-progress-section">
-          <div className="loading-message">{message}</div>
-
-          {steps.length > 0 && currentStep < steps.length && (
-            <div className="loading-step">{steps[currentStep].name}</div>
-          )}
-
           {/* Progress Bar */}
           <div className="loading-progress-bar-container">
             <div
@@ -159,16 +119,34 @@ export default function LoadingScreen({
           )}
         </div>
 
-        {/* Motivational Quote with fade animation */}
-        <div className="loading-quote-section" key={quote.text}>
-          <div className="loading-quote-icon">💡</div>
-          <div className="loading-quote-text">"{quote.text}"</div>
-          <div className="loading-quote-author">— {quote.author}</div>
+        {/* Action Logs (Replaces Quotes) */}
+        <div className="loading-logs-container">
+          {logs.map((logMsg, index) => (
+            <div key={`${logMsg}-${index}`} className="loading-log-item">
+              <span className="logger-icon">{index === logs.length - 1 ? '🔄' : '✅'}</span>
+              <span>{logMsg}</span>
+            </div>
+          ))}
         </div>
 
-        {/* Loading Animation */}
-        <div className="loading-spinner-container">
-          <div className="loading-spinner"></div>
+        {/* Responsive Palm Tree Animation (Replaces Spinner) */}
+        <div className="loading-palm-container">
+          <svg className="palm-tree-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Trunk */}
+            <path d="M45 100 Q 50 50 50 20 Q 55 50 55 100 Z" fill="#8B4513" />
+            <path d="M45 90 Q 50 85 55 90" stroke="#654321" strokeWidth="2" fill="none" />
+            <path d="M46 70 Q 50 65 54 70" stroke="#654321" strokeWidth="2" fill="none" />
+            <path d="M48 50 Q 50 45 52 50" stroke="#654321" strokeWidth="2" fill="none" />
+            {/* Leaves Group */}
+            <g className="palm-leaves">
+              <path d="M50 25 Q 20 0 10 30 Q 30 20 50 25" fill="#22c55e" />
+              <path d="M50 25 Q 30 -10 40 10 Q 45 5 50 25" fill="#16a34a" />
+              <path d="M50 25 Q 70 -10 60 10 Q 55 5 50 25" fill="#15803d" />
+              <path d="M50 25 Q 80 0 90 30 Q 70 20 50 25" fill="#16a34a" />
+              <path d="M50 25 Q 20 20 15 50 Q 35 30 50 25" fill="#15803d" />
+              <path d="M50 25 Q 80 20 85 50 Q 65 30 50 25" fill="#22c55e" />
+            </g>
+          </svg>
         </div>
       </div>
     </div>
