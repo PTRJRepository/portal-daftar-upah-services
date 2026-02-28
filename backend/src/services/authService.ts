@@ -217,6 +217,23 @@ export class AuthService {
             if (user) {
                 // console.log(`[AuthService] User '${username}' found locally.`);
                 const { password_hash, ...safeUser } = user;
+                // Normalize divisions for internal users too (AREC -> ARC, WORKSHOP AR -> WKS_AR, etc.)
+                // This ensures consistency between internal and external tokens
+                const originalDivisions = safeUser.divisions ? [...safeUser.divisions] : [];
+                if (safeUser.divisions && Array.isArray(safeUser.divisions)) {
+                    safeUser.divisions = safeUser.divisions.map(d => {
+                        const strD = String(d).toUpperCase().trim();
+                        if (strD === 'AREC') return 'ARC';
+                        if (strD === 'WORKSHOP AR' || strD === 'WORKSHOP_AR' || strD === 'WKS AR') return 'WKS_AR';
+                        if (strD === 'WORKSHOP PG' || strD === 'WORKSHOP_PG' || strD === 'WKS PG' || strD === 'WORKSHOP P.G' || strD === 'WORKSHOP P.G.') return 'WKS_PG';
+                        if (strD === 'NURSERY') return 'NRS';
+                        if (strD === 'INFRA') return 'INF';
+                        return strD;
+                    });
+                    // Deduplicate
+                    safeUser.divisions = [...new Set(safeUser.divisions)];
+                    console.log(`[AuthService] Normalized divisions for user ${username}: ${JSON.stringify(originalDivisions)} -> ${JSON.stringify(safeUser.divisions)}`);
+                }
                 return safeUser;
             }
 
@@ -299,6 +316,15 @@ export class AuthService {
                     role = UserRole.VISITOR;
                     divisions = AuthService.ALL_DIVISIONS;
                 } else {
+                    // Normalize "AREC" to "ARC" and "WORKSHOP" aliases to fix external token mappings
+                    divisions = divisions.map(d => {
+                        const strD = String(d).toUpperCase().trim();
+                        if (strD === 'AREC') return 'ARC';
+                        if (strD === 'WORKSHOP AR' || strD === 'WORKSHOP_AR' || strD === 'WKS AR') return 'WKS_AR';
+                        if (strD === 'WORKSHOP PG' || strD === 'WORKSHOP_PG' || strD === 'WKS PG' || strD === 'WORKSHOP P.G' || strD === 'WORKSHOP P.G.') return 'WKS_PG';
+                        return strD;
+                    });
+
                     // Deduplicate
                     divisions = [...new Set(divisions)];
                 }

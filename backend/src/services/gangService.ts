@@ -45,7 +45,14 @@ export class GangService {
         "NURSERY": "NRS",
         "WORKSHOP": "WORKSHOP",
         "WKS_PG": "WKS_PG",
-        "WKS_AR": "WKS_AR"
+        "WORKSHOP_PG": "WKS_PG",
+        "WORKSHOP PG": "WKS_PG",
+        "WKS PG": "WKS_PG",
+        "WKS_AR": "WKS_AR",
+        "WORKSHOP_AR": "WKS_AR",
+        "WORKSHOP AR": "WKS_AR",
+        "WKS AR": "WKS_AR",
+        "AREC": "ARC"
     };
 
     private constructor() {

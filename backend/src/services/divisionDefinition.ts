@@ -69,7 +69,14 @@ export class DivisionDefinition {
 
     private readonly DIVISION_ALIASES: Record<string, string> = {
         "INFRA": "INF",
-        "NURSERY": "NRS"
+        "NURSERY": "NRS",
+        "AREC": "ARC",
+        "WORKSHOP_AR": "WKS_AR",
+        "WORKSHOP AR": "WKS_AR",
+        "WKS AR": "WKS_AR",
+        "WORKSHOP_PG": "WKS_PG",
+        "WORKSHOP PG": "WKS_PG",
+        "WKS PG": "WKS_PG"
     };
 
     public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "WORKSHOP", "ARC", "MILL"];

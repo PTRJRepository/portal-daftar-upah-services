@@ -380,19 +380,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // KERANI = RESTRICTED to assigned divisions
 
             if (currentUser.role === UserRole.KERANI) {
-                const requestedDiv = String(divisionCode).trim().toUpperCase();
-                const hasPermission = currentUser.divisions.some(d => {
-                    const div = String(d).trim().toUpperCase();
-                    if (div === requestedDiv) return true;
+                // Normalize requested division using divisionDefinition resolveDivisionCode
+                // This handles AREC -> ARC, WORKSHOP AR -> WKS_AR, etc.
+                const { divisionDefinition } = await import("../services/divisionDefinition");
+                const requestedDiv = divisionDefinition.resolveDivisionCode(String(divisionCode).trim().toUpperCase());
 
-                    // Check alias
-                    try {
-                        const alias = gangService.convertDivisionToLocCode(div);
-                        if (alias === requestedDiv) return true;
-                    } catch (e) {
-                        // ignore 
+                console.log(`[PayrollRoutes] KERANI permission check: user=${currentUser.username}, raw divisions=${JSON.stringify(currentUser.divisions)}, requestedDiv=${requestedDiv} (from ${divisionCode})`);
+
+                const hasPermission = currentUser.divisions.some(d => {
+                    // Also normalize user's division using resolveDivisionCode
+                    const div = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                    const match = div === requestedDiv;
+                    if (match) {
+                        console.log(`[PayrollRoutes] Permission GRANTED: ${d} -> ${div} matches ${requestedDiv}`);
                     }
-                    return false;
+                    return match;
                 });
 
                 if (!hasPermission) {
@@ -614,19 +616,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // However, for KERANI, we need to be STRICT.
 
             if (currentUser.role === UserRole.KERANI) {
-                const requestedDiv = String(divisionCode).trim().toUpperCase();
-                const hasPermission = currentUser.divisions.some(d => {
-                    const div = String(d).trim().toUpperCase();
-                    if (div === requestedDiv) return true;
+                // Normalize requested division using divisionDefinition resolveDivisionCode
+                // This handles AREC -> ARC, WORKSHOP AR -> WKS_AR, etc.
+                const { divisionDefinition } = await import("../services/divisionDefinition");
+                const requestedDiv = divisionDefinition.resolveDivisionCode(String(divisionCode).trim().toUpperCase());
 
-                    // Check alias
-                    try {
-                        const alias = gangService.convertDivisionToLocCode(div);
-                        if (alias === requestedDiv) return true;
-                    } catch (e) {
-                        // ignore 
+                console.log(`[PayrollRoutes] KERANI permission check: user=${currentUser.username}, raw divisions=${JSON.stringify(currentUser.divisions)}, requestedDiv=${requestedDiv} (from ${divisionCode})`);
+
+                const hasPermission = currentUser.divisions.some(d => {
+                    // Also normalize user's division using resolveDivisionCode
+                    const div = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                    const match = div === requestedDiv;
+                    if (match) {
+                        console.log(`[PayrollRoutes] Permission GRANTED: ${d} -> ${div} matches ${requestedDiv}`);
                     }
-                    return false;
+                    return match;
                 });
 
                 if (!hasPermission) {
