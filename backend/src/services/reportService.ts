@@ -2,6 +2,7 @@ import { Database } from "../db/client";
 import { aggregationService } from "./aggregationService";
 import { gangService } from "./gangService";
 import { lemburCalculator } from "./lemburCalculator";
+import { calculateAllCaruman } from './carumanDefinitions';
 
 export class ReportService {
     private static instance: ReportService;
@@ -514,14 +515,15 @@ export class ReportService {
             emp.total_premi = totalPremi;
             emp.premi_koreksi = emp.premi.koreksi || 0;
 
-            const bpjsBase = (emp.upah_dasar * 30) + (emp.masa_kerja_jumlah || 0);
-            const astekPek = Math.round(bpjsBase * 0.02 * 100) / 100;
-            const astekMaj = Math.round(bpjsBase * 0.0454 * 100) / 100;
+            const caruman = calculateAllCaruman(emp.upah_dasar, emp.masa_kerja_jumlah || 0);
 
-            const bpjsKesPek = Math.round(bpjsBase * 0.01 * 100) / 100;
-            const bpjsKesMaj = Math.round(bpjsBase * 0.04 * 100) / 100;
-            const bpjsPenPek = Math.round(bpjsBase * 0.01 * 100) / 100;
-            const bpjsPenMaj = Math.round(bpjsBase * 0.02 * 100) / 100;
+            const astekPek = caruman.astek_pekerja_jht;
+            const astekMaj = caruman.astek_majikan_total;
+
+            const bpjsKesPek = caruman.bpjs_kes_pekerja;
+            const bpjsKesMaj = caruman.bpjs_kes_majikan;
+            const bpjsPenPek = caruman.bpjs_pensiun_pekerja;
+            const bpjsPenMaj = caruman.bpjs_pensiun_majikan;
 
             const finalBpjsKesPek = bpjsKesPek + (emp.db_bpjs_kes || 0);
 

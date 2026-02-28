@@ -14,6 +14,7 @@ import { ptkpTaxService, mapPTKPToTER } from './ptkpTaxService';
 import { pph21TerService } from './pph21TerService';
 import { divisionDefinition } from './divisionDefinition';
 import { OtherIncomesService } from './otherIncomesService';
+import { getCarumanForPph21, calculateAllCaruman, CARUMAN_RATES } from './carumanDefinitions';
 
 // ============================================================
 // PTKP Rule from JSON
@@ -406,10 +407,11 @@ class TaxReportService {
             const tunjanganLembur = row.lembur_jumlah || 0;
             const totalPremi = row.total_premi || 0;
 
-            // [ALIGNED WITH DAFTAR UPAH] Calculate ASTEK 0.84% and BPJS Kes 4% from carumanBase
-            const carumanBase = (upahDasar * 30) + tunjanganMasaKerja;
-            const astek084 = Math.round(carumanBase * 0.0084);
-            const bpjsKesehatanMajikan4Pct = Math.round(carumanBase * 0.04);
+            // [CENTRALIZED] Calculate ASTEK 0.84% and BPJS Kes 4% from carumanDefinitions
+            const pph21Caruman = getCarumanForPph21(upahDasar, tunjanganMasaKerja);
+            const astek084 = pph21Caruman.astek_majikan_084;
+            const bpjsKesehatanMajikan4Pct = pph21Caruman.bpjs_kes_majikan_4;
+            const carumanBase = pph21Caruman.base;
 
             let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                 gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
@@ -665,10 +667,11 @@ class TaxReportService {
                 const tunjanganLembur = row.lembur_jumlah || 0;
                 const totalPremi = row.total_premi || 0;
 
-                // [ALIGNED WITH DAFTAR UPAH] Calculate ASTEK 0.84% and BPJS Kes 4% from carumanBase
-                const carumanBase = (upahDasar * 30) + tunjanganMasaKerja;
-                const astek084 = Math.round(carumanBase * 0.0084);
-                const bpjsKesehatanMajikan4Pct = Math.round(carumanBase * 0.04);
+                // [CENTRALIZED] Calculate ASTEK 0.84% and BPJS Kes 4% from carumanDefinitions
+                const pph21Caruman = getCarumanForPph21(upahDasar, tunjanganMasaKerja);
+                const astek084 = pph21Caruman.astek_majikan_084;
+                const bpjsKesehatanMajikan4Pct = pph21Caruman.bpjs_kes_majikan_4;
+                const carumanBase = pph21Caruman.base;
 
                 let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                     gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
@@ -794,12 +797,12 @@ class TaxReportService {
                     monthlyGajiKotor[String(m)] = gajiKotor;
                     monthlyMasaKerja[String(m)] = details.masa_kerja;
 
-                    // Kalkulasi: (Upah Dasar × 30 + Masa Kerja) × Persentase
-                    const dasarAstek = (details.upah_dasar * 30) + details.masa_kerja;
-                    const bpjsKesVal = dasarAstek * 0.04;     // BPJS Kes 4%
-                    const astek084Val = dasarAstek * 0.0084;  // Astek Ins 0.84%
-                    const astek2Val = dasarAstek * 0.02;      // Astek Ins 2%
-                    const pensiun1Val = dasarAstek * 0.01;    // Pensiun 1%
+                    // [CENTRALIZED] Kalkulasi via carumanDefinitions
+                    const monthCaruman = calculateAllCaruman(details.upah_dasar, details.masa_kerja);
+                    const bpjsKesVal = monthCaruman.bpjs_kes_majikan;
+                    const astek084Val = monthCaruman.astek_majikan_jkk_jkm;
+                    const astek2Val = monthCaruman.astek_pekerja_jht;
+                    const pensiun1Val = monthCaruman.bpjs_pensiun_pekerja;
 
                     astek084pct += astek084Val;
                     astekIns2pct += astek2Val;
@@ -1008,21 +1011,21 @@ class TaxReportService {
 
                 const emp = employeeMap.get(empCode)!;
 
-                // Kalkulasi BPJS/ASTEK: (Upah Dasar × 30 + Masa Kerja) × Persentase
+                // [CENTRALIZED] Calculate via carumanDefinitions
                 const upahDasar = row.upah_dasar || 0;
                 const gajiPokokBpjs = upahDasar * 30;  // Gaji Pokok = Upah Dasar × 30
                 const masaKerja = row.masa_kerja_jumlah || 0;
-                const dasarPajak = gajiPokokBpjs + masaKerja;
+                const monthCaruman = calculateAllCaruman(upahDasar, masaKerja);
 
                 emp.monthly_data[String(month)] = {
                     upah_dasar: upahDasar,
-                    gaji_pokok: gajiPokokBpjs,           // Upah Dasar × 30
-                    astek_pekerja: dasarPajak * 0.02,           // JHT 2%
-                    astek_majikan: dasarPajak * 0.0084,         // JKK/JKM 0.84%
-                    bpjs_kes_pekerja: dasarPajak * 0.01,        // BPJS Kes 1%
-                    bpjs_kes_majikan: dasarPajak * 0.04,        // BPJS Kes 4%
-                    bpjs_pensiun_pekerja: dasarPajak * 0.01,    // Pensiun 1%
-                    bpjs_pensiun_majikan: dasarPajak * 0.02,    // Pensiun 2%
+                    gaji_pokok: gajiPokokBpjs,
+                    astek_pekerja: monthCaruman.astek_pekerja_jht,
+                    astek_majikan: monthCaruman.astek_majikan_jkk_jkm,
+                    bpjs_kes_pekerja: monthCaruman.bpjs_kes_pekerja,
+                    bpjs_kes_majikan: monthCaruman.bpjs_kes_majikan,
+                    bpjs_pensiun_pekerja: monthCaruman.bpjs_pensiun_pekerja,
+                    bpjs_pensiun_majikan: monthCaruman.bpjs_pensiun_majikan,
                     masa_kerja: masaKerja
                 };
 
@@ -1204,11 +1207,11 @@ class TaxReportService {
                 const tunjanganLembur = row.lembur_jumlah || 0;
                 const totalPremi = row.total_premi || 0;
 
-                // [ALIGNED WITH DAFTAR UPAH] Calculate ASTEK 0.84% and BPJS Kes 4% from carumanBase
+                // [CENTRALIZED] Calculate via carumanDefinitions
                 const upahDasarCalc = row.upah_dasar || 0;
-                const carumanBase = (upahDasarCalc * 30) + tunjanganMasaKerja;
-                const astek084 = Math.round(carumanBase * 0.0084);
-                const bpjsKesehatanMajikan4Pct = Math.round(carumanBase * 0.04);
+                const pph21Caruman = getCarumanForPph21(upahDasarCalc, tunjanganMasaKerja);
+                const astek084 = pph21Caruman.astek_majikan_084;
+                const bpjsKesehatanMajikan4Pct = pph21Caruman.bpjs_kes_majikan_4;
 
                 const penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                     gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
@@ -1222,16 +1225,16 @@ class TaxReportService {
                 const gp = gajiPokokAktual;
                 const mk = tunjanganMasaKerja;
                 const upahDasar = row.upah_dasar || 0;
-                const dasarPajak = (upahDasar * 30) + mk;  // Gaji Pokok = Upah Dasar × 30
+                const decCaruman = calculateAllCaruman(upahDasar, mk);
 
                 emp.monthly_income[String(month)] = row.jumlah_upah_kotor || row.upah_kotor || row.penghasilan_bruto || row.total_income || 0;
                 emp.monthly_details[String(month)] = { hk, gaji_pokok: gp, masa_kerja: mk };
                 emp.monthly_pph21[String(month)] = pphResult.tax_amount;
 
-                // Premi Asuransi: BPJS Kes 4% + Astek 0.84% — base = Upah Dasar × 30 + Masa Kerja
-                emp.monthly_premi_asuransi[String(month)] = (dasarPajak * 0.04) + (dasarPajak * 0.0084);
-                // Iuran Pensiun & JHT: BPJS Pensiun 1% + Astek 2% — base = Upah Dasar × 30 + Masa Kerja
-                emp.monthly_iuran_pensiun[String(month)] = (dasarPajak * 0.01) + (dasarPajak * 0.02);
+                // Premi Asuransi: BPJS Kes 4% + Astek 0.84%
+                emp.monthly_premi_asuransi[String(month)] = decCaruman.bpjs_kes_majikan + decCaruman.astek_majikan_jkk_jkm;
+                // Iuran Pensiun & JHT: BPJS Pensiun 1% + Astek 2%
+                emp.monthly_iuran_pensiun[String(month)] = decCaruman.bpjs_pensiun_pekerja + decCaruman.astek_pekerja_jht;
 
                 if (activeThr && month === activeThr.month) {
                     emp.monthly_thr_factors[String(month)] = {

@@ -14,6 +14,7 @@ import { lemburService, premiService, tunjanganService, potonganService, pph21Te
 import { manualAdjustmentService } from "./manualAdjustmentService";
 import { employeeHrDataService } from "./employeeHrDataService";
 import { OtherIncomesService } from "./otherIncomesService";
+import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
 
 interface EmployeeRow {
     emp_code: string;
@@ -617,21 +618,21 @@ export class DataExtractorService {
                 potonganTitleMap[key] = adj.adjustment_name;
             }
 
-            const carumanBase = (empUpahDasar * 30) + empMasaKerjaJumlah;
+            const caruman = calculateAllCaruman(empUpahDasar, empMasaKerjaJumlah);
 
-            const pot_astek_pekerja = Math.round(carumanBase * 0.02 * 100) / 100;
-            const pot_astek_majikan = Math.round(carumanBase * 0.0454 * 100) / 100;
-            const pot_astek_jumlah = Math.round((pot_astek_pekerja + pot_astek_majikan) * 100) / 100;
+            const pot_astek_pekerja = caruman.astek_pekerja_jht;
+            const pot_astek_majikan = caruman.astek_majikan_total;
+            const pot_astek_jumlah = pot_astek_pekerja + pot_astek_majikan;
 
-            const pot_bpjs_kesehatan_pekerja_formula = Math.round(carumanBase * 0.01 * 100) / 100;
+            const pot_bpjs_kesehatan_pekerja_formula = caruman.bpjs_kes_pekerja;
             const pot_bpjs_kesehatan_pekerja = pot_bpjs_kesehatan_pekerja_formula + db_bpjs_kes;
 
-            const pot_bpjs_kesehatan_majikan = Math.round(carumanBase * 0.04 * 100) / 100;
-            const pot_bpjs_kesehatan_jumlah = Math.round((pot_bpjs_kesehatan_pekerja + pot_bpjs_kesehatan_majikan) * 100) / 100;
+            const pot_bpjs_kesehatan_majikan = caruman.bpjs_kes_majikan;
+            const pot_bpjs_kesehatan_jumlah = pot_bpjs_kesehatan_pekerja + pot_bpjs_kesehatan_majikan;
 
-            const pot_bpjs_pensiun_pekerja = Math.round(carumanBase * 0.01 * 100) / 100;
-            const pot_bpjs_pensiun_majikan = Math.round(carumanBase * 0.02 * 100) / 100;
-            const pot_bpjs_pensiun_jumlah = Math.round((pot_bpjs_pensiun_pekerja + pot_bpjs_pensiun_majikan) * 100) / 100;
+            const pot_bpjs_pensiun_pekerja = caruman.bpjs_pensiun_pekerja;
+            const pot_bpjs_pensiun_majikan = caruman.bpjs_pensiun_majikan;
+            const pot_bpjs_pensiun_jumlah = pot_bpjs_pensiun_pekerja + pot_bpjs_pensiun_majikan;
 
             // [FIXED] PREMI_PPH is an ADDITION (penambah), NOT a deduction
             // [FIXED] pot_koreksi is ONLY in Potongan Upah Kotor, NOT in total_potongan
@@ -668,14 +669,11 @@ export class DataExtractorService {
             // IMPORTANT: Always calculated from payrate × 30 (monthly salary), NOT from gaji_pokok_ideal
             // Formula: (payrate × 30 + tunjangan_masa_kerja) × 0.84%
             // This is the EMPLOYER portion of BPJS Pensiun (ASTEK) for tax calculation
-            const gaji_pokok_bulanan = empUpahDasar * 30; // Always payrate × 30, not depending on HK
-            const astek_084 = Math.round((gaji_pokok_bulanan + empMasaKerjaJumlah) * 0.0084);
+            const gaji_pokok_bulanan = caruman.gajiStandar; // Always payrate × 30
+            const astek_084 = caruman.astek_majikan_jkk_jkm; // 0.84%
 
-            // [FIXED] BPJS Kesehatan Majikan (4%) - for tax calculation
-            // IMPORTANT: Always calculated from payrate × 30 (monthly salary), NOT from gaji_pokok_ideal
-            // Formula: (payrate × 30 + tunjangan_masa_kerja) × 4%
-            // This is the EMPLOYER portion of BPJS Kesehatan
-            const bpjs_kesehatan_majikan_4_pct = Math.round((gaji_pokok_bulanan + empMasaKerjaJumlah) * 0.04);
+            // [CENTRALIZED] BPJS Kesehatan Majikan (4%)
+            const bpjs_kesehatan_majikan_4_pct = caruman.bpjs_kes_majikan; // 4%
 
             // [UPDATED] Penghasilan Bruto calculation for PPh21 TER
             // IMPORTANT: Includes ASTEK (0.84%) + BPJS Kesehatan Majikan (4%) + Taxable Other Incomes (THR, etc)

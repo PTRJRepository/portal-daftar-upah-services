@@ -1,6 +1,7 @@
 import { Database } from "../db/client";
 import { cacheService } from "./cacheService";
 import { Config } from "../config";
+import { calculateAllCaruman } from './carumanDefinitions';
 
 export interface BPJSComponents {
     kesehatan_pekerja: number;
@@ -142,22 +143,17 @@ export class PayrollService {
      * BPJS Kesehatan: Pekerja 1%, Majikan 4%
      */
     public calculateBpjsComponents(masaKerjaJumlah: number, upahDasar: number = 0): BPJSComponents {
-        const bpjsBase = (upahDasar * 30) + masaKerjaJumlah;
+        const caruman = calculateAllCaruman(upahDasar, masaKerjaJumlah);
 
-        // BPJS Kesehatan (Health)
-        const kesehatanPekerja = Math.round(bpjsBase * 0.01 * 100) / 100; // 1%
-        const kesehatanMajikan = Math.round(bpjsBase * 0.04 * 100) / 100; // 4%
+        const kesehatanPekerja = caruman.bpjs_kes_pekerja;
+        const kesehatanMajikan = caruman.bpjs_kes_majikan;
+        const pensiunPekerja = caruman.bpjs_pensiun_pekerja;
+        const pensiunMajikan = caruman.bpjs_pensiun_majikan;
 
-        // BPJS Pensiun (Pension)
-        const pensiunPekerja = Math.round(bpjsBase * 0.01 * 100) / 100;   // 1%
-        const pensiunMajikan = Math.round(bpjsBase * 0.02 * 100) / 100;   // 2%
-
-        // Totals
-        const kesehatanTotal = Math.round((kesehatanPekerja + kesehatanMajikan) * 100) / 100;
-        const pensiunTotal = Math.round((pensiunPekerja + pensiunMajikan) * 100) / 100;
-        const pekerjaTotal = Math.round((kesehatanPekerja + pensiunPekerja) * 100) / 100;  // 2%
-        const majikanTotal = Math.round((kesehatanMajikan + pensiunMajikan) * 100) / 100;  // 6%
-        const jumlah = Math.round((pekerjaTotal + majikanTotal) * 100) / 100;              // 8%
+        const kesehatanTotal = kesehatanPekerja + kesehatanMajikan;
+        const pensiunTotal = pensiunPekerja + pensiunMajikan;
+        const pekerjaTotal = kesehatanPekerja + pensiunPekerja;
+        const majikanTotal = kesehatanMajikan + pensiunMajikan;
 
         return {
             kesehatan_pekerja: kesehatanPekerja,
@@ -166,10 +162,10 @@ export class PayrollService {
             pensiun_pekerja: pensiunPekerja,
             pensiun_majikan: pensiunMajikan,
             pensiun_total: pensiunTotal,
-            jumlah,
+            jumlah: pekerjaTotal + majikanTotal,
             pekerja_total: pekerjaTotal,
             majikan_total: majikanTotal,
-            base_amount: bpjsBase
+            base_amount: caruman.base
         };
     }
 

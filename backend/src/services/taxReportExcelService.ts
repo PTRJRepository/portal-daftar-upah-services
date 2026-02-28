@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { MonthlyTaxRow, DecemberTaxRow } from './taxReportService';
+import { CARUMAN_RATES } from './carumanDefinitions';
 
 /**
  * Service to generate an Excel file containing detailed PPH21 Tax Calculations
@@ -202,12 +203,12 @@ export const generateMonthlyTaxExcel = async (
         row.getCell('X').value = emp.exgratia_amount || 0;
 
         // JAMINAN MAJIKAN BERDASARKAN (GAJI STANDAR + TUNJANGAN MASA KERJA)
-        // GP Standar = J, Masa Kerja = P
+        // GP Standar = J, Masa Kerja = P  — rates from carumanDefinitions
         // BPJS Kes Majikan = ROUND((J + P) * 4%, 0)
-        row.getCell('Y').value = { formula: `ROUND((J${currentRowIndex}+P${currentRowIndex})*0.04, 0)`, result: emp.bpjs_kes_majikan || 0 };
+        row.getCell('Y').value = { formula: `ROUND((J${currentRowIndex}+P${currentRowIndex})*${CARUMAN_RATES.BPJS_KES_MAJIKAN}, 0)`, result: emp.bpjs_kes_majikan || 0 };
 
         // Astek Majikan = ROUND((J + P) * 0.84%, 0)
-        row.getCell('Z').value = { formula: `ROUND((J${currentRowIndex}+P${currentRowIndex})*0.0084, 0)`, result: emp.astek_jht_majikan || 0 };
+        row.getCell('Z').value = { formula: `ROUND((J${currentRowIndex}+P${currentRowIndex})*${CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM}, 0)`, result: emp.astek_jht_majikan || 0 };
 
         // UPAH KOTOR (AA) = GP Aktual (L) + Total Tunj (R) + Total Premi (U) - Pot Koreksi (V)
         row.getCell('AA').value = { formula: `L${currentRowIndex}+R${currentRowIndex}+U${currentRowIndex}-V${currentRowIndex}`, result: emp.upah_kotor };
