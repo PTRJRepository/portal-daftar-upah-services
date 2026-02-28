@@ -260,6 +260,16 @@ export function AuthProvider({ children }) {
   // Auto-login moved to LoginPage in test mode to show the login UI while submitting automatically
 
   async function login(username, password, rememberMe = true) {
+    // Di PROXY MODE (prod), internal login dinonaktifkan
+    // User harus login via gateway/proxy
+    if (isProdMode()) {
+      console.error('[Auth] Proxy mode: Internal login is DISABLED. Please use gateway login.')
+      alert('Login internal tidak tersedia dalam mode proxy.\nSilakan login melalui halaman gateway.')
+      // Redirect ke gateway login
+      redirectToExternalLogin()
+      return false
+    }
+
     // Prevent multiple simultaneous login attempts
     if (loginInProgress) {
       console.log('[Auth] Login already in progress, skipping duplicate request')
@@ -317,46 +327,87 @@ export function AuthProvider({ children }) {
   }
 
   const logout = () => {
-    // Sesuai request, hapus token external di localStorage seluruhnya
+    // Hapus SEMUA token dan auth data (internal + proxy/gateway)
     try {
       if (typeof window !== 'undefined') {
-        // Hapus dari localStorage
+        // 1. Hapus token internal (daftar upah service)
         window.localStorage.removeItem('auth-token')
         window.localStorage.removeItem('user')
         window.localStorage.removeItem('disable-cache')
         window.localStorage.removeItem('payroll_remember_me')
 
-        // Hapus dari sessionStorage (untuk berjaga-jaga jika gateway menggunakan sessionStorage)
+        // 2. Hapus token proxy/gateway yang mungkin ada di localStorage
+        // Gateway/proxy biasanya menyimpan token dengan nama berbeda
+        const gatewayTokenKeys = [
+          'gateway-token',
+          'proxy-token',
+          'connect.sid',      // Session ID express
+          'jwt-token',        // JWT token umum
+          'access-token',     // Access token umum
+          'auth_token',       // Versi underscore
+          'session-token',    // Session token
+          'app-token'         // App token
+        ]
+
+        gatewayTokenKeys.forEach(key => {
+          window.localStorage.removeItem(key)
+          window.sessionStorage.removeItem(key)
+        })
+
+        // 3. Hapus SEMUA localStorage untuk memastikan tidak ada token tertinggal
+        // (Opsional - uncomment jika ingin membersihkan SEMUA data)
+        // window.localStorage.clear()
+
+        // 4. Hapus dari sessionStorage
         window.sessionStorage.removeItem('auth-token')
         window.sessionStorage.removeItem('user')
 
-        // Hapus cookies yang mungkin ditinggalkan oleh proxy/gateway
-        const cookiesToClear = ['auth-token', 'user', 'token', 'authorization']
-        const paths = ['/', '/upah']
+        // 5. Hapus cookies yang mungkin ditinggalkan oleh proxy/gateway
+        const cookiesToClear = [
+          'auth-token',
+          'user',
+          'token',
+          'authorization',
+          'connect.sid',
+          'gateway-token',
+          'jwt-token',
+          'access-token'
+        ]
+        const paths = ['/', '/upah', '/upah/']
         const domains = [window.location.hostname, `.${window.location.hostname}`]
 
         cookiesToClear.forEach(key => {
           paths.forEach(p => {
-            document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${p};`
+            document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${p}; SameSite=Lax;`
             domains.forEach(d => {
-              document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${p}; domain=${d};`
+              document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${p}; domain=${d}; SameSite=Lax;`
             })
           })
         })
+
+        console.log('[Auth] Cleared ALL auth data (internal + proxy/gateway tokens)')
       }
     } catch (e) {
       console.error('[Auth] Failed to clear external tokens from localStorage:', e)
     }
 
-    // In PRODUCTION MODE:
-    // Clear the in-memory state and redirect to gateway dashboard
+    // In PRODUCTION MODE (Proxy):
+    // Clear auth data dan redirect ke gateway login page
     if (isProdMode()) {
-      console.log('[Auth] Prod mode: Clearing in-memory auth state and redirecting to /login')
+      console.log('[Auth] Proxy mode: Clearing auth and redirecting to gateway')
+
       delete axios.defaults.headers.common['Authorization']
       setToken('')
       setUser(null)
-      // Redirect to gateway login page (not dashboard)
-      window.location.href = window.location.origin + '/login'
+
+      // Redirect ke gateway root login
+      // Backend akan serve gateway login page, bukan React app
+      const gatewayUrl = `${window.location.origin}/login`
+
+      console.log('[Auth] Redirecting to gateway:', gatewayUrl)
+
+      // Force redirect ke gateway login
+      window.location.href = gatewayUrl
       return
     }
 

@@ -477,12 +477,18 @@ function AppInner() {
       const currentPath = location.pathname
       const isLoginPath = currentPath === '/login' || currentPath.endsWith('/login')
 
-      // 1. External Login Redirect (Prod Mode)
-      if (!isAuthenticated && !isLoginPath) {
-        console.log('[App] Not authenticated, redirecting to login')
-        if (!window.location.host.includes('localhost') && !window.location.host.includes('127.0.0.1')) {
-          redirectToExternalLogin()
-        }
+      // 1. PROXY MODE: Redirect to gateway if not authenticated
+      if (inProdMode && !isAuthenticated && !isLoginPath) {
+        console.log('[App] Proxy mode: Not authenticated, redirecting to gateway login')
+        redirectToExternalLogin()
+        return
+      }
+
+      // 2. DEV MODE: External Login Redirect
+      if (!isAuthenticated && !isLoginPath && !inProdMode) {
+        console.log('[App] Dev mode: Not authenticated, redirecting to login')
+        navigate('/login')
+        return
       }
 
       // 2. KERANI Role Redirect
@@ -519,7 +525,8 @@ function AppInner() {
     <ErrorBoundary>
       <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat halaman..." />}>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          {/* Internal Login Route - ONLY for DEV mode, NOT for proxy mode */}
+          {!inProdMode && <Route path="/login" element={<LoginPage />} />}
 
           {/* Employee Detail Route - From Daftar Upah (Operational: payslip, attendance matrix) */}
           <Route path="/employee/detail" element={

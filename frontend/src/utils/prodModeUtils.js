@@ -151,22 +151,14 @@ export const getUserDivision = () => {
  * Redirect to external login page (for production mode)
  */
 export const redirectToExternalLogin = () => {
-    // Determine the login URL dynamically based on the current base path
-    // If we're behind the proxy (/upah), we want to redirect to the root gateway login
-    const basePath = getBasePath()
-    const loginUrl = basePath ? '/login' : '/login'
-    console.log('[ProdMode] Redirecting to external login:', loginUrl)
+    // Redirect langsung ke gateway root login
+    // Backend akan serve gateway login page (bukan React app)
+    const gatewayUrl = `${window.location.origin}/login`
 
-    // Add return URL to guide the user back after login
-    const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
+    console.log('[ProdMode] Redirecting to gateway login:', gatewayUrl)
 
-    if (basePath === '/upah') {
-        // In proxy mode, redirect to the root gateway
-        window.location.href = `${window.location.origin}/login?returnUrl=${returnUrl}`
-    } else {
-        // Local dev mode
-        window.location.href = `/login?returnUrl=${returnUrl}`
-    }
+    // Force full page redirect ke gateway
+    window.location.href = gatewayUrl
 }
 
 /**
