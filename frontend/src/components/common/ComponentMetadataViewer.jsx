@@ -62,9 +62,9 @@ export default function ComponentMetadataViewer({ component, componentName, expa
             <span className="metadata-value primary">
               {typeof component.value === 'number'
                 ? new Intl.NumberFormat('id-ID', {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(component.value)
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                }).format(component.value)
                 : JSON.stringify(component.value)}
             </span>
           </div>
@@ -174,14 +174,14 @@ export default function ComponentMetadataViewer({ component, componentName, expa
             'execution_time_ms', 'version', 'confidence_level', 'taxable',
             'last_updated', 'calculated_at'
           ].includes(key)).length > 0 && (
-            <div className="metadata-row">
-              <span className="metadata-label">Metadata Lainnya:</span>
-              <details className="additional-metadata">
-                <summary>Lihat detail</summary>
-                <pre>{JSON.stringify(meta, null, 2)}</pre>
-              </details>
-            </div>
-          )}
+              <div className="metadata-row">
+                <span className="metadata-label">Metadata Lainnya:</span>
+                <details className="additional-metadata">
+                  <summary>Lihat detail</summary>
+                  <pre>{JSON.stringify(meta, null, 2)}</pre>
+                </details>
+              </div>
+            )}
         </div>
       )}
     </div>
@@ -217,12 +217,12 @@ export function ComponentMetadataTable({ components, title }) {
             return (
               <tr key={name}>
                 <td className="component-name-cell">{name}</td>
-                <td className="component-value-cell">
+                <td className="component-value-cell" title={`Formula: ${meta.calculation_basis || ''}\nDependencies: ${meta.dependencies ? meta.dependencies.join(', ') : ''}`}>
                   {typeof component?.value === 'number'
                     ? new Intl.NumberFormat('id-ID', {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(component.value)
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(component.value)
                     : JSON.stringify(component?.value)}
                 </td>
                 <td className="component-source-cell">

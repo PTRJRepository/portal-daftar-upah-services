@@ -11,6 +11,7 @@ import { harvesterService } from "./harvesterService";
 import { historyDatabaseService } from "./historyDatabaseService";
 // Import new unified component services
 import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
+import { gajiPokokService } from "./payroll/components/GajiPokokService";
 import { manualAdjustmentService } from "./manualAdjustmentService";
 import { employeeHrDataService } from "./employeeHrDataService";
 import { OtherIncomesService } from "./otherIncomesService";
@@ -378,6 +379,19 @@ export class DataExtractorService {
             manualAdjustmentService.getAdjustments(month, year, gangCode || undefined)
         ]);
 
+        // [NEW] Use GajiPokokService for basic salary calculations in batch
+        const gajiPokokInputs = empCodes.map(code => ({
+            emp_code: code,
+            month,
+            year,
+            server_profile: serverProfile,
+            // Optimization: Pass pre-fetched data so GajiPokokService doesn't re-query
+            attendance: attendanceMap[code] || { hk: 0, total_amount_rp: 0 },
+            upah_dasar: upahPokok[code] // from this.getUpahPokok 
+        }));
+
+        const gajiPokokBatchResult = await gajiPokokService.calculateBatch(gajiPokokInputs);
+
         // Cast manual adjustments to expected type
         const manualAdjustments = (manualAdjustmentsRaw || []) as any[];
 
@@ -453,7 +467,11 @@ export class DataExtractorService {
             // This preserves employees who have generated money (e.g. from Sunday work or allowances) even if Effective HK is calculated as 0
             if (effective_hk <= 0 && total_earnings <= 0) continue;
             const daysInMonth = new Date(year, month, 0).getDate();
-            const empUpahDasar = upahPokok[emp.emp_code] || emp.pay_rate || 0;
+
+            // Get data carefully computed by GajiPokokService
+            const gpResult = gajiPokokBatchResult.results.get(emp.emp_code)?.output?.value;
+            const empUpahDasar = gpResult?.upah_dasar?.value || emp.pay_rate || 0;
+
             const empJobTitle = jobTitles[emp.emp_code] || "";
 
             // ... (Rest of existing logic mostly unchanged until row creation)
@@ -503,12 +521,9 @@ export class DataExtractorService {
             const empLemburJumlahPure = empLemburDetails.jumlah || 0;
             const empLemburJamPure = empLemburDetails.jam || 0;
 
-            // [UPDATED] Gaji Pokok untuk Grup Penggajian
-            // gaji_pokok_ideal = upah_dasar × jumlah_hk (untuk referensi)
-            // gaji_pokok_aktual = total_amount_rp dari PR_TASKREGLN (amount plantware) - untuk display dan perhitungan
-            // koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal
-            const gaji_pokok_ideal = empUpahDasar * hk;
-            const gaji_pokok_aktual = attData.total_amount_rp ?? 0;
+            // [UPDATED] Gaji Pokok untuk Grup Penggajian menggunakan OOP GajiPokokService
+            const gaji_pokok_ideal = gpResult?.gaji_pokok_ideal?.value || 0;
+            const gaji_pokok_aktual = gpResult?.gaji_pokok_aktual?.value || 0;
             const gaji_pokok = gaji_pokok_aktual;  // Use actual for display and calculation
 
             // [FIXED] Use empLemburJumlahPure (only OT=1) for consistency
@@ -655,15 +670,8 @@ export class DataExtractorService {
             // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph + pendapatan_tidak_tetap_thp
             const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph + pendapatan_tidak_tetap_thp;
 
-            // [UPDATED] Calculate Ideal and Actual Salary for Penggajian Group
-            // gaji_pokok_ideal = upah_dasar × jumlah_hk (HK aktual yang dijalani karyawan)
-            // gaji_pokok_ideal already calculated above
-
-            // koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal
-            // [FIXED] koreksi_hk should ALWAYS be minus or zero (never positive)
-            // If aktual > ideal, koreksi_hk = 0 (no correction needed)
-            // If aktual < ideal, koreksi_hk = negative value (deduction)
-            const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal;
+            // formula handled inside OOP logic
+            const koreksi_hk = gpResult?.koreksi_hk?.value || 0;
 
             // [FIXED] Astek 0.84% calculation
             // IMPORTANT: Always calculated from payrate × 30 (monthly salary), NOT from gaji_pokok_ideal
@@ -1900,11 +1908,12 @@ export class DataExtractorService {
                 year,
                 server_profile: serverProfile,
             })),
-            ['lembur', 'premi', 'tunjangan', 'potongan', 'pph21_ter']
+            ['gaji_pokok', 'lembur', 'premi', 'tunjangan', 'potongan', 'pph21_ter']
         );
 
         // Transform results into organized structure
         const components = {
+            gaji_pokok: this.transformComponentResults(componentResults, 'gaji_pokok'),
             lembur: this.transformComponentResults(componentResults, 'lembur'),
             premi: this.transformComponentResults(componentResults, 'premi'),
             tunjangan: this.transformComponentResults(componentResults, 'tunjangan'),
@@ -1958,6 +1967,7 @@ export class DataExtractorService {
     ): Promise<{
         employee: any;
         components: {
+            gaji_pokok: any;
             lembur: any;
             premi: any;
             tunjangan: any;
@@ -1974,6 +1984,13 @@ export class DataExtractorService {
         const startTime = Date.now();
 
         // Calculate all components for this employee
+        const gajiPokokResult = await gajiPokokService.calculate({
+            emp_code: empCode,
+            month,
+            year,
+            server_profile: serverProfile,
+        });
+
         const lemburResult = await lemburService.calculate({
             emp_code: empCode,
             month,
@@ -2022,6 +2039,7 @@ export class DataExtractorService {
         return {
             employee: { emp_code: empCode },
             components: {
+                gaji_pokok: gajiPokokResult.output,
                 lembur: lemburResult.output,
                 premi: premiResult.output,
                 tunjangan: tunjanganResult.output,

@@ -299,6 +299,17 @@ export default function ComponentMetadataTestPage() {
           </button>
 
           {/* Display all components with metadata */}
+          {employeeComponents.gaji_pokok && (
+            <div className="component-section">
+              <h3>💵 Gaji Pokok (Basic Salary)</h3>
+              <ComponentMetadataViewer
+                component={employeeComponents.gaji_pokok}
+                componentName="gaji_pokok"
+                expanded={true}
+              />
+            </div>
+          )}
+
           {employeeComponents.lembur && (
             <div className="component-section">
               <h3>⏰ Lembur (Overtime)</h3>

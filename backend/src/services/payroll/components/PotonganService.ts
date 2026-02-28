@@ -9,10 +9,14 @@ import { BasePayrollComponentService } from '../BasePayrollComponentService';
 import { PayrollCalculationInput, PayrollCalculationResult, BatchPayrollCalculationResult } from '../../../types/payroll/BasePayrollTypes';
 import { PayrollComponent } from '../../../types/payroll/PayrollComponent';
 import { pph21TerService } from './Pph21TerService';
+import { calculateAllCaruman } from '../../carumanDefinitions';
+import { gajiPokokService } from './GajiPokokService';
 
 export interface PotonganInput extends PayrollCalculationInput {
     penghasilan_bruto?: number;
     beras_rate?: number;
+    gaji_standar?: number; // upah_dasar * 30
+    masa_kerja_jumlah?: number;
 }
 
 export interface PotonganOutput {
@@ -39,10 +43,26 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
 
     protected async calculateSingle(input: PotonganInput): Promise<PayrollCalculationResult<PotonganOutput>> {
         try {
-            const { emp_code, month, year, penghasilan_bruto, beras_rate } = input;
+            const { emp_code, month, year, penghasilan_bruto, beras_rate, gaji_standar: inputGajiStandar, masa_kerja_jumlah: inputMasaKerja } = input;
 
-            // Calculate BPJS and ASTEK
-            const bpjsResult = await this.calculateBPJS(emp_code, input.server_profile);
+            // Get base data for BPJS if not provided
+            let gajiStandar = inputGajiStandar;
+            let masaKerjaJumlah = inputMasaKerja;
+
+            if (gajiStandar === undefined || masaKerjaJumlah === undefined) {
+                const gpInput = { emp_code, month, year, server_profile: input.server_profile };
+                const gpResult = await gajiPokokService.calculate(gpInput);
+                const tunjanganMasaKerjaDesc = await this.getTunjanganAmount(emp_code, month, year, 'MASA KERJA', input.server_profile);
+
+                if (gajiStandar === undefined) gajiStandar = gpResult.output.value.upah_dasar.value * 30;
+                if (masaKerjaJumlah === undefined) masaKerjaJumlah = tunjanganMasaKerjaDesc;
+            }
+
+            // Calculate BPJS and ASTEK using centralized definitions
+            // The definition uses upahDasar, not gajiStandar, but upahDasar = gajiStandar / 30
+            const upahDasar = (gajiStandar || 0) / 30;
+            const carumanResult = calculateAllCaruman(upahDasar, masaKerjaJumlah || 0);
+
             const spsiResult = await this.calculateSPSI(emp_code, input.server_profile);
             const pph21Input = { ...input, penghasilan_bruto: penghasilan_bruto || 0 };
             const pph21Result = await pph21TerService.calculate(pph21Input);
@@ -51,50 +71,52 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
             const dynamicPotongan = await this.fetchDynamicPotongan(emp_code, month, year, input.server_profile);
 
             // Calculate totals
-            const bpjsTotal = bpjsResult.kesehatan.jumlah + bpjsResult.pensiun.jumlah;
-            const total = bpjsTotal + bpjsResult.astek.jumlah + spsiResult + pph21Result.output.value.tax_amount +
+            const totalCaruman = carumanResult.astek_majikan_total + carumanResult.astek_pekerja_jht +
+                carumanResult.bpjs_kes_majikan + carumanResult.bpjs_kes_pekerja +
+                carumanResult.bpjs_pensiun_majikan + carumanResult.bpjs_pensiun_pekerja;
+            const total = totalCaruman + spsiResult + pph21Result.output.value.tax_amount +
                 Object.values(dynamicPotongan).reduce((sum, p) => sum + p.value, 0);
 
             const output: PotonganOutput = {
                 astek: {
                     value: {
-                        pekerja: bpjsResult.astek.pekerja,
-                        majikan: bpjsResult.astek.majikan,
-                        jumlah: bpjsResult.astek.jumlah,
+                        pekerja: carumanResult.astek_pekerja_jht,
+                        majikan: carumanResult.astek_majikan_total,
+                        jumlah: carumanResult.astek_pekerja_jht + carumanResult.astek_majikan_total,
                     },
                     meta: this.buildMetadata('CALCULATION', 'ASTEK (Jamsostek)', {
-                        calculation_basis: '2% × gaji_pokok (pekerja + majikan)',
-                        dependencies: ['gaji_pokok'],
+                        calculation_basis: 'JHT Pekerja 2%, JHT+JKK/JKM Majikan 4.54% dari (Upah Dasar*30 + Masa Kerja)',
+                        dependencies: ['gajiStandar', 'masaKerjaJumlah'],
                         taxable: false,
                     }),
                 },
                 bpjs: {
                     kesehatan: {
                         value: {
-                            pekerja: bpjsResult.kesehatan.pekerja,
-                            majikan: bpjsResult.kesehatan.majikan,
-                            jumlah: bpjsResult.kesehatan.jumlah,
+                            pekerja: carumanResult.bpjs_kes_pekerja,
+                            majikan: carumanResult.bpjs_kes_majikan,
+                            jumlah: carumanResult.bpjs_kes_pekerja + carumanResult.bpjs_kes_majikan,
                         },
                         meta: this.buildMetadata('CALCULATION', 'BPJS Kesehatan', {
-                            calculation_basis: '5% × gaji_pokok (max: 600000, min: 3876600)',
-                            dependencies: ['gaji_pokok'],
+                            calculation_basis: 'Pekerja 1%, Majikan 4% dari (Upah Dasar*30 + Masa Kerja)',
+                            dependencies: ['gajiStandar', 'masaKerjaJumlah'],
                             taxable: false,
                         }),
                     },
                     pensiun: {
                         value: {
-                            pekerja: bpjsResult.pensiun.pekerja,
-                            majikan: bpjsResult.pensiun.majikan,
-                            jumlah: bpjsResult.pensiun.jumlah,
+                            pekerja: carumanResult.bpjs_pensiun_pekerja,
+                            majikan: carumanResult.bpjs_pensiun_majikan,
+                            jumlah: carumanResult.bpjs_pensiun_pekerja + carumanResult.bpjs_pensiun_majikan,
                         },
                         meta: this.buildMetadata('CALCULATION', 'BPJS Pensiun', {
-                            calculation_basis: '2% × gaji_pokok (max: 300000, min: 3876600)',
-                            dependencies: ['gaji_pokok'],
+                            calculation_basis: 'Pekerja 1%, Majikan 2% dari (Upah Dasar*30 + Masa Kerja)',
+                            dependencies: ['gajiStandar', 'masaKerjaJumlah'],
                             taxable: false,
                         }),
                     },
                     total: {
-                        value: bpjsTotal,
+                        value: (carumanResult.bpjs_kes_pekerja + carumanResult.bpjs_kes_majikan) + (carumanResult.bpjs_pensiun_pekerja + carumanResult.bpjs_pensiun_majikan),
                         meta: this.buildMetadata('CALCULATION', 'Total BPJS', {
                             calculation_basis: 'kesehatan + pensiun',
                             dependencies: ['bpjs.kesehatan', 'bpjs.pensiun'],
@@ -165,7 +187,7 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
     }
 
     protected getBasisDescription(input: PotonganInput): string {
-        return 'BPJS (gaji_pokok), ASTEK (gaji_pokok), SPSI (fixed), PPH21 (TER method), dynamic (PR_ADTRANS)';
+        return 'BPJS (gajiStandar + masaKerja), ASTEK (gajiStandar + masaKerja), SPSI, PPH21 (TER), dynamic PR_ADTRANS';
     }
 
     protected getCacheKey(input: PotonganInput): string {
@@ -177,15 +199,31 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
     }
 
     // Helper methods
-    private async calculateBPJS(empCode: string, serverProfile?: string) {
-        // Based on payrollService.calculateBpjsComponents
-        // Usually requiresmasa_kerja_jumlah, for now we will stub it or fetch it if needed.
-        // Returning 0 for now to satisfy types, since it's stubbed out.
-        return {
-            astek: { pekerja: 0, majikan: 0, jumlah: 0 },
-            kesehatan: { pekerja: 0, majikan: 0, jumlah: 0 },
-            pensiun: { pekerja: 0, majikan: 0, jumlah: 0 }
-        };
+    private async getTunjanganAmount(
+        empCode: string,
+        month: number,
+        year: number,
+        pattern: string,
+        serverProfile?: string
+    ): Promise<number> {
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+
+        let startMonthStr = month.toString();
+        if (month < 10) startMonthStr = '0' + startMonthStr;
+        const startDate = year.toString() + "-" + startMonthStr + "-01";
+
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const endDate = year.toString() + "-" + startMonthStr + "-" + daysInMonth.toString();
+
+        const queryStr = `
+            SELECT SUM(Amount) as Amount FROM PR_ADTRANS
+            WHERE RTRIM(EmpCode) = ? AND TrxDate >= ? AND TrxDate <= ?
+              AND DocDesc LIKE ?
+        `;
+
+        const rows = await db.query<{ Amount: number }>(queryStr, [empCode, startDate, endDate, "%" + pattern + "%"]);
+
+        return Math.abs(rows[0]?.Amount || 0);
     }
 
     private async calculateSPSI(empCode: string, serverProfile?: string): Promise<number> {
@@ -199,20 +237,25 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
         serverProfile?: string
     ): Promise<Record<string, PayrollComponent<number>>> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
-        const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
+        let startMonthStr = month.toString();
+        if (month < 10) startMonthStr = '0' + startMonthStr;
+        const startDate = year.toString() + "-" + startMonthStr + "-01";
+
         const daysInMonth = new Date(year, month, 0).getDate();
-        const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth}`;
+        const endDate = year.toString() + "-" + startMonthStr + "-" + daysInMonth.toString();
 
         // Exclude standard potongans
         const excludePatterns = ['POT', 'SPSI', 'BERAS', 'JABATAN', 'MASA', 'LEMBUR', 'PPH', 'PREMI', 'ASTEK', 'BPJS'];
 
-        const rows = await db.query<{ DocDesc: string; Amount: number }>(`
+        const queryStr = `
             SELECT DocDesc, SUM(Amount) as Amount
             FROM PR_ADTRANS
-            WHERE EmpCode = ? AND TrxDate >= ? AND TrxDate <= ?
+            WHERE RTRIM(EmpCode) = ? AND TrxDate >= ? AND TrxDate <= ?
               AND DocDesc LIKE 'POT%'
             GROUP BY DocDesc
-        `, [empCode, startDate, endDate]);
+        `;
+
+        const rows = await db.query<{ DocDesc: string; Amount: number }>(queryStr, [empCode, startDate, endDate]);
 
         const result: Record<string, PayrollComponent<number>> = {};
         for (const row of rows) {
@@ -222,8 +265,8 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
             const fieldName = this.cleanFieldName(docDesc.replace('POT_', ''));
             result[fieldName] = {
                 value: Math.abs(row.Amount || 0),
-                meta: this.buildMetadata('DATABASE_PLANTWARE', `Deduction: ${docDesc}`, {
-                    calculation_basis: `SUM(Amount) where DocDesc='${docDesc}'`,
+                meta: this.buildMetadata('DATABASE_PLANTWARE', "Deduction: " + docDesc, {
+                    calculation_basis: "SUM(Amount) where DocDesc='" + docDesc + "'",
                     dependencies: ['PR_ADTRANS'],
                     taxable: false,
                 }),

@@ -523,8 +523,8 @@ class TaxReportService {
                 pot_koreksi: row.pot_koreksi || 0,
                 total_potongan_kotor: row.pot_koreksi || 0,
 
-                bpjs_kes_majikan: row.pot_bpjs_kesehatan_majikan || bpjsKesehatanMajikan4Pct,
-                astek_jht_majikan: row.pot_astek_maj || row.pot_astek_majikan || astek084,
+                bpjs_kes_majikan: bpjsKesehatanMajikan4Pct,
+                astek_jht_majikan: astek084,
 
                 // Enriched fields
                 upah_dasar: upahDasar,
@@ -768,7 +768,6 @@ class TaxReportService {
 
             idx++;
 
-            // Total income from all months (for other logic if needed, but table uses Jan-Nov for sum)
             const totalIncome = Object.values(emp.monthly_income).reduce((sum, v) => sum + v, 0);
 
             let gajiJanNov = 0;
@@ -776,6 +775,8 @@ class TaxReportService {
             let astek084pct = 0;
             let astekIns2pct = 0;
             let pensiun1pct = 0;
+
+            let totalDasarCaruman084 = 0; // For accumulating base (Gaji Standar + Masa Kerja) before percentage
 
             const monthlyGajiKotor: Record<string, number> = {};
             const monthlyMasaKerja: Record<string, number> = {};
@@ -797,6 +798,9 @@ class TaxReportService {
                     monthlyGajiKotor[String(m)] = gajiKotor;
                     monthlyMasaKerja[String(m)] = details.masa_kerja;
 
+                    // Accumulate base for Astek 0.84%
+                    totalDasarCaruman084 += (details.upah_dasar * 30) + details.masa_kerja;
+
                     // [CENTRALIZED] Kalkulasi via carumanDefinitions
                     const monthCaruman = calculateAllCaruman(details.upah_dasar, details.masa_kerja);
                     const bpjsKesVal = monthCaruman.bpjs_kes_majikan;
@@ -804,7 +808,7 @@ class TaxReportService {
                     const astek2Val = monthCaruman.astek_pekerja_jht;
                     const pensiun1Val = monthCaruman.bpjs_pensiun_pekerja;
 
-                    astek084pct += astek084Val;
+                    // astek084pct is calculated after loop from accumulated base
                     astekIns2pct += astek2Val;
                     pensiun1pct += pensiun1Val;
 
@@ -823,6 +827,10 @@ class TaxReportService {
                     monthlyPensiun1[String(m)] = 0;
                 }
             }
+
+            // Diakumulasi dulu base-nya lalu persentasenya dikalikan menggunakan service OOP caruman
+            const accumCaruman = calculateAllCaruman(totalDasarCaruman084 / 30, 0);
+            astek084pct = accumCaruman.astek_majikan_jkk_jkm;
 
             // Fetch variables for specific lookup
             const rawEmpNik = String(emp.nik || '').trim().toUpperCase();
@@ -1069,6 +1077,9 @@ class TaxReportService {
                 total.masa_kerja += monthData.masa_kerja || 0;
             }
 
+            // Diakumulasi persentasenya dari total base menggunakan OOP/Centralized Service
+            total.astek_majikan = calculateAllCaruman((total.gaji_pokok + total.masa_kerja) / 30, 0).astek_majikan_jkk_jkm;
+
             employees.push({
                 no: idx,
                 emp_code: empCode,
@@ -1228,7 +1239,7 @@ class TaxReportService {
                 const decCaruman = calculateAllCaruman(upahDasar, mk);
 
                 emp.monthly_income[String(month)] = row.jumlah_upah_kotor || row.upah_kotor || row.penghasilan_bruto || row.total_income || 0;
-                emp.monthly_details[String(month)] = { hk, gaji_pokok: gp, masa_kerja: mk };
+                emp.monthly_details[String(month)] = { hk, gaji_pokok: gp, masa_kerja: mk, upah_dasar: upahDasar };
                 emp.monthly_pph21[String(month)] = pphResult.tax_amount;
 
                 // Premi Asuransi: BPJS Kes 4% + Astek 0.84%
@@ -1268,10 +1279,12 @@ class TaxReportService {
             let premiAsuransiSetahun = 0;
             let iuranSetahun = 0;
 
+            let totalDasarCaruman084Year = 0;
+            let bpjsKesMajikanYear = 0;
+
             for (let m = 1; m <= 11; m++) {
                 if (emp.monthly_income[String(m)]) {
                     gajiPokokSetahun += emp.monthly_income[String(m)];
-                    premiAsuransiSetahun += emp.monthly_premi_asuransi[String(m)] || 0;
                     iuranSetahun += emp.monthly_iuran_pensiun[String(m)] || 0;
                     pph21JanNov += emp.monthly_pph21[String(m)] || 0;
                 }
@@ -1302,6 +1315,13 @@ class TaxReportService {
                 breakdown.premi_asuransi[ms] = emp.monthly_premi_asuransi[ms] || 0;
                 breakdown.iuran_pensiun[ms] = emp.monthly_iuran_pensiun[ms] || 0;
                 breakdown.pph21[ms] = emp.monthly_pph21[ms] || 0;
+
+                if (det) {
+                    const upahDasarLocal = det.upah_dasar || 0;
+                    totalDasarCaruman084Year += (upahDasarLocal * 30) + det.masa_kerja;
+                    const decCaruman = calculateAllCaruman(upahDasarLocal, det.masa_kerja);
+                    bpjsKesMajikanYear += decCaruman.bpjs_kes_majikan;
+                }
             }
 
             // December logic
@@ -1316,8 +1336,11 @@ class TaxReportService {
             const brutoDes = incDes + premiDes;
 
             gajiPokokSetahun += incDes;
-            premiAsuransiSetahun += premiDes;
             iuranSetahun += iuranDes;
+
+            // Recalculate premi asuransi setahun (BPJS Kes 4% + Astek 0.84% from accumulated base using OOP service)
+            const accumCaruman = calculateAllCaruman(totalDasarCaruman084Year / 30, 0);
+            premiAsuransiSetahun = bpjsKesMajikanYear + accumCaruman.astek_majikan_jkk_jkm;
 
             // THR & Bonus
             const rawEmpNik = String(emp.nik || '').trim().toUpperCase();
