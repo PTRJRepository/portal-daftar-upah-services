@@ -287,6 +287,76 @@ export class PtkpTaxService {
     }
 
     /**
+     * Update PTKP status for a specific employee and year
+     * Will insert if not exists, or update if exists
+     */
+    public async updatePtkpStatus(year: number, empCode: string, ptkpStatus: string, updatedBy: string = 'system'): Promise<boolean> {
+        const extendDb = this.getExtendDb();
+        const originDb = this.getOriginDb();
+        const cleanEmpCode = empCode.trim().toUpperCase();
+        const kategoriTer = mapPTKPToTER(ptkpStatus);
+
+        try {
+            // Check if record exists
+            const existing = await extendDb.queryOne<{ id: number; ptkp_status: string }>(`
+                SELECT id, ptkp_status FROM dbo.history_ptkp_pajak
+                WHERE period_year = ? AND RTRIM(emp_code) = ?
+            `, [year, cleanEmpCode]);
+
+            if (existing) {
+                // Update only if changed
+                if (existing.ptkp_status !== ptkpStatus) {
+                    await extendDb.query(`
+                        UPDATE dbo.history_ptkp_pajak SET
+                            ptkp_status = ?, kategori_ter = ?,
+                            updated_at = GETDATE(), created_by = ?
+                        WHERE id = ?
+                    `, [ptkpStatus, kategoriTer, updatedBy, existing.id]);
+                }
+            } else {
+                // Get basic info from origin db to insert new record
+                const empInfo = await originDb.queryOne<{ emp_name: string, nik: string, division_code: string, gang_code: string, loc_code: string, beras_rate: number }>(`
+                    SELECT 
+                        RTRIM(e.EmpName) as emp_name,
+                        RTRIM(e.NewICNo) as nik,
+                        RTRIM(g.LocCode) as division_code,
+                        RTRIM(g.GangCode) as gang_code,
+                        RTRIM(g.LocCode) as loc_code,
+                        COALESCE(p.RiceRation, 0) as beras_rate
+                    FROM HR_EMPLOYEE e
+                    LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                    LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                    LEFT JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
+                    WHERE RTRIM(e.EmpCode) = ?
+                `, [cleanEmpCode]);
+
+                await extendDb.query(`
+                    INSERT INTO dbo.history_ptkp_pajak (
+                        period_year, emp_code, emp_name, nik, division_code, gang_code, loc_code,
+                        beras_rate, ptkp_status, kategori_ter, source, created_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL_PORTAL', ?)
+                `, [
+                    year, cleanEmpCode, empInfo?.emp_name || '', empInfo?.nik || '',
+                    empInfo?.division_code || '', empInfo?.gang_code || '', empInfo?.loc_code || '',
+                    empInfo?.beras_rate || 0, ptkpStatus, kategoriTer, updatedBy
+                ]);
+            }
+
+            // Sync specifically for this employee
+            await extendDb.query(`
+                UPDATE dbo.history_hr_employee SET
+                    ptkp_pajak = ?
+                WHERE period_year = ? AND RTRIM(emp_code) = ?
+            `, [ptkpStatus, year, cleanEmpCode]);
+
+            return true;
+        } catch (error: any) {
+            console.error(`[PtkpTaxService] Error updating PTKP for ${cleanEmpCode} year ${year}:`, error.message);
+            throw error;
+        }
+    }
+
+    /**
      * Get all PTKP records for a specific year
      */
     public async getPtkpByYear(year: number): Promise<PtkpRecord[]> {

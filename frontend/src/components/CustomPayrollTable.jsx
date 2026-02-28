@@ -222,6 +222,40 @@ export default function CustomPayrollTable({
         }));
     };
 
+    // Handle PTKP Master Tax Edit (string-based, not numeric)
+    const handlePtkpEdit = (row, newPtkpStatus) => {
+        const empCode = row.emp_code || row.nik;
+        const key = `${empCode}-status_ptkp`;
+        const originalValue = row.status_ptkp;
+
+        if (newPtkpStatus === originalValue) return;
+
+        // Determine new TER category based on PTKP
+        const newTer = (['TK/0', 'TK/1', 'K/0'].includes(newPtkpStatus)) ? 'TER A'
+            : (newPtkpStatus === 'K/3') ? 'TER C' : 'TER B';
+
+        setEditedCells(prev => ({
+            ...prev,
+            [key]: {
+                nik: empCode,
+                field: 'status_ptkp',
+                value: newPtkpStatus,
+                originalValue,
+                gang_code: row.gang_code,
+                type: 'MASTER_TAX',
+                name: 'PTKP'
+            }
+        }));
+
+        // Optimistically update PTKP and TER in the UI
+        setRows(prevRows => prevRows.map(r => {
+            if ((r.emp_code || r.nik) === empCode) {
+                return { ...r, status_ptkp: newPtkpStatus, kategori_ter: newTer };
+            }
+            return r;
+        }));
+    };
+
     // Save Manual Edits
     const handleSaveEdits = async () => {
         const editsArray = Object.values(editedCells);
@@ -247,10 +281,39 @@ export default function CustomPayrollTable({
 
         setIsSavingEdits(true);
         try {
-            const numEdits = editsArray.length;
             let successCount = 0;
 
-            for (const edit of editsArray) {
+            // Separate MASTER_TAX edits from normal numeric edits
+            const masterTaxEdits = editsArray.filter(e => e.type === 'MASTER_TAX');
+            const normalEdits = editsArray.filter(e => e.type !== 'MASTER_TAX');
+
+            // --- Save MASTER_TAX edits (PTKP) via dedicated endpoint ---
+            for (const edit of masterTaxEdits) {
+                try {
+                    const res = await fetch(`/tax-report/ptkp/${encodeURIComponent(edit.nik)}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            year: year,
+                            ptkp_status: edit.value
+                        })
+                    });
+                    const resJson = await res.json();
+                    if (res.ok && resJson?.success) {
+                        successCount++;
+                    } else {
+                        console.error('PTKP update failed:', resJson?.error);
+                    }
+                } catch (err) {
+                    console.error('Error saving PTKP edit:', err);
+                }
+            }
+
+            // --- Save normal numeric edits ---
+            for (const edit of normalEdits) {
                 const payload = {
                     period_month: month,
                     period_year: year,
@@ -552,7 +615,34 @@ export default function CustomPayrollTable({
 
             // PAJAK [Conditionally Expanded]
             ...(isTaxExpanded ? [
-                { field: 'status_ptkp', headers: ['PAJAK', null, null, 'PTKP'], w: 55, className: 'text-center' },
+                {
+                    field: 'status_ptkp',
+                    headers: ['PAJAK', null, null, 'PTKP'],
+                    w: 80,
+                    className: 'text-center',
+                    render: (row) => {
+                        if (isEditMode && row.type === 'employee') {
+                            const empCode = row.emp_code || row.nik;
+                            const editKey = `${empCode}-status_ptkp`;
+                            const isEdited = !!editedCells[editKey];
+                            const ptkpOptions = ['TK/0', 'TK/1', 'TK/2', 'TK/3', 'K/0', 'K/1', 'K/2', 'K/3'];
+                            return (
+                                <select
+                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                    value={row.status_ptkp || 'TK/0'}
+                                    onChange={(e) => handlePtkpEdit(row, e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ fontSize: '11px', padding: '1px 2px', width: '100%', cursor: 'pointer' }}
+                                >
+                                    {ptkpOptions.map(opt => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                </select>
+                            );
+                        }
+                        return row.status_ptkp || '-';
+                    }
+                },
                 { field: 'kategori_ter', headers: ['PAJAK', null, null, 'TER'], w: 55, className: 'text-center' },
                 { field: 'gaji_pokok_ideal', headers: ['PAJAK', null, null, 'GP IDEAL'], w: 85, className: 'text-right' },
                 { field: 'gaji_pokok_dibayarkan', headers: ['PAJAK', null, null, 'GP BAYAR'], w: 85, className: 'text-right' },

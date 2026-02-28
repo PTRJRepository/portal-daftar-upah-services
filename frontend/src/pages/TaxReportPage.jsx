@@ -58,267 +58,267 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     const [expandedRows, setExpandedRows] = useState(new Set());
 
     const toggleRow = (empCode) => {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(empCode)) {
-        newExpanded.delete(empCode);
-    } else {
-        newExpanded.add(empCode);
-    }
-    setExpandedRows(newExpanded);
-};
+        const newExpanded = new Set(expandedRows);
+        if (newExpanded.has(empCode)) {
+            newExpanded.delete(empCode);
+        } else {
+            newExpanded.add(empCode);
+        }
+        setExpandedRows(newExpanded);
+    };
 
-const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-        const result = await fetchMonthlyTaxReport(token, year, month, division, gang);
-        setData(result);
-    } catch (err) {
-        setError(err.message);
-    } finally {
-        setLoading(false);
-    }
-}, [token, year, month, division, gang, refreshKey]);
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await fetchMonthlyTaxReport(token, year, month, division, gang);
+            setData(result);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token, year, month, division, gang, refreshKey]);
 
-const handleDownloadExcel = async () => {
-    setDownloadingExcel(true);
-    try {
-        await downloadMonthlyTaxReportExcel(token, year, month, division, gang);
-    } catch (err) {
-        alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
-    } finally {
-        setDownloadingExcel(false);
-    }
-};
+    const handleDownloadExcel = async () => {
+        setDownloadingExcel(true);
+        try {
+            await downloadMonthlyTaxReportExcel(token, year, month, division, gang);
+        } catch (err) {
+            alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
+        } finally {
+            setDownloadingExcel(false);
+        }
+    };
 
-useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => { loadData(); }, [loadData]);
 
-if (loading) return (
-    <div className="tax-report-loading">
-        <span className="spinner"></span> Memuat data pajak bulanan...
-    </div>
-);
-
-if (error) return (
-    <div className="tax-report-empty">
-        <h3>⚠️ Error</h3>
-        <p>{error}</p>
-    </div>
-);
-
-return (
-    <div>
-        {/* Export & Actions */}
-        <div className="tax-report-actions-bar" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1rem' }}>
-            {data && data.employees.length > 0 && (
-                <button
-                    onClick={handleDownloadExcel}
-                    disabled={downloadingExcel}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        backgroundColor: '#10b981',
-                        color: 'white',
-                        border: 'none',
-                        padding: '8px 16px',
-                        borderRadius: '6px',
-                        fontWeight: '600',
-                        cursor: downloadingExcel ? 'not-allowed' : 'pointer',
-                        opacity: downloadingExcel ? 0.7 : 1,
-                        transition: 'background-color 0.2s'
-                    }}
-                >
-                    <Download size={16} />
-                    {downloadingExcel ? 'Mengunduh...' : 'Unduh Excel (Formula)'}
-                </button>
-            )}
+    if (loading) return (
+        <div className="tax-report-loading">
+            <span className="spinner"></span> Memuat data pajak bulanan...
         </div>
+    );
 
-        {!data || data.employees.length === 0 ? (
-            <div className="tax-report-empty">
-                <h3><FileWarning size={24} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '8px' }} /> Tidak Ada Data</h3>
-                <p>Data pajak untuk {MONTH_NAMES[month - 1]} {year} belum tersedia. Pastikan data sudah di-seed melalui Aggregation Seeder.</p>
+    if (error) return (
+        <div className="tax-report-empty">
+            <h3>⚠️ Error</h3>
+            <p>{error}</p>
+        </div>
+    );
+
+    return (
+        <div>
+            {/* Export & Actions */}
+            <div className="tax-report-actions-bar" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1rem' }}>
+                {data && data.employees.length > 0 && (
+                    <button
+                        onClick={handleDownloadExcel}
+                        disabled={downloadingExcel}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            backgroundColor: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            padding: '8px 16px',
+                            borderRadius: '6px',
+                            fontWeight: '600',
+                            cursor: downloadingExcel ? 'not-allowed' : 'pointer',
+                            opacity: downloadingExcel ? 0.7 : 1,
+                            transition: 'background-color 0.2s'
+                        }}
+                    >
+                        <Download size={16} />
+                        {downloadingExcel ? 'Mengunduh...' : 'Unduh Excel (Formula)'}
+                    </button>
+                )}
             </div>
-        ) : (
-            <div className="tax-report-table-wrapper">
-                <table className="tax-report-table">
-                    <thead>
-                        <tr>
-                            <th className="col-no">No</th>
-                            <th className="col-name">Nama</th>
-                            <th>NIK</th>
-                            <th>L/P</th>
-                            <th>PTKP</th>
-                            <th>TER</th>
-                            <th>Gang</th>
-                            <th>HK</th>
-                            <th>Upah Dasar</th>
-                            <th title="Upah Dasar × HK">GP Ideal</th>
-                            <th title="Upah Dasar × 30">GP Standar</th>
-                            <th>GP Aktual</th>
-                            <th title="GP Aktual - GP Ideal">Koreksi HK</th>
-                            <th>Upah Kotor</th>
-                            <th>Peng. Bruto</th>
-                            <th>Tarif (%)</th>
-                            <th>PPH21</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.employees.map((emp, idx) => {
-                            const isExpanded = expandedRows.has(emp.emp_code);
-                            return (
-                                <React.Fragment key={emp.emp_code}>
-                                    <tr
-                                        onClick={() => toggleRow(emp.emp_code)}
-                                        style={{ cursor: 'pointer' }}
-                                        className={isExpanded ? 'active-row' : ''}
-                                    >
-                                        <td className="text-center col-no">
-                                            <span style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '4px' }}>
-                                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                            </span>
-                                            {idx + 1}
-                                        </td>
-                                        <td className="col-name">{emp.emp_name}</td>
-                                        <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
-                                        <td className="text-center">{emp.gender === 'L' || emp.gender === 'M' ? 'L' : 'P'}</td>
-                                        <td className="text-center">{emp.status_ptkp}</td>
-                                        <td className="text-center">{emp.kategori_ter}</td>
-                                        <td className="text-center">{emp.gang_code}</td>
-                                        <td className="text-right">{formatNumber(emp.hk)}</td>
-                                        <td className="text-right">{formatNumber(emp.upah_dasar)}</td>
-                                        <td className="text-right">{formatNumber(emp.gaji_pokok_ideal)}</td>
-                                        <td className="text-right">{formatNumber((emp.upah_dasar || 0) * 30)}</td>
-                                        <td className="text-right">{formatNumber(emp.gaji_pokok_aktual)}</td>
-                                        <td className="text-right" style={{ color: (emp.koreksi_hk || 0) < 0 ? '#dc2626' : undefined }}>{formatNumber(emp.koreksi_hk)}</td>
-                                        <td className="text-right">{formatNumber(emp.upah_kotor)}</td>
-                                        <td className="text-right">{formatNumber(emp.penghasilan_bruto)}</td>
-                                        <td className="text-center">{formatPercent(emp.tarif_pajak_ter)}</td>
-                                        <td className="text-right">{formatNumber(emp.pph21_ter)}</td>
-                                    </tr>
-                                    {isExpanded && (
-                                        <tr className="expanded-row-detail" style={{ backgroundColor: '#f8fafc' }}>
-                                            <td colSpan={16} style={{ padding: '16px' }}>
-                                                <div style={{ display: 'flex', gap: '32px', alignItems: 'flex-start' }}>
 
-                                                    {/* RINCIAN UPAH KOTOR */}
-                                                    <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', background: 'white' }}>
-                                                        <h4 style={{ margin: '0 0 12px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', fontSize: '13px', color: '#1e293b' }}>
-                                                            Rincian Upah Kotor
-                                                        </h4>
-                                                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                                            <tbody>
-                                                                <tr><td style={{ padding: '4px 0' }}>Hari Kerja (HK)</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.hk)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Upah Dasar</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.upah_dasar)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Ideal <span style={{ color: '#64748b', fontSize: '10px' }}>(HK × Upah Dasar)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.hk || 0) * (emp.upah_dasar || 0))}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Standar <span style={{ color: '#64748b', fontSize: '10px' }}>(UD × 30)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.upah_dasar || 0) * 30)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Aktual</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.gaji_pokok_aktual)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Koreksi HK</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.koreksi_hk)}</td></tr>
-                                                                <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
+            {!data || data.employees.length === 0 ? (
+                <div className="tax-report-empty">
+                    <h3><FileWarning size={24} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '8px' }} /> Tidak Ada Data</h3>
+                    <p>Data pajak untuk {MONTH_NAMES[month - 1]} {year} belum tersedia. Pastikan data sudah di-seed melalui Aggregation Seeder.</p>
+                </div>
+            ) : (
+                <div className="tax-report-table-wrapper">
+                    <table className="tax-report-table">
+                        <thead>
+                            <tr>
+                                <th className="col-no">No</th>
+                                <th className="col-name">Nama</th>
+                                <th>NIK</th>
+                                <th>L/P</th>
+                                <th>PTKP</th>
+                                <th>TER</th>
+                                <th>Gang</th>
+                                <th>HK</th>
+                                <th>Upah Dasar</th>
+                                <th title="Upah Dasar × HK">GP Ideal</th>
+                                <th title="Upah Dasar × 30">Gaji Standar</th>
+                                <th>GP Aktual</th>
+                                <th title="GP Aktual - GP Ideal">Koreksi HK</th>
+                                <th>Upah Kotor</th>
+                                <th>Peng. Bruto</th>
+                                <th>Tarif (%)</th>
+                                <th>PPH21</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {data.employees.map((emp, idx) => {
+                                const isExpanded = expandedRows.has(emp.emp_code);
+                                return (
+                                    <React.Fragment key={emp.emp_code}>
+                                        <tr
+                                            onClick={() => toggleRow(emp.emp_code)}
+                                            style={{ cursor: 'pointer' }}
+                                            className={isExpanded ? 'active-row' : ''}
+                                        >
+                                            <td className="text-center col-no">
+                                                <span style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '4px' }}>
+                                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                </span>
+                                                {idx + 1}
+                                            </td>
+                                            <td className="col-name">{emp.emp_name}</td>
+                                            <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
+                                            <td className="text-center">{emp.gender === 'L' || emp.gender === 'M' ? 'L' : 'P'}</td>
+                                            <td className="text-center">{emp.status_ptkp}</td>
+                                            <td className="text-center">{emp.kategori_ter}</td>
+                                            <td className="text-center">{emp.gang_code}</td>
+                                            <td className="text-right">{formatNumber(emp.hk)}</td>
+                                            <td className="text-right">{formatNumber(emp.upah_dasar)}</td>
+                                            <td className="text-right">{formatNumber(emp.gaji_pokok_ideal)}</td>
+                                            <td className="text-right">{formatNumber((emp.upah_dasar || 0) * 30)}</td>
+                                            <td className="text-right">{formatNumber(emp.gaji_pokok_aktual)}</td>
+                                            <td className="text-right" style={{ color: (emp.koreksi_hk || 0) < 0 ? '#dc2626' : undefined }}>{formatNumber(emp.koreksi_hk)}</td>
+                                            <td className="text-right">{formatNumber(emp.upah_kotor)}</td>
+                                            <td className="text-right">{formatNumber(emp.penghasilan_bruto)}</td>
+                                            <td className="text-center">{formatPercent(emp.tarif_pajak_ter)}</td>
+                                            <td className="text-right">{formatNumber(emp.pph21_ter)}</td>
+                                        </tr>
+                                        {isExpanded && (
+                                            <tr className="expanded-row-detail" style={{ backgroundColor: '#f8fafc' }}>
+                                                <td colSpan={16} style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', gap: '32px', alignItems: 'flex-start' }}>
 
-                                                                <tr><td style={{ paddingTop: '8px' }}>Tunjangan Beras</td><td className="text-right" style={{ paddingTop: '8px' }}>{formatNumber(emp.tunjangan_beras)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Tunjangan Jabatan</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_jabatan)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Tunjangan Masa Kerja</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_masa_kerja)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Tunjangan Lembur</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_lembur)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Tunjangan Lainnya</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.total_tunjangan || 0) - (emp.tunjangan_beras || 0) - (emp.tunjangan_jabatan || 0) - (emp.tunjangan_masa_kerja || 0) - (emp.tunjangan_lembur || 0))}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Tunjangan</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_tunjangan)}</td></tr>
-                                                                <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
-
-                                                                <tr><td style={{ paddingTop: '8px' }}>Premi PPH</td><td className="text-right" style={{ paddingTop: '8px' }}>{formatNumber(emp.premi_pph)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Premi Brondol</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.premi_brondol)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0' }}>Premi Lainnya</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.total_premi || 0) - (emp.premi_pph || 0) - (emp.premi_brondol || 0))}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Premi</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_premi)}</td></tr>
-                                                                <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
-
-                                                                <tr><td style={{ paddingTop: '8px', color: '#dc2626' }}>Potongan Koreksi</td><td className="text-right" style={{ paddingTop: '8px', color: '#dc2626' }}>-{formatNumber(emp.pot_koreksi)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>Total Potongan (Kotor)</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>-{formatNumber(emp.total_potongan_kotor)}</td></tr>
-
-                                                                <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px solid #94a3b8' }}></td></tr>
-                                                                <tr>
-                                                                    <td style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px' }}>TOTAL UPAH KOTOR</td>
-                                                                    <td className="text-right" style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px', color: '#0f172a' }}>{formatNumber(emp.upah_kotor)}</td>
-                                                                </tr>
-
-                                                                {/* Other Incomes (THR, Bonus, Custom DB, etc) */}
-                                                                {emp.other_incomes && emp.other_incomes.length > 0 && (
-                                                                    <>
-                                                                        <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
-                                                                        {emp.other_incomes.map((inc, i) => (
-                                                                            <tr key={i}>
-                                                                                <td style={{ padding: '4px 0', color: '#059669' }}>{inc.name || inc.type}</td>
-                                                                                <td className="text-right" style={{ padding: '4px 0', color: '#059669' }}>{formatNumber(inc.amount)}</td>
-                                                                            </tr>
-                                                                        ))}
-                                                                    </>
-                                                                )}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-
-                                                    {/* RINCIAN PENGHASILAN BRUTO */}
-                                                    <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', background: 'white' }}>
-                                                        <h4 style={{ margin: '0 0 12px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', fontSize: '13px', color: '#1e293b' }}>
-                                                            Rincian Penghasilan Bruto (Kena Pajak)
-                                                        </h4>
-                                                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                                            <tbody>
-                                                                <tr><td style={{ padding: '4px 0' }}>Upah Kotor</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.upah_kotor)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0', color: '#16a34a' }}>(+) BPJS Kesehatan (Ditanggung Majikan 4%)</td><td className="text-right" style={{ padding: '4px 0', color: '#16a34a' }}>{formatNumber(emp.bpjs_kes_majikan)}</td></tr>
-                                                                <tr><td style={{ padding: '4px 0', color: '#16a34a' }}>(+) ASTEK JKK/JKM (Ditanggung Majikan)</td><td className="text-right" style={{ padding: '4px 0', color: '#16a34a' }}>{formatNumber(emp.astek_jht_majikan)}</td></tr>
-                                                                <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px solid #94a3b8' }}></td></tr>
-                                                                <tr>
-                                                                    <td style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px' }}>TOTAL PENGHASILAN BRUTO</td>
-                                                                    <td className="text-right" style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px', color: '#0f172a' }}>{formatNumber(emp.penghasilan_bruto)}</td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-
-                                                        <div style={{ marginTop: '24px', padding: '12px', backgroundColor: '#f1f5f9', borderRadius: '4px', borderLeft: '4px solid #3b82f6' }}>
-                                                            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#1e293b' }}>Kalkulasi PPH21 (Metode TER)</h4>
+                                                        {/* RINCIAN UPAH KOTOR */}
+                                                        <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', background: 'white' }}>
+                                                            <h4 style={{ margin: '0 0 12px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', fontSize: '13px', color: '#1e293b' }}>
+                                                                Rincian Upah Kotor
+                                                            </h4>
                                                             <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                                                                 <tbody>
-                                                                    <tr><td style={{ padding: '2px 0' }}>Status PTKP Master</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{emp.status_ptkp}</td></tr>
-                                                                    <tr><td style={{ padding: '2px 0' }}>Kategori TER</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{emp.kategori_ter}</td></tr>
-                                                                    <tr><td style={{ padding: '2px 0' }}>Tarif Pajak Efektif</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{formatPercent(emp.tarif_pajak_ter)}</td></tr>
-                                                                    <tr><td colSpan={2} style={{ height: '4px', borderBottom: '1px solid #94a3b8' }}></td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Hari Kerja (HK)</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.hk)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Upah Dasar</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.upah_dasar)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Ideal <span style={{ color: '#64748b', fontSize: '10px' }}>(HK × Upah Dasar)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.hk || 0) * (emp.upah_dasar || 0))}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Gaji Standar <span style={{ color: '#64748b', fontSize: '10px' }}>(UD × 30)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.upah_dasar || 0) * 30)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Aktual</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.gaji_pokok_aktual)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Koreksi HK</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.koreksi_hk)}</td></tr>
+                                                                    <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
+
+                                                                    <tr><td style={{ paddingTop: '8px' }}>Tunjangan Beras</td><td className="text-right" style={{ paddingTop: '8px' }}>{formatNumber(emp.tunjangan_beras)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Jabatan</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_jabatan)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Masa Kerja</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_masa_kerja)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Lembur</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_lembur)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Lainnya</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.total_tunjangan || 0) - (emp.tunjangan_beras || 0) - (emp.tunjangan_jabatan || 0) - (emp.tunjangan_masa_kerja || 0) - (emp.tunjangan_lembur || 0))}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Tunjangan</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_tunjangan)}</td></tr>
+                                                                    <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
+
+                                                                    <tr><td style={{ paddingTop: '8px' }}>Premi PPH</td><td className="text-right" style={{ paddingTop: '8px' }}>{formatNumber(emp.premi_pph)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Premi Brondol</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.premi_brondol)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Premi Lainnya</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.total_premi || 0) - (emp.premi_pph || 0) - (emp.premi_brondol || 0))}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Premi</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_premi)}</td></tr>
+                                                                    <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
+
+                                                                    <tr><td style={{ paddingTop: '8px', color: '#dc2626' }}>Potongan Koreksi</td><td className="text-right" style={{ paddingTop: '8px', color: '#dc2626' }}>-{formatNumber(emp.pot_koreksi)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>Total Potongan (Kotor)</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>-{formatNumber(emp.total_potongan_kotor)}</td></tr>
+
+                                                                    <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px solid #94a3b8' }}></td></tr>
                                                                     <tr>
-                                                                        <td style={{ paddingTop: '4px', fontWeight: 'bold' }}>POTONGAN PPH21</td>
-                                                                        <td className="text-right" style={{ paddingTop: '4px', fontWeight: 'bold', color: '#dc2626' }}>{formatNumber(emp.pph21_ter)}</td>
+                                                                        <td style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px' }}>TOTAL UPAH KOTOR</td>
+                                                                        <td className="text-right" style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px', color: '#0f172a' }}>{formatNumber(emp.upah_kotor)}</td>
                                                                     </tr>
+
+                                                                    {/* Other Incomes (THR, Bonus, Custom DB, etc) */}
+                                                                    {emp.other_incomes && emp.other_incomes.length > 0 && (
+                                                                        <>
+                                                                            <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
+                                                                            {emp.other_incomes.map((inc, i) => (
+                                                                                <tr key={i}>
+                                                                                    <td style={{ padding: '4px 0', color: '#059669' }}>{inc.name || inc.type}</td>
+                                                                                    <td className="text-right" style={{ padding: '4px 0', color: '#059669' }}>{formatNumber(inc.amount)}</td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </>
+                                                                    )}
                                                                 </tbody>
                                                             </table>
                                                         </div>
-                                                    </div>
 
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            );
-                        })}
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <td colSpan={7} className="text-right"><strong>TOTAL</strong></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + e.upah_kotor, 0))}</td>
-                            <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + e.penghasilan_bruto, 0))}</td>
-                            <td></td>
-                            <td className="text-right"><strong>{formatNumber(data.total_pph21)}</strong></td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        )}
-    </div>
-);
+                                                        {/* RINCIAN PENGHASILAN BRUTO */}
+                                                        <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', background: 'white' }}>
+                                                            <h4 style={{ margin: '0 0 12px 0', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', fontSize: '13px', color: '#1e293b' }}>
+                                                                Rincian Penghasilan Bruto (Kena Pajak)
+                                                            </h4>
+                                                            <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                                                                <tbody>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Upah Kotor</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.upah_kotor)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0', color: '#16a34a' }}>(+) BPJS Kesehatan (Ditanggung Majikan 4%) <span style={{ color: '#64748b', fontSize: '10px', display: 'block' }}>4% × (Gaji Standar + Tunj. Masa Kerja)</span></td><td className="text-right" style={{ padding: '4px 0', color: '#16a34a' }}>{formatNumber(emp.bpjs_kes_majikan)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0', color: '#16a34a' }}>(+) ASTEK JKK/JKM (Ditanggung Majikan 0.84%) <span style={{ color: '#64748b', fontSize: '10px', display: 'block' }}>0.84% × (Gaji Standar + Tunj. Masa Kerja)</span></td><td className="text-right" style={{ padding: '4px 0', color: '#16a34a' }}>{formatNumber(emp.astek_jht_majikan)}</td></tr>
+                                                                    <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px solid #94a3b8' }}></td></tr>
+                                                                    <tr>
+                                                                        <td style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px' }}>TOTAL PENGHASILAN BRUTO</td>
+                                                                        <td className="text-right" style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px', color: '#0f172a' }}>{formatNumber(emp.penghasilan_bruto)}</td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+
+                                                            <div style={{ marginTop: '24px', padding: '12px', backgroundColor: '#f1f5f9', borderRadius: '4px', borderLeft: '4px solid #3b82f6' }}>
+                                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#1e293b' }}>Kalkulasi PPH21 (Metode TER)</h4>
+                                                                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                                                                    <tbody>
+                                                                        <tr><td style={{ padding: '2px 0' }}>Status PTKP Master</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{emp.status_ptkp}</td></tr>
+                                                                        <tr><td style={{ padding: '2px 0' }}>Kategori TER</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{emp.kategori_ter}</td></tr>
+                                                                        <tr><td style={{ padding: '2px 0' }}>Tarif Pajak Efektif</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{formatPercent(emp.tarif_pajak_ter)}</td></tr>
+                                                                        <tr><td colSpan={2} style={{ height: '4px', borderBottom: '1px solid #94a3b8' }}></td></tr>
+                                                                        <tr>
+                                                                            <td style={{ paddingTop: '4px', fontWeight: 'bold' }}>POTONGAN PPH21</td>
+                                                                            <td className="text-right" style={{ paddingTop: '4px', fontWeight: 'bold', color: '#dc2626' }}>{formatNumber(emp.pph21_ter)}</td>
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colSpan={7} className="text-right"><strong>TOTAL</strong></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + e.upah_kotor, 0))}</td>
+                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + e.penghasilan_bruto, 0))}</td>
+                                <td></td>
+                                <td className="text-right"><strong>{formatNumber(data.total_pph21)}</strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
 }
 
 // ================================================================
@@ -711,7 +711,7 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, r
                                 <th className="col-name" rowSpan={2}>Nama</th>
                                 <th rowSpan={2}>NIK</th>
                                 <th rowSpan={2} title="Upah Dasar (terakhir)">Upah<br />Dasar</th>
-                                <th rowSpan={2} title="Upah Dasar × 30">Gaji Pokok<br />(UD×30)</th>
+                                <th rowSpan={2} title="Upah Dasar × 30">Gaji Standar<br />(UD×30)</th>
                                 <th colSpan={12} style={{ textAlign: 'center' }}>
                                     URAIAN BULANAN ({
                                         astekMode === 'total' ? 'TOTAL BPJS & ASTEK' :

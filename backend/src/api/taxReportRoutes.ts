@@ -12,6 +12,7 @@ import { AuthService } from "../services/authService";
 import { User } from "../types/user";
 import { taxReportService } from "../services/taxReportService";
 import { generateMonthlyTaxExcel, generateDecemberTaxExcel } from "../services/taxReportExcelService";
+import { ptkpTaxService } from "../services/ptkpTaxService";
 
 const authService = AuthService.getInstance();
 
@@ -234,4 +235,40 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             set.status = 500;
             return { error: error.message || "Failed to generate Excel report" };
         }
+    })
+
+    // ========================================================
+    // PUT /tax-report/ptkp/:emp_code
+    // Update PTKP status for a specific employee (portal edit)
+    // ========================================================
+    .put("/ptkp/:emp_code", async ({ params, body, set, currentUser }) => {
+        try {
+            const { year, ptkp_status } = body as { year: number; ptkp_status: string };
+            const empCode = params.emp_code;
+
+            if (!year || !ptkp_status) {
+                set.status = 400;
+                return { success: false, error: "year and ptkp_status are required" };
+            }
+
+            const validStatuses = ['TK/0', 'TK/1', 'TK/2', 'TK/3', 'K/0', 'K/1', 'K/2', 'K/3'];
+            if (!validStatuses.includes(ptkp_status)) {
+                set.status = 400;
+                return { success: false, error: `Invalid PTKP status. Must be one of: ${validStatuses.join(', ')}` };
+            }
+
+            const username = currentUser?.username || 'system';
+            const result = await ptkpTaxService.updatePtkpStatus(year, empCode, ptkp_status, username);
+
+            return { success: true, updated: result, emp_code: empCode, year, ptkp_status };
+        } catch (error: any) {
+            console.error("[TaxReport] Error updating PTKP:", error);
+            set.status = 500;
+            return { success: false, error: error.message || "Failed to update PTKP status" };
+        }
+    }, {
+        body: t.Object({
+            year: t.Number(),
+            ptkp_status: t.String()
+        })
     });
