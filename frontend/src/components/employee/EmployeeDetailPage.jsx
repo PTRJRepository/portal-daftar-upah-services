@@ -110,7 +110,8 @@ export default function EmployeeDetailPage({
     const [checkrollData, setCheckrollData] = useState(null)
     const [historyModalNik, setHistoryModalNik] = useState({ isOpen: false, data: null, loading: false })
 
-    const empCode = employeeData?.nik || employeeData?.NIK || ''
+    // Prefer emp_code (Plantware code like B0075) over nik (KTP number)
+    const empCode = employeeData?.emp_code || employeeData?.EmpCode || employeeData?.nik || employeeData?.NIK || ''
     const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8002`;
 
     const handleEditNik = async (empInfo) => {

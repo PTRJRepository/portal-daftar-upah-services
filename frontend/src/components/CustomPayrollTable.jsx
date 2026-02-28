@@ -103,13 +103,13 @@ export default function CustomPayrollTable({
         }
     }, []);
 
-    // Sync employee NIKs when rows change (for select-all checkbox state only)
+    // Sync employee codes when rows change (for select-all checkbox state only)
     useEffect(() => {
-        const nikList = rows
+        const empCodeList = rows
             .filter(r => r.type === 'employee')
-            .map(r => r.nik)
-            .filter(nik => nik);
-        setAllEmployeeNiks(nikList);
+            .map(r => r.emp_code || r.nik)
+            .filter(code => code);
+        setAllEmployeeNiks(empCodeList);
         // NOTE: Don't call onSelectAllEmployees here - let user manually select employees
     }, [rows]);
 
@@ -599,8 +599,8 @@ export default function CustomPayrollTable({
                     return (
                         <input
                             type="checkbox"
-                            checked={Array.isArray(selectedEmployees) && selectedEmployees.includes(row.nik)}
-                            onChange={() => handleCheckboxChange(row.nik)}
+                            checked={Array.isArray(selectedEmployees) && selectedEmployees.includes(row.emp_code || row.nik)}
+                            onChange={() => handleCheckboxChange(row.emp_code || row.nik)}
                             onClick={(e) => e.stopPropagation()}
                             style={{ cursor: 'pointer' }}
                         />

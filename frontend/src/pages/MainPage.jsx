@@ -134,15 +134,16 @@ export default function MainPage({ lockedDiv = null }) {
   const handleViewEmployeeDetail = (employeeData) => {
     console.log('[MainPage] Opening detail tab for employee:', employeeData)
 
-    const nik = employeeData.nik || employeeData.NIK
-    if (!nik) {
-      console.error('[MainPage] Cannot view detail: NIK is missing', employeeData)
+    // Prefer emp_code (Plantware code like B0075) over NIK (KTP number)
+    const empCode = employeeData.emp_code || employeeData.EmpCode || employeeData.nik || employeeData.NIK
+    if (!empCode) {
+      console.error('[MainPage] Cannot view detail: emp_code is missing', employeeData)
       return
     }
 
     // Open in new tab with params for EmployeeDetailRoute
     const params = new URLSearchParams({
-      nik: nik,
+      nik: empCode,
       month: month,
       year: year,
       division: division

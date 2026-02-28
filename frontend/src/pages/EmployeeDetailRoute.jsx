@@ -11,16 +11,17 @@ export default function EmployeeDetailRoute() {
     useEffect(() => {
         const fetchParams = async () => {
             const urlParams = new URLSearchParams(window.location.search)
+            // Read 'nik' param which now contains emp_code (like B0075) or could still be a KTP NIK
             const rawNik = urlParams.get('nik')
-            const nik = rawNik ? rawNik.trim() : null
+            const empIdentifier = rawNik ? rawNik.trim() : null
             let month = parseInt(urlParams.get('month') || '0', 10)
             let year = parseInt(urlParams.get('year') || '0', 10)
             const rawDivision = urlParams.get('division')
             const division = (rawDivision && rawDivision !== 'undefined' && rawDivision !== 'null') ? rawDivision : null
 
-            const isValidNik = nik && nik !== 'undefined' && nik !== 'null'
+            const isValid = empIdentifier && empIdentifier !== 'undefined' && empIdentifier !== 'null'
 
-            if (isValidNik) {
+            if (isValid) {
                 if (!month || !year) {
                     try {
                         const baseUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '';
@@ -41,7 +42,7 @@ export default function EmployeeDetailRoute() {
                 }
 
                 if (month && year) {
-                    setParams({ nik, month, year, division });
+                    setParams({ empIdentifier, month, year, division });
                 }
             }
             setLoadingParams(false);
@@ -75,7 +76,7 @@ export default function EmployeeDetailRoute() {
     return (
         <div style={{ height: '100vh', width: '100vw', overflow: 'auto', backgroundColor: '#e5e7eb' }}>
             <EmployeeDetailPage
-                employeeData={{ nik: params.nik }}
+                employeeData={{ nik: params.empIdentifier, emp_code: params.empIdentifier }}
                 month={params.month}
                 year={params.year}
                 division={params.division}
