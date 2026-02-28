@@ -46,7 +46,7 @@ export const generateMonthlyTaxExcel = async (
     };
 
     // --- ROW 1: Title ---
-    sheet.mergeCells('A1:AC1');
+    sheet.mergeCells('A1:AD1');
     const titleCell = sheet.getCell('A1');
     titleCell.value = `DAFTAR RINCIAN KALKULASI PPH21 - DIVISI: ${division} | GANG: ${gang || 'ALL'} | PERIODE: ${month}/${year}`;
     titleCell.font = { size: 14, bold: true, name: 'Arial' };
@@ -63,41 +63,42 @@ export const generateMonthlyTaxExcel = async (
         /* 6: F */ { header: 'GANG', key: 'gang', width: 10 },
         /* 7: G */ { header: 'KAT TER', key: 'kategori_ter', width: 8 },
 
-        // Struktur Upah Group (H - L)
+        // Struktur Upah Group (H - M)
         /* 8: H */ { header: 'HK', key: 'hk', width: 6 },
         /* 9: I */ { header: 'UPAH DASAR', key: 'upah_dasar', width: 15 },
-        /* 10: J */ { header: 'GP IDEAL', key: 'gp_ideal', width: 15 },
-        /* 11: K */ { header: 'GP AKTUAL', key: 'gp_aktual', width: 15 },
-        /* 12: L */ { header: 'KOREKSI', key: 'koreksi', width: 12 },
+        /* 10: J */ { header: 'GAJI STANDAR', key: 'gaji_standar', width: 15 },
+        /* 11: K */ { header: 'GP IDEAL', key: 'gp_ideal', width: 15 },
+        /* 12: L */ { header: 'GP AKTUAL', key: 'gp_aktual', width: 15 },
+        /* 13: M */ { header: 'KOREKSI', key: 'koreksi', width: 12 },
 
-        // Tunjangan Group (M - Q)
-        /* 13: M */ { header: 'BERAS', key: 'tj_beras', width: 12 },
-        /* 14: N */ { header: 'JABATAN', key: 'tj_jabatan', width: 12 },
-        /* 15: O */ { header: 'M KERJA', key: 'tj_masa', width: 12 },
-        /* 16: P */ { header: 'LEMBUR', key: 'tj_lembur', width: 12 },
-        /* 17: Q */ { header: 'TOTAL TUNJ', key: 'total_tunj', width: 15 },
+        // Tunjangan Group (N - R)
+        /* 14: N */ { header: 'BERAS', key: 'tj_beras', width: 12 },
+        /* 15: O */ { header: 'JABATAN', key: 'tj_jabatan', width: 12 },
+        /* 16: P */ { header: 'M KERJA', key: 'tj_masa', width: 12 },
+        /* 17: Q */ { header: 'LEMBUR', key: 'tj_lembur', width: 12 },
+        /* 18: R */ { header: 'TOTAL TUNJ', key: 'total_tunj', width: 15 },
 
-        // Premi Group (R - T)
-        /* 18: R */ { header: 'BRONDOL', key: 'pr_brondol', width: 12 },
-        /* 19: S */ { header: 'PPH', key: 'pr_pph', width: 12 },
-        /* 20: T */ { header: 'TOTAL PREMI', key: 'total_premi', width: 15 },
+        // Premi Group (S - U)
+        /* 19: S */ { header: 'BRONDOL', key: 'pr_brondol', width: 12 },
+        /* 20: T */ { header: 'PPH', key: 'pr_pph', width: 12 },
+        /* 21: U */ { header: 'TOTAL PREMI', key: 'total_premi', width: 15 },
 
         // Potongan
-        /* 21: U */ { header: 'POT KOREKSI', key: 'pot_koreksi', width: 15 },
+        /* 22: V */ { header: 'POT KOREKSI', key: 'pot_koreksi', width: 15 },
 
         // Pend Tidak Teratur
-        /* 22: V */ { header: 'THR', key: 'thr', width: 15 },
-        /* 23: W */ { header: 'EXGRATIA', key: 'exgratia', width: 15 },
+        /* 23: W */ { header: 'THR', key: 'thr', width: 15 },
+        /* 24: X */ { header: 'EXGRATIA', key: 'exgratia', width: 15 },
 
-        // Jaminan Majikan (X - Y)
-        /* 24: X */ { header: 'BPJS KES 4%', key: 'bpjs_kes_majikan', width: 15 },
-        /* 25: Y */ { header: 'ASTEK 0.84%', key: 'astek_majikan', width: 15 },
+        // Jaminan Majikan (Y - Z)
+        /* 25: Y */ { header: 'BPJS KES 4%', key: 'bpjs_kes_majikan', width: 15 },
+        /* 26: Z */ { header: 'ASTEK 0.84%', key: 'astek_majikan', width: 15 },
 
-        // Kalkulasi Summary (Z - AC)
-        /* 26: Z */ { header: 'UPAH KOTOR', key: 'upah_kotor', width: 15 },
-        /* 27: AA */ { header: 'PENGHASILAN BRUTO', key: 'bruto', width: 18 },
-        /* 28: AB */ { header: 'TARIF TER (X%)', key: 'tarif_ter', width: 12 },
-        /* 29: AC */ { header: 'PPH21', key: 'pph21', width: 15 }
+        // Kalkulasi Summary (AA - AD)
+        /* 27: AA */ { header: 'UPAH KOTOR', key: 'upah_kotor', width: 15 },
+        /* 28: AB */ { header: 'PENGHASILAN BRUTO', key: 'bruto', width: 18 },
+        /* 29: AC */ { header: 'TARIF TER (X%)', key: 'tarif_ter', width: 12 },
+        /* 30: AD */ { header: 'PPH21', key: 'pph21', width: 15 }
     ];
 
     sheet.columns = columns.map(col => ({ key: col.key, width: col.width }));
@@ -106,26 +107,26 @@ export const generateMonthlyTaxExcel = async (
     sheet.getCell('A3').value = 'IDENTITAS'; sheet.mergeCells('A3:G3');
     applyHeaderStyle(sheet.getCell('A3'), '1E3A8A', 'FFFFFF');
 
-    sheet.getCell('H3').value = 'STRUKTUR UPAH'; sheet.mergeCells('H3:L3');
+    sheet.getCell('H3').value = 'STRUKTUR UPAH'; sheet.mergeCells('H3:M3');
     applyHeaderStyle(sheet.getCell('H3'), 'F1F5F9', '0F172A');
 
-    sheet.getCell('M3').value = 'TUNJANGAN'; sheet.mergeCells('M3:Q3');
-    applyHeaderStyle(sheet.getCell('M3'), 'E2E8F0', '0F172A');
+    sheet.getCell('N3').value = 'TUNJANGAN'; sheet.mergeCells('N3:R3');
+    applyHeaderStyle(sheet.getCell('N3'), 'E2E8F0', '0F172A');
 
-    sheet.getCell('R3').value = 'PREMI (TIDAK TETAP)'; sheet.mergeCells('R3:T3');
-    applyHeaderStyle(sheet.getCell('R3'), 'CBD5E1', '0F172A');
+    sheet.getCell('S3').value = 'PREMI (TIDAK TETAP)'; sheet.mergeCells('S3:U3');
+    applyHeaderStyle(sheet.getCell('S3'), 'CBD5E1', '0F172A');
 
-    sheet.getCell('U3').value = 'POTONGAN'; // No merge
-    applyHeaderStyle(sheet.getCell('U3'), 'FCA5A5', '0F172A');
+    sheet.getCell('V3').value = 'POTONGAN'; // No merge
+    applyHeaderStyle(sheet.getCell('V3'), 'FCA5A5', '0F172A');
 
-    sheet.getCell('V3').value = 'PEND. LAINNYA'; sheet.mergeCells('V3:W3');
-    applyHeaderStyle(sheet.getCell('V3'), 'FEF3C7', '0F172A');
+    sheet.getCell('W3').value = 'PEND. LAINNYA'; sheet.mergeCells('W3:X3');
+    applyHeaderStyle(sheet.getCell('W3'), 'FEF3C7', '0F172A');
 
-    sheet.getCell('X3').value = 'JAMINAN MAJIKAN'; sheet.mergeCells('X3:Y3');
-    applyHeaderStyle(sheet.getCell('X3'), 'F1F5F9', '0F172A');
+    sheet.getCell('Y3').value = 'JAMINAN MAJIKAN'; sheet.mergeCells('Y3:Z3');
+    applyHeaderStyle(sheet.getCell('Y3'), 'F1F5F9', '0F172A');
 
-    sheet.getCell('Z3').value = 'KALKULASI PPH21'; sheet.mergeCells('Z3:AC3');
-    applyHeaderStyle(sheet.getCell('Z3'), '1E293B', 'FFFFFF');
+    sheet.getCell('AA3').value = 'KALKULASI PPH21'; sheet.mergeCells('AA3:AD3');
+    applyHeaderStyle(sheet.getCell('AA3'), '1E293B', 'FFFFFF');
 
     // Sub Headers (Row 4)
     columns.forEach((col, index) => {
@@ -136,12 +137,12 @@ export const generateMonthlyTaxExcel = async (
         let fgColor = 'FFFFFF';
 
         if (index < 7) { bgColor = '1E3A8A'; fgColor = 'FFFFFF'; }
-        else if (index < 12) { bgColor = 'F1F5F9'; fgColor = '0F172A'; }
-        else if (index < 17) { bgColor = 'E2E8F0'; fgColor = '0F172A'; }
-        else if (index < 20) { bgColor = 'CBD5E1'; fgColor = '0F172A'; }
-        else if (index === 20) { bgColor = 'FCA5A5'; fgColor = '0F172A'; }
-        else if (index < 23) { bgColor = 'FEF3C7'; fgColor = '0F172A'; }
-        else if (index < 25) { bgColor = 'F1F5F9'; fgColor = '0F172A'; }
+        else if (index < 13) { bgColor = 'F1F5F9'; fgColor = '0F172A'; }
+        else if (index < 18) { bgColor = 'E2E8F0'; fgColor = '0F172A'; }
+        else if (index < 21) { bgColor = 'CBD5E1'; fgColor = '0F172A'; }
+        else if (index === 21) { bgColor = 'FCA5A5'; fgColor = '0F172A'; }
+        else if (index < 24) { bgColor = 'FEF3C7'; fgColor = '0F172A'; }
+        else if (index < 26) { bgColor = 'F1F5F9'; fgColor = '0F172A'; }
         else { bgColor = '0F172A'; fgColor = 'FFFFFF'; }
 
         applyHeaderStyle(cell, bgColor, fgColor);
@@ -170,61 +171,65 @@ export const generateMonthlyTaxExcel = async (
         row.getCell('H').value = emp.hk || 0;
         row.getCell('I').value = emp.upah_dasar || 0;
 
-        // GP Ideal (J) = Upah Dasar (I) * HK (H)
-        row.getCell('J').value = { formula: `I${currentRowIndex}*H${currentRowIndex}`, result: emp.gaji_pokok_ideal || 0 };
+        // GP Standar (J) = Upah Dasar (I) * 30
+        row.getCell('J').value = { formula: `I${currentRowIndex}*30`, result: (emp.upah_dasar || 0) * 30 };
 
-        row.getCell('K').value = emp.gaji_pokok_aktual || 0;
+        // GP Ideal (K) = Upah Dasar (I) * HK (H)
+        row.getCell('K').value = { formula: `I${currentRowIndex}*H${currentRowIndex}`, result: emp.gaji_pokok_ideal || 0 };
 
-        // Koreksi (L) = GP Aktual (K) - GP Ideal (J)
-        row.getCell('L').value = { formula: `K${currentRowIndex}-J${currentRowIndex}`, result: emp.koreksi_hk || 0 };
+        row.getCell('L').value = emp.gaji_pokok_aktual || 0;
 
-        row.getCell('M').value = emp.tunjangan_beras || 0;
-        row.getCell('N').value = emp.tunjangan_jabatan || 0;
-        row.getCell('O').value = emp.tunjangan_masa_kerja || 0;
-        row.getCell('P').value = emp.tunjangan_lembur || 0;
+        // Koreksi (M) = GP Aktual (L) - GP Ideal (K)
+        row.getCell('M').value = { formula: `L${currentRowIndex}-K${currentRowIndex}`, result: emp.koreksi_hk || 0 };
 
-        // TOTAL TUNJANGAN => SUM(M:P)
-        row.getCell('Q').value = { formula: `SUM(M${currentRowIndex}:P${currentRowIndex})`, result: emp.total_tunjangan };
+        row.getCell('N').value = emp.tunjangan_beras || 0;
+        row.getCell('O').value = emp.tunjangan_jabatan || 0;
+        row.getCell('P').value = emp.tunjangan_masa_kerja || 0;
+        row.getCell('Q').value = emp.tunjangan_lembur || 0;
 
-        row.getCell('R').value = emp.premi_brondol || 0;
-        row.getCell('S').value = emp.premi_pph || 0;
+        // TOTAL TUNJANGAN => SUM(N:Q)
+        row.getCell('R').value = { formula: `SUM(N${currentRowIndex}:Q${currentRowIndex})`, result: emp.total_tunjangan };
 
-        // TOTAL PREMI => SUM(R:S)
-        row.getCell('T').value = { formula: `SUM(R${currentRowIndex}:S${currentRowIndex})`, result: emp.total_premi };
+        row.getCell('S').value = emp.premi_brondol || 0;
+        row.getCell('T').value = emp.premi_pph || 0;
 
-        row.getCell('U').value = emp.pot_koreksi || 0;
+        // TOTAL PREMI => SUM(S:T)
+        row.getCell('U').value = { formula: `SUM(S${currentRowIndex}:T${currentRowIndex})`, result: emp.total_premi };
 
-        row.getCell('V').value = emp.thr_amount || 0;
-        row.getCell('W').value = emp.exgratia_amount || 0;
+        row.getCell('V').value = emp.pot_koreksi || 0;
 
-        // JAMINAN MAJIKAN BERDASARKAN UPAH DASAR * 30
-        // BPJS Kes Majikan = ROUND((Upah Dasar * 30) * 4%, 0)
-        row.getCell('X').value = { formula: `ROUND(I${currentRowIndex}*30*0.04, 0)`, result: emp.bpjs_kes_majikan || 0 };
+        row.getCell('W').value = emp.thr_amount || 0;
+        row.getCell('X').value = emp.exgratia_amount || 0;
 
-        // Astek Majikan = ROUND((Upah Dasar * 30) * 0.84%, 0)
-        row.getCell('Y').value = { formula: `ROUND(I${currentRowIndex}*30*0.0084, 0)`, result: emp.astek_jht_majikan || 0 };
+        // JAMINAN MAJIKAN BERDASARKAN (GAJI STANDAR + TUNJANGAN MASA KERJA)
+        // GP Standar = J, Masa Kerja = P
+        // BPJS Kes Majikan = ROUND((J + P) * 4%, 0)
+        row.getCell('Y').value = { formula: `ROUND((J${currentRowIndex}+P${currentRowIndex})*0.04, 0)`, result: emp.bpjs_kes_majikan || 0 };
 
-        // UPAH KOTOR (Z) = GP Aktual (K) + Total Tunj (Q) + Total Premi (T) - Pot Koreksi (U)
-        row.getCell('Z').value = { formula: `K${currentRowIndex}+Q${currentRowIndex}+T${currentRowIndex}-U${currentRowIndex}`, result: emp.upah_kotor };
+        // Astek Majikan = ROUND((J + P) * 0.84%, 0)
+        row.getCell('Z').value = { formula: `ROUND((J${currentRowIndex}+P${currentRowIndex})*0.0084, 0)`, result: emp.astek_jht_majikan || 0 };
 
-        // PENGHASILAN BRUTO (AA) = Upah Kotor (Z) + BPJS (X) + ASTEK (Y) + THR (V) + EXGRATIA (W)
-        row.getCell('AA').value = { formula: `Z${currentRowIndex}+X${currentRowIndex}+Y${currentRowIndex}+V${currentRowIndex}+W${currentRowIndex}`, result: emp.penghasilan_bruto };
+        // UPAH KOTOR (AA) = GP Aktual (L) + Total Tunj (R) + Total Premi (U) - Pot Koreksi (V)
+        row.getCell('AA').value = { formula: `L${currentRowIndex}+R${currentRowIndex}+U${currentRowIndex}-V${currentRowIndex}`, result: emp.upah_kotor };
+
+        // PENGHASILAN BRUTO (AB) = Upah Kotor (AA) + BPJS (Y) + ASTEK (Z) + THR (W) + EXGRATIA (X)
+        row.getCell('AB').value = { formula: `AA${currentRowIndex}+Y${currentRowIndex}+Z${currentRowIndex}+W${currentRowIndex}+X${currentRowIndex}`, result: emp.penghasilan_bruto };
 
         // TER Rate (Percentage format)
-        row.getCell('AB').value = (emp.tarif_pajak_ter || 0) / 100; // Divide by 100 so Excel recognizes it as a percentage
-        row.getCell('AB').numFmt = '0.00%';
+        row.getCell('AC').value = (emp.tarif_pajak_ter || 0) / 100; // Divide by 100 so Excel recognizes it as a percentage
+        row.getCell('AC').numFmt = '0.00%';
 
-        // PPH21 (AC) = Bruto (AA) * Tarif TER (AB) -- ROUND to 0 decimal places
-        row.getCell('AC').value = { formula: `ROUND(AA${currentRowIndex}*AB${currentRowIndex}, 0)`, result: emp.pph21_ter };
+        // PPH21 (AD) = Bruto (AB) * Tarif TER (AC) -- ROUND to 0 decimal places
+        row.getCell('AD').value = { formula: `ROUND(AB${currentRowIndex}*AC${currentRowIndex}, 0)`, result: emp.pph21_ter };
 
 
         // Apply number formats
-        ['H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AC'].forEach(colKey => {
+        ['H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AD'].forEach(colKey => {
             row.getCell(colKey).numFmt = numFormat;
         });
 
         // Add thin borders
-        for (let c = 1; c <= 29; c++) {
+        for (let c = 1; c <= 30; c++) {
             row.getCell(c).border = {
                 top: { style: 'thin' }, left: { style: 'thin' },
                 bottom: { style: 'thin' }, right: { style: 'thin' }
@@ -242,14 +247,14 @@ export const generateMonthlyTaxExcel = async (
     footerRow.getCell('A').font = { bold: true };
 
     // Sum formulas for total row
-    ['H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AC'].forEach(col => {
+    ['H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AD'].forEach(col => {
         const cell = footerRow.getCell(col);
         cell.value = { formula: `SUM(${col}5:${col}${currentRowIndex - 1})` };
         cell.numFmt = numFormat;
         cell.font = { bold: true };
     });
 
-    for (let c = 1; c <= 29; c++) {
+    for (let c = 1; c <= 30; c++) {
         footerRow.getCell(c).border = {
             top: { style: 'medium' }, left: { style: 'thin' },
             bottom: { style: 'medium' }, right: { style: 'thin' }
@@ -268,11 +273,11 @@ export const generateMonthlyTaxExcel = async (
 
     // Labels
     sheet.getCell(`B${ttdStartRow}`).value = 'Dibuat Oleh:';
-    sheet.getCell(`N${ttdStartRow}`).value = 'Diperiksa Oleh:';
-    sheet.getCell(`AA${ttdStartRow}`).value = 'Disetujui Oleh:';
+    sheet.getCell(`O${ttdStartRow}`).value = 'Diperiksa Oleh:';
+    sheet.getCell(`AB${ttdStartRow}`).value = 'Disetujui Oleh:';
 
     // Alignment & Bold for Labels
-    ['B', 'N', 'AA'].forEach(col => {
+    ['B', 'O', 'AB'].forEach(col => {
         const cell = sheet.getCell(`${col}${ttdStartRow}`);
         cell.font = { bold: true };
         cell.alignment = { horizontal: 'center' };
@@ -283,16 +288,16 @@ export const generateMonthlyTaxExcel = async (
 
     // Names
     sheet.getCell(`B${ttdEndRow}`).value = '(_____________________)';
-    sheet.getCell(`N${ttdEndRow}`).value = '(_____________________)';
-    sheet.getCell(`AA${ttdEndRow}`).value = '(_____________________)';
+    sheet.getCell(`O${ttdEndRow}`).value = '(_____________________)';
+    sheet.getCell(`AB${ttdEndRow}`).value = '(_____________________)';
 
     // Titles
     sheet.getCell(`B${ttdEndRow + 1}`).value = 'Admin HR / Payroll';
-    sheet.getCell(`N${ttdEndRow + 1}`).value = 'HR Manager';
-    sheet.getCell(`AA${ttdEndRow + 1}`).value = 'General Manager';
+    sheet.getCell(`O${ttdEndRow + 1}`).value = 'HR Manager';
+    sheet.getCell(`AB${ttdEndRow + 1}`).value = 'General Manager';
 
     // Alignment for Names & Titles
-    ['B', 'N', 'AA'].forEach(col => {
+    ['B', 'O', 'AB'].forEach(col => {
         const nameCell = sheet.getCell(`${col}${ttdEndRow}`);
         nameCell.alignment = { horizontal: 'center' };
         nameCell.font = { bold: true };
@@ -302,17 +307,17 @@ export const generateMonthlyTaxExcel = async (
     });
 
     // Merge cells for proper alignment width
-    sheet.mergeCells(`B${ttdStartRow}:D${ttdStartRow}`);
-    sheet.mergeCells(`B${ttdEndRow}:D${ttdEndRow}`);
-    sheet.mergeCells(`B${ttdEndRow + 1}:D${ttdEndRow + 1}`);
+    sheet.mergeCells(`B${ttdStartRow}:E${ttdStartRow}`);
+    sheet.mergeCells(`B${ttdEndRow}:E${ttdEndRow}`);
+    sheet.mergeCells(`B${ttdEndRow + 1}:E${ttdEndRow + 1}`);
 
-    sheet.mergeCells(`N${ttdStartRow}:P${ttdStartRow}`);
-    sheet.mergeCells(`N${ttdEndRow}:P${ttdEndRow}`);
-    sheet.mergeCells(`N${ttdEndRow + 1}:P${ttdEndRow + 1}`);
+    sheet.mergeCells(`O${ttdStartRow}:R${ttdStartRow}`);
+    sheet.mergeCells(`O${ttdEndRow}:R${ttdEndRow}`);
+    sheet.mergeCells(`O${ttdEndRow + 1}:R${ttdEndRow + 1}`);
 
-    sheet.mergeCells(`AA${ttdStartRow}:AC${ttdStartRow}`);
-    sheet.mergeCells(`AA${ttdEndRow}:AC${ttdEndRow}`);
-    sheet.mergeCells(`AA${ttdEndRow + 1}:AC${ttdEndRow + 1}`);
+    sheet.mergeCells(`AB${ttdStartRow}:AD${ttdStartRow}`);
+    sheet.mergeCells(`AB${ttdEndRow}:AD${ttdEndRow}`);
+    sheet.mergeCells(`AB${ttdEndRow + 1}:AD${ttdEndRow + 1}`);
 
     // Return the buffer
     const buffer = await workbook.xlsx.writeBuffer();

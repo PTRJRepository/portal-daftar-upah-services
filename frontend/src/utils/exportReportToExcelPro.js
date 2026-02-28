@@ -80,10 +80,107 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
         pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
     });
 
-    const flatCols = getFlattenedColumns(colDefsOriginal);
+    // Build fully detailed columns tailored for Daftar Upah export
+    const buildExportColumns = (rows) => {
+        const hasData = (field) => rows.some(r => r[field] !== null && r[field] !== undefined && r[field] !== '' && r[field] !== 0);
 
-    // Filter out hidden or utility columns like frontend_no if needed, but we mostly keep them
-    // Let's ensure headers are properly assigned.
+        const cols = [
+            { field: 'EMP_CODE', headerName: 'EMP CODE', width: 12 },
+            { field: 'nik', headerName: 'NIK', width: 18 },
+            { field: 'nama', headerName: 'NAMA KARYAWAN', width: 28 },
+            { field: 'jenis_kelamin', headerName: 'L/P', width: 6 },
+            { field: 'join_date', headerName: 'TGL MASUK', width: 15 }, // Fallback if available
+            { field: 'status_ptkp', headerName: 'PTKP', width: 8 },
+            { field: 'jabatan_estate', headerName: 'JABATAN', width: 15 },
+        ];
+
+        // Kehadiran (Absensi)
+        cols.push({ field: 'hari_kerja', headerName: 'HK', width: 6 });
+        cols.push({ field: 'cuti_tahunan_hari', headerName: 'CUTI', width: 6 });
+        cols.push({ field: 'cuti_sakit_haid_hari', headerName: 'S/H', width: 6 });
+        cols.push({ field: 'cuti_minggu_hari', headerName: 'M', width: 6 });
+        cols.push({ field: 'cuti_nasional_hari', headerName: 'N', width: 6 });
+        cols.push({ field: 'izin_hari', headerName: 'IZIN', width: 6 });
+        cols.push({ field: 'tidak_hadir_alpa', headerName: 'ALPA', width: 6 });
+        cols.push({ field: 'jumlah_hk', headerName: 'JML HK', width: 8 });
+        cols.push({ field: 'total_jam_kerja', headerName: 'TOTAL JAM', width: 12 });
+
+        // Pendapatan & Upah Dasar
+        cols.push({ field: 'upah_dasar', headerName: 'UPAH DASAR (BULANAN)', width: 18, isNumeric: true });
+        cols.push({ field: 'gaji_pokok_ideal', headerName: 'UMP/UMK', width: 15, isNumeric: true });
+        cols.push({ field: 'gaji_pokok', headerName: 'UPAH POKOK', width: 15, isNumeric: true });
+
+        // Tunjangan (Detail Rate dan Jumlah)
+        cols.push({ field: 'beras_rate', headerName: 'RATE BERAS', width: 12, isNumeric: true });
+        cols.push({ field: 'beras_jumlah', headerName: 'TUNJ BERAS', width: 12, isNumeric: true });
+        cols.push({ field: 'jabatan_rate', headerName: 'RATE JABATAN', width: 12, isNumeric: true });
+        cols.push({ field: 'jabatan_jumlah', headerName: 'TUNJ JABATAN', width: 12, isNumeric: true });
+        cols.push({ field: 'masa_kerja_tahun', headerName: 'LAMA MK', width: 8 });
+        cols.push({ field: 'masa_kerja_jumlah', headerName: 'TUNJ MK', width: 12, isNumeric: true });
+        cols.push({ field: 'lembur_jam', headerName: 'JAM LEMBUR', width: 10, isNumeric: true });
+        cols.push({ field: 'lembur_jumlah', headerName: 'UANG LEMBUR', width: 15, isNumeric: true });
+        cols.push({ field: 'total_tunjangan', headerName: 'TOTAL TUNJANGAN', width: 16, isNumeric: true });
+
+        // Premi - Find all dynamic keys securely
+        cols.push({ field: 'premi_brondol', headerName: 'PREMI BRONDOL', width: 12, isNumeric: true });
+
+        let dynamicPremiKeys = [];
+        rows.forEach(r => {
+            if (r.premi && typeof r.premi === 'object') {
+                Object.keys(r.premi).forEach(k => { if (!dynamicPremiKeys.includes(k)) dynamicPremiKeys.push(k); });
+            }
+            Object.keys(r).forEach(k => {
+                if (k.startsWith('premi_') && k !== 'premi_brondol' && k !== 'premi_pph' && !dynamicPremiKeys.includes(k)) dynamicPremiKeys.push(k);
+            });
+        });
+
+        dynamicPremiKeys.forEach(k => {
+            const displayName = k.replace('premi_', '').replace(/_/g, ' ').toUpperCase();
+            cols.push({ field: k, headerName: `PREMI ${displayName}`, width: 15, isNumeric: true, resolveNested: 'premi' });
+        });
+
+        cols.push({ field: 'total_premi', headerName: 'TOTAL PREMI', width: 15, isNumeric: true });
+
+        // Upah Kotor & Koreksi
+        cols.push({ field: 'pot_koreksi', headerName: 'KOREKSI (-)', width: 12, isNumeric: true });
+        cols.push({ field: 'jumlah_upah_kotor', headerName: 'UPAH KOTOR', width: 16, isNumeric: true });
+
+        // Potongan Bersih
+        cols.push({ field: 'pot_astek', headerName: 'ASTEK (PEKERJA)', width: 14, isNumeric: true });
+        cols.push({ field: 'pot_astek_maj', headerName: 'ASTEK (MAJIKAN)', width: 14, isNumeric: true });
+        cols.push({ field: 'pot_bpjs_kesehatan_pekerja', headerName: 'BPJS KES (PEKERJA)', width: 14, isNumeric: true });
+        cols.push({ field: 'pot_bpjs_kesehatan_majikan', headerName: 'BPJS KES (MAJIKAN)', width: 14, isNumeric: true });
+        cols.push({ field: 'pot_bpjs_pensiun_pekerja', headerName: 'BPJS PEN (PEKERJA)', width: 14, isNumeric: true });
+        cols.push({ field: 'pot_bpjs_pensiun_majikan', headerName: 'BPJS PEN (MAJIKAN)', width: 14, isNumeric: true });
+        cols.push({ field: 'pot_spsi', headerName: 'IURAN SPSI', width: 12, isNumeric: true });
+        cols.push({ field: 'pot_pph21', headerName: 'PPH21 (-)', width: 12, isNumeric: true });
+        cols.push({ field: 'premi_pph', headerName: 'PREMI PPH (+)', width: 12, isNumeric: true });
+
+        // Dynamic Potongan Bersih
+        let dynamicPotKeys = [];
+        rows.forEach(r => {
+            if (r.potongan_upah_bersih && r.potongan_upah_bersih.dynamic) {
+                Object.keys(r.potongan_upah_bersih.dynamic).forEach(k => { if (!dynamicPotKeys.includes(k)) dynamicPotKeys.push(k); });
+            }
+            Object.keys(r).forEach(k => {
+                if (k.startsWith('pot_') && !['pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_spsi', 'pot_pph21', 'pot_koreksi'].includes(k) && !dynamicPotKeys.includes(k)) dynamicPotKeys.push(k);
+            });
+        });
+
+        dynamicPotKeys.forEach(k => {
+            const displayName = k.replace('pot_', '').replace(/_/g, ' ').toUpperCase();
+            cols.push({ field: k, headerName: `POT ${displayName}`, width: 15, isNumeric: true, resolveNested: 'potongan_upah_bersih.dynamic' });
+        });
+
+        cols.push({ field: 'total_potongan', headerName: 'TOTAL POTONGAN', width: 16, isNumeric: true });
+
+        // Upah Bersih Akhir
+        cols.push({ field: 'upah_bersih', headerName: 'UPAH BERSIH', width: 18, isNumeric: true });
+
+        return cols.filter(c => hasData(c.field) || ['nik', 'nama', 'jabatan_estate', 'upah_dasar', 'gaji_pokok', 'upah_bersih'].includes(c.field));
+    };
+
+    const flatCols = buildExportColumns(rows);
 
     // 1. Report Title
     const titleRow = worksheet.addRow([`DAFTAR UPAH KARYAWAN - ${meta.division}`]);
@@ -102,9 +199,16 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
     worksheet.addRow([]); // Blank row
 
     // 2. Headers
-    // Simple 1-row header for flatCols to keep it robust
     const headerRow = worksheet.addRow(flatCols.map(c => c.headerName || c.field));
-    headerRow.height = 35;
+    headerRow.height = 45;
+
+    // Helper map for col field to index
+    const getColMapping = () => {
+        let map = {};
+        flatCols.forEach((c, i) => { map[c.field] = getColLetter(i + 1); });
+        return map;
+    };
+    const colMap = getColMapping();
 
     flatCols.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
@@ -117,20 +221,47 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
             left: { style: 'thin', color: { argb: COLORS.border } },
             right: { style: 'thin', color: { argb: COLORS.border } }
         };
-        // Set width based on likely content or ag-grid width
-        worksheet.getColumn(idx + 1).width = col.width ? Math.max(col.width / 7, 10) : 12;
+        worksheet.getColumn(idx + 1).width = col.width || 12;
     });
 
-    // We will track the row indices of gang totals to sum them up later for the Grand Total
     const gangTotalRowIndices = [];
-
-    // 3. Data Rows
     let currentGangStartRow = -1;
 
-    // Iterate through provided rows (they already include the isHeader and isTotal records from the optimized view)
+    // Secure nested value resolver
+    const resolveValue = (row, field, resolveNested) => {
+        if (!row) return 0;
+        let val = row[field];
+        if (val !== undefined && val !== null) return val;
+
+        if (['nik', 'EMP_CODE'].includes(field) && row.emp_code) return row.emp_code;
+        if (field === 'join_date' && row.tanggal_masuk) return row.tanggal_masuk;
+
+        if (resolveNested) {
+            const parts = resolveNested.split('.');
+            let obj = row;
+            for (const p of parts) {
+                if (!obj || typeof obj !== 'object') return 0;
+                obj = obj[p];
+            }
+            if (obj && obj[field] !== undefined) return obj[field];
+        }
+
+        if (field.includes('.')) {
+            const parts = field.split('.');
+            let obj = row;
+            for (const p of parts) {
+                if (!obj || typeof obj !== 'object') return 0;
+                obj = obj[p];
+            }
+            return obj || 0;
+        }
+
+        return '';
+    };
+
+    // 3. Data Rows
     rows.forEach((row) => {
-        if (row.isHeader) {
-            // Gang Header
+        if (row.isHeader || row.type === 'gang_header') {
             const excelRow = worksheet.addRow(Array(flatCols.length).fill(''));
             excelRow.height = 24;
             worksheet.mergeCells(excelRow.number, 1, excelRow.number, flatCols.length);
@@ -145,17 +276,15 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                 bottom: { style: 'thin', color: { argb: COLORS.borderDark } }
             };
 
-            currentGangStartRow = excelRow.number + 1; // Content starts next row
+            currentGangStartRow = excelRow.number + 1;
 
-        } else if (row.isTotal) {
-            // Gang SubTotal
-            const excelRow = worksheet.addRow(flatCols.map(() => '')); // Create empty first, we will apply formulas
+        } else if (row.isTotal || row.type === 'gang_total') {
+            const excelRow = worksheet.addRow(flatCols.map(() => ''));
             excelRow.height = 25;
             gangTotalRowIndices.push(excelRow.number);
 
             flatCols.forEach((col, idx) => {
                 const cell = excelRow.getCell(idx + 1);
-                const isNumeric = col.filter === 'agNumberColumnFilter' || col.type === 'rightAligned' || typeof row[col.field] === 'number';
 
                 cell.font = { bold: true, size: 10, color: { argb: '0f172a' } };
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.gangTotal } };
@@ -167,49 +296,35 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                 };
 
                 if (col.field === 'nama') {
-                    cell.value = row.nama || 'TOTAL GANG';
+                    cell.value = row.nama || `TOTAL GANG ${row.gang_code || ''}`;
                     cell.alignment = { horizontal: 'right', vertical: 'middle' };
-                } else if (isNumeric && currentGangStartRow !== -1 && currentGangStartRow < excelRow.number) {
-                    // APPLY EXCEL FORMULA!
+                } else if (col.isNumeric && currentGangStartRow !== -1 && currentGangStartRow < excelRow.number) {
                     const letter = getColLetter(idx + 1);
                     cell.value = { formula: `SUM(${letter}${currentGangStartRow}:${letter}${excelRow.number - 1})` };
                     cell.numFmt = '#,##0';
                     cell.alignment = { horizontal: 'right', vertical: 'middle' };
-                } else {
-                    cell.value = '';
                 }
             });
-            currentGangStartRow = -1; // Reset for next gang
+            currentGangStartRow = -1;
 
         } else {
-            // Normal Employee Row
-            const rowData = flatCols.map((col) => {
-                let val = row[col.field];
-                if (col.field === 'lembur_jam') return isNaN(Number(val)) ? '-' : Number(val);
-                if (typeof val === 'number') return val;
-
-                // Try to parse strings that might be numbers for numeric columns
-                if ((col.filter === 'agNumberColumnFilter' || col.type === 'rightAligned') && val) {
-                    const parsed = Number(val);
-                    if (!isNaN(parsed)) return parsed;
-                }
-
-                if (val === null || val === undefined) return '';
-                return val;
-            });
-
-            const excelRow = worksheet.addRow(rowData);
+            const excelRow = worksheet.addRow(Array(flatCols.length).fill(''));
             excelRow.height = 20;
 
             flatCols.forEach((col, idx) => {
                 const cell = excelRow.getCell(idx + 1);
                 const colColor = getColumnColor(col.field);
 
+                let val = resolveValue(row, col.field, col.resolveNested);
+                // Type safety
+                if (col.isNumeric && typeof val !== 'number') {
+                    const parsed = Number(val);
+                    val = isNaN(parsed) ? 0 : parsed;
+                }
+
                 cell.font = { size: 9 };
-                cell.alignment = {
-                    horizontal: (col.type === 'rightAligned' || col.filter === 'agNumberColumnFilter' || typeof cell.value === 'number') ? 'right' : 'left',
-                    vertical: 'middle'
-                };
+                // CRITICAL: Text wrap MUST BE FALSE for all data per user request
+                cell.alignment = { horizontal: col.isNumeric ? 'right' : 'left', vertical: 'middle', wrapText: false };
                 cell.border = {
                     top: { style: 'thin', color: { argb: COLORS.border } },
                     bottom: { style: 'thin', color: { argb: COLORS.border } },
@@ -217,12 +332,55 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                     right: { style: 'thin', color: { argb: COLORS.border } }
                 };
 
-                if (typeof cell.value === 'number') {
-                    cell.numFmt = col.field === 'lembur_jam' ? '#,##0.00' : '#,##0';
-                }
-
                 if (colColor) {
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colColor } };
+                }
+
+                if (col.isNumeric) {
+                    cell.numFmt = col.field === 'lembur_jam' ? '#,##0.0' : '#,##0';
+
+                    // === APPLY FORMULAS FOR TOTALS ===
+                    if (col.field === 'total_tunjangan') {
+                        const sumCols = ['beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah']
+                            .map(f => colMap[f]).filter(Boolean);
+                        if (sumCols.length > 0) {
+                            cell.value = { formula: `SUM(${sumCols.map(c => `${c}${excelRow.number}`).join(',')})` };
+                            return;
+                        }
+                    } else if (col.field === 'total_premi') {
+                        const premCols = flatCols.filter(c => c.field.startsWith('premi_') && c.field !== 'premi_pph').map(c => colMap[c.field]);
+                        if (premCols.length > 0) {
+                            cell.value = { formula: `SUM(${premCols.map(c => `${c}${excelRow.number}`).join(',')})` };
+                            return;
+                        }
+                    } else if (col.field === 'jumlah_upah_kotor') {
+                        const gp = colMap['gaji_pokok'];
+                        const tt = colMap['total_tunjangan'];
+                        const tp = colMap['total_premi'];
+                        const kor = colMap['pot_koreksi'];
+                        if (gp && tt && tp && kor) {
+                            cell.value = { formula: `SUM(${gp}${excelRow.number},${tt}${excelRow.number},${tp}${excelRow.number})+${kor}${excelRow.number}` };
+                            return;
+                        }
+                    } else if (col.field === 'total_potongan') {
+                        const dedCols = flatCols.filter(c => c.field.startsWith('pot_') && c.field !== 'pot_koreksi').map(c => colMap[c.field]);
+                        if (dedCols.length > 0) {
+                            cell.value = { formula: `SUM(${dedCols.map(c => `${c}${excelRow.number}`).join(',')})` };
+                            return;
+                        }
+                    } else if (col.field === 'upah_bersih') {
+                        const uk = colMap['jumlah_upah_kotor'];
+                        const pphPlus = colMap['premi_pph'];
+                        const potTot = colMap['total_potongan'];
+                        if (uk && pphPlus && potTot) {
+                            cell.value = { formula: `SUM(${uk}${excelRow.number},${pphPlus}${excelRow.number})-${potTot}${excelRow.number}` };
+                            return;
+                        }
+                    }
+
+                    cell.value = val === null || val === undefined ? 0 : val;
+                } else {
+                    cell.value = val === null || val === undefined ? '' : val;
                 }
             });
         }
@@ -236,7 +394,6 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
 
         flatCols.forEach((col, idx) => {
             const cell = grandTotalRow.getCell(idx + 1);
-            const isNumeric = col.filter === 'agNumberColumnFilter' || col.type === 'rightAligned' || col.className?.includes('text-right');
 
             cell.font = { bold: true, size: 11, color: { argb: COLORS.grandTotalText } };
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.grandTotal } };
@@ -249,16 +406,14 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
 
             if (col.field === 'nama') {
                 cell.value = 'GRAND TOTAL KESELURUHAN';
-                cell.alignment = { horizontal: 'right', vertical: 'middle' };
-            } else if (isNumeric) {
-                // Formula combining all gang total row cells!
+                cell.alignment = { horizontal: 'right', vertical: 'middle', wrapText: false };
+            } else if (col.isNumeric) {
                 const letter = getColLetter(idx + 1);
                 const sumParts = gangTotalRowIndices.map(rNum => `${letter}${rNum}`).join(',');
 
-                // if there are too many total rows for simple A1,B1 syntax, we use SUM
                 cell.value = { formula: `SUM(${sumParts})` };
                 cell.numFmt = '#,##0';
-                cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                cell.alignment = { horizontal: 'right', vertical: 'middle', wrapText: false };
             }
         });
     } else {
@@ -272,7 +427,6 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
 
         flatCols.forEach((col, idx) => {
             const cell = grandTotalRow.getCell(idx + 1);
-            const isNumeric = col.filter === 'agNumberColumnFilter' || col.type === 'rightAligned' || col.className?.includes('text-right');
 
             cell.font = { bold: true, size: 11, color: { argb: COLORS.grandTotalText } };
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.grandTotal } };
@@ -285,12 +439,12 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
 
             if (col.field === 'nama') {
                 cell.value = 'GRAND TOTAL';
-                cell.alignment = { horizontal: 'right', vertical: 'middle' };
-            } else if (isNumeric && startRow <= endRow) {
+                cell.alignment = { horizontal: 'right', vertical: 'middle', wrapText: false };
+            } else if (col.isNumeric && startRow <= endRow) {
                 const letter = getColLetter(idx + 1);
                 cell.value = { formula: `SUM(${letter}${startRow}:${letter}${endRow})` };
                 cell.numFmt = '#,##0';
-                cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                cell.alignment = { horizontal: 'right', vertical: 'middle', wrapText: false };
             }
         });
     }
