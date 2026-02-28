@@ -18,6 +18,11 @@ export default function GangHistoricalReportPage({ division, gangCode: initialGa
     const { token } = useAuth();
     const [selectedGang, setSelectedGang] = useState(initialGangCode || 'ALL');
     const [selectedPeriod, setSelectedPeriod] = useState({ month: 1, year: new Date().getFullYear() });
+
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialGangCode !== undefined) setSelectedGang(initialGangCode);
+    }, [initialGangCode]);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);

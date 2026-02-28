@@ -153,13 +153,13 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                 <th>TER</th>
                                 <th>Gang</th>
                                 <th>HK</th>
-                                <th>Upah Dasar</th>
-                                <th title="Upah Dasar × HK">GP Ideal</th>
-                                <th title="Upah Dasar × 30">Gaji Standar</th>
-                                <th>GP Aktual</th>
-                                <th title="GP Aktual - GP Ideal">Koreksi HK</th>
-                                <th>Upah Kotor</th>
-                                <th>Peng. Bruto</th>
+                                <th title="Upah Dasar">U. Dasar</th>
+                                <th title="Upah Dasar × HK">GP Idl</th>
+                                <th title="Upah Dasar × 30">Gj Std</th>
+                                <th title="GP Aktual">GP Akt</th>
+                                <th title="GP Aktual - GP Ideal">Kor HK</th>
+                                <th title="Upah Kotor">U. Kotor</th>
+                                <th title="Penghasilan Bruto">Bruto</th>
                                 <th>Tarif (%)</th>
                                 <th>PPH21</th>
                             </tr>
@@ -454,16 +454,16 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, r
                                                 })
                                             </th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>
-                                                {penghasilanMode === 'gaji' ? 'TOTAL\nGaji Setahun' :
-                                                    penghasilanMode === 'bpjs_kesehatan' ? 'TOTAL\nBPJS Kes 4%' :
-                                                        penghasilanMode === 'astek_ins_084' ? 'TOTAL\nAstek 0.84%' :
-                                                            penghasilanMode === 'astek_ins_2' ? 'TOTAL\nAstek 2%' : 'TOTAL\nPensiun 1%'}
+                                                {penghasilanMode === 'gaji' ? 'TOTAL\nGaji' :
+                                                    penghasilanMode === 'bpjs_kesehatan' ? 'TOTAL\nBPJS 4%' :
+                                                        penghasilanMode === 'astek_ins_084' ? 'TOTAL\nAst 0.84%' :
+                                                            penghasilanMode === 'astek_ins_2' ? 'TOTAL\nAst 2%' : 'TOTAL\nPens 1%'}
                                             </th>
-                                            <th rowSpan={2} style={{ textAlign: 'center' }}>T H R</th>
-                                            <th rowSpan={2} style={{ textAlign: 'center' }}>BONUS /<br />Ex-Gratia</th>
-                                            <th rowSpan={2} style={{ textAlign: 'center' }}>Total<br />Penghasilan<br />Setahun</th>
+                                            <th rowSpan={2} style={{ textAlign: 'center' }}>THR</th>
+                                            <th rowSpan={2} style={{ textAlign: 'center' }}>Bonus</th>
+                                            <th rowSpan={2} style={{ textAlign: 'center' }}>Total<br />Setahun</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>PTKP</th>
-                                            <th rowSpan={2} style={{ textAlign: 'center' }}>Penghasilan<br />Kena<br />Pajak</th>
+                                            <th rowSpan={2} style={{ textAlign: 'center' }} title="Penghasilan Kena Pajak">PKP</th>
                                         </tr>
                                         <tr>
                                             {MONTH_NAMES.map((name, idx) => (
@@ -478,24 +478,24 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, r
                                             <th className="col-name" rowSpan={2}>Name</th>
                                             <th rowSpan={2}>NIK</th>
                                             <th colSpan={6} style={{ textAlign: 'center' }}>PENGHASILAN SETAHUN</th>
-                                            <th rowSpan={2} style={{ textAlign: 'center' }}>Total<br />Penghasilan<br />Bruto</th>
+                                            <th rowSpan={2} style={{ textAlign: 'center' }}>Total<br />Bruto</th>
                                             <th colSpan={4} style={{ textAlign: 'center' }}>POTONGAN</th>
-                                            <th rowSpan={2} style={{ textAlign: 'center' }}>Penghasilan<br />Neto Setahun/<br />disetahunkan</th>
+                                            <th rowSpan={2} style={{ textAlign: 'center' }} title="Penghasilan Neto Setahun/disetahunkan">Neto<br />Setahun</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>PTKP</th>
-                                            <th rowSpan={2} style={{ textAlign: 'center' }}>Penghasilan<br />Kena<br />Pajak</th>
+                                            <th rowSpan={2} style={{ textAlign: 'center' }} title="Penghasilan Kena Pajak">PKP</th>
                                             <th rowSpan={2} style={{ textAlign: 'center' }}>PPh21</th>
                                         </tr>
                                         <tr>
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>Total Gaji<br />Kotor</th>
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>T H R</th>
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>BONUS /<br />Ex-Gratia</th>
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>BPJS<br />Kesehatan (4%)</th>
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>Astek Ins<br />0,84%</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>Gaji<br />Kotor</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>THR</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>Bonus</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>BPJS<br />Kes 4%</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>Astek<br />0,84%</th>
 
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>Astek Ins<br />2% from Inc</th>
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>Bi.Jabatan<br />5%per year</th>
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>PENSIUN<br />1%</th>
-                                            <th className="sub-header" style={{ textAlign: 'center' }}>Total<br />Potongan</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>Astek<br />2%</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>Biaya<br />Jabatan</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>Pens<br />1%</th>
+                                            <th className="sub-header" style={{ textAlign: 'center' }}>Tot<br />Pot</th>
                                         </tr>
                                     </>
                                 )}
@@ -711,7 +711,7 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, r
                                 <th className="col-name" rowSpan={2}>Nama</th>
                                 <th rowSpan={2}>NIK</th>
                                 <th rowSpan={2} title="Upah Dasar (terakhir)">Upah<br />Dasar</th>
-                                <th rowSpan={2} title="Upah Dasar × 30">Gaji Standar<br />(UD×30)</th>
+                                <th rowSpan={2} title="Upah Dasar × 30">Gaji Std<br />(UD×30)</th>
                                 <th colSpan={12} style={{ textAlign: 'center' }}>
                                     URAIAN BULANAN ({
                                         astekMode === 'total' ? 'TOTAL BPJS & ASTEK' :

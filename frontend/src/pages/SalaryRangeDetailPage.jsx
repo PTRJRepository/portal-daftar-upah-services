@@ -27,6 +27,13 @@ const SalaryRangeDetailPage = ({
     const [minSalary, setMinSalary] = useState(initialMinSalary);
     const [maxSalary, setMaxSalary] = useState(null);
 
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialMonth !== undefined) setMonth(initialMonth);
+        if (initialYear !== undefined) setYear(initialYear);
+        if (initialMinSalary !== undefined) setMinSalary(initialMinSalary);
+    }, [initialMonth, initialYear, initialMinSalary]);
+
     // State for data
     const [data, setData] = useState([]);
     const [meta, setMeta] = useState(null);

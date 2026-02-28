@@ -31,6 +31,13 @@ export default function PayrollAnalysisPage({
   const [division, setDivision] = useState(initialDivision);
   const [gang, setGang] = useState('');
 
+  // Sync state with props when they change (fix navigation freeze)
+  useEffect(() => {
+    if (initialDivision !== undefined) setDivision(initialDivision);
+    if (initialMonth !== undefined) setMonth(initialMonth);
+    if (initialYear !== undefined) setYear(initialYear);
+  }, [initialDivision, initialMonth, initialYear]);
+
   // State for data
   const [rawData, setRawData] = useState([]);
   const [aggregatedData, setAggregatedData] = useState(null); // New state for aggregated totals

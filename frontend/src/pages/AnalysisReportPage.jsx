@@ -14,6 +14,12 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
     const [filterType, setFilterType] = useState('all');
+
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialMonth !== undefined) setMonth(initialMonth);
+        if (initialYear !== undefined) setYear(initialYear);
+    }, [initialMonth, initialYear]);
     const [loading, setLoading] = useState(false);
     const [reportData, setReportData] = useState(null);
     const [error, setError] = useState(null);

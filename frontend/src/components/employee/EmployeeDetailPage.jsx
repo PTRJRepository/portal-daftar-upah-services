@@ -250,13 +250,13 @@ export default function EmployeeDetailPage({
     // 1. Gaji Pokok
     const hk = getNum('hari_kerja') || getNum('jumlah_hk')
     const rate = getNum('upah_dasar') || getNum('upah_harian')
-    const gajiPokok = getNum('upah_pokok') || (hk * rate)
+    const gajiPokok = getNum('gaji_pokok') || getNum('upah_pokok') || (hk * rate)
 
     // 2. Tunjangan Breakdown
     const tunjanganList = [
-        { label: 'Tunjangan Beras', value: getNum('beras_jumlah') },
-        { label: 'Tunjangan Jabatan', value: getNum('jabatan_jumlah') },
-        { label: 'Tunjangan Masa Kerja', value: getNum('masa_kerja_jumlah') },
+        { label: 'Tunjangan Beras', value: getNum('beras_jumlah') || getNum('tunjangan_beras') },
+        { label: 'Tunjangan Jabatan', value: getNum('jabatan_jumlah') || getNum('tunjangan_jabatan') },
+        { label: 'Tunjangan Masa Kerja', value: getNum('masa_kerja_jumlah') || getNum('tunjangan_masa_kerja') },
         // Add other tunjangan if any
     ].filter(item => item.value > 0)
 
@@ -288,8 +288,8 @@ export default function EmployeeDetailPage({
     const totalPremi = getNum('total_premi')
 
     // 4. Lembur
-    const lemburJam = getNum('lembur_jam')
-    const lemburJumlah = getNum('lembur_jumlah')
+    const lemburJam = getNum('lembur_jam') || getNum('total_jam_lembur')
+    const lemburJumlah = getNum('lembur_jumlah') || getNum('total_upah_lembur') || getNum('upah_lembur')
 
     // 5. Potongan Breakdown
     const potKotorList = []
@@ -306,11 +306,11 @@ export default function EmployeeDetailPage({
     const totalPotKotor = getNum('potongan_upah_kotor_total') || subtotalPotKotor
 
     const potBersihList = [
-        { label: 'BPJS Kesehatan', value: getNum('pot_bpjs_kesehatan_pekerja') },
-        { label: 'BPJS Pensiun', value: getNum('pot_bpjs_pensiun_pekerja') },
+        { label: 'BPJS Kesehatan', value: getNum('pot_bpjs_kesehatan_pekerja') || getNum('pot_bpjs_kesehatan') },
+        { label: 'BPJS Pensiun', value: getNum('pot_bpjs_pensiun_pekerja') || getNum('pot_bpjs_pensiun') },
         { label: 'Astek Pekerja', value: getNum('pot_astek') || getNum('pot_astek_jumlah') },
         { label: 'SPSI', value: getNum('pot_spsi') },
-        { label: 'PPh 21', value: getNum('pot_pph21') },
+        { label: 'PPh 21', value: getNum('pot_pph21') || getNum('pph21_ter') },
     ].filter(item => item.value > 0)
 
     const standardPotKeys = ['pot_bpjs_kesehatan_pekerja', 'pot_bpjs_pensiun_pekerja', 'pot_astek', 'pot_astek_jumlah', 'pot_spsi', 'pot_pph21', 'pot_koreksi', 'potongan_upah_kotor_total', 'total_potongan', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_majikan']
@@ -323,10 +323,10 @@ export default function EmployeeDetailPage({
     })
 
     const subtotalPotBersih = potBersihList.reduce((acc, curr) => acc + curr.value, 0)
-    const totalPotongan = getNum('total_potongan')
+    const totalPotongan = getNum('total_potongan') || (subtotalPotKotor + subtotalPotBersih)
 
     // Totals
-    const jumlahUpahKotor = getNum('jumlah_upah_kotor')
+    const jumlahUpahKotor = getNum('jumlah_upah_kotor') || getNum('penghasilan_bruto')
     const upahBersih = getNum('upah_bersih')
 
     // --- CALENDAR DATA ---

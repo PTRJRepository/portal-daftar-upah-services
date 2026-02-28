@@ -57,9 +57,9 @@ export default function PayslipCard({ data, month, year }) {
 
     // Tunjangan Breakdown
     const tunjanganList = [
-        { label: 'Beras', value: getNum('beras_jumlah') },
-        { label: 'Jabatan', value: getNum('jabatan_jumlah') },
-        { label: 'Masa Kerja', value: getNum('masa_kerja_jumlah') },
+        { label: 'Beras', value: getNum('beras_jumlah') || getNum('tunjangan_beras') },
+        { label: 'Jabatan', value: getNum('jabatan_jumlah') || getNum('tunjangan_jabatan') },
+        { label: 'Masa Kerja', value: getNum('masa_kerja_jumlah') || getNum('tunjangan_masa_kerja') },
     ].filter(item => item.value > 0)
 
     // Premi Breakdown
@@ -77,8 +77,8 @@ export default function PayslipCard({ data, month, year }) {
     }
 
     const totalPremi = getNum('total_premi')
-    const lemburJam = getNum('lembur_jam')
-    const lemburJumlah = getNum('lembur_jumlah')
+    const lemburJam = getNum('lembur_jam') || getNum('total_jam_lembur')
+    const lemburJumlah = getNum('lembur_jumlah') || getNum('total_upah_lembur') || getNum('upah_lembur')
 
     // Potongan Upah Kotor
     const potKotorList = []
@@ -99,11 +99,11 @@ export default function PayslipCard({ data, month, year }) {
 
     // Potongan Upah Bersih
     const potBersihList = [
-        { label: 'BPJS Kes', value: getNum('pot_bpjs_kesehatan_pekerja') },
-        { label: 'BPJS Pens', value: getNum('pot_bpjs_pensiun_pekerja') },
+        { label: 'BPJS Kes', value: getNum('pot_bpjs_kesehatan_pekerja') || getNum('pot_bpjs_kesehatan') },
+        { label: 'BPJS Pens', value: getNum('pot_bpjs_pensiun_pekerja') || getNum('pot_bpjs_pensiun') },
         { label: 'Astek', value: getNum('pot_astek') || getNum('pot_astek_jumlah') },
         { label: 'SPSI', value: getNum('pot_spsi') },
-        { label: 'PPh 21', value: getNum('pot_pph21') },
+        { label: 'PPh 21', value: getNum('pot_pph21') || getNum('pph21_ter') },
     ].filter(item => item.value > 0)
 
     const premiPph = getNum('premi_pph') || getNum('PREMI_PPH');
@@ -111,8 +111,8 @@ export default function PayslipCard({ data, month, year }) {
         potBersihList.push({ label: 'Premi PPh (+)', value: premiPph, isCredit: true })
     }
 
-    const totalPotongan = getNum('total_potongan_bersih') || (getNum('total_potongan') - premiPph);
-    const jumlahUpahKotor = getNum('jumlah_upah_kotor')
+    const totalPotongan = getNum('total_potongan_bersih') || getNum('total_potongan') || (totalPotKotor + potBersihList.reduce((acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value), 0) + premiPph);
+    const jumlahUpahKotor = getNum('jumlah_upah_kotor') || getNum('penghasilan_bruto')
     // upahBersih should be Gross - Total Potongan Bersih
     const upahBersih = getNum('upah_bersih') || (jumlahUpahKotor - totalPotongan)
 

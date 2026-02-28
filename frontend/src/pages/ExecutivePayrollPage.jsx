@@ -39,6 +39,12 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
     const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
 
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialMonth !== undefined) setMonth(initialMonth);
+        if (initialYear !== undefined) setYear(initialYear);
+    }, [initialMonth, initialYear]);
+
     // Comparison State
     const [filterOptions, setFilterOptions] = useState({ divisions: [], gangs: [] });
     const [compMode, setCompMode] = useState('division');

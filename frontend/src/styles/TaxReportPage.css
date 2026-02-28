@@ -151,7 +151,7 @@
 .tax-report-content {
     flex: 1;
     overflow: auto;
-    padding: 1.5rem;
+    padding: 1rem 0.5rem;
 }
 
 /* Period selector */
@@ -210,7 +210,7 @@
 .tax-report-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.82rem;
+    font-size: 0.72rem;
     white-space: nowrap;
 }
 
@@ -221,18 +221,22 @@
     background: #f1f5f9;
     color: #0f172a;
     font-weight: 700;
-    font-size: 0.78rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
-    padding: 0.6rem 0.75rem;
+    letter-spacing: 0.01em;
+    padding: 0.4rem 0.3rem;
     text-align: center;
     border: 1px solid #cbd5e1;
+    white-space: normal;
+    min-width: 45px;
+    vertical-align: middle;
+    line-height: 1.1;
 }
 
 .tax-report-table thead th.sub-header {
     background: #f8fafc;
-    font-size: 0.75rem;
-    padding: 0.4rem 0.6rem;
+    font-size: 0.65rem;
+    padding: 0.3rem 0.3rem;
 }
 
 .tax-report-table thead th.header-only {
@@ -242,9 +246,10 @@
 }
 
 .tax-report-table tbody td {
-    padding: 0.5rem 0.75rem;
+    padding: 0.25rem 0.3rem;
     border: 1px solid #e2e8f0;
     color: #334155;
+    vertical-align: top;
 }
 
 .tax-report-table tbody tr:nth-child(even) {
@@ -270,14 +275,15 @@
 
 .tax-report-table .col-name {
     text-align: left;
-    min-width: 140px;
-    max-width: 200px;
+    min-width: 100px;
+    max-width: 140px;
     overflow: hidden;
     text-overflow: ellipsis;
     position: sticky;
-    left: 40px;
+    left: 28px;
     z-index: 5;
     background: #ffffff;
+    white-space: nowrap;
 }
 
 /* Even rows: col-name should match row background */
@@ -312,11 +318,14 @@
 
 .tax-report-table .col-no {
     text-align: center;
-    width: 40px;
+    width: 28px;
+    min-width: 28px;
     position: sticky;
     left: 0;
     z-index: 5;
     background: #ffffff;
+    padding-left: 0.1rem;
+    padding-right: 0.1rem;
 }
 
 /* Even rows: col-no should match row background */
@@ -352,7 +361,7 @@
 
 /* Footer row */
 .tax-report-table tfoot td {
-    padding: 0.6rem 0.75rem;
+    padding: 0.3rem 0.3rem;
     font-weight: 700;
     background: #f1f5f9;
     border: 1px solid #cbd5e1;

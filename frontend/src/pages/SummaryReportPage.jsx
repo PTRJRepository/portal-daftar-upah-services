@@ -38,6 +38,13 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [month, setMonth] = useState(initialMonth || 11);  // November
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
 
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialDivision !== undefined) setDivision(initialDivision);
+        if (initialMonth !== undefined) setMonth(initialMonth);
+        if (initialYear !== undefined) setYear(initialYear);
+    }, [initialDivision, initialMonth, initialYear]);
+
     // Get company info for current division
     const companyInfo = useMemo(() => getCompanyInfo(division), [division]);
 

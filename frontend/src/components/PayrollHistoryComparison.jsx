@@ -29,11 +29,18 @@ export default function PayrollHistoryComparison({
     onBack 
 }) {
     const { token } = useAuth();
-    
+
     // Filters
     const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
     const [division, setDivision] = useState(initialDivision || '');
+
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialDivision !== undefined) setDivision(initialDivision);
+        if (initialMonth !== undefined) setMonth(initialMonth);
+        if (initialYear !== undefined) setYear(initialYear);
+    }, [initialDivision, initialMonth, initialYear]);
     
     // Data
     const [comparisonData, setComparisonData] = useState(null);
