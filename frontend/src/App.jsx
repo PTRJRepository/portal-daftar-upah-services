@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, lazy, Suspense } from 'react'
+import { useEffect, useState, useMemo, lazy, Suspense, memo } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ReportProvider, useReport } from './context/ReportContext'
@@ -9,34 +9,36 @@ import DashboardLayout from './layouts/DashboardLayout'
 import ReportToolbar from './components/common/ReportToolbar'
 import './styles/print-overrides.css'
 
-// Lazy load pages
-const DashboardHome = lazy(() => import('./pages/DashboardHome'))
-const EmployeeDetailRoute = lazy(() => import('./pages/EmployeeDetailRoute'))
-const HrInfoRoute = lazy(() => import('./pages/HrInfoRoute'))
-const LoginPage = lazy(() => import('./pages/LoginPage'))
-const PayslipPrintPage = lazy(() => import('./pages/PayslipPrintPage'))
+// Lazy load pages - TEMPORARILY STATIC
+import DashboardHome from './pages/DashboardHome'
+import EmployeeDetailRoute from './pages/EmployeeDetailRoute'
+import HrInfoRoute from './pages/HrInfoRoute'
+import LoginPage from './pages/LoginPage'
+import PayslipPrintPage from './pages/PayslipPrintPage'
 
 // Report Pages
-const CustomPayrollTable = lazy(() => import('./components/CustomPayrollTable'))
-const EmployeeDirectoryPage = lazy(() => import('./pages/EmployeeDirectoryPage'))
-const SummaryReportPage = lazy(() => import('./pages/SummaryReportPage'))
-const WagesSummaryRebinmasPage = lazy(() => import('./pages/WagesSummaryRebinmasPage'))
-const WagesSummaryIJLPage = lazy(() => import('./pages/WagesSummaryIJLPage'))
-const AnalysisReportPage = lazy(() => import('./pages/AnalysisReportPage'))
-const AggregationSeederPage = lazy(() => import('./pages/AggregationSeederPage'))
-const SpreadsheetSyncPage = lazy(() => import('./pages/SpreadsheetSyncPage'))
-const PayrollAnalysisPage = lazy(() => import('./pages/PayrollAnalysisPage'))
-const ExecutivePayrollPage = lazy(() => import('./pages/ExecutivePayrollPage'))
-const GangComparisonReportPage = lazy(() => import('./pages/GangComparisonReportPage'))
-const WagesComparisonPage = lazy(() => import('./pages/WagesComparisonPage'))
-const TaxReportPage = lazy(() => import('./pages/TaxReportPage'))
-const OtherIncomesPage = lazy(() => import('./pages/OtherIncomesPage'))
+import CustomPayrollTable from './components/CustomPayrollTable'
+import EmployeeDirectoryPage from './pages/EmployeeDirectoryPage'
+import SummaryReportPage from './pages/SummaryReportPage'
+import WagesSummaryRebinmasPage from './pages/WagesSummaryRebinmasPage'
+import WagesSummaryIJLPage from './pages/WagesSummaryIJLPage'
+import AnalysisReportPage from './pages/AnalysisReportPage'
+import AggregationSeederPage from './pages/AggregationSeederPage'
+import SpreadsheetSyncPage from './pages/SpreadsheetSyncPage'
+import PayrollAnalysisPage from './pages/PayrollAnalysisPage'
+import ExecutivePayrollPage from './pages/ExecutivePayrollPage'
+import GangComparisonReportPage from './pages/GangComparisonReportPage'
+import WagesComparisonPage from './pages/WagesComparisonPage'
+import TaxReportPage from './pages/TaxReportPage'
+import OtherIncomesPage from './pages/OtherIncomesPage'
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
 
 // Wrapper for Operational Report
-const OperationalReportWrapper = () => {
+const OperationalReportWrapper = memo(() => {
+  console.log('[OperationalReportWrapper] Component mounted/rendered');
+
   const {
     division, setDivision,
     gang, setGang,
@@ -46,6 +48,13 @@ const OperationalReportWrapper = () => {
   } = useReport();
   const { token } = useAuth();
   const navigate = useNavigate();
+
+  // Log when component unmounts
+  useEffect(() => {
+    return () => {
+      console.log('[OperationalReportWrapper] Component UNMOUNTED');
+    };
+  }, []);
 
   const [fontSize, setFontSize] = useState(100);
   const [exportHandler, setExportHandler] = useState(null);
@@ -439,8 +448,10 @@ const OperationalReportWrapper = () => {
         />
       </div>
     </div>
-  )
-}
+  );
+});
+
+OperationalReportWrapper.displayName = 'OperationalReportWrapper';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -460,7 +471,7 @@ function AppInner() {
 
   // URL Path Management & Role Redirects
   useEffect(() => {
-    console.log('[AppInner] location changed:', location.pathname);
+    console.log('[AppInner] location changed:', location.pathname, 'key:', location.key);
     if (!loading) {
       // Use location.pathname from React Router to get path relative to basename
       const currentPath = location.pathname
@@ -563,7 +574,7 @@ function AppInner() {
             <Route path="spreadsheet-sync" element={<SummaryReportWrapper component={SpreadsheetSyncPage} />} />
             <Route path="wages-comparison" element={<SummaryReportWrapper component={WagesComparisonPage} />} />
             <Route path="pendapatan-tidak-tetap" element={<SummaryReportWrapper component={OtherIncomesPage} />} />
-            <Route path="report-pajak" element={<TaxReportPage />} />
+            <Route path="report-pajak" element={<SummaryReportWrapper component={TaxReportPage} />} />
 
             {/* Development/Test Pages */}
             <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />

@@ -400,6 +400,16 @@ export class DataExtractorService {
             }
         }
 
+        // Fetch Master PTKP records for the current year
+        const { ptkpTaxService } = await import('./ptkpTaxService');
+        const ptkpMasterRecords = await ptkpTaxService.getPtkpByYear(year);
+        const dbPtkpMap = new Map<string, string>();
+        for (const record of ptkpMasterRecords) {
+            if (record.emp_code) {
+                dbPtkpMap.set(record.emp_code.trim().toUpperCase(), record.ptkp_status);
+            }
+        }
+
         const dataRows: PayrollRow[] = [];
         const dynamicPremiSet = new Set<string>();
         const dynamicPotonganSet = new Set<string>();
@@ -687,7 +697,9 @@ export class DataExtractorService {
                 bpjs_kesehatan_majikan_4_pct +
                 pendapatan_tidak_tetap_taxable;
 
-            const statusPtkp = mapBerasRateToPTKP(berasRate);
+            // Use DB Master PTKP mapped status if available, or fallback to RiceRation mapping
+            const rawEmpCode = String(emp.emp_code || '').trim().toUpperCase();
+            const statusPtkp = dbPtkpMap.get(rawEmpCode) || mapBerasRateToPTKP(berasRate);
 
             // [NEW] PPH21 TER calculation
             // Calculate TER rate and PPH21 amount based on penghasilan_bruto and status_ptkp

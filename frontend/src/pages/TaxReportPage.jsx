@@ -1418,7 +1418,8 @@ function DecemberTaxTab({ token, year, division, gang, refreshKey }) {
 }
 
 
-export default function TaxReportPage() {
+export default function TaxReportPage({ onBack, initialMonth, initialYear, initialDivision }) {
+    console.log('[TaxReportPage] Component mounted/rendered');
     const { token, user } = useAuth();
     const {
         month, setMonth,

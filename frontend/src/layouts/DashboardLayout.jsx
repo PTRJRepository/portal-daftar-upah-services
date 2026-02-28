@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReport } from '../context/ReportContext';
-import { getBasePath } from '../utils/prodModeUtils';
+import { getBasePath, buildAppPath } from '../utils/prodModeUtils';
 
 import {
     Home, FileText, BarChart2, DollarSign, TrendingUp, Users, Activity,
@@ -41,6 +41,14 @@ const DashboardLayout = () => {
     // Get base path for proxy mode compatibility
     const basePath = getBasePath();
 
+    // Debug logging
+    console.log('[DashboardLayout] Render:', { pathname: location.pathname, key: location.key });
+
+    // Effect to log when location changes
+    useEffect(() => {
+        console.log('[DashboardLayout] Location changed:', { pathname: location.pathname, key: location.key });
+    }, [location]);
+
     // Dynamic styles
     const getLinkStyle = ({ isActive }) => ({
         padding: collapsed ? '0.75rem 0' : '0.75rem 1rem',
@@ -62,8 +70,6 @@ const DashboardLayout = () => {
     });
 
     const sidebarWidth = collapsed ? '72px' : '260px';
-
-    console.log('[DashboardLayout] Render', { location: location.pathname });
 
     return (
         <div style={{
@@ -279,7 +285,15 @@ const DashboardLayout = () => {
                         </NavLink>
                     )}
 
-                    <NavLink to="/report-pajak" style={getLinkStyle} title={collapsed ? "Report Pajak" : ""}>
+                    {/* Using window.location.href to force navigation from Operational page */}
+                    <a
+                        href={buildAppPath('/report-pajak')}
+                        style={{
+                            ...getLinkStyle({ isActive: location.pathname === '/report-pajak' }),
+                            textDecoration: 'none'
+                        }}
+                        title={collapsed ? "Report Pajak" : ""}
+                    >
                         <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Clipboard /></div>
                         {!collapsed && (
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -287,7 +301,7 @@ const DashboardLayout = () => {
                                 <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Laporan 12 bulan PPh21 untuk keperluan pajak.</span>
                             </div>
                         )}
-                    </NavLink>
+                    </a>
 
                     {!isKeraniUser && (
                         <NavLink to="/wages-rebinmas" style={getLinkStyle} title={collapsed ? "Wages Rebinmas" : ""}>

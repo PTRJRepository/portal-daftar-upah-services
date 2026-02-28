@@ -317,8 +317,39 @@ export function AuthProvider({ children }) {
   }
 
   const logout = () => {
-    // In PRODUCTION MODE: Do NOT clear localStorage tokens
-    // Just clear the in-memory state and redirect to gateway dashboard
+    // Sesuai request, hapus token external di localStorage seluruhnya
+    try {
+      if (typeof window !== 'undefined') {
+        // Hapus dari localStorage
+        window.localStorage.removeItem('auth-token')
+        window.localStorage.removeItem('user')
+        window.localStorage.removeItem('disable-cache')
+        window.localStorage.removeItem('payroll_remember_me')
+
+        // Hapus dari sessionStorage (untuk berjaga-jaga jika gateway menggunakan sessionStorage)
+        window.sessionStorage.removeItem('auth-token')
+        window.sessionStorage.removeItem('user')
+
+        // Hapus cookies yang mungkin ditinggalkan oleh proxy/gateway
+        const cookiesToClear = ['auth-token', 'user', 'token', 'authorization']
+        const paths = ['/', '/upah']
+        const domains = [window.location.hostname, `.${window.location.hostname}`]
+
+        cookiesToClear.forEach(key => {
+          paths.forEach(p => {
+            document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${p};`
+            domains.forEach(d => {
+              document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${p}; domain=${d};`
+            })
+          })
+        })
+      }
+    } catch (e) {
+      console.error('[Auth] Failed to clear external tokens from localStorage:', e)
+    }
+
+    // In PRODUCTION MODE:
+    // Clear the in-memory state and redirect to gateway dashboard
     if (isProdMode()) {
       console.log('[Auth] Prod mode: Clearing in-memory auth state and redirecting to /login')
       delete axios.defaults.headers.common['Authorization']

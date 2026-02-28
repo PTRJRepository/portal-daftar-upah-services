@@ -208,10 +208,37 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
             });
 
             if (payrollRow) {
-                // Get additional employee details
-                const employeeInfo = await employeeDetailService.getEmployeeInfo(normalizedCode);
-                const attendanceData = await employeeDetailService.getDailyAttendance(normalizedCode, month, year);
-                const overtimeData = await employeeDetailService.getDailyOvertime(normalizedCode, month, year);
+                // Eliminate N+1 DB Queries: Map everything from the already-fetched payrollRow
+                const employeeInfo = {
+                    emp_code: payrollRow.emp_code,
+                    nama: payrollRow.nama,
+                    EmpName: payrollRow.nama,
+                    jabatan: payrollRow.jabatan_estate || payrollRow.task_desc,
+                    gang_code: payrollRow.gang_code,
+                    GangCode: payrollRow.gang_code,
+                    loc_code: payrollRow.loc_code,
+                    LocCode: payrollRow.loc_code
+                };
+
+                const attendanceData = {
+                    summary: {
+                        total_hadir: payrollRow.kehadiran || payrollRow.hari_kerja || 0,
+                        cuti_tahunan: payrollRow.cuti_tahunan_hari || 0,
+                        cuti_sakit: payrollRow.cuti_sakit_haid_hari || 0,
+                        cuti_minggu: payrollRow.cuti_minggu_hari || 0,
+                        libur: payrollRow.cuti_nasional_hari || 0,
+                        alpa: 0 // Optional, if you have alpa in dataExtractor add it
+                    },
+                    details: [] // Not needed for compact printed payslip
+                };
+
+                const overtimeData = {
+                    summary: {
+                        total_hours: payrollRow.lembur_jam || 0,
+                        total_amount: payrollRow.lembur_jumlah || 0
+                    },
+                    details: payrollRow.lembur_records || []
+                };
 
                 results.push({
                     emp_code: normalizedCode,
@@ -221,7 +248,7 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
                     attendance: attendanceData,
                     overtime: overtimeData,
                     payroll_data: payrollRow,
-                    debug_info: { found: true, source: "batch_fetch" }
+                    debug_info: { found: true, source: "batch_fetch_optimized" }
                 });
             } else {
                 // Employee not found in payroll data - try individual fetch as fallback

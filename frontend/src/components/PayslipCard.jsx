@@ -234,17 +234,30 @@ export default function PayslipCard({ data, month, year }) {
                     {potBersihList.length > 0 && (
                         <>
                             <div className="payslip-subheader">Pot. Upah Bersih:</div>
-                            {potBersihList.map((item, idx) => (
-                                <div key={`potb-${idx}`} className="payslip-item payslip-item-indent">
-                                    <span className="payslip-item-label">{item.isCredit ? '+' : '-'} {item.label}</span>
-                                    <span
-                                        className={`payslip-item-value ${item.isCredit ? '' : 'payslip-negative'}`}
-                                        style={item.isCredit ? { color: '#059669', fontWeight: 'bold' } : {}}
-                                    >
-                                        {formatCurrency(item.value)}
-                                    </span>
-                                </div>
-                            ))}
+                            {potBersihList.map((item, idx) => {
+                                const isTax = item.label.toLowerCase().includes('pph 21');
+                                return (
+                                    <React.Fragment key={`potb-${idx}`}>
+                                        <div className="payslip-item payslip-item-indent">
+                                            <span className="payslip-item-label">{item.isCredit ? '+' : '-'} {item.label}</span>
+                                            <span
+                                                className={`payslip-item-value ${item.isCredit ? '' : 'payslip-negative'}`}
+                                                style={item.isCredit ? { color: '#059669', fontWeight: 'bold' } : {}}
+                                            >
+                                                {formatCurrency(item.value)}
+                                            </span>
+                                        </div>
+                                        {/* Display Tax Calculation Breakdown below the PPh21 row */}
+                                        {isTax && (payroll.status_ptkp || payroll.tarif_pajak_ter > 0) && (
+                                            <div className="payslip-item payslip-item-indent payslip-tax-breakdown" style={{ fontSize: '0.7em', color: '#666', marginTop: '-2px', fontStyle: 'italic' }}>
+                                                <span className="payslip-item-label">
+                                                    (Bruto: Rp{formatCurrency(payroll.penghasilan_bruto)} • PTKP: {payroll.status_ptkp || '-'} • TER: {payroll.tarif_pajak_ter || 0}%)
+                                                </span>
+                                            </div>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
                         </>
                     )}
 

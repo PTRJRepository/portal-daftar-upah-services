@@ -44,6 +44,7 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
     protected async calculateSingle(input: Pph21Input): Promise<PayrollCalculationResult<Pph21Output>> {
         try {
             const { penghasilan_bruto, beras_rate: providedBerasRate } = input;
+            const ptkp_status_override = (input as any).ptkp_status_override;
 
             // Get beras_rate if not provided
             let beras_rate = providedBerasRate;
@@ -52,7 +53,10 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
             }
 
             // Map beras_rate to PTKP status
-            const ptkp_status = this.mapBerasRateToPTKP(beras_rate);
+            let ptkp_status = ptkp_status_override;
+            if (!ptkp_status) {
+                ptkp_status = this.mapBerasRateToPTKP(beras_rate);
+            }
 
             // Calculate PPH21 using the main TER service (with full progressive brackets)
             const terResult = mainPph21TerService.calculatePph21Ter(penghasilan_bruto, ptkp_status);
@@ -92,13 +96,33 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
         let cachedCount = 0;
         let errorCount = 0;
 
+        if (inputs.length === 0) {
+            return {
+                results,
+                summary: { total_calculated: 0, total_errors: 0, execution_time_ms: 0, cached_count: 0 },
+                meta: this.buildMetadata('CALCULATION', 'Empty PPH21 TER calculation')
+            };
+        }
+
         // Batch fetch beras_rates first
         const empCodes = inputs.map(i => i.emp_code);
         const berasRates = await this.batchGetBerasRate(empCodes, inputs[0].server_profile);
 
+        // Fetch Master PTKP records for the given year
+        const { ptkpTaxService } = await import('../../ptkpTaxService');
+        const ptkpMasterRecords = await ptkpTaxService.getPtkpByYear(inputs[0].year);
+        const ptkpMap = new Map<string, string>();
+        for (const record of ptkpMasterRecords) {
+            if (record.emp_code) {
+                ptkpMap.set(record.emp_code.trim().toUpperCase(), record.ptkp_status);
+            }
+        }
+
         for (const input of inputs) {
             try {
-                const inputWithRate = { ...input, beras_rate: berasRates[input.emp_code] };
+                const matchedPtkp = ptkpMap.get(input.emp_code.trim().toUpperCase());
+                // Pass matchedPtkp down as any to avoid interface strictness issues if we don't change Pph21Input
+                const inputWithRate = { ...input, beras_rate: berasRates[input.emp_code], ptkp_status_override: matchedPtkp } as any;
                 const result = await this.calculateSingle(inputWithRate);
                 results.set(input.emp_code, result);
                 if (result.cached) cachedCount++;
