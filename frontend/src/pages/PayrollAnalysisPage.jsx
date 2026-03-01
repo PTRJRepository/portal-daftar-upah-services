@@ -302,24 +302,24 @@ export default function PayrollAnalysisPage({
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(num);
   };
 
-  // Helper function to group lembur records by task_desc
+  // Helper function to group lembur records by task_code
   const groupLemburByTask = (records) => {
     if (!records || records.length === 0) return [];
 
     const groupedByTask = {};
     records.forEach(record => {
-      const taskDesc = record.task_desc || record.task_code || 'Lain-lain';
-      if (!groupedByTask[taskDesc]) {
-        groupedByTask[taskDesc] = {
-          task_desc: taskDesc,
+      const taskCode = record.task_code || record.task_desc || 'Lain-lain';
+      if (!groupedByTask[taskCode]) {
+        groupedByTask[taskCode] = {
+          task_desc: taskCode,
           total_hours: 0,
           total_amount: 0,
           count: 0
         };
       }
-      groupedByTask[taskDesc].total_hours += (record.hours || 0);
-      groupedByTask[taskDesc].total_amount += (record.amount || 0);
-      groupedByTask[taskDesc].count += 1;
+      groupedByTask[taskCode].total_hours += (record.hours || 0);
+      groupedByTask[taskCode].total_amount += (record.amount || 0);
+      groupedByTask[taskCode].count += 1;
     });
 
     // Convert to array and sort by amount (descending)
@@ -756,7 +756,7 @@ export default function PayrollAnalysisPage({
                   const records = row.lembur_records || [];
                   const totalDetailHours = records.reduce((sum, r) => sum + (r.hours || 0), 0);
                   const totalDetailAmount = records.reduce((sum, r) => sum + (r.amount || 0), 0);
-                  const uniqueTasks = new Set(records.map(r => r.task_desc || r.task_code || 'Lain-lain')).size;
+                  const uniqueTasks = new Set(records.map(r => r.task_code || r.task_desc || 'Lain-lain')).size;
                   return { totalDetailHours, totalDetailAmount, uniqueTasks, recordCount: records.length };
                 })() : null;
 
@@ -811,7 +811,7 @@ export default function PayrollAnalysisPage({
                     </tr>
 
                     {/* Lembur Detail Sub-rows (Only when Lembur tab is active and has details) */}
-                    {/* Grouped by task_desc - Breakdown lembur per jenis pekerjaan */}
+                    {/* Grouped by task_code - Breakdown lembur per jenis pekerjaan */}
                     {hasLemburDetails && groupLemburByTask(row.lembur_records).map((group, groupIdx) => (
                       <tr key={`${idx}-task-${groupIdx}`} style={{ backgroundColor: '#f8fafc' }}>
                         <td colSpan={4} style={{ paddingLeft: '2rem', fontSize: '0.8rem', color: '#475569' }}>

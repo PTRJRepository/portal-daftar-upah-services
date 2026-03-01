@@ -807,7 +807,7 @@ export default function EmployeeDetailPage({
                                                 const dayName = trx.day_name || trx.hari || '-';
                                                 const dayType = trx.day_type || trx.tipe_hari || '-';
                                                 const rawDayType = trx.raw_day_type || null;
-                                                const taskDesc = trx.task_desc || trx.task_code || 'Lain-lain';
+                                                const taskCode = trx.task_code || trx.task_desc || 'Lain-lain';
                                                 const hours = trx.hours || 0;
                                                 const amount = trx.amount_formula || trx.amount || 0;
 
@@ -827,7 +827,7 @@ export default function EmployeeDetailPage({
                                                                 {formatDayType(dayType, rawDayType)}
                                                             </span>
                                                         </td>
-                                                        <td>{taskDesc}</td>
+                                                        <td>{taskCode}</td>
                                                         <td className="hours-cell">{hours}</td>
                                                         <td className="amount-cell">{formatCurrency(amount)}</td>
                                                     </tr>

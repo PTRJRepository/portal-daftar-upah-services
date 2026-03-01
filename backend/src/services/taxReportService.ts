@@ -494,15 +494,50 @@ class TaxReportService {
 
             // Discover dynamic premi fields from row keys (e.g. premi_brondol, premi_pruning, etc.)
             const premiDetail: Record<string, number> = {};
+
+            // [NEW] First, check if there's a premi_detail JSON string from history database
+            // This contains the parsed premi data with keys like 'BRONDOL', 'PRUNING', etc.
+            if (row.premi_detail && typeof row.premi_detail === 'object') {
+                // If it's already parsed (object)
+                for (const [key, value] of Object.entries(row.premi_detail)) {
+                    const val = Number(value) || 0;
+                    if (val > 0) {
+                        // Use the key directly (it's already in uppercase like 'BRONDOL', 'PRUNING')
+                        const label = String(key).toUpperCase().replace(/_/g, ' ');
+                        premiDetail[label] = val;
+                    }
+                }
+            } else if (row.premi_detail && typeof row.premi_detail === 'string') {
+                // If it's a JSON string, parse it
+                try {
+                    const parsedPremi = JSON.parse(row.premi_detail);
+                    for (const [key, value] of Object.entries(parsedPremi)) {
+                        const val = Number(value) || 0;
+                        if (val > 0) {
+                            const label = String(key).toUpperCase().replace(/_/g, ' ');
+                            premiDetail[label] = val;
+                        }
+                    }
+                } catch (e) {
+                    console.error('[TaxReportService] Error parsing premi_detail:', e);
+                }
+            }
+
+            // [LEGACY] Also look for keys starting with 'premi_' in the row object
+            // This is for compatibility with old data structure
             for (const key of Object.keys(row)) {
                 if (key.startsWith('premi_') && key !== 'premi_pph' && key !== 'premi_pph21') {
                     const val = Number(row[key]) || 0;
                     if (val > 0) {
                         const label = key.replace(/^premi_/, '').replace(/_/g, ' ').toUpperCase();
-                        premiDetail[label] = val;
+                        // Only add if not already present (avoid duplicate from premi_detail)
+                        if (!premiDetail[label]) {
+                            premiDetail[label] = val;
+                        }
                     }
                 }
             }
+
             // If brondol not in premi_* but row has premi_brondol, ensure it is included
             if (!('BRONDOL' in premiDetail) && row.premi_brondol) {
                 premiDetail['BRONDOL'] = Number(row.premi_brondol) || 0;
