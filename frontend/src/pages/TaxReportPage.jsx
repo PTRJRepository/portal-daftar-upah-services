@@ -225,22 +225,22 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                                                     <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Tunjangan</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_tunjangan)}</td></tr>
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
 
-                                                                    {/* Dynamic Premi Items */}
+                                                                    {/* Uraian Premi - Brondol (tetap) + Dynamic Premi Items */}
                                                                     <tr><td colSpan={2} style={{ paddingTop: '8px', fontWeight: 'bold', color: '#7c3aed', fontSize: '11px' }}>Uraian Premi:</td></tr>
-                                                                    {emp.premi_detail && Object.keys(emp.premi_detail).length > 0 ? (
+                                                                    {/* Premi Brondol - Always shown (fixed premise) */}
+                                                                    <tr><td style={{ padding: '3px 0 3px 8px', color: '#7c3aed' }}>Brondol</td><td className="text-right" style={{ padding: '3px 0', color: '#7c3aed' }}>{formatNumber(emp.premi_brondol)}</td></tr>
+                                                                    {/* Dynamic Premi Items (non-tetap) */}
+                                                                    {emp.premi_detail && Object.keys(emp.premi_detail).length > 0 && (
                                                                         Object.entries(emp.premi_detail).map(([name, val]) => (
                                                                             <tr key={name}>
                                                                                 <td style={{ padding: '3px 0 3px 8px', color: '#7c3aed' }}>{name}</td>
                                                                                 <td className="text-right" style={{ padding: '3px 0', color: '#7c3aed' }}>{formatNumber(val)}</td>
                                                                             </tr>
                                                                         ))
-                                                                    ) : (
-                                                                        <>
-                                                                            <tr><td style={{ padding: '3px 0 3px 8px' }}>Brondol</td><td className="text-right" style={{ padding: '3px 0' }}>{formatNumber(emp.premi_brondol)}</td></tr>
-                                                                            {(emp.total_premi || 0) - (emp.premi_brondol || 0) > 0 && (
-                                                                                <tr><td style={{ padding: '3px 0 3px 8px' }}>Lainnya</td><td className="text-right" style={{ padding: '3px 0' }}>{formatNumber((emp.total_premi || 0) - (emp.premi_brondol || 0))}</td></tr>
-                                                                            )}
-                                                                        </>
+                                                                    )}
+                                                                    {/* Show "Lainnya" if there's remaining premi that's not brondol or dynamic */}
+                                                                    {(!emp.premi_detail || Object.keys(emp.premi_detail).length === 0) && (emp.total_premi || 0) - (emp.premi_brondol || 0) > 0 && (
+                                                                        <tr><td style={{ padding: '3px 0 3px 8px', color: '#7c3aed' }}>Lainnya</td><td className="text-right" style={{ padding: '3px 0', color: '#7c3aed' }}>{formatNumber((emp.total_premi || 0) - (emp.premi_brondol || 0))}</td></tr>
                                                                     )}
                                                                     <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Premi</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_premi)}</td></tr>
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
