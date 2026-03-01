@@ -40,6 +40,8 @@ const BERAS_RATE_TO_PTKP: Record<number, string> = {
     4500: 'K/1',
     5400: 'K/2',
     6300: 'K/3',
+    3750: 'K/0', // Legacy value before new 3700 rate
+    5550: 'K/2', // Legacy value before new 5500 rate
 };
 
 function mapBerasRateToPTKP(berasRate: number): string {
@@ -419,7 +421,6 @@ export class PtkpTaxService {
             const originDb = this.getOriginDb();
             const extendDb = this.getExtendDb();
 
-            // Get active employees from origin
             const employees = await originDb.query<{
                 emp_code: string;
                 emp_name: string;

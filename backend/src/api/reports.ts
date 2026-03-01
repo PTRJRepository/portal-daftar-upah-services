@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { AuthService } from "../services/authService";
 import { User } from "../types/user";
 import { reportService } from "../services/reportService";
+import { generateDaftarUpahExcel } from "../services/daftarUpahExcelService";
 
 const authService = AuthService.getInstance();
 
@@ -84,4 +85,55 @@ export const reportsRoutes = new Elysia({ prefix: "/reports" })
             return { error: "Job not found" };
         }
         return job;
+    })
+
+    // ============================================================
+    // GET /reports/excel
+    // Download Daftar Upah as Excel with dynamic premi columns
+    // and Excel formulas for all calculated values
+    // ============================================================
+    .get("/excel", async ({ query, set, currentUser }) => {
+        try {
+            const year = parseInt(query.year as string);
+            const month = parseInt(query.month as string);
+            let division = query.division as string || undefined;
+            const gang = query.gang as string || 'ALL';
+
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                division = currentUser.divisions[0];
+            }
+
+            if (!year || !month || month < 1 || month > 12) {
+                set.status = 400;
+                return { error: "Invalid year or month parameter" };
+            }
+
+            // Fetch payroll data using the same report service
+            const reportResult = await reportService.generateReport(month, year, gang, division);
+
+            // Extract employee flat records from aggregation result
+            const records: any[] = reportResult?.data_rows ?? reportResult?.employees ?? [];
+
+            if (!records || records.length === 0) {
+                set.status = 404;
+                return { error: "No payroll data available for the selected period" };
+            }
+
+            const excelBuffer = await generateDaftarUpahExcel(
+                records,
+                month,
+                year,
+                division || 'ALL',
+                gang
+            );
+
+            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            set.headers["Content-Disposition"] = `attachment; filename="Daftar_Upah_${division || 'ALL'}_${gang}_${month}_${year}.xlsx"`;
+
+            return excelBuffer;
+        } catch (error: any) {
+            console.error("[Reports] Error generating Daftar Upah Excel:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to generate Daftar Upah Excel" };
+        }
     });

@@ -90,6 +90,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
   const [loading, setLoading] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [isDownloadingExcel, setIsDownloadingExcel] = useState(false)
   const [loadingStatus, setLoadingStatus] = useState('')
   const [firstBatchReady, setFirstBatchReady] = useState(false)
   const [firstBatchAttempted, setFirstBatchAttempted] = useState(false)
@@ -1199,6 +1200,45 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       setLoadingStatus('');
     }
   }
+
+  /**
+   * Download Daftar Upah as a server-generated Excel with:
+   * - Dynamic premi columns (one col per premi type)
+   * - 'Uraian Premi' section header
+   * - Excel formulas for all calculated values
+   */
+  const handleDownloadDaftarUpahExcel = async () => {
+    try {
+      setIsDownloadingExcel(true);
+      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
+      const params = new URLSearchParams({
+        month: activeMonth,
+        year: activeYear,
+        division: finalDivision || 'ALL',
+        gang: finalGangCode || 'ALL'
+      });
+      const res = await fetch(`${backendUrl}/reports/excel?${params}`, {
+        headers: { Authorization: authToken ? `Bearer ${authToken}` : '' }
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Daftar_Upah_${finalDivision || 'ALL'}_${finalGangCode || 'ALL'}_${activeMonth}_${activeYear}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download Daftar Upah Excel:', err);
+      alert('Gagal mengunduh Daftar Upah Excel: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsDownloadingExcel(false);
+    }
+  };
+
   const autoSizeAll = () => {
     const allIds = []
     gridRef.current.columnApi.getColumns().forEach(c => allIds.push(c.getId()))
@@ -1237,6 +1277,24 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
               Mode History
             </label>
           </div>
+          {/* Server-side Excel export with dynamic premi + formulas */}
+          <button
+            id="btn-download-daftar-upah-excel"
+            onClick={handleDownloadDaftarUpahExcel}
+            disabled={isDownloadingExcel || loading}
+            title="Unduh Daftar Upah Excel (server-side, dengan formula dan kolom premi dinamis)"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              backgroundColor: '#0ea5e9', color: 'white',
+              border: 'none', padding: '8px 14px', borderRadius: '6px',
+              fontWeight: '600', fontSize: '0.875rem',
+              cursor: (isDownloadingExcel || loading) ? 'not-allowed' : 'pointer',
+              opacity: (isDownloadingExcel || loading) ? 0.7 : 1,
+              transition: 'background-color 0.2s'
+            }}
+          >
+            {isDownloadingExcel ? '⏳ Mengunduh...' : '⬇️ Excel (Formula)'}
+          </button>
           <ReportToolbar
             month={activeMonth}
             year={activeYear}

@@ -38,7 +38,11 @@ export default function MainPage({ lockedDiv = null }) {
   const isLockedMode = !isAdminUser && !!(externalLockedDiv || prodDivision)
 
   // Use current period from API (calculated from PR_TASKREGLN_ARC latest date)
-  const { month, setMonth, year, setYear } = useCurrentPeriod()
+  const { month, setMonth, year, setYear, data: currentPeriodData } = useCurrentPeriod()
+
+  // Calculate if currently viewed period is historical
+  const isHistorical = currentPeriodData ? (year * 100 + month) < (currentPeriodData.year * 100 + currentPeriodData.month) : false;
+
   const [division, setDivision] = useState('')
   const [gang, setGang] = useState('')
 
@@ -63,6 +67,9 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Edit Mode State (New)
   const [isEditMode, setIsEditMode] = useState(false)
+
+  // Period Slider Mode State (enabled by default)
+  const [usePeriodSlider, setUsePeriodSlider] = useState(true)
 
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
@@ -914,8 +921,22 @@ export default function MainPage({ lockedDiv = null }) {
           <img src="/images/rebinmas.webp" alt="Logo" style={{ height: '32px' }} onError={(e) => e.target.style.display = 'none'} />
           <div style={{ borderLeft: '1px solid var(--neutral-200)', paddingLeft: '1rem' }}>
             <div style={{ fontSize: '0.9rem', fontWeight: '800', color: 'var(--primary-900)', lineHeight: 1.1 }}>PT REBINMAS JAYA</div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', letterSpacing: '0.05em' }}>
-              PAYROLL SYSTEM {isLockedMode && <span style={{ color: '#f59e0b' }}>• 🔒 {division}</span>}
+            <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', letterSpacing: '0.05em', display: 'flex', alignItems: 'center' }}>
+              <span>PAYROLL SYSTEM {isLockedMode && <span style={{ color: '#f59e0b' }}>• 🔒 {division}</span>}</span>
+
+              {!isHistorical && currentPeriodData && (
+                <span style={{ color: '#10b981', marginLeft: '6px', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', marginRight: '4px', animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} className="animate-pulse"></span>
+                  Current Periode
+                </span>
+              )}
+              {isHistorical && currentPeriodData && (
+                <span style={{ color: '#64748b', marginLeft: '6px', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#64748b', marginRight: '4px' }}></span>
+                  History Periode
+                </span>
+              )}
+
             </div>
           </div>
         </div>
@@ -935,6 +956,8 @@ export default function MainPage({ lockedDiv = null }) {
             disableControls={gridLoading || gangLoading}
             divisionLocked={isLockedMode}
             onRefresh={handleRefresh}
+            usePeriodSlider={usePeriodSlider}
+            onTogglePeriodSlider={setUsePeriodSlider}
           />
         </div>
 
@@ -1161,6 +1184,7 @@ export default function MainPage({ lockedDiv = null }) {
               onToggleEmployeeSelection={handleToggleEmployeeSelection}
               onSelectAllEmployees={handleSelectAllEmployees}
               isEditMode={isEditMode}
+              useHistoryDb={isHistorical}
             />
           </div>
         ) : (

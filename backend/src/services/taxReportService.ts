@@ -171,6 +171,8 @@ export interface MonthlyTaxRow {
     tunjangan_lembur?: number;
     total_tunjangan?: number;
 
+    /** Dynamic premi map: key = premi name (e.g. 'brondol', 'pruning'), value = amount */
+    premi_detail?: Record<string, number>;
     premi_brondol?: number;
     premi_pph?: number;
     total_premi?: number;
@@ -333,7 +335,7 @@ class TaxReportService {
         month: number,
         divisionCode?: string,
         gangCode?: string
-    ): Promise<{ employees: MonthlyTaxRow[]; period: { month: number; year: number }; total_pph21: number }> {
+    ): Promise<{ employees: MonthlyTaxRow[]; period: { month: number; year: number }; total_pph21: number; premiKeys: string[] }> {
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
         if (divisionCode && divisionDefinition.isVirtualDivision(divisionCode)) {
@@ -347,7 +349,7 @@ class TaxReportService {
         );
 
         if (!historyData || historyData.data_rows.length === 0) {
-            return { employees: [], period: { month, year }, total_pph21: 0 };
+            return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [] };
         }
 
         const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
@@ -490,6 +492,28 @@ class TaxReportService {
 
             totalPph21 += pph21;
 
+            // Discover dynamic premi fields from row keys (e.g. premi_brondol, premi_pruning, etc.)
+            const premiDetail: Record<string, number> = {};
+            for (const key of Object.keys(row)) {
+                if (key.startsWith('premi_') && key !== 'premi_pph' && key !== 'premi_pph21') {
+                    const val = Number(row[key]) || 0;
+                    if (val > 0) {
+                        const label = key.replace(/^premi_/, '').replace(/_/g, ' ').toUpperCase();
+                        premiDetail[label] = val;
+                    }
+                }
+            }
+            // If brondol not in premi_* but row has premi_brondol, ensure it is included
+            if (!('BRONDOL' in premiDetail) && row.premi_brondol) {
+                premiDetail['BRONDOL'] = Number(row.premi_brondol) || 0;
+            }
+            // remaining = total_premi minus all named items detected
+            const namedSum = Object.values(premiDetail).reduce((s, v) => s + v, 0);
+            const remaining = (totalPremi || 0) - namedSum;
+            if (remaining > 0) {
+                premiDetail['LAINNYA'] = remaining;
+            }
+
             return {
                 no: idx + 1,
                 emp_code: row.emp_code,
@@ -515,6 +539,7 @@ class TaxReportService {
                 tunjangan_lembur: tunjanganLembur,
                 total_tunjangan: row.total_tunjangan || 0,
 
+                premi_detail: premiDetail,
                 premi_brondol: row.premi_brondol || 0,
                 premi_pph: row.premi_pph || 0,
                 total_premi: totalPremi,
@@ -536,7 +561,25 @@ class TaxReportService {
             };
         });
 
-        return { employees, period: { month, year }, total_pph21: totalPph21 };
+        // Collect all unique premi keys across all employees
+        const premiKeySet = new Set<string>();
+        for (const emp of employees) {
+            if (emp.premi_detail) {
+                for (const k of Object.keys(emp.premi_detail)) {
+                    premiKeySet.add(k);
+                }
+            }
+        }
+        // Sort: BRONDOL first, then alphabetical, LAINNYA last
+        const premiKeys = Array.from(premiKeySet).sort((a, b) => {
+            if (a === 'BRONDOL') return -1;
+            if (b === 'BRONDOL') return 1;
+            if (a === 'LAINNYA') return 1;
+            if (b === 'LAINNYA') return -1;
+            return a.localeCompare(b);
+        });
+
+        return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys };
     }
 
     /**

@@ -183,6 +183,10 @@ interface PayrollRow {
  * Based on RiceRation values from HR_PAYROLL
  */
 function mapBerasRateToPTKP(berasRate: number): string {
+    // Handle monthly bulk values
+    if (berasRate && berasRate >= 10000) {
+        berasRate = Math.round(berasRate / 30);
+    }
     const mapping: Record<number, string> = {
         2250: 'TK/0',
         3250: 'TK/1',
@@ -190,7 +194,17 @@ function mapBerasRateToPTKP(berasRate: number): string {
         3700: 'K/0',
         4650: 'K/1',
         5500: 'K/2',
-        6450: 'K/3'  // K/3 → TER C
+        6450: 'K/3',
+        // Legacy DB formulas
+        3150: 'TK/1',
+        4050: 'TK/2',
+        4950: 'TK/3',
+        3600: 'K/0',
+        4500: 'K/1',
+        5400: 'K/2',
+        6300: 'K/3',
+        3750: 'K/0',
+        5550: 'K/2',
     };
     return mapping[berasRate] || '-';
 }
@@ -268,12 +282,13 @@ export class DataExtractorService {
         console.log(`[DataExtractor] Current period: ${currentMonth}/${currentYear}, Selected: ${month}/${year}, IsHistorical: ${isHistorical}, useHistoryDb: ${useHistoryDb}`);
 
         // --- DEEP HISTORY INTERCEPTOR ---
-        // If it's a historical period and history mode is on, try to fetch from the snapshot tables first.
-        let shouldFetchHistory = isHistorical && historyDatabaseService.isHistoryMode();
+        // For development/debugging as requested, bypass the interceptor to allow getPremi logic to run for History
+        // If history mode is on, try to fetch from the snapshot tables first.
+        let shouldFetchHistory = false; // Bypass: isHistorical && historyDatabaseService.isHistoryMode();
 
         // Explicit override from frontend
         if (useHistoryDb === true) {
-            shouldFetchHistory = true;
+            shouldFetchHistory = false; // Bypass: true
         } else if (useHistoryDb === false) {
             shouldFetchHistory = false;
         }
@@ -362,7 +377,7 @@ export class DataExtractorService {
         ] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
-            this.getPremi(empCodes, startDate, endDate, serverProfile),
+            this.getPremi(empCodes, startDate, endDate, isHistorical, serverProfile),
             this.getPotongan(empCodes, startDate, endDate, serverProfile),
             this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
             this.getLemburDetailsWithTaskBreakdown(empCodes, month, year, serverProfile),
@@ -388,7 +403,9 @@ export class DataExtractorService {
             server_profile: serverProfile,
             // Optimization: Pass pre-fetched data so GajiPokokService doesn't re-query
             attendance: attendanceMap[code] || { hk: 0, total_amount_rp: 0 },
-            upah_dasar: upahPokok[code] // from this.getUpahPokok 
+            // [FIXED] Only pass upah_dasar if it exists and > 0, otherwise let service fetch from HR_PAYROLL
+            // If upahPokok[code] is 0 or undefined, the service will query HR_PAYROLL.PayRate
+            upah_dasar: (upahPokok[code] && upahPokok[code] > 0) ? upahPokok[code] : undefined
         }));
 
         const gajiPokokBatchResult = await gajiPokokService.calculateBatch(gajiPokokInputs);
@@ -565,10 +582,9 @@ export class DataExtractorService {
             // [NEW] Premi PPH from TaskDesc = 'ACCRUALS-CHECKROLL' (treated as potongan upah bersih)
             const pot_premi_pph = Math.abs(empPotongan["PREMI_PPH"] || 0);
 
-            // [CRITICAL FIX] Add PREMI_PPH to dynamicPotonganSet if it has a value
-            if (pot_premi_pph > 0) {
-                dynamicPotonganSet.add("PREMI_PPH");
-            }
+            // [CRITICAL FIX] PREMI_PPH is explicitly excluded from dynamicPotonganSet
+            // so it doesn't appear as a generic deduction in the UI. Ensure it is handled 
+            // separately as an addition to net wage.
 
             // [NEW] Handle KOREKSI variations separately
             // Collect all keys that start with "KOREKSI" (KOREKSI, KOREKSI_A, KOREKSI_PANEN, etc.)
@@ -823,10 +839,13 @@ export class DataExtractorService {
                 pot_bpjs_pekerja_total: pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja,
                 // Add individual koreksi variations as separate fields
                 ...koreksiVariations,
-                // Add dynamic potongan fields (PREMI_PPH, POTONGAN X, etc.) excluding static fields
+                // Add dynamic potongan fields (POTONGAN X, etc.) excluding static fields and PREMI_PPH
+                // PREMI_PPH is explicitly excluded to prevent it from being
+                // misinterpreted as a generic deduction or premium in export functions.
+                // It is already handled as the `premi_pph` field above.
                 ...Object.fromEntries(
                     Object.entries(empPotongan).filter(([key]) =>
-                        key !== "SPSI" && key !== "PPH21" && !key.startsWith("KOREKSI")
+                        key !== "SPSI" && key !== "PPH21" && !key.startsWith("KOREKSI") && key !== "PREMI_PPH"
                     )
                 ),
                 ...empPremi,
@@ -1229,7 +1248,7 @@ export class DataExtractorService {
 
     // [PREMI] Uses DocDesc containing 'PREMI' as column header title
     // [RULE] Exclude premi containing 'PPH' - those should go to potongan instead
-    private async getPremi(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string>; details: Record<string, any[]> }> {
+    private async getPremi(empCodes: string[], startDate: string, endDate: string, isHistorical: boolean = false, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string>; details: Record<string, any[]> }> {
         if (!empCodes.length) return { amounts: {}, titleMap: {}, details: {} };
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
@@ -1258,12 +1277,33 @@ export class DataExtractorService {
                 SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
             ) ln ON t.ID = ln.MasterID
             LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
-            WHERE UPPER(mt.TaskDesc) LIKE '%(AL)%'
-              AND UPPER(mt.TaskDesc) LIKE '%TUNJANGAN%'
-              AND UPPER(mt.TaskDesc) NOT LIKE '%MASA%'
-              AND UPPER(mt.TaskDesc) NOT LIKE '%LEMBUR%'
-              AND UPPER(mt.TaskDesc) NOT LIKE '%JABATAN%'
-              AND UPPER(mt.TaskDesc) NOT LIKE '%BERAS%'
+            WHERE ${isHistorical ? `(
+                  (
+                      UPPER(t.DocDesc) LIKE '%PREMI%' OR
+                      UPPER(t.DocDesc) LIKE '%PRUN%' OR
+                      UPPER(t.DocDesc) LIKE '%INSENTIF%' OR
+                      UPPER(t.DocDesc) LIKE '%PANEN%' OR
+                      UPPER(t.DocDesc) LIKE '%KINERJA%' OR
+                      UPPER(t.DocDesc) LIKE '%RAWAT%' OR
+                      UPPER(t.DocDesc) LIKE '%TUNJANGAN%'
+                  )
+                  AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%JABATAN%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%BERAS%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%LEMBUR%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%MASA%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%POTONGAN%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%KOREKSI%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%SPSI%'
+                  AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
+              )` : `(
+                  UPPER(mt.TaskDesc) LIKE '%(AL)%'
+                  AND UPPER(mt.TaskDesc) LIKE '%TUNJANGAN%'
+                  AND UPPER(mt.TaskDesc) NOT LIKE '%MASA%'
+                  AND UPPER(mt.TaskDesc) NOT LIKE '%LEMBUR%'
+                  AND UPPER(mt.TaskDesc) NOT LIKE '%JABATAN%'
+                  AND UPPER(mt.TaskDesc) NOT LIKE '%BERAS%'
+              )`}
               AND ln.Amount > 0
             GROUP BY RTRIM(t.EmpCode), t.DocDesc, ln.TaskCode, mt.TaskDesc
         `, [startDate, endDate, startDate, endDate]);

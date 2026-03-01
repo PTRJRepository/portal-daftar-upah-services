@@ -92,8 +92,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "No data available for the selected period" };
             }
 
-            // Generate Excel Buffer
-            const excelBuffer = await generateMonthlyTaxExcel(data, year, month, division || 'ALL', gang || 'ALL');
+            // Generate Excel Buffer (pass premiKeys for dynamic column headers)
+            const excelBuffer = await generateMonthlyTaxExcel(data, year, month, division || 'ALL', gang || 'ALL', data.premiKeys);
 
             // Set headers for file download
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";

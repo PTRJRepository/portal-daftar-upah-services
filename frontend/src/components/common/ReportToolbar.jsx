@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useRef, useCallback, useState } from 'react'
+import PeriodSlider from './PeriodSlider'
 
 export default function ReportToolbar({
     division,
@@ -15,13 +16,76 @@ export default function ReportToolbar({
     disableControls = false,
     editMode = false,
     onEditModeToggle,
-    onExport
+    onExport,
+    usePeriodSlider = false,  // New prop to enable period slider
+    onTogglePeriodSlider = null  // Callback to toggle between modes
 }) {
     // Helper to format month-year for input type="month"
     const getMonthValue = () => {
         if (!month || !year) return ''
         return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`
     }
+
+    const incrementMonth = useCallback((amount) => {
+        if (!month || !year || disableControls) return;
+
+        let newMonth = parseInt(month, 10) + amount;
+        let newYear = parseInt(year, 10);
+
+        if (newMonth > 12) {
+            newMonth = 1;
+            newYear += 1;
+        } else if (newMonth < 1) {
+            newMonth = 12;
+            newYear -= 1;
+        }
+
+        if (onMonthYearChange) {
+            onMonthYearChange(newMonth, newYear);
+        }
+    }, [month, year, disableControls, onMonthYearChange]);
+
+    const touchStartX = useRef(null);
+    const lastWheelTime = useRef(0);
+
+    const handleTouchStart = (e) => {
+        touchStartX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchEnd = (e) => {
+        if (touchStartX.current === null || disableControls) return;
+
+        const touchEndX = e.changedTouches[0].clientX;
+        const diffX = touchStartX.current - touchEndX;
+
+        if (Math.abs(diffX) > 40) { // swipe threshold
+            if (diffX > 0) {
+                incrementMonth(1); // Swipe left -> Next
+            } else {
+                incrementMonth(-1); // Swipe right -> Prev
+            }
+        }
+        touchStartX.current = null;
+    };
+
+    const handleWheel = (e) => {
+        if (disableControls) return;
+
+        const now = Date.now();
+        if (now - lastWheelTime.current < 400) {
+            return; // Throttle wheel events
+        }
+
+        if (Math.abs(e.deltaX) > 10 || Math.abs(e.deltaY) > 10) {
+            if (e.deltaX > 0 || e.deltaY > 0) {
+                incrementMonth(1);
+                lastWheelTime.current = now;
+            } else if (e.deltaX < 0 || e.deltaY < 0) {
+                incrementMonth(-1);
+                lastWheelTime.current = now;
+            }
+        }
+    };
 
     const handleDateChange = (e) => {
         try {
@@ -103,20 +167,114 @@ export default function ReportToolbar({
                 </div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                    Periode
-                </label>
-                <input
-                    type="month"
-                    className="input-field"
-                    title="Pilih Bulan & Tahun Periode"
-                    style={{ height: '36px', minWidth: '160px' }}
-                    value={getMonthValue()}
-                    onChange={handleDateChange}
-                    disabled={disableControls}
-                />
-            </div>
+            {/* Period Controls - Classic or Slider */}
+            {usePeriodSlider ? (
+                <div
+                    style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '400px' }}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                            Periode Slider
+                        </label>
+                        {onTogglePeriodSlider && (
+                            <button
+                                onClick={() => onTogglePeriodSlider(false)}
+                                disabled={disableControls}
+                                className="btn btn-secondary"
+                                style={{
+                                    height: '24px',
+                                    padding: '0 8px',
+                                    fontSize: '11px',
+                                    background: 'var(--neutral-100)',
+                                    borderColor: 'var(--neutral-300)',
+                                    borderRadius: '4px'
+                                }}
+                                title="Kembali ke tampilan klasik"
+                            >
+                                Klasik
+                            </button>
+                        )}
+                    </div>
+                    <PeriodSlider
+                        currentMonth={month}
+                        currentYear={year}
+                        onPeriodChange={onMonthYearChange}
+                        disableControls={disableControls}
+                    />
+                </div>
+            ) : (
+                <div
+                    style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}
+                    onWheel={handleWheel}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                            Periode <span style={{ fontSize: '9px', fontWeight: 'normal', color: 'var(--neutral-500)', textTransform: 'none' }}>(Geser/Scroll)</span>
+                        </label>
+                        {onTogglePeriodSlider && (
+                            <button
+                                onClick={() => onTogglePeriodSlider(true)}
+                                disabled={disableControls}
+                                className="btn btn-secondary"
+                                style={{
+                                    height: '24px',
+                                    padding: '0 8px',
+                                    fontSize: '11px',
+                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                    borderColor: 'transparent',
+                                    color: 'white',
+                                    borderRadius: '4px',
+                                    fontWeight: '500'
+                                }}
+                                title="Gunakan slider untuk navigasi periode yang lebih mudah"
+                            >
+                                📅 Slider
+                            </button>
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                            onClick={() => incrementMonth(-1)}
+                            disabled={disableControls}
+                            className="btn btn-secondary"
+                            style={{
+                                height: '36px', width: '32px', padding: 0,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                borderColor: 'var(--neutral-300)',
+                                background: 'white', cursor: disableControls ? 'not-allowed' : 'pointer'
+                            }}
+                            title="Bulan Sebelumnya"
+                        >
+                            ◀
+                        </button>
+                        <input
+                            type="month"
+                            className="input-field"
+                            title="Pilih Bulan & Tahun Periode. Bisa juga swipe atau scroll untuk mengganti."
+                            style={{ height: '36px', minWidth: '140px', flex: 1 }}
+                            value={getMonthValue()}
+                            onChange={handleDateChange}
+                            disabled={disableControls}
+                        />
+                        <button
+                            onClick={() => incrementMonth(1)}
+                            disabled={disableControls}
+                            className="btn btn-secondary"
+                            style={{
+                                height: '36px', width: '32px', padding: 0,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                borderColor: 'var(--neutral-300)',
+                                background: 'white', cursor: disableControls ? 'not-allowed' : 'pointer'
+                            }}
+                            title="Bulan Selanjutnya"
+                        >
+                            ▶
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {divisions && divisions.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
