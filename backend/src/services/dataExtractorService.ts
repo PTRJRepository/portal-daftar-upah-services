@@ -329,19 +329,18 @@ export class DataExtractorService {
         });
 
         let gangCondition = "1=1";
+        // Also store the raw gangCode input for path-specific filtering in getEmployees
+        let gangCodeInput: string | null = null;
         if (specificEmpCode) {
             gangCondition = `RTRIM(e.EmpCode) = '${specificEmpCode.trim()}'`;
         } else if (gangCode && gangCode !== "ALL") {
             const trimmedInput = gangCode.trim().toUpperCase();
-            // Check if input is a Code that needs mapping to Description (e.g. "AB1" -> "DIVISI AB1")
-            const mappedDesc = codeToDesc[trimmedInput];
-
-            // If mappedDesc found, use it. Otherwise assume input is already Description or unknown.
-            const targetGangName = mappedDesc || trimmedInput;
-            console.log(`[DataExtractor] Gang Filter: Input='${gangCode}' -> Query='${targetGangName}'`);
-
-            // Use UPPER for case-insensitive comparison and RTRIM to handle trailing spaces
-            gangCondition = `UPPER(RTRIM(g.Description)) = UPPER('${targetGangName}')`;
+            console.log(`[DataExtractor] Gang Filter: Input='${gangCode}' (Using exact Code matching)`);
+            // Set gangCodeInput so getEmployees can build path-specific conditions
+            gangCodeInput = trimmedInput;
+            // Default condition using GangCode from HR_GANGLN (live path)
+            // getEmployees will override this for historical path
+            gangCondition = `(UPPER(RTRIM(gl.GangCode)) = '${trimmedInput}' OR UPPER(RTRIM(g.GangCode)) = '${trimmedInput}' OR UPPER(RTRIM(g.Description)) = '${trimmedInput}')`;
         } else if (divisionCode) {
             // Already fetched `allGangs` above for mapping, reuse it for condition
             if (allGangs.length > 0) {
@@ -355,7 +354,7 @@ export class DataExtractorService {
         }
 
         const startTotal = performance.now();
-        const employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, descToCode);
+        const employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
 
         if (employees.length === 0) {
             return {
@@ -498,13 +497,13 @@ export class DataExtractorService {
 
             // [FILTER] Employee filtering logic:
             // Effective Work HK = HK - (Minggu + Libur Nasional)
-            // Jika effective_work_hk <= 0 DAN other_cuti == 0 → DIFILTER keluar
+            // Jika effective_work_hk <= 0 DAN other_cuti == 0 DAN total_earnings <= 0 → DIFILTER keluar
             // Jika effective_work_hk <= 0 TAPI other_cuti > 0 → TETAP dimunculkan
             // Jika effective_work_hk > 0 → Selalu dimunculkan
             const effective_work_hk = hk - (empCuti.cuti_minggu + empCuti.cuti_nasional);
             const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
 
-            if (effective_work_hk <= 0 && other_cuti == 0) continue;
+            if (effective_work_hk <= 0 && other_cuti == 0 && total_earnings <= 0) continue;
 
             // [MODIFIED] Use database amount for basic salary
             const upah_pokok = attData.total_amount_rp || 0;
@@ -870,7 +869,7 @@ export class DataExtractorService {
         };
     }
 
-    public async getEmployees(gangCondition: string, month: number, year: number, serverProfile?: string, isHistorical: boolean = false, descToCodeMap?: Record<string, string>): Promise<EmployeeRow[]> {
+    public async getEmployees(gangCondition: string, month: number, year: number, serverProfile?: string, isHistorical: boolean = false, gangCodeInput: string | null = null): Promise<EmployeeRow[]> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         console.log(`[DataExtractor] getEmployees: serverProfile=${serverProfile || 'undefined (using this.db)'}, month=${month}, year=${year}, isHistorical=${isHistorical}`);
 
@@ -878,10 +877,6 @@ export class DataExtractorService {
 
         if (isHistorical) {
             // For historical data, use PR_GANGLN_ARC with AccMonth/AccYear filtering
-            // Convert calendar month/year to AccMonth/AccYear
-            // Calendar Month -> AccMonth:
-            // - Oct(10)-Dec(12) -> AccMonth 1-3 (next year)
-            // - Jan(1)-Sep(9) -> AccMonth 10-12 (current year)
             let accMonth: number;
             let accYear: number;
 
@@ -891,6 +886,13 @@ export class DataExtractorService {
 
             console.log(`[DataExtractor] Historical query: calendar ${month}/${year} -> AccMonth ${accMonth}/AccYear ${accYear}`);
 
+            // For historical path: g = PR_GANG (has GangID, Description, no GangCode)
+            // Override gangCondition if gangCodeInput is provided
+            let historicalCondition = gangCondition;
+            if (gangCodeInput) {
+                historicalCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
+            }
+
             // PR_GANGLN_ARC uses EmpCode column and MasterID to join with PR_GANG
             rows = await db.query<any>(`
                 SELECT DISTINCT
@@ -899,7 +901,7 @@ export class DataExtractorService {
                     e.EmpName as emp_name,
                     e.Gender as gender,
                     RTRIM(e.LocCode) as loc_code,
-                    RTRIM(g.Description) as gang_code,
+                    COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
                     COALESCE(p.PayRate, 0) as pay_rate,
                     COALESCE(p.RiceRation, 0) as beras_rate,
                     em.AppJoinGrpDate as join_date
@@ -910,7 +912,7 @@ export class DataExtractorService {
                 INNER JOIN PR_GANG g ON g.ID = gl.MasterID
                 LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                 LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
-                WHERE ${gangCondition}
+                WHERE ${historicalCondition}
                 ORDER BY emp_code
             `, [accMonth, accYear]);
         } else {
@@ -924,7 +926,7 @@ export class DataExtractorService {
                     e.EmpName as emp_name,
                     e.Gender as gender,
                     RTRIM(e.LocCode) as loc_code,
-                    RTRIM(g.Description) as gang_code,
+                    RTRIM(gl.GangCode) as gang_code,
                     COALESCE(p.PayRate, 0) as pay_rate,
                     COALESCE(p.RiceRation, 0) as beras_rate,
                     em.AppJoinGrpDate as join_date
@@ -944,15 +946,6 @@ export class DataExtractorService {
 
         return rows.map((r: any) => {
             const rawGangCode = r.gang_code?.trim() || "";
-            // Check if we need to map Description (e.g. "DIVISI AB1") back to Code (e.g. "AB1")
-            let mappedGangCode = rawGangCode;
-            if (descToCodeMap) {
-                const upperDesc = rawGangCode.toUpperCase();
-                if (descToCodeMap[upperDesc]) {
-                    mappedGangCode = descToCodeMap[upperDesc];
-                }
-            }
-
             const empCodeClean = r.emp_code?.trim().toUpperCase() || "";
             const hrOverride = hrDataMap.get(empCodeClean);
 
@@ -965,7 +958,7 @@ export class DataExtractorService {
                 emp_name: r.emp_name?.trim() || "",
                 gender: String(r.gender || "1"),
                 loc_code: r.loc_code?.trim() || "",
-                gang_code: mappedGangCode, // Return mapped code if available
+                gang_code: rawGangCode, // Return exact fetched code
                 pay_rate: r.pay_rate || 0,
                 beras_rate: r.beras_rate || 0,
                 join_date: r.join_date || null

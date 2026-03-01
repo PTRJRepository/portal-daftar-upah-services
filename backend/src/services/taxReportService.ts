@@ -373,6 +373,12 @@ class TaxReportService {
             exgratiaMap = maps.exgratiaMap;
         }
 
+        // --- Fetch PPH dari history_adtrans (sumber paling akurat) ---
+        // category='POTONGAN', sub_category='PPH21', is_premi_pph=false
+        const adtransPphMap = await historyDatabaseService.getPphFromAdtransByMonth(
+            month, year, effectiveDivisionCode, gangCode
+        );
+
         // --- Fetch Database Other Incomes ---
         const dbOtherIncomes = await OtherIncomesService.getIncomes(year, month, effectiveDivisionCode, gangCode);
         const dbThrMap = new Map<string, number>();
@@ -485,10 +491,18 @@ class TaxReportService {
 
             penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
 
-            // Purely calculated PPh21
+            // Prioritas sumber PPH21:
+            // 1. history_adtrans (paling akurat - nilai aktual dari ADTrans)
+            // 2. pot_pph21 dari payroll_history_detail (tersimpan saat seeding)
+            // 3. Kalkulasi TER (fallback jika tidak ada data history)
+            const empCodeKey = (row.emp_code || '').trim();
+            const adtransPph = adtransPphMap.get(empCodeKey) || 0;
+            const storedPph21Monthly = row.pot_pph21 || 0;
             const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
-            const pph21 = pphResult.tax_amount;
-            const tarifPajakTer = pphResult.rate_percent;
+            const pph21 = adtransPph > 0 ? adtransPph : (storedPph21Monthly > 0 ? storedPph21Monthly : pphResult.tax_amount);
+            const tarifPajakTer = (adtransPph > 0 || storedPph21Monthly > 0)
+                ? (row.tarif_pajak_ter || pphResult.rate_percent)
+                : pphResult.rate_percent;
 
             totalPph21 += pph21;
 
@@ -703,6 +717,11 @@ class TaxReportService {
             }
         }
 
+        // --- Fetch PPH dari history_adtrans (sumber utama) untuk seluruh tahun ---
+        const adtransPphByYear = await historyDatabaseService.getPphFromAdtransByYear(
+            year, effectiveDivisionCode, gangCode
+        );
+
         for (const { month, data } of allMonthData) {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
@@ -736,7 +755,10 @@ class TaxReportService {
                 const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
                 const kategoriTer = mapPTKPToTER(masterPtkp);
 
-                // Calculate PPh21 on the fly (NEVER from database)
+                // Gunakan PPH21 dari history (pot_pph21 yang tersimpan saat seeding dari data aktual)
+                // Ini adalah nilai PPH aktual per karyawan per bulan dari payroll_history_detail
+                const storedPph21 = row.pot_pph21 || 0;
+
                 const gajiPokokAktual = row.gaji_pokok_aktual || row.gaji_pokok || 0;
                 const upahDasar = row.upah_dasar || 0;
                 const tunjanganBeras = row.beras_jumlah || 0;
@@ -756,7 +778,7 @@ class TaxReportService {
                     tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct
                 );
 
-                // If this is the THR month, add THR + Exgratia to bruto before PPh21 calc
+                // Jika ada THR/Exgratia, tetap tambahkan ke bruto untuk keperluan perhitungan setahun
                 const isThrMonth = activeThr && activeThr.month === month && activeThr.year === year;
                 let thrAmount = 0;
                 let exgratiaAmount = 0;
@@ -790,7 +812,7 @@ class TaxReportService {
                     }
                 }
 
-                // 3. Database Overrides & Custom Incomes
+                // Database Overrides & Custom Incomes
                 const dbKey = `${month}_${rawEmpNik}`;
                 if (dbIncomeByMonthNik.has(dbKey)) {
                     const dbData = dbIncomeByMonthNik.get(dbKey)!;
@@ -801,8 +823,21 @@ class TaxReportService {
 
                 penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
 
-                const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
-                emp.monthly_pph21[String(month)] = pphResult.tax_amount;
+                // Prioritas sumber PPH21:
+                // 1. history_adtrans (paling akurat - nilai aktual dari ADTrans)
+                // 2. pot_pph21 dari payroll_history_detail
+                // 3. Kalkulasi TER (fallback)
+                const adtransPphYear = adtransPphByYear.get((empCode || '').trim());
+                const adtransPphVal = adtransPphYear ? (adtransPphYear.get(month) || 0) : 0;
+
+                if (adtransPphVal > 0) {
+                    emp.monthly_pph21[String(month)] = adtransPphVal;
+                } else if (storedPph21 > 0) {
+                    emp.monthly_pph21[String(month)] = storedPph21;
+                } else {
+                    const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
+                    emp.monthly_pph21[String(month)] = pphResult.tax_amount;
+                }
 
                 emp.monthly_astek_pekerja[String(month)] = row.pot_astek || 0;
                 emp.monthly_bpjs_pensiun_pekerja[String(month)] = row.pot_bpjs_pensiun_pekerja || 0;
@@ -1243,6 +1278,11 @@ class TaxReportService {
 
         const employeeMap = new Map<string, any>();
 
+        // --- Fetch PPH dari history_adtrans (sumber utama) untuk tahun ini ---
+        const adtransPphByYearDec = await historyDatabaseService.getPphFromAdtransByYear(
+            year, effectiveDivisionCode, gangCode
+        );
+
         for (const { month, data } of allMonthData) {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
@@ -1307,8 +1347,9 @@ class TaxReportService {
                     tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct
                 );
 
-                // Purely calculated PPh21
-                const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
+                // Gunakan PPH21 dari history (pot_pph21 tersimpan saat seeding)
+                // Fallback ke kalkulasi TER jika nilai tersimpan 0 atau tidak ada
+                const storedPph21Dec = row.pot_pph21 || 0;
 
                 const hk = row.jumlah_hk || row.hk || 0;
                 const gp = gajiPokokAktual;
@@ -1318,7 +1359,22 @@ class TaxReportService {
 
                 emp.monthly_income[String(month)] = row.jumlah_upah_kotor || row.upah_kotor || row.penghasilan_bruto || row.total_income || 0;
                 emp.monthly_details[String(month)] = { hk, gaji_pokok: gp, masa_kerja: mk, upah_dasar: upahDasar };
-                emp.monthly_pph21[String(month)] = pphResult.tax_amount;
+
+                // Prioritas sumber PPH21:
+                // 1. history_adtrans (nilai aktual ADTrans)
+                // 2. pot_pph21 dari payroll_history_detail
+                // 3. Kalkulasi TER (fallback)
+                const adtransPphDecMap = adtransPphByYearDec.get((empCode || '').trim());
+                const adtransPphDecVal = adtransPphDecMap ? (adtransPphDecMap.get(month) || 0) : 0;
+
+                if (adtransPphDecVal > 0) {
+                    emp.monthly_pph21[String(month)] = adtransPphDecVal;
+                } else if (storedPph21Dec > 0) {
+                    emp.monthly_pph21[String(month)] = storedPph21Dec;
+                } else {
+                    const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
+                    emp.monthly_pph21[String(month)] = pphResult.tax_amount;
+                }
 
                 // Premi Asuransi: BPJS Kes 4% + Astek 0.84%
                 emp.monthly_premi_asuransi[String(month)] = decCaruman.bpjs_kes_majikan + decCaruman.astek_majikan_jkk_jkm;

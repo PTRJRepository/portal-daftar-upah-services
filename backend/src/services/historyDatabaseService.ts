@@ -913,6 +913,83 @@ export class HistoryDatabaseService {
     }
 
     /**
+     * Ambil nilai PPH21 aktual dari history_adtrans per emp_code per bulan untuk satu tahun.
+     * Mengambil record dengan category='POTONGAN', sub_category='PPH21', is_premi_pph=false.
+     * Return: Map<emp_code, Map<month, pph_amount>>
+     */
+    public async getPphFromAdtransByYear(
+        year: number,
+        divisionCode?: string,
+        gangCode?: string
+    ): Promise<Map<string, Map<number, number>>> {
+        const db = this.getTransactionDatabase();
+
+        let sql = `
+            SELECT emp_code, period_month, SUM(amount) as pph_amount
+            FROM dbo.history_adtrans
+            WHERE period_year = ?
+              AND category = 'POTONGAN'
+              AND sub_category = 'PPH21'
+              AND is_premi_pph = 0
+        `;
+        const params: any[] = [year];
+
+        if (divisionCode && divisionCode !== 'ALL') {
+            sql += ` AND (division_code = ? OR gang_code IN (
+                SELECT gang_code FROM dbo.history_gang_member
+                WHERE period_year = ? AND division_code = ?
+            ))`;
+            params.push(divisionCode, year, divisionCode);
+        }
+
+        if (gangCode && gangCode !== 'ALL') {
+            sql += ` AND gang_code = ?`;
+            params.push(gangCode);
+        }
+
+        sql += ` GROUP BY emp_code, period_month`;
+
+        try {
+            const rows = await db.query<{ emp_code: string; period_month: number; pph_amount: number }>(sql, params);
+
+            const result = new Map<string, Map<number, number>>();
+            for (const row of rows) {
+                const empCode = (row.emp_code || '').trim();
+                if (!result.has(empCode)) {
+                    result.set(empCode, new Map<number, number>());
+                }
+                result.get(empCode)!.set(Number(row.period_month), Number(row.pph_amount) || 0);
+            }
+            return result;
+        } catch (e: any) {
+            console.error('[HistoryDB] getPphFromAdtransByYear error:', e.message);
+            return new Map();
+        }
+    }
+
+    /**
+     * Ambil nilai PPH21 aktual dari history_adtrans untuk satu bulan spesifik.
+     * Return: Map<emp_code, pph_amount>
+     */
+    public async getPphFromAdtransByMonth(
+        month: number,
+        year: number,
+        divisionCode?: string,
+        gangCode?: string
+    ): Promise<Map<string, number>> {
+        const yearMap = await this.getPphFromAdtransByYear(year, divisionCode, gangCode);
+        const result = new Map<string, number>();
+        for (const [empCode, monthMap] of yearMap) {
+            if (monthMap.has(month)) {
+                result.set(empCode, monthMap.get(month)!);
+            }
+        }
+        return result;
+    }
+
+
+
+    /**
      * Insert gang member history
      */
     public async saveGangMemberHistory(data: HistoryGangMember): Promise<number> {

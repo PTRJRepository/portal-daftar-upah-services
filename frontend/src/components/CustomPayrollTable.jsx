@@ -487,17 +487,19 @@ export default function CustomPayrollTable({
 
             let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
 
-            // Use backend-provided grand_total if available, otherwise calculate
+            // Calculate frontend grand total for ALL columns (including UI-only fields)
+            const filteredFlat = gangCode && gangCode !== 'ALL'
+                ? flatRows.filter(r => r.gang_code === gangCode)
+                : flatRows;
+            const frontendGt = PayrollAggregator.calculateGrandTotal(filteredFlat);
+            frontendGt.emp_code = `${filteredFlat.length} Karyawan`;
+
+            // Use backend-provided grand_total if available to override financial fields
             const backendGrandTotal = data.grand_total;
-            if (backendGrandTotal) {
-                setGrandTotal(backendGrandTotal);
+            if (backendGrandTotal && (!gangCode || gangCode === 'ALL')) {
+                setGrandTotal({ ...frontendGt, ...backendGrandTotal });
             } else {
-                // Fallback: Calculate grand total based on FILTERED rows (selected gang only)
-                const filteredFlat = gangCode && gangCode !== 'ALL'
-                    ? flatRows.filter(r => r.gang_code === gangCode)
-                    : flatRows;
-                const gt = PayrollAggregator.calculateGrandTotal(filteredFlat);
-                setGrandTotal(gt);
+                setGrandTotal(frontendGt);
             }
 
             // Build a map of gang_code -> gang_totals from backend
@@ -539,16 +541,18 @@ export default function CustomPayrollTable({
                     processedRows.push(emp);
                 });
 
-                // Use backend-provided gang_totals if available, otherwise calculate
-                let gangTotal;
+                // Calculate frontend gang total for ALL columns
+                let gangTotal = PayrollAggregator.calculateGangTotals(gCode, flatRows);
+
+                // Override with backend-provided gang_totals if available for financial fields
                 if (backendGangTotalsMap[gCode]) {
-                    gangTotal = { ...backendGangTotalsMap[gCode] };
-                } else {
-                    gangTotal = PayrollAggregator.calculateGangTotals(gCode, flatRows);
+                    gangTotal = { ...gangTotal, ...backendGangTotalsMap[gCode] };
                 }
                 gangTotal.type = 'gang_total';
                 gangTotal.id = `TOTAL_${gCode}`;
                 gangTotal.gang_code = gCode;
+                gangTotal.nama = `TOTAL GANG ${gCode}`;
+                gangTotal.emp_code = `${employees.length} Kary.`;
                 processedRows.push(gangTotal);
             });
             setRows(processedRows);
