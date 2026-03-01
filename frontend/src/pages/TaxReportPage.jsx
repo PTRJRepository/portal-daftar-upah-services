@@ -135,10 +135,21 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                 )}
             </div>
 
+            {/* Data Source Indicator */}
+            {data && (
+                <div className={`tax-data-source-indicator ${data.data_source === 'current' ? 'source-current' : 'source-history'}`}>
+                    {data.data_source === 'current' ? (
+                        <>🟢 <strong>PERIODE AKTIF (CURRENT)</strong> — Data diambil langsung dari database original (live)</>
+                    ) : (
+                        <>📦 <strong>PERIODE HISTORY</strong> — Data diambil dari snapshot history database</>
+                    )}
+                </div>
+            )}
+
             {!data || data.employees.length === 0 ? (
                 <div className="tax-report-empty">
                     <h3><FileWarning size={24} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '8px' }} /> Tidak Ada Data</h3>
-                    <p>Data pajak untuk {MONTH_NAMES[month - 1]} {year} belum tersedia. Pastikan data sudah di-seed melalui Aggregation Seeder.</p>
+                    <p>Data pajak untuk {MONTH_NAMES[month - 1]} {year} belum tersedia.{data?.data_source !== 'current' ? ' Pastikan data sudah di-seed melalui Aggregation Seeder.' : ''}</p>
                 </div>
             ) : (
                 <div className="tax-report-table-wrapper">
@@ -937,7 +948,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
                                     <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
                                     <td className="text-center">-</td> {/* Placeholder for NPWP */}
                                     {Array.from({ length: 12 }, (_, m) => {
-                                        const val = emp.monthly_pph21?.[String(m + 1)] || 0;
+                                        const val = emp.monthly_pph21_adtrans?.[String(m + 1)] || 0;
                                         return (
                                             <td
                                                 key={m}
@@ -958,7 +969,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
                                 {Array.from({ length: 12 }, (_, m) => (
                                     <td key={m} className="text-right">
                                         <strong>
-                                            {formatNumber(data.employees.reduce((s, e) => s + (e.monthly_pph21?.[String(m + 1)] || 0), 0))}
+                                            {formatNumber(data.employees.reduce((s, e) => s + (e.monthly_pph21_adtrans?.[String(m + 1)] || 0), 0))}
                                         </strong>
                                     </td>
                                 ))}

@@ -65,6 +65,14 @@ interface ShortageDetail {
     shortage_hours: number;
 }
 
+interface ExcessDetail {
+    date: string;
+    day_name: string;
+    actual_hours: number;
+    target_hours: number;
+    excess_hours: number;
+}
+
 interface PayrollRow {
     emp_code?: string;
     nik: string;
@@ -81,6 +89,10 @@ interface PayrollRow {
     has_shortage?: boolean;
     shortage_details?: ShortageDetail[];
     shortage_total_hours?: number;
+    has_excess?: boolean;
+    excess_details?: ExcessDetail[];
+    excess_total_hours?: number;
+    hk_warning?: string; // 'kurang_jam' | 'salah_scan' | null
     hari_kerja: number;
     gaji_pokok: number;
     kehadiran: number;
@@ -744,6 +756,9 @@ export class DataExtractorService {
                 has_shortage: attData.shortage_count > 0,
                 shortage_details: attData.shortage_details || [],
                 shortage_total_hours: attData.shortage_total_hours || 0,
+                has_excess: (attData.excess_details || []).length > 0,
+                excess_details: attData.excess_details || [],
+                excess_total_hours: attData.excess_total_hours || 0,
                 hari_kerja,
                 gaji_pokok,
                 kehadiran: hari_kerja,
@@ -801,6 +816,7 @@ export class DataExtractorService {
                 gaji_pokok_ideal,
                 gaji_pokok_aktual,
                 koreksi_hk,
+                hk_warning: koreksi_hk < 0 ? 'kurang_jam' : (koreksi_hk > 0 ? 'salah_scan' : undefined),
                 pot_spsi,
                 pot_pph21,
                 // [ALIAS] Ensure PPH21 and SPSI are available as keys expected by AggregationService/Frontend
@@ -973,6 +989,8 @@ export class DataExtractorService {
         total_amount_rp: number;
         shortage_details: Array<{ date: string; day_name: string; actual_hours: number; target_hours: number; shortage_hours: number }>;
         shortage_total_hours: number;
+        excess_details: Array<{ date: string; day_name: string; actual_hours: number; target_hours: number; excess_hours: number }>;
+        excess_total_hours: number;
     }>> {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
@@ -1076,6 +1094,8 @@ export class DataExtractorService {
             total_amount_rp: number;
             shortage_details: Array<{ date: string; day_name: string; actual_hours: number; target_hours: number; shortage_hours: number }>;
             shortage_total_hours: number;
+            excess_details: Array<{ date: string; day_name: string; actual_hours: number; target_hours: number; excess_hours: number }>;
+            excess_total_hours: number;
         }> = {};
 
         // Initialize result with aggregated data
@@ -1088,7 +1108,9 @@ export class DataExtractorService {
                     shortage_count: 0,
                     total_amount_rp: 0,
                     shortage_details: [],
-                    shortage_total_hours: 0
+                    shortage_total_hours: 0,
+                    excess_details: [],
+                    excess_total_hours: 0
                 };
             }
             result[empCode].hk += r.hk || 0;
@@ -1110,6 +1132,75 @@ export class DataExtractorService {
                     shortage_hours: shortage_hours
                 });
                 result[empCode].shortage_total_hours += shortage_hours;
+            }
+        }
+
+        // [NEW] Query to get excess hours records (individual days where hours EXCEED target - "Salah Scan")
+        const excessDetailsQuery = `
+            SELECT
+                RTRIM(trl.EmpCode) as emp_code,
+                CONVERT(varchar, trl.TrxDate, 23) as date,
+                DATENAME(weekday, trl.TrxDate) as day_name,
+                SUM(trl.Hours) as actual_hours,
+                CASE
+                    WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
+                    ELSE 7
+                END as target_hours
+            FROM PR_TASKREGLN trl
+            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+            WHERE RTRIM(trl.EmpCode) IN (${empList})
+              AND trl.TrxDate >= ? AND trl.TrxDate < ?
+              AND trl.OT = 0
+            GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
+            HAVING SUM(trl.Hours) > CASE
+                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
+                ELSE 7
+            END
+
+            UNION ALL
+
+            SELECT
+                RTRIM(trl.EmpCode) as emp_code,
+                CONVERT(varchar, trl.TrxDate, 23) as date,
+                DATENAME(weekday, trl.TrxDate) as day_name,
+                SUM(trl.Hours) as actual_hours,
+                CASE
+                    WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
+                    ELSE 7
+                END as target_hours
+            FROM PR_TASKREGLN_ARC trl
+            JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+            WHERE RTRIM(trl.EmpCode) IN (${empList})
+              AND trl.TrxDate >= ? AND trl.TrxDate < ?
+              AND trl.OT = 0
+            GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
+            HAVING SUM(trl.Hours) > CASE
+                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
+                ELSE 7
+            END
+        `;
+
+        const excessRows = await db.query<{
+            emp_code: string;
+            date: string;
+            day_name: string;
+            actual_hours: number;
+            target_hours: number;
+        }>(excessDetailsQuery, [startDate, endDate, startDate, endDate]);
+
+        // Add excess details ("Salah Scan")
+        for (const r of excessRows) {
+            const empCode = r.emp_code?.trim() || "";
+            if (result[empCode]) {
+                const excess_hours = r.actual_hours - r.target_hours;
+                result[empCode].excess_details.push({
+                    date: r.date,
+                    day_name: r.day_name,
+                    actual_hours: r.actual_hours,
+                    target_hours: r.target_hours,
+                    excess_hours: excess_hours
+                });
+                result[empCode].excess_total_hours += excess_hours;
             }
         }
 
@@ -1320,11 +1411,13 @@ export class DataExtractorService {
                 normalized_key: key
             });
 
-            // Store DocDesc as title for dynamic headers with TaskCode and TaskDesc included via newline
+            // [MODIFIED] Use ONLY TaskCode as title (shorter, cleaner headers)
+            // TaskCode is typically short like "P01", "P02", etc.
             if (!titleMap[key]) {
+                // Priority: TaskCode > DocDesc (fallback) > normalized key (last resort)
+                const taskCode = r.task_code?.trim();
                 const docDesc = r.doc_desc?.trim() || key;
-                const taskExtra = r.task_code?.trim() ? `\n(${r.task_code?.trim()} - ${r.task_desc?.trim()})` : "";
-                titleMap[key] = docDesc + taskExtra;
+                titleMap[key] = taskCode || docDesc;
             }
         }
 
@@ -1345,10 +1438,11 @@ export class DataExtractorService {
         // NOTE: Premi PPH (ditambah/plus) diambil dari query terpisah menggunakan TaskDesc
 
         // [UPDATED] Add LEFT JOIN for TaskDesc to filter PPH items where TaskDesc contains PREMI
-        let rows = await db.query<{ emp_code: string; doc_desc: string; task_desc: string | null; amount: number }>(`
+        let rows = await db.query<{ emp_code: string; doc_desc: string; task_code: string | null; task_desc: string | null; amount: number }>(`
             SELECT
                 RTRIM(t.EmpCode) as emp_code,
                 t.DocDesc as doc_desc,
+                ln.TaskCode as task_code,
                 mt.TaskDesc as task_desc,
                 SUM(COALESCE(ln.Amount, 0)) as amount
             FROM (
@@ -1386,7 +1480,7 @@ export class DataExtractorService {
                 OR UPPER(t.DocDesc) LIKE '%ALAT%'
                 OR UPPER(t.DocDesc) LIKE '%THR%'
             )
-            GROUP BY RTRIM(t.EmpCode), t.DocDesc, mt.TaskDesc
+            GROUP BY RTRIM(t.EmpCode), t.DocDesc, ln.TaskCode, mt.TaskDesc
         `, [startDate, endDate, startDate, endDate]);
 
         const amounts: Record<string, Record<string, number>> = {};
@@ -1409,10 +1503,12 @@ export class DataExtractorService {
 
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
 
-            // Store title mapping for dynamic headers with TaskDesc
+            // [MODIFIED] Use ONLY TaskCode as title (shorter, cleaner headers)
+            // TaskCode is typically short like "P01", "D01", etc.
             if (!titleMap[key]) {
-                const taskExtra = r.task_desc?.trim() ? `\n(${r.task_desc?.trim()})` : "";
-                titleMap[key] = title + taskExtra;
+                // Priority: TaskCode > Title (fallback) > key (last resort)
+                const taskCode = r.task_code?.trim();
+                titleMap[key] = taskCode || title;
             }
         }
 

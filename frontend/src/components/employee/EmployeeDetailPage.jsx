@@ -591,6 +591,54 @@ export default function EmployeeDetailPage({
             {/* 2. ATTENDANCE & OVERTIME MATRICES (Below Payslip) */}
             <div className="matrix-sections-container">
 
+                {/* HK Discrepancy Banner */}
+                {(getNum('koreksi_hk') !== 0) && (
+                    <div style={{
+                        padding: '12px 16px',
+                        borderRadius: '8px',
+                        marginBottom: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        ...(getNum('koreksi_hk') < 0 ? {
+                            backgroundColor: '#fef2f2',
+                            border: '2px solid #fecaca',
+                            color: '#991b1b'
+                        } : {
+                            backgroundColor: '#fff7ed',
+                            border: '2px solid #fed7aa',
+                            color: '#9a3412'
+                        })
+                    }}>
+                        <span style={{ fontSize: '24px' }}>{getNum('koreksi_hk') < 0 ? '⚠️' : '🔴'}</span>
+                        <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '2px' }}>
+                                {getNum('koreksi_hk') < 0
+                                    ? 'KURANG JAM / PEMBAYARAN TIDAK BENAR'
+                                    : 'SALAH SCAN / JAM LEBIH'
+                                }
+                            </div>
+                            <div style={{ fontSize: '12px', opacity: 0.9 }}>
+                                Koreksi HK: <strong>Rp {formatCurrency(Math.abs(getNum('koreksi_hk')))}</strong>
+                                {' | '}
+                                GP Ideal: Rp {formatCurrency(getNum('gaji_pokok_ideal'))}
+                                {' vs '}
+                                GP Aktual: Rp {formatCurrency(getNum('gaji_pokok_aktual'))}
+                            </div>
+                            {data.shortage_details && data.shortage_details.length > 0 && (
+                                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.8 }}>
+                                    📅 {data.shortage_details.length} hari kurang jam (Total: {(data.shortage_total_hours || 0).toFixed(1)} jam)
+                                </div>
+                            )}
+                            {data.excess_details && data.excess_details.length > 0 && (
+                                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.8 }}>
+                                    📅 {data.excess_details.length} hari jam lebih (Total: +{(data.excess_total_hours || 0).toFixed(1)} jam)
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Attendance Matrix */}
                 <div className="matrix-card">
                     <div className="matrix-header gradient-header-blue">
@@ -621,29 +669,69 @@ export default function EmployeeDetailPage({
                                 const statusStyle = statusColors[dayData.status] || statusColors.no_data
 
                                 const dateObj = new Date(year, month - 1, day)
-                                const isFriday = dateObj.getDay() === 5
+                                const dayOfWeek = dateObj.getDay()
+                                const isFriday = dayOfWeek === 5
+                                const isSunday = dayOfWeek === 0
+                                const isHoliday = dayData.is_holiday
                                 const hours = dayData.hours || 0
-                                const isShort = hours > 0 && ((isFriday && hours < 5) || (!isFriday && hours < 7))
+                                const targetHours = isFriday ? 5 : 7
+                                const isShort = hours > 0 && hours < targetHours && !isSunday && !isHoliday
+                                const isExcess = hours > targetHours && !isSunday && !isHoliday
+
+                                // Determine cell styling
+                                let cellBg = statusStyle.bg
+                                let cellColor = statusStyle.text
+                                let cellBorder = '1px solid #e5e7eb'
+                                let hkIcon = ''
+
+                                if (isShort) {
+                                    cellBg = '#fee2e2'
+                                    cellColor = '#b91c1c'
+                                    cellBorder = '2px solid #ef4444'
+                                    hkIcon = '⬇️'
+                                } else if (isExcess) {
+                                    cellBg = '#fff7ed'
+                                    cellColor = '#9a3412'
+                                    cellBorder = '2px solid #f97316'
+                                    hkIcon = '⬆️'
+                                }
+
+                                const shortage = isShort ? (targetHours - hours).toFixed(1) : 0
+                                const excess = isExcess ? (hours - targetHours).toFixed(1) : 0
 
                                 return (
                                     <div
                                         key={`cell-${day}`}
                                         className="calendar-cell"
                                         style={{
-                                            background: isShort ? '#fee2e2' : statusStyle.bg,
-                                            color: isShort ? '#b91c1c' : statusStyle.text,
-                                            border: isShort ? '1px solid #ef4444' : '1px solid #e5e7eb'
+                                            background: cellBg,
+                                            color: cellColor,
+                                            border: cellBorder
                                         }}
-                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''} (${hours} Jam)${dayData.amount ? ` - Rp ${formatCurrency(dayData.amount)}` : ''}${isShort ? ' - Warning: Jam Kerja Kurang' : ''}`}
+                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''} (${hours} Jam, Target: ${targetHours} Jam)${dayData.amount ? ` - Rp ${formatCurrency(dayData.amount)}` : ''}${isShort ? ` - ⚠️ Kurang ${shortage} Jam` : ''}${isExcess ? ` - 🔴 Lebih ${excess} Jam (Salah Scan?)` : ''}`}
                                     >
                                         <div className="calendar-date">{day}</div>
-                                        <div className="calendar-status">{statusStyle.label}</div>
+                                        <div className="calendar-status">
+                                            {hkIcon ? `${hkIcon} ${statusStyle.label}` : statusStyle.label}
+                                        </div>
                                         {hours > 0 && (
                                             <div style={{ fontSize: '0.6rem', marginTop: '1px', fontWeight: 'bold' }}>
-                                                {hours} Jam {isShort && '⚠️'}
+                                                {hours} Jam
+                                                {isShort && <span style={{ color: '#dc2626' }}> ⚠️</span>}
+                                                {isExcess && <span style={{ color: '#ea580c' }}> 🔴</span>}
                                             </div>
                                         )}
-                                        {dayData.amount !== undefined && (
+                                        {(isShort || isExcess) && (
+                                            <div style={{
+                                                fontSize: '0.55rem',
+                                                fontWeight: 'bold',
+                                                color: isShort ? '#dc2626' : '#ea580c',
+                                                marginTop: '1px'
+                                            }}>
+                                                {isShort ? `-${shortage}j` : `+${excess}j`}
+                                            </div>
+                                        )}
+                                        {dayData.amount !== undefined && !isShort && !isExcess && (
                                             <div style={{ fontSize: '0.6rem', color: '#047857', fontWeight: 'bold' }}>
                                                 {dayData.amount > 0 ? `Rp ${formatCurrency(dayData.amount)}` : ''}
                                             </div>
@@ -694,38 +782,72 @@ export default function EmployeeDetailPage({
                                             <th style={{ textAlign: 'center' }}>Jam</th>
                                             <th style={{ textAlign: 'right' }}>Rate/Upah</th>
                                             <th style={{ textAlign: 'right' }}>Jumlah</th>
+                                            <th style={{ textAlign: 'center' }}>HK</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {attendance.list.map((item, idx) => (
-                                            <tr key={idx}>
-                                                <td>
-                                                    {item.date ? new Date(item.date).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}
-                                                </td>
-                                                <td>
-                                                    <span className="legend-dot" style={{
-                                                        display: 'inline-block',
-                                                        width: '8px',
-                                                        height: '8px',
-                                                        borderRadius: '50%',
-                                                        marginRight: '6px',
-                                                        background: statusColors[item.status]?.bg || '#e5e7eb'
-                                                    }}></span>
-                                                    {statusColors[item.status]?.label === 'H' ? 'Hadir' : item.remarks || item.status}
-                                                </td>
-                                                <td>
-                                                    {item.task_desc}
-                                                    {item.task_code && <span style={{ color: '#94a3b8', fontSize: '0.8em', marginLeft: '4px' }}>({item.task_code})</span>}
-                                                </td>
-                                                <td style={{ textAlign: 'center' }}>{item.hours > 0 ? item.hours : '-'}</td>
-                                                <td style={{ textAlign: 'right', color: '#64748b' }}>
-                                                    {item.rate > 0 ? formatCurrency(item.rate) : '-'}
-                                                </td>
-                                                <td style={{ textAlign: 'right', fontWeight: '600' }}>
-                                                    {item.amount > 0 ? formatCurrency(item.amount) : '-'}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {attendance.list.map((item, idx) => {
+                                            const itemDate = item.date ? new Date(item.date) : null
+                                            const itemDayOfWeek = itemDate ? itemDate.getDay() : -1
+                                            const itemIsFriday = itemDayOfWeek === 5
+                                            const itemIsSunday = itemDayOfWeek === 0
+                                            const itemTargetHours = itemIsFriday ? 5 : 7
+                                            const itemIsShort = item.hours > 0 && item.hours < itemTargetHours && !itemIsSunday && item.status === 'hadir'
+                                            const itemIsExcess = item.hours > itemTargetHours && !itemIsSunday && item.status === 'hadir'
+
+                                            let rowBg = undefined
+                                            let hkStatusIcon = '✅'
+                                            if (itemIsShort) {
+                                                rowBg = '#fef2f2'
+                                                hkStatusIcon = '⚠️'
+                                            } else if (itemIsExcess) {
+                                                rowBg = '#fff7ed'
+                                                hkStatusIcon = '🔴'
+                                            } else if (item.status !== 'hadir') {
+                                                hkStatusIcon = '—'
+                                            }
+
+                                            return (
+                                                <tr key={idx} style={{ backgroundColor: rowBg }}>
+                                                    <td>
+                                                        {item.date ? new Date(item.date).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}
+                                                    </td>
+                                                    <td>
+                                                        <span className="legend-dot" style={{
+                                                            display: 'inline-block',
+                                                            width: '8px',
+                                                            height: '8px',
+                                                            borderRadius: '50%',
+                                                            marginRight: '6px',
+                                                            background: statusColors[item.status]?.bg || '#e5e7eb'
+                                                        }}></span>
+                                                        {statusColors[item.status]?.label === 'H' ? 'Hadir' : item.remarks || item.status}
+                                                    </td>
+                                                    <td>
+                                                        {item.task_desc}
+                                                        {item.task_code && <span style={{ color: '#94a3b8', fontSize: '0.8em', marginLeft: '4px' }}>({item.task_code})</span>}
+                                                    </td>
+                                                    <td style={{
+                                                        textAlign: 'center',
+                                                        fontWeight: (itemIsShort || itemIsExcess) ? 'bold' : 'normal',
+                                                        color: itemIsShort ? '#dc2626' : (itemIsExcess ? '#ea580c' : undefined)
+                                                    }}>
+                                                        {item.hours > 0 ? item.hours : '-'}
+                                                        {itemIsShort && <span style={{ fontSize: '10px' }}> ⚠️</span>}
+                                                        {itemIsExcess && <span style={{ fontSize: '10px' }}> 🔴</span>}
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', color: '#64748b' }}>
+                                                        {item.rate > 0 ? formatCurrency(item.rate) : '-'}
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', fontWeight: '600' }}>
+                                                        {item.amount > 0 ? formatCurrency(item.amount) : '-'}
+                                                    </td>
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        {hkStatusIcon}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
                                     </tbody>
                                     <tfoot>
                                         <tr style={{ fontWeight: 'bold', backgroundColor: '#f9fafb' }}>

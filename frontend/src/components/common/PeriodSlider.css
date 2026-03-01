@@ -156,6 +156,37 @@
     color: var(--success-500, #22c55e);
 }
 
+/* History period indicator */
+.period-slider-item.history-period {
+    position: relative;
+    border-style: dashed;
+    border-color: var(--neutral-400, #9ca3af);
+}
+
+.period-slider-item.history-period:not(.selected):not(.current) {
+    background: var(--neutral-50, #f9fafb);
+    border-color: var(--neutral-300, #d1d5db);
+}
+
+.period-slider-item.history-period:not(.selected) .period-slider-year {
+    color: var(--neutral-500, #6b7280);
+    font-style: italic;
+}
+
+/* History indicator badge */
+.period-slider-indicator {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 8px;
+    opacity: 0.7;
+}
+
+.period-slider-item.selected .period-slider-indicator {
+    opacity: 1;
+    color: white;
+}
+
 /* Month and year labels */
 .period-slider-month {
     font-size: 13px;
@@ -177,11 +208,53 @@
     justify-content: space-between;
     align-items: center;
     padding: 0 4px;
+    flex-wrap: wrap;
+    gap: 4px;
 }
 
 .period-slider-hint {
     font-size: 11px;
     color: var(--text-secondary, #6b7280);
+}
+
+.period-slider-legend {
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    color: var(--text-secondary, #6b7280);
+}
+
+.period-slider-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.period-slider-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid;
+}
+
+.period-slider-legend-current {
+    background: var(--success-100, #dcfce7);
+    border-color: var(--success-500, #22c55e);
+}
+
+.period-slider-legend-history {
+    background: var(--neutral-100, #f3f4f6);
+    border-style: dashed;
+    border-color: var(--neutral-400, #9ca3af);
+}
+
+.period-slider-history-badge {
+    background: var(--neutral-200, #e5e7eb);
+    color: var(--neutral-700, #374151);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 500;
 }
 
 .period-slider-position {

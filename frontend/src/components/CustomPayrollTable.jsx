@@ -627,7 +627,52 @@ export default function CustomPayrollTable({
             { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 35, className: 'text-center', left: 35 },
             { field: 'emp_code', headers: ['IDENTITAS', null, null, 'EMP CODE'], w: 75, className: 'text-center sticky-col', left: 35 },
             { field: 'nik', headers: ['IDENTITAS', null, null, 'NIK'], w: 55, className: 'text-center sticky-col', left: 110 },
-            { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 160, className: 'text-left sticky-col', left: 165 },
+            {
+                field: 'nama',
+                headers: ['IDENTITAS', null, null, 'NAMA'],
+                w: 160,
+                className: 'text-left sticky-col',
+                left: 165,
+                render: (row) => {
+                    if (row.type !== 'employee') return row.nama || row.emp_code;
+                    const koreksi = row.koreksi_hk || 0;
+                    const nama = row.nama || row.emp_code || '-';
+                    if (koreksi === 0) return nama;
+
+                    const isKurang = koreksi < 0;
+                    const warningColor = isKurang ? '#dc2626' : '#ea580c';
+                    const warningBg = isKurang ? '#fef2f2' : '#fff7ed';
+                    const warningBorder = isKurang ? '#fecaca' : '#fed7aa';
+                    const warningLabel = isKurang ? '⚠️ KURANG JAM' : '🔴 SALAH SCAN';
+                    const tooltipText = isKurang
+                        ? `⚠️ Pembayaran Tidak Benar\nKoreksi HK: ${formatNumber(koreksi)}\nGP Aktual < GP Ideal`
+                        : `🔴 Salah Scan / Jam Lebih\nKoreksi HK: +${formatNumber(koreksi)}\nGP Aktual > GP Ideal`;
+
+                    return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nama}</span>
+                            <span
+                                title={tooltipText}
+                                style={{
+                                    fontSize: '8px',
+                                    fontWeight: 'bold',
+                                    color: warningColor,
+                                    backgroundColor: warningBg,
+                                    border: `1px solid ${warningBorder}`,
+                                    borderRadius: '3px',
+                                    padding: '1px 3px',
+                                    whiteSpace: 'nowrap',
+                                    lineHeight: '1.2',
+                                    cursor: 'help',
+                                    flexShrink: 0
+                                }}
+                            >
+                                {warningLabel}
+                            </span>
+                        </div>
+                    );
+                }
+            },
 
             // PAJAK [Conditionally Expanded]
             ...(isTaxExpanded ? [
@@ -724,6 +769,51 @@ export default function CustomPayrollTable({
                 w: 80,
                 className: 'text-center',
                 render: (row) => {
+                    // Check for excess hours first (salah scan)
+                    if (row.has_excess && !row.has_shortage) {
+                        const excessInfo = row.excess_details || [];
+                        const excessCount = excessInfo.length;
+                        const excessTotalHours = row.excess_total_hours || 0;
+
+                        let tooltipText = `🔴 SALAH SCAN / JAM LEBIH\n`;
+                        tooltipText += `Total Kelebihan: ${excessTotalHours.toFixed(1)} jam\n`;
+                        tooltipText += `Jumlah Hari: ${excessCount} hari\n\n`;
+                        tooltipText += `Rincian:\n`;
+                        excessInfo.forEach((detail, idx) => {
+                            tooltipText += `${idx + 1}. ${detail.date} (${detail.day_name})\n`;
+                            tooltipText += `   Actual: ${detail.actual_hours} jam, Target: ${detail.target_hours} jam\n`;
+                            tooltipText += `   Lebih: +${detail.excess_hours.toFixed(1)} jam\n`;
+                        });
+
+                        return (
+                            <div
+                                style={{
+                                    backgroundColor: '#fff7ed',
+                                    color: '#9a3412',
+                                    fontWeight: 'bold',
+                                    width: '100%',
+                                    height: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '11px',
+                                    border: '2px solid #f97316',
+                                    borderRadius: '4px',
+                                    gap: '2px'
+                                }}
+                                title={tooltipText}
+                            >
+                                <span style={{ fontSize: '14px' }}>🔴</span>
+                                <span>{row.total_jam_kerja}</span>
+                                {excessTotalHours > 0 && (
+                                    <span style={{ fontSize: '9px', color: '#7c2d12' }}>
+                                        (+{excessTotalHours.toFixed(1)}j)
+                                    </span>
+                                )}
+                            </div>
+                        );
+                    }
+
                     if (!row.has_shortage) {
                         return (
                             <div style={{
@@ -901,12 +991,18 @@ export default function CustomPayrollTable({
             render: (row) => {
                 const val = row.koreksi_hk;
                 if (val === null || val === undefined || val === 0) return '-';
-                // [FIXED] koreksi_hk is ALWAYS minus or zero (never positive)
-                // No need to check for positive values, only display as negative/red
+                const isKurang = val < 0;
+                const color = isKurang ? '#dc2626' : '#ea580c';
+                const label = isKurang ? 'Kurang Jam' : 'Salah Scan';
                 return (
-                    <span style={{ color: '#dc2626' }}>
-                        -{formatNumber(Math.abs(val))}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                        <span style={{ color, fontWeight: 'bold' }}>
+                            {isKurang ? '-' : '+'}{formatNumber(Math.abs(val))}
+                        </span>
+                        <span style={{ fontSize: '8px', color, opacity: 0.8 }}>
+                            ({label})
+                        </span>
+                    </div>
                 );
             }
         });
@@ -1715,6 +1811,16 @@ export default function CustomPayrollTable({
                             >
                                 {columnDefs.map((col, cIdx) => {
                                     let displayVal = row[col.field];
+                                    const isGangTotal = row.type === 'gang_total';
+
+                                    // For gang total rows: if numeric field is undefined, treat as 0
+                                    if (isGangTotal && displayVal === undefined) {
+                                        const isNumericColumn = /^(jumlah_|total_|pot_|premi_|lembur_|gaji_|upah_|beras_|jabatan_|masa_|koreksi_|penghasilan_|pph21_|tarif_|astek_|bpjs_|thr_|bonus_|exgratia_|pendapatan_|hari_kerja|kehadiran)/.test(col.field);
+                                        if (isNumericColumn) {
+                                            displayVal = 0;
+                                        }
+                                    }
+
                                     if (typeof displayVal === 'number') {
                                         displayVal = col.field === 'lembur_jam' ? formatDecimal(displayVal) : formatNumber(displayVal);
                                     }
@@ -1759,9 +1865,23 @@ export default function CustomPayrollTable({
                         <tr className="grand-total-row">
                             {columnDefs.map((col, cIdx) => {
                                 let val = grandTotal[col.field];
+
+                                // Special handling for specific columns
                                 if (col.field === 'nama') val = 'GRAND TOTAL';
-                                if (col.field === 'no') val = '';
-                                if (typeof val === 'number') val = formatNumber(val);
+                                else if (col.field === 'no') val = '';
+                                else if (col.field === 'emp_code') val = `${rows.filter(r => !r.isTotal && !r.isHeader).length} KARYAWAN`;
+                                // For numeric columns, always show 0 instead of '-' if value is undefined
+                                else if (typeof val === 'number' || val !== undefined) {
+                                    // It's a number (could be 0), format it
+                                    const numVal = Number(val) || 0;
+                                    val = formatNumber(numVal);
+                                } else {
+                                    // Check if this is a numeric column (based on field name patterns)
+                                    const isNumericColumn = /^(jumlah_|total_|pot_|premi_|lembur_|gaji_|upah_|beras_|jabatan_|masa_|koreksi_|penghasilan_|pph21_|tarif_|astek_|bpjs_|thr_|bonus_|exgratia_|pendapatan_|hari_kerja|kehadiran)/.test(col.field);
+                                    // For numeric columns, show 0 instead of '-'
+                                    val = isNumericColumn ? '0' : '-';
+                                }
+
                                 return (
                                     <td key={cIdx} className={col.className} style={{ left: col.left, width: col.w }}>
                                         {val ?? '-'}

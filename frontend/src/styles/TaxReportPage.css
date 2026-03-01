@@ -666,3 +666,27 @@
     color: #92400e;
     text-align: center;
 }
+
+/* ===== Data Source Indicator ===== */
+.tax-data-source-indicator {
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 1.4;
+}
+
+.tax-data-source-indicator.source-current {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    border: 1px solid #34d399;
+    color: #065f46;
+}
+
+.tax-data-source-indicator.source-history {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 1px solid #f59e0b;
+    color: #92400e;
+}

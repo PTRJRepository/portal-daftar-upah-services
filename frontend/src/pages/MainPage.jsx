@@ -43,6 +43,10 @@ export default function MainPage({ lockedDiv = null }) {
   // Calculate if currently viewed period is historical
   const isHistorical = currentPeriodData ? (year * 100 + month) < (currentPeriodData.year * 100 + currentPeriodData.month) : false;
 
+  // Get current production period for PeriodSlider history indicator
+  const currentProductionMonth = currentPeriodData?.month
+  const currentProductionYear = currentPeriodData?.year
+
   const [division, setDivision] = useState('')
   const [gang, setGang] = useState('')
 
@@ -943,6 +947,16 @@ export default function MainPage({ lockedDiv = null }) {
 
         {/* Center Controls */}
         <div className="flex-center gap-4" style={{ flex: 1, justifyContent: 'center', maxWidth: '1000px', padding: '0 16px' }}>
+          {/* DEBUG: Log props for ReportToolbar */}
+          {console.log('[MainPage] ReportToolbar props:', {
+            usePeriodSlider,
+            currentProductionMonth,
+            currentProductionYear,
+            isHistorical,
+            month,
+            year,
+            currentPeriodData
+          })}
           <ReportToolbar
             month={month}
             year={year}
@@ -958,6 +972,9 @@ export default function MainPage({ lockedDiv = null }) {
             onRefresh={handleRefresh}
             usePeriodSlider={usePeriodSlider}
             onTogglePeriodSlider={setUsePeriodSlider}
+            currentProductionMonth={currentProductionMonth}
+            currentProductionYear={currentProductionYear}
+            useHistoryDb={isHistorical}
           />
         </div>
 

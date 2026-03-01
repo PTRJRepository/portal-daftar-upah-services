@@ -583,6 +583,39 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
         })
     })
 
+    // Get PTKP changelog / audit history
+    .get("/ptkp/changelog", async ({ query, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const year = query.year ? parseInt(query.year) : undefined;
+        const empCode = query.emp_code || undefined;
+
+        try {
+            const records = await ptkpTaxService.getPtkpChangelog(year, empCode);
+            return {
+                success: true,
+                data: records,
+                count: records.length
+            };
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Get PTKP changelog error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch PTKP changelog"
+            };
+        }
+    }, {
+        query: t.Object({
+            year: t.Optional(t.String()),
+            emp_code: t.Optional(t.String())
+        })
+    })
+
     // Preview PTKP update (dry run)
     .get("/ptkp/preview/:year", async ({ params, headers, set }) => {
         const authHeader = headers["authorization"];

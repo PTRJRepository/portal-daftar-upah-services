@@ -18,8 +18,21 @@ export default function ReportToolbar({
     onEditModeToggle,
     onExport,
     usePeriodSlider = false,  // New prop to enable period slider
-    onTogglePeriodSlider = null  // Callback to toggle between modes
+    onTogglePeriodSlider = null,  // Callback to toggle between modes
+    currentProductionMonth = null,  // Current production month for history indicator
+    currentProductionYear = null,  // Current production year for history indicator
+    useHistoryDb = false  // Flag to show if system is using history database mode
 }) {
+    // DEBUG: Log props
+    console.log('[ReportToolbar] Rendering with props:', {
+        usePeriodSlider,
+        currentProductionMonth,
+        currentProductionYear,
+        useHistoryDb,
+        month,
+        year
+    })
+
     // Helper to format month-year for input type="month"
     const getMonthValue = () => {
         if (!month || !year) return ''
@@ -200,6 +213,9 @@ export default function ReportToolbar({
                         currentYear={year}
                         onPeriodChange={onMonthYearChange}
                         disableControls={disableControls}
+                        currentProductionMonth={currentProductionMonth}
+                        currentProductionYear={currentProductionYear}
+                        useHistoryDb={useHistoryDb}
                     />
                 </div>
             ) : (

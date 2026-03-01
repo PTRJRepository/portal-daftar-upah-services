@@ -218,27 +218,112 @@ export const PayrollAggregator = {
   /**
    * Internal helper to sum an array of rows.
    * Dynamically sums all numeric keys found in ALL rows (handles sparse data).
+   * Also handles nested objects like premi, potongan_upah_kotor, potongan_upah_bersih.
    */
   _sumRows: (rows) => {
     if (!rows || rows.length === 0) return {};
 
-    // 1. Identify ALL unique numeric keys across ALL rows
-    const numericKeysSet = new Set();
+    const totals = {};
+
+    // List of known numeric fields to always include in totals (even if value is 0)
+    const knownNumericFields = [
+      // Identitas & Absensi
+      'jumlah_hk', 'hari_kerja', 'kehadiran', 'total_jam_kerja',
+      // Gaji Pokok
+      'gaji_pokok_ideal', 'gaji_pokok_aktual', 'koreksi_hk', 'upah_dasar',
+      // Tunjangan
+      'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
+      'total_tunjangan',
+      // Premi
+      'premi_brondol', 'premi_pruning', 'premi_tbs', 'premi_pupuk', 'premi_rawat',
+      'total_premi',
+      // Potongan Upah Kotor
+      'pot_koreksi', 'pot_kontan', 'pot_pinjam', 'pot_kl', 'pot_tiket',
+      'pot_alat', 'pot_thr', 'pot_spsi', 'pot_astek', 'pot_pph21',
+      'potongan_upah_kotor_total',
+      // Potongan Upah Bersih
+      'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_kesehatan_jumlah',
+      'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pensiun_jumlah',
+      'pot_bpjs_pekerja_total', 'pot_bpjs_jumlah',
+      'pot_astek_pekerja', 'pot_astek_majikan', 'pot_astek_jumlah',
+      'total_potongan',
+      // Total & Upah
+      'jumlah_upah_kotor', 'upah_kotor_pajak', 'penghasilan_bruto', 'pph21_ter',
+      'upah_bersih'
+    ];
+
+    // Initialize all known fields to 0
+    knownNumericFields.forEach(key => totals[key] = 0);
+
+    // Dynamic discovery of additional numeric fields from rows
+    const numericKeysSet = new Set(knownNumericFields);
 
     rows.forEach(row => {
       // SAFETY CHECK: Skip header/total/footer rows to prevent double counting
       if (row.isTotal || row.isHeader || row.isGrandTotal || row.isDivisionTotal) return;
       if (row.nama && (String(row.nama).startsWith('TOTAL') || String(row.nama).startsWith('GRAND TOTAL'))) return;
 
-      Object.keys(row).forEach(key => {
-        const val = row[key];
-        // Check if value is number or string that looks like number
-        // AND exclude non-numeric fields and specific ID fields
-        if ((typeof val === 'number' || (!isNaN(parseFloat(val)) && isFinite(val)))
-          && !['nik', 'no', 'id', 'year', 'month'].includes(key.toLowerCase())
-          && !key.toLowerCase().includes('code')
-          && !key.toLowerCase().includes('name')
-          && !key.toLowerCase().includes('phone')) {
+      // First, flatten nested objects and discover all keys
+      const flattenedRow = { ...row };
+
+      // Flatten nested 'premi' object
+      if (flattenedRow.premi && typeof flattenedRow.premi === 'object') {
+        Object.entries(flattenedRow.premi).forEach(([key, value]) => {
+          const flatKey = key.startsWith('premi_') ? key : `premi_${key}`;
+          flattenedRow[flatKey] = Number(value) || 0;
+        });
+      }
+
+      // Flatten nested 'potongan_upah_kotor' object
+      if (flattenedRow.potongan_upah_kotor && typeof flattenedRow.potongan_upah_kotor === 'object') {
+        if (flattenedRow.potongan_upah_kotor.dynamic && typeof flattenedRow.potongan_upah_kotor.dynamic === 'object') {
+          Object.entries(flattenedRow.potongan_upah_kotor.dynamic).forEach(([key, value]) => {
+            if (typeof value === 'number') {
+              flattenedRow[key] = value;
+            }
+          });
+        }
+        // Handle direct properties
+        Object.entries(flattenedRow.potongan_upah_kotor).forEach(([k, v]) => {
+          if (k !== 'dynamic' && typeof v === 'number') {
+            if (k === 'koreksi') {
+              if (!flattenedRow.pot_koreksi) flattenedRow.pot_koreksi = v;
+            } else if (!flattenedRow[k]) {
+              flattenedRow[k] = v;
+            }
+          }
+        });
+      }
+
+      // Flatten nested 'potongan_upah_bersih' object
+      if (flattenedRow.potongan_upah_bersih && typeof flattenedRow.potongan_upah_bersih === 'object') {
+        if (flattenedRow.potongan_upah_bersih.dynamic && typeof flattenedRow.potongan_upah_bersih.dynamic === 'object') {
+          Object.entries(flattenedRow.potongan_upah_bersih.dynamic).forEach(([key, value]) => {
+            if (typeof value === 'number') {
+              flattenedRow[key] = value;
+            }
+          });
+        }
+      }
+
+      // Now discover all numeric keys in the flattened row
+      Object.keys(flattenedRow).forEach(key => {
+        const val = flattenedRow[key];
+
+        // Skip non-numeric fields
+        if (['nik', 'no', 'id', 'year', 'month', 'emp_code', 'nik_ktp', 'nama', 'emp_name',
+             'jenis_kelamin', 'gender', 'status_ptkp', 'kategori_ter', 'gang_code', 'loc_code',
+             'task_code', 'task_desc', 'created_at', 'updated_at'].includes(key.toLowerCase())) {
+          return;
+        }
+        if (key.toLowerCase().includes('code') || key.toLowerCase().includes('name') ||
+            key.toLowerCase().includes('phone') || key.toLowerCase().includes('email') ||
+            key.toLowerCase().includes('alamat') || key.toLowerCase().includes('jabatan') && !key.includes('jumlah')) {
+          return;
+        }
+
+        // Check if value is numeric
+        if (typeof val === 'number' || (!isNaN(parseFloat(val)) && isFinite(val))) {
           numericKeysSet.add(key);
         }
       });
@@ -246,18 +331,58 @@ export const PayrollAggregator = {
 
     const numericKeys = Array.from(numericKeysSet);
 
-    // Initialize totals
-    const totals = {};
-    numericKeys.forEach(key => totals[key] = 0);
+    // Initialize totals for all discovered keys
+    numericKeys.forEach(key => {
+      if (totals[key] === undefined) totals[key] = 0;
+    });
 
-    // Sum up
+    // Sum up all rows
     rows.forEach(row => {
       // SAFETY CHECK: Skip header/total/footer rows
       if (row.isTotal || row.isHeader || row.isGrandTotal || row.isDivisionTotal) return;
       if (row.nama && (String(row.nama).startsWith('TOTAL') || String(row.nama).startsWith('GRAND TOTAL'))) return;
 
+      // Flatten the row for calculation
+      const calcRow = { ...row };
+
+      // Flatten nested objects for calculation
+      if (calcRow.premi && typeof calcRow.premi === 'object') {
+        Object.entries(calcRow.premi).forEach(([key, value]) => {
+          const flatKey = key.startsWith('premi_') ? key : `premi_${key}`;
+          calcRow[flatKey] = Number(value) || 0;
+        });
+      }
+
+      // Flatten potongan_upah_kotor
+      if (calcRow.potongan_upah_kotor && typeof calcRow.potongan_upah_kotor === 'object') {
+        if (calcRow.potongan_upah_kotor.dynamic && typeof calcRow.potongan_upah_kotor.dynamic === 'object') {
+          Object.entries(calcRow.potongan_upah_kotor.dynamic).forEach(([key, value]) => {
+            if (typeof value === 'number') calcRow[key] = value;
+          });
+        }
+        Object.entries(calcRow.potongan_upah_kotor).forEach(([k, v]) => {
+          if (k !== 'dynamic' && typeof v === 'number') {
+            if (k === 'koreksi') {
+              if (!calcRow.pot_koreksi || calcRow.pot_koreksi === 0) calcRow.pot_koreksi = v;
+            } else if (!calcRow[k]) {
+              calcRow[k] = v;
+            }
+          }
+        });
+      }
+
+      // Flatten potongan_upah_bersih
+      if (calcRow.potongan_upah_bersih && typeof calcRow.potongan_upah_bersih === 'object') {
+        if (calcRow.potongan_upah_bersih.dynamic && typeof calcRow.potongan_upah_bersih.dynamic === 'object') {
+          Object.entries(calcRow.potongan_upah_bersih.dynamic).forEach(([key, value]) => {
+            if (typeof value === 'number') calcRow[key] = value;
+          });
+        }
+      }
+
+      // Sum up all numeric keys
       numericKeys.forEach(key => {
-        const val = parseFloat(row[key]) || 0;
+        const val = parseFloat(calcRow[key]) || 0;
         totals[key] += val;
       });
     });

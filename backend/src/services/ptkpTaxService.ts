@@ -95,6 +95,20 @@ export interface PtkpUpdateResult {
     };
 }
 
+export interface PtkpChangelogRecord {
+    id?: number;
+    period_year: number;
+    emp_code: string;
+    old_ptkp_status: string | null;
+    new_ptkp_status: string;
+    old_kategori_ter: string | null;
+    new_kategori_ter: string;
+    source: string;
+    changed_by: string;
+    changed_at?: Date | string;
+    remarks?: string;
+}
+
 // ============================================================
 // Service
 // ============================================================
@@ -138,6 +152,76 @@ export class PtkpTaxService {
     }
 
     /**
+     * Ensure the changelog table exists. Uses IF NOT EXISTS so safe to call repeatedly.
+     */
+    public async ensureChangelogTable(): Promise<void> {
+        const db = this.getExtendDb();
+        try {
+            await db.query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'history_ptkp_pajak_changelog' AND TABLE_SCHEMA = 'dbo')
+                CREATE TABLE dbo.history_ptkp_pajak_changelog (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    period_year INT NOT NULL,
+                    emp_code VARCHAR(50) NOT NULL,
+                    old_ptkp_status VARCHAR(10) NULL,
+                    new_ptkp_status VARCHAR(10) NOT NULL,
+                    old_kategori_ter VARCHAR(10) NULL,
+                    new_kategori_ter VARCHAR(10) NOT NULL,
+                    source VARCHAR(50) NOT NULL,
+                    changed_by VARCHAR(100) NOT NULL DEFAULT 'system',
+                    changed_at DATETIME NOT NULL DEFAULT GETDATE(),
+                    remarks NVARCHAR(255) NULL
+                )
+            `);
+            console.log('[PtkpTaxService] Changelog table ensured');
+        } catch (e: any) {
+            console.error('[PtkpTaxService] Error ensuring changelog table:', e.message);
+        }
+    }
+
+    /**
+     * Insert a changelog record for a PTKP change
+     */
+    private async insertChangelog(
+        year: number, empCode: string,
+        oldStatus: string | null, newStatus: string,
+        source: string, changedBy: string,
+        remarks?: string
+    ): Promise<void> {
+        const db = this.getExtendDb();
+        const oldTer = oldStatus ? mapPTKPToTER(oldStatus) : null;
+        const newTer = mapPTKPToTER(newStatus);
+        try {
+            await db.query(`
+                INSERT INTO dbo.history_ptkp_pajak_changelog
+                (period_year, emp_code, old_ptkp_status, new_ptkp_status, old_kategori_ter, new_kategori_ter, source, changed_by, remarks)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [year, empCode.trim().toUpperCase(), oldStatus, newStatus, oldTer, newTer, source, changedBy, remarks || null]);
+        } catch (e: any) {
+            console.error(`[PtkpTaxService] Error inserting changelog for ${empCode}:`, e.message);
+        }
+    }
+
+    /**
+     * Get PTKP changelog records, optionally filtered by year and/or emp_code
+     */
+    public async getPtkpChangelog(year?: number, empCode?: string): Promise<PtkpChangelogRecord[]> {
+        const db = this.getExtendDb();
+        try {
+            await this.ensureChangelogTable();
+            let sql = `SELECT * FROM dbo.history_ptkp_pajak_changelog WHERE 1=1`;
+            const params: any[] = [];
+            if (year) { sql += ` AND period_year = ?`; params.push(year); }
+            if (empCode) { sql += ` AND RTRIM(emp_code) = ?`; params.push(empCode.trim().toUpperCase()); }
+            sql += ` ORDER BY changed_at DESC`;
+            return await db.query<PtkpChangelogRecord>(sql, params);
+        } catch (e: any) {
+            console.error('[PtkpTaxService] Error fetching changelog:', e.message);
+            return [];
+        }
+    }
+
+    /**
      * Main method: Update PTKP for a given year
      * 
      * Reads all employees from origin DB (HR_PAYROLL), converts beras_rate → PTKP,
@@ -160,6 +244,7 @@ export class PtkpTaxService {
 
         try {
             // Table is pre-created via direct SQL setup
+            await this.ensureChangelogTable();
 
             // 2. Fetch all employees with their beras_rate from origin DB
             const originDb = this.getOriginDb();
@@ -228,6 +313,8 @@ export class PtkpTaxService {
                                 emp.beras_rate, ptkpStatus, kategoriTer,
                                 createdBy, existing.id
                             ]);
+                            // Log changelog for seeder update
+                            await this.insertChangelog(year, emp.emp_code, existing.ptkp_status, ptkpStatus, 'SEEDER', createdBy);
                             result.records_updated++;
                         } else {
                             result.records_skipped++;
@@ -244,6 +331,8 @@ export class PtkpTaxService {
                             emp.division_code, emp.gang_code, emp.loc_code,
                             emp.beras_rate, ptkpStatus, kategoriTer, createdBy
                         ]);
+                        // Log changelog for seeder insert
+                        await this.insertChangelog(year, emp.emp_code, null, ptkpStatus, 'SEEDER', createdBy, 'Initial seeder insert');
                         result.records_inserted++;
                     }
                 } catch (err: any) {
@@ -299,6 +388,7 @@ export class PtkpTaxService {
         const kategoriTer = mapPTKPToTER(ptkpStatus);
 
         try {
+            await this.ensureChangelogTable();
             // Check if record exists
             const existing = await extendDb.queryOne<{ id: number; ptkp_status: string }>(`
                 SELECT id, ptkp_status FROM dbo.history_ptkp_pajak
@@ -308,6 +398,8 @@ export class PtkpTaxService {
             if (existing) {
                 // Update only if changed
                 if (existing.ptkp_status !== ptkpStatus) {
+                    // Log changelog for portal edit
+                    await this.insertChangelog(year, cleanEmpCode, existing.ptkp_status, ptkpStatus, 'MANUAL_PORTAL', updatedBy, 'Edited via Daftar Upah portal');
                     await extendDb.query(`
                         UPDATE dbo.history_ptkp_pajak SET
                             ptkp_status = ?, kategori_ter = ?,
