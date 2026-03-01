@@ -1411,13 +1411,12 @@ export class DataExtractorService {
                 normalized_key: key
             });
 
-            // [MODIFIED] Use ONLY TaskCode as title (shorter, cleaner headers)
-            // TaskCode is typically short like "P01", "P02", etc.
+            // [MODIFIED] Use DocDesc (TaskCode) as title for PREMI as requested
+            // so it displays on two lines
             if (!titleMap[key]) {
-                // Priority: TaskCode > DocDesc (fallback) > normalized key (last resort)
                 const taskCode = r.task_code?.trim();
                 const docDesc = r.doc_desc?.trim() || key;
-                titleMap[key] = taskCode || docDesc;
+                titleMap[key] = taskCode ? `${docDesc}\n(${taskCode})` : docDesc;
             }
         }
 

@@ -5,6 +5,7 @@ import { useReport } from '../context/ReportContext';
 import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport, fetchDecemberTaxReport, downloadMonthlyTaxReportExcel, downloadDecemberTaxReportExcel } from '../services/taxReportService';
 import { fetchDivisions, fetchGangs } from '../services/gangService';
 import { Calculator, BarChart2, CalendarDays, Activity, FileWarning, Search, ChevronDown, ChevronRight, DollarSign, Download, Filter } from 'lucide-react';
+import { useCurrentPeriod } from '../hooks/useCurrentPeriod';
 import '../styles/TaxReportPage.css';
 
 // LocalStorage keys for tax report persistence
@@ -1456,6 +1457,9 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
         isLockedMode
     } = useReport();
     const navigate = useNavigate();
+    const { data: currentPeriodData } = useCurrentPeriod();
+    const isHistorical = currentPeriodData ? (year * 100 + month) < (currentPeriodData.year * 100 + currentPeriodData.month) : false;
+    const isCurrent = currentPeriodData ? (year * 100 + month) === (currentPeriodData.year * 100 + currentPeriodData.month) : false;
 
     // Local state for non-shared filters
     const [activeTab, setActiveTab] = useState(() => loadFromStorage(STORAGE_KEYS.ACTIVE_TAB, 'monthly'));
@@ -1495,6 +1499,20 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
                     </button>
                     <span className="tax-report-title">Report Pajak</span>
+
+                    {currentPeriodData && isCurrent && (
+                        <span style={{ color: '#10b981', marginLeft: '6px', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', background: '#ecfdf5', padding: '4px 8px', borderRadius: '12px', border: '1px solid #a7f3d0' }}>
+                            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', marginRight: '6px', animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} className="animate-pulse"></span>
+                            Current Periode
+                        </span>
+                    )}
+                    {currentPeriodData && isHistorical && (
+                        <span style={{ color: '#64748b', marginLeft: '6px', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '4px 8px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#64748b', marginRight: '6px' }}></span>
+                            History Periode
+                        </span>
+                    )}
+
                     <div className="tax-report-divider"></div>
 
                     {/* Filter Controls */}
