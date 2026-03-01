@@ -128,6 +128,7 @@ interface PayrollRow {
     premi_pph: number; // PREMI PPH - ADDED (+) to upah_bersih, not subtracted
     total_premi: number;
     premi: Record<string, number>;
+    premi_details?: any[];
     jumlah_upah_kotor: number;
     // Caruman ASTEK
     pot_astek_pekerja: number;
@@ -186,9 +187,9 @@ function mapBerasRateToPTKP(berasRate: number): string {
         2250: 'TK/0',
         3250: 'TK/1',
         4200: 'TK/2',
-        3750: 'K/0',
+        3700: 'K/0',
         4650: 'K/1',
-        5550: 'K/2',
+        5500: 'K/2',
         6450: 'K/3'  // K/3 → TER C
     };
     return mapping[berasRate] || '-';
@@ -396,7 +397,7 @@ export class DataExtractorService {
         const manualAdjustments = (manualAdjustmentsRaw || []) as any[];
 
         // Destructure premi result - uses DocDesc as title
-        const { amounts: premi, titleMap: premiTitleMap } = premiResult;
+        const { amounts: premi, titleMap: premiTitleMap, details: premiDetails } = premiResult;
         // Destructure potongan result - uses TaskDesc as title
         const { amounts: potongan, titleMap: potonganTitleMap } = potonganResult;
 
@@ -830,7 +831,8 @@ export class DataExtractorService {
                 ),
                 ...empPremi,
                 // [RESTORED] premi object for aggregation seeder compatibility
-                premi: empPremi
+                premi: empPremi,
+                premi_details: premiDetails[emp.emp_code] || []
             };
 
             dataRows.push(row);
@@ -1227,16 +1229,16 @@ export class DataExtractorService {
 
     // [PREMI] Uses DocDesc containing 'PREMI' as column header title
     // [RULE] Exclude premi containing 'PPH' - those should go to potongan instead
-    private async getPremi(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string> }> {
-        if (!empCodes.length) return { amounts: {}, titleMap: {} };
+    private async getPremi(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string>; details: Record<string, any[]> }> {
+        if (!empCodes.length) return { amounts: {}, titleMap: {}, details: {} };
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         // Query DocDesc containing 'PREMI' but EXCLUDE those containing 'PPH'
         // DocDesc will be used as column header
         // Also EXCLUDE TaskDesc = 'ACCRUALS-CHECKROLL' (Premi PPH diambil dari query terpisah)
-        let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-            SELECT RTRIM(t.EmpCode) as emp_code, t.DocDesc as doc_desc, SUM(ln.Amount) as amount
+        let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number; task_code: string; task_desc: string }>(`
+            SELECT RTRIM(t.EmpCode) as emp_code, t.DocDesc as doc_desc, SUM(ln.Amount) as amount, ln.TaskCode as task_code, mt.TaskDesc as task_desc
             FROM (
                 SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
                 FROM PR_ADTRANS t
@@ -1256,44 +1258,44 @@ export class DataExtractorService {
                 SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
             ) ln ON t.ID = ln.MasterID
             LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
-            WHERE (
-                  UPPER(t.DocDesc) LIKE '%PREMI%' OR
-                  UPPER(t.DocDesc) LIKE '%PRUN%' OR
-                  UPPER(t.DocDesc) LIKE '%INSENTIF%' OR
-                  UPPER(t.DocDesc) LIKE '%PANEN%' OR
-                  UPPER(t.DocDesc) LIKE '%KINERJA%' OR
-                  UPPER(t.DocDesc) LIKE '%RAWAT%' OR
-                  UPPER(t.DocDesc) LIKE '%TUNJANGAN%'
-              )
-              AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
-              AND UPPER(t.DocDesc) NOT LIKE '%JABATAN%'
-              AND UPPER(t.DocDesc) NOT LIKE '%BERAS%'
-              AND UPPER(t.DocDesc) NOT LIKE '%LEMBUR%'
-              AND UPPER(t.DocDesc) NOT LIKE '%MASA%'
-              AND UPPER(t.DocDesc) NOT LIKE '%POTONGAN%'
-              AND UPPER(t.DocDesc) NOT LIKE '%KOREKSI%'
-              AND UPPER(t.DocDesc) NOT LIKE '%SPSI%'
-              AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
+            WHERE UPPER(mt.TaskDesc) LIKE '%(AL)%'
+              AND UPPER(mt.TaskDesc) LIKE '%TUNJANGAN%'
+              AND UPPER(mt.TaskDesc) NOT LIKE '%MASA%'
+              AND UPPER(mt.TaskDesc) NOT LIKE '%LEMBUR%'
+              AND UPPER(mt.TaskDesc) NOT LIKE '%JABATAN%'
+              AND UPPER(mt.TaskDesc) NOT LIKE '%BERAS%'
               AND ln.Amount > 0
-            GROUP BY RTRIM(t.EmpCode), t.DocDesc
+            GROUP BY RTRIM(t.EmpCode), t.DocDesc, ln.TaskCode, mt.TaskDesc
         `, [startDate, endDate, startDate, endDate]);
 
         const amounts: Record<string, Record<string, number>> = {};
         const titleMap: Record<string, string> = {}; // key (normalized) -> DocDesc (original)
+        const details: Record<string, any[]> = {}; // emp_code -> list of detail objects
 
         for (const r of rows) {
             const emp = r.emp_code?.trim() || "";
             if (!amounts[emp]) amounts[emp] = {};
+            if (!details[emp]) details[emp] = [];
             const key = this.normalizePremiName(r.doc_desc || "");
             amounts[emp][key] = (amounts[emp][key] || 0) + (r.amount || 0);
 
-            // Store DocDesc as title for dynamic headers
+            details[emp].push({
+                doc_desc: r.doc_desc?.trim(),
+                task_code: r.task_code?.trim(),
+                task_desc: r.task_desc?.trim(),
+                amount: r.amount,
+                normalized_key: key
+            });
+
+            // Store DocDesc as title for dynamic headers with TaskCode and TaskDesc included via newline
             if (!titleMap[key]) {
-                titleMap[key] = r.doc_desc?.trim() || key;
+                const docDesc = r.doc_desc?.trim() || key;
+                const taskExtra = r.task_code?.trim() ? `\n(${r.task_code?.trim()} - ${r.task_desc?.trim()})` : "";
+                titleMap[key] = docDesc + taskExtra;
             }
         }
 
-        return { amounts, titleMap };
+        return { amounts, titleMap, details };
     }
 
     private async getPotongan(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string> }> {
@@ -1373,9 +1375,11 @@ export class DataExtractorService {
             }
 
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
-            // Store title mapping for dynamic headers
+
+            // Store title mapping for dynamic headers with TaskDesc
             if (!titleMap[key]) {
-                titleMap[key] = title;
+                const taskExtra = r.task_desc?.trim() ? `\n(${r.task_desc?.trim()})` : "";
+                titleMap[key] = title + taskExtra;
             }
         }
 

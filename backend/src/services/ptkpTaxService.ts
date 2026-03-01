@@ -26,9 +26,9 @@ const BERAS_RATE_TO_PTKP: Record<number, string> = {
     2250: 'TK/0',
     3250: 'TK/1',
     4200: 'TK/2',
-    3750: 'K/0',
+    3700: 'K/0',
     4650: 'K/1',
-    5550: 'K/2',
+    5500: 'K/2',
     6450: 'K/3',
 
     // Actual DB legacy mappings found in HR_PAYROLL 

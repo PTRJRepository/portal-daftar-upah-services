@@ -23,6 +23,18 @@ const formatDecimal = (value) => {
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
 };
 
+// Format header label to support newlines manually across environments
+const formatHeaderLabel = (label) => {
+    if (typeof label !== 'string') return label;
+    if (!label.includes('\n')) return label;
+    return label.split('\n').map((part, i) => (
+        <React.Fragment key={i}>
+            {i > 0 && <br />}
+            {i === 1 ? <span style={{ fontSize: '9px', fontWeight: 'normal', color: '#cbd5e1' }}>{part}</span> : part}
+        </React.Fragment>
+    ));
+};
+
 // Helper function to get header group from label
 const getHeaderGroup = (label) => {
     if (!label) return null;
@@ -1517,21 +1529,23 @@ export default function CustomPayrollTable({
             {/* Edit Mode Save Banner */}
             {isEditMode && (Object.keys(editedCells).length > 0 || addedColumns.length > 0) && (
                 <div style={{
-                    position: 'absolute',
-                    top: '10px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
+                    position: 'sticky',
+                    top: 0,
+                    left: 0,
+                    right: 0,
                     zIndex: 1000,
                     backgroundColor: '#fffbeb',
                     border: '1px solid #f59e0b',
-                    padding: '8px 16px',
-                    borderRadius: '8px',
+                    padding: '10px 20px',
+                    borderRadius: '0 0 8px 8px',
                     display: 'flex',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: '12px',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
                     color: '#b45309',
-                    fontWeight: 600
+                    fontWeight: 600,
+                    fontSize: '13px'
                 }}>
                     <span>⚠️ Terdapat {Object.keys(editedCells).length + addedColumns.length} penyesuaian (kolom/nilai) belum disimpan</span>
                     <button
@@ -1658,8 +1672,8 @@ export default function CustomPayrollTable({
                                             />
                                         </div>
                                     ) : (
-                                        <div className="flex items-center justify-center gap-1 h-full w-full relative group">
-                                            {cell.label}
+                                        <div className="flex items-center justify-center gap-1 h-full w-full relative group" style={{ textAlign: 'center', lineHeight: '1.2' }}>
+                                            <div>{formatHeaderLabel(cell.label)}</div>
                                             {isEditMode && ['PREMI', 'POTONGAN UPAH KOTOR'].includes(cell.label) && (
                                                 <button onClick={(e) => { e.stopPropagation(); handleAddColumn(cell.label); }}
                                                     style={{ marginLeft: 6, opacity: 0.9, background: '#f59e0b', color: 'white', border: 'none', borderRadius: '50%', width: 16, height: 16, fontSize: 12, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}

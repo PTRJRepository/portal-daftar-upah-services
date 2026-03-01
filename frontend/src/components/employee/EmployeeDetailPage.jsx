@@ -267,17 +267,44 @@ export default function EmployeeDetailPage({
     // Explicit premiums
     if (getNum('premi_brondol') > 0) premiList.push({ label: 'Premi Brondol', value: getNum('premi_brondol') })
 
-    // Dynamic/Other premiums
+    // Track processed normalized keys to avoid duplicate general premiums
+    const processedPremiKeys = new Set()
+
+    if (data.premi_details && data.premi_details.length > 0) {
+        data.premi_details.forEach(detail => {
+            if (detail.amount > 0) {
+                // Determine label from doc_desc or fallback to normalized key
+                let baseLabel = detail.doc_desc ? detail.doc_desc : detail.normalized_key;
+                if (!baseLabel.toUpperCase().includes('PREMI')) {
+                    baseLabel = `Premi ${baseLabel}`;
+                }
+
+                premiList.push({
+                    label: baseLabel,
+                    value: detail.amount,
+                    task_code: detail.task_code,
+                    task_desc: detail.task_desc,
+                    doc_desc: detail.doc_desc
+                });
+                processedPremiKeys.add(detail.normalized_key)
+            }
+        });
+    }
+
+    // Add any other premiums that were added manually or via other channels (not in premi_details)
     if (data.premi && typeof data.premi === 'object') {
         Object.entries(data.premi).forEach(([key, val]) => {
-            if (key !== 'premi_brondol' && val > 0) {
+            if (key !== 'premi_brondol' && val > 0 && !processedPremiKeys.has(key)) {
+                // Extract label nicely
                 const label = key.replace(/_/g, ' ').replace(/premi /i, '').toUpperCase()
-                premiList.push({ label: `Premi ${label}`, value: val })
+                if (!premiList.some(p => p.label === `PREMI ${label}` || p.label === `Premi ${label}`)) {
+                    premiList.push({ label: `Premi ${label}`, value: val })
+                }
             }
         })
     } else {
         Object.entries(data).forEach(([key, val]) => {
-            if (key.startsWith('premi_') && key !== 'premi_brondol' && typeof val === 'number' && val > 0) {
+            if (key.startsWith('premi_') && key !== 'premi_brondol' && typeof val === 'number' && val > 0 && !processedPremiKeys.has(key)) {
                 const label = key.replace('premi_', '').replace(/_/g, ' ').toUpperCase()
                 if (!premiList.some(p => p.label === `Premi ${label}`)) {
                     premiList.push({ label: `Premi ${label}`, value: val })
@@ -434,8 +461,15 @@ export default function EmployeeDetailPage({
                                         <tr className="group-header"><td colSpan="2">Premi:</td></tr>
                                         {premiList.map((item, idx) => (
                                             <tr key={`prem-${idx}`}>
-                                                <td className="item-name indent">- {item.label}</td>
-                                                <td className="item-amount">{formatCurrency(item.value)}</td>
+                                                <td className="item-name indent" style={{ paddingBottom: item.task_code ? '4px' : undefined }}>
+                                                    - {item.label}
+                                                    {item.task_code && (
+                                                        <div style={{ color: '#64748b', fontSize: '0.85em', marginLeft: '12px', marginTop: '2px', fontStyle: 'italic' }}>
+                                                            {item.task_code} {item.task_desc ? `- ${item.task_desc}` : ''}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="item-amount" style={{ verticalAlign: 'top', paddingTop: '4px' }}>{formatCurrency(item.value)}</td>
                                             </tr>
                                         ))}
                                     </>
