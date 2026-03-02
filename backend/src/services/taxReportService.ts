@@ -442,7 +442,7 @@ class TaxReportService {
 
             let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                 gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct
+                tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, row.pot_koreksi || 0
             );
 
             let thrAmount = 0;
@@ -788,7 +788,7 @@ class TaxReportService {
 
                 let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                     gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct
+                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, row.pot_koreksi || 0
                 );
 
                 // Jika ada THR/Exgratia, tetap tambahkan ke bruto untuk keperluan perhitungan setahun
@@ -1346,7 +1346,7 @@ class TaxReportService {
 
                 const penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                     gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct
+                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, row.pot_koreksi || 0
                 );
 
                 // Purely calculated PPh21 (TER) - untuk report pajak

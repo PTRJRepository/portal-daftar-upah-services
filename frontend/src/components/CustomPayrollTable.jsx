@@ -1268,7 +1268,7 @@ export default function CustomPayrollTable({
             cols.push({ field: 'pot_bpjs_pekerja_total', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', null, 'JUMLAH'], w: 80, className: 'text-right font-bold' });
             // Other deductions
             cols.push({ field: 'pot_spsi', headers: ['POTONGAN UPAH BERSIH', null, null, 'IURAN SPSI'], w: 80, className: 'text-right' });
-            cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', null, null, 'PPH21 (-)'], w: 80, className: 'text-right' });
+            cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', null, null, 'POTONGAN PPH21 (-)'], w: 80, className: 'text-right' });
 
             // [NEW] PREMI PPH - This is an ADDITION (+), not a deduction
             // Display with + sign to indicate it's added to upah_bersih

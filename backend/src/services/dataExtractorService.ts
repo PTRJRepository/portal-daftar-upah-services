@@ -729,7 +729,8 @@ export class DataExtractorService {
                 total_premi +
                 astek_084 +
                 bpjs_kesehatan_majikan_4_pct +
-                pendapatan_tidak_tetap_taxable;
+                pendapatan_tidak_tetap_taxable -
+                pot_koreksi;
 
             // Use DB Master PTKP mapped status if available, or fallback to RiceRation mapping
             const rawEmpCode = String(emp.emp_code || '').trim().toUpperCase();
@@ -1837,7 +1838,7 @@ export class DataExtractorService {
         // [RULE 1.5] Specific for Potongan PPh21 matching TaskDesc or DocDesc
         // Pebrikiki untuk PPh21 (yang dipotong atau yang menjadi pengurang upah bersih) dengan taskDesc (DEPH21AB1) (DE) POTONGAN PPH21
         if (upperCode.includes("DEPH21") || upperTask.includes("POTONGAN PPH21") || upper.includes("POTONGAN PPH21") || (upper.includes("PPH21") && upper.includes("POTONGAN"))) {
-            return { key: "POTONGAN_PPH21", title: "Potongan PPh21" };
+            return { key: "PPH21", title: "Potongan PPh21" };
         }
 
         // [RULE 2] Static: PPH21 (PPH yang dipotong) - MUST CHECK BEFORE POTONGAN rule

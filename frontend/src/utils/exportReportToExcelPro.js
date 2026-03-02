@@ -153,18 +153,17 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
         cols.push({ field: 'pot_bpjs_pensiun_pekerja', headerName: 'BPJS PEN (PEKERJA)', width: 14, isNumeric: true });
         cols.push({ field: 'pot_bpjs_pensiun_majikan', headerName: 'BPJS PEN (MAJIKAN)', width: 14, isNumeric: true });
         cols.push({ field: 'pot_spsi', headerName: 'IURAN SPSI', width: 12, isNumeric: true });
-        cols.push({ field: 'pot_pph21', headerName: 'PPH21 (-)', width: 12, isNumeric: true });
-        cols.push({ field: 'POTONGAN_PPH21', headerName: 'POT PPH21 (-)', width: 15, isNumeric: true });
+        cols.push({ field: 'pot_pph21', headerName: 'POTONGAN PPH21 (-)', width: 15, isNumeric: true });
         cols.push({ field: 'premi_pph', headerName: 'PREMI PPH (+)', width: 12, isNumeric: true });
 
         // Dynamic Potongan Bersih
         let dynamicPotKeys = [];
         rows.forEach(r => {
             if (r.potongan_upah_bersih && r.potongan_upah_bersih.dynamic) {
-                Object.keys(r.potongan_upah_bersih.dynamic).forEach(k => { if (!dynamicPotKeys.includes(k) && k !== 'POTONGAN_PPH21') dynamicPotKeys.push(k); });
+                Object.keys(r.potongan_upah_bersih.dynamic).forEach(k => { if (!dynamicPotKeys.includes(k)) dynamicPotKeys.push(k); });
             }
             Object.keys(r).forEach(k => {
-                if ((k.startsWith('pot_') || k.startsWith('POTONGAN_')) && !['POTONGAN_PPH21', 'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_spsi', 'pot_pph21', 'pot_koreksi'].includes(k) && !dynamicPotKeys.includes(k)) dynamicPotKeys.push(k);
+                if ((k.startsWith('pot_') || k.startsWith('POTONGAN_')) && !['pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_spsi', 'pot_pph21', 'pot_koreksi'].includes(k) && !dynamicPotKeys.includes(k)) dynamicPotKeys.push(k);
             });
         });
 

@@ -209,7 +209,8 @@ class Pph21TerService {
         lemburJumlah: number,
         totalPremi: number,
         astekPekerja: number,
-        bpjsKesehatanMajikan: number
+        bpjsKesehatanMajikan: number,
+        potKoreksi: number = 0
     ): number {
         return gajiPokokAktual +
             berasJumlah +
@@ -218,7 +219,8 @@ class Pph21TerService {
             lemburJumlah +
             totalPremi +
             astekPekerja +
-            bpjsKesehatanMajikan;
+            bpjsKesehatanMajikan -
+            potKoreksi;
     }
 }
 
@@ -246,11 +248,12 @@ export const calculatePenghasilanBruto = (
     lemburJumlah: number,
     totalPremi: number,
     astekPekerja: number,
-    bpjsKesehatanMajikan: number
+    bpjsKesehatanMajikan: number,
+    potKoreksi: number = 0
 ) => {
     return Pph21TerService.getInstance().calculatePenghasilanBruto(
         gajiPokokAktual, berasJumlah, jabatanJumlah, masaKerjaJumlah,
-        lemburJumlah, totalPremi, astekPekerja, bpjsKesehatanMajikan
+        lemburJumlah, totalPremi, astekPekerja, bpjsKesehatanMajikan, potKoreksi
     );
 };
 
