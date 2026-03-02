@@ -104,6 +104,7 @@ export default function PayslipCard({ data, month, year }) {
         { label: 'Astek', value: getNum('pot_astek') || getNum('pot_astek_jumlah') },
         { label: 'SPSI', value: getNum('pot_spsi') },
         { label: 'PPh 21', value: getNum('pot_pph21') || getNum('pph21_ter') },
+        { label: 'Potongan PPh21', value: getNum('POTONGAN_PPH21') },
     ].filter(item => item.value > 0)
 
     const premiPph = getNum('premi_pph') || getNum('PREMI_PPH');

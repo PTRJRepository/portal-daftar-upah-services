@@ -253,7 +253,7 @@ export const generateMonthlyTaxExcel = async (
     subHeaders.push({ col: COL_BPJS_KES, label: `BPJS KES\n${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%\n(×GPStandar+MK)`, bg: 'F1F5F9', fg: '0F172A' });
     subHeaders.push({ col: COL_ASTEK, label: `ASTEK\n${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%\n(×GPStandar+MK)`, bg: 'F1F5F9', fg: '0F172A' });
     subHeaders.push({ col: COL_UPAH_KOTOR, label: 'UPAH KOTOR\n(Aktual+Tunj+Premi-Pot)', bg: '0F172A', fg: 'FFFFFF' });
-    subHeaders.push({ col: COL_BRUTO, label: 'PENGHASILAN\nBRUTO\n(+BPJS+THR+Exgratia)', bg: '0F172A', fg: 'FFFFFF' });
+    subHeaders.push({ col: COL_BRUTO, label: 'PENGHASILAN\nBRUTO\n(+PotKor+BPJS+THR+Exg)', bg: '0F172A', fg: 'FFFFFF' });
     subHeaders.push({ col: COL_TARIF_TER, label: 'TARIF TER (%)', bg: '0F172A', fg: 'FFFFFF' });
     subHeaders.push({ col: COL_PPH21, label: 'PPH21\n(ROUND Bruto×Tarif)', bg: '0F172A', fg: 'FFFFFF' });
 
@@ -377,9 +377,9 @@ export const generateMonthlyTaxExcel = async (
             result: emp.upah_kotor || 0
         };
 
-        // PENGHASILAN BRUTO = Upah Kotor + BPJS + ASTEK + THR + Exgratia
+        // PENGHASILAN BRUTO = Upah Kotor + Pot Koreksi + BPJS + ASTEK + THR + Exgratia
         row.getCell(COL_BRUTO).value = {
-            formula: `${lUK}${r}+${lBpjs}${r}+${lAstek}${r}+${lTHR}${r}+${lExg}${r}`,
+            formula: `${lUK}${r}+${lPotKor}${r}+${lBpjs}${r}+${lAstek}${r}+${lTHR}${r}+${lExg}${r}`,
             result: emp.penghasilan_bruto || 0
         };
 

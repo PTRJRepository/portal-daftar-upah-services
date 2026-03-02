@@ -763,7 +763,8 @@ class TaxReportService {
 
                 const emp = employeeMap.get(empCode)!;
                 // Use jumlah_upah_kotor as monthly income per user instruction ("upah kotor bukan plus dengan astek dan bpjs")
-                emp.monthly_income[String(month)] = row.jumlah_upah_kotor || row.penghasilan_bruto || 0;
+                // Add back pot_koreksi to ensure it doesn't reduce penghasilan bruto (it should ONLY reduce upah kotor)
+                emp.monthly_income[String(month)] = (row.jumlah_upah_kotor !== undefined ? row.jumlah_upah_kotor + (row.pot_koreksi || 0) : null) || row.penghasilan_bruto || 0;
                 const empCodeTrimmed = empCode?.trim() || '';
                 const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
                 const kategoriTer = mapPTKPToTER(masterPtkp);
@@ -1357,7 +1358,8 @@ class TaxReportService {
                 const upahDasar = row.upah_dasar || 0;
                 const decCaruman = calculateAllCaruman(upahDasar, mk);
 
-                emp.monthly_income[String(month)] = row.jumlah_upah_kotor || row.upah_kotor || row.penghasilan_bruto || row.total_income || 0;
+                // Add back pot_koreksi to ensure it doesn't reduce penghasilan bruto (it should ONLY reduce upah kotor)
+                emp.monthly_income[String(month)] = (row.jumlah_upah_kotor !== undefined ? row.jumlah_upah_kotor + (row.pot_koreksi || 0) : null) || row.upah_kotor || row.penghasilan_bruto || row.total_income || 0;
                 emp.monthly_details[String(month)] = { hk, gaji_pokok: gp, masa_kerja: mk, upah_dasar: upahDasar };
                 emp.monthly_pph21[String(month)] = pphResult.tax_amount;
 

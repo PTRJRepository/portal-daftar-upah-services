@@ -1362,15 +1362,7 @@ export class DataExtractorService {
             ) ln ON t.ID = ln.MasterID
             LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
             WHERE ${isHistorical ? `(
-                  (
-                      UPPER(t.DocDesc) LIKE '%PREMI%' OR
-                      UPPER(t.DocDesc) LIKE '%PRUN%' OR
-                      UPPER(t.DocDesc) LIKE '%INSENTIF%' OR
-                      UPPER(t.DocDesc) LIKE '%PANEN%' OR
-                      UPPER(t.DocDesc) LIKE '%KINERJA%' OR
-                      UPPER(t.DocDesc) LIKE '%RAWAT%' OR
-                      UPPER(t.DocDesc) LIKE '%TUNJANGAN%'
-                  )
+                  UPPER(t.DocDesc) LIKE '%PREMI%'
                   AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
                   AND UPPER(t.DocDesc) NOT LIKE '%JABATAN%'
                   AND UPPER(t.DocDesc) NOT LIKE '%BERAS%'
@@ -1381,12 +1373,23 @@ export class DataExtractorService {
                   AND UPPER(t.DocDesc) NOT LIKE '%SPSI%'
                   AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
               )` : `(
-                  UPPER(mt.TaskDesc) LIKE '%(AL)%'
-                  AND UPPER(mt.TaskDesc) LIKE '%TUNJANGAN%'
-                  AND UPPER(mt.TaskDesc) NOT LIKE '%MASA%'
-                  AND UPPER(mt.TaskDesc) NOT LIKE '%LEMBUR%'
-                  AND UPPER(mt.TaskDesc) NOT LIKE '%JABATAN%'
-                  AND UPPER(mt.TaskDesc) NOT LIKE '%BERAS%'
+                  (
+                      (UPPER(mt.TaskDesc) LIKE '%(AL)%' AND UPPER(mt.TaskDesc) LIKE '%TUNJANGAN%') OR
+                      UPPER(t.DocDesc) LIKE '%PREMI%'
+                  )
+                  AND (mt.TaskDesc IS NULL OR UPPER(mt.TaskDesc) NOT LIKE '%MASA%')
+                  AND (mt.TaskDesc IS NULL OR UPPER(mt.TaskDesc) NOT LIKE '%LEMBUR%')
+                  AND (mt.TaskDesc IS NULL OR UPPER(mt.TaskDesc) NOT LIKE '%JABATAN%')
+                  AND (mt.TaskDesc IS NULL OR UPPER(mt.TaskDesc) NOT LIKE '%BERAS%')
+                  AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%JABATAN%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%BERAS%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%LEMBUR%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%MASA%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%POTONGAN%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%KOREKSI%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%SPSI%'
+                  AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
               )`}
               AND ln.Amount > 0
             GROUP BY RTRIM(t.EmpCode), t.DocDesc, ln.TaskCode, mt.TaskDesc
@@ -1473,11 +1476,12 @@ export class DataExtractorService {
                 OR UPPER(t.DocDesc) LIKE '%SPSI%'
                 OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
                 OR UPPER(t.DocDesc) LIKE '%TOTAL%'
-                -- REMOVED: %TIKET% - Premi Tiket adalah TUNJANGAN/PREMI, bukan POTONGAN
-                -- OR UPPER(t.DocDesc) LIKE '%TIKET%'
                 OR UPPER(t.DocDesc) LIKE '%KONTAN%'
                 OR UPPER(t.DocDesc) LIKE '%ALAT%'
                 OR UPPER(t.DocDesc) LIKE '%THR%'
+                -- POTONGAN PPH21 Specific (from TaskCode DEPH21AB1 or TaskDesc (DE) POTONGAN PPH21)
+                OR UPPER(ln.TaskCode) LIKE '%DEPH21%'
+                OR UPPER(mt.TaskDesc) LIKE '%POTONGAN PPH21%'
             )
             GROUP BY RTRIM(t.EmpCode), t.DocDesc, ln.TaskCode, mt.TaskDesc
         `, [startDate, endDate, startDate, endDate]);
@@ -1493,7 +1497,7 @@ export class DataExtractorService {
             // Real PREMI_PPH items (TaskDesc='ACCRUALS-CHECKROLL') are handled by separate query below
             // Items with TaskDesc like '(DE) POTONGAN PREMI' should be processed normally based on DocDesc
 
-            const { key, title } = this.normalizePotonganName(r.doc_desc || "", r.task_desc);
+            const { key, title } = this.normalizePotonganName(r.doc_desc || "", r.task_desc, r.task_code);
 
             // [DEBUG] Log PPH items
             if (r.doc_desc?.toUpperCase().includes("PPH")) {
@@ -1812,12 +1816,13 @@ export class DataExtractorService {
             .replace(/^TUNJANGAN\s*PREMI\s*/i, "")
             .replace(/^PREMI\s*/i, "");
 
-        return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")} `;
+        return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")}`;
     }
 
-    private normalizePotonganName(docDesc: string, taskDesc?: string | null): { key: string; title: string } {
+    private normalizePotonganName(docDesc: string, taskDesc?: string | null, taskCode?: string | null): { key: string; title: string } {
         const upper = docDesc.toUpperCase().trim();
         const upperTask = taskDesc ? taskDesc.toUpperCase().trim() : "";
+        const upperCode = taskCode ? taskCode.toUpperCase().trim() : "";
         const cleanTitle = docDesc.trim();
 
         // [RULE 1] Handle KOREKSI variations separately
@@ -1827,6 +1832,12 @@ export class DataExtractorService {
             // Use the full DocDesc as the key, normalized
             const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
             return { key, title: cleanTitle };
+        }
+
+        // [RULE 1.5] Specific for Potongan PPh21 matching TaskDesc or DocDesc
+        // Pebrikiki untuk PPh21 (yang dipotong atau yang menjadi pengurang upah bersih) dengan taskDesc (DEPH21AB1) (DE) POTONGAN PPH21
+        if (upperCode.includes("DEPH21") || upperTask.includes("POTONGAN PPH21") || upper.includes("POTONGAN PPH21") || (upper.includes("PPH21") && upper.includes("POTONGAN"))) {
+            return { key: "POTONGAN_PPH21", title: "Potongan PPh21" };
         }
 
         // [RULE 2] Static: PPH21 (PPH yang dipotong) - MUST CHECK BEFORE POTONGAN rule
