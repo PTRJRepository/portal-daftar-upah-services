@@ -45,6 +45,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const month = parseInt(query.month as string);
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+            const gangPrefix = query.gangPrefix as string || undefined;
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -55,7 +56,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year or month parameter" };
             }
 
-            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang);
+            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix);
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching monthly tax report:", error);
@@ -74,6 +75,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const month = parseInt(query.month as string);
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+            const gangPrefix = query.gangPrefix as string || undefined;
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -85,19 +87,21 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // Fetch the base data
-            const data = await taxReportService.getMonthlyTaxReport(year, month, division, gang);
+            const data = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix);
 
             if (!data || data.employees.length === 0) {
                 set.status = 404;
                 return { error: "No data available for the selected period" };
             }
 
+            const gangLabel = gang || gangPrefix || 'ALL';
+
             // Generate Excel Buffer (pass premiKeys for dynamic column headers)
-            const excelBuffer = await generateMonthlyTaxExcel(data, year, month, division || 'ALL', gang || 'ALL', data.premiKeys);
+            const excelBuffer = await generateMonthlyTaxExcel(data, year, month, division || 'ALL', gangLabel, data.premiKeys);
 
             // Set headers for file download
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            set.headers["Content-Disposition"] = `attachment; filename="PPH21_${division || 'ALL'}_${gang || 'ALL'}_${month}_${year}.xlsx"`;
+            set.headers["Content-Disposition"] = `attachment; filename="PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx"`;
 
             return excelBuffer;
         } catch (error: any) {
@@ -118,6 +122,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const month = monthStr ? parseInt(monthStr) : undefined;
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+            const gangPrefix = query.gangPrefix as string || undefined;
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -128,7 +133,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year parameter" };
             }
 
-            const result = await taxReportService.getAnnualTaxReport(year, month, division, gang);
+            const result = await taxReportService.getAnnualTaxReport(year, month, division, gang, gangPrefix);
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching annual tax report:", error);
@@ -148,6 +153,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const month = monthStr ? parseInt(monthStr) : undefined;
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+            const gangPrefix = query.gangPrefix as string || undefined;
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -158,7 +164,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year parameter" };
             }
 
-            const result = await taxReportService.getAnnualAstekBpjsReport(year, month, division, gang);
+            const result = await taxReportService.getAnnualAstekBpjsReport(year, month, division, gang, gangPrefix);
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching ASTEK/BPJS report:", error);
@@ -176,6 +182,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const year = parseInt(query.year as string);
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+            const gangPrefix = query.gangPrefix as string || undefined;
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -186,7 +193,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year parameter" };
             }
 
-            const result = await taxReportService.getDecemberTaxReport(year, division, gang);
+            const result = await taxReportService.getDecemberTaxReport(year, division, gang, gangPrefix);
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching December tax report:", error);
@@ -204,6 +211,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const year = parseInt(query.year as string);
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
+            const gangPrefix = query.gangPrefix as string || undefined;
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -215,19 +223,21 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // Fetch the base data
-            const data = await taxReportService.getDecemberTaxReport(year, division, gang);
+            const data = await taxReportService.getDecemberTaxReport(year, division, gang, gangPrefix);
 
             if (!data || data.employees.length === 0) {
                 set.status = 404;
                 return { error: "No data available for the selected period" };
             }
 
+            const gangLabel = gang || gangPrefix || 'ALL';
+
             // Generate Excel Buffer
-            const excelBuffer = await generateDecemberTaxExcel(data, year, division || 'ALL', gang || 'ALL');
+            const excelBuffer = await generateDecemberTaxExcel(data, year, division || 'ALL', gangLabel);
 
             // Set headers for file download
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            set.headers["Content-Disposition"] = `attachment; filename="PAJAK_DESEMBER_${division || 'ALL'}_${gang || 'ALL'}_${year}.xlsx"`;
+            set.headers["Content-Disposition"] = `attachment; filename="PAJAK_DESEMBER_${division || 'ALL'}_${gangLabel}_${year}.xlsx"`;
 
             return excelBuffer;
         } catch (error: any) {

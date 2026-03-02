@@ -3,10 +3,11 @@ import axios from 'axios';
 /**
  * Fetch monthly PPH21 tax report
  */
-export async function fetchMonthlyTaxReport(token, year, month, division, gang) {
+export async function fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix) {
     const params = { year, month };
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     // axios interceptor automatically sets the Authorization header
     // if using the auth interceptor, otherwise we can pass it here. 
@@ -20,11 +21,12 @@ export async function fetchMonthlyTaxReport(token, year, month, division, gang) 
 /**
  * Fetch annual tax report (penghasilan setahun + perhitungan pajak)
  */
-export async function fetchAnnualTaxReport(token, year, month, division, gang) {
+export async function fetchAnnualTaxReport(token, year, month, division, gang, gangPrefix) {
     const params = { year };
     if (month) params.month = month;
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
@@ -35,11 +37,12 @@ export async function fetchAnnualTaxReport(token, year, month, division, gang) {
 /**
  * Fetch annual ASTEK & BPJS report
  */
-export async function fetchAnnualAstekBpjsReport(token, year, month, division, gang) {
+export async function fetchAnnualAstekBpjsReport(token, year, month, division, gang, gangPrefix) {
     const params = { year };
     if (month) params.month = month;
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
@@ -50,10 +53,11 @@ export async function fetchAnnualAstekBpjsReport(token, year, month, division, g
 /**
  * Fetch December tax report
  */
-export async function fetchDecemberTaxReport(token, year, division, gang) {
+export async function fetchDecemberTaxReport(token, year, division, gang, gangPrefix) {
     const params = { year };
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
@@ -64,10 +68,11 @@ export async function fetchDecemberTaxReport(token, year, division, gang) {
 /**
  * Download monthly PPH21 tax report as Excel Document
  */
-export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang) {
+export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix) {
     const params = { year, month };
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
@@ -106,10 +111,11 @@ export async function downloadMonthlyTaxReportExcel(token, year, month, division
 /**
  * Download December tax report as Excel Document (includes Monthly Details Sheet)
  */
-export async function downloadDecemberTaxReportExcel(token, year, division, gang) {
+export async function downloadDecemberTaxReportExcel(token, year, division, gang, gangPrefix) {
     const params = { year };
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 

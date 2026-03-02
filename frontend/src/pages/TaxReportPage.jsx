@@ -51,7 +51,7 @@ const formatPercent = (val) => {
 // ================================================================
 // TAB 1: Pajak Bulanan (Monthly PPH21)
 // ================================================================
-function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, refreshKey }) {
+function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -72,7 +72,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         setLoading(true);
         setError(null);
         try {
-            const result = await fetchMonthlyTaxReport(token, year, month, division, gang);
+            const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix);
             setData(result);
         } catch (err) {
             setError(err.message);
@@ -84,7 +84,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
         try {
-            await downloadMonthlyTaxReportExcel(token, year, month, division, gang);
+            await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix);
         } catch (err) {
             alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
         } finally {
@@ -350,7 +350,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
 // ================================================================
 // TAB 2: Pajak Tahunan (Annual Tax)
 // ================================================================
-function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, refreshKey }) {
+function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -361,7 +361,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, r
         setLoading(true);
         setError(null);
         try {
-            const result = await fetchAnnualTaxReport(token, year, month, division, gang);
+            const result = await fetchAnnualTaxReport(token, year, month, division, gang, gangPrefix);
             setData(result);
         } catch (err) {
             setError(err.message);
@@ -653,7 +653,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, r
 // ================================================================
 // TAB 3: ASTEK & BPJS Setahun
 // ================================================================
-function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, refreshKey }) {
+function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -663,7 +663,7 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, r
         setLoading(true);
         setError(null);
         try {
-            const result = await fetchAnnualAstekBpjsReport(token, year, month, division, gang);
+            const result = await fetchAnnualAstekBpjsReport(token, year, month, division, gang, gangPrefix);
             setData(result);
         } catch (err) {
             setError(err.message);
@@ -827,7 +827,7 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, r
 // ================================================================
 // TAB 4: List PPh21 Bulanan (Grid)
 // ================================================================
-function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, gang, refreshKey }) {
+function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -846,7 +846,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
         setError(null);
         monthlyCache.current = {};
         try {
-            const result = await fetchAnnualTaxReport(token, year, month, division, gang);
+            const result = await fetchAnnualTaxReport(token, year, month, division, gang, gangPrefix);
             setData(result);
         } catch (err) {
             setError(err.message);
@@ -869,7 +869,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
             const cacheKey = `${clickedMonth}_${year}`;
             let monthlyResult = monthlyCache.current[cacheKey];
             if (!monthlyResult) {
-                monthlyResult = await fetchMonthlyTaxReport(token, year, clickedMonth, division, gang);
+                monthlyResult = await fetchMonthlyTaxReport(token, year, clickedMonth, division, gang, gangPrefix);
                 monthlyCache.current[cacheKey] = monthlyResult;
             }
             const empDetail = monthlyResult.employees?.find(
@@ -1084,7 +1084,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
 // ================================================================
 // TAB 5: Pajak Desember (Dedicated Yearly Tax finalization)
 // ================================================================
-function DecemberTaxTab({ token, year, division, gang, refreshKey }) {
+function DecemberTaxTab({ token, year, division, gang, gangPrefix, refreshKey }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [downloadingExcel, setDownloadingExcel] = useState(false);
@@ -1120,7 +1120,7 @@ function DecemberTaxTab({ token, year, division, gang, refreshKey }) {
         setLoading(true);
         setError(null);
         try {
-            const result = await fetchDecemberTaxReport(token, year, division, gang);
+            const result = await fetchDecemberTaxReport(token, year, division, gang, gangPrefix);
             setData(result);
         } catch (err) {
             setError(err.message);
@@ -1132,7 +1132,7 @@ function DecemberTaxTab({ token, year, division, gang, refreshKey }) {
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
         try {
-            await downloadDecemberTaxReportExcel(token, year, division, gang);
+            await downloadDecemberTaxReportExcel(token, year, division, gang, gangPrefix);
         } catch (err) {
             alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
         } finally {
@@ -1452,10 +1452,22 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
         year, setYear,
         division, setDivision,
         gang, setGang,
+        gangPrefix, setGangPrefix,
         gangs, gangLoading,
         allDivisions,
         isLockedMode
     } = useReport();
+
+    const availablePrefixes = useMemo(() => {
+        if (!gangs || gangs.length === 0) return [];
+        const prefixes = new Set();
+        gangs.forEach(g => {
+            if (g.gang_code && g.gang_code.length >= 2) {
+                prefixes.add(g.gang_code.substring(0, 2));
+            }
+        });
+        return Array.from(prefixes).sort();
+    }, [gangs]);
     const navigate = useNavigate();
     const { data: currentPeriodData } = useCurrentPeriod();
     const isHistorical = currentPeriodData ? (year * 100 + month) < (currentPeriodData.year * 100 + currentPeriodData.month) : false;
@@ -1549,6 +1561,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                             onChange={(e) => {
                                 setDivision(e.target.value);
                                 setGang(''); // Reset gang when division changes
+                                setGangPrefix('');
                             }}
                             className="tax-report-select"
                             disabled={isLockedMode}
@@ -1556,6 +1569,22 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                             <option value="">Pilih Divisi...</option>
                             {allDivisions.map((div) => (
                                 <option key={div} value={div}>{div}</option>
+                            ))}
+                        </select>
+
+                        {/* Gang Prefix Selector */}
+                        <select
+                            value={gangPrefix}
+                            onChange={(e) => {
+                                setGangPrefix(e.target.value);
+                                setGang(''); // Reset gang if prefix changes
+                            }}
+                            className="tax-report-select"
+                            disabled={!division || gangLoading || availablePrefixes.length === 0}
+                        >
+                            <option value="">SEMUA DIVISI ASISTEN</option>
+                            {availablePrefixes.map((prefix) => (
+                                <option key={prefix} value={prefix}>Divisi {prefix}</option>
                             ))}
                         </select>
 
@@ -1567,7 +1596,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                             disabled={!division || gangLoading}
                         >
                             <option value="">SEMUA GANG</option>
-                            {gangs.map((g) => (
+                            {gangs.filter(g => !gangPrefix || g.gang_code.startsWith(gangPrefix)).map((g) => (
                                 <option key={g.gang_code} value={g.gang_code}>
                                     {g.gang_code} - {g.gang_name}
                                 </option>
@@ -1602,6 +1631,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         setYear={setYear}
                         division={division}
                         gang={gang}
+                        gangPrefix={gangPrefix}
                     />
                 )}
                 {activeTab === 'annual' && (
@@ -1613,6 +1643,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         setYear={setYear}
                         division={division}
                         gang={gang}
+                        gangPrefix={gangPrefix}
                     />
                 )}
                 {activeTab === 'pph21_grid' && (
@@ -1624,6 +1655,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         setYear={setYear}
                         division={division}
                         gang={gang}
+                        gangPrefix={gangPrefix}
                     />
                 )}
                 {activeTab === 'astek' && (
@@ -1635,6 +1667,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         setYear={setYear}
                         division={division}
                         gang={gang}
+                        gangPrefix={gangPrefix}
                     />
                 )}
                 {activeTab === 'december' && (
@@ -1643,6 +1676,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         year={year}
                         division={division}
                         gang={gang}
+                        gangPrefix={gangPrefix}
                     />
                 )}
             </div>

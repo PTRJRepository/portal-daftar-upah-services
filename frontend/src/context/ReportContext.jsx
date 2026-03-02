@@ -9,7 +9,8 @@ const ReportContext = createContext();
 
 const STORAGE_KEYS = {
     DIVISION: 'tax_report_division',
-    GANG: 'tax_report_gang'
+    GANG: 'tax_report_gang',
+    GANG_PREFIX: 'tax_report_gang_prefix'
 };
 
 const loadFromStorage = (key, defaultValue) => {
@@ -38,6 +39,7 @@ export const ReportProvider = ({ children }) => {
     // State for filters - Initialize from localStorage
     const [division, setDivision] = useState(() => loadFromStorage(STORAGE_KEYS.DIVISION, ''));
     const [gang, setGang] = useState(() => loadFromStorage(STORAGE_KEYS.GANG, ''));
+    const [gangPrefix, setGangPrefix] = useState(() => loadFromStorage(STORAGE_KEYS.GANG_PREFIX, ''));
     const [gangs, setGangs] = useState([]);
     const [allDivisions, setAllDivisions] = useState([]);
 
@@ -84,6 +86,10 @@ export const ReportProvider = ({ children }) => {
     useEffect(() => {
         if (gang) saveToStorage(STORAGE_KEYS.GANG, gang);
     }, [gang]);
+
+    useEffect(() => {
+        if (gangPrefix !== undefined) saveToStorage(STORAGE_KEYS.GANG_PREFIX, gangPrefix);
+    }, [gangPrefix]);
 
     // Initial Division Selection Logic
     useEffect(() => {
@@ -196,6 +202,7 @@ export const ReportProvider = ({ children }) => {
         year, setYear,
         division, setDivision,
         gang, setGang,
+        gangPrefix, setGangPrefix,
         gangs,
         allDivisions,
         gangLoading,

@@ -16,6 +16,7 @@ import { divisionDefinition } from './divisionDefinition';
 import { OtherIncomesService } from './otherIncomesService';
 import { getCarumanForPph21, calculateAllCaruman, CARUMAN_RATES } from './carumanDefinitions';
 import { DataExtractorService } from './dataExtractorService';
+import { currentPeriodService } from './currentPeriodService';
 
 // ============================================================
 // PTKP Rule from JSON
@@ -333,9 +334,37 @@ class TaxReportService {
     /**
      * Check if the given period matches the current server month/year
      */
-    private isCurrentPeriod(month: number, year: number): boolean {
-        const now = new Date();
-        return month === (now.getMonth() + 1) && year === now.getFullYear();
+    private async isCurrentPeriod(month: number, year: number): Promise<boolean> {
+        const currentPeriod = await currentPeriodService.getCurrentPeriod();
+        return month === currentPeriod.month && year === currentPeriod.year;
+    }
+
+    /**
+     * Fetch payroll data, prioritizing LIVE data for current periods, with HISTORY fallback.
+     */
+    private async fetchPayrollData(month: number, year: number, gangCode: string, divisionCode?: string) {
+        let isSourceCurrent = false;
+        const isCurrent = await this.isCurrentPeriod(month, year);
+        if (isCurrent) {
+            console.log(`[TaxReportService] Current period detected (${month}/${year}). Attempting LIVE database.`);
+            const liveData = await DataExtractorService.getInstance().extractPayrollData(
+                month, year, gangCode, divisionCode
+            );
+
+            if (liveData && liveData.data_rows && liveData.data_rows.length > 0) {
+                console.log(`[TaxReportService] LIVE database has data. Using LIVE database.`);
+                isSourceCurrent = true;
+                return { data: liveData, isSourceCurrent };
+            } else {
+                console.log(`[TaxReportService] LIVE database is empty. Falling back to HISTORY database.`);
+            }
+        }
+
+        console.log(`[TaxReportService] Using HISTORY database for (${month}/${year}).`);
+        const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
+            month, year, gangCode, divisionCode
+        );
+        return { data: historyData, isSourceCurrent };
     }
 
     /**
@@ -345,7 +374,8 @@ class TaxReportService {
         year: number,
         month: number,
         divisionCode?: string,
-        gangCode?: string
+        gangCode?: string,
+        gangPrefix?: string
     ): Promise<{ employees: MonthlyTaxRow[]; period: { month: number; year: number }; total_pph21: number; premiKeys: string[]; data_source: 'current' | 'history' }> {
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
@@ -355,26 +385,16 @@ class TaxReportService {
             console.log(`[TaxReportService] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode}`);
         }
 
-        // Detect current period to switch data source
-        const isCurrent = this.isCurrentPeriod(month, year);
-        let historyData;
-
-        if (isCurrent) {
-            // Use live database via DataExtractorService for current period
-            console.log(`[TaxReportService] Current period detected (${month}/${year}). Using LIVE database.`);
-            historyData = await DataExtractorService.getInstance().extractPayrollData(
-                month, year, gangCode || 'ALL', effectiveDivisionCode || undefined
-            );
-        } else {
-            // Use history snapshot for past periods
-            console.log(`[TaxReportService] Past period detected (${month}/${year}). Using HISTORY database.`);
-            historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
-                month, year, gangCode || 'ALL', effectiveDivisionCode || undefined
-            );
-        }
+        const { data: historyData, isSourceCurrent } = await this.fetchPayrollData(
+            month, year, gangCode || 'ALL', effectiveDivisionCode || undefined
+        );
 
         if (!historyData || historyData.data_rows.length === 0) {
-            return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [], data_source: isCurrent ? 'current' : 'history' };
+            return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [], data_source: isSourceCurrent ? 'current' : 'history' };
+        }
+
+        if (gangPrefix) {
+            historyData.data_rows = historyData.data_rows.filter((r: any) => (r.gang_code || '').startsWith(gangPrefix));
         }
 
         const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
@@ -639,7 +659,7 @@ class TaxReportService {
             return a.localeCompare(b);
         });
 
-        return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isCurrent ? 'current' : 'history' };
+        return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
     }
 
     /**
@@ -649,7 +669,8 @@ class TaxReportService {
         year: number,
         targetMonth?: number,
         divisionCode?: string,
-        gangCode?: string
+        gangCode?: string,
+        gangPrefix?: string
     ): Promise<{ employees: AnnualIncomeRow[]; year: number; available_months: number[] }> {
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
@@ -667,9 +688,9 @@ class TaxReportService {
         const monthPromises = [];
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
-                historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
+                this.fetchPayrollData(
                     m, year, gangCode || 'ALL', effectiveDivisionCode || undefined
-                ).then(data => ({ month: m, data }))
+                ).then(({ data }) => ({ month: m, data }))
             );
         }
 
@@ -738,7 +759,9 @@ class TaxReportService {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
 
-            for (const row of data.data_rows) {
+            const filteredRows = gangPrefix ? data.data_rows.filter((r: any) => (r.gang_code || '').startsWith(gangPrefix)) : data.data_rows;
+
+            for (const row of filteredRows) {
                 const empCode = row.emp_code;
                 if (!employeeMap.has(empCode)) {
                     employeeMap.set(empCode, {
@@ -1081,7 +1104,8 @@ class TaxReportService {
         year: number,
         targetMonth?: number,
         divisionCode?: string,
-        gangCode?: string
+        gangCode?: string,
+        gangPrefix?: string
     ): Promise<{ employees: AstekBpjsMonthlyRow[]; year: number; available_months: number[] }> {
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
@@ -1097,9 +1121,9 @@ class TaxReportService {
         const monthPromises = [];
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
-                historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
+                this.fetchPayrollData(
                     m, year, gangCode || 'ALL', effectiveDivisionCode || undefined
-                ).then(data => ({ month: m, data }))
+                ).then(({ data }) => ({ month: m, data }))
             );
         }
 
@@ -1126,7 +1150,9 @@ class TaxReportService {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
 
-            for (const row of data.data_rows) {
+            const filteredRows = gangPrefix ? data.data_rows.filter((r: any) => (r.gang_code || '').startsWith(gangPrefix)) : data.data_rows;
+
+            for (const row of filteredRows) {
                 const empCode = row.emp_code;
                 if (!employeeMap.has(empCode)) {
                     employeeMap.set(empCode, {
@@ -1251,7 +1277,8 @@ class TaxReportService {
     public async getDecemberTaxReport(
         year: number,
         divisionCode?: string,
-        gangCode?: string
+        gangCode?: string,
+        gangPrefix?: string
     ): Promise<{ employees: DecemberTaxRow[]; year: number; available_months: number[] }> {
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
@@ -1266,9 +1293,9 @@ class TaxReportService {
         const monthPromises = [];
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
-                historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
+                this.fetchPayrollData(
                     m, year, gangCode || 'ALL', effectiveDivisionCode || undefined
-                ).then(data => ({ month: m, data }))
+                ).then(({ data }) => ({ month: m, data }))
             );
         }
 
@@ -1288,7 +1315,9 @@ class TaxReportService {
         for (const { month, data } of allMonthData) {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
-            for (const row of data.data_rows) {
+
+            const filteredRows = gangPrefix ? data.data_rows.filter((r: any) => (r.gang_code || '').startsWith(gangPrefix)) : data.data_rows;
+            for (const row of filteredRows) {
                 const empCode = row.emp_code;
                 if (!employeeMap.has(empCode)) {
                     employeeMap.set(empCode, {
