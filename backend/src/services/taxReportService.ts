@@ -146,6 +146,24 @@ function loadThrBonusMaps(): ThrBonusMaps {
 }
 
 // ============================================================
+// GL and TaskCode Metadata for Tax Report
+// ============================================================
+const TAX_COMPONENT_METADATA: Record<string, TaskCodeMetadata> = {
+    "masa_kerja": { task_code: "PT9129", dr_acct: "GA9127", cr_acct: "CL3310" },
+    "gaji_pokok": { task_code: "AL0013", dr_acct: "GA9110", cr_acct: "CL3310" },
+    "tunjangan_jabatan": { task_code: "GA9128", dr_acct: "GA9128", cr_acct: "CL3310" },
+    "tunjangan_lembur": { task_code: "AL0019", dr_acct: "GA9112", cr_acct: "CL3310" },
+    "tunjangan_beras": { task_code: "AL0014", dr_acct: "GA9131", cr_acct: "CL3310" },
+    "premi": { task_code: "AL3PM2207", dr_acct: "PM2201", cr_acct: "CL3310" },
+    "pph21": { task_code: "DEPH21", dr_acct: "CL3310", cr_acct: "CL3710" },
+    "bpjs_kes_pekerja": { task_code: "DEBPJS", dr_acct: "CL3310", cr_acct: "CL3314" },
+    "bpjs_kes_majikan": { task_code: "ALBPJS", dr_acct: "GA9120", cr_acct: "CL3314" },
+    "pot_spsi": { task_code: "DE0005", dr_acct: "CL3310", cr_acct: "CL3315" },
+    "thr": { task_code: "GA9116", dr_acct: "GA9116", cr_acct: "CL3310" },
+    "bonus": { task_code: "AL0005", dr_acct: "GA9117", cr_acct: "CL3310" }
+};
+
+// ============================================================
 // THR Periode Rule from JSON
 // ============================================================
 interface ThrPeriode {
@@ -173,10 +191,28 @@ function loadActiveThrPeriode(): ThrPeriode | null {
 // Interfaces
 // ============================================================
 
+/**
+ * Extract parent name from parentheses in employee name
+ * Example: "JOHN DOE (JANE DOE)" → { empName: "JOHN DOE", parentName: "JANE DOE" }
+ */
+function extractParentName(fullName: string): { empName: string; parentName: string } {
+    const match = fullName.match(/\(([^)]+)\)/);
+    const parentName = match ? match[1].trim() : '';
+    const empName = fullName.replace(/\s*\([^)]*\)\s*/g, '').trim();
+    return { empName, parentName };
+}
+
+export interface TaskCodeMetadata {
+    task_code: string;
+    dr_acct: string;
+    cr_acct: string;
+}
+
 export interface MonthlyTaxRow {
     no: number;
     emp_code: string;
     emp_name: string;
+    parent_name?: string;
     nik: string;
     gender: string;
     status_ptkp: string;
@@ -189,6 +225,9 @@ export interface MonthlyTaxRow {
     penghasilan_bruto: number;
     tarif_pajak_ter: number;
     pph21_ter: number;
+
+    // GL Metadata for Headers
+    component_metadata?: Record<string, TaskCodeMetadata>;
 
     // Breakdown Details
     hk?: number;
@@ -226,6 +265,7 @@ export interface AnnualIncomeRow {
     no: number;
     emp_code: string;
     emp_name: string;
+    parent_name?: string;
     nik: string;
     gender: string;
     status_ptkp: string;
@@ -271,6 +311,7 @@ export interface DecemberTaxRow {
     no: number;
     emp_code: string;
     emp_name: string;
+    parent_name?: string;
     nik: string;
     npwp: string;
     alamat: string;
@@ -637,10 +678,15 @@ class TaxReportService {
                 });
             }
 
+            // Extract parent name from parentheses (e.g., "JOHN DOE (JANE DOE)")
+            const rawName = row.nama || row.emp_name || '';
+            const { empName, parentName } = extractParentName(rawName);
+
             return {
                 no: idx + 1,
                 emp_code: row.emp_code,
-                emp_name: row.nama || row.emp_name || '',
+                emp_name: empName,
+                parent_name: parentName,
                 nik: row.actual_nik || row.nik || '',
                 npwp: row.pajak_npwp || '',
                 alamat: row.res_address || '',
@@ -653,6 +699,7 @@ class TaxReportService {
                 penghasilan_bruto: penghasilanBruto,
                 tarif_pajak_ter: tarifPajakTer,
                 pph21_ter: pph21,
+                component_metadata: TAX_COMPONENT_METADATA,
 
                 // Detailed breakdowns
                 hk: row.jumlah_hk || row.hk || 0,
@@ -768,6 +815,7 @@ class TaxReportService {
         // Build employee map
         const employeeMap = new Map<string, {
             emp_name: string;
+            parent_name?: string;
             nik: string;
             gender: string;
             status_ptkp: string;
@@ -825,9 +873,13 @@ class TaxReportService {
 
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
+                const rawName = row.nama || row.emp_name || '';
+                const { empName, parentName } = extractParentName(rawName);
+                
                 if (!employeeMap.has(empCode)) {
                     employeeMap.set(empCode, {
-                        emp_name: row.nama || row.emp_name || '',
+                        emp_name: empName,
+                        parent_name: parentName,
                         nik: row.nik || '',
                         gender: row.jenis_kelamin || '',
                         status_ptkp: row.status_ptkp || '',
@@ -1202,6 +1254,7 @@ class TaxReportService {
 
         const employeeMap = new Map<string, {
             emp_name: string;
+            parent_name?: string;
             nik: string;
             monthly_data: Record<string, {
                 upah_dasar: number;
@@ -1225,9 +1278,13 @@ class TaxReportService {
 
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
+                const rawName = row.nama || row.emp_name || '';
+                const { empName, parentName } = extractParentName(rawName);
+                
                 if (!employeeMap.has(empCode)) {
                     employeeMap.set(empCode, {
-                        emp_name: row.nama || row.emp_name || '',
+                        emp_name: empName,
+                        parent_name: parentName,
                         nik: row.nik || '',
                         monthly_data: {},
                         was_in_target_gang: false,
@@ -1419,9 +1476,13 @@ class TaxReportService {
                         });
                     }
 
+                    const rawName = row.nama || row.emp_name || '';
+                    const { empName, parentName } = extractParentName(rawName);
+
                     employeeMap.set(empCode, {
                         emp_code: empCode,
-                        emp_name: row.nama || row.emp_name || '',
+                        emp_name: empName,
+                        parent_name: parentName,
                         nik: row.nik_ktp || row.nik || '',
                         npwp: row.pajak_npwp || '',
                         alamat: row.alamat || '',

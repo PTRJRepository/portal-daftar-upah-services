@@ -99,34 +99,35 @@ export const generateMonthlyTaxExcel = async (
     // Column layout (dynamic based on premi count)
     // ─────────────────────────────────────────────────────────
     // Fixed columns:
-    //  1: NO, 2: NAMA, 3: NIK, 4: L/P, 5: STAT, 6: GANG, 7: KAT TER     → IDENTITAS
-    //  8: HK, 9: UPAH DASAR, 10: GAJI STANDAR, 11: GP IDEAL, 12: GP AKTUAL, 13: KOREKSI → STRUKTUR UPAH
-    //  14: BERAS, 15: JABATAN, 16: SERVICE TIME ALLOW (Lembur)  → TUNJANGAN
-    // Dynamic premi cols (17 .. 16+N) → URAIAN PREMI
-    //  16+N+1: TOTAL PREMI
+    //  1: NO, 2: NAMA, 3: NAMA ORANG TUA, 4: NIK, 5: L/P, 6: STAT, 7: GANG, 8: KAT TER     → IDENTITAS
+    //  9: HK, 10: UPAH DASAR, 11: GAJI STANDAR, 12: GP IDEAL, 13: GP AKTUAL, 14: KOREKSI → STRUKTUR UPAH
+    //  15: BERAS, 16: JABATAN, 17: SERVICE TIME ALLOW (Lembur)  → TUNJANGAN
+    // Dynamic premi cols (18 .. 17+N) → URAIAN PREMI
+    //  17+N+1: TOTAL PREMI
     // Fixed after premi:
     //  POT KOREKSI, THR, EXGRATIA, BPJS KES 4%, ASTEK 0.84%, UPAH KOTOR, PENGHASILAN BRUTO, TARIF TER, PPH21
 
     const COL_NO = 1;
     const COL_NAMA = 2;
-    const COL_NIK = 3;
-    const COL_GENDER = 4;
-    const COL_STAT = 5;
-    const COL_GANG = 6;
-    const COL_KAT = 7;
-    const COL_HK = 8;
-    const COL_UPAH_DASAR = 9;
-    const COL_GAJI_STANDAR = 10;
-    const COL_GP_IDEAL = 11;
-    const COL_GP_AKTUAL = 12;
-    const COL_KOREKSI = 13;
-    const COL_BERAS = 14;
-    const COL_JABATAN = 15;
-    const COL_SERVICE_TIME = 16; // Service Time Allow = Lembur value
+    const COL_PARENT_NAME = 3;
+    const COL_NIK = 4;
+    const COL_GENDER = 5;
+    const COL_STAT = 6;
+    const COL_GANG = 7;
+    const COL_KAT = 8;
+    const COL_HK = 9;
+    const COL_UPAH_DASAR = 10;
+    const COL_GAJI_STANDAR = 11;
+    const COL_GP_IDEAL = 12;
+    const COL_GP_AKTUAL = 13;
+    const COL_KOREKSI = 14;
+    const COL_BERAS = 15;
+    const COL_JABATAN = 16;
+    const COL_SERVICE_TIME = 17; // Service Time Allow = Lembur value
 
     // Dynamic premi columns
-    const COL_PREMI_START = 17;
-    const COL_PREMI_END = 16 + allPremiKeys.length;  // inclusive
+    const COL_PREMI_START = 18;
+    const COL_PREMI_END = 17 + allPremiKeys.length;  // inclusive
     const COL_TOTAL_PREMI = COL_PREMI_END + 1;
 
     // Fixed after premi
@@ -147,9 +148,9 @@ export const generateMonthlyTaxExcel = async (
     // Define column widths
     const colWidths: number[] = [];
     for (let i = 1; i <= TOTAL_COLS; i++) {
-        if (i <= 7) colWidths.push(i === 2 ? 25 : i === 3 ? 16 : i <= 7 ? 8 : 5);
-        else if (i <= 13) colWidths.push(15);
-        else if (i <= 16) colWidths.push(12);
+        if (i <= 8) colWidths.push(i === 2 ? 25 : i === 3 ? 20 : i <= 8 ? 8 : 5);
+        else if (i <= 14) colWidths.push(15);
+        else if (i <= 17) colWidths.push(12);
         else if (i < COL_TOTAL_PREMI) colWidths.push(13); // premi columns
         else if (i === COL_TOTAL_PREMI) colWidths.push(15);
         else if (i === COL_POT_KOREKSI) colWidths.push(15);
@@ -229,6 +230,7 @@ export const generateMonthlyTaxExcel = async (
     const subHeaders: { col: number; label: string; bg: string; fg: string }[] = [
         { col: COL_NO, label: 'NO', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_NAMA, label: 'NAMA', bg: '1E3A8A', fg: 'FFFFFF' },
+        { col: COL_PARENT_NAME, label: 'NAMA ORANG TUA', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_NIK, label: 'NIK', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_GENDER, label: 'L/P', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_STAT, label: 'STAT', bg: '1E3A8A', fg: 'FFFFFF' },
@@ -281,6 +283,7 @@ export const generateMonthlyTaxExcel = async (
         // Identity
         row.getCell(COL_NO).value = emp.no || (currentRowIndex - DATA_START + 1);
         row.getCell(COL_NAMA).value = emp.emp_name;
+        row.getCell(COL_PARENT_NAME).value = emp.parent_name || '';
         row.getCell(COL_NIK).value = emp.nik || '';
         row.getCell(COL_GENDER).value = emp.gender;
         row.getCell(COL_STAT).value = emp.status_ptkp;
@@ -622,7 +625,7 @@ export const generateMonthlyTaxExcel = async (
     const STD_TOTAL_COLS = STD_COL_PPH21;
 
     // Build headers array
-    const stdHeaders: { header: string; width: number }[] = [
+    const stdHeaders: { header: string; width: number; meta_key?: string }[] = [
         { header: 'NO.', width: 5 },
         { header: 'NAMA KARYAWAN', width: 25 },
         { header: '" N I K / PASPOR "', width: 18 },
@@ -632,36 +635,61 @@ export const generateMonthlyTaxExcel = async (
         { header: 'L/P', width: 5 },
         { header: 'PTKP', width: 8 },
         { header: 'TER', width: 8 },
-        { header: 'Gaji Pokok', width: 15 },
-        { header: `Astek Ins (${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%)`, width: 15 },
-        { header: `BPJS KESEHATAN (${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%)`, width: 18 },
-        { header: 'Rice Allow', width: 15 },
-        { header: 'Structural Allow', width: 15 },
-        { header: 'Service Time Allow', width: 15 },
-        { header: 'Masa Kerja', width: 15 },
+        { header: 'Gaji Pokok', width: 15, meta_key: 'gaji_pokok' },
+        { header: `Astek Ins (${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%)`, width: 15, meta_key: 'astek_jht_majikan' },
+        { header: `BPJS KESEHATAN (${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%)`, width: 18, meta_key: 'bpjs_kes_majikan' },
+        { header: 'Rice Allow', width: 15, meta_key: 'tunjangan_beras' },
+        { header: 'Structural Allow', width: 15, meta_key: 'tunjangan_jabatan' },
+        { header: 'Service Time Allow', width: 15, meta_key: 'tunjangan_lembur' },
+        { header: 'Masa Kerja', width: 15, meta_key: 'masa_kerja' },
     ];
 
     // Dynamic premi headers — use the docDesc-based key directly
     for (const key of allPremiKeys) {
-        stdHeaders.push({ header: key, width: 18 });
+        stdHeaders.push({ header: key, width: 18, meta_key: 'premi' });
     }
 
     // Fixed after dynamic premi
     stdHeaders.push({ header: 'Potongan Koreksi (-)', width: 18 });
     stdHeaders.push({ header: 'POT. ALPA & CTH (-)', width: 20 });
-    stdHeaders.push({ header: 'THR', width: 15 });
-    stdHeaders.push({ header: 'Bonus', width: 15 });
+    stdHeaders.push({ header: 'THR', width: 15, meta_key: 'thr' });
+    stdHeaders.push({ header: 'Bonus', width: 15, meta_key: 'bonus' });
     stdHeaders.push({ header: 'Penghasilan Bruto', width: 18 });
     stdHeaders.push({ header: 'Tarif TER', width: 10 });
-    stdHeaders.push({ header: 'PPh 21', width: 15 });
+    stdHeaders.push({ header: 'PPh 21', width: 15, meta_key: 'pph21' });
 
     stdSheet.columns = stdHeaders.map((col, idx) => ({ key: `col${idx}`, width: col.width }));
 
     // Helper for letters in this sheet
     const sL = colLetter;
 
-    // Header Row
-    const stdHeaderRow = stdSheet.getRow(1);
+    // --- NEW: Header Row 2 (TaskCode) ---
+    const taskRow = stdSheet.getRow(2);
+    taskRow.height = 25;
+    const metaRef = data.employees[0]?.component_metadata || {};
+    stdHeaders.forEach((col, idx) => {
+        const cell = taskRow.getCell(idx + 1);
+        if (col.meta_key && metaRef[col.meta_key]) {
+            cell.value = `Task: ${metaRef[col.meta_key].task_code}`;
+        }
+        applyHeaderStyle(cell, 'F1F5F9', '475569');
+        cell.font = { size: 8, italic: true, name: 'Arial' };
+    });
+
+    // --- NEW: Header Row 3 (GL Accounts) ---
+    const glRow = stdSheet.getRow(3);
+    glRow.height = 25;
+    stdHeaders.forEach((col, idx) => {
+        const cell = glRow.getCell(idx + 1);
+        if (col.meta_key && metaRef[col.meta_key]) {
+            cell.value = `DR:${metaRef[col.meta_key].dr_acct} CR:${metaRef[col.meta_key].cr_acct}`;
+        }
+        applyHeaderStyle(cell, 'F1F5F9', '475569');
+        cell.font = { size: 8, italic: true, name: 'Arial' };
+    });
+
+    // Header Row 4 (Main Labels)
+    const stdHeaderRow = stdSheet.getRow(4);
     stdHeaderRow.height = 40;
     stdHeaders.forEach((col, idx) => {
         const cell = stdHeaderRow.getCell(idx + 1);
@@ -687,7 +715,7 @@ export const generateMonthlyTaxExcel = async (
     const sTarif = sL(STD_COL_TARIF);
     const sPph = sL(STD_COL_PPH21);
 
-    let stdRowIdx = 2;
+    let stdRowIdx = 5;
     data.employees.forEach((emp, i) => {
         const row = stdSheet.getRow(stdRowIdx);
         const r = stdRowIdx;
@@ -786,7 +814,7 @@ export const generateMonthlyTaxExcel = async (
     for (let c = STD_COL_GAJI_POKOK; c <= STD_TOTAL_COLS; c++) {
         if (c !== STD_COL_TARIF) { // Skip Tarif TER
             const letter = sL(c);
-            stdFooter.getCell(c).value = { formula: `SUM(${letter}2:${letter}${stdRowIdx - 1})` };
+            stdFooter.getCell(c).value = { formula: `SUM(${letter}5:${letter}${stdRowIdx - 1})` };
             stdFooter.getCell(c).numFmt = numFormat;
         }
         stdFooter.getCell(c).font = { bold: true };
