@@ -723,7 +723,8 @@ export const generateMonthlyTaxExcel = async (
             namaOrangTua = match[2].trim();
         }
 
-        const gajiPokok = (emp.upah_dasar || 0) * 30;
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const gajiPokok = (emp.upah_dasar || 0) * daysInMonth;
 
         // Identity
         row.getCell(STD_COL_NO).value = i + 1;

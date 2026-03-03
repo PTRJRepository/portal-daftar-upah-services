@@ -386,9 +386,11 @@ export default function CustomPayrollTable({
     };
 
     // --- DATA FETCHING ---
+    const [savingJabatan, setSavingJabatan] = useState({});
     const handleJobTitleChange = async (empCode, newTitle) => {
-        // Optimistic update
-        setRows(prev => prev.map(r => r.nik === empCode ? { ...r, jabatan_estate: newTitle } : r));
+        // Optimistic update — match by emp_code (the actual key used in employee_estate table)
+        setRows(prev => prev.map(r => r.emp_code === empCode ? { ...r, jabatan_estate: newTitle } : r));
+        setSavingJabatan(prev => ({ ...prev, [empCode]: 'saving' }));
         try {
             const res = await fetch('/employee-estate/update', {
                 method: 'POST',
@@ -398,8 +400,11 @@ export default function CustomPayrollTable({
             if (!res.ok) throw new Error('Failed to save');
             const json = await res.json();
             if (!json.success) throw new Error(json.error);
+            setSavingJabatan(prev => ({ ...prev, [empCode]: 'saved' }));
+            setTimeout(() => setSavingJabatan(prev => { const n = { ...prev }; delete n[empCode]; return n; }), 2000);
         } catch (e) {
             console.error(e);
+            setSavingJabatan(prev => ({ ...prev, [empCode]: 'error' }));
             alert('Gagal menyimpan jabatan: ' + e.message);
         }
     };
@@ -1012,25 +1017,40 @@ export default function CustomPayrollTable({
             field: 'jabatan_estate',
             headers: ['IDENTITAS', null, null, 'JABATAN'],
             w: 180,
-            className: 'text-left p-0', // p-0 to allow select to fill
+            className: 'text-left p-0',
             render: (row) => {
                 if (row.type !== 'employee') return row.jabatan_estate || '-';
+                const status = savingJabatan[row.emp_code];
+                const borderColor = status === 'saving' ? '#f59e0b' : status === 'saved' ? '#10b981' : status === 'error' ? '#ef4444' : 'transparent';
                 return (
-                    <select
-                        className="w-full h-full border-none bg-transparent text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                        value={row.jabatan_estate || 'karyawan panen'}
-                        onChange={(e) => handleJobTitleChange(row.nik, e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        style={{ padding: '0 4px', height: '100%', minHeight: '24px' }}
-                    >
-                        <option value="karyawan panen">karyawan panen</option>
-                        <option value="karyawan perawatan">karyawan perawatan</option>
-                        <option value="mandor panen">mandor panen</option>
-                        <option value="mandor perawatan">mandor perawatan</option>
-                        <option value="kerani buah">kerani buah</option>
-                        <option value="kerani kantor">kerani kantor</option>
-                    </select>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', width: '100%', height: '100%' }}>
+                        <select
+                            value={row.jabatan_estate || ''}
+                            onChange={(e) => handleJobTitleChange(row.emp_code, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            style={{
+                                flex: 1, padding: '0 4px', height: '100%', minHeight: '24px',
+                                fontSize: '10px', border: `2px solid ${borderColor}`, borderRadius: '3px',
+                                backgroundColor: 'transparent', cursor: 'pointer', outline: 'none',
+                                transition: 'border-color 0.3s'
+                            }}
+                        >
+                            <option value="">-- Pilih Jabatan --</option>
+                            <option value="karyawan panen">Karyawan Panen</option>
+                            <option value="karyawan perawatan">Karyawan Perawatan</option>
+                            <option value="karyawan">Karyawan</option>
+                            <option value="mandor panen">Mandor Panen</option>
+                            <option value="mandor perawatan">Mandor Perawatan</option>
+                            <option value="kerani buah">Kerani Buah</option>
+                            <option value="kerani kantor">Kerani Kantor</option>
+                            <option value="operator">Operator</option>
+                            <option value="helper">Helper</option>
+                        </select>
+                        {status === 'saving' && <span style={{ fontSize: '10px' }} title="Menyimpan...">⏳</span>}
+                        {status === 'saved' && <span style={{ fontSize: '10px' }} title="Tersimpan!">✅</span>}
+                        {status === 'error' && <span style={{ fontSize: '10px' }} title="Gagal simpan!">❌</span>}
+                    </div>
                 );
             }
         });
@@ -1363,7 +1383,7 @@ export default function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, selectedEmployees, onToggleEmployeeSelection]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan]);
 
     // === EXPORT TO EXCEL HANDLER ===
     const handleExportToExcel = useCallback(async () => {

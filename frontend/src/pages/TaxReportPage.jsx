@@ -79,7 +79,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         } finally {
             setLoading(false);
         }
-    }, [token, year, month, division, gang, refreshKey]);
+    }, [token, year, month, division, gang, gangPrefix, refreshKey]);
 
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
@@ -368,7 +368,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, g
         } finally {
             setLoading(false);
         }
-    }, [token, year, month, division, gang, refreshKey]);
+    }, [token, year, month, division, gang, gangPrefix, refreshKey]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -670,7 +670,7 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, g
         } finally {
             setLoading(false);
         }
-    }, [token, year, month, division, gang, refreshKey]);
+    }, [token, year, month, division, gang, gangPrefix, refreshKey]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -853,7 +853,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
         } finally {
             setLoading(false);
         }
-    }, [token, year, month, division, gang, refreshKey]);
+    }, [token, year, month, division, gang, gangPrefix, refreshKey]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -1127,7 +1127,7 @@ function DecemberTaxTab({ token, year, division, gang, gangPrefix, refreshKey })
         } finally {
             setLoading(false);
         }
-    }, [token, year, division, gang, refreshKey]);
+    }, [token, year, division, gang, gangPrefix, refreshKey]);
 
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
