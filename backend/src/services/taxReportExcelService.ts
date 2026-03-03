@@ -34,8 +34,15 @@ export const generateMonthlyTaxExcel = async (
     workbook.creator = 'PT. Rebinmas Jaya - Auto Report System';
     workbook.created = new Date();
 
+    // Create worksheets in the desired order (Sheet 1: Format Standar Pajak)
+    const stdSheetName = 'Format Standar Pajak';
+    const stdSheet = workbook.addWorksheet(stdSheetName);
+
     const sheetName = `PPH21 - ${division} - ${gang || 'ALL'} - ${month}_${year}`;
     const sheet = workbook.addWorksheet(sheetName.substring(0, 31));
+
+    const summarySheetName = 'Rincian Premi';
+    const summarySheet = workbook.addWorksheet(summarySheetName);
 
     // --- Discover dynamic premi keys ---
     const discoveredPremiKeys = new Set<string>();
@@ -460,8 +467,7 @@ export const generateMonthlyTaxExcel = async (
     // ─────────────────────────────────────────────────────────
     // SHEET 2: RINCIAN PREMI YANG DIPERHITUNGKAN DALAM PPH21
     // ─────────────────────────────────────────────────────────
-    const summarySheetName = 'Rincian Premi';
-    const summarySheet = workbook.addWorksheet(summarySheetName);
+    // Sheet variable created upfront
 
     // Header
     summarySheet.mergeCells('A1:E1');
@@ -576,8 +582,7 @@ export const generateMonthlyTaxExcel = async (
     // ─────────────────────────────────────────────────────────
     // SHEET 3: FORMAT STANDAR PAJAK (Dynamic Premi + Formula)
     // ─────────────────────────────────────────────────────────
-    const stdSheetName = 'Format Standar Pajak';
-    const stdSheet = workbook.addWorksheet(stdSheetName);
+    // Sheet variable created upfront
 
     // --- Build dynamic column layout ---
     // User-specified column order (no NAMA ORANG TUA, no Total Tunj, no Total Premi, no Upah Kotor)

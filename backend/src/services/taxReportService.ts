@@ -17,6 +17,7 @@ import { OtherIncomesService } from './otherIncomesService';
 import { getCarumanForPph21, calculateAllCaruman, CARUMAN_RATES } from './carumanDefinitions';
 import { DataExtractorService } from './dataExtractorService';
 import { currentPeriodService } from './currentPeriodService';
+import { EmployeeEstateService } from './employeeEstateService';
 
 // ============================================================
 // PTKP Rule from JSON
@@ -401,6 +402,9 @@ class TaxReportService {
             ptkpMap.set(p.emp_code.trim(), p.ptkp_status);
         }
 
+        // Fetch jabatan from employee_estate database
+        const jabatanMap = await EmployeeEstateService.getEmployeeJobs();
+
         let totalPph21 = 0;
 
         // Load THR and Exgratia for the specific month if it matches the active THR month
@@ -599,7 +603,7 @@ class TaxReportService {
                 nik: row.actual_nik || row.nik || '',
                 npwp: row.pajak_npwp || '',
                 alamat: row.res_address || '',
-                jabatan: row.hr_emp_type || '',
+                jabatan: jabatanMap[(row.emp_code || '').trim()] || row.hr_emp_type || '',
                 gender: String(row.jenis_kelamin || row.gender || '1'),
                 status_ptkp: masterPtkp,
                 kategori_ter: kategoriTer,
@@ -1338,6 +1342,9 @@ class TaxReportService {
             ptkpMap.set(p.emp_code.trim(), p.ptkp_status);
         }
 
+        // Fetch jabatan from employee_estate database
+        const jabatanMap = await EmployeeEstateService.getEmployeeJobs();
+
         const employeeMap = new Map<string, any>();
 
         for (const { month, data } of allMonthData) {
@@ -1354,7 +1361,7 @@ class TaxReportService {
                         nik: row.nik_ktp || row.nik || '',
                         npwp: row.pajak_npwp || '',
                         alamat: row.alamat || '',
-                        jabatan: row.jabatan || '',
+                        jabatan: jabatanMap[(empCode || '').trim()] || row.jabatan || '',
                         gender: row.jenis_kelamin || '',
                         status_ptkp: row.status_ptkp || '',
                         kategori_ter: row.kategori_ter || '',
