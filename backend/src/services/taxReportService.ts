@@ -19,6 +19,30 @@ import { DataExtractorService } from './dataExtractorService';
 import { currentPeriodService } from './currentPeriodService';
 import { EmployeeEstateService } from './employeeEstateService';
 
+/**
+ * Auto-derive jabatan (job title) from the last character of gang code.
+ * Rules:
+ *   H → Karyawan Panen (harvest)
+ *   P → Karyawan Perawatan (maintenance)
+ *   T → Operator (transport/tractor)
+ *   N → Karyawan Nursery
+ *   G → Kerani Gudang
+ *   Other → Karyawan
+ */
+function deriveJabatanFromGang(gangCode: string): string {
+    if (!gangCode || gangCode.trim().length === 0) return 'Karyawan';
+    const lastChar = gangCode.trim().slice(-1).toUpperCase();
+    switch (lastChar) {
+        case 'H': return 'Karyawan Panen';
+        case 'P': return 'Karyawan Percobaan';
+        case 'T': return 'Operator';
+        case 'N': return 'Karyawan Nursery';
+        case 'G': return 'Kerani Gudang';
+        case 'M': return 'Karyawan Perawatan';
+        default: return 'Karyawan';
+    }
+}
+
 // ============================================================
 // PTKP Rule from JSON
 // ============================================================
@@ -404,6 +428,7 @@ class TaxReportService {
 
         // Fetch jabatan from employee_estate database
         const jabatanMap = await EmployeeEstateService.getEmployeeJobs();
+        const newJabatansToSave: any[] = [];
 
         let totalPph21 = 0;
 
@@ -596,6 +621,22 @@ class TaxReportService {
                 premiDetail['LAINNYA'] = remaining;
             }
 
+            // Resolve jabatan: DB first → auto-derive from gang code
+            const empCodeTrimmedJabatan = (row.emp_code || '').trim();
+            let resolvedJabatan = jabatanMap[empCodeTrimmedJabatan] || '';
+            if (!resolvedJabatan) {
+                resolvedJabatan = deriveJabatanFromGang(row.gang_code || '');
+                // Store in map so it can be saved later
+                jabatanMap[empCodeTrimmedJabatan] = resolvedJabatan;
+                newJabatansToSave.push({
+                    empcode: empCodeTrimmedJabatan,
+                    employee_name: row.nama || row.emp_name || '',
+                    gang: row.gang_code || '',
+                    divisi_id: effectiveDivisionCode || '',
+                    jabatan: resolvedJabatan
+                });
+            }
+
             return {
                 no: idx + 1,
                 emp_code: row.emp_code,
@@ -603,7 +644,7 @@ class TaxReportService {
                 nik: row.actual_nik || row.nik || '',
                 npwp: row.pajak_npwp || '',
                 alamat: row.res_address || '',
-                jabatan: jabatanMap[(row.emp_code || '').trim()] || row.hr_emp_type || '',
+                jabatan: resolvedJabatan,
                 gender: String(row.jenis_kelamin || row.gender || '1'),
                 status_ptkp: masterPtkp,
                 kategori_ter: kategoriTer,
@@ -663,6 +704,13 @@ class TaxReportService {
             if (b === 'LAINNYA') return -1;
             return a.localeCompare(b);
         });
+
+        // Async save any newly derived jabatans to DB
+        if (newJabatansToSave.length > 0) {
+            EmployeeEstateService.saveEmployeeJobs(newJabatansToSave).catch(e =>
+                console.error('[TaxReport] Failed to auto-save derived jabatans:', e)
+            );
+        }
 
         return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
     }
@@ -1344,6 +1392,7 @@ class TaxReportService {
 
         // Fetch jabatan from employee_estate database
         const jabatanMap = await EmployeeEstateService.getEmployeeJobs();
+        const newJabatansToSave: any[] = [];
 
         const employeeMap = new Map<string, any>();
 
@@ -1355,13 +1404,28 @@ class TaxReportService {
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
                 if (!employeeMap.has(empCode)) {
+                    // Auto-fill jabatan for December report
+                    const trimmedEmpCode = (empCode || '').trim();
+                    let resolvedJabatan = jabatanMap[trimmedEmpCode] || row.jabatan || '';
+                    if (!resolvedJabatan) {
+                        resolvedJabatan = deriveJabatanFromGang(row.gang_code || '');
+                        jabatanMap[trimmedEmpCode] = resolvedJabatan;
+                        newJabatansToSave.push({
+                            empcode: trimmedEmpCode,
+                            employee_name: row.nama || row.emp_name || '',
+                            gang: row.gang_code || '',
+                            divisi_id: effectiveDivisionCode || '',
+                            jabatan: resolvedJabatan
+                        });
+                    }
+
                     employeeMap.set(empCode, {
                         emp_code: empCode,
                         emp_name: row.nama || row.emp_name || '',
                         nik: row.nik_ktp || row.nik || '',
                         npwp: row.pajak_npwp || '',
                         alamat: row.alamat || '',
-                        jabatan: jabatanMap[(empCode || '').trim()] || row.jabatan || '',
+                        jabatan: resolvedJabatan,
                         gender: row.jenis_kelamin || '',
                         status_ptkp: row.status_ptkp || '',
                         kategori_ter: row.kategori_ter || '',

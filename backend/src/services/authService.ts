@@ -270,13 +270,19 @@ export class AuthService {
                 }
 
                 // FALLBACK FOR KERANI: If no divisions found in token, try to infer from username
-                // Pattern: kerani_pg2a -> PG2A
+                // Pattern: kerani_pg2a -> PG2A, kerani_wks_ar -> WKS_AR
                 if (divisions.length === 0 && role === UserRole.KERANI) {
-                    const parts = username.split('_');
-                    if (parts.length > 1) {
-                        const inferredDiv = parts[1].toUpperCase();
+                    if (username.toLowerCase().startsWith('kerani_')) {
+                        const inferredDiv = username.substring(7).toUpperCase();
                         // console.log(`[AuthService] Inferred division '${inferredDiv}' from username '${username}' for KERANI user.`);
                         divisions.push(inferredDiv);
+                    } else {
+                        const parts = username.split('_');
+                        if (parts.length > 1) {
+                            const inferredDiv = parts[1].toUpperCase();
+                            // console.log(`[AuthService] Inferred division '${inferredDiv}' from username '${username}' for KERANI user.`);
+                            divisions.push(inferredDiv);
+                        }
                     }
                 }
 
