@@ -239,48 +239,59 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     return rows
   }
 
-  // Load all gangs and divisions for filter
+  // Load gangs and divisions (reacts to finalDivision to properly fetch virtual gangs)
   useEffect(() => {
-    async function loadAllGangsAndDivisions() {
+    async function loadFilterData() {
       if (!authToken) return
 
       try {
         gangFilter.setLoading(true)
-
-        // Construct dynamic backend URL based on current hostname
         const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
 
-        // Load all gangs
-        const response = await fetch(`${backendUrl}/payroll/gangs`, {
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json'
+        // 1. Fetch divisions
+        let divisionsList = []
+        const divisionsResponse = await fetch(`${backendUrl}/payroll/divisions`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        })
+        if (divisionsResponse.ok) {
+          divisionsList = await divisionsResponse.json()
+          setAllDivisions(divisionsList || [])
+        }
+
+        // 2. Fetch gangs specifically for the selected division
+        let gangsList = []
+        if (finalDivision) {
+          const isKeraniUser = (user?.role || '').toLowerCase() === 'kerani'
+          const isLockedMode = !user?.isAdmin && !user?.isVisitor && (user?.divisi === finalDivision || isKeraniUser)
+
+          let url = `${backendUrl}/payroll/gangs?division=${finalDivision}&force=true`
+          if (isLockedMode) {
+            url = `${backendUrl}/payroll/locked/gangs?div=${finalDivision}`
           }
+
+          const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          })
+
+          if (response.ok) {
+            gangsList = await response.json()
+          }
+        } else {
+          // Fallback if no division is selected
+          const response = await fetch(`${backendUrl}/payroll/gangs`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          })
+          if (response.ok) gangsList = await response.json()
+        }
+
+        setAllGangs(gangsList || [])
+
+        // Set available data in context so GangFilter only shows relevant Sub-Divisions
+        gangFilter.setAvailableData({
+          gangs: gangsList || [],
+          divisions: divisionsList || []
         })
 
-        if (response.ok) {
-          const gangs = await response.json()
-          setAllGangs(gangs || [])
-
-          // Load all divisions
-          const divisionsResponse = await fetch(`${backendUrl}/payroll/divisions`, {
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json'
-            }
-          })
-
-          if (divisionsResponse.ok) {
-            const divisions = await divisionsResponse.json()
-            setAllDivisions(divisions || [])
-          }
-
-          // Set available data in context
-          gangFilter.setAvailableData({
-            gangs: gangs || [],
-            divisions: divisions || []
-          })
-        }
       } catch (error) {
         console.error('Failed to load gangs and divisions:', error)
         gangFilter.setError('Failed to load filter data')
@@ -289,39 +300,22 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       }
     }
 
-    loadAllGangsAndDivisions()
-  }, [authToken])
+    loadFilterData()
+  }, [authToken, finalDivision, user])
 
-  // Load available gangs for the dropdown (filtered)
+  // Load available gangs for the dropdown (filtered by GangFilter UI)
   useEffect(() => {
-    async function loadGangs() {
-      if (finalDivision && authToken) {
-        try {
-          // Apply gang filter if active
-          let gangsToLoad = allGangs
-          if (gangFilter.filters.hasActiveFilter && gangFilter.filters.subDivisions.length > 0) {
-            const filteredGangs = gangFilter.getFilteredGangs()
-            // Extract just gang codes for the dropdown
-            gangsToLoad = filteredGangs.map(g => g.gang_code || g)
-          }
-
-          setAvailableGangs(gangsToLoad || [])
-
-          // AUTO-SELECTION DISABLED: User must manually select gang
-          // The auto-selection was causing the gang to change unexpectedly after loading
-          // if (gangsToLoad && gangsToLoad.length > 0 && !gangsToLoad.includes(finalGangCode)) {
-          //   const firstGang = typeof gangsToLoad[0] === 'string' ? gangsToLoad[0] : gangsToLoad[0].gang_code
-          //   setOverrideGangCode(firstGang)
-          // }
-        } catch (e) {
-          console.warn('Failed to load gangs for selector', e)
-          setAvailableGangs([])
-        }
-      } else {
-        setAvailableGangs([])
+    if (finalDivision && authToken) {
+      // Apply gang filter if active
+      let gangsToLoad = allGangs
+      if (gangFilter.filters.hasActiveFilter && gangFilter.filters.subDivisions.length > 0) {
+        gangsToLoad = gangFilter.getFilteredGangs()
       }
+      // Pass objects directly, DO NOT map to strings so ReportToolbar can read g.gang_code and g.description
+      setAvailableGangs(gangsToLoad || [])
+    } else {
+      setAvailableGangs([])
     }
-    loadGangs()
   }, [finalDivision, authToken, allGangs, gangFilter.filters])
 
   // Render Division Optimized Logic
@@ -1301,7 +1295,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             division={finalDivision}
             divisions={allDivisions || []}
             gangCode={finalGangCode}
-            availableGangs={availableGangs}
+            gangs={availableGangs}
             onMonthYearChange={(m, y) => {
               setRows([])
               setPinnedBottom([])

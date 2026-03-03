@@ -29,6 +29,18 @@ export class EmployeeEstateService {
                         updated_at DATETIME DEFAULT GETDATE()
                     )
                 END
+
+                IF OBJECT_ID('history_employee_jabatan_changelog', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE history_employee_jabatan_changelog (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        empcode VARCHAR(50) NOT NULL,
+                        jabatan_lama VARCHAR(100) NULL,
+                        jabatan_baru VARCHAR(100) NOT NULL,
+                        changed_at DATETIME DEFAULT GETDATE(),
+                        changed_by VARCHAR(100) NULL
+                    )
+                END
             `);
         } catch (error) {
             console.error('[EmployeeEstateService] Failed to init table:', error);
@@ -83,18 +95,27 @@ export class EmployeeEstateService {
     /**
      * Update a single employee's job title
      */
-    static async updateJobTitle(empCode: string, jobTitle: string): Promise<boolean> {
+    static async updateJobTitle(empCode: string, jobTitle: string, changedBy: string = 'system'): Promise<boolean> {
         await this.initTable();
         const db = Database.getExtendedInstance();
 
-        // We might not have name/gang/divisi if updating from grid just for title.
-        // So we merge, but if inserting new (unlikely if strictly updating), we might leave others null/empty
-        // But usually we should have basic info. check logic.
-        // Actually, if we just want to update JobTitle for existing map, we can use MERGE but with partial match or just UPDATE if exists?
-        // But the requirement says "if not in database default to...".
-        // Use MERGE. If not matched, insert with minimal info?
-
         try {
+            // First get the old job title
+            const oldRecord = await db.query<{ jabatan: string }>(
+                "SELECT jabatan FROM employee_estate WHERE empcode = ?",
+                [empCode]
+            );
+            const jabatanLama = oldRecord.length > 0 ? oldRecord[0].jabatan : null;
+
+            // Save to history changelog if it actually changed or is new
+            if (jabatanLama !== jobTitle) {
+                await db.query(`
+                    INSERT INTO history_employee_jabatan_changelog
+                    (empcode, jabatan_lama, jabatan_baru, changed_by)
+                    VALUES (?, ?, ?, ?)
+                `, [empCode, jabatanLama, jobTitle, changedBy]);
+            }
+
             await db.query(`
                 MERGE INTO employee_estate AS target
                 USING (SELECT ? AS empcode, ? AS jabatan) AS source

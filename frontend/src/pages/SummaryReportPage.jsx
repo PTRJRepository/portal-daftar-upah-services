@@ -8,7 +8,6 @@ import { useAuth } from '../context/AuthContext';
 import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, validateAggregation } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
-import CostPerTonAnalysis from '../components/CostPerTonAnalysis';
 import '../styles/wages-summary-professional.css';
 
 // Company information by division
@@ -38,13 +37,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [month, setMonth] = useState(initialMonth || 11);  // November
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
 
-    // Sync state with props when they change (fix navigation freeze)
-    useEffect(() => {
-        if (initialDivision !== undefined) setDivision(initialDivision);
-        if (initialMonth !== undefined) setMonth(initialMonth);
-        if (initialYear !== undefined) setYear(initialYear);
-    }, [initialDivision, initialMonth, initialYear]);
-
     // Get company info for current division
     const companyInfo = useMemo(() => getCompanyInfo(division), [division]);
 
@@ -63,7 +55,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [validating, setValidating] = useState(false);
     const [validationResult, setValidationResult] = useState(null);
     const [showValidation, setShowValidation] = useState(false);
-    const [showCostPerTon, setShowCostPerTon] = useState(false);
 
     // Load gang descriptions (real-time from HR_GANG)
     useEffect(() => {
@@ -313,13 +304,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     </div>
                 </div>
                 <div className="right-section">
-                    <button 
-                        onClick={() => setShowCostPerTon(!showCostPerTon)} 
-                        className="wsp-btn" 
-                        style={{ background: showCostPerTon ? '#10b981' : '#8b5cf6', color: 'white' }}
-                    >
-                        {showCostPerTon ? 'Hide Cost/Ton' : 'Cost Per Ton'}
-                    </button>
                     <button onClick={() => setShowSeederModal(true)} className="wsp-btn" style={{ background: '#fbbf24', color: '#78350f' }}>
                         Seed Aggregation
                     </button>
@@ -526,15 +510,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         </div>
                     </footer>
                 </div>
-            )}
-
-            {/* Cost Per Ton Analysis Section */}
-            {showCostPerTon && !loading && !error && (
-                <CostPerTonAnalysis
-                    summaryData={mergedSummaryData}
-                    grandTotal={grandTotal}
-                    loading={loading}
-                />
             )
             }
 

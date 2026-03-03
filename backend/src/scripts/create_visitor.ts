@@ -13,11 +13,11 @@ async function createVisitor() {
             divisions: ["ALL"]
         });
         console.log("Visitor user created successfully!");
-    } catch (e) {
+    } catch (e: any) {
         if (e.message.includes("UNIQUE constraint failed")) {
             console.log("Visitor user already exists.");
         } else {
-            console.error("Error creating visitor:", e);
+            console.error("Error creating visitor account:", e.message);
         }
     }
 }

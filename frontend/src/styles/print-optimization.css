@@ -102,7 +102,7 @@ body.print-mode-large {
         /* Override screen min-width */
 
         border: 2px solid #000 !important;
-        padding: 0.15rem !important;
+        padding: 1rem !important;
         margin: 0 auto !important;
         overflow: visible !important;
         box-sizing: border-box !important;
@@ -240,11 +240,10 @@ body.print-mode-large {
 
     /* ============================================
        KPI CARDS & LETTERHEAD - HIDE FOR TABLE FOCUS
+       (Only hide the old sw-* types, keep the new wsp-* elements)
        ============================================ */
     .sw-kpi-grid,
-    .wsp-kpi-grid,
-    .sw-letterhead,
-    .wsp-letterhead {
+    .sw-letterhead {
         display: none !important;
     }
 
@@ -565,7 +564,7 @@ body.print-mode-large {
     width: 100% !important;
     max-width: 100% !important;
     border: 2px solid #000 !important;
-    padding: 0.3rem !important;
+    padding: 1rem !important;
     overflow: visible !important;
     box-sizing: border-box !important;
 }

@@ -921,7 +921,9 @@ export class DataExtractorService {
                     COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
                     COALESCE(p.PayRate, 0) as pay_rate,
                     COALESCE(p.RiceRation, 0) as beras_rate,
-                    em.AppJoinGrpDate as join_date
+                    em.AppJoinGrpDate as join_date,
+                    e.ResAddress as res_address,
+                    e.HREmpType as hr_emp_type
                 FROM HR_EMPLOYEE e
                 INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
                     AND gl.AccMonth = ?
@@ -946,7 +948,9 @@ export class DataExtractorService {
                     RTRIM(gl.GangCode) as gang_code,
                     COALESCE(p.PayRate, 0) as pay_rate,
                     COALESCE(p.RiceRation, 0) as beras_rate,
-                    em.AppJoinGrpDate as join_date
+                    em.AppJoinGrpDate as join_date,
+                    e.ResAddress as res_address,
+                    e.HREmpType as hr_emp_type
                 FROM HR_EMPLOYEE e
                 INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
                 INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
@@ -968,17 +972,21 @@ export class DataExtractorService {
 
             // If there's an override for NIK, use it. Otherwise use NewICNo, otherwise use EmpCode
             const finalNik = hrOverride?.nik_ktp?.trim() || r.actual_nik?.trim() || r.emp_code?.trim() || "";
+            const finalNpwp = hrOverride?.npwp?.trim() || "";
 
             return {
                 emp_code: r.emp_code?.trim() || "",
                 actual_nik: finalNik,
+                pajak_npwp: finalNpwp,
                 emp_name: r.emp_name?.trim() || "",
                 gender: String(r.gender || "1"),
                 loc_code: r.loc_code?.trim() || "",
                 gang_code: rawGangCode, // Return exact fetched code
                 pay_rate: r.pay_rate || 0,
                 beras_rate: r.beras_rate || 0,
-                join_date: r.join_date || null
+                join_date: r.join_date || null,
+                res_address: r.res_address?.trim() || "",
+                hr_emp_type: r.hr_emp_type?.trim() || ""
             };
         });
     }

@@ -10,7 +10,7 @@ async function run() {
             ADD is_paid_in_thp BIT DEFAULT 1, is_taxable BIT DEFAULT 1;
         `);
         console.log("Done.");
-    } catch (e) {
+    } catch (e: any) {
         if (e.message && e.message.includes("already has a column")) {
             console.log("Columns already exist.");
         } else {

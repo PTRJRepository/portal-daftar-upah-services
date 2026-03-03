@@ -4,7 +4,7 @@ async function main() {
         const json = await res.json();
         console.log("Divisions:");
         console.log(json);
-    } catch (e) {
+    } catch (e: any) {
         console.error("Fetch failed:", e.message);
     }
 }

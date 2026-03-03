@@ -390,7 +390,7 @@ export default function CustomPayrollTable({
         // Optimistic update
         setRows(prev => prev.map(r => r.nik === empCode ? { ...r, jabatan_estate: newTitle } : r));
         try {
-            const res = await fetch('/employee-estate/update', {
+            const res = await fetch(`${API_URL}/employee-estate/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ empCode, jobTitle: newTitle })
@@ -1007,29 +1007,33 @@ export default function CustomPayrollTable({
             }
         });
 
-        // JABATAN [NEW] - HIDDEN TEMPORARILY
-        // {
-        //     field: 'jabatan_estate',
-        //     headers: ['IDENTITAS', null, null, 'JABATAN'],
-        //     w: 110,
-        //     className: 'text-left p-0', // p-0 to allow select to fill
-        //     render: (row) => (
-        //         <select
-        //             className="w-full h-full border-none bg-transparent text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-        //             value={row.jabatan_estate || 'Karyawan'}
-        //             onChange={(e) => handleJobTitleChange(row.nik, e.target.value)}
-        //             onClick={(e) => e.stopPropagation()}
-        //             onMouseDown={(e) => e.stopPropagation()}
-        //             style={{ padding: '0 4px', height: '100%' }}
-        //         >
-        //             <option value="Karyawan">Karyawan</option>
-        //             <option value="Mandor">Mandor</option>
-        //             <option value="Kerani">Kerani</option>
-        //             <option value="Helper">Helper</option>
-        //             <option value="Operator">Operator</option>
-        //         </select>
-        //     )
-        // },
+        // JABATAN [NEW]
+        cols.push({
+            field: 'jabatan_estate',
+            headers: ['IDENTITAS', null, null, 'JABATAN'],
+            w: 130,
+            className: 'text-left p-0', // p-0 to allow select to fill
+            render: (row) => {
+                if (row.type !== 'employee') return row.jabatan_estate || '-';
+                return (
+                    <select
+                        className="w-full h-full border-none bg-transparent text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                        value={row.jabatan_estate || 'karyawan panen'}
+                        onChange={(e) => handleJobTitleChange(row.nik, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        style={{ padding: '0 4px', height: '100%', minHeight: '24px' }}
+                    >
+                        <option value="karyawan panen">karyawan panen</option>
+                        <option value="karyawan perawatan">karyawan perawatan</option>
+                        <option value="mandor panen">mandor panen</option>
+                        <option value="mandor perawatan">mandor perawatan</option>
+                        <option value="kerani buah">kerani buah</option>
+                        <option value="kerani kantor">kerani kantor</option>
+                    </select>
+                );
+            }
+        });
 
         // TUNJANGAN - Simplified
         // Show Rates ONLY if expanded

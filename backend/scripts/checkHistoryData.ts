@@ -4,7 +4,8 @@ import { Config } from "../src/config";
 async function run() {
     console.log("Checking history data...");
     const profile = Config.DB_PROFILE;
-    Config.DEFAULT_DATABASE = "extend_db_ptrj";
+    // @ts-ignore
+    (Config as any).DEFAULT_DATABASE = "extend_db_ptrj";
     const db = Database.getInstance(undefined, profile);
 
     const data = await db.query(`

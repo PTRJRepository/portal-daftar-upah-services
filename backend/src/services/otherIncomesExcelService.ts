@@ -112,6 +112,6 @@ export class OtherIncomesExcelService {
         });
 
         const buffer = await workbook.xlsx.writeBuffer();
-        return buffer as Buffer;
+        return buffer as any as Buffer;
     }
 }

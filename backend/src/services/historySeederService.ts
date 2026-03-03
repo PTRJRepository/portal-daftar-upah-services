@@ -131,13 +131,8 @@ export class HistorySeederService {
             const historyId = historyDatabaseService.generateHistoryId();
             result.history_id = historyId;
 
-            // Delete existing history for this period/location to prevent duplication
-            await historyDatabaseService.deleteHistoryForPeriodAndLocation(
-                options.periodMonth,
-                options.periodYear,
-                options.divisionCode,
-                options.gangCode
-            );
+            // Removed deleteHistoryForPeriodAndLocation to prevent wiping out manual edits during reseeding.
+            // Using UPSERT logic in save methods instead.
 
             const seederMode = options.seederMode || 'PAYROLL';
 

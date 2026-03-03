@@ -157,6 +157,9 @@ export interface MonthlyTaxRow {
     status_ptkp: string;
     kategori_ter: string;
     gang_code: string;
+    npwp: string;
+    alamat: string;
+    jabatan: string;
     upah_kotor: number;
     penghasilan_bruto: number;
     tarif_pajak_ter: number;
@@ -340,25 +343,10 @@ class TaxReportService {
     }
 
     /**
-     * Fetch payroll data, prioritizing LIVE data for current periods, with HISTORY fallback.
+     * Fetch payroll data, ALWAYS from history database explicitly requested by user for performance.
      */
     private async fetchPayrollData(month: number, year: number, gangCode: string, divisionCode?: string) {
         let isSourceCurrent = false;
-        const isCurrent = await this.isCurrentPeriod(month, year);
-        if (isCurrent) {
-            console.log(`[TaxReportService] Current period detected (${month}/${year}). Attempting LIVE database.`);
-            const liveData = await DataExtractorService.getInstance().extractPayrollData(
-                month, year, gangCode, divisionCode
-            );
-
-            if (liveData && liveData.data_rows && liveData.data_rows.length > 0) {
-                console.log(`[TaxReportService] LIVE database has data. Using LIVE database.`);
-                isSourceCurrent = true;
-                return { data: liveData, isSourceCurrent };
-            } else {
-                console.log(`[TaxReportService] LIVE database is empty. Falling back to HISTORY database.`);
-            }
-        }
 
         console.log(`[TaxReportService] Using HISTORY database for (${month}/${year}).`);
         const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
@@ -598,8 +586,11 @@ class TaxReportService {
                 no: idx + 1,
                 emp_code: row.emp_code,
                 emp_name: row.nama || row.emp_name || '',
-                nik: row.nik || '',
-                gender: row.jenis_kelamin || '',
+                nik: row.actual_nik || row.nik || '',
+                npwp: row.pajak_npwp || '',
+                alamat: row.res_address || '',
+                jabatan: row.hr_emp_type || '',
+                gender: String(row.jenis_kelamin || row.gender || '1'),
                 status_ptkp: masterPtkp,
                 kategori_ter: kategoriTer,
                 gang_code: row.gang_code || '',

@@ -239,7 +239,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             'N': 'NURSERY',
             'W': 'WORKSHOP',
             'K': 'ESTATE DME',
-            'I': 'Infrastruktur',
+            'I': 'DIVISI INFRASTRUKTUR',
             'M': 'OPERASI MILL',
         };
 
@@ -497,37 +497,37 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 <table className="wsp-table comparison-table">
                     <thead>
                         {/* Master Header */}
-                        <tr className="wsp-header-master" style={{ backgroundColor: '#1e293b', color: 'white' }}>
-                            <th rowSpan="2" className="th-sticky-col" title="Nama Divisi atau Estate">ESTATE/DIVISION</th>
-                            <th colSpan="2" className="th-group-workers" title="Perbandingan Jumlah Pekerja">PEKERJA</th>
-                            <th colSpan="3" className="th-group-pph print-show-cell" title={`Total PPH21 Masa ${currMonthName}`}>PPH 21 <small>({currMonthName})</small></th>
-                            <th colSpan="5" className="th-group-pph print-hide-cell" title={`Total PPH21 Masa ${currMonthName}`}>PPH 21 <small>({currMonthName})</small></th>
-                            <th colSpan="3" className="th-group-prev" title={`Data Gaji & TBS Bulan ${prevMonthName}`}>BULAN LALU</th>
-                            <th colSpan="3" className="th-group-curr" title={`Data Gaji & TBS Bulan ${currMonthName}`}>BULAN INI</th>
-                            <th rowSpan="2" className="th-group-diff" title="Perubahan Gaji (Bulan Ini - Bulan Lalu)">SELISIH GAJI</th>
+                        <tr className="wsp-header-master">
+                            <th rowSpan="2" className="th-sticky-col">ESTATE/DIVISION</th>
+                            <th colSpan="2" className="th-group-workers">WORKERS / PEKERJA</th>
+                            <th colSpan="3" className="th-group-pph print-show-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
+                            <th colSpan="5" className="th-group-pph print-hide-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
+                            <th colSpan="3" className="th-group-prev">{prevMonthName} {previous_period.year}</th>
+                            <th colSpan="3" className="th-group-curr">{currMonthName} {current_period.year}</th>
+                            <th rowSpan="2" className="th-group-diff">(Perubahan Gaji)</th>
                         </tr>
                         {/* Sub Header */}
-                        <tr className="wsp-header-sub" style={{ backgroundColor: '#f1f5f9', color: '#334155' }}>
+                        <tr className="wsp-header-sub">
                             {/* Workers */}
-                            <th className="th-group-workers" title={`Jumlah Pekerja ${prevMonthName}`}>{prevMonthName.substring(0, 3)}</th>
-                            <th className="th-group-workers" title={`Jumlah Pekerja ${currMonthName}`}>{currMonthName.substring(0, 3)}</th>
+                            <th className="th-group-workers">{prevMonthName.substring(0, 3)}</th>
+                            <th className="th-group-workers">{currMonthName.substring(0, 3)}</th>
 
                             {/* Current Month Details */}
-                            <th className="th-group-pph" title="Potongan SPSI">SPSI</th>
-                            <th className="th-group-pph" title="Total Premi">PREMI</th>
-                            <th className="th-group-pph print-hide-cell" title="Total Prunning">PRUNNING</th>
-                            <th className="th-group-pph print-hide-cell" title="Total Lembur">LEMBUR</th>
-                            <th className="th-group-pph" title="Total Pajak PPH21">PPH21</th>
+                            <th className="th-group-pph">POT SPSI</th>
+                            <th className="th-group-pph">TOT PREMI</th>
+                            <th className="th-group-pph print-hide-cell">TOT PRUNNING</th>
+                            <th className="th-group-pph print-hide-cell">TOT LEMBUR</th>
+                            <th className="th-group-pph">PPH21</th>
 
                             {/* Previous Month Totals */}
-                            <th className="th-group-prev" title={`Total Gaji ${prevMonthName}`}>GAJI</th>
-                            <th className="th-group-prev" title={`Total TBS ${prevMonthName}`}>TBS (Ton)</th>
-                            <th className="th-group-prev" title={`Mesin Absen ${prevMonthName}`}>ABSENSI</th>
+                            <th className="th-group-prev">GAJI</th>
+                            <th className="th-group-prev">TBS (Ton)</th>
+                            <th className="th-group-prev">THUMB PRINT</th>
 
                             {/* Current Month Totals */}
-                            <th className="th-group-curr" title={`Total Gaji ${currMonthName}`}>GAJI</th>
-                            <th className="th-group-curr" title={`Total TBS ${currMonthName}`}>TBS (Ton)</th>
-                            <th className="th-group-curr" title={`Mesin Absen ${currMonthName}`}>ABSENSI</th>
+                            <th className="th-group-curr">GAJI</th>
+                            <th className="th-group-curr">TBS (Ton)</th>
+                            <th className="th-group-curr">THUMB PRINT</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -768,7 +768,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 {/* Subtotal Row */}
                 {group.subtotal && (
                     <tr className="subtotal">
-                        <td className="text-left sticky-col">Grand Total {group.label.replace('ESTATE ', '')}</td>
+                        <td className="text-left sticky-col">GRAND TOTAL {group.label.replace('ESTATE ', '')}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_employees)}</td>
                         <td className="text-right border-right-section">{formatNumber(group.subtotal.total_hk)}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_pph21)}</td>
@@ -798,14 +798,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     )}
 
                     <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                            onClick={() => window.location.href = '/report/high-earners'}
-                            className="wsp-btn"
-                            title="Report Gaji > 6 Juta"
-                            style={{ backgroundColor: '#4f46e5', color: 'white' }}
-                        >
-                            High Earners
-                        </button>
                         <select
                             value={month}
                             onChange={(e) => setMonth(parseInt(e.target.value))}
@@ -945,30 +937,30 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                     <table className="wsp-table">
                                         <thead>
                                             {/* Master Header Level */}
-                                            <tr className="wsp-header-master" style={{ backgroundColor: '#1e293b', color: 'white' }}>
-                                                <th rowSpan="2" className="th-sticky-col" title="Nama Divisi atau Estate">ESTATE / DIVISI</th>
-                                                <th colSpan="2" className="th-group-manpower" title="Rincian Tenaga Kerja">MANPOWER</th>
-                                                <th colSpan="2" className="th-group-deductions" title="Potongan yang berlaku">POTONGAN</th>
-                                                <th colSpan="3" className="th-group-income" title="Pendapatan Pekerja">PENDAPATAN</th>
-                                                <th colSpan="2" className="th-group-compare" title="Perbedaan Data">PERBANDINGAN</th>
+                                            <tr className="wsp-header-master">
+                                                <th rowSpan="2" className="th-sticky-col">ESTATE / DIVISI</th>
+                                                <th colSpan="2" className="th-group-manpower">MANPOWER</th>
+                                                <th colSpan="2" className="th-group-deductions">DEDUCTIONS / POTONGAN</th>
+                                                <th colSpan="3" className="th-group-income">INCOME / PENDAPATAN</th>
+                                                <th colSpan="2" className="th-group-compare">PERBANDINGAN</th>
                                             </tr>
                                             {/* Sub Header Level */}
-                                            <tr className="wsp-header-sub" style={{ backgroundColor: '#f1f5f9', color: '#334155' }}>
-                                                <th className="th-group-manpower" style={{ minWidth: '80px' }} title="Total Pekerja">WORKERS</th>
-                                                <th className="th-group-manpower border-right-section" style={{ minWidth: '90px' }} title="Total HK">HK</th>
+                                            <tr className="wsp-header-sub">
+                                                <th className="th-group-manpower" style={{ minWidth: '80px' }}>WORKERS</th>
+                                                <th className="th-group-manpower border-right-section" style={{ minWidth: '90px' }}>HK</th>
 
                                                 {/* Deductions Group */}
-                                                <th className="th-group-deductions" style={{ minWidth: '110px' }} title="Total Potongan Pajak Penghasilan (PPH 21)">PPH 21</th>
-                                                <th className="th-group-deductions border-right-section" style={{ minWidth: '100px' }} title="Serikat Pekerja Seluruh Indonesia">SPSI</th>
+                                                <th className="th-group-deductions" style={{ minWidth: '110px' }}>PPH 21</th>
+                                                <th className="th-group-deductions border-right-section" style={{ minWidth: '100px' }}>SPSI</th>
 
                                                 {/* Income Group */}
-                                                <th className="th-group-income" style={{ minWidth: '120px' }} title="Total Premi">TOTAL PREMI</th>
-                                                <th className="th-group-income" style={{ minWidth: '120px' }} title="Total Lembur">LEMBUR</th>
-                                                <th className="th-group-income border-right-section" style={{ minWidth: '130px' }} title="Total Upah Setelah Pajak / Portal">UPAH BERSIH (Portal)</th>
+                                                <th className="th-group-income" style={{ minWidth: '120px' }}>TOTAL PREMI</th>
+                                                <th className="th-group-income" style={{ minWidth: '120px' }}>LEMBUR</th>
+                                                <th className="th-group-income border-right-section" style={{ minWidth: '130px' }}>UPAH BERSIH (Portal)</th>
 
                                                 {/* Comparison Group */}
-                                                <th className="th-group-compare" style={{ minWidth: '130px' }} title="Data Absen Fingerprint (Thumb Print)">ABSENSI</th>
-                                                <th className="th-group-compare" style={{ minWidth: '120px' }} title="Selisih Antara Portal dan Absensi">SELISIH</th>
+                                                <th className="th-group-compare" style={{ minWidth: '130px' }}>THUMB PRINT</th>
+                                                <th className="th-group-compare" style={{ minWidth: '120px' }}>SELISIH</th>
                                             </tr>
                                         </thead>
 

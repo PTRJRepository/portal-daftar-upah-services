@@ -240,10 +240,100 @@ const DashboardLayout = () => {
                         )}
                     </NavLink>
 
-                    {/* Report - Report */}
+                    {/* Laporan Bulanan Unit (Non-IJL) */}
                     {!collapsed ? (
                         <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
-                            Report - Report
+                            Laporan Bul Unit (Non-IJL)
+                        </div>
+                    ) : (
+                        <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
+                    )}
+
+                    {!isKeraniUser && (
+                        <NavLink to="/summary" style={getLinkStyle} title={collapsed ? "Summary Report" : ""}>
+                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.BarChart /></div>
+                            {!collapsed && (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Summary Report</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Accounting report detail rekap.</span>
+                                </div>
+                            )}
+                        </NavLink>
+                    )}
+
+                    {!isKeraniUser && (
+                        <NavLink to="/wages-rebinmas" style={getLinkStyle} title={collapsed ? "Summary Wages" : ""}>
+                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.DollarSign /></div>
+                            {!collapsed && (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Summary Wages</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Rincian daftar upah untuk entitas Rebinmas.</span>
+                                </div>
+                            )}
+                        </NavLink>
+                    )}
+
+                    {!isKeraniUser && (
+                        <NavLink to="/wages-comparison" style={getLinkStyle} title={collapsed ? "Comparison Wages" : ""}>
+                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Verifikasi /></div>
+                            {!collapsed && (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Comparison Wages</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Perbandingan dan verifikasi antar periode.</span>
+                                </div>
+                            )}
+                        </NavLink>
+                    )}
+
+                    {!isKeraniUser && (
+                        <NavLink to="/comprehensive" style={getLinkStyle} title={collapsed ? "Impact Report" : ""}>
+                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Comprehensive /></div>
+                            {!collapsed && (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Impact Report</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Analisis perubahan upah menyeluruh.</span>
+                                </div>
+                            )}
+                        </NavLink>
+                    )}
+
+                    {!isKeraniUser && (
+                        <NavLink to="/analysis" style={getLinkStyle} title={collapsed ? "Analisa Lembur & Premi" : ""}>
+                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.TrendingUp /></div>
+                            {!collapsed && (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Analisa Lembur & Premi</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Detail tren overtime dan premi harian.</span>
+                                </div>
+                            )}
+                        </NavLink>
+                    )}
+
+                    {/* Laporan Bulanan Khusus IJL */}
+                    {!collapsed ? (
+                        <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                            Laporan Bul Khusus IJL
+                        </div>
+                    ) : (
+                        <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
+                    )}
+
+                    {!isKeraniUser && (
+                        <NavLink to="/wages-ijl" style={getLinkStyle} title={collapsed ? "Wages IJL" : ""}>
+                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.PalmTree /></div>
+                            {!collapsed && (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Wages IJL</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Rincian rekap payroll entitas Investasi.</span>
+                                </div>
+                            )}
+                        </NavLink>
+                    )}
+
+                    {/* Report Executive & Pajak */}
+                    {!collapsed ? (
+                        <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                            Executive & Pajak
                         </div>
                     ) : (
                         <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
@@ -255,37 +345,12 @@ const DashboardLayout = () => {
                             {!collapsed && (
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                     <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Executive Analysis</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Analisis metrik upah dan operasional untuk level eksekutif.</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Analisis level manajerial & direktur.</span>
                                 </div>
                             )}
                         </NavLink>
                     )}
 
-                    {!isKeraniUser && (
-                        <NavLink to="/comprehensive" style={getLinkStyle} title={collapsed ? "Analisis Keseluruhan" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Comprehensive /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Analisis Keseluruhan</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Laporan analisis payroll secara holistik.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/summary" style={getLinkStyle} title={collapsed ? "Accounting Report" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.BarChart /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Accounting Report</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Laporan rekap dan summary untuk keperluan accounting.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {/* Using window.location.href to force navigation from Operational page */}
                     <a
                         href={buildAppPath('/report-pajak')}
                         style={{
@@ -298,58 +363,10 @@ const DashboardLayout = () => {
                         {!collapsed && (
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Report Pajak</span>
-                                <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Laporan 12 bulan PPh21 untuk keperluan pajak.</span>
+                                <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Laporan 12 bln PPh21 untuk keperluan pajak.</span>
                             </div>
                         )}
                     </a>
-
-                    {!isKeraniUser && (
-                        <NavLink to="/wages-rebinmas" style={getLinkStyle} title={collapsed ? "Wages Rebinmas" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.DollarSign /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Wages Rebinmas</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Rincian daftar upah untuk entitas Rebinmas.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/wages-ijl" style={getLinkStyle} title={collapsed ? "Wages IJL" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.PalmTree /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Wages IJL</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Rincian daftar upah untuk entitas Investasi.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/wages-comparison" style={getLinkStyle} title={collapsed ? "Verifikasi Upah" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Verifikasi /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Verifikasi Upah</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Perbandingan dan verifikasi pembayaran.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/analysis" style={getLinkStyle} title={collapsed ? "Analysis OT & Premi" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.TrendingUp /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Analysis OT & Premi</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Detail tren lembur dan premi.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
 
                     {/* Admin dan Config */}
                     {isAdminUser && (

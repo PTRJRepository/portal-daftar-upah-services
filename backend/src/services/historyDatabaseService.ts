@@ -14,6 +14,7 @@
 import { Database } from "../db/client";
 import { Config } from "../config";
 import { gangService } from "./gangService";
+import { employeeHrDataService } from "./employeeHrDataService";
 
 // Environment variable untuk database transaksi
 const DB_EXTEND_TRANS_DATABASE = Config.DB_EXTEND_TRANS_DATABASE;
@@ -547,44 +548,83 @@ export class HistoryDatabaseService {
     public async savePayrollHistoryDetail(data: PayrollHistoryDetail): Promise<number> {
         const db = this.getPayrollDatabase();
 
-        const result = await db.query(`
-            INSERT INTO dbo.payroll_history_detail (
-                history_id, master_id, emp_code, emp_name, nik, gender, gang_code, division_code, loc_code,
-                status_ptkp, kategori_ter, hari_kerja, cuti_tahunan_hari, cuti_sakit_haid_hari,
-                cuti_minggu_hari, cuti_nasional_hari, jumlah_hk, total_jam_kerja, upah_dasar,
-                upah_pokok, gaji_pokok, gaji_pokok_ideal, gaji_pokok_aktual, koreksi_hk,
-                beras_rate, beras_jumlah, jabatan_rate, jabatan_jumlah, masa_kerja_tahun,
-                masa_kerja_rate, masa_kerja_jumlah, lembur_jam, lembur_rate, lembur_jumlah,
-                lembur_records, total_tunjangan, premi_brondol, premi_pph, total_premi, premi_detail,
-                pot_spsi, pot_pph21, pot_koreksi, pot_bpjs_kesehatan_pekerja, pot_bpjs_kesehatan_majikan,
-                pot_bpjs_pensiun_pekerja, pot_bpjs_pensiun_majikan, pot_bpjs_pekerja_total,
-                pot_astek_pekerja, pot_astek_majikan, pot_astek_jumlah, potongan_detail,
-                total_potongan, total_potongan_bersih, jumlah_upah_kotor, upah_kotor_pajak,
-                penghasilan_bruto, tarif_pajak_ter, pph21_ter, upah_bersih, task_code, task_desc,
-                shortage_details, shortage_total_hours
-            ) OUTPUT INSERTED.id VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?
-            )
-        `, [
-            data.history_id, data.master_id, data.emp_code, data.emp_name, data.nik, data.gender,
-            data.gang_code, data.division_code, data.loc_code, data.status_ptkp, data.kategori_ter,
-            data.hari_kerja, data.cuti_tahunan_hari, data.cuti_sakit_haid_hari, data.cuti_minggu_hari,
-            data.cuti_nasional_hari, data.jumlah_hk, data.total_jam_kerja, data.upah_dasar,
-            data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
-            data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
-            data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
-            data.lembur_records, data.total_tunjangan, data.premi_brondol, data.premi_pph, data.total_premi, data.premi_detail,
-            data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
-            data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
-            data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
-            data.total_potongan, data.total_potongan_bersih, data.jumlah_upah_kotor, data.upah_kotor_pajak,
-            data.penghasilan_bruto, data.tarif_pajak_ter, data.pph21_ter, data.upah_bersih,
-            data.task_code, data.task_desc, data.shortage_details, data.shortage_total_hours
-        ]);
+        const existing = await db.queryOne<{ id: number }>(`
+            SELECT id FROM dbo.payroll_history_detail
+            WHERE master_id = ? AND emp_code = ?
+        `, [data.master_id, data.emp_code]);
 
-        return result[0]?.id;
+        if (existing) {
+            await db.query(`
+                UPDATE dbo.payroll_history_detail SET
+                    history_id = ?, emp_name = ?, nik = ?, gender = ?, gang_code = ?, division_code = ?, loc_code = ?,
+                    status_ptkp = ?, kategori_ter = ?, hari_kerja = ?, cuti_tahunan_hari = ?, cuti_sakit_haid_hari = ?,
+                    cuti_minggu_hari = ?, cuti_nasional_hari = ?, jumlah_hk = ?, total_jam_kerja = ?, upah_dasar = ?,
+                    upah_pokok = ?, gaji_pokok = ?, gaji_pokok_ideal = ?, gaji_pokok_aktual = ?, koreksi_hk = ?,
+                    beras_rate = ?, beras_jumlah = ?, jabatan_rate = ?, jabatan_jumlah = ?, masa_kerja_tahun = ?,
+                    masa_kerja_rate = ?, masa_kerja_jumlah = ?, lembur_jam = ?, lembur_rate = ?, lembur_jumlah = ?,
+                    lembur_records = ?, total_tunjangan = ?, premi_brondol = ?, premi_pph = ?, total_premi = ?, premi_detail = ?,
+                    pot_spsi = ?, pot_pph21 = ?, pot_koreksi = ?, pot_bpjs_kesehatan_pekerja = ?, pot_bpjs_kesehatan_majikan = ?,
+                    pot_bpjs_pensiun_pekerja = ?, pot_bpjs_pensiun_majikan = ?, pot_bpjs_pekerja_total = ?,
+                    pot_astek_pekerja = ?, pot_astek_majikan = ?, pot_astek_jumlah = ?, potongan_detail = ?,
+                    total_potongan = ?, total_potongan_bersih = ?, jumlah_upah_kotor = ?, upah_kotor_pajak = ?,
+                    penghasilan_bruto = ?, tarif_pajak_ter = ?, pph21_ter = ?, upah_bersih = ?, task_code = ?, task_desc = ?,
+                    shortage_details = ?, shortage_total_hours = ?
+                WHERE id = ?
+            `, [
+                data.history_id, data.emp_name, data.nik, data.gender, data.gang_code, data.division_code, data.loc_code,
+                data.status_ptkp, data.kategori_ter, data.hari_kerja, data.cuti_tahunan_hari, data.cuti_sakit_haid_hari,
+                data.cuti_minggu_hari, data.cuti_nasional_hari, data.jumlah_hk, data.total_jam_kerja, data.upah_dasar,
+                data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
+                data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
+                data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
+                data.lembur_records, data.total_tunjangan, data.premi_brondol, data.premi_pph, data.total_premi, data.premi_detail,
+                data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
+                data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
+                data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
+                data.total_potongan, data.total_potongan_bersih, data.jumlah_upah_kotor, data.upah_kotor_pajak,
+                data.penghasilan_bruto, data.tarif_pajak_ter, data.pph21_ter, data.upah_bersih, data.task_code, data.task_desc,
+                data.shortage_details, data.shortage_total_hours, existing.id
+            ]);
+            return existing.id;
+        } else {
+            const result = await db.query(`
+                INSERT INTO dbo.payroll_history_detail (
+                    history_id, master_id, emp_code, emp_name, nik, gender, gang_code, division_code, loc_code,
+                    status_ptkp, kategori_ter, hari_kerja, cuti_tahunan_hari, cuti_sakit_haid_hari,
+                    cuti_minggu_hari, cuti_nasional_hari, jumlah_hk, total_jam_kerja, upah_dasar,
+                    upah_pokok, gaji_pokok, gaji_pokok_ideal, gaji_pokok_aktual, koreksi_hk,
+                    beras_rate, beras_jumlah, jabatan_rate, jabatan_jumlah, masa_kerja_tahun,
+                    masa_kerja_rate, masa_kerja_jumlah, lembur_jam, lembur_rate, lembur_jumlah,
+                    lembur_records, total_tunjangan, premi_brondol, premi_pph, total_premi, premi_detail,
+                    pot_spsi, pot_pph21, pot_koreksi, pot_bpjs_kesehatan_pekerja, pot_bpjs_kesehatan_majikan,
+                    pot_bpjs_pensiun_pekerja, pot_bpjs_pensiun_majikan, pot_bpjs_pekerja_total,
+                    pot_astek_pekerja, pot_astek_majikan, pot_astek_jumlah, potongan_detail,
+                    total_potongan, total_potongan_bersih, jumlah_upah_kotor, upah_kotor_pajak,
+                    penghasilan_bruto, tarif_pajak_ter, pph21_ter, upah_bersih, task_code, task_desc,
+                    shortage_details, shortage_total_hours
+                ) OUTPUT INSERTED.id VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?
+                )
+            `, [
+                data.history_id, data.master_id, data.emp_code, data.emp_name, data.nik, data.gender,
+                data.gang_code, data.division_code, data.loc_code, data.status_ptkp, data.kategori_ter,
+                data.hari_kerja, data.cuti_tahunan_hari, data.cuti_sakit_haid_hari, data.cuti_minggu_hari,
+                data.cuti_nasional_hari, data.jumlah_hk, data.total_jam_kerja, data.upah_dasar,
+                data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
+                data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
+                data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
+                data.lembur_records, data.total_tunjangan, data.premi_brondol, data.premi_pph, data.total_premi, data.premi_detail,
+                data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
+                data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
+                data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
+                data.total_potongan, data.total_potongan_bersih, data.jumlah_upah_kotor, data.upah_kotor_pajak,
+                data.penghasilan_bruto, data.tarif_pajak_ter, data.pph21_ter, data.upah_bersih,
+                data.task_code, data.task_desc, data.shortage_details, data.shortage_total_hours
+            ]);
+            return result[0]?.id;
+        }
     }
 
     /**
@@ -659,7 +699,11 @@ export class HistoryDatabaseService {
             }
         }
 
-        let detailQuery = `SELECT * FROM dbo.payroll_history_detail WHERE master_id IN (${masterIds.join(',')})`;
+        let detailQuery = `
+            SELECT d.*
+            FROM dbo.payroll_history_detail d
+            WHERE master_id IN (${masterIds.join(',')})
+        `;
         const detailParams: any[] = [];
 
         if (specificEmpCode) {
@@ -680,9 +724,44 @@ export class HistoryDatabaseService {
         console.log(`[DEBUG] detailQuery: ${detailQuery}`, detailParams);
         const details = await db.query<any>(detailQuery, detailParams);
 
+        const empCodesForHr = details.map((d: any) => d.emp_code?.trim()).filter(Boolean);
+        const hrDataMap = await employeeHrDataService.getHrDataBulk(empCodesForHr);
+
+        // Fetch live HR_EMPLOYEE data for address, type, actual_nik
+        const hrEmployeeMap = new Map<string, any>();
+        if (empCodesForHr.length > 0) {
+            try {
+                const liveDb = Database.getInstance(); // Default live db holds HR_EMPLOYEE
+                // Maximum params limit in SQL Server is 2100, we should chunk if larger, but for UI it's usually < 1000
+                const placeholders = empCodesForHr.map(() => '?').join(',');
+                const liveHrRows = await liveDb.query<any>(`
+                    SELECT RTRIM(EmpCode) as emp_code, ResAddress as res_address, HREmpType as hr_emp_type, NewICNo as actual_nik
+                    FROM dbo.HR_EMPLOYEE
+                    WHERE RTRIM(EmpCode) IN (${placeholders})
+                `, empCodesForHr);
+
+                liveHrRows.forEach(row => {
+                    hrEmployeeMap.set(row.emp_code, row);
+                });
+            } catch (e) {
+                console.error("[historyDatabaseService] Error fetching live HR_EMPLOYEE data", e);
+            }
+        }
+
         const data_rows = details.map(d => {
+            const empCodeClean = d.emp_code?.trim().toUpperCase() || "";
+            const hrOverride = hrDataMap.get(empCodeClean);
+            const liveHr = hrEmployeeMap.get(empCodeClean);
+
+            const actualNik = liveHr?.actual_nik?.trim() || d.nik?.trim() || "";
+            const finalNik = hrOverride?.nik_ktp?.trim() || actualNik;
+            const finalNpwp = hrOverride?.npwp?.trim() || "";
+
             const row: any = {
-                nik: d.nik,
+                nik: finalNik,
+                pajak_npwp: finalNpwp,
+                res_address: liveHr?.res_address?.trim() || "",
+                hr_emp_type: liveHr?.hr_emp_type?.trim() || "",
                 nama: d.emp_name,
                 emp_code: d.emp_code,
                 jenis_kelamin: d.gender,
@@ -864,25 +943,48 @@ export class HistoryDatabaseService {
     public async saveTaskregHistory(data: HistoryTaskreg): Promise<number> {
         const db = this.getTransactionDatabase();
 
-        const result = await db.query(`
-            INSERT INTO dbo.history_taskreg(
-            history_id, original_master_id, reg_no, reg_date, emp_code, gang_code, division_code,
-            original_line_id, line_no, trx_date, task_code, task_desc, hours, ot, rate, amount,
-            tapping_type, location_code, status, is_cuti_tahunan, is_cuti_sakit, is_cuti_minggu,
-            is_cuti_nasional, is_hari_kerja, is_lembur, period_month, period_year, source_table
-        ) OUTPUT INSERTED.id VALUES(
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )
-            `, [
-            data.history_id, data.original_master_id, data.reg_no, data.reg_date, data.emp_code,
-            data.gang_code, data.division_code, data.original_line_id, data.line_no, data.trx_date,
-            data.task_code, data.task_desc, data.hours, data.ot, data.rate, data.amount,
-            data.tapping_type, data.location_code, data.status, data.is_cuti_tahunan,
-            data.is_cuti_sakit, data.is_cuti_minggu, data.is_cuti_nasional, data.is_hari_kerja,
-            data.is_lembur, data.period_month, data.period_year, data.source_table
-        ]);
+        const existing = await db.queryOne<{ id: number }>(`
+            SELECT id FROM dbo.history_taskreg
+            WHERE original_master_id = ? AND original_line_id = ? AND period_month = ? AND period_year = ?
+        `, [data.original_master_id, data.original_line_id, data.period_month, data.period_year]);
 
-        return result[0]?.id;
+        if (existing) {
+            await db.query(`
+                UPDATE dbo.history_taskreg SET
+                    history_id = ?, reg_no = ?, reg_date = ?, emp_code = ?, gang_code = ?, division_code = ?,
+                    trx_date = ?, task_code = ?, task_desc = ?, hours = ?, ot = ?, rate = ?, amount = ?,
+                    tapping_type = ?, location_code = ?, status = ?, is_cuti_tahunan = ?, is_cuti_sakit = ?,
+                    is_cuti_minggu = ?, is_cuti_nasional = ?, is_hari_kerja = ?, is_lembur = ?, source_table = ?
+                WHERE id = ?
+            `, [
+                data.history_id, data.reg_no, data.reg_date, data.emp_code, data.gang_code, data.division_code,
+                data.trx_date, data.task_code, data.task_desc, data.hours, data.ot, data.rate, data.amount,
+                data.tapping_type, data.location_code, data.status, data.is_cuti_tahunan, data.is_cuti_sakit,
+                data.is_cuti_minggu, data.is_cuti_nasional, data.is_hari_kerja, data.is_lembur, data.source_table,
+                existing.id
+            ]);
+            return existing.id;
+        } else {
+            const result = await db.query(`
+                INSERT INTO dbo.history_taskreg(
+                    history_id, original_master_id, reg_no, reg_date, emp_code, gang_code, division_code,
+                    original_line_id, line_no, trx_date, task_code, task_desc, hours, ot, rate, amount,
+                    tapping_type, location_code, status, is_cuti_tahunan, is_cuti_sakit, is_cuti_minggu,
+                    is_cuti_nasional, is_hari_kerja, is_lembur, period_month, period_year, source_table
+                ) OUTPUT INSERTED.id VALUES(
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+            `, [
+                data.history_id, data.original_master_id, data.reg_no, data.reg_date, data.emp_code,
+                data.gang_code, data.division_code, data.original_line_id, data.line_no, data.trx_date,
+                data.task_code, data.task_desc, data.hours, data.ot, data.rate, data.amount,
+                data.tapping_type, data.location_code, data.status, data.is_cuti_tahunan,
+                data.is_cuti_sakit, data.is_cuti_minggu, data.is_cuti_nasional, data.is_hari_kerja,
+                data.is_lembur, data.period_month, data.period_year, data.source_table
+            ]);
+
+            return result[0]?.id;
+        }
     }
 
     /**
@@ -891,25 +993,48 @@ export class HistoryDatabaseService {
     public async saveAdtransHistory(data: HistoryAdtrans): Promise<number> {
         const db = this.getTransactionDatabase();
 
-        const result = await db.query(`
-            INSERT INTO dbo.history_adtrans(
-                history_id, original_master_id, doc_no, doc_date, doc_desc, emp_code, gang_code,
-                division_code, original_line_id, line_no, task_code, task_desc, amount, quantity,
-                uom, category, sub_category, is_dynamic, dynamic_header_name, is_premi_pph,
-                is_koreksi, is_potongan, is_premi, period_month, period_year, source_table
-            ) OUTPUT INSERTED.id VALUES(
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-                `, [
-            data.history_id, data.original_master_id, data.doc_no, data.doc_date, data.doc_desc,
-            data.emp_code, data.gang_code, data.division_code, data.original_line_id, data.line_no,
-            data.task_code, data.task_desc, data.amount, data.quantity, data.uom, data.category,
-            data.sub_category, data.is_dynamic, data.dynamic_header_name, data.is_premi_pph,
-            data.is_koreksi, data.is_potongan, data.is_premi, data.period_month, data.period_year,
-            data.source_table
-        ]);
+        const existing = await db.queryOne<{ id: number }>(`
+            SELECT id FROM dbo.history_adtrans
+            WHERE original_master_id = ? AND original_line_id = ? AND period_month = ? AND period_year = ?
+        `, [data.original_master_id, data.original_line_id, data.period_month, data.period_year]);
 
-        return result[0]?.id;
+        if (existing) {
+            await db.query(`
+                UPDATE dbo.history_adtrans SET
+                    history_id = ?, doc_no = ?, doc_date = ?, doc_desc = ?, emp_code = ?, gang_code = ?,
+                    division_code = ?, line_no = ?, task_code = ?, task_desc = ?, amount = ?, quantity = ?,
+                    uom = ?, category = ?, sub_category = ?, is_dynamic = ?, dynamic_header_name = ?,
+                    is_premi_pph = ?, is_koreksi = ?, is_potongan = ?, is_premi = ?, source_table = ?
+                WHERE id = ?
+            `, [
+                data.history_id, data.doc_no, data.doc_date, data.doc_desc, data.emp_code, data.gang_code,
+                data.division_code, data.line_no, data.task_code, data.task_desc, data.amount, data.quantity,
+                data.uom, data.category, data.sub_category, data.is_dynamic, data.dynamic_header_name,
+                data.is_premi_pph, data.is_koreksi, data.is_potongan, data.is_premi, data.source_table,
+                existing.id
+            ]);
+            return existing.id;
+        } else {
+            const result = await db.query(`
+                INSERT INTO dbo.history_adtrans(
+                    history_id, original_master_id, doc_no, doc_date, doc_desc, emp_code, gang_code,
+                    division_code, original_line_id, line_no, task_code, task_desc, amount, quantity,
+                    uom, category, sub_category, is_dynamic, dynamic_header_name, is_premi_pph,
+                    is_koreksi, is_potongan, is_premi, period_month, period_year, source_table
+                ) OUTPUT INSERTED.id VALUES(
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+            `, [
+                data.history_id, data.original_master_id, data.doc_no, data.doc_date, data.doc_desc,
+                data.emp_code, data.gang_code, data.division_code, data.original_line_id, data.line_no,
+                data.task_code, data.task_desc, data.amount, data.quantity, data.uom, data.category,
+                data.sub_category, data.is_dynamic, data.dynamic_header_name, data.is_premi_pph,
+                data.is_koreksi, data.is_potongan, data.is_premi, data.period_month, data.period_year,
+                data.source_table
+            ]);
+
+            return result[0]?.id;
+        }
     }
 
     /**
@@ -995,20 +1120,39 @@ export class HistoryDatabaseService {
     public async saveGangMemberHistory(data: HistoryGangMember): Promise<number> {
         const db = this.getTransactionDatabase();
 
-        const result = await db.query(`
-            INSERT INTO dbo.history_gang_member(
+        const existing = await db.queryOne<{ id: number }>(`
+            SELECT id FROM dbo.history_gang_member
+            WHERE emp_code = ? AND period_month = ? AND period_year = ?
+        `, [data.emp_code, data.period_month, data.period_year]);
+
+        if (existing) {
+            await db.query(`
+                UPDATE dbo.history_gang_member SET
+                    history_id = ?, gang_code = ?, gang_description = ?, division_code = ?, loc_code = ?,
+                    emp_name = ?, join_date = ?, is_active = ?, source_table = ?
+                WHERE id = ?
+            `, [
+                data.history_id, data.gang_code, data.gang_description, data.division_code, data.loc_code,
+                data.emp_name, data.join_date, data.is_active, data.source_table,
+                existing.id
+            ]);
+            return existing.id;
+        } else {
+            const result = await db.query(`
+                INSERT INTO dbo.history_gang_member(
                     history_id, gang_code, gang_description, division_code, loc_code, emp_code,
                     emp_name, join_date, is_active, period_month, period_year, source_table
                 ) OUTPUT INSERTED.id VALUES(
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
-        `, [
-            data.history_id, data.gang_code, data.gang_description, data.division_code,
-            data.loc_code, data.emp_code, data.emp_name, data.join_date, data.is_active,
-            data.period_month, data.period_year, data.source_table
-        ]);
+            `, [
+                data.history_id, data.gang_code, data.gang_description, data.division_code,
+                data.loc_code, data.emp_code, data.emp_name, data.join_date, data.is_active,
+                data.period_month, data.period_year, data.source_table
+            ]);
 
-        return result[0]?.id;
+            return result[0]?.id;
+        }
     }
 
     /**
@@ -1032,26 +1176,49 @@ export class HistoryDatabaseService {
     public async saveHrEmployeeHistory(data: HistoryHrEmployee): Promise<number> {
         const db = this.getPayrollDatabase(); // HR history goes to extend_db_ptrj
 
-        const result = await db.query(`
-            INSERT INTO dbo.history_hr_employee(
+        const existing = await db.queryOne<{ id: number }>(`
+            SELECT id FROM dbo.history_hr_employee
+            WHERE emp_code = ? AND period_month = ? AND period_year = ?
+        `, [data.emp_code, data.period_month, data.period_year]);
+
+        if (existing) {
+            await db.query(`
+                UPDATE dbo.history_hr_employee SET
+                    history_id = ?, nik = ?, emp_name = ?, company_code = ?, division_code = ?, loc_code = ?,
+                    gang_code = ?, job_code = ?, position = ?, join_date = ?, terminate_date = ?, status = ?,
+                    employee_type = ?, gender = ?, religion = ?, tax_status = ?, ptkp_beras = ?, ptkp_pajak = ?,
+                    upah_dasar = ?, total_hk = ?, source_table = ?
+                WHERE id = ?
+            `, [
+                data.history_id, data.nik, data.emp_name, data.company_code, data.division_code, data.loc_code,
+                data.gang_code, data.job_code, data.position, data.join_date, data.terminate_date, data.status,
+                data.employee_type, data.gender, data.religion, data.tax_status, data.ptkp_beras, data.ptkp_pajak,
+                data.upah_dasar, data.total_hk, data.source_table,
+                existing.id
+            ]);
+            return existing.id;
+        } else {
+            const result = await db.query(`
+                INSERT INTO dbo.history_hr_employee(
                     history_id, period_month, period_year, nik, emp_code, emp_name,
                     company_code, division_code, loc_code, gang_code, job_code, position,
                     join_date, terminate_date, status, employee_type, gender, religion,
                     tax_status, ptkp_beras, ptkp_pajak,
                     upah_dasar, total_hk, source_table
                 ) OUTPUT INSERTED.id VALUES(
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
-                    `, [
-            data.history_id, data.period_month, data.period_year, data.nik, data.emp_code,
-            data.emp_name, data.company_code, data.division_code, data.loc_code, data.gang_code,
-            data.job_code, data.position, data.join_date, data.terminate_date, data.status,
-            data.employee_type, data.gender, data.religion,
-            data.tax_status, data.ptkp_beras, data.ptkp_pajak,
-            data.upah_dasar, data.total_hk, data.source_table
-        ]);
+            `, [
+                data.history_id, data.period_month, data.period_year, data.nik, data.emp_code,
+                data.emp_name, data.company_code, data.division_code, data.loc_code, data.gang_code,
+                data.job_code, data.position, data.join_date, data.terminate_date, data.status,
+                data.employee_type, data.gender, data.religion,
+                data.tax_status, data.ptkp_beras, data.ptkp_pajak,
+                data.upah_dasar, data.total_hk, data.source_table
+            ]);
 
-        return result[0]?.id;
+            return result[0]?.id;
+        }
     }
 
     /**
@@ -1060,22 +1227,43 @@ export class HistoryDatabaseService {
     public async saveHrGangHistory(data: HistoryHrGang): Promise<number> {
         const db = this.getPayrollDatabase(); // HR history goes to extend_db_ptrj
 
-        const result = await db.query(`
-            INSERT INTO dbo.history_hr_gang(
-                        history_id, period_month, period_year, division_code, loc_code,
-                        gang_code, gang_description, mandor_code, mandor_name, mandor_1_code,
-                        mandor_1_name, assistant_code, assistant_name, total_members, is_active, source_table
-                    ) OUTPUT INSERTED.id VALUES(
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                    )
-                        `, [
-            data.history_id, data.period_month, data.period_year, data.division_code, data.loc_code,
-            data.gang_code, data.gang_description, data.mandor_code, data.mandor_name,
-            data.mandor_1_code, data.mandor_1_name, data.assistant_code, data.assistant_name,
-            data.total_members, data.is_active, data.source_table
-        ]);
+        const existing = await db.queryOne<{ id: number }>(`
+            SELECT id FROM dbo.history_hr_gang
+            WHERE gang_code = ? AND period_month = ? AND period_year = ?
+        `, [data.gang_code, data.period_month, data.period_year]);
 
-        return result[0]?.id;
+        if (existing) {
+            await db.query(`
+                UPDATE dbo.history_hr_gang SET
+                    history_id = ?, division_code = ?, loc_code = ?, gang_description = ?, mandor_code = ?,
+                    mandor_name = ?, mandor_1_code = ?, mandor_1_name = ?, assistant_code = ?, assistant_name = ?,
+                    total_members = ?, is_active = ?, source_table = ?
+                WHERE id = ?
+            `, [
+                data.history_id, data.division_code, data.loc_code, data.gang_description, data.mandor_code,
+                data.mandor_name, data.mandor_1_code, data.mandor_1_name, data.assistant_code, data.assistant_name,
+                data.total_members, data.is_active, data.source_table,
+                existing.id
+            ]);
+            return existing.id;
+        } else {
+            const result = await db.query(`
+                INSERT INTO dbo.history_hr_gang(
+                    history_id, period_month, period_year, division_code, loc_code,
+                    gang_code, gang_description, mandor_code, mandor_name, mandor_1_code,
+                    mandor_1_name, assistant_code, assistant_name, total_members, is_active, source_table
+                ) OUTPUT INSERTED.id VALUES(
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+            `, [
+                data.history_id, data.period_month, data.period_year, data.division_code, data.loc_code,
+                data.gang_code, data.gang_description, data.mandor_code, data.mandor_name,
+                data.mandor_1_code, data.mandor_1_name, data.assistant_code, data.assistant_name,
+                data.total_members, data.is_active, data.source_table
+            ]);
+
+            return result[0]?.id;
+        }
     }
 
     // ============================================================================
