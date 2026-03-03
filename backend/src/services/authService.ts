@@ -224,8 +224,8 @@ export class AuthService {
                     safeUser.divisions = safeUser.divisions.map(d => {
                         const strD = String(d).toUpperCase().trim();
                         if (strD === 'AREC') return 'ARC';
-                        if (strD === 'WORKSHOP AR' || strD === 'WORKSHOP_AR' || strD === 'WKS AR') return 'WKS_AR';
-                        if (strD === 'WORKSHOP PG' || strD === 'WORKSHOP_PG' || strD === 'WKS PG' || strD === 'WORKSHOP P.G' || strD === 'WORKSHOP P.G.') return 'WKS_PG';
+                        if (strD === 'WORKSHOP AR' || strD === 'WORKSHOP_AR' || strD === 'WKS AR' || strD === 'HMC') return 'WKS_AR';
+                        if (strD === 'WORKSHOP PG' || strD === 'WORKSHOP_PG' || strD === 'WKS PG' || strD === 'WORKSHOP P.G' || strD === 'WORKSHOP P.G.' || strD === 'AMC') return 'WKS_PG';
                         if (strD === 'NURSERY') return 'NRS';
                         if (strD === 'INFRA') return 'INF';
                         return strD;
@@ -326,8 +326,8 @@ export class AuthService {
                     divisions = divisions.map(d => {
                         const strD = String(d).toUpperCase().trim();
                         if (strD === 'AREC') return 'ARC';
-                        if (strD === 'WORKSHOP AR' || strD === 'WORKSHOP_AR' || strD === 'WKS AR') return 'WKS_AR';
-                        if (strD === 'WORKSHOP PG' || strD === 'WORKSHOP_PG' || strD === 'WKS PG' || strD === 'WORKSHOP P.G' || strD === 'WORKSHOP P.G.') return 'WKS_PG';
+                        if (strD === 'WORKSHOP AR' || strD === 'WORKSHOP_AR' || strD === 'WKS AR' || strD === 'HMC') return 'WKS_AR';
+                        if (strD === 'WORKSHOP PG' || strD === 'WORKSHOP_PG' || strD === 'WKS PG' || strD === 'WORKSHOP P.G' || strD === 'WORKSHOP P.G.' || strD === 'AMC') return 'WKS_PG';
                         return strD;
                     });
 

@@ -36,16 +36,16 @@ export class DivisionDefinition {
         },
         "WKS_PG": {
             "name": "Workshop Parit Gunung",
-            "source_division": null, // Use dynamic to find gangs, and manual aggregation entries
-            "pattern": null,
+            "source_division": "P1A",
+            "pattern": "^AMC$",
             "description_pattern": "workshop.*(parit|pge|p\\.g|harapan\\s*mukti)",
             "exclude_from_source": true,
             "description": "Divisi Workshop Parit Gunung"
         },
         "WKS_AR": {
             "name": "Workshop Air Ruak",
-            "source_division": null,
-            "pattern": null,
+            "source_division": "AB2",
+            "pattern": "^HMC$",
             "description_pattern": "workshop.*(air\\s*ruak|are|a\\.r)|.*traksi.*air\\s*ruak",
             "exclude_from_source": true,
             "description": "Divisi Workshop Air Ruak"
@@ -74,9 +74,11 @@ export class DivisionDefinition {
         "WORKSHOP_AR": "WKS_AR",
         "WORKSHOP AR": "WKS_AR",
         "WKS AR": "WKS_AR",
+        "HMC": "WKS_AR",
         "WORKSHOP_PG": "WKS_PG",
         "WORKSHOP PG": "WKS_PG",
-        "WKS PG": "WKS_PG"
+        "WKS PG": "WKS_PG",
+        "AMC": "WKS_PG"
     };
 
     public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "WORKSHOP", "ARC", "MILL"];

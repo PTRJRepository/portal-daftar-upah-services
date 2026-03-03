@@ -586,9 +586,14 @@ export const generateMonthlyTaxExcel = async (
     // SHEET 3: FORMAT STANDAR PAJAK (Dynamic Premi + Formula)
     // ─────────────────────────────────────────────────────────
     // Sheet variable created upfront
+    stdSheet.pageSetup.orientation = 'landscape';
+    stdSheet.pageSetup.paperSize = 9; // A4
+    stdSheet.pageSetup.fitToPage = true;
+    stdSheet.pageSetup.fitToWidth = 1;
+    stdSheet.pageSetup.fitToHeight = 0;
+    stdSheet.pageSetup.margins = { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 };
 
     // --- Build dynamic column layout ---
-    // User-specified column order (no NAMA ORANG TUA, no Total Tunj, no Total Premi, no Upah Kotor)
     const STD_COL_NO = 1;
     const STD_COL_NAMA = 2;
     const STD_COL_NIK = 3;
@@ -599,22 +604,17 @@ export const generateMonthlyTaxExcel = async (
     const STD_COL_PTKP = 8;
     const STD_COL_TER = 9;
 
-    // Income & Jaminan Majikan (right after identity)
     const STD_COL_GAJI_POKOK = 10;
-    const STD_COL_ASTEK = 11;       // Astek Ins (0.84%) — right after Gaji Pokok
-    const STD_COL_BPJS_KES = 12;    // BPJS KES (4%) — right after Astek
+    const STD_COL_ASTEK = 11;
+    const STD_COL_BPJS_KES = 12;
+    const STD_COL_BERAS = 13;
+    const STD_COL_JAB = 14;
+    const STD_COL_SERVICE_TIME = 15;
+    const STD_COL_MK = 16;
 
-    // Tunjangan
-    const STD_COL_BERAS = 13;       // Rice Allow
-    const STD_COL_JAB = 14;         // Structural Allow
-    const STD_COL_SERVICE_TIME = 15; // Service Time Allow = Lembur value
-    const STD_COL_MK = 16;          // Masa Kerja (kept as separate column)
-
-    // Dynamic premi columns (17 .. 16+N)
     const STD_COL_PREMI_START = 17;
     const STD_COL_PREMI_END = 16 + allPremiKeys.length;
 
-    // Fixed columns after dynamic premi (NO Total Premi, NO Upah Kotor)
     const STD_COL_POT_KOR = STD_COL_PREMI_END + 1;
     const STD_COL_POT_ALPA = STD_COL_POT_KOR + 1;
     const STD_COL_THR = STD_COL_POT_ALPA + 1;
@@ -627,8 +627,8 @@ export const generateMonthlyTaxExcel = async (
     // Build headers array
     const stdHeaders: { header: string; width: number; meta_key?: string }[] = [
         { header: 'NO.', width: 5 },
-        { header: 'NAMA KARYAWAN', width: 25 },
-        { header: '" N I K / PASPOR "', width: 18 },
+        { header: 'NAMA KARYAWAN', width: 28 },
+        { header: 'N I K', width: 18 },
         { header: 'N P W P', width: 18 },
         { header: 'A L A M A T', width: 35 },
         { header: 'JABATAN', width: 20 },
@@ -636,65 +636,71 @@ export const generateMonthlyTaxExcel = async (
         { header: 'PTKP', width: 8 },
         { header: 'TER', width: 8 },
         { header: 'Gaji Pokok', width: 15, meta_key: 'gaji_pokok' },
-        { header: `Astek Ins (${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%)`, width: 15, meta_key: 'astek_jht_majikan' },
-        { header: `BPJS KESEHATAN (${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%)`, width: 18, meta_key: 'bpjs_kes_majikan' },
+        { header: `Astek Ins\n(${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%)`, width: 15, meta_key: 'astek_jht_majikan' },
+        { header: `BPJS KES\n(${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%)`, width: 15, meta_key: 'bpjs_kes_majikan' },
         { header: 'Rice Allow', width: 15, meta_key: 'tunjangan_beras' },
         { header: 'Structural Allow', width: 15, meta_key: 'tunjangan_jabatan' },
         { header: 'Service Time Allow', width: 15, meta_key: 'tunjangan_lembur' },
         { header: 'Masa Kerja', width: 15, meta_key: 'masa_kerja' },
     ];
 
-    // Dynamic premi headers — use the docDesc-based key directly
     for (const key of allPremiKeys) {
-        stdHeaders.push({ header: key, width: 18, meta_key: 'premi' });
+        stdHeaders.push({ header: key, width: 15, meta_key: 'premi' });
     }
 
-    // Fixed after dynamic premi
-    stdHeaders.push({ header: 'Potongan Koreksi (-)', width: 18 });
-    stdHeaders.push({ header: 'POT. ALPA & CTH (-)', width: 20 });
+    stdHeaders.push({ header: 'Potongan\nKoreksi (-)', width: 15 });
+    stdHeaders.push({ header: 'POT. ALPA\n& CTH (-)', width: 15 });
     stdHeaders.push({ header: 'THR', width: 15, meta_key: 'thr' });
     stdHeaders.push({ header: 'Bonus', width: 15, meta_key: 'bonus' });
-    stdHeaders.push({ header: 'Penghasilan Bruto', width: 18 });
-    stdHeaders.push({ header: 'Tarif TER', width: 10 });
+    stdHeaders.push({ header: 'Penghasilan\nBruto', width: 18 });
+    stdHeaders.push({ header: 'Tarif\nTER', width: 10 });
     stdHeaders.push({ header: 'PPh 21', width: 15, meta_key: 'pph21' });
 
     stdSheet.columns = stdHeaders.map((col, idx) => ({ key: `col${idx}`, width: col.width }));
 
-    // Helper for letters in this sheet
     const sL = colLetter;
 
-    // --- NEW: Header Row 2 (TaskCode) ---
+    // --- Row 1: Title ---
+    stdSheet.mergeCells(`A1:${sL(STD_TOTAL_COLS)}1`);
+    const stdTitleCell = stdSheet.getCell('A1');
+    stdTitleCell.value = `DAFTAR RINCIAN PPH21 - ${division} - PERIODE ${month}/${year}`;
+    stdTitleCell.font = { size: 16, bold: true, name: 'Arial', color: { argb: '1E293B' } };
+    stdTitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    stdSheet.getRow(1).height = 35;
+
+    // --- Header Row 2 (TaskCode) ---
     const taskRow = stdSheet.getRow(2);
-    taskRow.height = 25;
+    taskRow.height = 20;
     const metaRef = data.employees[0]?.component_metadata || {};
     stdHeaders.forEach((col, idx) => {
         const cell = taskRow.getCell(idx + 1);
         if (col.meta_key && metaRef[col.meta_key]) {
-            cell.value = `Task: ${metaRef[col.meta_key].task_code}`;
+            cell.value = metaRef[col.meta_key].task_code;
         }
-        applyHeaderStyle(cell, 'F1F5F9', '475569');
-        cell.font = { size: 8, italic: true, name: 'Arial' };
+        applyHeaderStyle(cell, 'F8FAFC', '64748B');
+        cell.font = { size: 8, italic: true, name: 'Arial', color: { argb: '64748B' } };
     });
 
-    // --- NEW: Header Row 3 (GL Accounts) ---
+    // --- Header Row 3 (GL Accounts) ---
     const glRow = stdSheet.getRow(3);
-    glRow.height = 25;
+    glRow.height = 20;
     stdHeaders.forEach((col, idx) => {
         const cell = glRow.getCell(idx + 1);
         if (col.meta_key && metaRef[col.meta_key]) {
             cell.value = `DR:${metaRef[col.meta_key].dr_acct} CR:${metaRef[col.meta_key].cr_acct}`;
         }
-        applyHeaderStyle(cell, 'F1F5F9', '475569');
-        cell.font = { size: 8, italic: true, name: 'Arial' };
+        applyHeaderStyle(cell, 'F8FAFC', '64748B');
+        cell.font = { size: 7, italic: true, name: 'Arial', color: { argb: '64748B' } };
     });
 
-    // Header Row 4 (Main Labels)
+    // --- Header Row 4 (Main Labels) ---
     const stdHeaderRow = stdSheet.getRow(4);
-    stdHeaderRow.height = 40;
+    stdHeaderRow.height = 45;
     stdHeaders.forEach((col, idx) => {
         const cell = stdHeaderRow.getCell(idx + 1);
         cell.value = col.header;
-        applyHeaderStyle(cell, '1E3A8A', 'FFFFFF');
+        applyHeaderStyle(cell, '334155', 'FFFFFF'); // Professional Slate color
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     });
 
     // Letter mappings for formulas
@@ -723,9 +729,8 @@ export const generateMonthlyTaxExcel = async (
         const daysInMonth = new Date(year, month, 0).getDate();
         const gajiPokok = (emp.upah_dasar || 0) * daysInMonth;
 
-        // Identity (no NAMA ORANG TUA column)
         row.getCell(STD_COL_NO).value = i + 1;
-        row.getCell(STD_COL_NAMA).value = emp.emp_name; // Full name with parent in brackets
+        row.getCell(STD_COL_NAMA).value = emp.emp_name;
         row.getCell(STD_COL_NIK).value = emp.nik;
         row.getCell(STD_COL_NPWP).value = emp.npwp || '';
         row.getCell(STD_COL_ALAMAT).value = emp.alamat || '';
@@ -734,20 +739,14 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(STD_COL_PTKP).value = emp.status_ptkp;
         row.getCell(STD_COL_TER).value = emp.kategori_ter;
 
-        // Gaji Pokok (Upah Dasar × days in month)
         row.getCell(STD_COL_GAJI_POKOK).value = gajiPokok;
-
-        // Jaminan Majikan (right after Gaji Pokok)
         row.getCell(STD_COL_ASTEK).value = emp.astek_jht_majikan || 0;
         row.getCell(STD_COL_BPJS_KES).value = emp.bpjs_kes_majikan || 0;
-
-        // Tunjangan
         row.getCell(STD_COL_BERAS).value = emp.tunjangan_beras || 0;
         row.getCell(STD_COL_JAB).value = emp.tunjangan_jabatan || 0;
-        row.getCell(STD_COL_SERVICE_TIME).value = emp.tunjangan_lembur || 0; // Lembur → Service Time Allow
-        row.getCell(STD_COL_MK).value = emp.tunjangan_masa_kerja || 0; // Masa Kerja separate column
+        row.getCell(STD_COL_SERVICE_TIME).value = emp.tunjangan_lembur || 0;
+        row.getCell(STD_COL_MK).value = emp.tunjangan_masa_kerja || 0;
 
-        // Dynamic Premi columns
         for (let pi = 0; pi < allPremiKeys.length; pi++) {
             const colIdx = STD_COL_PREMI_START + pi;
             const keyName = allPremiKeys[pi];
@@ -755,18 +754,12 @@ export const generateMonthlyTaxExcel = async (
             row.getCell(colIdx).value = val;
         }
 
-        // Potongan Koreksi (negative — it's a deduction)
         row.getCell(STD_COL_POT_KOR).value = -(emp.pot_koreksi || 0);
-
-        // Pot Alpa & Cuti (negative — GP Standar - GP Aktual, as deduction)
         const potAlpaCuti = gajiPokok - (emp.gaji_pokok_aktual || 0);
         row.getCell(STD_COL_POT_ALPA).value = potAlpaCuti > 0 ? -potAlpaCuti : 0;
-
-        // THR & Bonus
         row.getCell(STD_COL_THR).value = emp.thr_amount || 0;
         row.getCell(STD_COL_EXGRATIA).value = emp.exgratia_amount || 0;
 
-        // PENGHASILAN BRUTO = Gaji Pokok + Astek + BPJS + Beras + Jab + ServiceTime + MasaKerja + SUM(Premi) + PotKor + PotAlpa + THR + Bonus
         const premiSumFormula = allPremiKeys.length === 1
             ? `${sPremiStart}${r}`
             : `SUM(${sPremiStart}${r}:${sPremiEnd}${r})`;
@@ -775,29 +768,29 @@ export const generateMonthlyTaxExcel = async (
             result: emp.penghasilan_bruto || 0
         };
 
-        // Tarif TER
         row.getCell(STD_COL_TARIF).value = (emp.tarif_pajak_ter || 0) / 100;
         row.getCell(STD_COL_TARIF).numFmt = '0.00%';
-
-        // PPH21 = ROUND(Bruto × Tarif, 0)
         row.getCell(STD_COL_PPH21).value = {
             formula: `ROUND(${sBruto}${r}*${sTarif}${r},0)`,
             result: emp.pph21_ter || 0
         };
 
-        // Number Formatting
         for (let c = STD_COL_GAJI_POKOK; c <= STD_TOTAL_COLS; c++) {
             if (c !== STD_COL_TARIF) row.getCell(c).numFmt = numFormat;
         }
 
-        // Alignment
         [STD_COL_NO, STD_COL_GENDER, STD_COL_PTKP, STD_COL_TER].forEach(c =>
             row.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' }
         );
 
-        // Borders
+        row.getCell(STD_COL_NAMA).alignment = { wrapText: true, vertical: 'middle' };
+        row.getCell(STD_COL_ALAMAT).alignment = { wrapText: true, vertical: 'middle' };
+
         for (let c = 1; c <= STD_TOTAL_COLS; c++) {
             row.getCell(c).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            if (i % 2 === 1) {
+                row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F8FAFC' } };
+            }
         }
 
         stdRowIdx++;
@@ -808,19 +801,43 @@ export const generateMonthlyTaxExcel = async (
     stdSheet.mergeCells(`A${stdRowIdx}:${sL(STD_COL_TER)}${stdRowIdx}`);
     stdFooter.getCell(1).value = 'GRAND TOTAL';
     stdFooter.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
-    stdFooter.getCell(1).font = { bold: true };
-    stdFooter.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
+    stdFooter.getCell(1).font = { bold: true, color: { argb: 'FFFFFF' } };
+    stdFooter.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '334155' } };
 
     for (let c = STD_COL_GAJI_POKOK; c <= STD_TOTAL_COLS; c++) {
-        if (c !== STD_COL_TARIF) { // Skip Tarif TER
+        if (c !== STD_COL_TARIF) {
             const letter = sL(c);
             stdFooter.getCell(c).value = { formula: `SUM(${letter}5:${letter}${stdRowIdx - 1})` };
             stdFooter.getCell(c).numFmt = numFormat;
         }
-        stdFooter.getCell(c).font = { bold: true };
-        stdFooter.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
+        stdFooter.getCell(c).font = { bold: true, color: { argb: 'FFFFFF' } };
+        stdFooter.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '334155' } };
         stdFooter.getCell(c).border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
     }
+
+    // --- Signatures ---
+    stdRowIdx += 2;
+    const sigRow1 = stdSheet.getRow(stdRowIdx);
+    const sigRowEnd = sigRow1.number + 5;
+
+    const sigLabels = [
+        { label: 'Dibuat Oleh:', title: 'Admin Payroll', col: sL(2) },
+        { label: 'Diperiksa Oleh:', title: 'HR Manager', col: sL(Math.floor(STD_TOTAL_COLS / 2)) },
+        { label: 'Disetujui Oleh:', title: 'General Manager', col: sL(STD_TOTAL_COLS - 2) }
+    ];
+
+    sigLabels.forEach(sig => {
+        stdSheet.getCell(`${sig.col}${stdRowIdx}`).value = sig.label;
+        stdSheet.getCell(`${sig.col}${stdRowIdx}`).font = { bold: true, name: 'Arial' };
+        stdSheet.getCell(`${sig.col}${stdRowIdx}`).alignment = { horizontal: 'center' };
+
+        stdSheet.getCell(`${sig.col}${sigRowEnd}`).value = '( _____________________ )';
+        stdSheet.getCell(`${sig.col}${sigRowEnd}`).alignment = { horizontal: 'center' };
+
+        stdSheet.getCell(`${sig.col}${sigRowEnd + 1}`).value = sig.title;
+        stdSheet.getCell(`${sig.col}${sigRowEnd + 1}`).alignment = { horizontal: 'center' };
+        stdSheet.getCell(`${sig.col}${sigRowEnd + 1}`).font = { italic: true, size: 9 };
+    });
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);

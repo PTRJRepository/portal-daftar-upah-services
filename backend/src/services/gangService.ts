@@ -52,7 +52,9 @@ export class GangService {
         "WORKSHOP_AR": "WKS_AR",
         "WORKSHOP AR": "WKS_AR",
         "WKS AR": "WKS_AR",
-        "AREC": "ARC"
+        "HMC": "WKS_AR",
+        "AREC": "ARC",
+        "AMC": "WKS_PG"
     };
 
     private constructor() {

@@ -68,6 +68,17 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         setExpandedRows(newExpanded);
     };
 
+    const renderGLInfo = (meta) => {
+        if (!meta) return null;
+        return (
+            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '8px' }}>
+                <span>Task: <strong>{meta.task_code}</strong></span>
+                <span>DR: <strong>{meta.dr_acct}</strong></span>
+                <span>CR: <strong>{meta.cr_acct}</strong></span>
+            </div>
+        );
+    };
+
     const loadData = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -225,19 +236,20 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                                                     <tr><td style={{ padding: '4px 0' }}>Upah Dasar</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.upah_dasar)}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Ideal <span style={{ color: '#64748b', fontSize: '10px' }}>(HK × Upah Dasar)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.hk || 0) * (emp.upah_dasar || 0))}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0' }}>Gaji Standar <span style={{ color: '#64748b', fontSize: '10px' }}>(UD × 30)</span></td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.upah_dasar || 0) * 30)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Aktual</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.gaji_pokok_aktual)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Gaji Pokok Aktual {renderGLInfo(emp.component_metadata?.gaji_pokok)}</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.gaji_pokok_aktual)}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0' }}>Koreksi HK</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.koreksi_hk)}</td></tr>
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
 
-                                                                    <tr><td style={{ paddingTop: '8px' }}>Tunjangan Beras</td><td className="text-right" style={{ paddingTop: '8px' }}>{formatNumber(emp.tunjangan_beras)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Jabatan</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_jabatan)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Masa Kerja</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_masa_kerja)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Lembur</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_lembur)}</td></tr>
+                                                                    <tr><td style={{ paddingTop: '8px' }}>Tunjangan Beras {renderGLInfo(emp.component_metadata?.tunjangan_beras)}</td><td className="text-right" style={{ paddingTop: '8px' }}>{formatNumber(emp.tunjangan_beras)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Jabatan {renderGLInfo(emp.component_metadata?.tunjangan_jabatan)}</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_jabatan)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Masa Kerja {renderGLInfo(emp.component_metadata?.masa_kerja)}</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_masa_kerja)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Lembur {renderGLInfo(emp.component_metadata?.tunjangan_lembur)}</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_lembur)}</td></tr>
 
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
 
                                                                     {/* Uraian Premi - Brondol (tetap) + Dynamic Premi Items */}
-                                                                    <tr><td colSpan={2} style={{ paddingTop: '8px', fontWeight: 'bold', color: '#7c3aed', fontSize: '11px' }}>Uraian Premi:</td></tr>
+                                                                    <tr><td colSpan={2} style={{ paddingTop: '8px', fontWeight: 'bold', color: '#7c3aed', fontSize: '11px' }}>Uraian Premi: {renderGLInfo(emp.component_metadata?.premi)}</td></tr>
+
                                                                     {/* Premi Brondol - Always shown (fixed premise) */}
                                                                     <tr><td style={{ padding: '3px 0 3px 8px', color: '#7c3aed' }}>Brondol</td><td className="text-right" style={{ padding: '3px 0', color: '#7c3aed' }}>{formatNumber(emp.premi_brondol)}</td></tr>
                                                                     {/* Dynamic Premi Items (non-tetap) */}
@@ -289,28 +301,30 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                                             <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                                                                 <tbody>
                                                                     <tr><td style={{ padding: '4px 0' }}>Upah Kotor</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.upah_kotor)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0', color: '#16a34a' }}>(+) BPJS Kesehatan (Ditanggung Majikan 4%) <span style={{ color: '#64748b', fontSize: '10px', display: 'block' }}>4% × (Gaji Standar + Tunj. Masa Kerja)</span></td><td className="text-right" style={{ padding: '4px 0', color: '#16a34a' }}>{formatNumber(emp.bpjs_kes_majikan)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0', color: '#16a34a' }}>(+) BPJS Kesehatan (Ditanggung Majikan 4%) {renderGLInfo(emp.component_metadata?.bpjs_kes_majikan)} <span style={{ color: '#64748b', fontSize: '10px', display: 'block' }}>4% × (Gaji Standar + Tunj. Masa Kerja)</span></td><td className="text-right" style={{ padding: '4px 0', color: '#16a34a' }}>{formatNumber(emp.bpjs_kes_majikan)}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0', color: '#16a34a' }}>(+) ASTEK JKK/JKM (Ditanggung Majikan 0.84%) <span style={{ color: '#64748b', fontSize: '10px', display: 'block' }}>0.84% × (Gaji Standar + Tunj. Masa Kerja)</span></td><td className="text-right" style={{ padding: '4px 0', color: '#16a34a' }}>{formatNumber(emp.astek_jht_majikan)}</td></tr>
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px solid #94a3b8' }}></td></tr>
+
                                                                     <tr>
                                                                         <td style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px' }}>TOTAL PENGHASILAN BRUTO</td>
                                                                         <td className="text-right" style={{ paddingTop: '8px', fontWeight: 'bold', fontSize: '13px', color: '#0f172a' }}>{formatNumber(emp.penghasilan_bruto)}</td>
                                                                     </tr>
-                                                                </tbody>
-                                                            </table>
+                                                                    </tbody>
+                                                                    </table>
 
-                                                            <div style={{ marginTop: '24px', padding: '12px', backgroundColor: '#f1f5f9', borderRadius: '4px', borderLeft: '4px solid #3b82f6' }}>
-                                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#1e293b' }}>Kalkulasi PPH21 (Metode TER)</h4>
-                                                                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                                                                    <div style={{ marginTop: '24px', padding: '12px', backgroundColor: '#f1f5f9', borderRadius: '4px', borderLeft: '4px solid #3b82f6' }}>
+                                                                    <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#1e293b' }}>Kalkulasi PPH21 (Metode TER)</h4>
+                                                                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                                                                     <tbody>
                                                                         <tr><td style={{ padding: '2px 0' }}>Status PTKP Master</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{emp.status_ptkp}</td></tr>
                                                                         <tr><td style={{ padding: '2px 0' }}>Kategori TER</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{emp.kategori_ter}</td></tr>
                                                                         <tr><td style={{ padding: '2px 0' }}>Tarif Pajak Efektif</td><td className="text-right" style={{ padding: '2px 0', fontWeight: 'bold' }}>{formatPercent(emp.tarif_pajak_ter)}</td></tr>
                                                                         <tr><td colSpan={2} style={{ height: '4px', borderBottom: '1px solid #94a3b8' }}></td></tr>
                                                                         <tr>
-                                                                            <td style={{ paddingTop: '4px', fontWeight: 'bold' }}>POTONGAN PPH21</td>
+                                                                            <td style={{ paddingTop: '4px', fontWeight: 'bold' }}>POTONGAN PPH21 {renderGLInfo(emp.component_metadata?.pph21)}</td>
                                                                             <td className="text-right" style={{ paddingTop: '4px', fontWeight: 'bold', color: '#dc2626' }}>{formatNumber(emp.pph21_ter)}</td>
                                                                         </tr>
+
                                                                     </tbody>
                                                                 </table>
                                                             </div>
