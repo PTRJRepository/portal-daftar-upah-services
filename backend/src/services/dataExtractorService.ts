@@ -959,6 +959,53 @@ export class DataExtractorService {
                 WHERE ${gangCondition}
                 ORDER BY emp_code
             `);
+
+            // [FALLBACK] If no data in base table (HR_GANGLN) for current period,
+            // try ARC table (PR_GANGLN_ARC) as fallback - data may have been archived
+            if (rows.length === 0) {
+                console.log(`[DataExtractor] No data in HR_GANGLN for current period ${month}/${year}, falling back to PR_GANGLN_ARC...`);
+
+
+
+                const { accMonth: fallbackAccMonth, accYear: fallbackAccYear } = currentPeriodService.calendarToAccMonth(month, year);
+                console.log(`[DataExtractor] ARC Fallback: calendar ${month}/${year} -> AccMonth ${fallbackAccMonth}/AccYear ${fallbackAccYear}`);
+
+                // Build ARC-compatible gang condition (PR_GANG uses GangID/Description, not GangCode)
+                let arcCondition = gangCondition;
+                if (gangCodeInput) {
+                    arcCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
+                }
+
+                rows = await db.query<any>(`
+                    SELECT DISTINCT
+                        RTRIM(e.EmpCode) as emp_code,
+                        e.NewICNo as actual_nik,
+                        e.EmpName as emp_name,
+                        e.Gender as gender,
+                        RTRIM(e.LocCode) as loc_code,
+                        COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
+                        COALESCE(p.PayRate, 0) as pay_rate,
+                        COALESCE(p.RiceRation, 0) as beras_rate,
+                        em.AppJoinGrpDate as join_date,
+                        e.ResAddress as res_address,
+                        e.HREmpType as hr_emp_type
+                    FROM HR_EMPLOYEE e
+                    INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
+                        AND gl.AccMonth = ?
+                        AND gl.AccYear = ?
+                    INNER JOIN PR_GANG g ON g.ID = gl.MasterID
+                    LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                    LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                    WHERE ${arcCondition}
+                    ORDER BY emp_code
+                `, [fallbackAccMonth, fallbackAccYear]);
+
+                if (rows.length > 0) {
+                    console.log(`[DataExtractor] ARC Fallback successful: found ${rows.length} employees from PR_GANGLN_ARC`);
+                } else {
+                    console.log(`[DataExtractor] ARC Fallback: still no data found in PR_GANGLN_ARC`);
+                }
+            }
         }
 
         // Fetch HR data overrides (e.g. NIK KTP)

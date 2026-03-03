@@ -61,29 +61,35 @@ export class EmployeeEstateService {
         // Given SQL Server, MERGE is appropriate.
 
         const queries = jobs.map(job => {
+            const jabatan = job.jabatan || 'karyawan panen';
             return {
                 sql: `
                     MERGE INTO employee_estate AS target
-                    USING (SELECT @empcode AS empcode) AS source
+                    USING (SELECT ? AS empcode) AS source
                     ON (target.empcode = source.empcode)
                     WHEN MATCHED THEN
                         UPDATE SET 
-                            jabatan = @jabatan,
-                            employee_name = @employee_name,
-                            gang = @gang,
-                            divisi_id = @divisi_id,
+                            jabatan = ?,
+                            employee_name = ?,
+                            gang = ?,
+                            divisi_id = ?,
                             updated_at = GETDATE()
                     WHEN NOT MATCHED THEN
                         INSERT (empcode, employee_name, gang, divisi_id, jabatan, updated_at)
-                        VALUES (@empcode, @employee_name, @gang, @divisi_id, @jabatan, GETDATE());
+                        VALUES (?, ?, ?, ?, ?, GETDATE());
                 `,
-                params: {
-                    empcode: job.empcode,
-                    employee_name: job.employee_name,
-                    gang: job.gang,
-                    divisi_id: job.divisi_id,
-                    jabatan: job.jabatan || 'Karyawan'
-                }
+                params: [
+                    job.empcode,
+                    jabatan,
+                    job.employee_name,
+                    job.gang,
+                    job.divisi_id,
+                    job.empcode,
+                    job.employee_name,
+                    job.gang,
+                    job.divisi_id,
+                    jabatan
+                ]
             };
         });
 

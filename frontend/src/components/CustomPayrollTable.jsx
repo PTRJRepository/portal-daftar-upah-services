@@ -390,7 +390,7 @@ export default function CustomPayrollTable({
         // Optimistic update
         setRows(prev => prev.map(r => r.nik === empCode ? { ...r, jabatan_estate: newTitle } : r));
         try {
-            const res = await fetch(`${API_URL}/employee-estate/update`, {
+            const res = await fetch('/employee-estate/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ empCode, jobTitle: newTitle })
@@ -1011,7 +1011,7 @@ export default function CustomPayrollTable({
         cols.push({
             field: 'jabatan_estate',
             headers: ['IDENTITAS', null, null, 'JABATAN'],
-            w: 130,
+            w: 180,
             className: 'text-left p-0', // p-0 to allow select to fill
             render: (row) => {
                 if (row.type !== 'employee') return row.jabatan_estate || '-';

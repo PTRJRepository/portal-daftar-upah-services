@@ -359,7 +359,7 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                         const tp = colMap['total_premi'];
                         const kor = colMap['pot_koreksi'];
                         if (gp && tt && tp && kor) {
-                            cell.value = { formula: `SUM(${gp}${excelRow.number},${tt}${excelRow.number},${tp}${excelRow.number})+${kor}${excelRow.number}` };
+                            cell.value = { formula: `SUM(${gp}${excelRow.number},${tt}${excelRow.number},${tp}${excelRow.number})-${kor}${excelRow.number}` };
                             return;
                         }
                     } else if (col.field === 'total_potongan') {
