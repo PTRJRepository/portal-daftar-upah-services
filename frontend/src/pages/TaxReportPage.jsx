@@ -233,8 +233,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                                                     <tr><td style={{ padding: '4px 0' }}>Tunjangan Jabatan</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_jabatan)}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0' }}>Tunjangan Masa Kerja</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_masa_kerja)}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0' }}>Tunjangan Lembur</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber(emp.tunjangan_lembur)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0' }}>Tunjangan Lainnya</td><td className="text-right" style={{ padding: '4px 0' }}>{formatNumber((emp.total_tunjangan || 0) - (emp.tunjangan_beras || 0) - (emp.tunjangan_jabatan || 0) - (emp.tunjangan_masa_kerja || 0) - (emp.tunjangan_lembur || 0))}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Tunjangan</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_tunjangan)}</td></tr>
+
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
 
                                                                     {/* Uraian Premi - Brondol (tetap) + Dynamic Premi Items */}

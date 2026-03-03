@@ -1562,12 +1562,16 @@ export class DataExtractorService {
 
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
 
-            // [MODIFIED] Use ONLY TaskCode as title (shorter, cleaner headers)
-            // TaskCode is typically short like "P01", "D01", etc.
+            // [MODIFIED] Use ONLY TaskCode as title (shorter, cleaner headers) for normal potongan.
+            // But for KOREKSI (Potongan Upah Kotor), user requested to use DocDesc.
             if (!titleMap[key]) {
-                // Priority: TaskCode > Title (fallback) > key (last resort)
-                const taskCode = r.task_code?.trim();
-                titleMap[key] = taskCode || title;
+                if (key.startsWith('KOREKSI')) {
+                    titleMap[key] = title; // title is already the clean DocDesc
+                } else {
+                    // Priority: TaskCode > Title (fallback) > key (last resort)
+                    const taskCode = r.task_code?.trim();
+                    titleMap[key] = taskCode || title;
+                }
             }
         }
 

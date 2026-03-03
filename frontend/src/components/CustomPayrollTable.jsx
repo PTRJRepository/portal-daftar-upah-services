@@ -1092,8 +1092,7 @@ export default function CustomPayrollTable({
         cols.push({ field: 'lembur_jumlah', headers: ['TUNJANGAN', 'LEMBUR', null, 'JUMLAH'], w: 80, className: 'text-right' });
 
         // TUNJANGAN > TOTAL
-        cols.push({ field: 'total_tunjangan', headers: ['TUNJANGAN', null, null, 'TOTAL TUNJANGAN'], w: 100, className: 'text-right font-bold' });
-
+        // Tunjangan columns are added dynamically above
         // PREMI - Static BRONDOL column (from separate query, always show if has values)
         // BRONDOL is not in dynamic_premi_headers because it comes from brondol_data query
         cols.push({ field: 'premi_brondol', headers: ['PREMI', null, null, 'BRONDOL'], w: 80, className: 'text-right' });

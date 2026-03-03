@@ -119,7 +119,6 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
         cols.push({ field: 'masa_kerja_jumlah', headerName: 'TUNJ MK', width: 12, isNumeric: true });
         cols.push({ field: 'lembur_jam', headerName: 'JAM LEMBUR', width: 10, isNumeric: true });
         cols.push({ field: 'lembur_jumlah', headerName: 'UANG LEMBUR', width: 15, isNumeric: true });
-        cols.push({ field: 'total_tunjangan', headerName: 'TOTAL TUNJANGAN', width: 16, isNumeric: true });
 
         // Premi - Find all dynamic keys securely
         cols.push({ field: 'premi_brondol', headerName: 'PREMI BRONDOL', width: 12, isNumeric: true });
@@ -340,14 +339,7 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                     cell.numFmt = col.field === 'lembur_jam' ? '#,##0.0' : '#,##0';
 
                     // === APPLY FORMULAS FOR TOTALS ===
-                    if (col.field === 'total_tunjangan') {
-                        const sumCols = ['beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah']
-                            .map(f => colMap[f]).filter(Boolean);
-                        if (sumCols.length > 0) {
-                            cell.value = { formula: `SUM(${sumCols.map(c => `${c}${excelRow.number}`).join(',')})` };
-                            return;
-                        }
-                    } else if (col.field === 'total_premi') {
+                    if (col.field === 'total_premi') {
                         const premCols = flatCols.filter(c => c.field.startsWith('premi_') && c.field !== 'premi_pph').map(c => colMap[c.field]);
                         if (premCols.length > 0) {
                             cell.value = { formula: `SUM(${premCols.map(c => `${c}${excelRow.number}`).join(',')})` };
@@ -355,11 +347,20 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                         }
                     } else if (col.field === 'jumlah_upah_kotor') {
                         const gp = colMap['gaji_pokok'];
-                        const tt = colMap['total_tunjangan'];
+                        const tb = colMap['beras_jumlah'];
+                        const tj = colMap['jabatan_jumlah'];
+                        const tm = colMap['masa_kerja_jumlah'];
+                        const tl = colMap['lembur_jumlah'];
                         const tp = colMap['total_premi'];
                         const kor = colMap['pot_koreksi'];
-                        if (gp && tt && tp && kor) {
-                            cell.value = { formula: `SUM(${gp}${excelRow.number},${tt}${excelRow.number},${tp}${excelRow.number})-${kor}${excelRow.number}` };
+
+                        const tunjanganCols = [tb, tj, tm, tl].filter(Boolean).map(c => `${c}${excelRow.number}`).join(',');
+
+                        if (gp && tp && kor) {
+                            const sumFormula = tunjanganCols
+                                ? `SUM(${gp}${excelRow.number},${tunjanganCols},${tp}${excelRow.number})`
+                                : `SUM(${gp}${excelRow.number},${tp}${excelRow.number})`;
+                            cell.value = { formula: `${sumFormula}-${kor}${excelRow.number}` };
                             return;
                         }
                     } else if (col.field === 'total_potongan') {
