@@ -8,6 +8,7 @@ import {
     getStatusBadge,
     getMonthName 
 } from '../services/wagesService';
+import PrintSignature from './common/PrintSignature';
 import './PayrollHistoryComparison.css';
 
 /**
@@ -191,7 +192,7 @@ export default function PayrollHistoryComparison({
                             ← Kembali
                         </button>
                     )}
-                    <h1 className="phc-title">Verifikasi Upah Bersih</h1>
+                    <h1 className="phc-title">Summary Wages Comparison</h1>
                     <span className="phc-period-badge">
                         {getMonthName(month)} {year}
                     </span>
@@ -520,20 +521,26 @@ export default function PayrollHistoryComparison({
             </div>
             
             {/* Footer info */}
-            <div className="phc-footer">
-                <div className="phc-footer-info">
-                    Menampilkan {filteredData.length} dari {comparisonData?.data?.length || 0} data
+            <div className="comparison-report-container">
+                <div className="phc-footer">
+                    <div className="phc-footer-info">
+                        Menampilkan {filteredData.length} dari {comparisonData?.data?.length || 0} data
+                    </div>
+                    <div className="phc-footer-legend">
+                        <span className="phc-legend-item">
+                            <span className="phc-legend-badge match">✓</span> Cocok (selisih ≤ Rp 1.000)
+                        </span>
+                        <span className="phc-legend-item">
+                            <span className="phc-legend-badge minor">⚠</span> Selisih Kecil (≤ Rp 10.000)
+                        </span>
+                        <span className="phc-legend-item">
+                            <span className="phc-legend-badge major">✗</span> Selisih Besar (&gt; Rp 10.000)
+                        </span>
+                    </div>
                 </div>
-                <div className="phc-footer-legend">
-                    <span className="phc-legend-item">
-                        <span className="phc-legend-badge match">✓</span> Cocok (selisih ≤ Rp 1.000)
-                    </span>
-                    <span className="phc-legend-item">
-                        <span className="phc-legend-badge minor">⚠</span> Selisih Kecil (≤ Rp 10.000)
-                    </span>
-                    <span className="phc-legend-item">
-                        <span className="phc-legend-badge major">✗</span> Selisih Besar (&gt; Rp 10.000)
-                    </span>
+                
+                <div className="print-only">
+                    <PrintSignature />
                 </div>
             </div>
         </div>

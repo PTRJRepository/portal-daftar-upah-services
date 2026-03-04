@@ -5,10 +5,13 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { Printer, RefreshCw, ArrowLeft } from 'lucide-react';
 import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, validateAggregation } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
+import PrintSignature from '../components/common/PrintSignature';
 import '../styles/wages-summary-professional.css';
+import '../styles/print-optimization.css';
 
 // Company information by division
 const COMPANY_INFO = {
@@ -271,49 +274,37 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     };
 
     return (
-        <div className="wsp-container">
-            {/* Action Bar */}
-            <div className="wsp-action-bar no-print">
-                <div className="left-section">
-                    {onBack && (
-                        <button onClick={onBack} className="wsp-btn" title="Kembali">
-                            Back
-                        </button>
-                    )}
-                    <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className="wsp-container" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
+            {/* Header & Actions */}
+            <div className="report-header-web no-print">
+                <div className="report-header-info">
+                    <h1>Summary Report Detail</h1>
+                    <p>Rekapitulasi total pekerja, HK, premi, dan upah bersih per estate/gang.</p>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                         <select
                             value={division}
                             onChange={e => setDivision(e.target.value)}
-                            className="wsp-select"
+                            className="report-filter-badge"
+                            style={{ cursor: 'pointer', outline: 'none' }}
                         >
-                            <option value="">All Divisions</option>
+                            <option value="">Semua Divisi</option>
                             {divisions.map(d => (
                                 <option key={d} value={d}>{d}</option>
                             ))}
                         </select>
-                        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="wsp-select">
-                            {[...Array(12)].map((_, i) => (
-                                <option key={i + 1} value={i + 1}>{getMonthName(i + 1)}</option>
-                            ))}
-                        </select>
-                        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="wsp-select">
-                            {[2023, 2024, 2025, 2026].map(y => (
-                                <option key={y} value={y}>{y}</option>
-                            ))}
-                        </select>
+                        <span className="report-filter-badge">{getMonthName(month)} {year}</span>
                     </div>
                 </div>
-                <div className="right-section">
-                    <button onClick={() => setShowSeederModal(true)} className="wsp-btn" style={{ background: '#fbbf24', color: '#78350f' }}>
-                        Seed Aggregation
+                <div className="report-header-actions">
+                    <button onClick={handlePrint} className="wsp-btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Printer size={18} /> Cetak Report
                     </button>
-                    <button onClick={handleValidate} className="wsp-btn" style={{ background: '#3b82f6', color: 'white' }} disabled={validating || loading}>
-                        {validating ? 'Validating...' : 'Validate'}
+                    <button onClick={handleExport} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} disabled={loading || summaryData.length === 0}>
+                        Download CSV
                     </button>
-                    <button onClick={fetchData} className="wsp-btn" disabled={loading}>Refresh</button>
-                    <button onClick={handlePrint} className="wsp-btn">Print</button>
-                    <button onClick={handleSavePDF} className="wsp-btn" title="Download Report as PDF">Save PDF</button>
-                    <button onClick={handleExport} className="wsp-btn wsp-btn-primary" disabled={loading || summaryData.length === 0}>Export CSV</button>
+                    <button onClick={() => setShowSeederModal(true)} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>
+                        <RefreshCw size={18} /> Sync Data
+                    </button>
                 </div>
             </div>
 
@@ -357,7 +348,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             </div>
                             <div className="wsp-kpi-card secondary">
                                 <div className="wsp-kpi-label">TOTAL PREMI</div>
-                                <div className="wsp-kpi-value">Rp {formatNumber(grandTotal.total_premi_excluding_special)}</div>
+                                <div className="wsp-kpi-value">Rp {formatNumber(grandTotal.total_premi)}</div>
                             </div>
                             <div className="wsp-kpi-card highlight">
                                 <div className="wsp-kpi-label">TOTAL UPAH BERSIH</div>
@@ -379,7 +370,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     <th className="print-show-only">PREMI INCOME</th>
                                     <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
                                     <th colSpan="2">DEDUCTIONS</th>
-                                    <th colSpan="4" className="print-hide-additional">ADDITIONAL INFO</th>
+                                    <th colSpan="3" className="print-hide-additional">ADDITIONAL INFO</th>
                                     <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
                                 </tr>
                                 <tr className="wsp-header-sub">
@@ -402,7 +393,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     <th style={{ minWidth: '90px' }} className="print-hide-additional">INSENTIF</th>
                                     <th style={{ minWidth: '90px' }} className="print-hide-additional">KINERJA</th>
                                     <th style={{ minWidth: '90px' }} className="print-hide-additional">PRUNING</th>
-                                    <th style={{ minWidth: '90px' }} className="print-hide-additional">KOREKSI</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -425,20 +415,19 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                 );
                                             })}
 
-                                            {/* Total Premi - Excluding Insentif, Kinerja, Prunning */}
-                                            <td className={`text-right ${!Number(row.total_premi_excluding_special ?? row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
-                                                {formatNumber(row.total_premi_excluding_special ?? row.total_premi)}
+                                            {/* Total Premi - Show FULL total from portal */}
+                                            <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
+                                                {formatNumber(row.total_premi)}
                                             </td>
 
                                             <td className={`text-right ${!Number(row.total_lembur) && 'val-zero'}`}>{formatNumber(row.total_lembur)}</td>
                                             <td className={`text-right ${!Number(row.total_pph21) && 'val-zero'}`}>{formatNumber(row.total_pph21)}</td>
                                             <td className={`text-right ${!Number(row.total_spsi) && 'val-zero'}`}>{formatNumber(row.total_spsi)}</td>
 
-                                            {/* Additional Info / Specifics */}
+                                            {/* Additional Info / Specifics - Hide Koreksi */}
                                             <td className={`text-right print-hide-additional ${!Number(row.total_premi_insentif) && 'val-zero'}`}>{formatNumber(row.total_premi_insentif)}</td>
                                             <td className={`text-right print-hide-additional ${!Number(row.total_premi_kinerja) && 'val-zero'}`}>{formatNumber(row.total_premi_kinerja)}</td>
                                             <td className={`text-right print-hide-additional ${!Number(row.total_premi_prunning) && 'val-zero'}`}>{formatNumber(row.total_premi_prunning)}</td>
-                                            <td className={`text-right print-hide-additional ${!Number(row.total_koreksi) && 'val-zero'}`}>{formatNumber(row.total_koreksi)}</td>
 
                                             <td className={`text-right ${!Number(row.total_upah_bersih) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 600 }}>
                                                 {formatNumber(row.total_upah_bersih)}
@@ -463,18 +452,17 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             );
                                         })}
 
-                                        {/* Total Premi - Excluding Insentif, Kinerja, Prunning */}
-                                        <td className="text-right">{formatNumber(grandTotal.total_premi_excluding_special)}</td>
+                                        {/* Total Premi - FULL from portal */}
+                                        <td className="text-right" style={{ background: '#1e293b', color: 'white' }}>{formatNumber(grandTotal.total_premi)}</td>
 
                                         <td className="text-right">{formatNumber(grandTotal.total_lembur)}</td>
                                         <td className="text-right">{formatNumber(grandTotal.total_pph21)}</td>
                                         <td className="text-right">{formatNumber(grandTotal.total_spsi)}</td>
 
-                                        {/* Additional Info Totals */}
+                                        {/* Additional Info Totals - Hide Koreksi */}
                                         <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_insentif)}</td>
                                         <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_kinerja)}</td>
                                         <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_prunning)}</td>
-                                        <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_koreksi)}</td>
 
                                         <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(grandTotal.total_upah_bersih)}</td>
                                     </tr>
@@ -484,19 +472,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     </div>
 
                     {/* Signature Section */}
-                    <div className="wsp-signature-section">
-                        <div className="wsp-signature-block">
-                            <div className="wsp-signature-title">DIBUAT OLEH :</div>
-                            <div className="wsp-signature-name">( ........................................ )</div>
-                        </div>
-                        <div className="wsp-signature-block">
-                            <div className="wsp-signature-title">DIPERIKSA OLEH :</div>
-                            <div className="wsp-signature-name">( ........................................ )</div>
-                        </div>
-                        <div className="wsp-signature-block">
-                            <div className="wsp-signature-title">DISETUJUI OLEH :</div>
-                            <div className="wsp-signature-name">( ........................................ )</div>
-                        </div>
+                    <div className="print-only">
+                        <PrintSignature />
                     </div>
 
                     {/* Report Footer */}

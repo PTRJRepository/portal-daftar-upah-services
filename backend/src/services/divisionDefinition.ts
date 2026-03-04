@@ -256,6 +256,28 @@ export class DivisionDefinition {
         return results;
     }
 
+    public getVirtualDivisionForGang(gangCode: string, sourceLocCode: string, description: string): string | null {
+        for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
+            // Check LocCode if source_division is specified
+            if (config.source_division && config.source_division.toUpperCase() !== sourceLocCode.toUpperCase()) {
+                continue;
+            }
+
+            // Check pattern
+            if (config.pattern) {
+                const regex = new RegExp(config.pattern, "i");
+                if (regex.test(gangCode)) return virtCode;
+            }
+
+            // Check description
+            if (config.description_pattern) {
+                const regex = new RegExp(config.description_pattern, "i");
+                if (regex.test(description)) return virtCode;
+            }
+        }
+        return null;
+    }
+
     private gangBelongsToVirtual(gangCode: string, sourceLocCode: string, description: string): boolean {
         for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
             if (!config.exclude_from_source) continue;

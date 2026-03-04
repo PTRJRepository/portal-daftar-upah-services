@@ -11,21 +11,19 @@ import {
 } from 'lucide-react';
 
 // Icons using Lucide React for professional corporate aesthetic
-const Icons = {
+const MenuIcons = {
     Home: () => <Home size={20} />,
     Clipboard: () => <FileText size={20} />,
     BarChart: () => <BarChart2 size={20} />,
     DollarSign: () => <DollarSign size={20} />,
     TrendingUp: () => <TrendingUp size={20} />,
-    Activity: () => <Users size={20} />, // Mapped to HR Directory
+    HRUsers: () => <Users size={20} />,
     Settings: () => <Settings size={20} />,
-    ChevronLeft: () => <ChevronLeft size={20} />,
-    ChevronRight: () => <ChevronRight size={20} />,
     LogOut: () => <LogOut size={18} />,
     PalmTree: () => <Briefcase size={20} />,
     Verifikasi: () => <ShieldCheck size={20} />,
     Comprehensive: () => <PieChart size={20} />,
-    AdminTest: () => <Activity size={20} />,
+    ActivityIcon: () => <Activity size={20} />,
     DatabaseIcon: () => <Database size={20} />
 };
 
@@ -37,20 +35,26 @@ const DashboardLayout = () => {
 
     // Sidebar State
     const [collapsed, setCollapsed] = useState(false);
+    const [reportsOpen, setReportsOpen] = useState(false);
 
     // Get base path for proxy mode compatibility
     const basePath = getBasePath();
 
-    // Debug logging
-    console.log('[DashboardLayout] Render:', { pathname: location.pathname, key: location.key });
-
-    // Effect to log when location changes
+    // Close reports menu if sidebar collapses
     useEffect(() => {
-        console.log('[DashboardLayout] Location changed:', { pathname: location.pathname, key: location.key });
-    }, [location]);
+        if (collapsed) setReportsOpen(false);
+    }, [collapsed]);
+
+    // Simple helper for isActive check
+    const isReportsPathActive = location.pathname.includes('/summary') || 
+                               location.pathname.includes('/wages') || 
+                               location.pathname.includes('/comprehensive') || 
+                               location.pathname.includes('/report-pajak') ||
+                               location.pathname.includes('/analysis') ||
+                               location.pathname.includes('/executive');
 
     // Dynamic styles
-    const getLinkStyle = ({ isActive }) => ({
+    const getLinkStyle = (isActive) => ({
         padding: collapsed ? '0.75rem 0' : '0.75rem 1rem',
         backgroundColor: isActive ? '#334155' : 'transparent',
         color: isActive ? '#ffffff' : '#94a3b8',
@@ -66,7 +70,23 @@ const DashboardLayout = () => {
         justifyContent: collapsed ? 'center' : 'flex-start',
         gap: collapsed ? '0' : '0.75rem',
         marginBottom: '0.25rem',
-        position: 'relative'
+        position: 'relative',
+        width: '100%'
+    });
+
+    const getSubmenuStyle = (isActive) => ({
+        padding: '0.6rem 1rem 0.6rem 2.5rem',
+        backgroundColor: isActive ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+        color: isActive ? '#ffffff' : '#94a3b8',
+        borderRadius: '6px',
+        fontSize: '0.85rem',
+        fontWeight: isActive ? '600' : '400',
+        textDecoration: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        transition: 'all 0.2s',
+        marginBottom: '0.15rem'
     });
 
     const sidebarWidth = collapsed ? '72px' : '260px';
@@ -202,7 +222,7 @@ const DashboardLayout = () => {
                     )}
 
                     <NavLink to="/" style={getLinkStyle} end title={collapsed ? "Dashboard" : ""}>
-                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Home /></div>
+                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.Home /></div>
                         {!collapsed && (
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Dashboard</span>
@@ -221,7 +241,7 @@ const DashboardLayout = () => {
                     )}
 
                     <NavLink to="/operational" style={getLinkStyle} title={collapsed ? "Daftar Upah" : ""}>
-                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Clipboard /></div>
+                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.Clipboard /></div>
                         {!collapsed && (
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Daftar Upah</span>
@@ -231,7 +251,7 @@ const DashboardLayout = () => {
                     </NavLink>
 
                     <NavLink to="/pendapatan-tidak-tetap" style={getLinkStyle} title={collapsed ? "Pendapatan Lainnya" : ""}>
-                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.DollarSign /></div>
+                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.DollarSign /></div>
                         {!collapsed && (
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Pendapatan Lainnya</span>
@@ -240,133 +260,86 @@ const DashboardLayout = () => {
                         )}
                     </NavLink>
 
-                    {/* Laporan Bulanan Unit (Non-IJL) */}
-                    {!collapsed ? (
-                        <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
-                            Laporan Bul Unit (Non-IJL)
-                        </div>
-                    ) : (
-                        <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
-                    )}
-
+                    {/* Laporan & Analisis (Collapsible) */}
                     {!isKeraniUser && (
-                        <NavLink to="/summary" style={getLinkStyle} title={collapsed ? "Summary Report" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.BarChart /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Summary Report</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Accounting report detail rekap.</span>
+                        <>
+                            {!collapsed ? (
+                                <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                                    Analisis & Laporan
                                 </div>
+                            ) : (
+                                <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
                             )}
-                        </NavLink>
-                    )}
 
-                    {!isKeraniUser && (
-                        <NavLink to="/wages-rebinmas" style={getLinkStyle} title={collapsed ? "Summary Wages" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.DollarSign /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Summary Wages</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Rincian daftar upah untuk entitas Rebinmas.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/wages-comparison" style={getLinkStyle} title={collapsed ? "Comparison Wages" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Verifikasi /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Comparison Wages</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Perbandingan dan verifikasi antar periode.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/comprehensive" style={getLinkStyle} title={collapsed ? "Impact Report" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Comprehensive /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Impact Report</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Analisis perubahan upah menyeluruh.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/analysis" style={getLinkStyle} title={collapsed ? "Analisa Lembur & Premi" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.TrendingUp /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Analisa Lembur & Premi</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Detail tren overtime dan premi harian.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {/* Laporan Bulanan Khusus IJL */}
-                    {!collapsed ? (
-                        <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
-                            Laporan Bul Khusus IJL
-                        </div>
-                    ) : (
-                        <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/wages-ijl" style={getLinkStyle} title={collapsed ? "Wages IJL" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.PalmTree /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Wages IJL</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Rincian rekap payroll entitas Investasi.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    {/* Report Executive & Pajak */}
-                    {!collapsed ? (
-                        <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
-                            Executive & Pajak
-                        </div>
-                    ) : (
-                        <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
-                    )}
-
-                    {!isKeraniUser && (
-                        <NavLink to="/executive" style={getLinkStyle} title={collapsed ? "Executive Analysis" : ""}>
-                            <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.TrendingUp /></div>
-                            {!collapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Executive Analysis</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Analisis level manajerial & direktur.</span>
-                                </div>
-                            )}
-                        </NavLink>
-                    )}
-
-                    <a
-                        href={buildAppPath('/report-pajak')}
-                        style={{
-                            ...getLinkStyle({ isActive: location.pathname === '/report-pajak' }),
-                            textDecoration: 'none'
-                        }}
-                        title={collapsed ? "Report Pajak" : ""}
-                    >
-                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Clipboard /></div>
-                        {!collapsed && (
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Report Pajak</span>
-                                <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Laporan 12 bln PPh21 untuk keperluan pajak.</span>
+                            <div
+                                onClick={() => !collapsed && setReportsOpen(!reportsOpen)}
+                                style={{
+                                    ...getLinkStyle(reportsOpen || isReportsPathActive),
+                                    cursor: collapsed ? 'default' : 'pointer'
+                                }}
+                                title={collapsed ? "Reports" : ""}
+                            >
+                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.BarChart /></div>
+                                {!collapsed && (
+                                    <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Laporan Payroll</span>
+                                            <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Daftar rekap, perbandingan & pajak.</span>
+                                        </div>
+                                        <div style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: reportsOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                                            <ChevronRight size={16} />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </a>
+
+                            {/* Submenu Links */}
+                            {(!collapsed && reportsOpen) && (
+                                <div style={{
+                                    marginLeft: '0.5rem',
+                                    paddingLeft: '0.5rem',
+                                    borderLeft: '1px solid #334155',
+                                    marginTop: '0.25rem',
+                                    display: 'flex',
+                                    flexDirection: 'column'
+                                }}>
+                                    <NavLink to="/summary" style={({ isActive }) => getSubmenuStyle(isActive)}>
+                                        <MenuIcons.BarChart /> Summary Report
+                                    </NavLink>
+                                    <NavLink to="/wages-rebinmas" style={({ isActive }) => getSubmenuStyle(isActive && !location.search.includes('mode=comparison'))}>
+                                        <MenuIcons.DollarSign /> Wages Rebinmas (Current)
+                                    </NavLink>
+                                    <NavLink to="/wages-rebinmas?mode=comparison" style={({ isActive }) => getSubmenuStyle(isActive || (location.pathname === '/wages-rebinmas' && location.search.includes('mode=comparison')))}>
+                                        <MenuIcons.Verifikasi /> Wages Rebinmas (Comparison)
+                                    </NavLink>
+                                    <NavLink to="/wages-ijl" style={({ isActive }) => getSubmenuStyle(isActive && !location.search.includes('mode=comparison'))}>
+                                        <MenuIcons.PalmTree /> Wages IJL (Current)
+                                    </NavLink>
+                                    <NavLink to="/wages-ijl?mode=comparison" style={({ isActive }) => getSubmenuStyle(isActive || (location.pathname === '/wages-ijl' && location.search.includes('mode=comparison')))}>
+                                        <MenuIcons.Verifikasi /> Wages IJL (Comparison)
+                                    </NavLink>
+                                    <NavLink to="/wages-comparison" style={({ isActive }) => getSubmenuStyle(isActive)}>
+                                        <MenuIcons.ActivityIcon /> Summary Wages Comparison
+                                    </NavLink>
+                                    <NavLink to="/impact" style={({ isActive }) => getSubmenuStyle(isActive)}>
+                                        <MenuIcons.Comprehensive /> Impact Report
+                                    </NavLink>
+                                    <NavLink to="/comprehensive" style={({ isActive }) => getSubmenuStyle(isActive)}>
+                                        <MenuIcons.ActivityIcon /> Comprehensive Analysis
+                                    </NavLink>
+                                    <NavLink to="/analysis" style={({ isActive }) => getSubmenuStyle(isActive)}>
+                                        <MenuIcons.TrendingUp /> Analisa Lembur & Premi
+                                    </NavLink>
+                                    <NavLink to="/executive" style={({ isActive }) => getSubmenuStyle(isActive)}>
+                                        <MenuIcons.ActivityIcon /> Executive Analysis
+                                    </NavLink>
+                                    <NavLink to="/report-pajak" style={({ isActive }) => getSubmenuStyle(isActive)}>
+                                        <MenuIcons.Clipboard /> Report Pajak (PPh21)
+                                    </NavLink>
+                                </div>
+                            )}
+                        </>
+                    )}
 
                     {/* Admin dan Config */}
                     {isAdminUser && (
@@ -380,7 +353,7 @@ const DashboardLayout = () => {
                             )}
 
                             <NavLink to="/seed" style={getLinkStyle} title={collapsed ? "Aggregation Seeder" : ""}>
-                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Settings /></div>
+                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.Settings /></div>
                                 {!collapsed && (
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Aggregation Seeder</span>
@@ -390,7 +363,7 @@ const DashboardLayout = () => {
                             </NavLink>
 
                             <NavLink to="/spreadsheet-sync" style={getLinkStyle} title={collapsed ? "Spreadsheet Sync" : ""}>
-                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.DatabaseIcon /></div>
+                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.DatabaseIcon /></div>
                                 {!collapsed && (
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Spreadsheet Sync</span>
@@ -400,7 +373,7 @@ const DashboardLayout = () => {
                             </NavLink>
 
                             <NavLink to="/employee-directory" style={getLinkStyle} title={collapsed ? "HR Employee Directory" : ""}>
-                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.Activity /></div>
+                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.HRUsers /></div>
                                 {!collapsed && (
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>HR Employee Directory</span>
@@ -410,7 +383,7 @@ const DashboardLayout = () => {
                             </NavLink>
 
                             <NavLink to="/test/components" style={getLinkStyle} title={collapsed ? "Sisa Lainnya / Test" : ""}>
-                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><Icons.AdminTest /></div>
+                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.ActivityIcon /></div>
                                 {!collapsed && (
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Sisa Lainnya</span>
@@ -470,7 +443,7 @@ const DashboardLayout = () => {
                             e.currentTarget.style.color = '#cbd5e1';
                         }}
                     >
-                        <Icons.LogOut />
+                        <MenuIcons.LogOut />
                         {!collapsed && <span>Logout</span>}
                     </button>
                 </div>

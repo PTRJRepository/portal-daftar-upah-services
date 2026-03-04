@@ -6,6 +6,7 @@ import MonthSelector from '../components/common/MonthSelector';
 import LoadingScreen from '../components/common/LoadingScreen';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintModeSelector from '../components/common/PrintModeSelector';
+import PrintSignature from '../components/common/PrintSignature';
 import { initPrintMode } from '../utils/printOptimizer';
 import '../styles/analysis-report-print.css';
 
@@ -344,19 +345,8 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                     )}
 
                     {/* Signature Section */}
-                    <div className="sw-signature-section">
-                        <div className="sw-signature-block">
-                            <div className="sw-signature-title">PREPARED BY :</div>
-                            <div className="sw-signature-name">( ........................................ )</div>
-                        </div>
-                        <div className="sw-signature-block">
-                            <div className="sw-signature-title">CHECKED BY :</div>
-                            <div className="sw-signature-name">( ........................................ )</div>
-                        </div>
-                        <div className="sw-signature-block">
-                            <div className="sw-signature-title">APPROVED BY :</div>
-                            <div className="sw-signature-name">( ........................................ )</div>
-                        </div>
+                    <div className="print-only">
+                        <PrintSignature />
                     </div>
 
                     {/* Footer */}

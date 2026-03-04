@@ -29,6 +29,7 @@ import PayrollAnalysisPage from './pages/PayrollAnalysisPage'
 import ExecutivePayrollPage from './pages/ExecutivePayrollPage'
 import GangComparisonReportPage from './pages/GangComparisonReportPage'
 import WagesComparisonPage from './pages/WagesComparisonPage'
+import ImpactReportPage from './pages/ImpactReportPage'
 import TaxReportPage from './pages/TaxReportPage'
 import OtherIncomesPage from './pages/OtherIncomesPage'
 
@@ -577,6 +578,7 @@ function AppInner() {
             <Route path="wages-ijl" element={<SummaryReportWrapper component={WagesSummaryIJLPage} />} />
             <Route path="analysis" element={<SummaryReportWrapper component={AnalysisReportPage} />} />
             <Route path="comprehensive" element={<SummaryReportWrapper component={PayrollAnalysisPage} />} />
+            <Route path="impact" element={<SummaryReportWrapper component={ImpactReportPage} />} />
             <Route path="executive" element={<SummaryReportWrapper component={ExecutivePayrollPage} />} />
             <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
             <Route path="spreadsheet-sync" element={<SummaryReportWrapper component={SpreadsheetSyncPage} />} />

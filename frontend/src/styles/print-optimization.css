@@ -1,636 +1,212 @@
-/**
- * ============================================
- * PRINT OPTIMIZATION CSS - FIX BORDER CUTOFF
- * ============================================
- *
- * PROBLEM: Right border/frame always gets cut off in print
- * SOLUTION: Proper width calculation, margins, and box-sizing
- *
- * FEATURES:
- * - Three print size modes: COMPACT, STANDARD, LARGE
- * - Fixed border cutoff issue
- * - Better text readability
- * - Proper A4 landscape sizing
- */
-
 /* ============================================
-   @PAGE SETTINGS - Prevent Border Cutoff
-   ============================================ */
-@page {
-    size: A4 landscape;
-    /* Reduced margin to allow more content space */
-    margin: 8mm 8mm 8mm 8mm;
-}
-
-/* ============================================
-   PRINT SIZE MODES
-   Apply these classes to body for different sizes
+   GLOBAL PRINT OPTIMIZATION (READY-TO-PRINT)
    ============================================ */
 
-/* COMPACT MODE - Maximum data fit */
-body.print-mode-compact {
-    --print-font-scale: 0.85;
-    --print-padding-scale: 0.7;
-    --print-cell-padding: 0.12rem 0.1rem;
-}
-
-/* STANDARD MODE - Balanced (default) */
-body.print-mode-standard {
-    --print-font-scale: 1;
-    --print-padding-scale: 1;
-    --print-cell-padding: 0.18rem 0.15rem;
-}
-
-/* LARGE MODE - Better readability */
-body.print-mode-large {
-    --print-font-scale: 1.15;
-    --print-padding-scale: 1.2;
-    --print-cell-padding: 0.22rem 0.18rem;
-}
-
-/* ============================================
-   GLOBAL PRINT FIXES
-   ============================================ */
 @media print {
-
-    /* CRITICAL: Reset all box-sizing first */
-    *,
-    *::before,
-    *::after {
-        box-sizing: border-box !important;
+    /* Force Landscape */
+    @page {
+        size: A4 landscape;
+        margin: 10mm;
     }
 
-    /* Ensure multi-page print - NEVER hide overflow on html/body when printing */
-    html {
-        overflow: visible !important;
-        height: auto !important;
-        position: static !important;
+    /* Reset layout for print */
+    html, body {
         width: 100% !important;
-        background-color: white !important;
-    }
-
-    body {
+        height: auto !important;
+        overflow: visible !important;
         margin: 0 !important;
         padding: 0 !important;
-        overflow: visible !important;
-        height: auto !important;
-        position: static !important;
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-        background-color: white !important;
+        background: #fff !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        font-family: Arial, sans-serif !important;
     }
 
-    #root {
-        overflow: visible !important;
+    #root, .App, .print-content-area {
+        width: 100% !important;
         height: auto !important;
+        overflow: visible !important;
         position: static !important;
+        display: block !important;
     }
 
     /* ============================================
-       DOCUMENT CONTAINER FIX - Main Fix for Border Cutoff
+       THE BINGKAI (DOCUMENT FRAME)
+       Main container for all reports
        ============================================ */
     .sw-document,
     .wsp-document,
     .ir-document,
-    .summary-report-grid-container {
-        width: auto !important;
-        max-width: 100% !important;
-        min-width: auto !important;
-        /* Override screen min-width */
-
-        border: 2px solid #000 !important;
-        padding: 1rem !important;
+    .tax-report-table-wrapper,
+    .summary-report-grid-container,
+    .comparison-report-container,
+    .wages-summary-container {
+        border: 1.5pt solid #000 !important;
+        padding: 12mm !important;
         margin: 0 auto !important;
-        overflow: visible !important;
+        width: 100% !important;
+        max-width: 100% !important;
         box-sizing: border-box !important;
+        background: #fff !important;
+        overflow: visible !important;
         position: relative !important;
-        left: 0 !important;
-        right: 0 !important;
     }
 
     /* ============================================
-       LETTERHEAD FIX - Ensure visible in print
+       TABLE REFINEMENT (NO CUTOFFS)
        ============================================ */
-    .sw-letterhead,
-    .wsp-letterhead,
-    .ir-letterhead {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        margin-bottom: 0.5rem !important;
-        padding-bottom: 0.3rem !important;
-        border-bottom: 2px solid #000 !important;
-    }
-
-    .sw-logo,
-    .wsp-logo,
-    .ir-logo {
-        position: static !important;
-        transform: none !important;
-        width: 45px !important;
-        height: auto !important;
-    }
-
-    .sw-company-name,
-    .wsp-company-name,
-    .ir-company-name {
-        font-size: 0.9rem !important;
-        margin: 0 !important;
-        font-weight: 800 !important;
-    }
-
-    .sw-report-title,
-    .wsp-report-title,
-    .ir-report-title {
-        font-size: 0.6rem !important;
-        margin-top: 0.1rem !important;
-    }
-
-    .sw-report-period,
-    .wsp-report-period,
-    .ir-report-period {
-        font-size: 0.55rem !important;
-        margin-top: 0.05rem !important;
-    }
-
-    /* ============================================
-       INNER CONTAINER FIX
-       ============================================ */
-    .sw-table-wrapper,
-    .wsp-table-wrapper {
+    table {
         width: 100% !important;
-        max-width: 100% !important;
-        overflow: visible !important;
-        border: 1px solid #000 !important;
-        box-sizing: border-box !important;
-    }
-
-    /* ============================================
-       TABLE FIXES - Compact & Readable
-       ============================================ */
-    .sw-table,
-    .wsp-table {
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 100% !important;
-        table-layout: fixed !important;
-        /* CRITICAL for equal column distribution */
+        table-layout: auto !important; /* Let columns adjust naturally */
         border-collapse: collapse !important;
-        box-sizing: border-box !important;
-        font-size: calc(0.6rem * var(--print-font-scale, 1)) !important;
+        border: 1pt solid #000 !important;
+        page-break-inside: auto !important;
+        margin-bottom: 20pt !important;
     }
 
-    /* Table Headers */
-    .sw-table thead th,
-    .wsp-table thead th {
-        padding: var(--print-cell-padding, 0.15rem 0.12rem) !important;
-        font-size: calc(0.65rem * var(--print-font-scale, 1)) !important;
-        font-weight: 800 !important;
-        border: 1px solid #000 !important;
-        text-align: center !important;
-        background-color: #f0f0f0 !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        overflow: visible !important;
-        white-space: nowrap !important;
-    }
-
-    /* Master Headers */
-    .sw-table thead tr.sw-header-group th,
-    .wsp-table thead tr.wsp-header-master th {
-        font-size: calc(0.7rem * var(--print-font-scale, 1)) !important;
-        font-weight: 900 !important;
-        border-bottom: 2px solid #000 !important;
-    }
-
-    /* Table Cells - ALL CENTERED for compactness */
-    .sw-table td,
-    .wsp-table td,
-    .sw-table td.text-left,
-    .sw-table td.text-right,
-    .sw-table td.text-center,
-    .wsp-table td.text-left,
-    .wsp-table td.text-right,
-    .wsp-table td.text-center {
-        padding: var(--print-cell-padding, 0.12rem 0.1rem) !important;
-        font-size: calc(0.58rem * var(--print-font-scale, 1)) !important;
-        font-weight: 600 !important;
-        border: 1px solid #000 !important;
-        text-align: center !important;
-        overflow: visible !important;
-        /* No ellipsis for numeric data */
-        white-space: nowrap !important;
-        word-break: keep-all !important;
-    }
-
-    /* First column (names) - allow wrap */
-    .sw-table td:first-child,
-    .wsp-table td:first-child,
-    .sw-table td.sticky-col,
-    .wsp-table td.sticky-col {
-        text-align: left !important;
-        white-space: normal !important;
-        word-wrap: break-word !important;
-        max-width: 120px !important;
-        font-size: calc(0.55rem * var(--print-font-scale, 1)) !important;
-    }
-
-    /* ============================================
-       KPI CARDS & LETTERHEAD - HIDE FOR TABLE FOCUS
-       (Only hide the old sw-* types, keep the new wsp-* elements)
-       ============================================ */
-    .sw-kpi-grid,
-    .sw-letterhead {
-        display: none !important;
-    }
-
-    /* ============================================
-       SPECIAL ROWS
-       ============================================ */
-    .sw-table tr.gang-header td,
-    .wsp-table tr.estate-header td {
-        padding: 0.15rem !important;
-        font-size: calc(0.6rem * var(--print-font-scale, 1)) !important;
-        font-weight: 800 !important;
-        background-color: #e2e8f0 !important;
-        border: 1px solid #000 !important;
-    }
-
-    .sw-table tr.subtotal td,
-    .wsp-table tr.subtotal td {
-        padding: 0.12rem !important;
-        font-size: calc(0.58rem * var(--print-font-scale, 1)) !important;
-        font-weight: 700 !important;
-        background-color: #f1f5f9 !important;
-        border: 1px solid #000 !important;
-    }
-
-    .sw-table tr.grand-total td,
-    .wsp-table tfoot tr.wsp-grand-total td {
-        padding: 0.15rem !important;
-        font-size: calc(0.65rem * var(--print-font-scale, 1)) !important;
-        font-weight: 800 !important;
-        background-color: #1e293b !important;
-        color: #fff !important;
-        border: 1px solid #000 !important;
-    }
-
-    /* ============================================
-       SIGNATURE - Compact
-       ============================================ */
-    .sw-signature-section,
-    .wsp-signature-section {
-        margin-top: 0.6rem !important;
-        padding: 0 !important;
-        page-break-inside: avoid !important;
-        display: flex !important;
-        justify-content: space-between !important;
-    }
-
-    .sw-signature-block,
-    .wsp-signature-block {
-        flex: 1 !important;
-        text-align: center !important;
-        padding: 0 !important;
-    }
-
-    .sw-signature-title,
-    .wsp-signature-title {
-        font-size: calc(0.45rem * var(--print-font-scale, 1)) !important;
-        margin-bottom: 1.5rem !important;
-        white-space: nowrap !important;
-    }
-
-    .sw-signature-name,
-    .wsp-signature-name {
-        font-size: calc(0.5rem * var(--print-font-scale, 1)) !important;
-        border-top: 1px solid #000 !important;
-        padding-top: 0.2rem !important;
-    }
-
-    /* ============================================
-       FOOTER - Compact
-       ============================================ */
-    .sw-footer,
-    .wsp-footer {
-        margin-top: 0.5rem !important;
-        padding-top: 0.2rem !important;
-        border-top: 1px solid #000 !important;
-        font-size: calc(0.45rem * var(--print-font-scale, 1)) !important;
-    }
-
-    /* ============================================
-       HIDE ELEMENTS
-       ============================================ */
-    .sw-action-bar,
-    .wsp-action-bar,
-    .no-print,
-    .print-hide,
-    .print-hide-detail,
-    .wsp-btn-sm {
-        display: none !important;
-    }
-
-    /* ============================================
-       SHOW PRINT-ONLY ELEMENTS
-       ============================================ */
-    .print-show-only {
-        display: table-cell !important;
-    }
-
-    /* ============================================
-       STICKY COLUMNS - Remove sticky behavior
-       ============================================ */
-    .sticky-col,
-    .th-sticky-col {
-        position: static !important;
-        box-shadow: none !important;
-    }
-
-    /* ============================================
-       PAGE BREAK CONTROL
-       ============================================ */
-    .sw-table thead {
-        display: table-header-group !important;
-    }
-
-    .sw-table tfoot {
-        display: table-footer-group !important;
-    }
-
-    .sw-table tr {
+    tr {
         page-break-inside: avoid !important;
         page-break-after: auto !important;
     }
 
-    .sw-kpi-grid,
-    .sw-signature-section,
-    .wsp-kpi-grid,
-    .wsp-signature-section {
-        page-break-inside: avoid !important;
-    }
-
-    /* ============================================
-       AG GRID CELLS - No ellipsis on numeric data
-       ============================================ */
-    .ag-cell,
-    .ag-cell-value {
-        overflow: visible !important;
-        text-overflow: clip !important;
-        white-space: nowrap !important;
-    }
-
-    /* AG Grid containers */
-    .ag-theme-alpine,
-    .ag-root-wrapper,
-    .ag-center-cols-container {
-        overflow: visible !important;
-    }
-
-    /* AG Grid rows */
-    .ag-row {
-        overflow: visible !important;
-    }
-
-    /* Summary report grid container */
-    .summary-report-grid-container {
-        overflow: visible !important;
-    }
-
-    .summary-report-grid-container .ag-theme-alpine {
-        overflow: visible !important;
-    }
-
-    /* ============================================
-       SCROLLBAR HIDE IN PRINT
-       ============================================ */
-    *::-webkit-scrollbar {
-        display: none !important;
-        width: 0 !important;
-        height: 0 !important;
-    }
-
-    * {
-        -ms-overflow-style: none !important;
-        scrollbar-width: none !important;
-    }
-
-    /* ============================================
-       TABLE WRAPPER - Remove scroll
-       ============================================ */
-    .wsp-table-container,
-    .table-container,
-    [class*="table-wrapper"],
-    [class*="scroll"] {
-        overflow: visible !important;
-        max-height: none !important;
-        height: auto !important;
-    }
-
-    /* ============================================
-       TEXT WRAPPING FOR LONG CONTENT
-       ============================================ */
-    /* Task Description column - allow wrapping */
-    .sw-table td:nth-child(4),
-    .wsp-table td:nth-child(4),
-    table td:nth-child(4) {
-        white-space: normal !important;
+    th, td {
+        border: 0.5pt solid #000 !important;
+        padding: 4pt 5pt !important;
+        font-size: 8pt !important;
         word-wrap: break-word !important;
-        word-break: break-word !important;
-        max-width: 150px !important;
-        font-size: calc(0.5rem * var(--print-font-scale, 1)) !important;
-        line-height: 1.2 !important;
-    }
-
-    /* Name column - allow wrap */
-    .sw-table td:nth-child(2),
-    .wsp-table td:nth-child(2),
-    table td:nth-child(2) {
         white-space: normal !important;
-        word-wrap: break-word !important;
-        word-break: break-word !important;
-        max-width: 120px !important;
-        font-size: calc(0.52rem * var(--print-font-scale, 1)) !important;
+        color: #000 !important;
+        vertical-align: middle !important;
     }
 
-    /* ============================================
-       PAYROLL ANALYSIS PAGE SPECIFIC FIXES
-       ============================================ */
-    /* ============================================
-       PAYROLL ANALYSIS PAGE SPECIFIC FIXES
-       ============================================ */
-    .wsp-document {
-        width: 100% !important;
-        max-width: 100% !important;
-        overflow: visible !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        border: none !important;
-    }
-
-    .wsp-document table {
-        table-layout: fixed !important;
-        width: 100% !important;
-        font-size: 0.65rem !important;
-        /* Larger font for readability */
-        border-collapse: collapse !important;
-    }
-
-    .wsp-document table td,
-    .wsp-document table th {
-        padding: 0.2rem 0.1rem !important;
-        border: 1px solid #000 !important;
-        overflow: hidden !important;
+    th {
+        background-color: #f1f5f9 !important;
+        font-weight: bold !important;
+        text-transform: uppercase !important;
         text-align: center !important;
     }
 
-    /* Left align Name column */
-    .wsp-document table td:nth-child(2) {
-        text-align: left !important;
-        padding-left: 0.2rem !important;
+    /* Professional Zebra for contrast */
+    tr:nth-child(even) {
+        background-color: #f8fafc !important;
     }
 
-    /* Column width distribution for payroll analysis - OPTIMIZED */
-    .wsp-document table th:nth-child(1),
-    .wsp-document table td:nth-child(1) {
-        width: 5% !important;
+    /* Total Rows - High Visibility */
+    tr.grand-total td, 
+    tr.total-row td,
+    tr.grand-total-row td,
+    tfoot td {
+        background-color: #e2e8f0 !important;
+        font-weight: bold !important;
+        border-top: 1.5pt solid #000 !important;
     }
 
-    /* NIK */
-
-    .wsp-document table th:nth-child(2),
-    .wsp-document table td:nth-child(2) {
-        width: 15% !important;
+    /* ============================================
+       SIGNATURE SECTION
+       Standardized 3-person block
+       ============================================ */
+    .print-signature-section {
+        margin-top: 30pt !important;
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        page-break-inside: avoid !important;
     }
 
-    /* NAMA */
-
-    .wsp-document table th:nth-child(3),
-    .wsp-document table td:nth-child(3) {
-        width: 4% !important;
+    .signature-block {
+        width: 30% !important;
+        text-align: center !important;
     }
 
-    /* GANG */
-
-    .wsp-document table th:nth-child(4),
-    .wsp-document table td:nth-child(4) {
-        width: 12% !important;
+    .signature-space {
+        height: 60pt !important;
     }
 
-    /* TASK */
-
-    /* Numeric columns - Auto width */
-    .wsp-document table th:nth-child(n+5),
-    .wsp-document table td:nth-child(n+5) {
-        width: auto !important;
-        text-align: right !important;
-        white-space: nowrap !important;
+    .signature-name {
+        border-top: 1pt solid #000 !important;
+        display: inline-block !important;
+        min-width: 150pt !important;
+        font-weight: bold !important;
+        padding-top: 3pt !important;
     }
 
-    /* Detail rows */
-    .wsp-document .detail-row td,
-    .wsp-document tr[class*="detail"] td {
-        font-size: 0.55rem !important;
-        padding: 0.1rem !important;
-        color: #000 !important;
-        border-top: none !important;
-    }
-
-    /* Header rows */
-    .wsp-document thead th {
-        font-size: 0.6rem !important;
-        font-weight: 800 !important;
-        background-color: #d1d5db !important;
-        /* Clearly visible header bg */
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        color: #000 !important;
-    }
-}
-
-/* ============================================
-   PDF MODE FIXES
-   ============================================ */
-.pdf-mode {
-    --print-font-scale: 1;
-    --print-padding-scale: 1;
-}
-
-.pdf-mode .sw-document,
-.pdf-mode .wsp-document {
-    width: 100% !important;
-    max-width: 100% !important;
-    border: 2px solid #000 !important;
-    padding: 1rem !important;
-    overflow: visible !important;
-    box-sizing: border-box !important;
-}
-
-.pdf-mode .sw-table,
-.pdf-mode .wsp-table {
-    table-layout: fixed !important;
-    width: 100% !important;
-}
-
-/* ============================================
-   UTILITY CLASSES
-   ============================================ */
-
-/* Force text to fit */
-.text-fit {
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-}
-
-/* Allow text to wrap */
-.text-wrap {
-    white-space: normal !important;
-    word-wrap: break-word !important;
-}
-
-/* Compact spacing */
-.spacing-compact {
-    margin: 0 !important;
-    padding: 0.1rem !important;
-}
-
-/* Standard spacing */
-.spacing-standard {
-    margin: 0 !important;
-    padding: 0.15rem !important;
-}
-
-/* Large spacing */
-.spacing-large {
-    margin: 0 !important;
-    padding: 0.2rem !important;
-}
-
-/* ============================================
-   TABLE CELL VISIBILITY HELPERS
-   Reliable switching for ColSpan adjustments
-   ============================================ */
-
-/* Hide on screen, Show in print */
-.print-show-cell {
-    display: none !important;
-}
-
-/* Hide in print */
-.print-hide-cell {
-    display: table-cell !important;
-}
-
-@media print {
-    .print-show-cell {
-        display: table-cell !important;
-    }
-
-    .print-hide-cell {
+    /* ============================================
+       UTILITIES
+       ============================================ */
+    .no-print, 
+    .action-bar, 
+    .filter-section, 
+    .sidebar, 
+    .sidebar-backdrop,
+    .no-print-area,
+    button, 
+    nav {
         display: none !important;
     }
+
+    .print-only {
+        display: block !important;
+    }
+
+    /* Remove Scrollbars */
+    * {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+    }
+    *::-webkit-scrollbar {
+        display: none !important;
+    }
+}
+
+/* ============================================
+   WEB HEADER TIDY UP (NON-PRINT)
+   Makes the filter/header section look professional
+   ============================================ */
+.report-header-web {
+    background: #ffffff;
+    padding: 1.25rem 1.5rem;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.report-header-info {
+    flex: 1;
+    min-width: 250px;
+}
+
+.report-header-info h1 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.report-header-info p {
+    margin: 0.25rem 0 0 0;
+    color: #64748b;
+    font-size: 0.85rem;
+}
+
+.report-header-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.report-filter-badge {
+    background: #f1f5f9;
+    color: #475569;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid #e2e8f0;
 }

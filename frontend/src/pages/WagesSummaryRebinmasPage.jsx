@@ -5,18 +5,20 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Printer, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary, updatePPH21, updateSPSI } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import PrintModeSelector from '../components/common/PrintModeSelector';
+import PrintSignature from '../components/common/PrintSignature';
 import { initPrintMode } from '../utils/printOptimizer';
 import '../styles/wages-summary-professional.css';
 
 export default function WagesSummaryRebinmasPage({ onBack }) {
     const { token, user } = useAuth();
-
-
+    const [searchParams] = useSearchParams();
 
     // Filters - Default to current month
     const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -28,8 +30,14 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     const [grandTotal, setGrandTotal] = useState(null);
 
     // Comparison State
-    const [comparisonMode, setComparisonMode] = useState(false);
+    const [comparisonMode, setComparisonMode] = useState(searchParams.get('mode') === 'comparison');
     const [comparisonData, setComparisonData] = useState(null);
+
+    // Sync comparisonMode if URL search params change
+    useEffect(() => {
+        const mode = searchParams.get('mode');
+        setComparisonMode(mode === 'comparison');
+    }, [searchParams]);
 
     // Impact Report State
     const [impactReportMode, setImpactReportMode] = useState(false);
@@ -787,74 +795,56 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     };
 
     return (
-        <div className="wsp-container">
+        <div className="wsp-container" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
             {/* Action Bar */}
-            <div className="wsp-action-bar no-print">
-                <div className="left-section">
-                    {onBack && (
-                        <button onClick={onBack} className="wsp-btn" title="Kembali ke Menu Utama">
-                            Kembali
-                        </button>
-                    )}
-
-                    <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="report-header-web no-print">
+                <div className="report-header-info">
+                    <h1>Wages Summary (Rebinmas)</h1>
+                    <p>Laporan rincian upah lengkap untuk entitas PT Rebinmas Jaya.</p>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                         <select
                             value={month}
                             onChange={(e) => setMonth(parseInt(e.target.value))}
-                            className="wsp-select"
+                            className="report-filter-badge"
+                            style={{ cursor: 'pointer', outline: 'none' }}
                         >
                             {monthOptions.map(opt => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
                         </select>
-
                         <select
                             value={year}
                             onChange={(e) => setYear(parseInt(e.target.value))}
-                            className="wsp-select"
-                            style={{ minWidth: '90px' }}
+                            className="report-filter-badge"
+                            style={{ cursor: 'pointer', outline: 'none' }}
                         >
                             {yearOptions.map(y => (
                                 <option key={y} value={y}>{y}</option>
                             ))}
                         </select>
+                        <span className="report-filter-badge">{comparisonMode ? 'Mode Perbandingan' : 'Mode Standar'}</span>
                     </div>
                 </div>
 
-                <div className="right-section">
-                    {/* Print Mode Selector */}
-                    <PrintModeSelector onPrint={handlePrint} />
-
-                    <button
-                        onClick={fetchData}
-                        className="wsp-btn"
-                        disabled={loading}
-                        title="Refresh Data"
-                    >
-                        Refresh
-                    </button>
-                    <button onClick={handlePrint} className="wsp-btn" title="Print this report">
-                        Print
-                    </button>
-                    <button onClick={handleSavePDF} className="wsp-btn" title="Download Report as PDF">
-                        Save PDF
+                <div className="report-header-actions">
+                    <button onClick={handlePrint} className="wsp-btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Printer size={18} /> Cetak Report
                     </button>
                     <button
                         onClick={handleExport}
-                        className="wsp-btn wsp-btn-primary"
+                        className="wsp-btn-secondary"
                         disabled={loading || (!comparisonMode && summaryData.length === 0)}
-                        title="Download as CSV"
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
                         Export CSV
                     </button>
                     <button
-                        onClick={() => setComparisonMode(!comparisonMode)}
-                        className={`wsp-btn ${comparisonMode ? 'wsp-btn-primary' : ''}`}
-                        title="Toggle Comparison Mode"
-                        style={{ marginLeft: '0.5rem' }}
-                        disabled={impactReportMode}
+                        onClick={fetchData}
+                        className="wsp-btn-secondary"
+                        disabled={loading}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
-                        {comparisonMode ? 'Report Mode' : 'Comparison Mode'}
+                        <RefreshCw size={18} /> Refresh
                     </button>
                     <button
                         onClick={() => setImpactReportMode(!impactReportMode)}
@@ -1003,19 +993,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             )}
 
                             {/* Signature Section */}
-                            <div className="wsp-signature-section">
-                                <div className="wsp-signature-block">
-                                    <div className="wsp-signature-title">DIBUAT OLEH :</div>
-                                    <div className="wsp-signature-name">( ........................................ )</div>
-                                </div>
-                                <div className="wsp-signature-block">
-                                    <div className="wsp-signature-title">DIPERIKSA OLEH :</div>
-                                    <div className="wsp-signature-name">( ........................................ )</div>
-                                </div>
-                                <div className="wsp-signature-block">
-                                    <div className="wsp-signature-title">DISETUJUI OLEH :</div>
-                                    <div className="wsp-signature-name">( ........................................ )</div>
-                                </div>
+                            <div className="print-only">
+                                <PrintSignature />
                             </div>
 
                             {/* Report Footer */}

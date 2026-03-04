@@ -6,6 +6,7 @@ import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport
 import { fetchDivisions, fetchGangs } from '../services/gangService';
 import { Calculator, BarChart2, CalendarDays, Activity, FileWarning, Search, ChevronDown, ChevronRight, DollarSign, Download, Filter } from 'lucide-react';
 import { useCurrentPeriod } from '../hooks/useCurrentPeriod';
+import PrintSignature from '../components/common/PrintSignature';
 import '../styles/TaxReportPage.css';
 
 // LocalStorage keys for tax report persistence
@@ -165,6 +166,14 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                 </div>
             ) : (
                 <div className="tax-report-table-wrapper">
+                    {/* Header for Print Only */}
+                    <div className="print-only" style={{ display: 'none', marginBottom: '20px', textAlign: 'center' }}>
+                        <h2 style={{ margin: 0, textTransform: 'uppercase' }}>DAFTAR RINCIAN PPH21 KARYAWAN</h2>
+                        <h3 style={{ margin: '5px 0', textTransform: 'uppercase' }}>DIVISI: {division} | GANG: {gang || 'SEMUA'}</h3>
+                        <p style={{ margin: 0, fontWeight: 'bold' }}>PERIODE: {MONTH_NAMES[month - 1].toUpperCase()} {year}</p>
+                        <div style={{ borderBottom: '2px solid black', margin: '15px 0' }}></div>
+                    </div>
+
                     <table className="tax-report-table">
                         <thead>
                             <tr>
@@ -354,6 +363,10 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                             </tr>
                         </tfoot>
                     </table>
+
+                    <div className="print-only">
+                        <PrintSignature />
+                    </div>
                 </div>
             )}
         </div>

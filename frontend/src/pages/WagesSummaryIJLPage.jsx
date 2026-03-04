@@ -5,14 +5,18 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
+import PrintSignature from '../components/common/PrintSignature';
 import '../styles/wages-summary-professional.css';
+import '../styles/print-optimization.css';
 
 export default function WagesSummaryIJLPage({ onBack }) {
     const { token, user } = useAuth();
+    const [searchParams] = useSearchParams();
 
     // Filters
     const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -23,9 +27,15 @@ export default function WagesSummaryIJLPage({ onBack }) {
     const [summaryData, setSummaryData] = useState([]);
     // grandTotal from API is ignored for IJL specific calculation
 
-    // Comparison State
-    const [comparisonMode, setComparisonMode] = useState(false);
+    // Comparison State - Initialize from URL param
+    const [comparisonMode, setComparisonMode] = useState(searchParams.get('mode') === 'comparison');
     const [comparisonData, setComparisonData] = useState(null);
+
+    // Sync comparisonMode if URL search params change
+    useEffect(() => {
+        const mode = searchParams.get('mode');
+        setComparisonMode(mode === 'comparison');
+    }, [searchParams]);
 
     // Impact Report State
     const [impactReportMode, setImpactReportMode] = useState(false);
@@ -584,10 +594,8 @@ export default function WagesSummaryIJLPage({ onBack }) {
                                 </div>
                             )}
 
-                            <div className="wsp-signature-section">
-                                <div className="wsp-signature-block"><div className="wsp-signature-title">DIBUAT OLEH :</div><div className="wsp-signature-name">( ........................................ )</div></div>
-                                <div className="wsp-signature-block"><div className="wsp-signature-title">DIPERIKSA OLEH :</div><div className="wsp-signature-name">( ........................................ )</div></div>
-                                <div className="wsp-signature-block"><div className="wsp-signature-title">DISETUJUI OLEH :</div><div className="wsp-signature-name">( ........................................ )</div></div>
+                            <div className="print-only">
+                                <PrintSignature />
                             </div>
 
                             <footer className="wsp-footer">

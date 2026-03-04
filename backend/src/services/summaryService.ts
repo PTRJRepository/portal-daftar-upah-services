@@ -122,8 +122,9 @@ export class SummaryService {
     public async getAllDivisionsPremiTotals(month: number, year: number): Promise<DivisionSummary[]> {
         const descriptions = await this.getDivisionDescriptions();
         const gangDivMap = await this.getGangToDivisionMap();
+        const allGangDescs = await this.getAllGangDescriptions();
 
-        // Fetch per-gang rows (no GROUP BY division_code since it may be 'ALL')
+        // Fetch per-gang rows
         const query = `
             SELECT
                 gang_code,
@@ -148,11 +149,8 @@ export class SummaryService {
 
         const rows = await this.extendDb.query<any>(query, [month, year]);
         const thumbprintData = await this.loadThumbprintData(month, year);
-
-        // Fetch backfill data (from JSON columns)
         const backfillData = await this.getBackfillData(month, year);
 
-        // Aggregate per-gang rows by DERIVED division (from HR_GANG.LocCode)
         const divAgg: Record<string, {
             total_premi: number; total_employees: number; total_hk: number;
             total_upah_bersih: number; total_pph21: number; total_spsi: number;
@@ -166,9 +164,14 @@ export class SummaryService {
             const gangCode = row.gang_code?.trim() || '';
             if (!gangCode) continue;
 
-            // Derive division: use HR_GANG lookup, fallback to stored division_code
-            const div = gangDivMap[gangCode] || (row.division_code?.trim() || 'UNKNOWN');
-            if (div === 'ALL' || !div) continue; // Skip if still 'ALL' or empty
+            const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || 'UNKNOWN';
+            const gangDesc = allGangDescs[gangCode] || '';
+            
+            // Check for virtual division first
+            const virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            const div = virtualDiv || sourceLoc;
+
+            if (div === 'ALL' || !div) continue;
 
             if (!divAgg[div]) {
                 divAgg[div] = {
@@ -201,29 +204,34 @@ export class SummaryService {
 
         const results: DivisionSummary[] = [];
 
-        for (const [div, row] of Object.entries(divAgg).sort((a, b) => a[0].localeCompare(b[0]))) {
+        // Define order for sorting: Real divisions first, then Virtual in specified order
+        const virtualOrder = divisionDefinition.VIRTUAL_DIVISION_ORDER;
+        const sortedDivs = Object.keys(divAgg).sort((a, b) => {
+            const idxA = virtualOrder.indexOf(a);
+            const idxB = virtualOrder.indexOf(b);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return 1; // Virtuals at bottom
+            if (idxB !== -1) return -1;
+            return a.localeCompare(b);
+        });
 
+        for (const div of sortedDivs) {
+            const row = divAgg[div];
             let totalPremi = row.total_premi;
-            let totalPremiKinerja = row.total_premi_kinerja;
-            let totalPremiPrunning = row.total_premi_prunning;
-            let totalPremiInsentif = row.total_premi_insentif;
             let totalLembur = row.total_lembur;
 
-            // Apply Backfill if main columns are zero
+            // Apply Backfill if needed
             const backfill = backfillData[div];
             if (backfill) {
-                if (totalPremiPrunning === 0 && backfill.pruning > 0) totalPremiPrunning = backfill.pruning;
-                if (totalPremiInsentif === 0 && backfill.insentif > 0) totalPremiInsentif = backfill.insentif;
-                if (totalPremiKinerja === 0 && backfill.kinerja > 0) totalPremiKinerja = backfill.kinerja;
                 if (totalLembur === 0 && backfill.lembur > 0) totalLembur = backfill.lembur;
-
                 if (totalPremi === 0) {
-                    totalPremi = totalPremiPrunning + totalPremiInsentif + totalPremiKinerja;
+                    totalPremi = backfill.pruning + backfill.insentif + backfill.kinerja;
                 }
             }
 
-            // Calculate total_premi_excluding_special (exclude insentif, kinerja, prunning)
-            const totalPremiExcludingSpecial = totalPremi - totalPremiInsentif - totalPremiKinerja - totalPremiPrunning;
+            // User requested: total_premi should be the FULL amount from portal
+            // No more subtraction of special components for the main display
+            const totalPremiDisplay = totalPremi; 
 
             const upah = row.total_upah_bersih;
             const thumbValue = thumbprintData[div] || 0;
@@ -232,8 +240,8 @@ export class SummaryService {
             results.push({
                 division_code: div,
                 description: descriptions[div] || div,
-                total_premi: totalPremi,
-                total_premi_excluding_special: totalPremiExcludingSpecial,
+                total_premi: totalPremiDisplay,
+                total_premi_excluding_special: totalPremiDisplay, // Simplified as requested
                 total_employees: row.total_employees,
                 total_hk: row.total_hk,
                 total_upah_bersih: upah,
@@ -242,8 +250,8 @@ export class SummaryService {
                 total_lembur: totalLembur,
                 total_gangs: row.gang_codes.size,
                 total_premi_brondol: row.total_premi_brondol,
-                total_premi_prunning: totalPremiPrunning,
-                total_premi_insentif: totalPremiInsentif,
+                total_premi_prunning: row.total_premi_prunning,
+                total_premi_insentif: row.total_premi_insentif,
                 total_premi_kinerja: row.total_premi_kinerja,
                 total_koreksi: row.total_koreksi,
                 total_ffb_weight: row.total_ffb_weight,
@@ -258,10 +266,7 @@ export class SummaryService {
             });
         }
 
-        // Apply PPH21 and SPSI adjustments
-        const adjustedResults = await deductionAdjustmentService.applyAdjustmentsToDivisionData(month, year, results);
-
-        return adjustedResults;
+        return await deductionAdjustmentService.applyAdjustmentsToDivisionData(month, year, results);
     }
 
 
@@ -536,6 +541,7 @@ export class SummaryService {
 
     private async getDynamicPremiInsentifPanen(month: number, year: number): Promise<Record<string, { insentif_panen: number }>> {
         const gangDivMap = await this.getGangToDivisionMap();
+        const allGangDescs = await this.getAllGangDescriptions();
         const rows = await this.extendDb.query<any>(`
             SELECT gang_code, division_code, dynamic_premi_data, informasi_tambahan
             FROM dbo.daftar_upah_aggregation_history
@@ -545,7 +551,13 @@ export class SummaryService {
         const result: Record<string, any> = {};
         for (const row of rows) {
             const gangCode = row.gang_code?.trim() || '';
-            const div = gangDivMap[gangCode] || row.division_code?.trim() || '';
+            const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || '';
+            const gangDesc = allGangDescs[gangCode] || '';
+            
+            // Check for virtual division
+            const virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            const div = virtualDiv || sourceLoc;
+
             if (!div || div === 'ALL') continue;
             try {
                 // Try dynamic_premi_data first
@@ -944,25 +956,20 @@ export class SummaryService {
             };
 
             try {
-                // Try dynamic_premi_data first
                 if (row.dynamic_premi_data) {
                     dynamicPremi = typeof row.dynamic_premi_data === 'string'
                         ? JSON.parse(row.dynamic_premi_data)
                         : row.dynamic_premi_data;
                 }
 
-                // If not found or empty, try informasi_tambahan (for December/January data compatibility)
                 if ((!dynamicPremi || !Array.isArray(dynamicPremi) || dynamicPremi.length === 0) && row.informasi_tambahan) {
                     try {
                         dynamicPremi = typeof row.informasi_tambahan === 'string'
                             ? JSON.parse(row.informasi_tambahan)
                             : row.informasi_tambahan;
-                    } catch (e) {
-                        // ignore parse error for informasi_tambahan
-                    }
+                    } catch (e) { }
                 }
 
-                // Backfill logic for old data
                 if (Array.isArray(dynamicPremi)) {
                     for (const item of dynamicPremi) {
                         const val = parseFloat(item.total || 0);
@@ -976,24 +983,24 @@ export class SummaryService {
                 }
             } catch (e) { }
 
-            // Use DB value if present (new data), else use backfilled (old data)
-            // Actually, for consistency, if DB is 0 and backfill > 0, use backfill.
             const t_insentif = parseFloat(row.total_premi_insentif || 0) || backfill.insentif;
             const t_kinerja = parseFloat(row.total_premi_kinerja || 0) || backfill.kinerja;
             const t_prunning = parseFloat(row.total_premi_prunning || 0) || backfill.prunning;
             const t_koreksi = parseFloat(row.total_koreksi || 0) || backfill.koreksi;
 
             const rowTotalPremi = parseFloat(row.total_premi || 0);
-            const totalPremiExcludingSpecial = rowTotalPremi - t_insentif - t_kinerja - t_prunning;
+            
+            // As requested: total_premi should be the FULL amount from portal
+            const totalPremiDisplay = rowTotalPremi;
 
             return {
                 ...row,
-                total_premi: rowTotalPremi,
-                total_premi_excluding_special: totalPremiExcludingSpecial,
+                total_premi: totalPremiDisplay,
+                total_premi_excluding_special: totalPremiDisplay, // Simplified as requested
                 total_premi_insentif: t_insentif,
                 total_premi_kinerja: t_kinerja,
                 total_premi_prunning: t_prunning,
-                total_koreksi: t_koreksi,
+                total_koreksi: 0, // Hide koreksi as requested
                 _dynamic_premi_list: dynamicPremi
             };
         });
