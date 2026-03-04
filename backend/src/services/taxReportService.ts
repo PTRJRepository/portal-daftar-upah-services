@@ -458,7 +458,15 @@ class TaxReportService {
         }
 
         if (effectiveGangPrefix) {
-            historyData.data_rows = historyData.data_rows.filter((r: any) => (r.gang_code || '').startsWith(effectiveGangPrefix));
+            const isNumericPrefix = /^\d+$/.test(effectiveGangPrefix);
+            historyData.data_rows = historyData.data_rows.filter((r: any) => {
+                const gc = (r.gang_code || '').trim();
+                if (isNumericPrefix) {
+                    const asistensi = divisionDefinition.getAsistensiFromGang(gc);
+                    return asistensi === effectiveGangPrefix;
+                }
+                return gc.startsWith(effectiveGangPrefix);
+            });
         }
 
         const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
@@ -869,7 +877,13 @@ class TaxReportService {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
 
-            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => (r.gang_code || '').startsWith(effectiveGangPrefix)) : data.data_rows;
+            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
+                const gc = (r.gang_code || '').trim();
+                if (/^\d+$/.test(effectiveGangPrefix)) {
+                    return divisionDefinition.getAsistensiFromGang(gc) === effectiveGangPrefix;
+                }
+                return gc.startsWith(effectiveGangPrefix);
+            }) : data.data_rows;
 
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
@@ -1274,7 +1288,13 @@ class TaxReportService {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
 
-            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => (r.gang_code || '').startsWith(effectiveGangPrefix)) : data.data_rows;
+            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
+                const gc = (r.gang_code || '').trim();
+                if (/^\d+$/.test(effectiveGangPrefix)) {
+                    return divisionDefinition.getAsistensiFromGang(gc) === effectiveGangPrefix;
+                }
+                return gc.startsWith(effectiveGangPrefix);
+            }) : data.data_rows;
 
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
@@ -1457,7 +1477,13 @@ class TaxReportService {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
 
-            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => (r.gang_code || '').startsWith(effectiveGangPrefix)) : data.data_rows;
+            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
+                const gc = (r.gang_code || '').trim();
+                if (/^\d+$/.test(effectiveGangPrefix)) {
+                    return divisionDefinition.getAsistensiFromGang(gc) === effectiveGangPrefix;
+                }
+                return gc.startsWith(effectiveGangPrefix);
+            }) : data.data_rows;
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
                 if (!employeeMap.has(empCode)) {
