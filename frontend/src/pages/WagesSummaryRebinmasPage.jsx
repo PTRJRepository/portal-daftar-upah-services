@@ -371,33 +371,56 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     // Render Comparison KPI Cards
     const renderComparisonKPI = () => {
         if (!comparisonData || !comparisonData.kpi_summary) return null;
-        const { kpi_summary, previous_period, current_period, divisions } = comparisonData;
+        const { previous_period, current_period, divisions: allDivisions } = comparisonData;
         const prevLabel = `${getMonthName(previous_period?.month || 11)} ${previous_period?.year || year}`;
         const currLabel = `${getMonthName(current_period?.month || month)} ${current_period?.year || year}`;
 
-        const estateDiff = (kpi_summary.estate_gaji?.current || 0) - (kpi_summary.estate_gaji?.previous || 0);
-        const millDiff = (kpi_summary.mill_gaji?.current || 0) - (kpi_summary.mill_gaji?.previous || 0);
-        const tbsDiff = (kpi_summary.tbs_weight?.current || 0) - (kpi_summary.tbs_weight?.previous || 0);
+        // Filter out IJL division for ALL KPI calculations (Rebinmas Only)
+        const filteredDivisions = allDivisions.filter(d =>
+            d.division_code !== 'IJL' &&
+            !(d.description || '').toLowerCase().includes('impian jaya lestari')
+        );
 
-        // Calculate Total PPh21 for Current Month
-        const totalPPh21 = divisions?.reduce((sum, d) => sum + (d.total_pph21_current || 0), 0) || 0;
+        // Recalculate KPI Totals excluding IJL and MILL
+        const estateGaji = {
+            previous: filteredDivisions.filter(d => d.division_code !== 'MILL').reduce((sum, d) => sum + (d.previous_month?.gaji || 0), 0),
+            current: filteredDivisions.filter(d => d.division_code !== 'MILL').reduce((sum, d) => sum + (d.current_month?.gaji || 0), 0)
+        };
+
+        const millGaji = {
+            previous: filteredDivisions.filter(d => d.division_code === 'MILL').reduce((sum, d) => sum + (d.previous_month?.gaji || 0), 0),
+            current: filteredDivisions.filter(d => d.division_code === 'MILL').reduce((sum, d) => sum + (d.current_month?.gaji || 0), 0)
+        };
+
+        // TBS Weight KPI - Total for Rebinmas Estate (Excluding MILL and IJL)
+        const tbsWeight = {
+            previous: filteredDivisions.filter(d => d.division_code !== 'MILL').reduce((sum, d) => sum + (d.previous_month?.tbs_weight || 0), 0),
+            current: filteredDivisions.filter(d => d.division_code !== 'MILL').reduce((sum, d) => sum + (d.current_month?.tbs_weight || 0), 0)
+        };
+
+        const estateDiff = estateGaji.current - estateGaji.previous;
+        const millDiff = millGaji.current - millGaji.previous;
+        const tbsDiff = tbsWeight.current - tbsWeight.previous;
+
+        // Calculate Total PPh21 for Current Month (already filtered to exclude IJL)
+        const totalPPh21 = filteredDivisions.reduce((sum, d) => sum + (d.total_pph21_current || 0), 0) || 0;
 
         return (
-            <div className="wsp-kpi-grid comparison-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            <div className="wsp-kpi-grid comparison-grid">
                 {/* Estate Gaji Card */}
                 <div className="wsp-kpi-card comparison-card">
-                    <div className="wsp-kpi-label">Total Gaji Estate</div>
+                    <div className="wsp-kpi-label">Total Gaji Estate (Non IJL)</div>
                     <div className="wsp-kpi-compare-row">
                         <div className="wsp-kpi-trend-box prev">
                             <div className="trend-label">{prevLabel}</div>
                             <div className="trend-value">
-                                {formatNumber(kpi_summary.estate_gaji?.previous)}
+                                {formatNumber(estateGaji.previous)}
                             </div>
                         </div>
                         <div className="wsp-kpi-trend-box curr">
                             <div className="trend-label">{currLabel}</div>
                             <div className="trend-value">
-                                {formatNumber(kpi_summary.estate_gaji?.current)}
+                                {formatNumber(estateGaji.current)}
                             </div>
                         </div>
                     </div>
@@ -414,13 +437,13 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <div className="wsp-kpi-trend-box prev">
                             <div className="trend-label">{prevLabel}</div>
                             <div className="trend-value">
-                                {formatNumber(kpi_summary.mill_gaji?.previous)}
+                                {formatNumber(millGaji.previous)}
                             </div>
                         </div>
                         <div className="wsp-kpi-trend-box curr">
                             <div className="trend-label">{currLabel}</div>
                             <div className="trend-value">
-                                {formatNumber(kpi_summary.mill_gaji?.current)}
+                                {formatNumber(millGaji.current)}
                             </div>
                         </div>
                     </div>
@@ -448,18 +471,18 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
 
                 {/* TBS Weight Card */}
                 <div className="wsp-kpi-card comparison-card">
-                    <div className="wsp-kpi-label">Total TBS (Ton)</div>
+                    <div className="wsp-kpi-label">Total TBS (Ton - Non IJL)</div>
                     <div className="wsp-kpi-compare-row">
                         <div className="wsp-kpi-trend-box prev">
                             <div className="trend-label">{prevLabel}</div>
                             <div className="trend-value">
-                                {formatNumber(kpi_summary.tbs_weight?.previous, 2)}
+                                {formatNumber(tbsWeight.previous, 2)}
                             </div>
                         </div>
                         <div className="wsp-kpi-trend-box curr">
                             <div className="trend-label">{currLabel}</div>
                             <div className="trend-value">
-                                {formatNumber(kpi_summary.tbs_weight?.current, 2)}
+                                {formatNumber(tbsWeight.current, 2)}
                             </div>
                         </div>
                     </div>
