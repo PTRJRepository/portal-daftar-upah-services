@@ -41,11 +41,13 @@ export class SummaryService {
     private static instance: SummaryService;
     private db: Database;
     private extendDb: Database;
+    private millDb: Database;
 
     private constructor() {
         // Enforce DB_PROFILE for summary reports
         this.db = Database.getInstance(undefined, Config.DB_PROFILE);
         this.extendDb = Database.getInstance("extend_db_ptrj", Config.DB_EXTEND_PROFILE);
+        this.millDb = Database.getMillInstance();
     }
 
     public static getInstance(): SummaryService {
@@ -163,6 +165,9 @@ export class SummaryService {
         const rows = await this.extendDb.query<any>(query, [month, year]);
         const thumbprintData = await this.loadThumbprintData(month, year);
         const backfillData = await this.getBackfillData(month, year);
+
+        // Fetch tonase from db_ptrj_mill (server_3) - real-time per division
+        const tonaseFromMill = await this.fetchTonaseFromMill(month, year);
 
         // Type for aggregation bucket
         type AggBucket = {
@@ -397,8 +402,8 @@ export class SummaryService {
                 total_premi_insentif: row.total_premi_insentif,
                 total_premi_kinerja: row.total_premi_kinerja,
                 total_koreksi: row.total_koreksi,
-                total_ffb_weight: row.total_ffb_weight,
-                total_weight_tbs: row.total_weight_tbs,
+                total_ffb_weight: tonaseFromMill[div] || 0,
+                total_weight_tbs: tonaseFromMill[div] || 0,
                 informasi_tambahan: '',
                 thumb_print: thumbValue,
                 total_manual: upah,
@@ -1286,6 +1291,62 @@ id, period_month, period_year, division_code, gang_code,
         }
     }
 
+
+    /**
+     * Fetch tonase (FFB weight) per division from db_ptrj_mill via SERVER_PROFILE_3.
+     * Queries WM_TICKET joined with PU_SUPPLIER to match by division code.
+     * Returns map: divisionCode -> tonase (in tons)
+     * Divisions without matching data will not have an entry (will be 0).
+     */
+    private async fetchTonaseFromMill(month: number, year: number): Promise<Record<string, number>> {
+        const result: Record<string, number> = {};
+        try {
+            // Query all PTRJ FFB records grouped by supplier for this month/year
+            const rows = await this.millDb.query<{ CustomerCode: string; SupplierName: string; total_weight: string }>(`
+                SELECT 
+                    T.[CustomerCode],
+                    S.[Name] AS SupplierName,
+                    SUM(CAST(T.[NetWeight] AS DECIMAL(18,2))) / 1000.0 AS total_weight
+                FROM [dbo].[WM_TICKET] T
+                LEFT JOIN [dbo].[PU_SUPPLIER] S ON T.[CustomerCode] = S.[SupplierCode]
+                WHERE T.[CustomerCode] LIKE 'PTRJ%'
+                  AND MONTH(T.[DateReceived]) = ?
+                  AND YEAR(T.[DateReceived]) = ?
+                  AND T.[ProductCode] = 'FFB'
+                GROUP BY T.[CustomerCode], S.[Name]
+            `, [month, year]);
+
+            console.log(`[SummaryService] Fetched ${rows.length} tonase records from db_ptrj_mill (server_3)`);
+
+            // Division codes to match against supplier names/customer codes
+            const divisionCodes = ['P1A', 'P1B', 'P2A', 'P2B', 'AB1', 'AB2', 'ARC', 'DME', 'ARA', 'IJL', 'INF', 'NRS', 'WKS_PG', 'WKS_AR'];
+
+            for (const divCode of divisionCodes) {
+                let divTonase = 0;
+                for (const row of rows) {
+                    const supplierName = (row.SupplierName || '').toUpperCase();
+                    const customerCode = (row.CustomerCode || '').toUpperCase();
+                    const weight = parseFloat(row.total_weight) || 0;
+
+                    // Match by checking if division code appears in supplier name or customer code
+                    if (supplierName.includes(divCode) || customerCode.includes(divCode)) {
+                        divTonase += weight;
+                    }
+                }
+                if (divTonase > 0) {
+                    result[divCode] = divTonase;
+                    console.log(`[SummaryService] Tonase ${divCode}: ${divTonase.toFixed(2)} tons`);
+                }
+            }
+        } catch (error: any) {
+            if (error.message?.includes('Invalid object name') || error.message?.includes('does not exist')) {
+                console.warn(`[SummaryService] WM_TICKET/PU_SUPPLIER table not found in db_ptrj_mill, tonase will be 0`);
+            } else {
+                console.error(`[SummaryService] Failed to fetch tonase from mill:`, error.message);
+            }
+        }
+        return result;
+    }
 
     public async updateThumbprint(month: number, year: number, divisionCode: string, value: number): Promise<boolean> {
         return await thumbprintService.updateThumbprintValue(month, year, divisionCode, value);

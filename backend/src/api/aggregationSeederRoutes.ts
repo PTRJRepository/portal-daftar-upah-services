@@ -74,6 +74,98 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
             force: t.Optional(t.Boolean())
         })
     })
+    .post("/seed-tonase", async ({ body, headers, set }) => {
+        // Seed ONLY tonase (FFB weight) from db_ptrj_mill (server_3)
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const { month, year } = body;
+
+        try {
+            console.log(`[TonaseSeeder] Starting tonase-only seed for ${month}/${year}...`);
+            const db = Database.getExtendedInstance();
+            const millDb = Database.getMillInstance();
+
+            // Get all PTRJ FFB records grouped by supplier
+            const rows = await millDb.query<{ CustomerCode: string; SupplierName: string; total_weight: string }>(`
+                SELECT 
+                    T.[CustomerCode],
+                    S.[Name] AS SupplierName,
+                    SUM(CAST(T.[NetWeight] AS DECIMAL(18,2))) / 1000.0 AS total_weight
+                FROM [dbo].[WM_TICKET] T
+                LEFT JOIN [dbo].[PU_SUPPLIER] S ON T.[CustomerCode] = S.[SupplierCode]
+                WHERE T.[CustomerCode] LIKE 'PTRJ%'
+                  AND MONTH(T.[DateReceived]) = ?
+                  AND YEAR(T.[DateReceived]) = ?
+                  AND T.[ProductCode] = 'FFB'
+                GROUP BY T.[CustomerCode], S.[Name]
+            `, [month, year]);
+
+            console.log(`[TonaseSeeder] Fetched ${rows.length} FFB records from db_ptrj_mill`);
+
+            // Get all divisions that have aggregation data for this period
+            const divisionRows = await db.query<{ division_code: string }>(`
+                SELECT DISTINCT division_code
+                FROM dbo.daftar_upah_aggregation_history
+                WHERE period_month = ? AND period_year = ?
+                  AND division_code IS NOT NULL
+            `, [month, year]);
+
+            const results: { division: string; tonase: number; status: string }[] = [];
+
+            for (const divRow of divisionRows) {
+                const divCode = divRow.division_code.trim();
+                // Match tonase by checking if division code appears in supplier name or customer code
+                let divTonase = 0;
+                for (const row of rows) {
+                    const supplierName = (row.SupplierName || '').toUpperCase();
+                    const customerCode = (row.CustomerCode || '').toUpperCase();
+                    const weight = parseFloat(row.total_weight) || 0;
+
+                    if (supplierName.includes(divCode) || customerCode.includes(divCode)) {
+                        divTonase += weight;
+                    }
+                }
+
+                if (divTonase > 0) {
+                    // Update all gang rows for this division with the tonase value
+                    await db.query(`
+                        UPDATE dbo.daftar_upah_aggregation_history
+                        SET total_ffb_weight = ?, total_weight_tbs = ?, updated_at = GETDATE()
+                        WHERE division_code = ? AND period_month = ? AND period_year = ?
+                    `, [divTonase, divTonase, divCode, month, year]);
+
+                    console.log(`[TonaseSeeder] ${divCode}: ${divTonase.toFixed(2)} tons → updated`);
+                    results.push({ division: divCode, tonase: Math.round(divTonase * 100) / 100, status: 'UPDATED' });
+                } else {
+                    console.log(`[TonaseSeeder] ${divCode}: no tonase data found`);
+                    results.push({ division: divCode, tonase: 0, status: 'NO_DATA' });
+                }
+            }
+
+            return {
+                success: true,
+                message: `Tonase seeded for ${month}/${year}`,
+                total_divisions: results.length,
+                updated: results.filter(r => r.status === 'UPDATED').length,
+                results
+            };
+        } catch (error: any) {
+            console.error("[TonaseSeeder] Error:", error);
+            return {
+                success: false,
+                error: error.message || "Failed to seed tonase"
+            };
+        }
+    }, {
+        body: t.Object({
+            month: t.Numeric(),
+            year: t.Numeric()
+        })
+    })
     .get("/seed/progress", async ({ headers, set }) => {
         // Verify authentication
         const authHeader = headers["authorization"];
@@ -625,18 +717,18 @@ export async function seedAggregationToDb(division: string | undefined, month: n
                     total_beras: 0,
                     total_jabatan: 0,
                     total_masa_kerja: 0,
-                    total_lembur: 0,
+                    total_lembur: millData.total_ot || 0,
                     total_tunjangan: 0,
                     total_premi_brondol: 0,
                     total_premi_prunning: 0,
                     total_premi_insentif: 0,
                     total_premi_kinerja: 0,
                     total_premi: 0,
-                    total_potongan: 0,
-                    total_pph21: 0,
+                    total_potongan: (millData.total_pph21 || 0) + (millData.total_spsi || 0),
+                    total_pph21: millData.total_pph21,
                     total_bpjs_pekerja: 0,
                     total_bpjs_majikan: 0,
-                    total_spsi: 0,
+                    total_spsi: millData.total_spsi,
                     total_upah_kotor: millData.total_salary, // Assuming take home pay ~ upah kotor for simple report? Or upah bersih? SQL says "IsTakeHomePay"
                     total_upah_bersih: millData.total_salary, // Treating Take Home Pay as Upah Bersih
                     total_ffb_weight: 0,
@@ -1024,9 +1116,40 @@ async function fetchMillData(month: number, year: number) {
 
     const salaryResult = await db.queryOne<{ TotalCompAmount: number }>(salaryQuery, [pyNumberPattern]);
 
+    // 3. Get PPh21 (Using provided query logic)
+    const pphQuery = `
+        SELECT ABS(SUM(ISNULL([CompAmount], 0))) AS totalCount
+        FROM [dbo].[HR_T_PYWeekly_DComponent]
+        WHERE [PYNumber] LIKE ?
+          AND [PYCompCode] LIKE '#PPH21%'
+    `;
+    const pphResult = await db.queryOne<{ totalCount: number }>(pphQuery, [pyNumberPattern]);
+
+    // 4. Get SPSI (Using provided query logic)
+    const spsiQuery = `
+        SELECT ABS(SUM(ISNULL([CompAmount], 0))) AS totalCount
+        FROM [dbo].[HR_T_PYWeekly_DComponent]
+        WHERE [PYNumber] LIKE ?
+          AND [PYCompCode] LIKE '#POT_spsi%'
+    `;
+    const spsiResult = await db.queryOne<{ totalCount: number }>(spsiQuery, [pyNumberPattern]);
+
+    // 5. Get Overtime (OT) - [NEW]
+    // User requested to NOT use minus sign, even if it reduces (ensure positive for sum consistency)
+    const otQuery = `
+        SELECT ABS(SUM(ISNULL([CompAmount], 0))) AS totalCount
+        FROM [dbo].[HR_T_PYWeekly_DComponent]
+        WHERE [PYNumber] LIKE ?
+          AND [PYCompCode] LIKE '%#OT%%'
+    `;
+    const otResult = await db.queryOne<{ totalCount: number }>(otQuery, [pyNumberPattern]);
+
     return {
         total_hk: hkResult?.total_HK || 0,
         total_employees: hkResult?.total_employees || 0,
-        total_salary: salaryResult?.TotalCompAmount || 0
+        total_salary: salaryResult?.TotalCompAmount || 0,
+        total_pph21: pphResult?.totalCount || 0,
+        total_spsi: spsiResult?.totalCount || 0,
+        total_ot: otResult?.totalCount || 0
     };
 }

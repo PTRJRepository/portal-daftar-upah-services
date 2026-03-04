@@ -371,7 +371,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     // Render Comparison KPI Cards
     const renderComparisonKPI = () => {
         if (!comparisonData || !comparisonData.kpi_summary) return null;
-        const { kpi_summary, previous_period, current_period } = comparisonData;
+        const { kpi_summary, previous_period, current_period, divisions } = comparisonData;
         const prevLabel = `${getMonthName(previous_period?.month || 11)} ${previous_period?.year || year}`;
         const currLabel = `${getMonthName(current_period?.month || month)} ${current_period?.year || year}`;
 
@@ -379,27 +379,31 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         const millDiff = (kpi_summary.mill_gaji?.current || 0) - (kpi_summary.mill_gaji?.previous || 0);
         const tbsDiff = (kpi_summary.tbs_weight?.current || 0) - (kpi_summary.tbs_weight?.previous || 0);
 
+        // Calculate Total PPh21 for Current Month
+        const totalPPh21 = divisions?.reduce((sum, d) => sum + (d.total_pph21_current || 0), 0) || 0;
+
         return (
-            <div className="wsp-kpi-grid comparison-grid">
+            <div className="wsp-kpi-grid comparison-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
                 {/* Estate Gaji Card */}
                 <div className="wsp-kpi-card comparison-card">
-                    <div className="wsp-kpi-label">Total Gaji Estate (Excl. Mill)</div>
+                    <div className="wsp-kpi-label">Total Gaji Estate</div>
                     <div className="wsp-kpi-compare-row">
                         <div className="wsp-kpi-trend-box prev">
                             <div className="trend-label">{prevLabel}</div>
                             <div className="trend-value">
-                                Rp {formatNumber(kpi_summary.estate_gaji?.previous)}
+                                {formatNumber(kpi_summary.estate_gaji?.previous)}
                             </div>
                         </div>
                         <div className="wsp-kpi-trend-box curr">
                             <div className="trend-label">{currLabel}</div>
                             <div className="trend-value">
-                                Rp {formatNumber(kpi_summary.estate_gaji?.current)}
+                                {formatNumber(kpi_summary.estate_gaji?.current)}
                             </div>
                         </div>
                     </div>
                     <div className={`wsp-kpi-diff ${estateDiff > 0 ? 'pos' : estateDiff < 0 ? 'neg' : 'neutral'}`}>
-                        Δ Rp {formatNumber(estateDiff)} {estateDiff > 0 ? '▲' : estateDiff < 0 ? '▼' : ''}
+                        <span>Variance:</span>
+                        <strong>Rp {formatNumber(estateDiff)} {estateDiff > 0 ? '▲' : estateDiff < 0 ? '▼' : ''}</strong>
                     </div>
                 </div>
 
@@ -410,18 +414,35 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <div className="wsp-kpi-trend-box prev">
                             <div className="trend-label">{prevLabel}</div>
                             <div className="trend-value">
-                                Rp {formatNumber(kpi_summary.mill_gaji?.previous)}
+                                {formatNumber(kpi_summary.mill_gaji?.previous)}
                             </div>
                         </div>
                         <div className="wsp-kpi-trend-box curr">
                             <div className="trend-label">{currLabel}</div>
                             <div className="trend-value">
-                                Rp {formatNumber(kpi_summary.mill_gaji?.current)}
+                                {formatNumber(kpi_summary.mill_gaji?.current)}
                             </div>
                         </div>
                     </div>
                     <div className={`wsp-kpi-diff ${millDiff > 0 ? 'pos' : millDiff < 0 ? 'neg' : 'neutral'}`}>
-                        Δ Rp {formatNumber(millDiff)} {millDiff > 0 ? '▲' : millDiff < 0 ? '▼' : ''}
+                        <span>Variance:</span>
+                        <strong>Rp {formatNumber(millDiff)} {millDiff > 0 ? '▲' : millDiff < 0 ? '▼' : ''}</strong>
+                    </div>
+                </div>
+
+                {/* Month Uraian Card */}
+                <div className="wsp-kpi-card comparison-card highlight uraian-card">
+                    <div className="wsp-kpi-label">Bulan {currLabel}</div>
+                    <div className="uraian-content">
+                        <div className="wsp-kpi-value uraian-value">
+                            {currLabel.toUpperCase()}
+                        </div>
+                        <div className="uraian-sublabel">
+                            Uraian: SPSI, Premi, Lembur, PPh21
+                        </div>
+                    </div>
+                    <div className="wsp-kpi-diff neutral uraian-footer">
+                        <span>Total PPh21: Rp {formatNumber(totalPPh21)}</span>
                     </div>
                 </div>
 
@@ -432,18 +453,19 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <div className="wsp-kpi-trend-box prev">
                             <div className="trend-label">{prevLabel}</div>
                             <div className="trend-value">
-                                {formatNumber(kpi_summary.tbs_weight?.previous, 2)} Ton
+                                {formatNumber(kpi_summary.tbs_weight?.previous, 2)}
                             </div>
                         </div>
                         <div className="wsp-kpi-trend-box curr">
                             <div className="trend-label">{currLabel}</div>
                             <div className="trend-value">
-                                {formatNumber(kpi_summary.tbs_weight?.current, 2)} Ton
+                                {formatNumber(kpi_summary.tbs_weight?.current, 2)}
                             </div>
                         </div>
                     </div>
                     <div className={`wsp-kpi-diff ${tbsDiff > 0 ? 'neg-invert' : tbsDiff < 0 ? 'pos-invert' : 'neutral'}`}>
-                        Δ {formatNumber(tbsDiff, 2)} Ton {tbsDiff > 0 ? '▲' : tbsDiff < 0 ? '▼' : ''}
+                        <span>Variance:</span>
+                        <strong>{formatNumber(tbsDiff, 2)} Ton {tbsDiff > 0 ? '▲' : tbsDiff < 0 ? '▼' : ''}</strong>
                     </div>
                 </div>
             </div>
@@ -506,14 +528,13 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             <div className="wsp-table-wrapper">
                 <table className="wsp-table comparison-table">
                     <thead>
-                        {/* Master Header */}
+                        {/* Master Header Level */}
                         <tr className="wsp-header-master">
-                            <th rowSpan="2" className="th-sticky-col">ESTATE/DIVISION</th>
-                            <th colSpan="2" className="th-group-workers">WORKERS / PEKERJA</th>
-                            <th colSpan="3" className="th-group-pph print-show-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
-                            <th colSpan="4" className="th-group-pph print-hide-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
-                            <th colSpan="3" className="th-group-prev">{prevMonthName} {previous_period.year}</th>
-                            <th colSpan="3" className="th-group-curr">{currMonthName} {current_period.year}</th>
+                            <th rowSpan="2" className="th-sticky-col">ESTATE / DIVISI</th>
+                            <th colSpan="2" className="th-group-workers">MANPOWER (Workers)</th>
+                            <th colSpan="4" className="th-group-uraian">BULAN {currMonthName} {current_period.year}<br /><small style={{ fontWeight: 400, opacity: 0.85 }}>(Uraian)</small></th>
+                            <th colSpan="3" className="th-group-prev">REKAP {prevMonthName} {previous_period.year}</th>
+                            <th colSpan="3" className="th-group-curr">REKAP {currMonthName} {current_period.year}</th>
                             <th rowSpan="2" className="th-group-diff">(Perubahan Gaji)</th>
                         </tr>
                         {/* Sub Header */}
@@ -522,21 +543,21 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             <th className="th-group-workers">{prevMonthName.substring(0, 3)}</th>
                             <th className="th-group-workers">{currMonthName.substring(0, 3)}</th>
 
-                            {/* Current Month Details */}
-                            <th className="th-group-pph">POT SPSI</th>
-                            <th className="th-group-pph">TOT PREMI</th>
-                            <th className="th-group-pph print-hide-cell">TOT LEMBUR</th>
-                            <th className="th-group-pph">PPH21</th>
+                            {/* Current Month Details (Uraian) */}
+                            <th className="th-group-uraian">POT SPSI</th>
+                            <th className="th-group-uraian">TOT PREMI</th>
+                            <th className="th-group-uraian">TOT LEMBUR</th>
+                            <th className="th-group-uraian">PPH21</th>
 
                             {/* Previous Month Totals */}
                             <th className="th-group-prev">GAJI</th>
                             <th className="th-group-prev">TBS (Ton)</th>
-                            <th className="th-group-prev">THUMB PRINT</th>
+                            <th className="th-group-prev">ABSENSI</th>
 
                             {/* Current Month Totals */}
                             <th className="th-group-curr">GAJI</th>
                             <th className="th-group-curr">TBS (Ton)</th>
-                            <th className="th-group-curr">THUMB PRINT</th>
+                            <th className="th-group-curr">ABSENSI</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -5,6 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     seedAggregation,
+    seedTonaseOnly,
     fetchAggregationStatus,
     formatMonthName,
     formatNumber,
@@ -105,6 +106,43 @@ export default function AggregationSeederModal({ isOpen, onClose, month, year, d
             }
         } catch (e) {
             setError(e.message || 'Failed to seed aggregation');
+        } finally {
+            setSeeding(false);
+        }
+    };
+
+    const handleSeedTonase = async () => {
+        if (!token) {
+            setError('No authentication token available');
+            return;
+        }
+        setSeeding(true);
+        setError('');
+        setSeedingProgress([{ message: `Seeding tonase from db_ptrj_mill for ${formatMonthName(month)} ${year}...`, time: new Date() }]);
+
+        try {
+            const response = await seedTonaseOnly(token, month, year);
+
+            if (response.success) {
+                setResult(response);
+                const updatedCount = response.updated || 0;
+                const resultDetails = (response.results || []).filter(r => r.status === 'UPDATED');
+                setSeedingProgress(prev => [
+                    ...prev,
+                    { message: `Tonase seeding completed! ${updatedCount} divisions updated.`, time: new Date() },
+                    ...resultDetails.map(r => ({ message: `  ${r.division}: ${r.tonase} ton`, time: new Date() }))
+                ]);
+
+                await loadStatus();
+
+                setTimeout(() => {
+                    onClose();
+                }, 3000);
+            } else {
+                setError(response.error || 'Failed to seed tonase');
+            }
+        } catch (e) {
+            setError(e.message || 'Failed to seed tonase');
         } finally {
             setSeeding(false);
         }
@@ -252,7 +290,7 @@ export default function AggregationSeederModal({ isOpen, onClose, month, year, d
                 )}
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                     <button
                         onClick={onClose}
                         disabled={seeding}
@@ -266,6 +304,22 @@ export default function AggregationSeederModal({ isOpen, onClose, month, year, d
                         }}
                     >
                         Cancel
+                    </button>
+                    <button
+                        onClick={handleSeedTonase}
+                        disabled={seeding}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            borderRadius: '0.375rem',
+                            border: '1px solid #06b6d4',
+                            background: '#22d3ee',
+                            color: '#164e63',
+                            cursor: seeding ? 'not-allowed' : 'pointer',
+                            opacity: seeding ? 0.5 : 1,
+                            fontWeight: 500
+                        }}
+                    >
+                        {seeding ? 'Processing...' : '🏭 Seed Tonase'}
                     </button>
                     <button
                         onClick={handleForceSeed}

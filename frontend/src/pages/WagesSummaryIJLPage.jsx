@@ -358,7 +358,7 @@ export default function WagesSummaryIJLPage({ onBack }) {
                         <tr className="wsp-header-master">
                             <th rowSpan="2" className="th-sticky-col">ESTATE/DIVISION</th>
                             <th colSpan="2" className="th-group-workers">WORKERS / PEKERJA</th>
-                            <th colSpan="4" className="th-group-pph">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
+                            <th colSpan="4" className="th-group-pph">BULAN {currMonthName} {current_period.year}<br /><small style={{ fontWeight: 400, opacity: 0.85 }}>(Uraian)</small></th>
                             <th colSpan="2" className="th-group-prev">{prevMonthName} {previous_period.year}</th>
                             <th colSpan="3" className="th-group-curr">{currMonthName} {current_period.year}</th>
                             <th rowSpan="2" className="th-group-diff">(Perubahan Gaji)</th>

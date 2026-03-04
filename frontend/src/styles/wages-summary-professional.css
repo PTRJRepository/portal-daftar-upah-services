@@ -320,6 +320,63 @@
     /* Larger arrow */
 }
 
+/* Uraian Card Enhancements */
+.wsp-kpi-card.uraian-card {
+    border-left: 4px solid #3b82f6 !important;
+}
+
+.uraian-content {
+    padding: 0.5rem 0;
+    text-align: center;
+}
+
+.uraian-value {
+    font-size: 1.5rem !important;
+    color: #1e40af !important;
+}
+
+.uraian-sublabel {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-top: 6px;
+    line-height: 1.5;
+}
+
+.uraian-footer {
+    justify-content: center !important;
+}
+
+.uraian-footer span {
+    font-size: 0.75rem !important;
+}
+
+/* Print Overrides for Uraian Card */
+@media print {
+    .wsp-kpi-card.uraian-card {
+        border-left: 2px solid #000 !important;
+    }
+    
+    .uraian-content {
+        padding: 0.1rem 0 !important;
+    }
+    
+    .uraian-value {
+        font-size: 0.6rem !important;
+        color: #000 !important;
+    }
+    
+    .uraian-sublabel {
+        font-size: 0.45rem !important;
+        margin-top: 0 !important;
+        line-height: 1.1 !important;
+    }
+    
+    .uraian-footer span {
+        font-size: 0.5rem !important;
+        white-space: nowrap !important;
+    }
+}
+
 /* =============================================
    DATA TABLE (Light Headers - Professional)
    ============================================= */
@@ -437,31 +494,50 @@
    COMPARISON GROUPS
    ============================================= */
 .th-group-workers {
+    background-color: #f1f5f9 !important;
     border-right: 1px solid #cbd5e1 !important;
-    background-color: #f8fafc !important;
+    color: #334155 !important;
 }
 
-.th-group-pph {
-    background-color: #fff !important;
-    border-right: 1px solid #cbd5e1 !important;
+.th-group-uraian {
+    background-color: #ecf2ff !important; /* Soft Blue for Breakdown */
+    border-right: 1px solid #b9ccff !important;
+    color: #1e40af !important; /* Blue-800 */
 }
 
 .th-group-prev {
-    background-color: #f1f5f9 !important;
+    background-color: #f8fafc !important;
     color: #64748b !important;
     border-right: 1px solid #cbd5e1 !important;
 }
 
 .th-group-curr {
-    background-color: #f8fafc !important;
-    color: #0f172a !important;
-    border-right: 1px solid #cbd5e1 !important;
+    background-color: #f0fdf4 !important; /* Soft Green for Summary/Current */
+    color: #166534 !important; /* Green-800 */
+    border-right: 1px solid #bbf7d0 !important;
 }
 
 .th-group-diff {
     background-color: #fff7ed !important;
     color: #9a3412 !important;
     border-left: 2px solid #fdba74;
+}
+
+.wsp-table thead tr.wsp-header-master th {
+    height: 3rem;
+    padding: 0.5rem;
+}
+
+/* Specific styling for comparison table to make it pop */
+.comparison-table .wsp-header-master th {
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.comparison-table .wsp-header-sub th {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.5rem 0.25rem;
 }
 
 /* STANDARD REPORT GROUPS */
@@ -850,8 +926,8 @@
     }
 
     .wsp-kpi-grid.comparison-grid {
-        grid-template-columns: repeat(3, 1fr) !important;
-        gap: 0.3rem !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 0.25rem !important;
     }
 
     .wsp-kpi-card {

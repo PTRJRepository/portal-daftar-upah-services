@@ -6,8 +6,8 @@
 
 // Detect if we're in proxy mode (accessed via proxy gateway)
 const isProxyMode = import.meta.env.VITE_PROXY_MODE === 'true' ||
-                       import.meta.env.NODE_ENV === 'production' ||
-                       (import.meta.env.VITE_BACKEND_HOST && import.meta.env.VITE_BACKEND_HOST !== 'localhost');
+    import.meta.env.NODE_ENV === 'production' ||
+    (import.meta.env.VITE_BACKEND_HOST && import.meta.env.VITE_BACKEND_HOST !== 'localhost');
 
 // Use relative URLs in proxy mode, absolute URLs in direct mode
 // This allows the same build to work both locally and via proxy
@@ -74,6 +74,35 @@ export async function seedAggregation(token, month, year, division = null, force
     if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || `Failed to seed aggregation: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+/**
+ * Seed ONLY tonase (FFB weight) data from db_ptrj_mill
+ * @param {string} token - Auth token
+ * @param {number} month - Month (1-12)
+ * @param {number} year - Year (e.g., 2026)
+ */
+export async function seedTonaseOnly(token, month, year) {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/aggregation/seed-tonase`;
+
+    const body = { month, year };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || `Failed to seed tonase: ${response.statusText}`);
     }
 
     return response.json();
