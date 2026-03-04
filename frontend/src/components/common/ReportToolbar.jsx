@@ -25,16 +25,6 @@ export default function ReportToolbar({
     currentProductionYear = null,  // Current production year for history indicator
     useHistoryDb = false  // Flag to show if system is using history database mode
 }) {
-    // DEBUG: Log props
-    console.log('[ReportToolbar] Rendering with props:', {
-        usePeriodSlider,
-        currentProductionMonth,
-        currentProductionYear,
-        useHistoryDb,
-        month,
-        year
-    })
-
     // Helper to format month-year for input type="month"
     const getMonthValue = () => {
         if (!month || !year) return ''
@@ -135,14 +125,6 @@ export default function ReportToolbar({
         });
         return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
     }, [gangs, division, getAsistensi]);
-
-    // Get display text for selected gang
-    const getSelectedGangDisplay = () => {
-        if (!gangCode) return '';
-        if (String(gangCode).toUpperCase() === 'ALL') return 'SEMUA GANG';
-        const found = gangs.find(g => g.gang_code === gangCode);
-        return found?.description ? `${gangCode} - ${found.description}` : gangCode;
-    };
 
     return (
         <div className="report-toolbar" style={{
@@ -331,14 +313,14 @@ export default function ReportToolbar({
                 </div>
             )}
 
-            {/* Group Selector */}
+            {/* Group Selector - Always visible once division is chosen */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                     Group
                 </label>
                 <select
                     className="input-field"
-                    title="Filter berdasarkan Group"
+                    title="Filter berdasarkan Group/Asistensi"
                     style={{ height: '36px', minWidth: '130px' }}
                     value={gangPrefix || ''}
                     onChange={(e) => {
@@ -348,7 +330,7 @@ export default function ReportToolbar({
                             onGangChange && onGangChange('ALL');
                         }
                     }}
-                    disabled={disableControls}
+                    disabled={disableControls || !division}
                 >
                     <option value="">SEMUA GROUP</option>
                     {availablePrefixes.map(p => (
@@ -387,7 +369,7 @@ export default function ReportToolbar({
 
             {/* Export Toggle */}
             {onExport && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: onEditModeToggle ? 'auto' : 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: 'auto' }}>
                     <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', visibility: 'hidden' }}>
                         Aksi
                     </label>

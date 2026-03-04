@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { fetchGangs, fetchDivisions } from '../services/gangService'
 import { getLockedGangs } from '../services/lockedDivisionService'
@@ -54,6 +54,27 @@ export default function MainPage({ lockedDiv = null }) {
   const [gangs, setGangs] = useState([])
   const [gangLoading, setGangLoading] = useState(false)
   const [allDivisions, setAllDivisions] = useState([])
+
+  // Helper to extract Asistensi (group number) from gang code
+  // Rule: any gang starting with K2 belongs to Group 1, otherwise extract the numeric part
+  const getAsistensi = useCallback((gangCode) => {
+    if (!gangCode) return null;
+    const gc = gangCode.trim().toUpperCase();
+    if (gc.startsWith('K2')) return '1';
+    const match = gc.match(/\d+/);
+    return match ? match[0] : null;
+  }, []);
+
+  // Compute available asistensi groups from loaded gangs
+  const availablePrefixes = useMemo(() => {
+    if (!gangs || gangs.length === 0) return [];
+    const prefixes = new Set();
+    gangs.forEach(g => {
+      const a = getAsistensi(g.gang_code);
+      if (a) prefixes.add(a);
+    });
+    return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
+  }, [gangs, getAsistensi]);
 
   const [gridLoading, setGridLoading] = useState(false)
   const [isReportGenerated, setIsReportGenerated] = useState(false)
@@ -279,6 +300,12 @@ export default function MainPage({ lockedDiv = null }) {
     setGangPrefix('') // Reset Asistensi filter
     setGangs([]) // Clear gangs list
   }
+
+  // Filter gang list by current asistensi prefix
+  const filteredGangs = useMemo(() => {
+    if (!gangPrefix) return gangs;
+    return gangs.filter(g => getAsistensi(g.gang_code) === gangPrefix);
+  }, [gangs, gangPrefix, getAsistensi]);
 
   const handleMonthChange = (e) => {
     const val = e.target.value // "YYYY-MM"
@@ -620,10 +647,48 @@ export default function MainPage({ lockedDiv = null }) {
                     </select>
                   </div>
 
+                  {/* Group / Asistensi Selection */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem', letterSpacing: '0.025em' }}>
+                      GROUP / ASISTENSI
+                    </label>
+                    <select
+                      className="input-field"
+                      style={{
+                        width: '100%',
+                        height: '48px',
+                        padding: '0 1rem',
+                        fontSize: '0.95rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        cursor: (!division || gangLoading) ? 'not-allowed' : 'pointer',
+                        backgroundColor: gangPrefix ? '#eff6ff' : 'white',
+                        borderColor: gangPrefix ? '#93c5fd' : '#cbd5e1',
+                        color: '#334155',
+                        outline: 'none',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }}
+                      value={gangPrefix}
+                      onChange={e => {
+                        setGangPrefix(e.target.value);
+                        setGang('ALL'); // Reset to ALL when group changes
+                      }}
+                      disabled={!division || gangLoading}
+                      onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
+                      onBlur={(e) => { e.target.style.borderColor = gangPrefix ? '#93c5fd' : '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
+                    >
+                      <option value="">SEMUA GROUP</option>
+                      {availablePrefixes.map(prefix => (
+                        <option key={prefix} value={prefix}>Group {prefix}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Gang Selection */}
                   <div>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem', letterSpacing: '0.025em' }}>
                       GANG / KEMANDORAN
+                      {gangPrefix && <span style={{ color: '#3b82f6', fontSize: '0.75rem', marginLeft: '6px', fontWeight: '500' }}>(Group {gangPrefix})</span>}
                     </label>
                     <select
                       className="input-field"
@@ -653,8 +718,8 @@ export default function MainPage({ lockedDiv = null }) {
                       ) : (
                         <>
                           <option value="">Pilih Gang</option>
-                          <option value="ALL">SEMUA GANG</option>
-                          {gangs.map(g => (
+                          <option value="ALL">SEMUA GANG{gangPrefix ? ` (Group ${gangPrefix})` : ''}</option>
+                          {filteredGangs.map(g => (
                             <option key={g.gang_code} value={g.gang_code}>
                               {g.gang_code} - {g.description || '-'}
                             </option>
