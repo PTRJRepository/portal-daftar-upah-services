@@ -179,12 +179,14 @@ export class PayrollDataService {
         potonganTitleMap: Record<string, string>
     ): AggregationRecord {
         // Build dynamic_premi_data from gang_totals
-        const excludePatterns = ['premi_brondol', 'premi_pph', 'premi_koreksi', 'total_premi'];
+        // User requested: Total Premi must match the sum of its parts (breakdown)
+        // We exclude ONLY pph and koreksi. Tiket is now included as requested.
+        const excludePatterns = ['premi_pph', 'premi_koreksi', 'total_premi'];
         const dynamicPremiList: any[] = [];
 
         for (const [key, value] of Object.entries(totals)) {
             if (key.startsWith('premi_') && (value as number) > 0) {
-                // Skip standard premi fields
+                // Skip non-displayable/system premi fields
                 if (excludePatterns.includes(key)) continue;
 
                 // Get header name from title map or use the key
@@ -196,11 +198,12 @@ export class PayrollDataService {
             }
         }
 
-        // Calculate total_premi (brondol + dynamic)
-        const totalPremiBrondol = totals.premi_brondol || 0;
-        const totalPremiDynamic = dynamicPremiList.reduce((sum, item) => sum + (item.total || 0), 0);
-        const totalPremi = totalPremiBrondol + totalPremiDynamic;
+        // Calculate total_premi as the sum of all dynamic premiums (includes brondol, prunning, etc.)
+        const totalPremi = dynamicPremiList.reduce((sum, item) => sum + (item.total || 0), 0);
 
+        // Individual columns for specific reports (historical compatibility)
+        const totalPremiBrondol = totals.premi_brondol || 0;
+        
         // Extract separated premi components from dynamic list
         let totalPremiInsentif = 0;
         let totalPremiKinerja = 0;
@@ -209,6 +212,7 @@ export class PayrollDataService {
 
         for (const item of dynamicPremiList) {
             const headerLower = item.header.toLowerCase();
+            // Match Python normalization logic
             if (headerLower.includes('insentif') || headerLower.includes('panen')) {
                 totalPremiInsentif += item.total;
             }

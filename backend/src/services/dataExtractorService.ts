@@ -582,11 +582,13 @@ export class DataExtractorService {
             for (const [key, val] of Object.entries(empPremi)) {
                 // Key could be: brondol, premi_pruning, premi_kinerja, premi_harvesting, etc.
                 const amount = Number(val) || 0;
-                if (key !== "koreksi") { // koreksi is handled in potongan
+                // [MODIFIED] User requested to exclude ONLY 'koreksi' from total_premi
+                // Tiket, panen, pruning, etc. are all included as requested.
+                if (key !== "koreksi") { 
                     total_premi += amount;
                 }
                 
-                // Add all individual premiums (except static ones) to dynamic set for UI columns
+                // Add all individual premiums (except static/excluded ones) to dynamic set for UI columns
                 if (key !== "koreksi") {
                     dynamicPremiSet.add(key);
                 }

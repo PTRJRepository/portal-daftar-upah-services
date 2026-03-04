@@ -429,15 +429,20 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
     def extract_dynamic_premi() -> tuple:
         """
         Extract and aggregate ALL premi fields including dynamic headers.
-        Returns: (dynamic_premi_data_json, total_premi_calculated, premi_brondol, premi_prunning)
+        Returns: (dynamic_premi_data_json, total_premi_calculated, premi_brondol, premi_prunning, premi_insentif, premi_kinerja, koreksi)
         """
         premi_brondol = 0.0
         premi_prunning = 0.0
+        premi_insentif = 0.0
+        premi_kinerja = 0.0
+        koreksi = 0.0
         dynamic_premi = {}  # header -> total
-        total_premi_calculated = 0.0  # Sum excluding prunning, insentif panen, tiket
+        total_premi_calculated = 0.0
         
         # Patterns to EXCLUDE from total_premi calculation
-        exclude_patterns = ['prun', 'pruning', 'prunning', 'insentif panen', 'insentif_panen', 'panen', 'tiket', 'koreksi']
+        # User requested to include full premiums breakdown (panen, pruning, tiket, etc.)
+        # and only exclude real corrections.
+        exclude_patterns = ['koreksi']
         
         for emp in employees:
             # Use nested 'premi' object as SINGLE SOURCE OF TRUTH
@@ -447,17 +452,25 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
                 # Process from nested premi object ONLY
                 for key, value in premi_obj.items():
                     val = float(value or 0) if value else 0
-                    if val <= 0:
+                    if val == 0:
                         continue
                     
                     key_lower = key.lower()
                     
-                    # Track brondol and prunning separately
+                    # Track special categories separately for specific columns
                     if 'brondol' in key_lower:
                         premi_brondol += val
                     elif any(p in key_lower for p in ['prun', 'pruning', 'prunning']):
                         premi_prunning += val
                     
+                    # Track insentif/kinerja/koreksi for backfill columns
+                    if any(p in key_lower for p in ['insentif', 'panen']):
+                        premi_insentif += val
+                    if 'kinerja' in key_lower:
+                        premi_kinerja += val
+                    if 'koreksi' in key_lower and 'koreksi_hk' not in key_lower:
+                        koreksi += val
+
                     # Add ALL premi to dynamic (including brondol/prunning)
                     header_name = key.replace('premi_', '').replace('PREMI ', '').strip().upper()
                     
@@ -479,18 +492,26 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
                 for key, value in emp.items():
                     if key.startswith('premi_') and key != 'total_premi':
                         val = float(value or 0) if value else 0
-                        if val <= 0:
+                        if val == 0:
                             continue
                         
                         key_lower = key.lower()
                         
-                        # Track brondol and prunning separately
+                        # Track special categories separately
                         if 'brondol' in key_lower:
                             premi_brondol += val
                         elif any(p in key_lower for p in ['prun', 'pruning', 'prunning']):
                             premi_prunning += val
                         
-                        # Add ALL premi to dynamic (including brondol/prunning)
+                        # Track insentif/kinerja/koreksi
+                        if any(p in key_lower for p in ['insentif', 'panen']):
+                            premi_insentif += val
+                        if 'kinerja' in key_lower:
+                            premi_kinerja += val
+                        if 'koreksi' in key_lower and 'koreksi_hk' not in key_lower:
+                            koreksi += val
+
+                        # Add ALL premi to dynamic
                         header_name = key.replace('premi_', '').replace('PREMI ', '').strip().upper()
                         
                         # Normalize: Any 'PANEN' keyword should become 'INSENTIF PANEN'
@@ -511,7 +532,7 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
         dynamic_premi_list = [
             {"header": header, "total": round(total, 2)}
             for header, total in sorted(dynamic_premi.items())
-            if total > 0
+            if total != 0
         ]
         
         import json
@@ -519,11 +540,14 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
             json.dumps(dynamic_premi_list, ensure_ascii=False),
             total_premi_calculated,
             premi_brondol,
-            premi_prunning
+            premi_prunning,
+            premi_insentif,
+            premi_kinerja,
+            koreksi
         )
     
     # Extract dynamic premi
-    dynamic_premi_json, total_premi_calc, total_brondol, total_prunning = extract_dynamic_premi()
+    dynamic_premi_json, total_premi_calc, total_brondol, total_prunning, total_insentif, total_kinerja, total_koreksi = extract_dynamic_premi()
     
     return {
         "gang_code": gang_code,
@@ -545,7 +569,9 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
         "total_tunjangan": safe_sum("total_tunjangan"),
         "total_premi_brondol": total_brondol,
         "total_premi_prunning": total_prunning,
-        "total_premi": total_premi_calc,  # Uses calculated total (excludes prunning, insentif panen, tiket)
+        "total_premi_insentif": total_insentif,
+        "total_premi_kinerja": total_kinerja,
+        "total_premi": total_premi_calc,  # Uses calculated total (excludes tiket, koreksi)
         "dynamic_premi_data": dynamic_premi_json,  # NEW: JSON string of all dynamic premi
         "total_potongan": safe_sum("total_potongan"),
         "total_pph21": safe_sum("pot_pph21"),
@@ -554,6 +580,7 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
         "total_spsi": safe_sum("pot_spsi"),
         "total_upah_kotor": safe_sum("jumlah_upah_kotor"),
         "total_upah_bersih": safe_sum("upah_bersih"),
+        "total_koreksi": total_koreksi,
     }
 
 
@@ -595,6 +622,8 @@ def save_aggregation(agg: Dict[str, Any], division: str, month: int, year: int, 
                     total_tunjangan = ?,
                     total_premi_brondol = ?,
                     total_premi_prunning = ?,
+                    total_premi_insentif = ?,
+                    total_premi_kinerja = ?,
                     total_premi = ?,
                     total_potongan = ?,
                     total_pph21 = ?,
@@ -604,6 +633,8 @@ def save_aggregation(agg: Dict[str, Any], division: str, month: int, year: int, 
                     total_upah_kotor = ?,
                     total_upah_bersih = ?,
                     total_ffb_weight = ?,
+                    dynamic_premi_data = ?,
+                    total_koreksi = ?,
                     updated_at = GETDATE(),
                     source_endpoint = ?
                 WHERE gang_code = ? AND period_month = ? AND period_year = ?
@@ -615,10 +646,13 @@ def save_aggregation(agg: Dict[str, Any], division: str, month: int, year: int, 
                 agg["total_upah_dasar"], agg["total_upah_pokok"], agg["total_gaji_pokok"],
                 agg["total_beras"], agg["total_jabatan"], agg["total_masa_kerja"], agg["total_lembur"],
                 agg["total_tunjangan"], agg["total_premi_brondol"], agg["total_premi_prunning"],
+                agg["total_premi_insentif"], agg["total_premi_kinerja"],
                 agg["total_premi"], agg["total_potongan"], agg["total_pph21"],
                 agg["total_bpjs_pekerja"], agg["total_bpjs_majikan"], agg["total_spsi"],
                 agg["total_upah_kotor"], agg["total_upah_bersih"],
-                agg.get("total_ffb_weight", 0),  # Default to 0 if not provided
+                agg.get("total_ffb_weight", 0),
+                agg.get("dynamic_premi_data", "[]"),
+                agg.get("total_koreksi", 0),
                 source_endpoint, agg["gang_code"], month, year
             ))
             print(f"  [OK] Updated: {agg['gang_code']}")
@@ -631,11 +665,11 @@ def save_aggregation(agg: Dict[str, Any], division: str, month: int, year: int, 
                     total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu, total_cuti_nasional,
                     total_upah_dasar, total_upah_pokok, total_gaji_pokok,
                     total_beras, total_jabatan, total_masa_kerja, total_lembur, total_tunjangan,
-                    total_premi_brondol, total_premi_prunning, total_premi,
+                    total_premi_brondol, total_premi_prunning, total_premi_insentif, total_premi_kinerja, total_premi,
                     total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
-                    total_upah_kotor, total_upah_bersih, total_ffb_weight,
+                    total_upah_kotor, total_upah_bersih, total_ffb_weight, dynamic_premi_data, total_koreksi,
                     created_at, updated_at, source_endpoint
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?)
             """, (
                 month, year, division, agg["gang_code"], agg["gang_description"],
                 agg["total_employees"], agg["total_hk"], agg["total_hari_kerja"],
@@ -644,10 +678,13 @@ def save_aggregation(agg: Dict[str, Any], division: str, month: int, year: int, 
                 agg["total_upah_dasar"], agg["total_upah_pokok"], agg["total_gaji_pokok"],
                 agg["total_beras"], agg["total_jabatan"], agg["total_masa_kerja"], agg["total_lembur"],
                 agg["total_tunjangan"], agg["total_premi_brondol"], agg["total_premi_prunning"],
+                agg["total_premi_insentif"], agg["total_premi_kinerja"],
                 agg["total_premi"], agg["total_potongan"], agg["total_pph21"],
                 agg["total_bpjs_pekerja"], agg["total_bpjs_majikan"], agg["total_spsi"],
                 agg["total_upah_kotor"], agg["total_upah_bersih"],
-                agg.get("total_ffb_weight", 0),  # Default to 0 if not provided
+                agg.get("total_ffb_weight", 0),
+                agg.get("dynamic_premi_data", "[]"),
+                agg.get("total_koreksi", 0),
                 source_endpoint
             ))
             print(f"  [OK] Inserted: {agg['gang_code']}")

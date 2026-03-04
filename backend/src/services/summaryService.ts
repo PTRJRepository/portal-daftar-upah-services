@@ -303,48 +303,10 @@ export class SummaryService {
             }
         }
 
-        // STEP 4: Compute WORKSHOP as sum of WKS_PG + WKS_AR (workshop-only aggregation)
-        const wksPG = virtualDivAgg['WKS_PG'];
-        const wksAR = virtualDivAgg['WKS_AR'];
-        if (wksPG || wksAR) {
-            const workshopBucket = createEmptyBucket();
-            if (wksPG) {
-                workshopBucket.total_premi += wksPG.total_premi;
-                workshopBucket.total_employees += wksPG.total_employees;
-                workshopBucket.total_hk += wksPG.total_hk;
-                workshopBucket.total_upah_bersih += wksPG.total_upah_bersih;
-                workshopBucket.total_pph21 += wksPG.total_pph21;
-                workshopBucket.total_spsi += wksPG.total_spsi;
-                workshopBucket.total_lembur += wksPG.total_lembur;
-                workshopBucket.total_premi_brondol += wksPG.total_premi_brondol;
-                workshopBucket.total_premi_prunning += wksPG.total_premi_prunning;
-                workshopBucket.total_premi_insentif += wksPG.total_premi_insentif;
-                workshopBucket.total_premi_kinerja += wksPG.total_premi_kinerja;
-                workshopBucket.total_koreksi += wksPG.total_koreksi;
-                workshopBucket.total_ffb_weight = Math.max(workshopBucket.total_ffb_weight, wksPG.total_ffb_weight);
-                workshopBucket.total_weight_tbs = Math.max(workshopBucket.total_weight_tbs, wksPG.total_weight_tbs);
-                for (const gc of wksPG.gang_codes) workshopBucket.gang_codes.add(gc);
-            }
-            if (wksAR) {
-                workshopBucket.total_premi += wksAR.total_premi;
-                workshopBucket.total_employees += wksAR.total_employees;
-                workshopBucket.total_hk += wksAR.total_hk;
-                workshopBucket.total_upah_bersih += wksAR.total_upah_bersih;
-                workshopBucket.total_pph21 += wksAR.total_pph21;
-                workshopBucket.total_spsi += wksAR.total_spsi;
-                workshopBucket.total_lembur += wksAR.total_lembur;
-                workshopBucket.total_premi_brondol += wksAR.total_premi_brondol;
-                workshopBucket.total_premi_prunning += wksAR.total_premi_prunning;
-                workshopBucket.total_premi_insentif += wksAR.total_premi_insentif;
-                workshopBucket.total_premi_kinerja += wksAR.total_premi_kinerja;
-                workshopBucket.total_koreksi += wksAR.total_koreksi;
-                workshopBucket.total_ffb_weight = Math.max(workshopBucket.total_ffb_weight, wksAR.total_ffb_weight);
-                workshopBucket.total_weight_tbs = Math.max(workshopBucket.total_weight_tbs, wksAR.total_weight_tbs);
-                for (const gc of wksAR.gang_codes) workshopBucket.gang_codes.add(gc);
-            }
-            virtualDivAgg['WORKSHOP'] = workshopBucket;
-            console.log(`[SummaryService] Step 4 - WORKSHOP computed as WKS_PG + WKS_AR: ${workshopBucket.gang_codes.size} gangs`);
-        }
+        // STEP 4: WORKSHOP row removed — frontend already computes GRAND TOTAL WORKSHOP
+        // from WKS_PG + WKS_AR via the group subtotal logic.
+
+
 
         // STEP 5: NRS special handling — only retain upah_bersih, zero out other financial fields
         if (virtualDivAgg['NRS']) {
@@ -363,7 +325,7 @@ export class SummaryService {
             nrs.total_koreksi = 0;
             nrs.total_ffb_weight = 0;
             nrs.total_weight_tbs = 0;
-            console.log(`[SummaryService] Step 5 - NRS: only upah_bersih retained = ${nrs.total_upah_bersih}`);
+            console.log(`[SummaryService] Step 5 - NRS: only upah_bersih retained = ${nrs.total_upah_bersih} `);
         }
 
         // STEP 6: Merge real + virtual into final divAgg for result building
@@ -381,7 +343,7 @@ export class SummaryService {
             }
         }
 
-        console.log(`[SummaryService] Step 6 - Final divisions: ${Object.keys(divAgg).join(', ')}`);
+        console.log(`[SummaryService] Step 6 - Final divisions: ${Object.keys(divAgg).join(', ')} `);
 
         const results: DivisionSummary[] = [];
 
@@ -410,9 +372,10 @@ export class SummaryService {
                 }
             }
 
-            // User requested: total_premi should be the FULL amount from portal
-            // No more subtraction of special components for the main display
-            const totalPremiDisplay = totalPremi;
+            // Subtract koreksi (corrections like "koreksi panen") from total_premi
+            // so that the summary report shows only pure premi amounts (matching daftar upah)
+            const totalKoreksi = row.total_koreksi || 0;
+            const totalPremiDisplay = totalPremi - totalKoreksi;
 
             const upah = row.total_upah_bersih;
             const thumbValue = thumbprintData[div] || 0;
@@ -460,7 +423,7 @@ export class SummaryService {
             const gangs = await divisionDefinition.getGangsForDivision(divisionCode);
             if (gangs.length > 0) {
                 const placeholders = gangs.map(() => '?').join(',');
-                query += ` AND gang_code IN (${placeholders})`;
+                query += ` AND gang_code IN(${placeholders})`;
                 params.push(...gangs.map(g => g.gang_code));
             }
         }
@@ -501,7 +464,7 @@ export class SummaryService {
             SELECT gang_code, division_code, dynamic_premi_data, informasi_tambahan
             FROM dbo.daftar_upah_aggregation_history
             WHERE period_month = ? AND period_year = ?
-        `;
+    `;
         const rows = await this.extendDb.query<any>(query, [month, year]);
         const result: Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }> = {};
 
@@ -531,7 +494,7 @@ export class SummaryService {
                 try {
                     dynamicPremi = typeof row.dynamic_premi_data === 'string' ? JSON.parse(row.dynamic_premi_data) : row.dynamic_premi_data;
                 } catch (e) {
-                    console.error(`[SummaryService] Failed to parse dynamic_premi_data for ${div}:`, e);
+                    console.error(`[SummaryService] Failed to parse dynamic_premi_data for ${div}: `, e);
                 }
             }
 
@@ -546,7 +509,7 @@ export class SummaryService {
                 try {
                     dynamicPremi = typeof row.informasi_tambahan === 'string' ? JSON.parse(row.informasi_tambahan) : row.informasi_tambahan;
                 } catch (e) {
-                    console.error(`[SummaryService] Failed to parse informasi_tambahan for ${div}:`, e);
+                    console.error(`[SummaryService] Failed to parse informasi_tambahan for ${div}: `, e);
                 }
             }
 
@@ -554,7 +517,7 @@ export class SummaryService {
 
             // Add debug logging for AB1 and P1A
             if (div === 'AB1' || div === 'P1A') {
-                console.log(`[SummaryService] getBackfillData processing ${div}:`, {
+                console.log(`[SummaryService] getBackfillData processing ${div}: `, {
                     hasDynamicPremiData: !!row.dynamic_premi_data,
                     hasInformasiTambahan: !!row.informasi_tambahan,
                     dynamicPremiKeys: Array.isArray(dynamicPremi) ? dynamicPremi.map((d: any) => d.header) : Object.keys(dynamicPremi || {}),
@@ -581,7 +544,7 @@ export class SummaryService {
 
             // Add debug logging after processing
             if (div === 'AB1' || div === 'P1A') {
-                console.log(`[SummaryService] getBackfillData after processing ${div}:`, {
+                console.log(`[SummaryService] getBackfillData after processing ${div}: `, {
                     resultAfter: result[div]
                 });
             }
@@ -628,8 +591,8 @@ export class SummaryService {
         // Fetch previous month's thumbprint data from JSON file
         // This will be used for the "previous month gaji" comparison
         const prevThumbprintData = await thumbprintService.getThumbprintData(prevMonth, prevYear);
-        console.log(`[SummaryService] Loaded previous thumbprint data for ${prevYear}-${prevMonth}:`, Object.keys(prevThumbprintData).length, "entries");
-        console.log(`[SummaryService] Previous thumbprint data:`, prevThumbprintData);
+        console.log(`[SummaryService] Loaded previous thumbprint data for ${prevYear} - ${prevMonth}: `, Object.keys(prevThumbprintData).length, "entries");
+        console.log(`[SummaryService] Previous thumbprint data: `, prevThumbprintData);
 
         const prevLookup = new Map(previousData.map(d => [d.division_code, d]));
         const comparisonRows = [];
@@ -644,7 +607,7 @@ export class SummaryService {
             const selisih = currGaji - prevGaji;
             const trend = selisih > 0 ? "NAIK" : (selisih < 0 ? "TURUN" : "TETAP");
 
-            console.log(`[SummaryService] ${divCode}: current_gaji=${currGaji}, prev_thumbprint=${prevThumbprintData[divCode]}, selisih=${selisih}`);
+            console.log(`[SummaryService] ${divCode}: current_gaji = ${currGaji}, prev_thumbprint = ${prevThumbprintData[divCode]}, selisih = ${selisih} `);
 
             comparisonRows.push({
                 division_code: divCode,
@@ -736,7 +699,7 @@ export class SummaryService {
             SELECT gang_code, division_code, dynamic_premi_data, informasi_tambahan
             FROM dbo.daftar_upah_aggregation_history
             WHERE period_month = ? AND period_year = ?
-        `, [month, year]);
+    `, [month, year]);
 
         const result: Record<string, any> = {};
         for (const row of rows) {
@@ -803,7 +766,7 @@ export class SummaryService {
 
         // IMPORTANT: Load previous month's thumbprint data from JSON for gaji_prev
         const prevThumbprintData = await thumbprintService.getThumbprintData(prevMonth, prevYear);
-        console.log(`[ImpactReport] Loaded previous thumbprint data for ${prevYear}-${prevMonth}:`, Object.keys(prevThumbprintData).length, "entries");
+        console.log(`[ImpactReport] Loaded previous thumbprint data for ${prevYear} - ${prevMonth}: `, Object.keys(prevThumbprintData).length, "entries");
 
         const luasHektar = await this.getDivisionLuasHektar();
         const curInsentif = await this.getDynamicPremiInsentifPanen(month, year);
@@ -832,7 +795,7 @@ export class SummaryService {
             const gajiCurr = curr.total_upah_bersih;
             const gajiDiff = gajiCurr - gajiPrev;
 
-            console.log(`[ImpactReport] ${div}: current_gaji=${gajiCurr}, prev_thumbprint=${gajiPrev}, selisih=${gajiDiff}`);
+            console.log(`[ImpactReport] ${div}: current_gaji = ${gajiCurr}, prev_thumbprint = ${gajiPrev}, selisih = ${gajiDiff} `);
 
             mainRows.push({
                 estate: curr.description,
@@ -995,24 +958,24 @@ export class SummaryService {
         try {
             const venusDb = Database.getVenusInstance();
 
-            const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
+            const startDate = `${year} -${month.toString().padStart(2, "0")}-01`;
             const endDate = month === 12
                 ? `${year + 1}-01-01`
-                : `${year}-${(month + 1).toString().padStart(2, "0")}-01`;
+                : `${year} -${(month + 1).toString().padStart(2, "0")}-01`;
 
             // Query Mill PKS data from VenusHR14
             const rows = await venusDb.query<any>(`
-                SELECT
-                    COUNT(DISTINCT e.EmpCode) as total_employees,
-                    SUM(ISNULL(p.PayRate, 0)) as total_upah_dasar,
-                    SUM(ISNULL(trl.Hours, 0)) as total_hk
+SELECT
+COUNT(DISTINCT e.EmpCode) as total_employees,
+    SUM(ISNULL(p.PayRate, 0)) as total_upah_dasar,
+    SUM(ISNULL(trl.Hours, 0)) as total_hk
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
                 LEFT JOIN PR_TASKREGLN trl ON trl.EmpCode = e.EmpCode
                     AND trl.TrxDate >= ? AND trl.TrxDate < ?
-                    AND trl.OT = 0
+    AND trl.OT = 0
                 WHERE e.LocCode = 'MILL' OR e.LocCode = 'PKS'
-            `, [startDate, endDate]);
+    `, [startDate, endDate]);
 
             const row = rows[0] || {};
 
@@ -1049,10 +1012,10 @@ export class SummaryService {
      * Get premi headers for a specific division (LocCode)
      */
     public async getPremiHeadersForDivision(locCode: string, month: number, year: number): Promise<string[]> {
-        const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
+        const startDate = `${year} -${month.toString().padStart(2, "0")}-01`;
         const endDate = month === 12
             ? `${year + 1}-01-01`
-            : `${year}-${(month + 1).toString().padStart(2, "0")}-01`;
+            : `${year} -${(month + 1).toString().padStart(2, "0")}-01`;
 
         try {
             const rows = await this.db.query<{ DocDesc: string }>(`
@@ -1062,11 +1025,11 @@ export class SummaryService {
                 JOIN HR_GANGLN g ON t.EmpCode = g.GangMember
                 JOIN HR_GANG hg ON hg.GangCode = g.GangCode
                 WHERE hg.LocCode = ?
-                  AND t.DocDate >= ? AND t.DocDate < ?
-                  AND UPPER(t.DocDesc) LIKE '%PREMI%'
+    AND t.DocDate >= ? AND t.DocDate < ?
+        AND UPPER(t.DocDesc) LIKE '%PREMI%'
                   AND ln.Amount > 0
                 ORDER BY t.DocDesc
-            `, [locCode, startDate, endDate]);
+    `, [locCode, startDate, endDate]);
 
             return rows.map(r => r.DocDesc?.trim()).filter(Boolean);
         } catch (e) {
@@ -1077,22 +1040,22 @@ export class SummaryService {
 
     public async getDivisionSummary(divisionCode?: string, month?: number, year?: number) {
         let query = `
-            SELECT
-                id, period_month, period_year, division_code, gang_code,
-                gang_description, total_employees, total_hk, total_hari_kerja,
-                total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu,
-                total_cuti_nasional, total_upah_dasar, total_upah_pokok,
-                total_gaji_pokok, total_beras, total_jabatan, total_masa_kerja,
-                total_lembur, total_tunjangan, total_premi_brondol,
-                total_premi_prunning, total_premi_insentif, total_premi_kinerja,
-                total_premi, dynamic_premi_data, informasi_tambahan,
-                total_koreksi, total_potongan, total_pph21,
-                total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
-                total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
-                created_at, updated_at, source_endpoint
+SELECT
+id, period_month, period_year, division_code, gang_code,
+    gang_description, total_employees, total_hk, total_hari_kerja,
+    total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu,
+    total_cuti_nasional, total_upah_dasar, total_upah_pokok,
+    total_gaji_pokok, total_beras, total_jabatan, total_masa_kerja,
+    total_lembur, total_tunjangan, total_premi_brondol,
+    total_premi_prunning, total_premi_insentif, total_premi_kinerja,
+    total_premi, dynamic_premi_data, informasi_tambahan,
+    total_koreksi, total_potongan, total_pph21,
+    total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
+    total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
+    created_at, updated_at, source_endpoint
             FROM dbo.daftar_upah_aggregation_history
-            WHERE 1=1
-        `;
+            WHERE 1 = 1
+    `;
 
         const params: any[] = [];
 
@@ -1101,22 +1064,22 @@ export class SummaryService {
             const gangs = await divisionDefinition.getGangsForDivision(divisionCode);
             if (gangs.length > 0) {
                 const placeholders = gangs.map(() => '?').join(',');
-                query += ` AND gang_code IN (${placeholders})`;
+                query += ` AND gang_code IN(${placeholders})`;
                 params.push(...gangs.map(g => g.gang_code));
             } else {
                 // Fallback: try division_code directly
-                query += ` AND division_code = ?`;
+                query += ` AND division_code = ? `;
                 params.push(divisionCode);
             }
         }
 
         if (month) {
-            query += ` AND period_month = ?`;
+            query += ` AND period_month = ? `;
             params.push(month);
         }
 
         if (year) {
-            query += ` AND period_year = ?`;
+            query += ` AND period_year = ? `;
             params.push(year);
         }
 
@@ -1125,8 +1088,8 @@ export class SummaryService {
         const rows = await this.extendDb.query<any>(query, params);
 
         // Patterns to EXCLUDE from dynamic premi headers display
-        // The user requested to include FULL premiums breakdown, including prunning, kinerja, insentif
-        const excludePatterns = ['tiket', 'koreksi'];
+        // The user requested to include FULL premiums breakdown, including prunning, kinerja, insentif, and tiket.
+        const excludePatterns = ['koreksi'];
 
         // Helper function to check if header should be excluded
         const shouldExcludeHeader = (header: string): boolean => {
@@ -1305,7 +1268,7 @@ export class SummaryService {
                 SELECT RTRIM(GangCode) as GangCode, Description
                 FROM dbo.HR_GANG
                 WHERE GangCode IS NOT NULL
-            `);
+    `);
 
             // Build result map: gang_code -> description
             const result: Record<string, string> = {};
