@@ -54,7 +54,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
     // State
     const [loading, setLoading] = useState(false);
-...
+
     // Helper to extract Asistensi
     const getAsistensi = useCallback((gc, div) => {
         if (!gc) return null;
