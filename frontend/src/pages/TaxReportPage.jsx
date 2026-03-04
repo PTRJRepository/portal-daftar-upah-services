@@ -1488,11 +1488,15 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
         if (!gangs || gangs.length === 0) return [];
         const prefixes = new Set();
         gangs.forEach(g => {
-            if (g.gang_code && g.gang_code.length >= 2) {
-                prefixes.add(g.gang_code.substring(0, 2));
+            if (g.gang_code) {
+                // Extract all digits (numeric part). e.g. "K2P" -> "2", "D2" -> "2"
+                const match = g.gang_code.match(/\d+/);
+                if (match) {
+                    prefixes.add(match[0]);
+                }
             }
         });
-        return Array.from(prefixes).sort();
+        return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
     }, [gangs]);
     const navigate = useNavigate();
     const { data: currentPeriodData } = useCurrentPeriod();
@@ -1598,7 +1602,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                             ))}
                         </select>
 
-                        {/* Gang Prefix Selector */}
+                        {/* Asistensi Selector */}
                         <select
                             value={gangPrefix}
                             onChange={(e) => {
@@ -1608,9 +1612,9 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                             className="tax-report-select"
                             disabled={!division || gangLoading || availablePrefixes.length === 0}
                         >
-                            <option value="">SEMUA DIVISI ASISTEN</option>
+                            <option value="">SEMUA ASISTENSI</option>
                             {availablePrefixes.map((prefix) => (
-                                <option key={prefix} value={prefix}>Divisi {prefix}</option>
+                                <option key={prefix} value={prefix}>Asistensi {prefix}</option>
                             ))}
                         </select>
 
@@ -1622,9 +1626,13 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                             disabled={!division || gangLoading}
                         >
                             <option value="">SEMUA GANG</option>
-                            {gangs.filter(g => !gangPrefix || g.gang_code.startsWith(gangPrefix)).map((g) => (
+                            {gangs.filter(g => {
+                                if (!gangPrefix) return true;
+                                const match = g.gang_code?.match(/\d+/);
+                                return match && match[0] === gangPrefix;
+                            }).map((g) => (
                                 <option key={g.gang_code} value={g.gang_code}>
-                                    {g.gang_code} - {g.gang_name}
+                                    {g.gang_code} - {g.description || g.gang_name}
                                 </option>
                             ))}
                         </select>

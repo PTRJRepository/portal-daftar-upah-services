@@ -14,6 +14,7 @@ export interface Gang {
     description: string;
     loc_code: string;
     source_loc_code?: string;
+    asistensi?: string;
 }
 
 export class DivisionDefinition {
@@ -90,6 +91,13 @@ export class DivisionDefinition {
             DivisionDefinition.instance = new DivisionDefinition();
         }
         return DivisionDefinition.instance;
+    }
+
+    public getAsistensiFromGang(gangCode: string): string | null {
+        if (!gangCode) return null;
+        // Extract all digits from gang code. e.g. "K2P" -> "2", "D2" -> "2", "P1A" -> "1"
+        const match = gangCode.match(/\d+/);
+        return match ? match[0] : null;
     }
 
     public resolveDivisionCode(code: string): string {
