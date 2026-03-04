@@ -372,10 +372,9 @@ export class SummaryService {
                 }
             }
 
-            // Subtract koreksi (corrections like "koreksi panen") from total_premi
-            // so that the summary report shows only pure premi amounts (matching daftar upah)
-            const totalKoreksi = row.total_koreksi || 0;
-            const totalPremiDisplay = totalPremi - totalKoreksi;
+            // Total premi displayed as-is from database (includes brondol and all static premiums)
+            // Koreksi is NOT subtracted — total premi matches daftar upah total
+            const totalPremiDisplay = totalPremi;
 
             const upah = row.total_upah_bersih;
             const thumbValue = thumbprintData[div] || 0;
