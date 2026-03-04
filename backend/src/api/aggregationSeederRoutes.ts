@@ -554,7 +554,11 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
 // Helper functions removed as they are now in PayrollDataService
 
 export async function seedAggregationToDb(division: string | undefined, month: number, year: number, authToken: string, force: boolean = false) {
-    // Get all divisions from backend if not specified
+    // When no division specified, get REAL divisions only (exclude virtual).
+    // Virtual divisions (WKS_PG, WKS_AR, NRS, INF, etc.) are derived at READ time
+    // by the summary service from the real source divisions' gangs.
+    // Seeding virtual divisions separately would store gangs under virtual codes,
+    // preventing correct re-mapping at read time.
     const divisions = division ? [division] : await fetchAvailableDivisions();
 
     // Determine target divisions based on what data exists
@@ -563,9 +567,12 @@ export async function seedAggregationToDb(division: string | undefined, month: n
     if (division) {
         divisionsToProcess = divisions.filter(d => d === division);
     } else {
-        // Optimisation: Don't pre-check. Just try to process each division.
-        // If no data found, it will be skipped inside the loop.
-        divisionsToProcess = divisions;
+        // For bulk seeding: skip virtual divisions — the summary service groups
+        // gangs into virtual divisions at read time using HR_GANG patterns.
+        // Seeding only real divisions ensures gangs like AMC, HMC, B2N, INF, INT
+        // are stored under their real source division (P1A, P1B, AB2).
+        divisionsToProcess = divisions.filter(d => !divisionDefinition.isVirtualDivision(d));
+        console.log(`[AggregationSeeder] Bulk seeding ${divisionsToProcess.length} real divisions (skipping virtual): ${divisionsToProcess.join(', ')}`);
     }
 
     const results: SeedResult[] = [];
@@ -731,8 +738,10 @@ export async function seedAggregationToDb(division: string | undefined, month: n
 
 
 async function fetchAvailableDivisions(): Promise<string[]> {
-    // Get all divisions including virtual divisions from divisionDefinition
-    return await divisionDefinition.getAllDivisions(true);
+    // Get real divisions only + MILL. Virtual divisions (WKS_PG, WKS_AR, NRS, INF)
+    // are derived from the real source divisions at read time by the summary service.
+    const realDivisions = await divisionDefinition.getAllDivisions(false);
+    return [...realDivisions, 'MILL']; // MILL is special, not virtual but needs manual seeding
 }
 
 async function checkDivisionHasData(division: string, month: number, year: number): Promise<boolean> {

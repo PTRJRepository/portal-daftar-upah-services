@@ -1,0 +1,118 @@
+=== Re-seeding Missing Source Divisions ===
+
+
+Seeding P1A for 2/2026...
+  Status: 200
+  Success: true
+    P1A - ALL: 0 employees [SKIPPED: No data]
+  Full response: {"success":true,"data":[{"division":"P1A","gang":"ALL","employees_processed":0,"status":"SKIPPED: No data"}]}
+
+Seeding P1B for 2/2026...
+  Status: 200
+  Success: true
+    P1B - ALL: 0 employees [SKIPPED: No data]
+  Full response: {"success":true,"data":[{"division":"P1B","gang":"ALL","employees_processed":0,"status":"SKIPPED: No data"}]}
+
+Seeding AB2 for 2/2026...
+  Status: 200
+  Success: true
+    AB2 - ALL: 0 employees [SKIPPED: No data]
+  Full response: {"success":true,"data":[{"division":"AB2","gang":"ALL","employees_processed":0,"status":"SKIPPED: No data"}]}
+
+
+=== Verification ===
+Total gangs in aggregation: 85
+  ❌ AMC: NOT FOUND
+  ❌ HMC: NOT FOUND
+  ❌ B2N: NOT FOUND
+  ❌ INF: NOT FOUND
+  ❌ INT: NOT FOUND
+
+All gangs:
+  G1H (div=AB1) emp=32
+  G1M (div=AB1) emp=25
+  G1T (div=AB1) emp=8
+  G2H (div=AB1) emp=36
+  G2M (div=AB1) emp=28
+  G2T (div=AB1) emp=8
+  F1H (div=ARA) emp=32
+  F1M (div=ARA) emp=25
+  F1T (div=ARA) emp=7
+  F2 (div=ARA) emp=3
+  F2H (div=ARA) emp=31
+  F2M (div=ARA) emp=33
+  F2T (div=ARA) emp=8
+  J1H (div=ARC) emp=39
+  J1M (div=ARC) emp=43
+  J1P (div=ARC) emp=2
+  J1T (div=ARC) emp=12
+  J2H (div=ARC) emp=39
+  J2M (div=ARC) emp=35
+  J2T (div=ARC) emp=12
+  J3H (div=ARC) emp=27
+  J3M (div=ARC) emp=39
+  J3P (div=ARC) emp=2
+  J3T (div=ARC) emp=11
+  J3U (div=ARC) emp=9
+  E1H (div=DME) emp=26
+  E1M (div=DME) emp=30
+  E1P (div=DME) emp=1
+  E1T (div=DME) emp=5
+  E2H (div=DME) emp=28
+  E2M (div=DME) emp=24
+  E2T (div=DME) emp=6
+  E3H (div=DME) emp=29
+  E3M (div=DME) emp=32
+  E3P (div=DME) emp=2
+  E3T (div=DME) emp=6
+  L1H (div=IJL) emp=18
+  L1M (div=IJL) emp=23
+  L1T (div=IJL) emp=4
+  MILL_GENERAL (div=MILL) emp=168
+  B1B (div=NRS) emp=3
+  B1H (div=NRS) emp=14
+  B1M (div=NRS) emp=60
+  B1P (div=NRS) emp=1
+  B1T (div=NRS) emp=6
+  B3B (div=NRS) emp=8
+  B3H (div=NRS) emp=7
+  B3M (div=NRS) emp=75
+  B3P (div=NRS) emp=12
+  B3T (div=NRS) emp=5
+  C1B (div=P2A) emp=1
+  C1H (div=P2A) emp=19
+  C1M (div=P2A) emp=29
+  C1P (div=P2A) emp=7
+  C1T (div=P2A) emp=4
+  C2H (div=P2A) emp=30
+  C2M (div=P2A) emp=22
+  C2P (div=P2A) emp=1
+  C2T (div=P2A) emp=6
+  C3H (div=P2A) emp=31
+  C3M (div=P2A) emp=27
+  C3T (div=P2A) emp=6
+  D1H (div=P2B) emp=27
+  D1M (div=P2B) emp=23
+  D1T (div=P2B) emp=4
+  D2H (div=P2B) emp=36
+  D2M (div=P2B) emp=21
+  D2P (div=P2B) emp=1
+  D2T (div=P2B) emp=8
+  K2H (div=P2B) emp=6
+  A1H (div=WORKSHOP) emp=32
+  A1M (div=WORKSHOP) emp=21
+  A1T (div=WORKSHOP) emp=4
+  A2M (div=WORKSHOP) emp=66
+  A2T (div=WORKSHOP) emp=2
+  A3H (div=WORKSHOP) emp=32
+  A3M (div=WORKSHOP) emp=22
+  A3T (div=WORKSHOP) emp=8
+  H1H (div=WORKSHOP) emp=20
+  H1L (div=WORKSHOP) emp=9
+  H1M (div=WORKSHOP) emp=30
+  H1T (div=WORKSHOP) emp=8
+  H2H (div=WORKSHOP) emp=31
+  H2M (div=WORKSHOP) emp=18
+  H2T (div=WORKSHOP) emp=6
+
+=== Done ===

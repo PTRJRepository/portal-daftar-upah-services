@@ -51,12 +51,14 @@ export class PayrollDataService {
 
         // Check if this is a virtual division
         const isVirtual = divisionDefinition.isVirtualDivision(division);
-        
+
         try {
-            // Fetch data for this division DIRECTLY. 
-            // If it's a virtual division, raw-tree with include_virtual=true will return ONLY its virtual gangs.
-            // If it's a real division, raw-tree with include_virtual=false will return ONLY its real gangs (excluding virtual ones).
-            const rawData = await this.fetchRawTreeData(division, month, year, authToken, isVirtual);
+            // IMPORTANT: Always set includeVirtual=true so ALL gangs are fetched, even those
+            // belonging to virtual sub-divisions (e.g., AMC/INF/INT from P1A).
+            // The summary service handles virtual division grouping at READ time using
+            // HR_GANG LocCode + pattern matching. If we exclude virtual gangs here,
+            // they won't be in the aggregation table and virtual divisions will be empty.
+            const rawData = await this.fetchRawTreeData(division, month, year, authToken, true);
 
             if (rawData.success && rawData.data && rawData.data.gangs) {
                 const records: AggregationRecord[] = [];

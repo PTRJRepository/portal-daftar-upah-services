@@ -1,0 +1,127 @@
+=== Diagnosing Virtual Division Issues ===
+
+--- Step 1: HR_GANG for virtual division gangs ---
+  AMC -> LocCode=P1A, Desc="WORKSHOP PARIT GUNUNG"
+  B2N -> LocCode=P1B, Desc="NURSERY"
+  HMC -> LocCode=AB2, Desc="WORKSHOP AIR RUAK"
+  INF -> LocCode=P1A, Desc="INFRASTUKTUR"
+  INT -> LocCode=P1A, Desc="INFRA TRANSPORT"
+
+--- Step 2: aggregation_history for these gangs ---
+  Latest period: 2/2026
+  ⚠️ NO matching gangs in aggregation_history!
+
+--- Step 3: All division_codes in aggregation_history ---
+  AB1: 6 gangs
+  ARA: 7 gangs
+  ARC: 12 gangs
+  DME: 11 gangs
+  IJL: 3 gangs
+  MILL: 1 gangs
+  NRS: 10 gangs
+  P2A: 12 gangs
+  P2B: 8 gangs
+  WORKSHOP: 15 gangs
+
+--- Step 4: Virtual division gang matching ---
+  INF: 2 gangs -> [INF(P1A), INT(P1A)]
+  NRS: 1 gangs -> [B2N(P1B)]
+  WKS_PG: 1 gangs -> [AMC(P1A)]
+  WKS_AR: 1 gangs -> [HMC(AB2)]
+
+--- Step 5: getVirtualDivisionForGang test ---
+  AMC: LocCode=P1A, desc="WORKSHOP PARIT GUNUNG", virtualDiv=WKS_PG
+  B2N: LocCode=P1B, desc="NURSERY", virtualDiv=NRS
+  HMC: LocCode=AB2, desc="WORKSHOP AIR RUAK", virtualDiv=WKS_AR
+  INF: LocCode=P1A, desc="INFRASTUKTUR", virtualDiv=INF
+  INT: LocCode=P1A, desc="INFRA TRANSPORT", virtualDiv=INF
+
+--- Step 6: ALL gangs in aggregation_history ---
+  Total: 85 gangs
+    A1H (div=WORKSHOP)
+    A1M (div=WORKSHOP)
+    A1T (div=WORKSHOP)
+    A2M (div=WORKSHOP)
+    A2T (div=WORKSHOP)
+    A3H (div=WORKSHOP)
+    A3M (div=WORKSHOP)
+    A3T (div=WORKSHOP)
+    B1B (div=NRS)
+    B1H (div=NRS)
+    B1M (div=NRS)
+    B1P (div=NRS)
+    B1T (div=NRS)
+    B3B (div=NRS)
+    B3H (div=NRS)
+    B3M (div=NRS)
+    B3P (div=NRS)
+    B3T (div=NRS)
+    C1B (div=P2A)
+    C1H (div=P2A)
+    C1M (div=P2A)
+    C1P (div=P2A)
+    C1T (div=P2A)
+    C2H (div=P2A)
+    C2M (div=P2A)
+    C2P (div=P2A)
+    C2T (div=P2A)
+    C3H (div=P2A)
+    C3M (div=P2A)
+    C3T (div=P2A)
+    D1H (div=P2B)
+    D1M (div=P2B)
+    D1T (div=P2B)
+    D2H (div=P2B)
+    D2M (div=P2B)
+    D2P (div=P2B)
+    D2T (div=P2B)
+    E1H (div=DME)
+    E1M (div=DME)
+    E1P (div=DME)
+    E1T (div=DME)
+    E2H (div=DME)
+    E2M (div=DME)
+    E2T (div=DME)
+    E3H (div=DME)
+    E3M (div=DME)
+    E3P (div=DME)
+    E3T (div=DME)
+    F1H (div=ARA)
+    F1M (div=ARA)
+    F1T (div=ARA)
+    F2 (div=ARA)
+    F2H (div=ARA)
+    F2M (div=ARA)
+    F2T (div=ARA)
+    G1H (div=AB1)
+    G1M (div=AB1)
+    G1T (div=AB1)
+    G2H (div=AB1)
+    G2M (div=AB1)
+    G2T (div=AB1)
+    H1H (div=WORKSHOP)
+    H1L (div=WORKSHOP)
+    H1M (div=WORKSHOP)
+    H1T (div=WORKSHOP)
+    H2H (div=WORKSHOP)
+    H2M (div=WORKSHOP)
+    H2T (div=WORKSHOP)
+    J1H (div=ARC)
+    J1M (div=ARC)
+    J1P (div=ARC)
+    J1T (div=ARC)
+    J2H (div=ARC)
+    J2M (div=ARC)
+    J2T (div=ARC)
+    J3H (div=ARC)
+    J3M (div=ARC)
+    J3P (div=ARC)
+    J3T (div=ARC)
+    J3U (div=ARC)
+    K2H (div=P2B)
+    L1H (div=IJL)
+    L1M (div=IJL)
+    L1T (div=IJL)
+    MILL_GENERAL (div=MILL)
+
+=== Done ===

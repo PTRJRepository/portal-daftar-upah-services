@@ -173,19 +173,42 @@ export class SummaryService {
             total_koreksi: number; total_ffb_weight: number; total_weight_tbs: number;
         }> = {};
 
+        // Debug: Log virtual division mapping stats
+        const virtualDivStats: Record<string, string[]> = {};
+        const unmatchedGangs: { gangCode: string, sourceLoc: string, desc: string }[] = [];
+
         for (const row of rows) {
             const gangCode = row.gang_code?.trim() || '';
             if (!gangCode) continue;
 
-            const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || '';
+            const storedDivCode = row.division_code?.trim() || '';
+            const sourceLoc = gangDivMap[gangCode] || storedDivCode;
             const gangDesc = allGangDescs[gangCode] || '';
 
-            // Check for virtual division first (with source_division validation)
-            let virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            // PRIORITY 1: If stored division_code is a recognized virtual division,
+            // trust it directly. The seeder grouped this gang intentionally.
+            let virtualDiv: string | null = null;
+            if (storedDivCode && divisionDefinition.isVirtualDivision(storedDivCode)) {
+                virtualDiv = storedDivCode;
+            }
 
-            // Fallback: if gang not in gangDivMap, try matching by pattern/desc only
+            // PRIORITY 2: Try pattern-based virtual division detection from HR_GANG LocCode
+            if (!virtualDiv) {
+                virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            }
+
+            // PRIORITY 3: Fallback pattern-only detection (no source_division validation)
             if (!virtualDiv && !gangDivMap[gangCode]) {
                 virtualDiv = divisionDefinition.getVirtualDivisionByPatternOnly(gangCode, gangDesc);
+            }
+
+            // Debug: track virtual division assignments
+            if (virtualDiv) {
+                if (!virtualDivStats[virtualDiv]) virtualDivStats[virtualDiv] = [];
+                virtualDivStats[virtualDiv].push(gangCode);
+            } else if (['P1A', 'P1B', 'AB2', 'ARC'].includes(sourceLoc)) {
+                // These are source divisions that have virtual subdivisions
+                unmatchedGangs.push({ gangCode, sourceLoc, desc: gangDesc });
             }
 
             const div = virtualDiv || sourceLoc;
@@ -219,6 +242,20 @@ export class SummaryService {
             a.total_koreksi += parseFloat(row.total_koreksi || 0);
             a.total_ffb_weight = Math.max(a.total_ffb_weight, parseFloat(row.total_ffb_weight || 0));
             a.total_weight_tbs = Math.max(a.total_weight_tbs, parseFloat(row.total_weight_tbs || 0));
+        }
+
+        // Debug: Log virtual division mapping results
+        console.log(`[SummaryService] Virtual Division Detection Results:`);
+        console.log(`  Total rows from aggregation: ${rows.length}`);
+        console.log(`  Divisions found: ${Object.keys(divAgg).join(', ')}`);
+        for (const [vd, gangs] of Object.entries(virtualDivStats)) {
+            console.log(`  Virtual ${vd}: ${gangs.length} gangs → [${gangs.join(', ')}]`);
+        }
+        if (unmatchedGangs.length > 0) {
+            console.log(`  Unmatched gangs from VD source divisions:`);
+            for (const g of unmatchedGangs) {
+                console.log(`    ${g.gangCode} (${g.sourceLoc}) desc="${g.desc}"`);
+            }
         }
 
         const results: DivisionSummary[] = [];

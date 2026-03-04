@@ -566,7 +566,9 @@ export class DataExtractorService {
             const empLemburJumlahPure = empLemburDetails.jumlah || 0;
             const empLemburJamPure = empLemburDetails.jam || 0;
 
+            const gaji_pokok_ideal = gpResult?.gaji_pokok_ideal?.value || 0;
             const gaji_pokok_aktual = gpResult?.gaji_pokok_aktual?.value || 0;
+            const gaji_pokok = gaji_pokok_aktual;
             const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlahPure;
 
             // PREMI CALCULATION - Ensure everything is summed into total_premi
