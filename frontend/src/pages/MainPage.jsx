@@ -49,6 +49,7 @@ export default function MainPage({ lockedDiv = null }) {
 
   const [division, setDivision] = useState('')
   const [gang, setGang] = useState('')
+  const [gangPrefix, setGangPrefix] = useState('')
 
   const [gangs, setGangs] = useState([])
   const [gangLoading, setGangLoading] = useState(false)
@@ -238,6 +239,7 @@ export default function MainPage({ lockedDiv = null }) {
       if (!division || !token) {
         setGangs([])
         setGang('')
+        setGangPrefix('')
         return
       }
       setGangLoading(true)
@@ -253,23 +255,16 @@ export default function MainPage({ lockedDiv = null }) {
 
         if (list && list.length > 0) {
           setGangs(list)
-          // Auto-select first gang if not set or invalid
-          const currentExists = list.some(g => g.gang_code === gang)
-          if (!gang || !currentExists) {
-            if (list[0]?.gang_code) setGang(list[0].gang_code)
-          }
+          // Default to "ALL" when division changes, or first gang if needed
+          if (!gang) setGang('ALL')
         } else {
           setGangs([])
-          setGang('')
+          setGang('ALL')
         }
       } catch (e) {
         console.error('Failed to load gangs:', e)
-        // Note: 401 is handled by axios interceptor in AuthContext
-        // Don't call logout() here as it would trigger redirect in prod mode
-        if (e.response?.status !== 401 && !e.message?.includes('401')) {
-          setGangs([])
-          setGang('')
-        }
+        setGangs([])
+        setGang('ALL')
       } finally {
         setGangLoading(false)
       }
@@ -280,7 +275,8 @@ export default function MainPage({ lockedDiv = null }) {
   // Reset gang when division changes
   const handleDivisionChange = (newDivision) => {
     setDivision(newDivision)
-    setGang('') // Reset gang selection
+    setGang('ALL') // Default to ALL for operational
+    setGangPrefix('') // Reset Asistensi filter
     setGangs([]) // Clear gangs list
   }
 
@@ -964,6 +960,8 @@ export default function MainPage({ lockedDiv = null }) {
             divisions={isLockedMode ? [division] : (allDivisions.length > 0 ? allDivisions : (user?.divisions || []))}
             gangCode={gang}
             gangs={gangs}  // Full gang objects with description
+            gangPrefix={gangPrefix}
+            onGangPrefixChange={setGangPrefix}
             onMonthYearChange={(m, y) => { setMonth(m); setYear(y); }}
             onDivisionChange={isLockedMode ? () => { } : handleDivisionChange}
             onGangChange={(g) => setGang(g)}
@@ -1193,6 +1191,7 @@ export default function MainPage({ lockedDiv = null }) {
               year={year}
               division={division}
               gangCode={gang}
+              gangPrefix={gangPrefix}
               onViewEmployeeDetail={handleViewEmployeeDetail}
               fontSize={fontSize}
               onExportReady={(handler) => setExportHandler(() => handler)}

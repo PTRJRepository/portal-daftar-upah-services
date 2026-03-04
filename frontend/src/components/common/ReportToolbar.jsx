@@ -9,6 +9,8 @@ export default function ReportToolbar({
     year,
     gangCode,
     gangs = [],  // Changed from availableGangs to gangs (full objects with description)
+    gangPrefix = '', // New prop for Asistensi
+    onGangPrefixChange, // New prop
     onMonthYearChange,
     onGangChange,
     onBack,
@@ -114,6 +116,26 @@ export default function ReportToolbar({
             console.error('Date parse error:', err)
         }
     }
+
+    // Helper to extract Asistensi
+    const getAsistensi = useCallback((gc, div) => {
+        if (!gc) return null;
+        const g = gc.trim().toUpperCase();
+        const d = div?.trim().toUpperCase();
+        if (d === 'P2B' && g.startsWith('K2')) return "1";
+        const match = g.match(/\d+/);
+        return match ? match[0] : null;
+    }, []);
+
+    // Calculate available prefixes (Asistensi)
+    const availablePrefixes = React.useMemo(() => {
+        const prefixes = new Set();
+        gangs.forEach(g => {
+            const asist = getAsistensi(g.gang_code, division);
+            if (asist) prefixes.add(asist);
+        });
+        return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
+    }, [gangs, division, getAsistensi]);
 
     // Get display text for selected gang
     const getSelectedGangDisplay = () => {
@@ -300,7 +322,7 @@ export default function ReportToolbar({
                     <select
                         className="input-field"
                         title="Pilih Divisi"
-                        style={{ height: '36px', minWidth: '140px' }}
+                        style={{ height: '36px', minWidth: '100px' }}
                         value={division || ''}
                         onChange={(e) => onDivisionChange && onDivisionChange(e.target.value)}
                         disabled={disableControls}
@@ -310,6 +332,26 @@ export default function ReportToolbar({
                 </div>
             )}
 
+            {/* Asistensi Selector */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                    Asistensi
+                </label>
+                <select
+                    className="input-field"
+                    title="Filter berdasarkan Asistensi"
+                    style={{ height: '36px', minWidth: '130px' }}
+                    value={gangPrefix || ''}
+                    onChange={(e) => onGangPrefixChange && onGangPrefixChange(e.target.value)}
+                    disabled={disableControls}
+                >
+                    <option value="">SEMUA ASIST.</option>
+                    {availablePrefixes.map(p => (
+                        <option key={p} value={p}>Asistensi {p}</option>
+                    ))}
+                </select>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                     Gang / Kemandoran
@@ -317,7 +359,7 @@ export default function ReportToolbar({
                 <select
                     className="input-field"
                     title="Pilih Kemandoran / Gang"
-                    style={{ height: '36px', minWidth: '280px', maxWidth: '400px' }}
+                    style={{ height: '36px', minWidth: '220px', maxWidth: '350px' }}
                     value={gangCode || ''}
                     onChange={(e) => onGangChange(e.target.value)}
                     disabled={disableControls}
@@ -325,11 +367,13 @@ export default function ReportToolbar({
                     {/* Always show "SEMUA GANG" option at the top */}
                     <option value="ALL">🌐 SEMUA GANG</option>
                     {gangs && gangs.length > 0 ? (
-                        gangs.map(g => (
-                            <option key={g.gang_code} value={g.gang_code}>
-                                {g.gang_code}{g.description ? ` - ${g.description}` : ''}
-                            </option>
-                        ))
+                        gangs
+                            .filter(g => !gangPrefix || getAsistensi(g.gang_code, division) === gangPrefix)
+                            .map(g => (
+                                <option key={g.gang_code} value={g.gang_code}>
+                                    {g.gang_code}{g.description ? ` - ${g.description}` : ''}
+                                </option>
+                            ))
                     ) : (
                         gangCode && gangCode !== 'ALL' && <option value={gangCode}>{gangCode}</option>
                     )}

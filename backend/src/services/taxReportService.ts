@@ -880,7 +880,7 @@ class TaxReportService {
             const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
                 const gc = (r.gang_code || '').trim();
                 if (/^\d+$/.test(effectiveGangPrefix)) {
-                    return divisionDefinition.getAsistensiFromGang(gc) === effectiveGangPrefix;
+                    return divisionDefinition.getAsistensiFromGang(gc, effectiveDivisionCode) === effectiveGangPrefix;
                 }
                 return gc.startsWith(effectiveGangPrefix);
             }) : data.data_rows;
@@ -1291,7 +1291,7 @@ class TaxReportService {
             const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
                 const gc = (r.gang_code || '').trim();
                 if (/^\d+$/.test(effectiveGangPrefix)) {
-                    return divisionDefinition.getAsistensiFromGang(gc) === effectiveGangPrefix;
+                    return divisionDefinition.getAsistensiFromGang(gc, effectiveDivisionCode) === effectiveGangPrefix;
                 }
                 return gc.startsWith(effectiveGangPrefix);
             }) : data.data_rows;
@@ -1480,7 +1480,7 @@ class TaxReportService {
             const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
                 const gc = (r.gang_code || '').trim();
                 if (/^\d+$/.test(effectiveGangPrefix)) {
-                    return divisionDefinition.getAsistensiFromGang(gc) === effectiveGangPrefix;
+                    return divisionDefinition.getAsistensiFromGang(gc, effectiveDivisionCode) === effectiveGangPrefix;
                 }
                 return gc.startsWith(effectiveGangPrefix);
             }) : data.data_rows;

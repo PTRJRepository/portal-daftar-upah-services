@@ -265,7 +265,8 @@ export class DataExtractorService {
         specificEmpCode: string | null = null,
         serverProfile?: string,
         includeVirtualGangs: boolean = false,
-        useHistoryDb?: boolean | null
+        useHistoryDb?: boolean | null,
+        gangPrefix?: string
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -291,7 +292,7 @@ export class DataExtractorService {
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
 
-        console.log(`[DataExtractor] Current period: ${currentMonth}/${currentYear}, Selected: ${month}/${year}, IsHistorical: ${isHistorical}, useHistoryDb: ${useHistoryDb}`);
+        console.log(`[DataExtractor] Current period: ${currentMonth}/${currentYear}, Selected: ${month}/${year}, IsHistorical: ${isHistorical}, useHistoryDb: ${useHistoryDb}, gangPrefix: ${gangPrefix}`);
 
         // --- DEEP HISTORY INTERCEPTOR ---
         // For development/debugging as requested, bypass the interceptor to allow getPremi logic to run for History
@@ -312,6 +313,19 @@ export class DataExtractorService {
                 );
 
                 if (historyData && historyData.data_rows.length > 0) {
+                    // Apply gangPrefix filter if present
+                    if (gangPrefix) {
+                        const isNumeric = /^\d+$/.test(gangPrefix);
+                        historyData.data_rows = historyData.data_rows.filter((r: any) => {
+                            const gc = (r.gang_code || '').trim();
+                            if (isNumeric) {
+                                const asistensi = divisionDefinition.getAsistensiFromGang(gc, divisionCode);
+                                return asistensi === gangPrefix;
+                            }
+                            return gc.startsWith(gangPrefix);
+                        });
+                    }
+
                     console.log(`[DataExtractor] Intercepted deep history request for ${month}/${year}. Returning seeded snapshot data. (${historyData.data_rows.length} rows)`);
                     return historyData;
                 } else {

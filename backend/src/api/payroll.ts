@@ -432,10 +432,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             */
 
             const includeVirtual = query.include_virtual === 'true';
+            const gangPrefix = query.gang_prefix;
 
             // Use Config.DB_PROFILE for payroll data (main payroll database)
-            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with ${Config.DB_PROFILE}, includeVirtual=${includeVirtual}, useHistoryDb=${useHistoryDb}`);
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb);
+            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with ${Config.DB_PROFILE}, includeVirtual=${includeVirtual}, useHistoryDb=${useHistoryDb}, gangPrefix=${gangPrefix}`);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {

@@ -103,11 +103,14 @@ export async function getLockedReport(token, div, gangCode, month, year, skip = 
  * @param {string} div - Locked division code
  * @param {number} month - Month
  * @param {number} year - Year
+ * @param {boolean} useHistoryDb - Use historical snapshot
+ * @param {string} gangPrefix - Optional prefix (Asistensi)
  */
-export async function getLockedRawTree(token, div, month, year, useHistoryDb = false) {
+export async function getLockedRawTree(token, div, month, year, useHistoryDb = false, gangPrefix = null) {
     try {
         const params = { div, month, year };
         if (useHistoryDb) params.use_history = 'true';
+        if (gangPrefix) params.gang_prefix = gangPrefix;
 
         const response = await axios.get(`${BASE_URL}/report/raw-tree`, {
             headers: { Authorization: `Bearer ${token}` },

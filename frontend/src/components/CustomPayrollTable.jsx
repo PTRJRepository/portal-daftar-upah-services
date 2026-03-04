@@ -59,7 +59,8 @@ export default function CustomPayrollTable({
     selectedEmployees = [], onToggleEmployeeSelection = () => { },
     onSelectAllEmployees = () => { },
     isEditMode = false,
-    useHistoryDb = false
+    useHistoryDb = false,
+    gangPrefix = null
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -450,9 +451,9 @@ export default function CustomPayrollTable({
         try {
             let data;
             if (isProdMode()) {
-                data = await getLockedRawTree(token, division, month, year, useHistoryDb);
+                data = await getLockedRawTree(token, division, month, year, useHistoryDb, gangPrefix);
             } else {
-                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}`;
+                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}${gangPrefix ? `&gang_prefix=${gangPrefix}` : ''}`;
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) throw new Error(await response.text());
                 data = await response.json();
