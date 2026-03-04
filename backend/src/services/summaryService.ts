@@ -78,7 +78,7 @@ export class SummaryService {
     private async getDivisionDescriptions(): Promise<Record<string, string>> {
         try {
             const rows = await this.extendDb.query<{ Divisi: string, Description: string }>(`
-                SELECT [Divisi], [Description] FROM [dbo].[Divisi_Description] 
+                SELECT [Divisi], [Description] FROM [dbo].[Divisi_Description]
                 WHERE [Divisi] IS NOT NULL ORDER BY [Divisi]
             `);
             const map: Record<string, string> = {};
@@ -87,8 +87,21 @@ export class SummaryService {
                     map[row.Divisi.trim()] = row.Description ? row.Description.trim() : row.Divisi.trim();
                 }
             }
+
+            // Add virtual division descriptions from divisionDefinition
+            const allDivs = await divisionDefinition.getAllDivisions(true);
+            for (const div of allDivs) {
+                if (!map[div]) {
+                    const config = divisionDefinition.getVirtualDivisionConfig(div);
+                    if (config) {
+                        map[div] = config.name;
+                    }
+                }
+            }
+
             return map;
         } catch (e) {
+
             console.error("[SummaryService] Error getting descriptions:", e);
             return {};
         }

@@ -36,7 +36,7 @@ export class DivisionDefinition {
             "description": "Divisi Nursery - Gang B2N"
         },
         "WKS_PG": {
-            "name": "Workshop Parit Gunung",
+            "name": "Workshop Parit Gunung (PGE)",
             "source_division": "P1A",
             "pattern": "^AMC$",
             "description_pattern": "workshop.*(parit|pge|p\\.g|harapan\\s*mukti)",
@@ -44,7 +44,7 @@ export class DivisionDefinition {
             "description": "Divisi Workshop Parit Gunung"
         },
         "WKS_AR": {
-            "name": "Workshop Air Ruak",
+            "name": "Workshop Air Ruak (AB2)",
             "source_division": "AB2",
             "pattern": "^HMC$",
             "description_pattern": "workshop.*(air\\s*ruak|are|a\\.r)|.*traksi.*air\\s*ruak",

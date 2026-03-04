@@ -48,6 +48,7 @@ export default function PayrollHistoryComparison({
     const [comparisonData, setComparisonData] = useState(null);
     const [availablePeriods, setAvailablePeriods] = useState([]);
     const [divisions, setDivisions] = useState([]);
+    const [group, setGroup] = useState(''); // New: Group filter
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     
@@ -99,6 +100,11 @@ export default function PayrollHistoryComparison({
         if (filterStatus !== 'ALL') {
             data = data.filter(item => item.comparison.status === filterStatus);
         }
+
+        // Filter by Group
+        if (group) {
+            data = data.filter(item => getAsistensi(item.gang_code || item.gang, division) === group);
+        }
         
         // Filter by search term
         if (searchTerm) {
@@ -126,6 +132,27 @@ export default function PayrollHistoryComparison({
             [empCode]: !prev[empCode]
         }));
     };
+
+    // Helper to extract Asistensi/Group
+    const getAsistensi = useCallback((gc, div) => {
+        if (!gc) return null;
+        const g = gc.trim().toUpperCase();
+        const d = div?.trim().toUpperCase();
+        if (g.startsWith('K2')) return "1";
+        const match = g.match(/\d+/);
+        return match ? match[0] : null;
+    }, []);
+
+    // Calculate available groups based on data
+    const availableGroups = useMemo(() => {
+        if (!comparisonData?.data) return [];
+        const groups = new Set();
+        comparisonData.data.forEach(item => {
+            const asist = getAsistensi(item.gang_code || item.gang, division);
+            if (asist) groups.add(asist);
+        });
+        return Array.from(groups).sort((a, b) => Number(a) - Number(b));
+    }, [comparisonData, division, getAsistensi]);
     
     const handleExport = () => {
         if (!filteredData.length) return;
@@ -231,10 +258,23 @@ export default function PayrollHistoryComparison({
                 </div>
                 <div className="phc-filter-group">
                     <label>Divisi</label>
-                    <select value={division} onChange={(e) => setDivision(e.target.value)}>
+                    <select value={division} onChange={(e) => {
+                        setDivision(e.target.value);
+                        setGroup(''); // Reset group when division changes
+                    }}>
                         <option value="">Semua Divisi</option>
                         {divisions.map(d => (
                             <option key={d} value={d}>{d}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="phc-filter-group">
+                    <label>Group</label>
+                    <select value={group} onChange={(e) => setGroup(e.target.value)}>
+                        <option value="">Semua Group</option>
+                        {availableGroups.map(g => (
+                            <option key={g} value={g}>Group {g}</option>
                         ))}
                     </select>
                 </div>

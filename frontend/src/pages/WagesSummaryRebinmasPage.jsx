@@ -245,12 +245,11 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             'P': 'ESTATE PARIT GUNUNG',
             'A': 'ESTATE AIR RUAK',
             'N': 'NURSERY',
-            'W': 'WORKSHOP',
+            'W': 'WORKSHOP (PG & AR)',
             'K': 'ESTATE DME',
             'I': 'DIVISI INFRASTRUKTUR',
             'M': 'OPERASI MILL',
         };
-
 
         const groups = {};
 
@@ -266,11 +265,15 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
 
         // Group ALL divisions dynamically by first character
         regularData.forEach(div => {
-            const desc = div.description || '';
-            const prefix = desc.charAt(0).toUpperCase();
-
-            // Special handling for Workshop (WKS) if prefix is 'W' mapping might need adjustment if logic uses first char
-            // User says "Estate W jadi WORKSHOP". Assuming division descriptions start with 'W'.
+            const desc = div.description || div.division_code || '';
+            let prefix = desc.charAt(0).toUpperCase();
+            
+            // Special handling for INFRASTRUKTUR if it uses 'INF' code
+            if (div.division_code === 'INF' || desc.toUpperCase().includes('INFRA')) prefix = 'I';
+            // Special handling for NURSERY if it uses 'NRS' code
+            if (div.division_code === 'NRS' || desc.toUpperCase().includes('NURSERY')) prefix = 'N';
+            // Special handling for WORKSHOP
+            if (div.division_code?.startsWith('WKS') || desc.toUpperCase().includes('WORKSHOP')) prefix = 'W';
 
             if (!groups[prefix]) {
                 groups[prefix] = {
@@ -675,8 +678,12 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 {group.divisions.map((div, idx) => (
                     <tr key={`${groupKey}-${idx}`}>
                         <td className="text-left division-name sticky-col">
-                            <div className="div-code">{div.description}</div>
-                            {/* Assuming description is the code for now, or if there's a separate desc logic */}
+                            <div className="div-code">{div.division_code}</div>
+                            {div.description && div.description !== div.division_code && (
+                                <div className="div-desc" style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>
+                                    {div.description}
+                                </div>
+                            )}
                         </td>
                         <td className={`text-right ${Number(div.total_employees) === 0 ? 'val-zero' : ''}`}>
                             {formatNumber(div.total_employees)}

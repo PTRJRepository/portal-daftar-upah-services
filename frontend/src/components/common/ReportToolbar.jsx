@@ -341,7 +341,13 @@ export default function ReportToolbar({
                     title="Filter berdasarkan Group"
                     style={{ height: '36px', minWidth: '130px' }}
                     value={gangPrefix || ''}
-                    onChange={(e) => onGangPrefixChange && onGangPrefixChange(e.target.value)}
+                    onChange={(e) => {
+                        onGangPrefixChange && onGangPrefixChange(e.target.value);
+                        // Auto-select ALL GANG when filtering by Group
+                        if (e.target.value) {
+                            onGangChange && onGangChange('ALL');
+                        }
+                    }}
                     disabled={disableControls}
                 >
                     <option value="">SEMUA GROUP</option>

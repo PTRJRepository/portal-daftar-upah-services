@@ -455,7 +455,12 @@ export default function WagesSummaryIJLPage({ onBack }) {
                 {group.divisions.map((div, idx) => (
                     <tr key={`${groupKey}-${idx}`}>
                         <td className="text-left division-name sticky-col">
-                            <div className="div-code">{div.description}</div>
+                            <div className="div-code">{div.division_code}</div>
+                            {div.description && div.description !== div.division_code && (
+                                <div className="div-desc" style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>
+                                    {div.description}
+                                </div>
+                            )}
                         </td>
                         <td className={`text-right ${Number(div.total_employees) === 0 ? 'val-zero' : ''}`}>{formatNumber(div.total_employees)}</td>
                         <td className={`text-right border-right-section ${Number(div.total_hk) === 0 ? 'val-zero' : ''}`}>{formatNumber(div.total_hk)}</td>

@@ -219,13 +219,14 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const month = parseInt(query.month);
             const year = parseInt(query.year);
             const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
+            const gangPrefix = query.gang_prefix;
 
             if (!divisionCode || !month || !year) {
                 set.status = 400;
                 return { error: "division_code, month, and year are required" };
             }
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
