@@ -177,14 +177,20 @@ export class SummaryService {
             const gangCode = row.gang_code?.trim() || '';
             if (!gangCode) continue;
 
-            const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || 'UNKNOWN';
+            const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || '';
             const gangDesc = allGangDescs[gangCode] || '';
 
-            // Check for virtual division first
-            const virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            // Check for virtual division first (with source_division validation)
+            let virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+
+            // Fallback: if gang not in gangDivMap, try matching by pattern/desc only
+            if (!virtualDiv && !gangDivMap[gangCode]) {
+                virtualDiv = divisionDefinition.getVirtualDivisionByPatternOnly(gangCode, gangDesc);
+            }
+
             const div = virtualDiv || sourceLoc;
 
-            if (div === 'ALL' || !div) continue;
+            if (!div || div === 'ALL' || div === 'UNKNOWN') continue;
 
             if (!divAgg[div]) {
                 divAgg[div] = {
@@ -328,6 +334,7 @@ export class SummaryService {
 
     private async getBackfillData(month: number, year: number): Promise<Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }>> {
         const gangDivMap = await this.getGangToDivisionMap();
+        const allGangDescs = await this.getAllGangDescriptions();
         const query = `
             SELECT gang_code, division_code, dynamic_premi_data, informasi_tambahan
             FROM dbo.daftar_upah_aggregation_history
@@ -338,9 +345,17 @@ export class SummaryService {
 
         for (const row of rows) {
             const gangCode = row.gang_code?.trim() || '';
+            const gangDesc = allGangDescs[gangCode] || '';
             // Derive division from gang_code via HR_GANG lookup
-            const div = gangDivMap[gangCode] || row.division_code?.trim() || '';
-            if (!div || div === 'ALL') continue;
+            const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || '';
+
+            // Check virtual division first
+            let virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            if (!virtualDiv && !gangDivMap[gangCode]) {
+                virtualDiv = divisionDefinition.getVirtualDivisionByPatternOnly(gangCode, gangDesc);
+            }
+            const div = virtualDiv || sourceLoc;
+            if (!div || div === 'ALL' || div === 'UNKNOWN') continue;
 
             // Initialize only if not exists - don't overwrite!
             if (!result[div]) {
@@ -567,11 +582,17 @@ export class SummaryService {
             const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || '';
             const gangDesc = allGangDescs[gangCode] || '';
 
-            // Check for virtual division
-            const virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            // Check for virtual division (with source_division validation)
+            let virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+
+            // Fallback: if gang not in gangDivMap, try matching by pattern/desc only
+            if (!virtualDiv && !gangDivMap[gangCode]) {
+                virtualDiv = divisionDefinition.getVirtualDivisionByPatternOnly(gangCode, gangDesc);
+            }
+
             const div = virtualDiv || sourceLoc;
 
-            if (!div || div === 'ALL') continue;
+            if (!div || div === 'ALL' || div === 'UNKNOWN') continue;
             try {
                 // Try dynamic_premi_data first
                 let data = null;

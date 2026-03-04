@@ -694,9 +694,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
             const year = parseInt(query.year || String(new Date().getFullYear()));
             const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
+            const gangPrefix = query.gang_prefix;
 
             // Use Config.DB_PROFILE for payroll data
-            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, Config.DB_PROFILE, false, useHistoryDb);
+            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix);
 
             return {
                 gang_code: gangCode,

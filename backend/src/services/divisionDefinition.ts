@@ -293,6 +293,27 @@ export class DivisionDefinition {
         return null;
     }
 
+    /**
+     * Fallback: detect virtual division by gang code pattern/description ONLY,
+     * without validating source_division. Used when gang is not found in gangDivMap.
+     */
+    public getVirtualDivisionByPatternOnly(gangCode: string, description: string): string | null {
+        for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
+            // Skip aggregate-only virtual divisions (no direct pattern)
+            if (virtCode === 'WORKSHOP') continue;
+
+            if (config.pattern) {
+                const regex = new RegExp(config.pattern, "i");
+                if (regex.test(gangCode)) return virtCode;
+            }
+            if (config.description_pattern) {
+                const regex = new RegExp(config.description_pattern, "i");
+                if (regex.test(description)) return virtCode;
+            }
+        }
+        return null;
+    }
+
     private gangBelongsToVirtual(gangCode: string, sourceLocCode: string, description: string): boolean {
         for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
             if (!config.exclude_from_source) continue;

@@ -700,7 +700,8 @@ export default function MainPage({ lockedDiv = null }) {
                         border: '1px solid #cbd5e1',
                         borderRadius: '6px',
                         cursor: gangLoading ? 'wait' : 'pointer',
-                        backgroundColor: gangLoading ? '#f8fafc' : 'white',
+                        backgroundColor: gangLoading ? '#f8fafc' : (gang === 'ALL' ? '#f0fdf4' : 'white'),
+                        borderColor: gang === 'ALL' ? '#86efac' : '#cbd5e1',
                         color: '#334155',
                         outline: 'none',
                         boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
@@ -709,7 +710,7 @@ export default function MainPage({ lockedDiv = null }) {
                       onChange={e => setGang(e.target.value)}
                       disabled={gangLoading}
                       onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
-                      onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
+                      onBlur={(e) => { e.target.style.borderColor = gang === 'ALL' ? '#86efac' : '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
                     >
                       {gangLoading ? (
                         <option>Memuat data...</option>
@@ -717,8 +718,7 @@ export default function MainPage({ lockedDiv = null }) {
                         <option>Menunggu pemilihan divisi...</option>
                       ) : (
                         <>
-                          <option value="">Pilih Gang</option>
-                          <option value="ALL">SEMUA GANG{gangPrefix ? ` (Group ${gangPrefix})` : ''}</option>
+                          <option value="ALL">🌐 SEMUA GANG – Seluruh Divisi{gangPrefix ? ` (Group ${gangPrefix})` : ''}</option>
                           {filteredGangs.map(g => (
                             <option key={g.gang_code} value={g.gang_code}>
                               {g.gang_code} - {g.description || '-'}
@@ -727,6 +727,11 @@ export default function MainPage({ lockedDiv = null }) {
                         </>
                       )}
                     </select>
+                    {division && gang === 'ALL' && (
+                      <div style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>✅</span> Menampilkan seluruh karyawan divisi {division}
+                      </div>
+                    )}
                   </div>
 
                 </div>
@@ -768,7 +773,7 @@ export default function MainPage({ lockedDiv = null }) {
                   style={{
                     width: '100%',
                     padding: '1rem',
-                    backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#0ea5e9', // Sky Blue Button
+                    backgroundColor: (!division || !gang || gangLoading) ? '#e2e8f0' : '#1e3a8a', // Dark Navy Button
                     color: (!division || !gang || gangLoading) ? '#94a3b8' : 'white',
                     border: 'none',
                     borderRadius: '6px',
@@ -778,7 +783,7 @@ export default function MainPage({ lockedDiv = null }) {
                     transition: 'all 0.2s',
                     textTransform: 'uppercase',
                     letterSpacing: '0.05em',
-                    boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(14, 165, 233, 0.3)'
+                    boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(30, 58, 138, 0.3)'
                   }}
                 >
                   {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DATA UPAH'}

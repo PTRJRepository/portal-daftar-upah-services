@@ -602,7 +602,7 @@ export default function CustomPayrollTable({
 
     useEffect(() => {
         if (month && year && division) loadData();
-    }, [month, year, division, gangCode, token, refreshTrigger, useHistoryDb]);
+    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]

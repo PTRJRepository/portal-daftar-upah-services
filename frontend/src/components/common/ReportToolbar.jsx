@@ -129,16 +129,13 @@ export default function ReportToolbar({
     return (
         <div className="report-toolbar" style={{
             display: 'flex',
-            gap: '20px',
+            gap: '12px',
             alignItems: 'center',
             width: '100%',
-            padding: '8px 0'
+            padding: '4px 0'
         }}>
             {onBack && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', visibility: 'hidden' }}>
-                        Aksi
-                    </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <button
                         className="btn btn-secondary"
                         onClick={onBack}
@@ -147,21 +144,19 @@ export default function ReportToolbar({
                             borderColor: 'var(--neutral-300)',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '6px',
-                            height: '36px',
+                            gap: '4px',
+                            height: '32px',
+                            fontSize: '12px',
                             whiteSpace: 'nowrap'
                         }}
                     >
-                        <span>⬅️</span> Back
+                        <span>⬅️</span>
                     </button>
                 </div>
             )}
 
             {onRefresh && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', visibility: 'hidden' }}>
-                        Aksi
-                    </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <button
                         className="btn btn-secondary"
                         onClick={onRefresh}
@@ -172,10 +167,8 @@ export default function ReportToolbar({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            gap: '6px',
-                            height: '36px',
-                            minWidth: '36px',
-                            whiteSpace: 'nowrap'
+                            height: '32px',
+                            minWidth: '32px'
                         }}
                     >
                         <span>🔄</span>
@@ -183,127 +176,27 @@ export default function ReportToolbar({
                 </div>
             )}
 
-            {/* Period Controls - Classic or Slider */}
-            {usePeriodSlider ? (
-                <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '400px' }}
-                >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                            Periode Slider
-                        </label>
-                        {onTogglePeriodSlider && (
-                            <button
-                                onClick={() => onTogglePeriodSlider(false)}
-                                disabled={disableControls}
-                                className="btn btn-secondary"
-                                style={{
-                                    height: '24px',
-                                    padding: '0 8px',
-                                    fontSize: '11px',
-                                    background: 'var(--neutral-100)',
-                                    borderColor: 'var(--neutral-300)',
-                                    borderRadius: '4px'
-                                }}
-                                title="Kembali ke tampilan klasik"
-                            >
-                                Klasik
-                            </button>
-                        )}
-                    </div>
-                    <PeriodSlider
-                        currentMonth={month}
-                        currentYear={year}
-                        onPeriodChange={onMonthYearChange}
-                        disableControls={disableControls}
-                        currentProductionMonth={currentProductionMonth}
-                        currentProductionYear={currentProductionYear}
-                        useHistoryDb={useHistoryDb}
+            {/* Period Controls - Compact */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Periode</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input
+                        type="month"
+                        className="input-field"
+                        style={{ height: '32px', minWidth: '120px', fontSize: '12px', padding: '0 8px' }}
+                        value={getMonthValue()}
+                        onChange={handleDateChange}
+                        disabled={disableControls}
                     />
                 </div>
-            ) : (
-                <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}
-                    onWheel={handleWheel}
-                    onTouchStart={handleTouchStart}
-                    onTouchEnd={handleTouchEnd}
-                >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                            Periode <span style={{ fontSize: '9px', fontWeight: 'normal', color: 'var(--neutral-500)', textTransform: 'none' }}>(Geser/Scroll)</span>
-                        </label>
-                        {onTogglePeriodSlider && (
-                            <button
-                                onClick={() => onTogglePeriodSlider(true)}
-                                disabled={disableControls}
-                                className="btn btn-secondary"
-                                style={{
-                                    height: '24px',
-                                    padding: '0 8px',
-                                    fontSize: '11px',
-                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                    borderColor: 'transparent',
-                                    color: 'white',
-                                    borderRadius: '4px',
-                                    fontWeight: '500'
-                                }}
-                                title="Gunakan slider untuk navigasi periode yang lebih mudah"
-                            >
-                                📅 Slider
-                            </button>
-                        )}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button
-                            onClick={() => incrementMonth(-1)}
-                            disabled={disableControls}
-                            className="btn btn-secondary"
-                            style={{
-                                height: '36px', width: '32px', padding: 0,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                borderColor: 'var(--neutral-300)',
-                                background: 'white', cursor: disableControls ? 'not-allowed' : 'pointer'
-                            }}
-                            title="Bulan Sebelumnya"
-                        >
-                            ◀
-                        </button>
-                        <input
-                            type="month"
-                            className="input-field"
-                            title="Pilih Bulan & Tahun Periode. Bisa juga swipe atau scroll untuk mengganti."
-                            style={{ height: '36px', minWidth: '140px', flex: 1 }}
-                            value={getMonthValue()}
-                            onChange={handleDateChange}
-                            disabled={disableControls}
-                        />
-                        <button
-                            onClick={() => incrementMonth(1)}
-                            disabled={disableControls}
-                            className="btn btn-secondary"
-                            style={{
-                                height: '36px', width: '32px', padding: 0,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                borderColor: 'var(--neutral-300)',
-                                background: 'white', cursor: disableControls ? 'not-allowed' : 'pointer'
-                            }}
-                            title="Bulan Selanjutnya"
-                        >
-                            ▶
-                        </button>
-                    </div>
-                </div>
-            )}
+            </div>
 
             {divisions && divisions.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                        Divisi
-                    </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Divisi</label>
                     <select
                         className="input-field"
-                        title="Pilih Divisi"
-                        style={{ height: '36px', minWidth: '100px' }}
+                        style={{ height: '32px', minWidth: '80px', fontSize: '12px' }}
                         value={division || ''}
                         onChange={(e) => onDivisionChange && onDivisionChange(e.target.value)}
                         disabled={disableControls}
@@ -313,22 +206,16 @@ export default function ReportToolbar({
                 </div>
             )}
 
-            {/* Group Selector - Always visible once division is chosen */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                    Group
-                </label>
+            {/* Group Selector - Always visible */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <label style={{ fontSize: '10px', fontWeight: '700', color: '#3b82f6', textTransform: 'uppercase' }}>Group</label>
                 <select
                     className="input-field"
-                    title="Filter berdasarkan Group/Asistensi"
-                    style={{ height: '36px', minWidth: '130px' }}
+                    style={{ height: '32px', minWidth: '110px', fontSize: '12px', backgroundColor: gangPrefix ? '#eff6ff' : 'white', borderColor: gangPrefix ? '#3b82f6' : undefined }}
                     value={gangPrefix || ''}
                     onChange={(e) => {
                         onGangPrefixChange && onGangPrefixChange(e.target.value);
-                        // Auto-select ALL GANG when filtering by Group
-                        if (e.target.value) {
-                            onGangChange && onGangChange('ALL');
-                        }
+                        if (e.target.value) onGangChange && onGangChange('ALL');
                     }}
                     disabled={disableControls || !division}
                 >
@@ -339,19 +226,15 @@ export default function ReportToolbar({
                 </select>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                    Gang / Kemandoran
-                </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Kemandoran</label>
                 <select
                     className="input-field"
-                    title="Pilih Kemandoran / Gang"
-                    style={{ height: '36px', minWidth: '220px', maxWidth: '350px' }}
+                    style={{ height: '32px', minWidth: '180px', maxWidth: '250px', fontSize: '12px' }}
                     value={gangCode || ''}
                     onChange={(e) => onGangChange(e.target.value)}
                     disabled={disableControls}
                 >
-                    {/* Always show "SEMUA GANG" option at the top */}
                     <option value="ALL">🌐 SEMUA GANG</option>
                     {gangs && gangs.length > 0 ? (
                         gangs
