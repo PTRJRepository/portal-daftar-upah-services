@@ -36,7 +36,7 @@ async function requestWithRetry(url, config, retries = 2, delayMs = 300, timeout
   throw lastErr
 }
 
-export async function fetchReportRows(token, { month, year, gang_code, division, fields, skip, limit, benchmark = false, monitor = false, use_history = null }) {
+export async function fetchReportRows(token, { month, year, gang_code, division, fields, skip, limit, benchmark = false, monitor = false, use_history = null, gang_prefix = null }) {
   const params = {}
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
@@ -49,6 +49,7 @@ export async function fetchReportRows(token, { month, year, gang_code, division,
   if (benchmark) params.benchmark = true
   if (monitor) params.monitor = true
   if (use_history !== null) params.use_history = use_history
+  if (gang_prefix) params.gang_prefix = gang_prefix
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
   const r = await requestWithRetry('/payroll/report', config, 2, 300, 60000)
@@ -90,13 +91,14 @@ export async function fetchReportRowsSimple(token, { month, year, gang_code, div
   }
 }
 
-export async function fetchReportDivisionOptimized(token, { division, month, year, use_history = null }) {
+export async function fetchReportDivisionOptimized(token, { division, month, year, use_history = null, gang_prefix = null }) {
   const params = {}
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
   if (norm.year) params.year = norm.year
   if (division) params.division = division
   if (use_history !== null) params.use_history = use_history
+  if (gang_prefix) params.gang_prefix = gang_prefix
 
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }

@@ -34,7 +34,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             return { message: "Unauthorized" };
         }
     })
-    // --- Divisions ---as
+    // --- Divisions ---
     .get("/divisions", async ({ currentUser }): Promise<any> => {
         if (currentUser) {
             return authService.getAccessibleDivisions(currentUser);
@@ -350,7 +350,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             division_code: t.String(),
             month: t.String(),
             year: t.String(),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            gang_prefix: t.Optional(t.String())
         })
     })
     // --- Locked Report: Raw Tree (Alias for Proxy/Frontend Compat) ---
@@ -558,7 +559,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             month: t.String(),
             year: t.String(),
             include_virtual: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            gang_prefix: t.Optional(t.String())
         })
     })
     // --- Locked Manual Edit ---
@@ -720,7 +722,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             year: t.Optional(t.String()),
             skip: t.Optional(t.String()),
             limit: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            gang_prefix: t.Optional(t.String())
         })
     })
 

@@ -317,12 +317,12 @@ export class DataExtractorService {
                     if (gangPrefix) {
                         const isNumeric = /^\d+$/.test(gangPrefix);
                         historyData.data_rows = historyData.data_rows.filter((r: any) => {
-                            const gc = (r.gang_code || '').trim();
+                            const gc = (r.gang_code || '').trim().toUpperCase();
                             if (isNumeric) {
-                                const asistensi = divisionDefinition.getAsistensiFromGang(gc, divisionCode);
+                                const asistensi = gc.startsWith('K2') ? '1' : (gc.match(/\d+/)?.[0] ?? null);
                                 return asistensi === gangPrefix;
                             }
-                            return gc.startsWith(gangPrefix);
+                            return gc.startsWith(gangPrefix.toUpperCase());
                         });
                     }
 
@@ -386,12 +386,14 @@ export class DataExtractorService {
         if (gangPrefix && employees.length > 0) {
             const isNumeric = /^\d+$/.test(gangPrefix);
             employees = employees.filter(emp => {
-                const gc = (emp.gang_code || '').trim();
+                const gc = (emp.gang_code || '').trim().toUpperCase();
                 if (isNumeric) {
-                    const asistensi = divisionDefinition.getAsistensiFromGang(gc, divisionCode);
+                    // Extract asistensi number from gang code:
+                    // K2xxx → '1' (special case), otherwise first digit sequence
+                    const asistensi = gc.startsWith('K2') ? '1' : (gc.match(/\d+/)?.[0] ?? null);
                     return asistensi === gangPrefix;
                 }
-                return gc.startsWith(gangPrefix);
+                return gc.startsWith(gangPrefix.toUpperCase());
             });
         }
 

@@ -62,14 +62,12 @@ export interface LemburRecord {
  */
 export class LemburService extends BasePayrollComponentService<LemburInput, LemburOutput> {
     public readonly componentName = 'lembur';
-    protected db: Database;
 
     // Default UPJ from environment
     private defaultUpj: number;
 
     constructor() {
         super();
-        this.db = Database.getInstance();
         this.defaultUpj = parseFloat(process.env.LEMBUR_UPJ || '17257');
     }
 

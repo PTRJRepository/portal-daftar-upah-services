@@ -22,11 +22,9 @@ export interface TunjanganOutput {
 
 export class TunjanganService extends BasePayrollComponentService<TunjanganInput, TunjanganOutput> {
     public readonly componentName = 'tunjangan';
-    protected db: Database;
 
     constructor() {
         super();
-        this.db = Database.getInstance();
     }
 
     protected async calculateSingle(input: TunjanganInput): Promise<PayrollCalculationResult<TunjanganOutput>> {

@@ -34,11 +34,9 @@ export interface PotonganOutput {
 
 export class PotonganService extends BasePayrollComponentService<PotonganInput, PotonganOutput> {
     public readonly componentName = 'potongan';
-    protected db: Database;
 
     constructor() {
         super();
-        this.db = Database.getInstance();
     }
 
     protected async calculateSingle(input: PotonganInput): Promise<PayrollCalculationResult<PotonganOutput>> {

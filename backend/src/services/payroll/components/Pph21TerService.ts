@@ -13,6 +13,7 @@
  * - BPJS Kesehatan Majikan (4%)
  */
 
+import { Database } from '../../../db/client';
 import { BasePayrollComponentService } from '../BasePayrollComponentService';
 import { pph21TerService as mainPph21TerService } from '../../pph21TerService';
 import { PayrollCalculationInput, PayrollCalculationResult, BatchPayrollCalculationResult } from '../../../types/payroll/BasePayrollTypes';
@@ -33,11 +34,9 @@ export interface Pph21Output {
 }
 export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph21Output> {
     public readonly componentName = 'pph21_ter';
-    protected db: import('../../../db/client').Database;
 
     constructor() {
         super();
-        const { Database } = require('../../../db/client');
         this.db = Database.getInstance();
     }
 

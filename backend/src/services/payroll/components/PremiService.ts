@@ -37,7 +37,6 @@ export interface PremiOutput {
  */
 export class PremiService extends BasePayrollComponentService<PremiInput, PremiOutput> {
     public readonly componentName = 'premi';
-    protected db: Database;
 
     // Default exclude patterns
     private readonly DEFAULT_EXCLUDE_PATTERNS = [
@@ -64,7 +63,6 @@ export class PremiService extends BasePayrollComponentService<PremiInput, PremiO
 
     constructor() {
         super();
-        this.db = Database.getInstance();
     }
 
     // =========================================================================

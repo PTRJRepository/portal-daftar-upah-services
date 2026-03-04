@@ -494,7 +494,8 @@ export default function CustomPayrollTable({
             let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
 
             // Calculate frontend grand total for ALL columns (including UI-only fields)
-            const filteredFlat = gangCode && gangCode !== 'ALL'
+            // When gangPrefix is active, show all filtered rows (backend already filtered)
+            const filteredFlat = (gangCode && gangCode !== 'ALL' && !gangPrefix)
                 ? flatRows.filter(r => r.gang_code === gangCode)
                 : flatRows;
             const frontendGt = PayrollAggregator.calculateGrandTotal(filteredFlat);
@@ -502,7 +503,7 @@ export default function CustomPayrollTable({
 
             // Use backend-provided grand_total if available to override financial fields
             const backendGrandTotal = data.grand_total;
-            if (backendGrandTotal && (!gangCode || gangCode === 'ALL')) {
+            if (backendGrandTotal && (!gangCode || gangCode === 'ALL' || gangPrefix)) {
                 setGrandTotal({ ...frontendGt, ...backendGrandTotal });
             } else {
                 setGrandTotal(frontendGt);
@@ -528,7 +529,9 @@ export default function CustomPayrollTable({
             const processedRows = [];
             let globalNo = 1;
             let gangKeys = Object.keys(gangsMap).sort();
-            if (gangCode && gangCode !== 'ALL') gangKeys = gangKeys.filter(g => g === gangCode);
+            // Only filter by gangCode when gangPrefix is NOT active
+            // When gangPrefix is active, backend already filtered to the right asistensi group
+            if (gangCode && gangCode !== 'ALL' && !gangPrefix) gangKeys = gangKeys.filter(g => g === gangCode);
 
             gangKeys.forEach(gCode => {
                 const employees = gangsMap[gCode];

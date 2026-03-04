@@ -44,7 +44,7 @@ const GangHeaderRenderer = (params) => {
 }
 
 // Inner component that uses the gang filter context
-function ReportContent({ token, user, month, year, gang_code, division, onLoad, onBack }) {
+function ReportContent({ token, user, month, year, gang_code, division, onLoad, onBack, gangPrefix: gangPrefixProp = null }) {
   const gangFilter = useGangFilter()
 
   // State for overrides
@@ -319,10 +319,10 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   }, [finalDivision, authToken, allGangs, gangFilter.filters])
 
   // Render Division Optimized Logic
-  const renderDivisionOptimized = async (token, division, month, year) => {
+  const renderDivisionOptimized = async (token, division, month, year, gangPrefix = null) => {
     try {
       setLoadingStatus(`Fetching optimized division data for ${division}...`)
-      const groupedData = await fetchReportDivisionOptimized(token, { division, month, year, use_history: useHistory })
+      const groupedData = await fetchReportDivisionOptimized(token, { division, month, year, use_history: useHistory, gang_prefix: gangPrefix })
 
       let flatRows = []
       const sortedGangs = Object.keys(groupedData).sort()
@@ -720,7 +720,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         }
 
         if (String(finalGangCode).toUpperCase() === 'ALL') {
-          await renderDivisionOptimized(activeToken, finalDivision, activeMonth, activeYear)
+          await renderDivisionOptimized(activeToken, finalDivision, activeMonth, activeYear, gangPrefixProp)
         } else {
           const data = await fetchReportRowsSimple(activeToken, { month: activeMonth, year: activeYear, gang_code: finalGangCode, division: finalDivision, skip: 0, limit: INFINITE_BATCH_SIZE, use_history: useHistory })
 
@@ -781,8 +781,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
               if (sum > 0) grand[f] = sum
             }
             // Add dynamic potongan from nested structure
-            if (dataRows[0] && dataRows[0].potongan_upah_kotor && dataRows[0].potongan_upah_kotor.dynamic) {
-              Object.keys(dataRows[0].potongan_upah_kotor.dynamic).forEach(key => {
+            if (safe[0] && safe[0].potongan_upah_kotor && safe[0].potongan_upah_kotor.dynamic) {
+              Object.keys(safe[0].potongan_upah_kotor.dynamic).forEach(key => {
                 const f = `potongan_upah_kotor.dynamic.${key}`
                 const sum = agg(f)
                 if (sum > 0) grand[f] = sum
@@ -1577,7 +1577,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 }
 
 // Main Report component that wraps with GangFilterProvider
-export default function ReportWrapper({ token, user, month, year, gang_code, division, onLoad, onBack }) {
+export default function ReportWrapper({ token, user, month, year, gang_code, division, onLoad, onBack, gangPrefix = null }) {
   return (
     <GangFilterProvider>
       <ReportContent
@@ -1589,6 +1589,7 @@ export default function ReportWrapper({ token, user, month, year, gang_code, div
         division={division}
         onLoad={onLoad}
         onBack={onBack}
+        gangPrefix={gangPrefix}
       />
     </GangFilterProvider>
   )

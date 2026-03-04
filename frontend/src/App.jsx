@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, lazy, Suspense, memo } from 'react'
+import { useEffect, useState, useMemo, useCallback, lazy, Suspense, memo } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ReportProvider, useReport } from './context/ReportContext'
@@ -63,6 +63,32 @@ const OperationalReportWrapper = memo(() => {
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [useHistoryDb, setUseHistoryDb] = useState(false);
+  const [gangPrefix, setGangPrefix] = useState('');
+
+  // Helper to extract Asistensi group number from gang code
+  const getAsistensi = useCallback((gangCode) => {
+    if (!gangCode) return null;
+    const gc = gangCode.trim().toUpperCase();
+    if (gc.startsWith('K2')) return '1';
+    const match = gc.match(/\d+/);
+    return match ? match[0] : null;
+  }, []);
+
+  // Available asistensi prefixes from loaded gangs
+  const availablePrefixes = useMemo(() => {
+    if (!gangs || gangs.length === 0) return [];
+    const prefixes = new Set();
+    gangs.forEach(g => {
+      const a = getAsistensi(g.gang_code);
+      if (a) prefixes.add(a);
+    });
+    return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
+  }, [gangs, getAsistensi]);
+
+  // Reset gangPrefix when division changes
+  useEffect(() => {
+    setGangPrefix('');
+  }, [division]);
 
   // Layout state for selectors
   // If not admin and locked mode, division is read-only
@@ -240,6 +266,37 @@ const OperationalReportWrapper = memo(() => {
             >
               {allDivisions.map(d => (<option key={d} value={d}>{d}</option>))}
             </select>
+
+            {/* Group / Asistensi Filter */}
+            {availablePrefixes.length > 0 && (
+              <select
+                value={gangPrefix}
+                onChange={(e) => { setGangPrefix(e.target.value); setGang('ALL'); }}
+                title="Filter berdasarkan Group/Asistensi"
+                style={{
+                  height: '32px',
+                  padding: '0 2rem 0 0.75rem',
+                  border: `1px solid ${gangPrefix ? '#93c5fd' : '#cbd5e1'}`,
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  color: '#334155',
+                  backgroundColor: gangPrefix ? '#eff6ff' : 'white',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  appearance: 'none',
+                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                  backgroundPosition: 'right 0.5rem center',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: '1em 1em',
+                  minWidth: '90px'
+                }}
+              >
+                <option value="">Semua Group</option>
+                {availablePrefixes.map(prefix => (
+                  <option key={prefix} value={prefix}>Group {prefix}</option>
+                ))}
+              </select>
+            )}
 
             {/* Gang */}
             <select
@@ -447,6 +504,7 @@ const OperationalReportWrapper = memo(() => {
           onSelectAllEmployees={handleSelectAllEmployees}
           isEditMode={isEditMode}
           useHistoryDb={useHistoryDb}
+          gangPrefix={gangPrefix || null}
         />
       </div>
     </div>

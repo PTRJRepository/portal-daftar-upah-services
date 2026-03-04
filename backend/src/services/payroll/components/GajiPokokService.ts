@@ -23,11 +23,9 @@ export interface GajiPokokOutput {
 
 export class GajiPokokService extends BasePayrollComponentService<GajiPokokInput, GajiPokokOutput> {
     public readonly componentName = 'gaji_pokok';
-    protected db: Database;
 
     constructor() {
         super();
-        this.db = Database.getInstance();
     }
 
     protected async calculateSingle(input: GajiPokokInput): Promise<PayrollCalculationResult<GajiPokokOutput>> {
