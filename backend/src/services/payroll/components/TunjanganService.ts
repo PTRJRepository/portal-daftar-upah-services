@@ -4,11 +4,11 @@
  * Calculates allowances: beras, jabatan, masa_kerja, lembur
  */
 
-import { Database } from '../../../db/client';
 import { BasePayrollComponentService } from '../BasePayrollComponentService';
 import { PayrollCalculationInput, PayrollCalculationResult, BatchPayrollCalculationResult } from '../../../types/payroll/BasePayrollTypes';
 import { PayrollComponent } from '../../../types/payroll/PayrollComponent';
 import { lemburService } from './LemburService';
+import { Database } from '../../../db/client';
 
 export interface TunjanganInput extends PayrollCalculationInput { }
 

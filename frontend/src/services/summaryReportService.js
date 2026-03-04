@@ -365,26 +365,6 @@ export async function fetchLuasAreaAdjustments(token, { month, year }) {
     return response.data;
 }
 
-export default {
-    fetchDivisionSummary,
-    fetchAvailablePeriods,
-    fetchDivisionsWithData,
-    checkSummaryHealth,
-    fetchGangsByLocCode,
-    fetchAllDivisionsTotals,
-    fetchComparisonSummary,
-    fetchImpactReport,
-    fetchAnalysisReport,
-    updateThumbprint,
-    updatePPH21,
-    updateSPSI,
-    updateDeductions,
-    fetchDeductionAdjustments,
-    updateLuasArea,
-    fetchLuasAreaAdjustments
-};
-
-
 /**
  * Fetch Analysis Report data (Premi & OT, Progressive Pruning)
  * @param {string} token - Auth token
@@ -405,6 +385,25 @@ export async function fetchAnalysisReport(token, { month, year, type = 'all' }) 
 
     return response.data;
 }
+
+export default {
+    fetchDivisionSummary,
+    fetchAvailablePeriods,
+    fetchDivisionsWithData,
+    checkSummaryHealth,
+    fetchGangsByLocCode,
+    fetchAllDivisionsTotals,
+    fetchComparisonSummary,
+    fetchImpactReport,
+    fetchAnalysisReport,
+    updateThumbprint,
+    updatePPH21,
+    updateSPSI,
+    updateDeductions,
+    fetchDeductionAdjustments,
+    updateLuasArea,
+    fetchLuasAreaAdjustments
+};
 
 /**
  * Check if current user can access reports (admin in proxy mode)
