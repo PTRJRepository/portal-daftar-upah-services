@@ -218,6 +218,27 @@ export default function PayrollHistoryComparison({
     
     return (
         <div className="phc-container">
+            {/* Print Header */}
+            <div className="phc-print-header only-print">
+                <h1 className="phc-print-title">SUMMARY WAGES COMPARISON REPORT</h1>
+                <div className="phc-print-meta">
+                    <div className="phc-print-meta-item">
+                        <strong>Periode:</strong> {getMonthName(month)} {year}
+                    </div>
+                    <div className="phc-print-meta-item">
+                        <strong>Divisi:</strong> {division || 'Semua Divisi'}
+                    </div>
+                    {group && (
+                        <div className="phc-print-meta-item">
+                            <strong>Group:</strong> {group}
+                        </div>
+                    )}
+                    <div className="phc-print-meta-item">
+                        <strong>Dicetak pada:</strong> {new Date().toLocaleString('id-ID')}
+                    </div>
+                </div>
+            </div>
+
             {/* Header */}
             <div className="phc-header">
                 <div className="phc-header-left">
@@ -232,6 +253,9 @@ export default function PayrollHistoryComparison({
                     </span>
                 </div>
                 <div className="phc-header-right">
+                    <button onClick={() => window.print()} className="phc-btn phc-btn-print">
+                        🖨️ Cetak Laporan
+                    </button>
                     <button onClick={handleExport} className="phc-btn phc-btn-export" disabled={!filteredData.length}>
                         📥 Export CSV
                     </button>

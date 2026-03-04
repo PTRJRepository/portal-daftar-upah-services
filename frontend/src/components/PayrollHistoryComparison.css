@@ -644,22 +644,164 @@
 
 /* Print Styles */
 @media print {
+    @page {
+        size: landscape;
+        margin: 1cm;
+    }
+
+    /* Reset background colors for printing */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    body {
+        background: white !important;
+        font-size: 8pt !important;
+    }
+
+    /* Hide UI elements */
     .phc-btn,
     .phc-filters,
-    .phc-expand-btn {
-        display: none !important;
-    }
-    
-    .phc-container {
-        box-shadow: none;
-        padding: 0;
-    }
-    
-    .phc-table {
-        font-size: 8pt;
-    }
-    
+    .phc-expand-btn,
+    .phc-header,
+    .phc-footer-legend,
     .phc-detail-row {
         display: none !important;
     }
+
+    /* Container adjustments */
+    .phc-container {
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+        max-width: none !important;
+    }
+
+    /* Print Header */
+    .phc-print-header {
+        display: block !important;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #000;
+        padding-bottom: 10px;
+    }
+
+    .phc-print-title {
+        font-size: 16pt;
+        font-weight: bold;
+        text-align: center;
+        margin: 0 0 10px 0;
+        color: #000;
+    }
+
+    .phc-print-meta {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        font-size: 9pt;
+    }
+
+    /* Summary Cards in Print */
+    .phc-summary-cards {
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 10px !important;
+        margin-bottom: 20px !important;
+        page-break-inside: avoid;
+    }
+
+    .phc-kpi-card {
+        padding: 8px !important;
+        border: 1px solid #ccc !important;
+        background: #f9f9f9 !important;
+    }
+
+    .phc-kpi-value {
+        font-size: 11pt !important;
+    }
+
+    /* Table Adjustments */
+    .phc-table-container {
+        border: none !important;
+        overflow: visible !important;
+    }
+
+    .phc-table {
+        font-size: 7.5pt !important;
+        width: 100% !important;
+        table-layout: auto !important;
+        border: 1px solid #000 !important;
+    }
+
+    .phc-table th, 
+    .phc-table td {
+        border: 1px solid #000 !important;
+        padding: 4px 6px !important;
+        white-space: normal !important; /* Allow wrapping in print */
+    }
+
+    /* Darker headers for print */
+    .phc-header-group th {
+        background-color: #333 !important;
+        color: white !important;
+    }
+
+    .phc-header-cols th {
+        background-color: #666 !important;
+        color: white !important;
+    }
+
+    /* Sticky headers don't work in print well */
+    .phc-th-sticky,
+    .phc-td-sticky {
+        position: static !important;
+        background-color: transparent !important;
+        z-index: auto !important;
+    }
+
+    .phc-td-sticky {
+        background: white !important;
+    }
+
+    /* Specific column widths for better fit */
+    .phc-td-name {
+        max-width: 150px !important;
+    }
+
+    /* Highlight differences in B&W printing */
+    .phc-td-diff {
+        background-color: #eee !important;
+        font-weight: bold !important;
+        text-decoration: underline !important;
+    }
+
+    /* Status column optimization */
+    .phc-status-badge {
+        border: 1px solid #ccc !important;
+        background: transparent !important;
+        color: black !important;
+        padding: 1px 4px !important;
+    }
+
+    /* Legend/Footer */
+    .phc-footer {
+        margin-top: 15px !important;
+        border-top: 1px solid #000 !important;
+        page-break-before: auto;
+    }
+
+    .print-only {
+        display: block !important;
+    }
+
+    .only-print {
+        display: block !important;
+    }
 }
+
+/* Screen utility for print header */
+.only-print {
+    display: none;
+}
+
