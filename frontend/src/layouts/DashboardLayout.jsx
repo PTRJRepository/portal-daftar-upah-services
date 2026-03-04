@@ -261,48 +261,44 @@ const DashboardLayout = () => {
                     </NavLink>
 
                     {/* Laporan & Analisis (Collapsible) */}
-                    {!isKeraniUser && (
-                        <>
-                            {!collapsed ? (
-                                <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
-                                    Analisis & Laporan
+                    <div style={{ marginTop: '1.5rem', marginBottom: '0.75rem', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                        Analisis & Laporan
+                    </div>
+
+                    <div
+                        onClick={() => !collapsed && setReportsOpen(!reportsOpen)}
+                        style={{
+                            ...getLinkStyle(reportsOpen || isReportsPathActive),
+                            cursor: collapsed ? 'default' : 'pointer'
+                        }}
+                        title={collapsed ? "Reports" : ""}
+                    >
+                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.BarChart /></div>
+                        {!collapsed && (
+                            <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Laporan Payroll</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Daftar rekap, perbandingan & pajak.</span>
                                 </div>
-                            ) : (
-                                <div style={{ height: '1px', background: '#334155', margin: '1rem 0.25rem' }}></div>
-                            )}
-
-                            <div
-                                onClick={() => !collapsed && setReportsOpen(!reportsOpen)}
-                                style={{
-                                    ...getLinkStyle(reportsOpen || isReportsPathActive),
-                                    cursor: collapsed ? 'default' : 'pointer'
-                                }}
-                                title={collapsed ? "Reports" : ""}
-                            >
-                                <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.BarChart /></div>
-                                {!collapsed && (
-                                    <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                            <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Laporan Payroll</span>
-                                            <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Daftar rekap, perbandingan & pajak.</span>
-                                        </div>
-                                        <div style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: reportsOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-                                            <ChevronRight size={16} />
-                                        </div>
-                                    </div>
-                                )}
+                                <div style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: reportsOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                                    <ChevronRight size={16} />
+                                </div>
                             </div>
+                        )}
+                    </div>
 
-                            {/* Submenu Links */}
-                            {(!collapsed && reportsOpen) && (
-                                <div style={{
-                                    marginLeft: '0.5rem',
-                                    paddingLeft: '0.5rem',
-                                    borderLeft: '1px solid #334155',
-                                    marginTop: '0.25rem',
-                                    display: 'flex',
-                                    flexDirection: 'column'
-                                }}>
+                    {/* Submenu Links */}
+                    {(!collapsed && reportsOpen) && (
+                        <div style={{
+                            marginLeft: '0.5rem',
+                            paddingLeft: '0.5rem',
+                            borderLeft: '1px solid #334155',
+                            marginTop: '0.25rem',
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}>
+                            {!isKeraniUser && (
+                                <>
                                     <NavLink to="/summary" style={({ isActive }) => getSubmenuStyle(isActive)}>
                                         <MenuIcons.BarChart /> Summary Report
                                     </NavLink>
@@ -333,12 +329,12 @@ const DashboardLayout = () => {
                                     <NavLink to="/executive" style={({ isActive }) => getSubmenuStyle(isActive)}>
                                         <MenuIcons.ActivityIcon /> Executive Analysis
                                     </NavLink>
-                                    <NavLink to="/report-pajak" style={({ isActive }) => getSubmenuStyle(isActive)}>
-                                        <MenuIcons.Clipboard /> Report Pajak (PPh21)
-                                    </NavLink>
-                                </div>
+                                </>
                             )}
-                        </>
+                            <NavLink to="/report-pajak" style={({ isActive }) => getSubmenuStyle(isActive)}>
+                                <MenuIcons.Clipboard /> Report Pajak (PPh21)
+                            </NavLink>
+                        </div>
                     )}
 
                     {/* Admin dan Config */}
