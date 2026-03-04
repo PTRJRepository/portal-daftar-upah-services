@@ -420,8 +420,13 @@
     .sw-kpi-grid {
         grid-template-columns: repeat(4, 1fr) !important;
         page-break-after: avoid;
-        gap: 0.4rem !important;
-        margin-bottom: 0.6rem !important;
+        gap: 0.2rem !important;
+        margin-bottom: 0.3rem !important;
+    }
+
+    .sw-kpi-card {
+        padding: 0.2rem !important;
+        border: 1px solid #000 !important;
     }
 
     .sw-kpi-card {
@@ -435,13 +440,11 @@
     }
 
     .sw-kpi-label {
-        font-size: 0.6rem !important;
-        /* Increased for readability */
+        font-size: 0.5rem !important;
     }
 
     .sw-kpi-value {
-        font-size: 0.8rem !important;
-        /* Increased for readability */
+        font-size: 0.65rem !important;
     }
 
     .sw-table thead tr.sw-header-group th {
@@ -466,7 +469,7 @@
         page-break-inside: avoid;
     }
 
-    /* ALL CELLS - Better padding for readability */
+    /* ALL CELLS - Compact for 1-page fit */
     .sw-table td,
     .sw-table th,
     .sw-table td.text-left,
@@ -475,12 +478,10 @@
     .sw-table th.text-right,
     .sw-table td.text-center,
     .sw-table th.text-center {
-        padding: 0.15rem 0.12rem !important;
-        /* Increased padding for readability */
+        padding: 0.1rem 0.08rem !important;
         border: 1px solid #000 !important;
         text-align: center !important;
-        font-size: 0.65rem !important;
-        /* Increased for readability */
+        font-size: 0.55rem !important;
     }
 
     /* First column - left aligned */
@@ -524,21 +525,21 @@
     }
 
     .sw-signature-section {
-        margin-top: 1.5rem !important;
+        margin-top: 0.4rem !important;
         padding: 0 !important;
     }
 
     .sw-signature-block {
-        width: 180px !important;
+        width: 160px !important;
     }
 
     .sw-signature-title {
-        font-size: 0.5rem !important;
-        margin-bottom: 3rem !important;
+        font-size: 0.45rem !important;
+        margin-bottom: 1.2rem !important;
     }
 
     .sw-signature-name {
-        font-size: 0.55rem !important;
+        font-size: 0.5rem !important;
     }
 
     /* KPI Cards */

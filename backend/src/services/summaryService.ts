@@ -164,18 +164,47 @@ export class SummaryService {
         const thumbprintData = await this.loadThumbprintData(month, year);
         const backfillData = await this.getBackfillData(month, year);
 
-        const divAgg: Record<string, {
+        // Type for aggregation bucket
+        type AggBucket = {
             total_premi: number; total_employees: number; total_hk: number;
             total_upah_bersih: number; total_pph21: number; total_spsi: number;
             total_lembur: number; gang_codes: Set<string>;
             total_premi_brondol: number; total_premi_prunning: number;
             total_premi_insentif: number; total_premi_kinerja: number;
             total_koreksi: number; total_ffb_weight: number; total_weight_tbs: number;
-        }> = {};
+        };
 
-        // Debug: Log virtual division mapping stats
-        const virtualDivStats: Record<string, string[]> = {};
-        const unmatchedGangs: { gangCode: string, sourceLoc: string, desc: string }[] = [];
+        const createEmptyBucket = (): AggBucket => ({
+            total_premi: 0, total_employees: 0, total_hk: 0,
+            total_upah_bersih: 0, total_pph21: 0, total_spsi: 0,
+            total_lembur: 0, gang_codes: new Set(),
+            total_premi_brondol: 0, total_premi_prunning: 0,
+            total_premi_insentif: 0, total_premi_kinerja: 0,
+            total_koreksi: 0, total_ffb_weight: 0, total_weight_tbs: 0
+        });
+
+        const addRowToBucket = (bucket: AggBucket, row: any, gangCode: string) => {
+            bucket.total_premi += parseFloat(row.total_premi || 0);
+            bucket.total_employees += parseInt(row.total_employees || 0);
+            bucket.total_hk += parseFloat(row.total_hk || 0);
+            bucket.total_upah_bersih += parseFloat(row.total_upah_bersih || 0);
+            bucket.total_pph21 += parseFloat(row.total_pph21 || 0);
+            bucket.total_spsi += parseFloat(row.total_spsi || 0);
+            bucket.total_lembur += parseFloat(row.total_lembur || 0);
+            bucket.gang_codes.add(gangCode);
+            bucket.total_premi_brondol += parseFloat(row.total_premi_brondol || 0);
+            bucket.total_premi_prunning += parseFloat(row.total_premi_prunning || 0);
+            bucket.total_premi_insentif += parseFloat(row.total_premi_insentif || 0);
+            bucket.total_premi_kinerja += parseFloat(row.total_premi_kinerja || 0);
+            bucket.total_koreksi += parseFloat(row.total_koreksi || 0);
+            bucket.total_ffb_weight = Math.max(bucket.total_ffb_weight, parseFloat(row.total_ffb_weight || 0));
+            bucket.total_weight_tbs = Math.max(bucket.total_weight_tbs, parseFloat(row.total_weight_tbs || 0));
+        };
+
+        // STEP 1: Aggregate ALL gangs to their REAL division (from HR_GANG LocCode)
+        const realDivAgg: Record<string, AggBucket> = {};
+        // Also track per-gang raw data for virtual division computation
+        const gangRowData: { gangCode: string; sourceLoc: string; gangDesc: string; row: any }[] = [];
 
         for (const row of rows) {
             const gangCode = row.gang_code?.trim() || '';
@@ -183,80 +212,176 @@ export class SummaryService {
 
             const storedDivCode = row.division_code?.trim() || '';
             const sourceLoc = gangDivMap[gangCode] || storedDivCode;
+
+            if (!sourceLoc || sourceLoc === 'ALL' || sourceLoc === 'UNKNOWN') continue;
+
             const gangDesc = allGangDescs[gangCode] || '';
+            gangRowData.push({ gangCode, sourceLoc, gangDesc, row });
 
-            // PRIORITY 1: If stored division_code is a recognized virtual division,
-            // trust it directly. The seeder grouped this gang intentionally.
+            // Always aggregate to real division
+            if (!realDivAgg[sourceLoc]) {
+                realDivAgg[sourceLoc] = createEmptyBucket();
+            }
+            addRowToBucket(realDivAgg[sourceLoc], row, gangCode);
+        }
+
+        console.log(`[SummaryService] Step 1 - Real divisions found: ${Object.keys(realDivAgg).join(', ')}`);
+
+        // STEP 2: Build virtual division rows by extracting matching gangs from real divisions
+        // Virtual divisions: INF (from P1A), NRS (from P1B), WKS_PG (from P1A), WKS_AR (from AB2)
+        const virtualDivAgg: Record<string, AggBucket> = {};
+        const virtualGangAssignments: Record<string, Set<string>> = {}; // virtualDiv -> Set<gangCode>
+
+        // For each gang, check if it belongs to a virtual division (excluding WORKSHOP which is computed)
+        for (const { gangCode, sourceLoc, gangDesc, row } of gangRowData) {
+            // Skip WORKSHOP — it's a computed aggregate of WKS_PG + WKS_AR
             let virtualDiv: string | null = null;
-            if (storedDivCode && divisionDefinition.isVirtualDivision(storedDivCode)) {
-                virtualDiv = storedDivCode;
-            }
 
-            // PRIORITY 2: Try pattern-based virtual division detection from HR_GANG LocCode
-            if (!virtualDiv) {
-                virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
-            }
+            // Check for virtual division using full logic (source_division + pattern)
+            virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
 
-            // PRIORITY 3: Fallback pattern-only detection (no source_division validation)
+            // Fallback: pattern-only detection if gang not in gangDivMap
             if (!virtualDiv && !gangDivMap[gangCode]) {
                 virtualDiv = divisionDefinition.getVirtualDivisionByPatternOnly(gangCode, gangDesc);
             }
 
-            // Debug: track virtual division assignments
+            // Skip WORKSHOP (computed aggregate), ARC (not a sub-extraction)
+            if (virtualDiv === 'WORKSHOP') continue;
+
             if (virtualDiv) {
-                if (!virtualDivStats[virtualDiv]) virtualDivStats[virtualDiv] = [];
-                virtualDivStats[virtualDiv].push(gangCode);
-            } else if (['P1A', 'P1B', 'AB2', 'ARC'].includes(sourceLoc)) {
-                // These are source divisions that have virtual subdivisions
-                unmatchedGangs.push({ gangCode, sourceLoc, desc: gangDesc });
-            }
+                if (!virtualDivAgg[virtualDiv]) {
+                    virtualDivAgg[virtualDiv] = createEmptyBucket();
+                }
+                addRowToBucket(virtualDivAgg[virtualDiv], row, gangCode);
 
-            const div = virtualDiv || sourceLoc;
-
-            if (!div || div === 'ALL' || div === 'UNKNOWN') continue;
-
-            if (!divAgg[div]) {
-                divAgg[div] = {
-                    total_premi: 0, total_employees: 0, total_hk: 0,
-                    total_upah_bersih: 0, total_pph21: 0, total_spsi: 0,
-                    total_lembur: 0, gang_codes: new Set(),
-                    total_premi_brondol: 0, total_premi_prunning: 0,
-                    total_premi_insentif: 0, total_premi_kinerja: 0,
-                    total_koreksi: 0, total_ffb_weight: 0, total_weight_tbs: 0
-                };
-            }
-
-            const a = divAgg[div];
-            a.total_premi += parseFloat(row.total_premi || 0);
-            a.total_employees += parseInt(row.total_employees || 0);
-            a.total_hk += parseFloat(row.total_hk || 0);
-            a.total_upah_bersih += parseFloat(row.total_upah_bersih || 0);
-            a.total_pph21 += parseFloat(row.total_pph21 || 0);
-            a.total_spsi += parseFloat(row.total_spsi || 0);
-            a.total_lembur += parseFloat(row.total_lembur || 0);
-            a.gang_codes.add(gangCode);
-            a.total_premi_brondol += parseFloat(row.total_premi_brondol || 0);
-            a.total_premi_prunning += parseFloat(row.total_premi_prunning || 0);
-            a.total_premi_insentif += parseFloat(row.total_premi_insentif || 0);
-            a.total_premi_kinerja += parseFloat(row.total_premi_kinerja || 0);
-            a.total_koreksi += parseFloat(row.total_koreksi || 0);
-            a.total_ffb_weight = Math.max(a.total_ffb_weight, parseFloat(row.total_ffb_weight || 0));
-            a.total_weight_tbs = Math.max(a.total_weight_tbs, parseFloat(row.total_weight_tbs || 0));
-        }
-
-        // Debug: Log virtual division mapping results
-        console.log(`[SummaryService] Virtual Division Detection Results:`);
-        console.log(`  Total rows from aggregation: ${rows.length}`);
-        console.log(`  Divisions found: ${Object.keys(divAgg).join(', ')}`);
-        for (const [vd, gangs] of Object.entries(virtualDivStats)) {
-            console.log(`  Virtual ${vd}: ${gangs.length} gangs → [${gangs.join(', ')}]`);
-        }
-        if (unmatchedGangs.length > 0) {
-            console.log(`  Unmatched gangs from VD source divisions:`);
-            for (const g of unmatchedGangs) {
-                console.log(`    ${g.gangCode} (${g.sourceLoc}) desc="${g.desc}"`);
+                if (!virtualGangAssignments[virtualDiv]) {
+                    virtualGangAssignments[virtualDiv] = new Set();
+                }
+                virtualGangAssignments[virtualDiv].add(gangCode);
             }
         }
+
+        console.log(`[SummaryService] Step 2 - Virtual divisions built: ${Object.keys(virtualDivAgg).join(', ')}`);
+        for (const [vd, gangs] of Object.entries(virtualGangAssignments)) {
+            console.log(`  Virtual ${vd}: ${gangs.size} gangs → [${Array.from(gangs).join(', ')}]`);
+        }
+
+        // STEP 3: Subtract virtual gang data from parent real divisions
+        // So P1A doesn't double-count INF/WKS_PG gangs, P1B doesn't double-count NRS gangs, etc.
+        const subtractBucket = (parent: AggBucket, child: AggBucket, childGangs: Set<string>) => {
+            parent.total_premi -= child.total_premi;
+            parent.total_employees -= child.total_employees;
+            parent.total_hk -= child.total_hk;
+            parent.total_upah_bersih -= child.total_upah_bersih;
+            parent.total_pph21 -= child.total_pph21;
+            parent.total_spsi -= child.total_spsi;
+            parent.total_lembur -= child.total_lembur;
+            parent.total_premi_brondol -= child.total_premi_brondol;
+            parent.total_premi_prunning -= child.total_premi_prunning;
+            parent.total_premi_insentif -= child.total_premi_insentif;
+            parent.total_premi_kinerja -= child.total_premi_kinerja;
+            parent.total_koreksi -= child.total_koreksi;
+            // Remove gang codes from parent
+            for (const gc of childGangs) {
+                parent.gang_codes.delete(gc);
+            }
+        };
+
+        // Map virtual divisions to their source real divisions for subtraction
+        const virtualToSourceMap: Record<string, string> = {
+            'INF': 'P1A',
+            'NRS': 'P1B',
+            'WKS_PG': 'P1A',
+            'WKS_AR': 'AB2'
+        };
+
+        for (const [virtDiv, sourceDiv] of Object.entries(virtualToSourceMap)) {
+            if (virtualDivAgg[virtDiv] && realDivAgg[sourceDiv]) {
+                const childGangs = virtualGangAssignments[virtDiv] || new Set();
+                subtractBucket(realDivAgg[sourceDiv], virtualDivAgg[virtDiv], childGangs);
+                console.log(`[SummaryService] Step 3 - Subtracted ${virtDiv} (${childGangs.size} gangs) from ${sourceDiv}`);
+            }
+        }
+
+        // STEP 4: Compute WORKSHOP as sum of WKS_PG + WKS_AR (workshop-only aggregation)
+        const wksPG = virtualDivAgg['WKS_PG'];
+        const wksAR = virtualDivAgg['WKS_AR'];
+        if (wksPG || wksAR) {
+            const workshopBucket = createEmptyBucket();
+            if (wksPG) {
+                workshopBucket.total_premi += wksPG.total_premi;
+                workshopBucket.total_employees += wksPG.total_employees;
+                workshopBucket.total_hk += wksPG.total_hk;
+                workshopBucket.total_upah_bersih += wksPG.total_upah_bersih;
+                workshopBucket.total_pph21 += wksPG.total_pph21;
+                workshopBucket.total_spsi += wksPG.total_spsi;
+                workshopBucket.total_lembur += wksPG.total_lembur;
+                workshopBucket.total_premi_brondol += wksPG.total_premi_brondol;
+                workshopBucket.total_premi_prunning += wksPG.total_premi_prunning;
+                workshopBucket.total_premi_insentif += wksPG.total_premi_insentif;
+                workshopBucket.total_premi_kinerja += wksPG.total_premi_kinerja;
+                workshopBucket.total_koreksi += wksPG.total_koreksi;
+                workshopBucket.total_ffb_weight = Math.max(workshopBucket.total_ffb_weight, wksPG.total_ffb_weight);
+                workshopBucket.total_weight_tbs = Math.max(workshopBucket.total_weight_tbs, wksPG.total_weight_tbs);
+                for (const gc of wksPG.gang_codes) workshopBucket.gang_codes.add(gc);
+            }
+            if (wksAR) {
+                workshopBucket.total_premi += wksAR.total_premi;
+                workshopBucket.total_employees += wksAR.total_employees;
+                workshopBucket.total_hk += wksAR.total_hk;
+                workshopBucket.total_upah_bersih += wksAR.total_upah_bersih;
+                workshopBucket.total_pph21 += wksAR.total_pph21;
+                workshopBucket.total_spsi += wksAR.total_spsi;
+                workshopBucket.total_lembur += wksAR.total_lembur;
+                workshopBucket.total_premi_brondol += wksAR.total_premi_brondol;
+                workshopBucket.total_premi_prunning += wksAR.total_premi_prunning;
+                workshopBucket.total_premi_insentif += wksAR.total_premi_insentif;
+                workshopBucket.total_premi_kinerja += wksAR.total_premi_kinerja;
+                workshopBucket.total_koreksi += wksAR.total_koreksi;
+                workshopBucket.total_ffb_weight = Math.max(workshopBucket.total_ffb_weight, wksAR.total_ffb_weight);
+                workshopBucket.total_weight_tbs = Math.max(workshopBucket.total_weight_tbs, wksAR.total_weight_tbs);
+                for (const gc of wksAR.gang_codes) workshopBucket.gang_codes.add(gc);
+            }
+            virtualDivAgg['WORKSHOP'] = workshopBucket;
+            console.log(`[SummaryService] Step 4 - WORKSHOP computed as WKS_PG + WKS_AR: ${workshopBucket.gang_codes.size} gangs`);
+        }
+
+        // STEP 5: NRS special handling — only retain upah_bersih, zero out other financial fields
+        if (virtualDivAgg['NRS']) {
+            const nrs = virtualDivAgg['NRS'];
+            // Keep only upah_bersih for NRS
+            nrs.total_premi = 0;
+            nrs.total_employees = 0;
+            nrs.total_hk = 0;
+            nrs.total_pph21 = 0;
+            nrs.total_spsi = 0;
+            nrs.total_lembur = 0;
+            nrs.total_premi_brondol = 0;
+            nrs.total_premi_prunning = 0;
+            nrs.total_premi_insentif = 0;
+            nrs.total_premi_kinerja = 0;
+            nrs.total_koreksi = 0;
+            nrs.total_ffb_weight = 0;
+            nrs.total_weight_tbs = 0;
+            console.log(`[SummaryService] Step 5 - NRS: only upah_bersih retained = ${nrs.total_upah_bersih}`);
+        }
+
+        // STEP 6: Merge real + virtual into final divAgg for result building
+        const divAgg: Record<string, AggBucket> = { ...realDivAgg };
+        for (const [vd, bucket] of Object.entries(virtualDivAgg)) {
+            divAgg[vd] = bucket;
+        }
+
+        // Remove any real divisions that have zero or negative employees after subtraction
+        // BUT always keep P1A and P1B even if they have 0 employees (they should still appear)
+        const keepAlways = new Set(['P1A', 'P1B']);
+        for (const div of Object.keys(divAgg)) {
+            if (!keepAlways.has(div) && divAgg[div].total_employees <= 0 && divAgg[div].total_upah_bersih <= 0 && divAgg[div].gang_codes.size === 0) {
+                delete divAgg[div];
+            }
+        }
+
+        console.log(`[SummaryService] Step 6 - Final divisions: ${Object.keys(divAgg).join(', ')}`);
 
         const results: DivisionSummary[] = [];
 

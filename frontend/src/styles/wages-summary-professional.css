@@ -766,7 +766,8 @@
         padding: 0.2rem !important;
         width: auto !important;
         max-width: 100% !important;
-        min-width: auto !important; /* Override screen min-width */
+        min-width: auto !important;
+        /* Override screen min-width */
         height: auto !important;
         overflow: visible !important;
         position: relative !important;
@@ -787,7 +788,8 @@
     }
 
     .wsp-logo {
-        position: static !important; /* Remove absolute positioning in print */
+        position: static !important;
+        /* Remove absolute positioning in print */
         transform: none !important;
         width: 45px !important;
         height: auto !important;
@@ -812,35 +814,36 @@
 
     /* Letterhead */
     .wsp-letterhead {
-        margin-bottom: 0.5rem !important;
-        padding-bottom: 0.3rem !important;
-        border-bottom: 2px solid #000 !important;
+        margin-bottom: 0.25rem !important;
+        padding-bottom: 0.15rem !important;
+        border-bottom: 1.5px solid #000 !important;
     }
 
     .wsp-logo {
-        width: 45px !important;
+        width: 35px !important;
         height: auto !important;
+        margin-bottom: 0.1rem !important;
     }
 
     .wsp-company-name {
-        font-size: 0.9rem !important;
+        font-size: 0.8rem !important;
         margin: 0 !important;
     }
 
     .wsp-report-title {
-        font-size: 0.6rem !important;
-        margin-top: 0.1rem !important;
-    }
-
-    .wsp-report-period {
         font-size: 0.55rem !important;
         margin-top: 0.05rem !important;
     }
 
+    .wsp-report-period {
+        font-size: 0.5rem !important;
+        margin-top: 0.02rem !important;
+    }
+
     /* KPI Cards */
     .wsp-kpi-grid {
-        margin-bottom: 0.4rem !important;
-        gap: 0.3rem !important;
+        margin-bottom: 0.2rem !important;
+        gap: 0.2rem !important;
         display: grid !important;
         grid-template-columns: repeat(4, 1fr) !important;
         width: 100% !important;
@@ -852,7 +855,7 @@
     }
 
     .wsp-kpi-card {
-        padding: 0.3rem !important;
+        padding: 0.15rem 0.2rem !important;
         min-height: auto !important;
         height: auto !important;
         border: 1px solid #000 !important;
@@ -861,9 +864,8 @@
     }
 
     .wsp-kpi-label {
-        font-size: 0.55rem !important;
-        /* Increased for better readability */
-        margin-bottom: 0.15rem !important;
+        font-size: 0.45rem !important;
+        margin-bottom: 0.05rem !important;
         font-weight: 700 !important;
         color: #000 !important;
         text-align: center !important;
@@ -871,8 +873,7 @@
     }
 
     .wsp-kpi-value {
-        font-size: 0.8rem !important;
-        /* Increased for better readability */
+        font-size: 0.65rem !important;
         font-weight: 700 !important;
         line-height: 1.1 !important;
         text-align: center !important;
@@ -882,7 +883,7 @@
     .wsp-table-wrapper {
         overflow: visible !important;
         border: 1px solid #000 !important;
-        margin-bottom: 0.8rem !important;
+        margin-bottom: 0.3rem !important;
         width: 100% !important;
     }
 
@@ -900,9 +901,8 @@
     }
 
     .wsp-table thead th {
-        padding: 0.25rem 0.18rem !important;
-        font-size: 0.65rem !important;
-        /* Increased for better readability */
+        padding: 0.15rem 0.1rem !important;
+        font-size: 0.55rem !important;
         font-weight: 800 !important;
         border: 1px solid #000 !important;
         text-align: center !important;
@@ -910,20 +910,18 @@
     }
 
     .wsp-table thead tr.wsp-header-master th {
-        font-size: 0.7rem !important;
-        /* Increased for better readability */
+        font-size: 0.6rem !important;
         font-weight: 900 !important;
         border-bottom: 2px solid #000 !important;
     }
 
-    /* ALL Table cells - CENTERED */
+    /* ALL Table cells - CENTERED & COMPACT for 1-page fit */
     .wsp-table td,
     .wsp-table td.text-right,
     .wsp-table td.text-center,
     .wsp-table td.text-left {
-        padding: 0.2rem 0.15rem !important;
-        font-size: 0.65rem !important;
-        /* Increased for better readability */
+        padding: 0.1rem 0.1rem !important;
+        font-size: 0.55rem !important;
         font-weight: 600 !important;
         border: 1px solid #000 !important;
         text-align: center !important;
@@ -950,8 +948,8 @@
 
     /* Subtotal */
     .wsp-table tr.subtotal td {
-        padding: 0.2rem !important;
-        font-size: 0.55rem !important;
+        padding: 0.1rem !important;
+        font-size: 0.5rem !important;
         font-weight: 700 !important;
         text-align: center !important;
         background-color: #f1f5f9 !important;
@@ -960,8 +958,8 @@
 
     /* Estate Header */
     .wsp-table tr.estate-header td {
-        padding: 0.25rem !important;
-        font-size: 0.55rem !important;
+        padding: 0.1rem !important;
+        font-size: 0.5rem !important;
         font-weight: 800 !important;
         text-align: center !important;
         background-color: #e2e8f0 !important;
@@ -972,8 +970,8 @@
     .wsp-table tfoot tr.wsp-grand-total td,
     .wsp-table tfoot tr.wsp-grand-total td.sticky-col,
     .wsp-table tfoot tr.wsp-grand-total td:first-child {
-        padding: 0.25rem !important;
-        font-size: 0.55rem !important;
+        padding: 0.1rem !important;
+        font-size: 0.5rem !important;
         font-weight: 800 !important;
         text-align: center !important;
         background-color: #1e293b !important;
@@ -981,11 +979,11 @@
         border: 1px solid #000 !important;
     }
 
-    /* Signature */
+    /* Signature - Compact for 1-page fit */
     .wsp-signature-section {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        margin-top: 0.8rem !important;
+        margin-top: 0.3rem !important;
         padding: 0 !important;
         display: flex !important;
         flex-direction: row !important;
@@ -1001,25 +999,25 @@
     }
 
     .wsp-signature-title {
-        font-size: 0.5rem !important;
-        margin-bottom: 2rem !important;
+        font-size: 0.45rem !important;
+        margin-bottom: 1.2rem !important;
         white-space: nowrap !important;
     }
 
     .wsp-signature-name {
         white-space: nowrap !important;
-        font-size: 0.55rem !important;
+        font-size: 0.5rem !important;
         border-top: 1px solid #000 !important;
-        padding-top: 0.15rem !important;
+        padding-top: 0.1rem !important;
         width: 80% !important;
         margin: 0 auto !important;
     }
 
     /* Footer */
     .wsp-footer {
-        margin-top: 0.8rem !important;
-        padding-top: 0.3rem !important;
-        font-size: 0.5rem !important;
+        margin-top: 0.3rem !important;
+        padding-top: 0.15rem !important;
+        font-size: 0.45rem !important;
         border-top: 1px solid #000 !important;
     }
 

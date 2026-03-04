@@ -3,6 +3,7 @@
    ============================================ */
 
 @media print {
+
     /* Force Landscape */
     @page {
         size: A4 landscape;
@@ -10,7 +11,8 @@
     }
 
     /* Reset layout for print */
-    html, body {
+    html,
+    body {
         width: 100% !important;
         height: auto !important;
         overflow: visible !important;
@@ -22,7 +24,9 @@
         font-family: Arial, sans-serif !important;
     }
 
-    #root, .App, .print-content-area {
+    #root,
+    .App,
+    .print-content-area {
         width: 100% !important;
         height: auto !important;
         overflow: visible !important;
@@ -57,7 +61,8 @@
        ============================================ */
     table {
         width: 100% !important;
-        table-layout: auto !important; /* Let columns adjust naturally */
+        table-layout: auto !important;
+        /* Let columns adjust naturally */
         border-collapse: collapse !important;
         border: 1pt solid #000 !important;
         page-break-inside: auto !important;
@@ -69,7 +74,8 @@
         page-break-after: auto !important;
     }
 
-    th, td {
+    th,
+    td {
         border: 0.5pt solid #000 !important;
         padding: 4pt 5pt !important;
         font-size: 8pt !important;
@@ -92,7 +98,7 @@
     }
 
     /* Total Rows - High Visibility */
-    tr.grand-total td, 
+    tr.grand-total td,
     tr.total-row td,
     tr.grand-total-row td,
     tfoot td {
@@ -106,7 +112,7 @@
        Standardized 3-person block
        ============================================ */
     .print-signature-section {
-        margin-top: 30pt !important;
+        margin-top: 12pt !important;
         display: flex !important;
         flex-direction: row !important;
         justify-content: space-between !important;
@@ -120,27 +126,27 @@
     }
 
     .signature-space {
-        height: 60pt !important;
+        height: 30pt !important;
     }
 
     .signature-name {
         border-top: 1pt solid #000 !important;
         display: inline-block !important;
-        min-width: 150pt !important;
+        min-width: 120pt !important;
         font-weight: bold !important;
-        padding-top: 3pt !important;
+        padding-top: 2pt !important;
     }
 
     /* ============================================
        UTILITIES
        ============================================ */
-    .no-print, 
-    .action-bar, 
-    .filter-section, 
-    .sidebar, 
+    .no-print,
+    .action-bar,
+    .filter-section,
+    .sidebar,
     .sidebar-backdrop,
     .no-print-area,
-    button, 
+    button,
     nav {
         display: none !important;
     }
@@ -154,6 +160,7 @@
         scrollbar-width: none !important;
         -ms-overflow-style: none !important;
     }
+
     *::-webkit-scrollbar {
         display: none !important;
     }
@@ -167,7 +174,7 @@
     background: #ffffff;
     padding: 1.25rem 1.5rem;
     border-radius: 10px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     margin-bottom: 1.5rem;
     border: 1px solid #e2e8f0;
     display: flex;
