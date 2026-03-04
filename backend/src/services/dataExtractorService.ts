@@ -507,7 +507,6 @@ export class DataExtractorService {
 
             // Calculate total earnings potential to check if employee should be kept despite low HK
             const total_premi_temp = Object.values(empPremi).reduce((a, b) => a + b, 0);
-            // [FIXED] Use empLemburDetails.jumlah (only OT=1) for consistency
             const total_earnings = (attData.total_amount_rp || 0) + total_premi_temp + empLemburDetails.jumlah + empJabatan + empMasaKerjaJumlah;
 
             if (emp.emp_code.includes('474')) {
@@ -522,7 +521,6 @@ export class DataExtractorService {
             }
 
             // Filter: Skip if Effective HK is 0 or less AND Total Earnings is 0 or less
-            // This preserves employees who have generated money (e.g. from Sunday work or allowances) even if Effective HK is calculated as 0
             if (effective_hk <= 0 && total_earnings <= 0) continue;
             const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -536,17 +534,12 @@ export class DataExtractorService {
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
             const hari_kerja = Math.max(0, hk - totalCuti);
 
-            // [FILTER] Employee filtering logic:
-            // Effective Work HK = HK - (Minggu + Libur Nasional)
-            // Jika effective_work_hk <= 0 DAN other_cuti == 0 DAN total_earnings <= 0 → DIFILTER keluar
-            // Jika effective_work_hk <= 0 TAPI other_cuti > 0 → TETAP dimunculkan
-            // Jika effective_work_hk > 0 → Selalu dimunculkan
+            // [FILTER] Employee filtering logic
             const effective_work_hk = hk - (empCuti.cuti_minggu + empCuti.cuti_nasional);
             const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
 
             if (effective_work_hk <= 0 && other_cuti == 0 && total_earnings <= 0) continue;
 
-            // [MODIFIED] Use database amount for basic salary
             const upah_pokok = attData.total_amount_rp || 0;
             const empBrondol = brondol[emp.emp_code] || 0;
 
@@ -561,41 +554,38 @@ export class DataExtractorService {
             }
 
             const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
-            // [UPDATED] Beras jumlah = (berasRate * HK) + amounts from DocDesc containing 'BERAS'
             const berasJumlahBase = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
 
-            // [F2H_SPECIFIC] Implementasi penambahan tunjangan beras dari docDesc, khusus untuk f2h
             const isF2H = emp.gang_code === 'F2H';
             const additionalBeras = isF2H ? empBerasDocDesc : 0;
-
             const berasJumlah = berasJumlahBase + additionalBeras;
 
             const jabatanRate = hari_kerja > 0 && empJabatan > 0 ? empJabatan / hari_kerja : 0;
             const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
 
-            // [FIX] Use ONLY empLemburDetails (OT=1 pure overtime) for ALL lembur calculations
-            // This ensures consistency between display and calculation, no double counting
-            // empLembur and empLemburDocDesc are NOT used anymore - only empLemburDetails
             const empLemburJumlahPure = empLemburDetails.jumlah || 0;
             const empLemburJamPure = empLemburDetails.jam || 0;
 
-            // [UPDATED] Gaji Pokok untuk Grup Penggajian menggunakan OOP GajiPokokService
-            const gaji_pokok_ideal = gpResult?.gaji_pokok_ideal?.value || 0;
             const gaji_pokok_aktual = gpResult?.gaji_pokok_aktual?.value || 0;
-            const gaji_pokok = gaji_pokok_aktual;  // Use actual for display and calculation
-
-            // [FIXED] Use empLemburJumlahPure (only OT=1) for consistency
             const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlahPure;
 
-            empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
+            // PREMI CALCULATION - Ensure everything is summed into total_premi
+            // Add Brondol to empPremi first
+            if (empBrondol > 0) {
+                empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
+                premiTitleMap["brondol"] = "PREMI BRONDOL";
+            }
 
             let total_premi = 0;
             for (const [key, val] of Object.entries(empPremi)) {
-                // Exclude koreksi from total_premi (koreksi handled in potongan)
-                if (key !== "koreksi") {
-                    total_premi += val as number;
+                // Key could be: brondol, premi_pruning, premi_kinerja, premi_harvesting, etc.
+                const amount = Number(val) || 0;
+                if (key !== "koreksi") { // koreksi is handled in potongan
+                    total_premi += amount;
                 }
-                if (key !== "brondol" && key !== "koreksi") {
+                
+                // Add all individual premiums (except static ones) to dynamic set for UI columns
+                if (key !== "koreksi") {
                     dynamicPremiSet.add(key);
                 }
             }

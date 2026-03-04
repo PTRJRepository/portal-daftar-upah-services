@@ -771,10 +771,17 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             safe.forEach(r => {
               if (r.premi) Object.keys(r.premi).forEach(k => premiKeys.add(k))
             })
+            
+            let nestedPremiSum = 0
             premiKeys.forEach(k => {
-              grand.premi[k] = aggNested('premi', k)
+              const val = aggNested('premi', k)
+              grand.premi[k] = val
+              nestedPremiSum += val
             })
 
+            // Ensure total_premi is the SUM of all individual premiums if not already correct
+            // grand.total_premi = agg('total_premi') // This usually comes from backend total_premi
+            
             for (let i = 1; i <= 7; i++) {
               const f = `premi_dynamic_${i}`
               const sum = agg(f)

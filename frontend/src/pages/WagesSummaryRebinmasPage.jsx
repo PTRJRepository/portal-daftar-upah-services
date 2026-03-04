@@ -267,7 +267,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         regularData.forEach(div => {
             const desc = div.description || div.division_code || '';
             let prefix = desc.charAt(0).toUpperCase();
-            
+
             // Special handling for INFRASTRUKTUR if it uses 'INF' code
             if (div.division_code === 'INF' || desc.toUpperCase().includes('INFRA')) prefix = 'I';
             // Special handling for NURSERY if it uses 'NRS' code
@@ -492,7 +492,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             total_pph21_current: divisions.reduce((sum, d) => sum + (d.total_pph21_current || 0), 0),
             total_spsi_current: divisions.reduce((sum, d) => sum + (d.total_spsi_current || 0), 0),
             total_premi_current: divisions.reduce((sum, d) => sum + (d.total_premi_current || 0), 0),
-            total_prunning_current: divisions.reduce((sum, d) => sum + (d.total_prunning_current || 0), 0),
             total_lembur_current: divisions.reduce((sum, d) => sum + (d.total_lembur_current || 0), 0),
             prev_gaji: divisions.reduce((sum, d) => sum + (d.previous_month?.gaji || 0), 0),
             prev_tbs: divisions.reduce((sum, d) => sum + (d.previous_month?.tbs_weight || 0), 0),
@@ -512,7 +511,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             <th rowSpan="2" className="th-sticky-col">ESTATE/DIVISION</th>
                             <th colSpan="2" className="th-group-workers">WORKERS / PEKERJA</th>
                             <th colSpan="3" className="th-group-pph print-show-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
-                            <th colSpan="5" className="th-group-pph print-hide-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
+                            <th colSpan="4" className="th-group-pph print-hide-cell">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
                             <th colSpan="3" className="th-group-prev">{prevMonthName} {previous_period.year}</th>
                             <th colSpan="3" className="th-group-curr">{currMonthName} {current_period.year}</th>
                             <th rowSpan="2" className="th-group-diff">(Perubahan Gaji)</th>
@@ -526,7 +525,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             {/* Current Month Details */}
                             <th className="th-group-pph">POT SPSI</th>
                             <th className="th-group-pph">TOT PREMI</th>
-                            <th className="th-group-pph print-hide-cell">TOT PRUNNING</th>
                             <th className="th-group-pph print-hide-cell">TOT LEMBUR</th>
                             <th className="th-group-pph">PPH21</th>
 
@@ -568,7 +566,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                     {/* Current Details */}
                                     <td className="text-right">{formatNumber(row.total_spsi_current)}</td>
                                     <td className="text-right">{formatNumber(row.total_premi_current)}</td>
-                                    <td className="text-right print-hide-cell">{formatNumber(row.total_prunning_current)}</td>
                                     <td className="text-right print-hide-cell">{formatNumber(row.total_lembur_current)}</td>
                                     <td className="text-right border-right-section">{formatNumber(row.total_pph21_current)}</td>
 
@@ -606,7 +603,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             <td className="text-right">{formatNumber(grandTotal.workers_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_spsi_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_premi_current)}</td>
-                            <td className="text-right print-hide-cell">{formatNumber(grandTotal.total_prunning_current)}</td>
                             <td className="text-right print-hide-cell">{formatNumber(grandTotal.total_lembur_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_pph21_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_gaji)}</td>

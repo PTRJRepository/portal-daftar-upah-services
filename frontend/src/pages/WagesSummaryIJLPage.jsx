@@ -343,7 +343,6 @@ export default function WagesSummaryIJLPage({ onBack }) {
             total_pph21_current: divisions.reduce((sum, d) => sum + (d.total_pph21_current || 0), 0),
             total_spsi_current: divisions.reduce((sum, d) => sum + (d.total_spsi_current || 0), 0),
             total_premi_current: divisions.reduce((sum, d) => sum + (d.total_premi_current || 0), 0),
-            total_prunning_current: divisions.reduce((sum, d) => sum + (d.total_prunning_current || 0), 0),
             total_lembur_current: divisions.reduce((sum, d) => sum + (d.total_lembur_current || 0), 0),
             prev_gaji: divisions.reduce((sum, d) => sum + (d.previous_month?.gaji || 0), 0),
             prev_tbs: divisions.reduce((sum, d) => sum + (d.previous_month?.tbs_weight || 0), 0),
@@ -359,7 +358,7 @@ export default function WagesSummaryIJLPage({ onBack }) {
                         <tr className="wsp-header-master">
                             <th rowSpan="2" className="th-sticky-col">ESTATE/DIVISION</th>
                             <th colSpan="2" className="th-group-workers">WORKERS / PEKERJA</th>
-                            <th colSpan="5" className="th-group-pph">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
+                            <th colSpan="4" className="th-group-pph">TOTAL PPH 21<br /><small>(MASA {currMonthName} {current_period.year})</small></th>
                             <th colSpan="2" className="th-group-prev">{prevMonthName} {previous_period.year}</th>
                             <th colSpan="3" className="th-group-curr">{currMonthName} {current_period.year}</th>
                             <th rowSpan="2" className="th-group-diff">(Perubahan Gaji)</th>
@@ -369,7 +368,6 @@ export default function WagesSummaryIJLPage({ onBack }) {
                             <th className="th-group-workers">{currMonthName.substring(0, 3)}</th>
                             <th className="th-group-pph">POT SPSI</th>
                             <th className="th-group-pph">TOT PREMI</th>
-                            <th className="th-group-pph">TOT PRUNNING</th>
                             <th className="th-group-pph">TOT LEMBUR</th>
                             <th className="th-group-pph">PPH21</th>
                             <th className="th-group-prev">GAJI</th>
@@ -397,7 +395,6 @@ export default function WagesSummaryIJLPage({ onBack }) {
                                     </td>
                                     <td className="text-right">{formatNumber(row.total_spsi_current)}</td>
                                     <td className="text-right">{formatNumber(row.total_premi_current)}</td>
-                                    <td className="text-right">{formatNumber(row.total_prunning_current)}</td>
                                     <td className="text-right">{formatNumber(row.total_lembur_current)}</td>
                                     <td className="text-right border-right-section">{formatNumber(row.total_pph21_current)}</td>
                                     <td className="text-right">{formatNumber(prevGaji)}</td>
@@ -428,7 +425,6 @@ export default function WagesSummaryIJLPage({ onBack }) {
                             <td className="text-right">{formatNumber(grandTotal.workers_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_spsi_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_premi_current)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.total_prunning_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_lembur_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_pph21_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_gaji)}</td>

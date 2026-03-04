@@ -963,7 +963,8 @@ export class SummaryService {
         const rows = await this.extendDb.query<any>(query, params);
 
         // Patterns to EXCLUDE from dynamic premi headers display
-        const excludePatterns = ['prun', 'pruning', 'prunning', 'insentif_panen', 'insentif panen', 'tiket', 'koreksi', 'panen', 'kinerja', 'insentif'];
+        // The user requested to include FULL premiums breakdown, including prunning, kinerja, insentif
+        const excludePatterns = ['tiket', 'koreksi'];
 
         // Helper function to check if header should be excluded
         const shouldExcludeHeader = (header: string): boolean => {
@@ -1002,6 +1003,18 @@ export class SummaryService {
                             ? JSON.parse(row.informasi_tambahan)
                             : row.informasi_tambahan;
                     } catch (e) { }
+                }
+
+                if (!Array.isArray(dynamicPremi)) {
+                    dynamicPremi = [];
+                }
+
+                const t_brondol = parseFloat(row.total_premi_brondol || 0);
+                if (t_brondol > 0) {
+                    const hasBrondol = dynamicPremi.some((item: any) => item.header && item.header.toUpperCase().includes('BRONDOL'));
+                    if (!hasBrondol) {
+                        dynamicPremi.unshift({ header: 'PREMI BRONDOL', total: t_brondol });
+                    }
                 }
 
                 if (Array.isArray(dynamicPremi)) {
@@ -1094,7 +1107,7 @@ export class SummaryService {
                 dynamic_premi_totals: filteredHeaderList.reduce((dynAcc, header) => {
                     dynAcc[header] = (dynAcc[header] || 0) + getDynamicPremiValue(row, header);
                     return dynAcc;
-                }, {} as Record<string, number>)
+                }, { ...(acc.dynamic_premi_totals || {}) } as Record<string, number>)
             };
         }, {
             total_employees: 0,

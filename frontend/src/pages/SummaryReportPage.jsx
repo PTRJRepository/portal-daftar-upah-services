@@ -74,6 +74,15 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return Array.from(groups).sort((a, b) => Number(a) - Number(b));
     }, [summaryData, division, getAsistensi]);
 
+    // Merge summary data with gang descriptions
+    const mergedSummaryData = useMemo(() => {
+        return summaryData.map(row => ({
+            ...row,
+            // Use real-time gang description if available, otherwise use stored description, fallback to gang_code
+            gang_description: gangDescriptions[row.gang_code] || row.gang_description || row.gang_code
+        }));
+    }, [summaryData, gangDescriptions]);
+
     // Filter summary data by group
     const filteredSummaryData = useMemo(() => {
         if (!groupFilter) return mergedSummaryData;
@@ -149,16 +158,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         loadGangDescriptions();
     }, [token]);
 
-    // Merge summary data with gang descriptions
-    const mergedSummaryData = useMemo(() => {
-        return summaryData.map(row => ({
-            ...row,
-            // Use real-time gang description if available, otherwise use stored description, fallback to gang_code
-            gang_description: gangDescriptions[row.gang_code] || row.gang_description || row.gang_code
-        }));
-    }, [summaryData, gangDescriptions]);
 
-    // Load available divisions
     useEffect(() => {
         async function loadDivisions() {
             if (!token) return;
@@ -292,7 +292,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
     // Handle Export CSV
     const handleExport = () => {
-        let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Insentif,Kinerja,Pruning,Koreksi,Total Upah Bersih\n`;
+        let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Total Upah Bersih\n`;
         let csv = header;
 
         mergedSummaryData.forEach(row => {
@@ -306,10 +306,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 `${row.total_lembur || 0},` +
                 `${row.total_pph21 || 0},` +
                 `${row.total_spsi || 0},` +
-                `${row.total_premi_insentif || 0},` +
-                `${row.total_premi_kinerja || 0},` +
-                `${row.total_premi_prunning || 0},` +
-                `${row.total_koreksi || 0},` +
                 `${row.total_upah_bersih || 0}\n`;
         });
 
@@ -326,10 +322,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 `${grandTotal.total_lembur},` +
                 `${grandTotal.total_pph21},` +
                 `${grandTotal.total_spsi},` +
-                `${grandTotal.total_premi_insentif},` +
-                `${grandTotal.total_premi_kinerja},` +
-                `${grandTotal.total_premi_prunning},` +
-                `${grandTotal.total_koreksi},` +
                 `${grandTotal.total_upah_bersih}\n`;
         }
 
@@ -454,7 +446,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     <th className="print-show-only">PREMI INCOME</th>
                                     <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
                                     <th colSpan="2">DEDUCTIONS</th>
-                                    <th colSpan="3" className="print-hide-additional">ADDITIONAL INFO</th>
                                     <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
                                 </tr>
                                 <tr className="wsp-header-sub">
@@ -472,11 +463,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     {/* Deductions */}
                                     <th style={{ width: '90px' }}>PPH 21</th>
                                     <th style={{ width: '90px' }}>SPSI</th>
-
-                                    {/* Additional Info / Specifics */}
-                                    <th style={{ minWidth: '90px' }} className="print-hide-additional">INSENTIF</th>
-                                    <th style={{ minWidth: '90px' }} className="print-hide-additional">KINERJA</th>
-                                    <th style={{ minWidth: '90px' }} className="print-hide-additional">PRUNING</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -508,11 +494,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <td className={`text-right ${!Number(row.total_pph21) && 'val-zero'}`}>{formatNumber(row.total_pph21)}</td>
                                             <td className={`text-right ${!Number(row.total_spsi) && 'val-zero'}`}>{formatNumber(row.total_spsi)}</td>
 
-                                            {/* Additional Info / Specifics - Hide Koreksi */}
-                                            <td className={`text-right print-hide-additional ${!Number(row.total_premi_insentif) && 'val-zero'}`}>{formatNumber(row.total_premi_insentif)}</td>
-                                            <td className={`text-right print-hide-additional ${!Number(row.total_premi_kinerja) && 'val-zero'}`}>{formatNumber(row.total_premi_kinerja)}</td>
-                                            <td className={`text-right print-hide-additional ${!Number(row.total_premi_prunning) && 'val-zero'}`}>{formatNumber(row.total_premi_prunning)}</td>
-
                                             <td className={`text-right ${!Number(row.total_upah_bersih) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 600 }}>
                                                 {formatNumber(row.total_upah_bersih)}
                                             </td>
@@ -542,11 +523,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                         <td className="text-right">{formatNumber(filteredGrandTotal.total_lembur)}</td>
                                         <td className="text-right">{formatNumber(filteredGrandTotal.total_pph21)}</td>
                                         <td className="text-right">{formatNumber(filteredGrandTotal.total_spsi)}</td>
-
-                                        {/* Additional Info Totals - Hide Koreksi */}
-                                        <td className="text-right print-hide-additional">{formatNumber(filteredGrandTotal.total_premi_insentif)}</td>
-                                        <td className="text-right print-hide-additional">{formatNumber(filteredGrandTotal.total_premi_kinerja)}</td>
-                                        <td className="text-right print-hide-additional">{formatNumber(filteredGrandTotal.total_premi_prunning)}</td>
 
                                         <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(filteredGrandTotal.total_upah_bersih)}</td>
                                     </tr>
