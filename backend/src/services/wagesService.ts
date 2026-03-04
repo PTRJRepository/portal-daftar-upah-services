@@ -25,6 +25,7 @@
 
 import { Database } from "../db/client";
 import { Config } from "../config";
+import { divisionDefinition } from "./divisionDefinition";
 
 export interface WagesHeader {
     wages_id: number;
@@ -195,8 +196,12 @@ class WagesService {
         const params: any[] = [accMonth, accYear];
 
         if (divisionCode && divisionCode !== 'ALL') {
-            query += ` AND (ew.LocCode = ? OR ew.DeptCode = ?)`;
-            params.push(divisionCode, divisionCode);
+            const locCodes = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+            if (locCodes.length > 0) {
+                const placeholders = locCodes.map(() => '?').join(',');
+                query += ` AND (ew.LocCode IN (${placeholders}) OR ew.DeptCode IN (${placeholders}))`;
+                params.push(...locCodes, ...locCodes);
+            }
         }
 
         query += ` ORDER BY ew.EmpName`;
@@ -241,8 +246,12 @@ class WagesService {
         const params: any[] = [accMonth, accYear];
 
         if (divisionCode && divisionCode !== 'ALL') {
-            query += ` AND (ew.LocCode = ? OR ew.DeptCode = ?)`;
-            params.push(divisionCode, divisionCode);
+            const locCodes = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+            if (locCodes.length > 0) {
+                const placeholders = locCodes.map(() => '?').join(',');
+                query += ` AND (ew.LocCode IN (${placeholders}) OR ew.DeptCode IN (${placeholders}))`;
+                params.push(...locCodes, ...locCodes);
+            }
         }
 
         query += ` ORDER BY ew.EmpName`;

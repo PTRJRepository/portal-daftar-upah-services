@@ -462,7 +462,7 @@ class TaxReportService {
             historyData.data_rows = historyData.data_rows.filter((r: any) => {
                 const gc = (r.gang_code || '').trim();
                 if (isNumericPrefix) {
-                    const asistensi = divisionDefinition.getAsistensiFromGang(gc);
+                    const asistensi = divisionDefinition.getAsistensiFromGang(gc, divisionCode);
                     return asistensi === effectiveGangPrefix;
                 }
                 return gc.startsWith(effectiveGangPrefix);

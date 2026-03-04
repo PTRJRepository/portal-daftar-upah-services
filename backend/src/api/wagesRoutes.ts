@@ -146,10 +146,11 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
             const payrollResult = await dataExtractorService.extractPayrollData(
                 month,
                 year,
-                divisionCode || 'ALL',
-                gangCode,
+                gangCode || 'ALL',
+                divisionCode,
                 undefined,
-                "SERVER_PROFILE_2"
+                "SERVER_PROFILE_2",
+                true // [FIX] Include virtual gangs for comparison
             );
 
             if (!payrollResult || !payrollResult.data_rows) {

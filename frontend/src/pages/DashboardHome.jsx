@@ -334,14 +334,28 @@ export default function DashboardHome() {
                 className="dashboard-link-btn"
                 style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                Summary Report (Per Gang) <span>›</span>
+                Summary Report (Accounting) <span>›</span>
+              </button>
+              <button
+                onClick={() => navigate('/wages-comparison')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Summary Wages Comparison <span>›</span>
+              </button>
+              <button
+                onClick={() => navigate('/impact')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Impact Report (Analysis) <span>›</span>
               </button>
               <button
                 onClick={() => navigate('/comprehensive')}
                 className="dashboard-link-btn"
                 style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                Laporan Analisis Payroll <span>›</span>
+                Comprehensive Payroll Analysis <span>›</span>
               </button>
             </div>
           </div>
@@ -367,14 +381,28 @@ export default function DashboardHome() {
                 className="dashboard-link-btn"
                 style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                Wages Rebinmas Report <span>›</span>
+                Wages Rebinmas (Current) <span>›</span>
+              </button>
+              <button
+                onClick={() => navigate('/wages-rebinmas?mode=comparison')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Wages Rebinmas (Comparison) <span>›</span>
               </button>
               <button
                 onClick={() => navigate('/wages-ijl')}
                 className="dashboard-link-btn"
                 style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                Wages Report (IJL) <span>›</span>
+                Wages IJL (Current) <span>›</span>
+              </button>
+              <button
+                onClick={() => navigate('/wages-ijl?mode=comparison')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Wages IJL (Comparison) <span>›</span>
               </button>
             </div>
           </div>

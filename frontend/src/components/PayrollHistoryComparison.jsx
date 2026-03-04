@@ -8,6 +8,7 @@ import {
     getStatusBadge,
     getMonthName 
 } from '../services/wagesService';
+import { fetchDivisions } from '../services/gangService';
 import PrintSignature from './common/PrintSignature';
 import './PayrollHistoryComparison.css';
 
@@ -46,6 +47,7 @@ export default function PayrollHistoryComparison({
     // Data
     const [comparisonData, setComparisonData] = useState(null);
     const [availablePeriods, setAvailablePeriods] = useState([]);
+    const [divisions, setDivisions] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     
@@ -54,12 +56,17 @@ export default function PayrollHistoryComparison({
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedRows, setExpandedRows] = useState({});
     
-    // Fetch available periods on mount
+    // Fetch available periods and divisions on mount
     useEffect(() => {
         if (!token) return;
+        
         fetchAvailableWagesPeriods(token)
             .then(res => setAvailablePeriods(res.data || []))
             .catch(err => console.error('Failed to fetch available periods:', err));
+            
+        fetchDivisions(token)
+            .then(res => setDivisions(res || []))
+            .catch(err => console.error('Failed to fetch divisions:', err));
     }, [token]);
     
     // Fetch comparison data when filters change
@@ -226,11 +233,9 @@ export default function PayrollHistoryComparison({
                     <label>Divisi</label>
                     <select value={division} onChange={(e) => setDivision(e.target.value)}>
                         <option value="">Semua Divisi</option>
-                        <option value="H1">H1 - Divisi 1</option>
-                        <option value="H2">H2 - Divisi 2</option>
-                        <option value="H3">H3 - Divisi 3</option>
-                        <option value="H4">H4 - Divisi 4</option>
-                        <option value="IJL">IJL - Impian Jaya Lestari</option>
+                        {divisions.map(d => (
+                            <option key={d} value={d}>{d}</option>
+                        ))}
                     </select>
                 </div>
                 <div className="phc-filter-group">

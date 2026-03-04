@@ -1484,20 +1484,31 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
         isLockedMode
     } = useReport();
 
+    const getAsistensi = useCallback((gangCode, divCode) => {
+        if (!gangCode) return null;
+        const gc = gangCode.trim().toUpperCase();
+        const lc = divCode?.trim().toUpperCase();
+
+        // Exception: K2 in P2B belongs to Asistensi 1 as requested
+        if (lc === 'P2B' && gc.startsWith('K2')) {
+            return "1";
+        }
+
+        const match = gangCode.match(/\d+/);
+        return match ? match[0] : null;
+    }, []);
+
     const availablePrefixes = useMemo(() => {
         if (!gangs || gangs.length === 0) return [];
         const prefixes = new Set();
         gangs.forEach(g => {
-            if (g.gang_code) {
-                // Extract all digits (numeric part). e.g. "K2P" -> "2", "D2" -> "2"
-                const match = g.gang_code.match(/\d+/);
-                if (match) {
-                    prefixes.add(match[0]);
-                }
+            const asistensi = getAsistensi(g.gang_code, division);
+            if (asistensi) {
+                prefixes.add(asistensi);
             }
         });
         return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
-    }, [gangs]);
+    }, [gangs, division, getAsistensi]);
     const navigate = useNavigate();
     const { data: currentPeriodData } = useCurrentPeriod();
     const isHistorical = currentPeriodData ? (year * 100 + month) < (currentPeriodData.year * 100 + currentPeriodData.month) : false;
@@ -1628,8 +1639,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                             <option value="">SEMUA GANG</option>
                             {gangs.filter(g => {
                                 if (!gangPrefix) return true;
-                                const match = g.gang_code?.match(/\d+/);
-                                return match && match[0] === gangPrefix;
+                                return getAsistensi(g.gang_code, division) === gangPrefix;
                             }).map((g) => (
                                 <option key={g.gang_code} value={g.gang_code}>
                                     {g.gang_code} - {g.description || g.gang_name}

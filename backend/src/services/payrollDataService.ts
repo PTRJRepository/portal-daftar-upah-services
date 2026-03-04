@@ -51,49 +51,40 @@ export class PayrollDataService {
 
         // Check if this is a virtual division
         const isVirtual = divisionDefinition.isVirtualDivision(division);
-        let divisionsToQuery: string[] = [division];
+        
+        try {
+            // Fetch data for this division DIRECTLY. 
+            // If it's a virtual division, raw-tree with include_virtual=true will return ONLY its virtual gangs.
+            // If it's a real division, raw-tree with include_virtual=false will return ONLY its real gangs (excluding virtual ones).
+            const rawData = await this.fetchRawTreeData(division, month, year, authToken, isVirtual);
 
-        if (isVirtual) {
-            divisionsToQuery = await divisionDefinition.getSourceDivisionsForAggregation(division);
-            console.log(`[PayrollDataService] Virtual division ${division} -> Querying source divisions: ${divisionsToQuery.join(", ")}`);
-        }
+            if (rawData.success && rawData.data && rawData.data.gangs) {
+                const records: AggregationRecord[] = [];
+                const premiTitleMap = rawData.data.premi_title_map || {};
+                const potonganTitleMap = rawData.data.potongan_title_map || {};
 
-        for (const div of divisionsToQuery) {
-            try {
-                // Fetch data for this division
-                const rawData = await this.fetchRawTreeData(div, month, year, authToken);
+                for (const gangData of rawData.data.gangs) {
+                    const gangCode = gangData.gang_code;
+                    const gangDesc = gangData.gang_description || gangCode;
+                    const gangTotals = gangData.gang_totals;
 
-                if (rawData.success && rawData.data && rawData.data.gangs) {
-                    const records: AggregationRecord[] = [];
-                    const premiTitleMap = rawData.data.premi_title_map || {};
-                    const potonganTitleMap = rawData.data.potongan_title_map || {};
+                    if (!gangCode || !gangTotals) continue;
 
-                    for (const gangData of rawData.data.gangs) {
-                        const gangCode = gangData.gang_code;
-                        const gangDesc = gangData.gang_description || gangCode;
-                        const gangTotals = gangData.gang_totals;
-
-                        if (!gangCode || !gangTotals) continue;
-
-                        const record = this.mapGangTotalsToAggregation(
-                            gangCode,
-                            gangDesc,
-                            gangTotals,
-                            premiTitleMap,
-                            potonganTitleMap
-                        );
-                        records.push(record);
-                    }
-
-                    // Store results keyed by the division code
-                    // If it's a virtual division, we might want to aggregate them later or store strictly by source
-                    // For now, let's store by source division
-                    results[div] = records;
+                    const record = this.mapGangTotalsToAggregation(
+                        gangCode,
+                        gangDesc,
+                        gangTotals,
+                        premiTitleMap,
+                        potonganTitleMap
+                    );
+                    records.push(record);
                 }
-            } catch (error) {
-                console.error(`[PayrollDataService] Error fetching data for ${div}:`, error);
-                // Continue to next division even if one fails
+
+                // Store results keyed by the division code
+                results[division] = records;
             }
+        } catch (error) {
+            console.error(`[PayrollDataService] Error fetching data for ${division}:`, error);
         }
 
         return results;
