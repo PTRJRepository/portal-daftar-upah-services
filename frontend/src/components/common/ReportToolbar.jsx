@@ -121,8 +121,7 @@ export default function ReportToolbar({
     const getAsistensi = useCallback((gc, div) => {
         if (!gc) return null;
         const g = gc.trim().toUpperCase();
-        const d = div?.trim().toUpperCase();
-        if (d === 'P2B' && g.startsWith('K2')) return "1";
+        if (g.startsWith('K2')) return "1";
         const match = g.match(/\d+/);
         return match ? match[0] : null;
     }, []);
@@ -332,22 +331,22 @@ export default function ReportToolbar({
                 </div>
             )}
 
-            {/* Asistensi Selector */}
+            {/* Group Selector */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                    Asistensi
+                    Group
                 </label>
                 <select
                     className="input-field"
-                    title="Filter berdasarkan Asistensi"
+                    title="Filter berdasarkan Group"
                     style={{ height: '36px', minWidth: '130px' }}
                     value={gangPrefix || ''}
                     onChange={(e) => onGangPrefixChange && onGangPrefixChange(e.target.value)}
                     disabled={disableControls}
                 >
-                    <option value="">SEMUA ASIST.</option>
+                    <option value="">SEMUA GROUP</option>
                     {availablePrefixes.map(p => (
-                        <option key={p} value={p}>Asistensi {p}</option>
+                        <option key={p} value={p}>Group {p}</option>
                     ))}
                 </select>
             </div>

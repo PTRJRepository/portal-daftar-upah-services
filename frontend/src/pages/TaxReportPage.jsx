@@ -1487,10 +1487,9 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
     const getAsistensi = useCallback((gangCode, divCode) => {
         if (!gangCode) return null;
         const gc = gangCode.trim().toUpperCase();
-        const lc = divCode?.trim().toUpperCase();
 
-        // Exception: K2 in P2B belongs to Asistensi 1 as requested
-        if (lc === 'P2B' && gc.startsWith('K2')) {
+        // Rule: Any gang starting with K2 belongs to Group 1
+        if (gc.startsWith('K2')) {
             return "1";
         }
 
@@ -1613,19 +1612,19 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                             ))}
                         </select>
 
-                        {/* Asistensi Selector */}
+                        {/* Group Selector */}
                         <select
                             value={gangPrefix}
                             onChange={(e) => {
                                 setGangPrefix(e.target.value);
-                                setGang(''); // Reset gang if prefix changes
+                                setGang(''); // Reset gang if group changes
                             }}
                             className="tax-report-select"
                             disabled={!division || gangLoading || availablePrefixes.length === 0}
                         >
-                            <option value="">SEMUA ASISTENSI</option>
+                            <option value="">SEMUA GROUP</option>
                             {availablePrefixes.map((prefix) => (
-                                <option key={prefix} value={prefix}>Asistensi {prefix}</option>
+                                <option key={prefix} value={prefix}>Group {prefix}</option>
                             ))}
                         </select>
 

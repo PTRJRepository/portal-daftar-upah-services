@@ -96,14 +96,13 @@ export class DivisionDefinition {
     public getAsistensiFromGang(gangCode: string, locCode?: string): string | null {
         if (!gangCode) return null;
         const gc = gangCode.trim().toUpperCase();
-        const lc = locCode?.trim().toUpperCase();
 
-        // Exception: K2 in P2B belongs to Asistensi 1 as requested
-        if (lc === 'P2B' && gc.startsWith('K2')) {
+        // Rule: Any gang starting with K2 belongs to Group 1 (Asistensi 1)
+        if (gc.startsWith('K2')) {
             return "1";
         }
 
-        // Extract all digits from gang code. e.g. "K2P" -> "2", "D2" -> "2", "P1A" -> "1"
+        // Extract all digits from gang code. e.g. "D2" -> "2", "P1A" -> "1"
         const match = gangCode.match(/\d+/);
         return match ? match[0] : null;
     }

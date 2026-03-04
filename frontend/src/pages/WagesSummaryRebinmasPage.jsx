@@ -730,7 +730,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 formatNumber(div.total_spsi)
                             )}
                         </td>
-                        {/* Premi Column - Excluding Insentif, Kinerja, Prunning */}
+                        {/* Premi Column - Full Total Premi (same as Daftar Upah) */}
                         <td className={`text-right ${Number(div.total_premi_excluding_special) === 0 ? 'val-zero' : ''}`}>
                             {formatNumber(div.total_premi_excluding_special)}
                         </td>

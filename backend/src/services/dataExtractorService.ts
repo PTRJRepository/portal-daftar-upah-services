@@ -380,7 +380,20 @@ export class DataExtractorService {
         }
 
         const startTotal = performance.now();
-        const employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
+        let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
+
+        // Apply gangPrefix (Group/Asistensi) filter for LIVE path
+        if (gangPrefix && employees.length > 0) {
+            const isNumeric = /^\d+$/.test(gangPrefix);
+            employees = employees.filter(emp => {
+                const gc = (emp.gang_code || '').trim();
+                if (isNumeric) {
+                    const asistensi = divisionDefinition.getAsistensiFromGang(gc, divisionCode);
+                    return asistensi === gangPrefix;
+                }
+                return gc.startsWith(gangPrefix);
+            });
+        }
 
         if (employees.length === 0) {
             return {

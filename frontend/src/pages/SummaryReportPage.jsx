@@ -50,9 +50,78 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [gangDescriptions, setGangDescriptions] = useState({});
     const [grandTotal, setGrandTotal] = useState(null);
     const [filteredHeaders, setFilteredHeaders] = useState([]);
+    const [groupFilter, setGroupFilter] = useState(''); // Group / Asistensi filter
 
     // State
     const [loading, setLoading] = useState(false);
+...
+    // Helper to extract Asistensi
+    const getAsistensi = useCallback((gc, div) => {
+        if (!gc) return null;
+        const g = gc.trim().toUpperCase();
+        if (g.startsWith('K2')) return "1";
+        const match = g.match(/\d+/);
+        return match ? match[0] : null;
+    }, []);
+
+    // Calculate available groups for filter
+    const availableGroups = useMemo(() => {
+        const groups = new Set();
+        summaryData.forEach(row => {
+            const asist = getAsistensi(row.gang_code, division);
+            if (asist) groups.add(asist);
+        });
+        return Array.from(groups).sort((a, b) => Number(a) - Number(b));
+    }, [summaryData, division, getAsistensi]);
+
+    // Filter summary data by group
+    const filteredSummaryData = useMemo(() => {
+        if (!groupFilter) return mergedSummaryData;
+        return mergedSummaryData.filter(row => getAsistensi(row.gang_code, division) === groupFilter);
+    }, [mergedSummaryData, groupFilter, division, getAsistensi]);
+
+    // Recalculate Grand Total based on filtered data
+    const filteredGrandTotal = useMemo(() => {
+        if (!groupFilter) return grandTotal;
+        if (!filteredSummaryData.length) return null;
+
+        const totals = {
+            total_employees: 0,
+            total_hk: 0,
+            total_premi: 0,
+            total_lembur: 0,
+            total_pph21: 0,
+            total_spsi: 0,
+            total_premi_insentif: 0,
+            total_premi_kinerja: 0,
+            total_premi_prunning: 0,
+            total_upah_bersih: 0,
+            dynamic_premi_totals: {}
+        };
+
+        filteredSummaryData.forEach(row => {
+            totals.total_employees += Number(row.total_employees || 0);
+            totals.total_hk += Number(row.total_hk || 0);
+            totals.total_premi += Number(row.total_premi || 0);
+            totals.total_lembur += Number(row.total_lembur || 0);
+            totals.total_pph21 += Number(row.total_pph21 || 0);
+            totals.total_spsi += Number(row.total_spsi || 0);
+            totals.total_premi_insentif += Number(row.total_premi_insentif || 0);
+            totals.total_premi_kinerja += Number(row.total_premi_kinerja || 0);
+            totals.total_premi_prunning += Number(row.total_premi_prunning || 0);
+            totals.total_upah_bersih += Number(row.total_upah_bersih || 0);
+
+            // Handle dynamic premiums if present
+            if (row._dynamic_premi_list) {
+                row._dynamic_premi_list.forEach(dp => {
+                    const h = dp.header;
+                    totals.dynamic_premi_totals[h] = (totals.dynamic_premi_totals[h] || 0) + Number(dp.total || 0);
+                });
+            }
+        });
+
+        return totals;
+    }, [filteredSummaryData, groupFilter, grandTotal]);
     const [error, setError] = useState('');
     const [showSeederModal, setShowSeederModal] = useState(false);
     const [validating, setValidating] = useState(false);
@@ -228,14 +297,12 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
         mergedSummaryData.forEach(row => {
             const premis = dynamicPremiHeaders.map(h => getDynamicPremiValue(row, h) || 0).join(',');
-            // Calculate total_premi excluding special (insentif, kinerja, prunning)
-            const totalPremiExcludingSpecial = (row.total_premi || 0) - (row.total_premi_insentif || 0) - (row.total_premi_kinerja || 0) - (row.total_premi_prunning || 0);
 
             csv += `"${row.gang_description || row.gang_code}",` +
                 `${row.total_employees || 0},` +
                 `${row.total_hk || 0},` +
                 `${premis},` +
-                `${totalPremiExcludingSpecial},` +
+                `${row.total_premi || 0},` +
                 `${row.total_lembur || 0},` +
                 `${row.total_pph21 || 0},` +
                 `${row.total_spsi || 0},` +
@@ -255,7 +322,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 `${grandTotal.total_employees},` +
                 `${grandTotal.total_hk},` +
                 `${premis},` +
-                `${grandTotal.total_premi_excluding_special},` +
+                `${grandTotal.total_premi},` +
                 `${grandTotal.total_lembur},` +
                 `${grandTotal.total_pph21},` +
                 `${grandTotal.total_spsi},` +
@@ -283,7 +350,10 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                         <select
                             value={division}
-                            onChange={e => setDivision(e.target.value)}
+                            onChange={e => {
+                                setDivision(e.target.value);
+                                setGroupFilter('');
+                            }}
                             className="report-filter-badge"
                             style={{ cursor: 'pointer', outline: 'none' }}
                         >
@@ -292,6 +362,20 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 <option key={d} value={d}>{d}</option>
                             ))}
                         </select>
+
+                        {/* Group Selector */}
+                        <select
+                            value={groupFilter}
+                            onChange={e => setGroupFilter(e.target.value)}
+                            className="report-filter-badge"
+                            style={{ cursor: 'pointer', outline: 'none', backgroundColor: groupFilter ? '#e0f2fe' : undefined, borderColor: groupFilter ? '#7dd3fc' : undefined }}
+                        >
+                            <option value="">Semua Group</option>
+                            {availableGroups.map(g => (
+                                <option key={g} value={g}>Group {g}</option>
+                            ))}
+                        </select>
+
                         <span className="report-filter-badge">{getMonthName(month)} {year}</span>
                     </div>
                 </div>
@@ -336,23 +420,23 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     </div>
 
                     {/* KPI Cards */}
-                    {grandTotal && (
+                    {filteredGrandTotal && (
                         <div className="wsp-kpi-grid">
                             <div className="wsp-kpi-card">
                                 <div className="wsp-kpi-label">TOTAL WORKERS</div>
-                                <div className="wsp-kpi-value">{formatNumber(grandTotal.total_employees)}</div>
+                                <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal.total_employees)}</div>
                             </div>
                             <div className="wsp-kpi-card">
                                 <div className="wsp-kpi-label">TOTAL HK CHEKROLL</div>
-                                <div className="wsp-kpi-value">{formatNumber(grandTotal.total_hk)}</div>
+                                <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal.total_hk)}</div>
                             </div>
                             <div className="wsp-kpi-card secondary">
                                 <div className="wsp-kpi-label">TOTAL PREMI</div>
-                                <div className="wsp-kpi-value">Rp {formatNumber(grandTotal.total_premi)}</div>
+                                <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal.total_premi)}</div>
                             </div>
                             <div className="wsp-kpi-card highlight">
                                 <div className="wsp-kpi-label">TOTAL UPAH BERSIH</div>
-                                <div className="wsp-kpi-value">Rp {formatNumber(grandTotal.total_upah_bersih)}</div>
+                                <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal.total_upah_bersih)}</div>
                             </div>
                         </div>
                     )}
@@ -396,10 +480,10 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 </tr>
                             </thead>
                             <tbody>
-                                {mergedSummaryData.length === 0 ? (
+                                {filteredSummaryData.length === 0 ? (
                                     <tr><td colSpan="15" className="text-center" style={{ padding: '3rem' }}>No Data Available</td></tr>
                                 ) : (
-                                    mergedSummaryData.map((row, idx) => (
+                                    filteredSummaryData.map((row, idx) => (
                                         <tr key={idx}>
                                             <td className="text-left">{row.gang_description || row.gang_code}</td>
                                             <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`}>{formatNumber(row.total_employees)}</td>
@@ -437,34 +521,34 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 )}
                             </tbody>
 
-                            {grandTotal && (
+                            {filteredGrandTotal && (
                                 <tfoot>
                                     <tr className="wsp-grand-total">
-                                        <td>GRAND TOTAL</td>
-                                        <td className="text-right">{formatNumber(grandTotal.total_employees)}</td>
-                                        <td className="text-right">{formatNumber(grandTotal.total_hk)}</td>
+                                        <td>{groupFilter ? `TOTAL GROUP ${groupFilter}` : 'GRAND TOTAL'}</td>
+                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_employees)}</td>
+                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_hk)}</td>
 
                                         {/* Dynamic Premi Totals - Hidden on Print */}
                                         {dynamicPremiHeaders.map(header => {
-                                            const total = grandTotal.dynamic_premi_totals?.[header] || 0;
+                                            const total = filteredGrandTotal.dynamic_premi_totals?.[header] || 0;
                                             return (
                                                 <td key={header} className="text-right print-hide-detail">{formatNumber(total)}</td>
                                             );
                                         })}
 
                                         {/* Total Premi - FULL from portal */}
-                                        <td className="text-right" style={{ background: '#1e293b', color: 'white' }}>{formatNumber(grandTotal.total_premi)}</td>
+                                        <td className="text-right" style={{ background: '#1e293b', color: 'white' }}>{formatNumber(filteredGrandTotal.total_premi)}</td>
 
-                                        <td className="text-right">{formatNumber(grandTotal.total_lembur)}</td>
-                                        <td className="text-right">{formatNumber(grandTotal.total_pph21)}</td>
-                                        <td className="text-right">{formatNumber(grandTotal.total_spsi)}</td>
+                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_lembur)}</td>
+                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_pph21)}</td>
+                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_spsi)}</td>
 
                                         {/* Additional Info Totals - Hide Koreksi */}
-                                        <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_insentif)}</td>
-                                        <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_kinerja)}</td>
-                                        <td className="text-right print-hide-additional">{formatNumber(grandTotal.total_premi_prunning)}</td>
+                                        <td className="text-right print-hide-additional">{formatNumber(filteredGrandTotal.total_premi_insentif)}</td>
+                                        <td className="text-right print-hide-additional">{formatNumber(filteredGrandTotal.total_premi_kinerja)}</td>
+                                        <td className="text-right print-hide-additional">{formatNumber(filteredGrandTotal.total_premi_prunning)}</td>
 
-                                        <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(grandTotal.total_upah_bersih)}</td>
+                                        <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(filteredGrandTotal.total_upah_bersih)}</td>
                                     </tr>
                                 </tfoot>
                             )}

@@ -166,7 +166,7 @@ export class SummaryService {
 
             const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || 'UNKNOWN';
             const gangDesc = allGangDescs[gangCode] || '';
-            
+
             // Check for virtual division first
             const virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
             const div = virtualDiv || sourceLoc;
@@ -231,7 +231,7 @@ export class SummaryService {
 
             // User requested: total_premi should be the FULL amount from portal
             // No more subtraction of special components for the main display
-            const totalPremiDisplay = totalPremi; 
+            const totalPremiDisplay = totalPremi;
 
             const upah = row.total_upah_bersih;
             const thumbValue = thumbprintData[div] || 0;
@@ -553,7 +553,7 @@ export class SummaryService {
             const gangCode = row.gang_code?.trim() || '';
             const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || '';
             const gangDesc = allGangDescs[gangCode] || '';
-            
+
             // Check for virtual division
             const virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
             const div = virtualDiv || sourceLoc;
@@ -989,7 +989,7 @@ export class SummaryService {
             const t_koreksi = parseFloat(row.total_koreksi || 0) || backfill.koreksi;
 
             const rowTotalPremi = parseFloat(row.total_premi || 0);
-            
+
             // As requested: total_premi should be the FULL amount from portal
             const totalPremiDisplay = rowTotalPremi;
 
@@ -1039,7 +1039,9 @@ export class SummaryService {
             const rowTotalPremiInsentif = Number(row.total_premi_insentif) || 0;
             const rowTotalPremiKinerja = Number(row.total_premi_kinerja) || 0;
             const rowTotalPremiPrunning = Number(row.total_premi_prunning) || 0;
-            const rowTotalPremiExcludingSpecial = rowTotalPremi - rowTotalPremiInsentif - rowTotalPremiKinerja - rowTotalPremiPrunning;
+            // total_premi_excluding_special = full total_premi (same as daftar upah)
+            // No longer subtract insentif/kinerja/prunning per user request
+            const rowTotalPremiExcludingSpecial = rowTotalPremi;
 
             return {
                 total_employees: acc.total_employees + (Number(row.total_employees) || 0),
