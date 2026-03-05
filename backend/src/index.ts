@@ -23,6 +23,7 @@ import { employeeHrDataService } from "./services/employeeHrDataService";
 import { otherIncomesRoutes } from "./api/otherIncomesRoutes";
 import { OtherIncomesService } from "./services/otherIncomesService";
 import { staticPlugin } from "@elysiajs/static";
+import millProductionRoutes from "./api/millProductionRoutes";
 
 
 // Initialize Database access
@@ -220,6 +221,8 @@ const app = new Elysia()
     .use(employeeHrDataRoutes)
     // Other Incomes (THR, Bonus, Custom)
     .use(otherIncomesRoutes)
+    // Mill Production Report
+    .group("/api/mill-production", app => app.use(millProductionRoutes))
 
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
@@ -244,6 +247,7 @@ const app = new Elysia()
         .use(taxReportRoutes)
         .use(employeeHrDataRoutes)
         .use(otherIncomesRoutes)
+        .group("/api/mill-production", nestedApp => nestedApp.use(millProductionRoutes))
     )
 
     // SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)

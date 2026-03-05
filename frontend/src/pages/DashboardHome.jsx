@@ -351,11 +351,32 @@ export default function DashboardHome() {
                 Impact Report (Analysis) <span>›</span>
               </button>
               <button
+                onClick={() => navigate('/productivity')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Productivity (Tonase vs Upah) <span>›</span>
+              </button>
+              <button
+                onClick={() => navigate('/detailed-salary')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Analisis Upah Bersih & Lembur <span>›</span>
+              </button>
+              <button
                 onClick={() => navigate('/comprehensive')}
                 className="dashboard-link-btn"
                 style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
                 Comprehensive Payroll Analysis <span>›</span>
+              </button>
+              <button
+                onClick={() => navigate('/detail-upah-bersih')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                📊 Detail Upah Bersih (Filter) <span>›</span>
               </button>
             </div>
           </div>

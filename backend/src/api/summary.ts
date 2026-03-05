@@ -315,4 +315,23 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             month: t.String(),
             year: t.String()
         })
+    })
+    // --- Detailed Gang Analysis ---
+    .get("/gang-analysis-detail", async ({ query }) => {
+        const month = parseInt(query.month);
+        const year = parseInt(query.year);
+        const gangCode = query.gang_code;
+
+        if (!gangCode) {
+            return { success: false, error: "gang_code is required" };
+        }
+
+        const result = await summaryService.getGangDetailedAnalysis(gangCode, month, year);
+        return result;
+    }, {
+        query: t.Object({
+            gang_code: t.String(),
+            month: t.String(),
+            year: t.String()
+        })
     });

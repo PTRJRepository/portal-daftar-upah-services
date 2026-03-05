@@ -44,16 +44,22 @@ export default function PayslipCard({ data, month, year }) {
     const gajiPokok = getNum('gaji_pokok') || getNum('upah_pokok') || (hk * rate)
 
     // Handle both nested attendance object and flat structure from API
-    // JSON keys: hari_kerja, cuti_minggu_hari, cuti_tahunan_hari, cuti_sakit_haid_hari
-    // These keys are likely in payroll_data (payroll) or employee (empInfo) if not in attendance object
-    // Attendance service returns { summary: { total_hadir, cuti_minggu, ... } }
-
     const attHadir = att.summary?.total_hadir ?? getNum('hari_kerja') ?? getNum('kehadiran') ?? 0;
     const attMgg = att.summary?.cuti_minggu ?? getNum('cuti_minggu_hari') ?? 0;
     const attCuti = att.summary?.cuti_tahunan ?? getNum('cuti_tahunan_hari') ?? 0;
     const attSakit = att.summary?.cuti_sakit ?? getNum('cuti_sakit_haid_hari') ?? 0;
     const attLibur = att.summary?.libur ?? getNum('cuti_nasional_hari') ?? 0;
     const attAlpa = att.summary?.alpa ?? getNum('alpa') ?? 0;
+
+    // --- GAJI POKOK BREAKDOWN ---
+    // User requested to show days x rate for each type
+    const gpBreakdown = [
+        { label: 'Kehadiran', days: attHadir, amount: attHadir * rate },
+        { label: 'Minggu', days: attMgg, amount: attMgg * rate },
+        { label: 'Cuti', days: attCuti, amount: attCuti * rate },
+        { label: 'Sakit', days: attSakit, amount: attSakit * rate },
+        { label: 'Libur Nas', days: attLibur, amount: attLibur * rate },
+    ].filter(item => item.days > 0);
 
     // Tunjangan Breakdown
     const tunjanganList = [
@@ -174,9 +180,16 @@ export default function PayslipCard({ data, month, year }) {
                 <div className="payslip-card-column">
                     <div className="payslip-column-header">PENERIMAAN</div>
 
-                    <div className="payslip-item">
-                        <span className="payslip-item-label">Gaji Pokok</span>
-                        <span className="payslip-item-value">{formatCurrency(gajiPokok)}</span>
+                    <div className="payslip-subheader">Gaji Pokok (Rate: {formatCurrency(rate)}):</div>
+                    {gpBreakdown.map((item, idx) => (
+                        <div key={`gp-${idx}`} className="payslip-item payslip-item-indent">
+                            <span className="payslip-item-label">- {item.label} ({item.days} hr)</span>
+                            <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
+                        </div>
+                    ))}
+                    <div className="payslip-item" style={{ borderTop: '1px solid #eee', marginTop: '2px', paddingTop: '2px' }}>
+                        <span className="payslip-item-label" style={{ fontWeight: 'bold' }}>Total Gaji Pokok</span>
+                        <span className="payslip-item-value" style={{ fontWeight: 'bold' }}>{formatCurrency(gajiPokok)}</span>
                     </div>
 
                     {tunjanganList.length > 0 && (
@@ -275,7 +288,19 @@ export default function PayslipCard({ data, month, year }) {
                 <div className="payslip-thp-value">Rp {formatCurrency(upahBersih)}</div>
             </div>
 
-
+            {/* Signature Section */}
+            <div className="payslip-card-signature">
+                <div className="payslip-sig-box">
+                    <div className="payslip-sig-label">Dibuat Oleh,</div>
+                    <div className="payslip-sig-line"></div>
+                    <div className="payslip-sig-name">Admin Payroll</div>
+                </div>
+                <div className="payslip-sig-box">
+                    <div className="payslip-sig-label">Diterima Oleh,</div>
+                    <div className="payslip-sig-line"></div>
+                    <div className="payslip-sig-name">{empInfo.nama || empInfo.EmpName || '-'}</div>
+                </div>
+            </div>
         </div>
     );
 }

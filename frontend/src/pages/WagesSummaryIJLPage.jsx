@@ -14,13 +14,19 @@ import PrintSignature from '../components/common/PrintSignature';
 import '../styles/wages-summary-professional.css';
 import '../styles/print-optimization.css';
 
-export default function WagesSummaryIJLPage({ onBack }) {
+export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
     const [searchParams] = useSearchParams();
 
-    // Filters
-    const [month, setMonth] = useState(new Date().getMonth() + 1);
-    const [year, setYear] = useState(new Date().getFullYear());
+    // Filters - Use initial props if provided
+    const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
+    const [year, setYear] = useState(initialYear || new Date().getFullYear());
+
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialMonth !== undefined) setMonth(initialMonth);
+        if (initialYear !== undefined) setYear(initialYear);
+    }, [initialMonth, initialYear]);
 
     // Data
     const [periods, setPeriods] = useState([]);

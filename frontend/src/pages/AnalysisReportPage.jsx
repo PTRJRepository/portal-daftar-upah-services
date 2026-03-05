@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAnalysisReport } from '../services/summaryReportService';
+import { fetchAnalysisReport, fetchAvailablePeriods } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
-import MonthSelector from '../components/common/MonthSelector';
-import LoadingScreen from '../components/common/LoadingScreen';
+import { Printer, RefreshCw, FileText, Settings, X, Search } from 'lucide-react';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintModeSelector from '../components/common/PrintModeSelector';
 import PrintSignature from '../components/common/PrintSignature';
 import { initPrintMode } from '../utils/printOptimizer';
-import '../styles/analysis-report-print.css';
+import '../styles/wages-summary-professional.css';
 
 export default function AnalysisReportPage({ onBack, initialMonth, initialYear }) {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
     const [filterType, setFilterType] = useState('all');
@@ -21,10 +20,12 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
         if (initialMonth !== undefined) setMonth(initialMonth);
         if (initialYear !== undefined) setYear(initialYear);
     }, [initialMonth, initialYear]);
+
     const [loading, setLoading] = useState(false);
     const [reportData, setReportData] = useState(null);
     const [error, setError] = useState(null);
     const [showSeederModal, setShowSeederModal] = useState(false);
+    const [periods, setPeriods] = useState([]);
 
     // Range Filters
     const [wageRange, setWageRange] = useState({ min: '', max: '' });
@@ -32,43 +33,55 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     const [premiRange, setPremiRange] = useState({ min: '', max: '' });
     const [showFilters, setShowFilters] = useState(false);
 
-    // Fetch data & Initialize print mode
+    // Load available periods
     useEffect(() => {
-        async function loadData() {
+        async function loadPeriods() {
             if (!token) return;
-            setLoading(true);
-            setError(null);
             try {
-                const data = await fetchAnalysisReport(token, { month, year, type: filterType });
-                if (data.success) {
-                    setReportData(data);
-                } else {
-                    setError(data.error || 'Failed to load report');
-                }
+                const result = await fetchAvailablePeriods(token);
+                setPeriods(result.periods || []);
             } catch (e) {
-                console.error('[AnalysisReportPage] Error:', e);
-                setError(e.message || 'Failed to load report');
-            } finally {
-                setLoading(false);
+                console.error('Failed to load periods:', e);
             }
         }
-        loadData();
-
-        // Initialize print mode for optimized printing
+        loadPeriods();
         initPrintMode();
+    }, [token]);
+
+    // Fetch data
+    const fetchData = useCallback(async () => {
+        if (!token) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await fetchAnalysisReport(token, { month, year, type: filterType });
+            if (data.success) {
+                setReportData(data);
+            } else {
+                setError(data.error || 'Failed to load report');
+            }
+        } catch (e) {
+            console.error('[AnalysisReportPage] Error:', e);
+            setError(e.message || 'Failed to load report');
+        } finally {
+            setLoading(false);
+        }
     }, [token, month, year, filterType]);
 
-    // Format currency
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    // Formatters
     const formatCurrency = (val) => {
         if (val === null || val === undefined) return '-';
         return new Intl.NumberFormat('id-ID').format(Math.round(val));
     };
 
-    // Get difference class
     const getDiffClass = (val) => {
-        if (val > 0) return 'diff-increase';
-        if (val < 0) return 'diff-decrease';
-        return 'diff-neutral';
+        if (val > 0) return 'text-diff-neg'; // Red for increase in cost
+        if (val < 0) return 'text-diff-pos'; // Green for decrease in cost
+        return 'text-neutral';
     };
 
     const getDiffLabel = (val) => {
@@ -76,6 +89,14 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
         if (val < 0) return '▼ ';
         return '';
     };
+
+    const getMonthName = (m) => {
+        const months = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return months[m] || '';
+    };
+
+    const shortMonthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
     // Filter Logic
     const filterData = (data, field, range) => {
@@ -88,177 +109,210 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
         });
     };
 
-    // Month names for display
-    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'July', 'Agustus', 'september', 'Oktober', 'November', 'Desember'];
-    const shortMonthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    // Filtered Data Sets
+    const filteredMainTable = useMemo(() => {
+        let data = reportData?.premi_ot_table || [];
+        if (wageRange.min || wageRange.max) data = filterData(data, 'curr_wage', wageRange);
+        if (otRange.min || otRange.max) data = filterData(data, 'curr_ot', otRange);
+        if (premiRange.min || premiRange.max) data = filterData(data, 'curr_premi', premiRange);
+        return data;
+    }, [reportData, wageRange, otRange, premiRange]);
+
+    const filteredPruningTable = useMemo(() => {
+        let data = reportData?.pruning_table || [];
+        if (premiRange.min || premiRange.max) data = filterData(data, 'curr_pruning', premiRange);
+        return data;
+    }, [reportData, premiRange]);
 
     const handleSavePDF = () => {
-        const element = document.getElementById('analysis-report-content');
-        const filename = `Analysis_Report_${month}_${year}.pdf`;
+        const element = document.getElementById('wsp-report-content');
+        const filename = `Analysis_Report_${getMonthName(month)}_${year}.pdf`;
         generatePDF(element, filename);
     };
 
-    const handlePrint = () => {
-        window.print();
-    };
+    const handlePrint = () => window.print();
 
-    if (loading) {
-        return <LoadingScreen isLoading={loading} message="Generating Financial Analysis..." />;
-    }
+    // Year Options
+    const yearOptions = useMemo(() => {
+        const years = periods.map(p => p.year);
+        return [...new Set(years)].sort((a, b) => b - a);
+    }, [periods]);
 
-    if (error) {
-        return (
-            <div className="summary-wages-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
-                <div style={{ textAlign: 'center', color: '#dc2626' }}>
-                    <h2>⚠️ Error Generating Report</h2>
-                    <p>{error}</p>
-                    <button onClick={onBack} className="sw-btn" style={{ marginTop: '1rem' }}>Back</button>
-                </div>
-            </div>
-        );
-    }
-
-    // Prepare labels
-    const prevMonthName = reportData ? shortMonthNames[reportData.previous_period?.month - 1] : '';
-    const currMonthName = reportData ? shortMonthNames[reportData.current_period?.month - 1] : '';
-
-    // Filtered Data Sets
-    const wageData = filterData(reportData?.premi_ot_table, 'curr_wage', wageRange);
-    const otData = filterData(reportData?.premi_ot_table, 'curr_ot', otRange);
-    const premiData = filterData(reportData?.premi_ot_table, 'curr_premi', premiRange);
+    const prevMonthName = reportData ? shortMonthNames[reportData.previous_period?.month] : '';
+    const currMonthName = reportData ? shortMonthNames[reportData.current_period?.month] : '';
 
     return (
-        <div className="summary-wages-container">
-            {/* Action Bar */}
-            <div className="sw-action-bar">
-                <button onClick={onBack} className="sw-btn">
-                    &larr; BACK
-                </button>
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#64748b' }}>PERIOD:</span>
-                        <MonthSelector
-                            month={month}
-                            year={year}
-                            onChange={(m, y) => { setMonth(m); setYear(y); }}
-                        />
+        <div className="wsp-container" style={{ padding: '1.5rem', backgroundColor: '#f8fafc' }}>
+            {/* Header / Action Bar */}
+            <div className="report-header-web no-print">
+                <div className="report-header-info">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <button
+                            onClick={onBack}
+                            className="wsp-btn"
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer' }}
+                        >
+                            &larr; Kembali
+                        </button>
+                        <h1>Analysis & Progress Report</h1>
                     </div>
+                    <p style={{ marginLeft: '4.5rem' }}>Laporan perbandingan biaya premi dan lembur antar periode.</p>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#64748b' }}>FILTER:</span>
-                        <select 
-                            value={filterType} 
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', marginLeft: '4.5rem' }}>
+                        <select
+                            value={month}
+                            onChange={(e) => setMonth(parseInt(e.target.value))}
+                            className="report-filter-badge"
+                        >
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                <option key={m} value={m}>{getMonthName(m)}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={year}
+                            onChange={(e) => setYear(parseInt(e.target.value))}
+                            className="report-filter-badge"
+                        >
+                            {yearOptions.length > 0 ? yearOptions.map(y => (
+                                <option key={y} value={y}>{y}</option>
+                            )) : <option value={year}>{year}</option>}
+                        </select>
+                        <select
+                            value={filterType}
                             onChange={(e) => setFilterType(e.target.value)}
-                            style={{ 
-                                padding: '0.4rem 0.8rem', 
-                                borderRadius: '4px', 
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.8rem',
-                                fontWeight: '600',
-                                color: '#334155'
-                            }}
+                            className="report-filter-badge"
                         >
                             <option value="all">ALL DIVISIONS</option>
                             <option value="non_ijl">NON IJL (REBINMAS)</option>
                             <option value="ijl">IJL ONLY</option>
                         </select>
                     </div>
-
-                    <button 
-                        onClick={() => setShowFilters(!showFilters)}
-                        className="sw-btn"
-                        style={{ background: showFilters ? '#e2e8f0' : 'white', color: '#334155' }}
-                    >
-                        {showFilters ? 'Hide Range Filters' : 'Show Range Filters'}
-                    </button>
                 </div>
 
-                <div className="btn-group">
-                    <button onClick={() => setShowSeederModal(true)} className="sw-btn" style={{ background: '#fbbf24', color: '#78350f' }}>
-                        SEED AGGREGATION
+                <div className="report-header-actions">
+                    <button onClick={() => setShowFilters(!showFilters)} className={`wsp-btn ${showFilters ? 'wsp-btn-primary' : ''}`}>
+                        {showFilters ? <X size={18} /> : <Settings size={18} />}
+                        {showFilters ? 'Tutup Filter' : 'Filter Range'}
                     </button>
-                    <PrintModeSelector onPrint={handlePrint} />
-                    <button onClick={handleSavePDF} className="sw-btn sw-btn-primary" title="Download Report as PDF">
-                        SAVE PDF
+                    <button onClick={() => setShowSeederModal(true)} className="wsp-btn" style={{ backgroundColor: '#fffbeb', color: '#92400e' }}>
+                        Seed Data
                     </button>
-                    <button onClick={handlePrint} className="sw-btn sw-btn-primary">
-                        PRINT REPORT
+                    <button onClick={handlePrint} className="wsp-btn-primary">
+                        <Printer size={18} /> Cetak
+                    </button>
+                    <button onClick={handleSavePDF} className="wsp-btn-secondary">
+                        <FileText size={18} /> PDF
+                    </button>
+                    <button onClick={fetchData} className="wsp-btn-secondary" disabled={loading}>
+                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                     </button>
                 </div>
             </div>
 
-            {/* Filter Controls */}
+            {/* Range Filters Panel */}
             {showFilters && (
-                <div style={{ padding: '1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '2rem', justifyContent: 'center' }}>
-                    <FilterGroup title="Upah Bersih Range" range={wageRange} setRange={setWageRange} />
-                    <FilterGroup title="Lembur Range" range={otRange} setRange={setOtRange} />
-                    <FilterGroup title="Premi Range" range={premiRange} setRange={setPremiRange} />
+                <div className="no-print" style={{
+                    padding: '1.5rem',
+                    background: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    marginBottom: '1.5rem',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '2rem'
+                }}>
+                    <RangeInput label="Range Upah Bersih" range={wageRange} setRange={setWageRange} />
+                    <RangeInput label="Range Lembur (OT)" range={otRange} setRange={setOtRange} />
+                    <RangeInput label="Range Total Premi" range={premiRange} setRange={setPremiRange} />
                 </div>
             )}
 
-            {/* Document (Paper) */}
-            {reportData && (
-                <div className="sw-document" id="analysis-report-content">
+            {/* Error State */}
+            {error && (
+                <div className="wsp-error" style={{ margin: '2rem auto' }}>
+                    <div className="wsp-error-icon">!</div>
+                    <div className="wsp-error-title">Gagal Memuat Analisis</div>
+                    <div className="wsp-error-message">{error}</div>
+                    <button onClick={fetchData} className="wsp-btn-primary" style={{ marginTop: '1rem' }}>Coba Lagi</button>
+                </div>
+            )}
+
+            {/* Main Document */}
+            {!loading && !error && reportData && (
+                <div className="wsp-document" id="wsp-report-content">
                     {/* Letterhead */}
-                    <header className="sw-letterhead" style={{ position: 'relative' }}>
-                        <img 
-                            src="/images/rebinmas.webp" 
-                            alt="Logo" 
-                            style={{ 
-                                position: 'absolute', 
-                                left: 0, 
-                                top: '50%', 
-                                transform: 'translateY(-50%)', 
-                                height: '80px',
-                                width: 'auto'
-                            }} 
-                        />
-                        <h1 className="sw-company-name">
+                    <div className="wsp-letterhead">
+                        <img src="/images/rebinmas.webp" alt="Logo" className="wsp-logo" />
+                        <h1 className="wsp-company-name">
                             {filterType === 'ijl' ? 'PT. IMPIAN JAYA LESTARI' : 'PT. REBINMAS JAYA'}
                         </h1>
-                        <h2 className="sw-report-title">FINANCIAL ANALYSIS REPORT</h2>
-                        <div className="sw-report-period">
-                            Comparison: {prevMonthName} {reportData.previous_period?.year} vs {currMonthName} {reportData.current_period?.year}
-                        </div>
-                    </header>
-
-                    {/* KPI / Totals Overview */}
-                    <div className="sw-kpi-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-                         {/* Wage KPI */}
-                         <div className="sw-kpi-card" style={{ gridColumn: 'span 2' }}>
-                            <div className="sw-kpi-label">TOTAL UPAH BERSIH {currMonthName}</div>
-                            <div className="sw-kpi-value">{formatCurrency(reportData.totals?.curr_wage)}</div>
-                            <div style={{ fontSize: '0.8rem', color: reportData.totals?.diff_wage > 0 ? '#ef4444' : '#10b981', marginTop: '4px' }}>
-                                Diff: {formatCurrency(reportData.totals?.diff_wage)} ({getDiffLabel(reportData.totals?.diff_wage)})
-                            </div>
-                        </div>
-
-                        {/* OT KPI */}
-                        <div className="sw-kpi-card" style={{ gridColumn: 'span 2' }}>
-                            <div className="sw-kpi-label">TOTAL LEMBUR {currMonthName}</div>
-                            <div className="sw-kpi-value">{formatCurrency(reportData.totals?.curr_ot)}</div>
-                            <div style={{ fontSize: '0.8rem', color: reportData.totals?.diff_ot > 0 ? '#ef4444' : '#10b981', marginTop: '4px' }}>
-                                Diff: {formatCurrency(reportData.totals?.diff_ot)} ({getDiffLabel(reportData.totals?.diff_ot)})
-                            </div>
-                        </div>
-
-                         {/* Premi KPI */}
-                         <div className="sw-kpi-card" style={{ gridColumn: 'span 2' }}>
-                            <div className="sw-kpi-label">TOTAL PREMI {currMonthName}</div>
-                            <div className="sw-kpi-value">{formatCurrency(reportData.totals?.curr_premi)}</div>
-                            <div style={{ fontSize: '0.8rem', color: reportData.totals?.diff_premi > 0 ? '#ef4444' : '#10b981', marginTop: '4px' }}>
-                                Diff: {formatCurrency(reportData.totals?.diff_premi)} ({getDiffLabel(reportData.totals?.diff_premi)})
-                            </div>
+                        <div className="wsp-report-title">Monthly Progress & Cost Analysis Report</div>
+                        <div className="wsp-report-period">
+                            Perbandingan: <strong>{getMonthName(reportData.previous_period?.month)} {reportData.previous_period?.year}</strong> vs <strong>{getMonthName(reportData.current_period?.month)} {reportData.current_period?.year}</strong>
                         </div>
                     </div>
 
-                    {/* Section 1: Wage Analysis */}
-                    <AnalysisTable 
-                        title="Analisis Upah Bersih" 
-                        data={wageData} 
-                        prevMonth={prevMonthName} 
-                        currMonth={currMonthName} 
+                    {/* KPI Comparison Cards */}
+                    <div className="wsp-kpi-grid comparison-grid">
+                        <KPIComparisonCard
+                            label="Total Premi"
+                            prevLabel={prevMonthName}
+                            currLabel={currMonthName}
+                            prevValue={reportData.totals?.prev_premi}
+                            currValue={reportData.totals?.curr_premi}
+                            diff={reportData.totals?.diff_premi}
+                            format={formatCurrency}
+                            accent="#f59e0b"
+                        />
+                        <KPIComparisonCard
+                            label="Total Lembur (OT)"
+                            prevLabel={prevMonthName}
+                            currLabel={currMonthName}
+                            prevValue={reportData.totals?.prev_ot}
+                            currValue={reportData.totals?.curr_ot}
+                            diff={reportData.totals?.diff_ot}
+                            format={formatCurrency}
+                            accent="#8b5cf6"
+                        />
+                        <KPIComparisonCard
+                            label="Total Pruning"
+                            prevLabel={prevMonthName}
+                            currLabel={currMonthName}
+                            prevValue={reportData.totals?.prev_pruning}
+                            currValue={reportData.totals?.curr_pruning}
+                            diff={reportData.totals?.diff_pruning}
+                            format={formatCurrency}
+                            accent="#059669"
+                        />
+                    </div>
+
+                    {/* Premi Breakdown Mini Cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '2rem' }}>
+                        <BreakdownCard label="Pruning" value={reportData.totals?.curr_pruning} diff={reportData.totals?.diff_pruning} format={formatCurrency} bg="#fffbeb" border="#fde68a" color="#78350f" labelColor="#92400e" />
+                        <BreakdownCard label="Brondol" value={reportData.totals?.curr_brondol} diff={reportData.totals?.diff_brondol} format={formatCurrency} bg="#fef2f2" border="#fecaca" color="#7f1d1d" labelColor="#991b1b" />
+                        <BreakdownCard label="Insentif Panen" value={reportData.totals?.curr_insentif} diff={reportData.totals?.diff_insentif} format={formatCurrency} bg="#f0fdf4" border="#bbf7d0" color="#14532d" labelColor="#166534" />
+                        <BreakdownCard label="Kinerja" value={reportData.totals?.curr_kinerja} diff={reportData.totals?.diff_kinerja} format={formatCurrency} bg="#eff6ff" border="#bfdbfe" color="#1e3a5f" labelColor="#1e40af" />
+                    </div>
+
+                    {/* Main Table: Premi & OT Comparison with Breakdown */}
+                    <SummaryPremiOTTable
+                        data={filteredMainTable}
+                        totals={reportData.totals}
+                        prevMonthName={prevMonthName}
+                        currMonthName={currMonthName}
+                        prevYear={reportData.previous_period?.year}
+                        currYear={reportData.current_period?.year}
+                        formatCurrency={formatCurrency}
+                        getDiffClass={getDiffClass}
+                    />
+
+                    {/* Section: Upah Bersih Analysis */}
+                    <AnalysisTable
+                        title="Analisis Upah Bersih"
+                        data={filteredMainTable}
+                        prevMonth={prevMonthName}
+                        currMonth={currMonthName}
                         fieldPrefix="wage"
                         totalDiff={reportData.totals?.diff_wage}
                         prevTotal={reportData.totals?.prev_wage}
@@ -268,77 +322,47 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                         getDiffLabel={getDiffLabel}
                     />
 
-                     {/* Section 2: Overtime Analysis */}
-                     <AnalysisTable 
-                        title="Analisis Lembur (Overtime)" 
-                        data={otData} 
-                        prevMonth={prevMonthName} 
-                        currMonth={currMonthName} 
-                        fieldPrefix="ot"
-                        totalDiff={reportData.totals?.diff_ot}
-                        prevTotal={reportData.totals?.prev_ot}
-                        currTotal={reportData.totals?.curr_ot}
-                        formatCurrency={formatCurrency}
-                        getDiffClass={getDiffClass}
-                        getDiffLabel={getDiffLabel}
-                    />
-
-                    {/* Section 3: Premi Analysis */}
-                    <AnalysisTable 
-                        title="Analisis Premi" 
-                        data={premiData} 
-                        prevMonth={prevMonthName} 
-                        currMonth={currMonthName} 
-                        fieldPrefix="premi"
-                        totalDiff={reportData.totals?.diff_premi}
-                        prevTotal={reportData.totals?.prev_premi}
-                        currTotal={reportData.totals?.curr_premi}
-                        formatCurrency={formatCurrency}
-                        getDiffClass={getDiffClass}
-                        getDiffLabel={getDiffLabel}
-                    />
-
-                    {/* Section 4: Pruning Analysis (if data exists) */}
-                    {reportData.pruning_table && reportData.pruning_table.length > 0 && (
-                         <div className="analysis-section">
-                            <div className="analysis-section-title">
+                    {/* Section 4: Detailed Pruning Analysis */}
+                    {filteredPruningTable.length > 0 && (
+                        <div className="analysis-section" style={{ marginTop: '2rem' }}>
+                            <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#f1f5f9', borderLeft: '4px solid #0f172a', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                                 <span>Progressive Pruning Analysis</span>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>Amount in IDR</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Data per Divisi</span>
                             </div>
-                            <div className="sw-table-wrapper">
-                                <table className="sw-table">
+                            <div className="wsp-table-wrapper">
+                                <table className="wsp-table">
                                     <thead>
-                                        <tr className="sw-header-cols">
-                                            <th style={{ width: '40px' }}>No</th>
-                                            <th style={{ width: '80px' }}>Divisi</th>
-                                            <th style={{ textAlign: 'left' }}>Estate / Description</th>
+                                        <tr className="wsp-header-cols">
+                                            <th style={{ width: '50px' }}>No</th>
+                                            <th style={{ width: '100px' }}>Divisi</th>
+                                            <th className="text-left">Estate / Description</th>
                                             <th className="text-right">{prevMonthName}</th>
                                             <th className="text-right">{currMonthName}</th>
-                                            <th className="text-right">Diff</th>
+                                            <th className="text-right">Progress</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {reportData.pruning_table.map((row, idx) => (
+                                        {filteredPruningTable.map((row, idx) => (
                                             <tr key={idx}>
                                                 <td className="text-center">{idx + 1}</td>
-                                                <td className="text-center" style={{ fontWeight: 600 }}>{row.division_code}</td>
-                                                <td className="text-left">{row.description || row.estate}</td>
+                                                <td className="text-center font-bold">{row.division_code}</td>
+                                                <td className="text-left">{row.description}</td>
                                                 <td className="text-right">{formatCurrency(row.prev_pruning)}</td>
-                                                <td className="text-right" style={{ fontWeight: 600 }}>{formatCurrency(row.curr_pruning)}</td>
-                                                <td className={`text-right ${getDiffClass(row.diff_pruning)}`}>
+                                                <td className="text-right font-bold">{formatCurrency(row.curr_pruning)}</td>
+                                                <td className={`text-right font-bold ${getDiffClass(row.diff_pruning)}`}>
                                                     {getDiffLabel(row.diff_pruning)}{formatCurrency(Math.abs(row.diff_pruning))}
                                                 </td>
                                             </tr>
                                         ))}
-                                        <tr className="subtotal">
-                                            <td colSpan="3" className="text-right">TOTAL</td>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="wsp-grand-total">
+                                            <td colSpan="3" className="text-right">TOTAL PRUNING</td>
                                             <td className="text-right">{formatCurrency(reportData.totals?.prev_pruning)}</td>
                                             <td className="text-right">{formatCurrency(reportData.totals?.curr_pruning)}</td>
-                                            <td className={`text-right ${getDiffClass(reportData.totals?.diff_pruning)}`}>
-                                                {formatCurrency(reportData.totals?.diff_pruning)}
-                                            </td>
+                                            <td className="text-right">{formatCurrency(reportData.totals?.diff_pruning)}</td>
                                         </tr>
-                                    </tbody>
+                                    </tfoot>
                                 </table>
                             </div>
                         </div>
@@ -350,9 +374,14 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                     </div>
 
                     {/* Footer */}
-                    <footer className="sw-footer">
-                        <div>Printed on: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-                        <div>PT. REBINMAS JAYA - FINANCIAL ANALYSIS REPORT</div>
+                    <footer className="wsp-footer">
+                        <div className="wsp-footer-left">
+                            <div>Dicetak: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                            <div style={{ fontSize: '0.65rem' }}>User: {user?.username}</div>
+                        </div>
+                        <div className="wsp-footer-right">
+                            PT. REBINMAS JAYA - PROGRESS ANALYSIS REPORT
+                        </div>
                     </footer>
                 </div>
             )}
@@ -369,47 +398,71 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     );
 }
 
-// Reusable Components
-
-const FilterGroup = ({ title, range, setRange }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>{title}</label>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input 
-                type="number" 
-                placeholder="Min" 
-                value={range.min} 
+// Sub-components for cleaner code
+const RangeInput = ({ label, range, setRange }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>{label}</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+                type="number"
+                placeholder="Min Rp"
+                value={range.min}
                 onChange={(e) => setRange({ ...range, min: e.target.value })}
-                style={{ width: '100px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                className="wsp-input"
+                style={{ flex: 1 }}
             />
             <span style={{ color: '#94a3b8' }}>-</span>
-            <input 
-                type="number" 
-                placeholder="Max" 
-                value={range.max} 
+            <input
+                type="number"
+                placeholder="Max Rp"
+                value={range.max}
                 onChange={(e) => setRange({ ...range, max: e.target.value })}
-                style={{ width: '100px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                className="wsp-input"
+                style={{ flex: 1 }}
             />
         </div>
     </div>
 );
 
-const AnalysisTable = ({ title, data, prevMonth, currMonth, fieldPrefix, totalDiff, prevTotal, currTotal, formatCurrency, getDiffClass, getDiffLabel }) => (
-    <div className="analysis-section">
-        <div className="analysis-section-title">
-            <span>{title}</span>
-            <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>Amount in IDR</span>
+const KPIComparisonCard = ({ label, prevLabel, currLabel, prevValue, currValue, diff, format, accent }) => {
+    const isIncrease = diff > 0;
+    return (
+        <div className="wsp-kpi-card comparison-card" style={accent ? { borderLeft: `4px solid ${accent}` } : {}}>
+            <div className="wsp-kpi-label">{label}</div>
+            <div className="wsp-kpi-compare-row">
+                <div className="wsp-kpi-trend-box prev">
+                    <div className="trend-label">{prevLabel}</div>
+                    <div className="trend-value">{format(prevValue)}</div>
+                </div>
+                <div className="wsp-kpi-trend-box curr">
+                    <div className="trend-label">{currLabel}</div>
+                    <div className="trend-value">{format(currValue)}</div>
+                </div>
+            </div>
+            <div className={`wsp-kpi-diff ${isIncrease ? 'pos' : diff < 0 ? 'neg' : 'neutral'}`}>
+                <span>Variance:</span>
+                <strong>Rp {format(diff)} {isIncrease ? '▲' : diff < 0 ? '▼' : ''}</strong>
+            </div>
         </div>
-        <div className="sw-table-wrapper">
-            <table className="sw-table">
+    );
+};
+
+const AnalysisTable = ({ title, data, prevMonth, currMonth, fieldPrefix, totalDiff, prevTotal, currTotal, formatCurrency, getDiffClass, getDiffLabel }) => (
+    <div className="analysis-section" style={{ marginTop: '2rem' }}>
+        <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderLeft: '4px solid #334155', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <span>{title}</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Unit: IDR (Rupiah)</span>
+        </div>
+        <div className="wsp-table-wrapper">
+            <table className="wsp-table">
                 <thead>
-                    <tr className="sw-header-cols">
-                        <th style={{ width: '40px' }}>No</th>
-                        <th style={{ width: '80px' }}>Divisi</th>
-                        <th style={{ textAlign: 'left' }}>Estate / Description</th>
+                    <tr className="wsp-header-cols">
+                        <th style={{ width: '50px' }}>No</th>
+                        <th style={{ width: '100px' }}>Divisi</th>
+                        <th className="text-left">Estate / Description</th>
                         <th className="text-right">{prevMonth}</th>
                         <th className="text-right">{currMonth}</th>
-                        <th className="text-right">Diff</th>
+                        <th className="text-right">Selisih</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -421,11 +474,11 @@ const AnalysisTable = ({ title, data, prevMonth, currMonth, fieldPrefix, totalDi
                             return (
                                 <tr key={idx}>
                                     <td className="text-center">{idx + 1}</td>
-                                    <td className="text-center" style={{ fontWeight: 600 }}>{row.division_code}</td>
+                                    <td className="text-center font-bold">{row.division_code}</td>
                                     <td className="text-left">{row.description || row.estate}</td>
                                     <td className="text-right">{formatCurrency(prev)}</td>
-                                    <td className="text-right" style={{ fontWeight: 600 }}>{formatCurrency(curr)}</td>
-                                    <td className={`text-right ${getDiffClass(diff)}`}>
+                                    <td className="text-right font-bold">{formatCurrency(curr)}</td>
+                                    <td className={`text-right font-bold ${getDiffClass(diff)}`}>
                                         {getDiffLabel(diff)}{formatCurrency(Math.abs(diff))}
                                     </td>
                                 </tr>
@@ -433,24 +486,126 @@ const AnalysisTable = ({ title, data, prevMonth, currMonth, fieldPrefix, totalDi
                         })
                     ) : (
                         <tr>
-                            <td colSpan="6" style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>
-                                No data matches filters
+                            <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                                Tidak ada data yang sesuai dengan filter range.
                             </td>
                         </tr>
                     )}
-                    
-                    {/* Subtotal Row - Only show totals if not filtering or handle properly */}
-                    {/* If filtering, simple sum of displayed rows would be better, but sticking to global totals for now as per design unless requested */}
-                    <tr className="subtotal">
-                        <td colSpan="3" className="text-right">TOTAL (Global)</td>
+                </tbody>
+                <tfoot>
+                    <tr className="wsp-grand-total">
+                        <td colSpan="3" className="text-right">TOTAL {title.toUpperCase()}</td>
                         <td className="text-right">{formatCurrency(prevTotal)}</td>
                         <td className="text-right">{formatCurrency(currTotal)}</td>
-                        <td className={`text-right ${getDiffClass(totalDiff)}`}>
-                            {formatCurrency(totalDiff)}
-                        </td>
+                        <td className="text-right">{formatCurrency(totalDiff)}</td>
                     </tr>
-                </tbody>
+                </tfoot>
             </table>
         </div>
     </div>
 );
+
+// Breakdown Mini Card — shows current value + trend
+const BreakdownCard = ({ label, value, diff, format, bg, border, color, labelColor }) => (
+    <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: '8px', padding: '0.85rem', textAlign: 'center' }}>
+        <div style={{ fontSize: '0.6rem', fontWeight: 700, color: labelColor, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{label}</div>
+        <div style={{ fontFamily: "'Roboto Mono', monospace", fontSize: '1rem', fontWeight: 700, color }}>{format(value)}</div>
+        {diff !== undefined && diff !== 0 && (
+            <div style={{ fontSize: '0.65rem', fontWeight: 600, marginTop: '0.25rem', color: diff > 0 ? '#dc2626' : '#16a34a' }}>
+                {diff > 0 ? '▲' : '▼'} {format(Math.abs(diff))}
+            </div>
+        )}
+    </div>
+);
+
+// Unified Summary Premi & OT Table with Breakdown Columns
+const SummaryPremiOTTable = ({ data, totals, prevMonthName, currMonthName, prevYear, currYear, formatCurrency, getDiffClass }) => {
+    const cellBorder = { border: '1px solid #94a3b8' };
+    const monoFont = { fontFamily: "'Roboto Mono', monospace", fontSize: '0.75rem' };
+
+    return (
+        <div className="analysis-section" style={{ marginTop: '1.5rem' }}>
+            <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#0f172a', color: '#fff', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: 0, borderRadius: '6px 6px 0 0' }}>
+                <span>Summary Premi & OT — Per Division</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 400, opacity: 0.8 }}>Amount in IDR</span>
+            </div>
+            <div className="wsp-table-wrapper" style={{ border: '2px solid #334155', borderTop: 'none', borderRadius: '0 0 6px 6px', overflow: 'auto' }}>
+                <table className="wsp-table" style={{ borderCollapse: 'collapse', minWidth: '900px' }}>
+                    <thead>
+                        {/* Master Header */}
+                        <tr style={{ backgroundColor: '#f1f5f9' }}>
+                            <th rowSpan="2" style={{ ...cellBorder, padding: '8px', textAlign: 'left', minWidth: '150px', position: 'sticky', left: 0, background: '#f1f5f9', zIndex: 2 }}>ESTATE/DIVISI</th>
+                            <th colSpan="5" style={{ ...cellBorder, textAlign: 'center', background: '#fffbeb', color: '#92400e', fontWeight: 700, fontSize: '0.75rem' }}>
+                                PREMI BREAKDOWN — {currMonthName} {currYear}
+                            </th>
+                            <th colSpan="2" style={{ ...cellBorder, textAlign: 'center', background: '#f5f3ff', color: '#5b21b6', fontWeight: 700, fontSize: '0.75rem' }}>
+                                OVERTIME
+                            </th>
+                            <th colSpan="2" style={{ ...cellBorder, textAlign: 'center', background: '#fff7ed', color: '#9a3412', fontWeight: 700, fontSize: '0.75rem' }}>
+                                PROGRESS (Δ)
+                            </th>
+                        </tr>
+                        {/* Sub Header */}
+                        <tr style={{ backgroundColor: '#f8fafc', fontSize: '0.7rem', fontWeight: 700 }}>
+                            <th style={{ ...cellBorder, background: '#fffbeb', color: '#92400e', minWidth: '80px', padding: '6px' }}>PRUNING</th>
+                            <th style={{ ...cellBorder, background: '#fffbeb', color: '#92400e', minWidth: '80px', padding: '6px' }}>BRONDOL</th>
+                            <th style={{ ...cellBorder, background: '#fffbeb', color: '#92400e', minWidth: '80px', padding: '6px' }}>INSENTIF</th>
+                            <th style={{ ...cellBorder, background: '#fffbeb', color: '#92400e', minWidth: '80px', padding: '6px' }}>KINERJA</th>
+                            <th style={{ ...cellBorder, background: '#fef3c7', color: '#78350f', fontWeight: 800, minWidth: '90px', padding: '6px' }}>TOTAL</th>
+                            <th style={{ ...cellBorder, background: '#f5f3ff', color: '#5b21b6', minWidth: '80px', padding: '6px' }}>{prevMonthName}</th>
+                            <th style={{ ...cellBorder, background: '#f5f3ff', color: '#5b21b6', minWidth: '80px', padding: '6px' }}>{currMonthName}</th>
+                            <th style={{ ...cellBorder, background: '#fff7ed', color: '#9a3412', fontSize: '0.65rem', minWidth: '80px', padding: '6px' }}>Δ PREMI</th>
+                            <th style={{ ...cellBorder, background: '#fff7ed', color: '#9a3412', fontSize: '0.65rem', minWidth: '80px', padding: '6px' }}>Δ OT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {data.map((row, idx) => {
+                            const zeroCl = '#cbd5e1';
+                            return (
+                                <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#fafbfc' }}>
+                                    <td style={{ ...cellBorder, fontWeight: 700, padding: '6px 8px', textAlign: 'left', position: 'sticky', left: 0, background: idx % 2 === 0 ? '#fff' : '#fafbfc', zIndex: 1 }}>
+                                        <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.8rem' }}>{row.division_code}</span>
+                                        {row.description && row.description !== row.division_code && (
+                                            <span style={{ display: 'block', color: '#64748b', fontSize: '0.6rem', lineHeight: 1.2, marginTop: '1px' }}>{row.description}</span>
+                                        )}
+                                    </td>
+                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: (row.curr_pruning || 0) === 0 ? zeroCl : '#334155' }}>{formatCurrency(row.curr_pruning)}</td>
+                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: (row.curr_brondol || 0) === 0 ? zeroCl : '#334155' }}>{formatCurrency(row.curr_brondol)}</td>
+                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: (row.curr_insentif || 0) === 0 ? zeroCl : '#334155' }}>{formatCurrency(row.curr_insentif)}</td>
+                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: (row.curr_kinerja || 0) === 0 ? zeroCl : '#334155' }}>{formatCurrency(row.curr_kinerja)}</td>
+                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, fontWeight: 700, background: '#fefce8' }}>{formatCurrency(row.curr_premi)}</td>
+                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: '#64748b' }}>{formatCurrency(row.prev_ot)}</td>
+                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, fontWeight: 600 }}>{formatCurrency(row.curr_ot)}</td>
+                                    <td className={`text-right ${getDiffClass(row.diff_premi)}`} style={{ ...cellBorder, ...monoFont, fontWeight: 600 }}>
+                                        {formatCurrency(row.diff_premi)}
+                                    </td>
+                                    <td className={`text-right ${getDiffClass(row.diff_ot)}`} style={{ ...cellBorder, ...monoFont, fontWeight: 600 }}>
+                                        {formatCurrency(row.diff_ot)}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                    <tfoot>
+                        <tr style={{ backgroundColor: '#0f172a', color: '#fff', fontWeight: 800 }}>
+                            <td style={{ ...cellBorder, borderColor: '#334155', padding: '8px', textAlign: 'right', position: 'sticky', left: 0, background: '#0f172a', zIndex: 1, fontSize: '0.8rem' }}>TOTAL C/ROLL</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_pruning)}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_brondol)}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_insentif)}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_kinerja)}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont, fontWeight: 800 }}>{formatCurrency(totals.curr_premi)}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.prev_ot)}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_ot)}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont, color: (totals.diff_premi || 0) > 0 ? '#fca5a5' : '#86efac' }}>
+                                {formatCurrency(totals.diff_premi)}
+                            </td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont, color: (totals.diff_ot || 0) > 0 ? '#fca5a5' : '#86efac' }}>
+                                {formatCurrency(totals.diff_ot)}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    );
+};

@@ -46,12 +46,12 @@ const DashboardLayout = () => {
     }, [collapsed]);
 
     // Simple helper for isActive check
-    const isReportsPathActive = location.pathname.includes('/summary') || 
-                               location.pathname.includes('/wages') || 
-                               location.pathname.includes('/comprehensive') || 
-                               location.pathname.includes('/report-pajak') ||
-                               location.pathname.includes('/analysis') ||
-                               location.pathname.includes('/executive');
+    const isReportsPathActive = location.pathname.includes('/summary') ||
+        location.pathname.includes('/wages') ||
+        location.pathname.includes('/comprehensive') ||
+        location.pathname.includes('/report-pajak') ||
+        location.pathname.includes('/analysis') ||
+        location.pathname.includes('/executive');
 
     // Dynamic styles
     const getLinkStyle = (isActive) => ({
@@ -256,6 +256,16 @@ const DashboardLayout = () => {
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Pendapatan Lainnya</span>
                                 <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Daftar pendapatan tidak tetap lain-lain.</span>
+                            </div>
+                        )}
+                    </NavLink>
+
+                    <NavLink to="/mill-production" style={getLinkStyle} title={collapsed ? "Analisis Produktivitas Kebun" : ""}>
+                        <div style={{ marginTop: collapsed ? '0' : '0.15rem' }}><MenuIcons.ActivityIcon /></div>
+                        {!collapsed && (
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontWeight: '600', color: '#e2e8f0', lineHeight: '1.2' }}>Analisis Produktivitas Kebun</span>
+                                <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', lineHeight: '1.3' }}>Tonase FFB, HK, dan biaya per divisi estate.</span>
                             </div>
                         )}
                     </NavLink>

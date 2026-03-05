@@ -1,0 +1,90 @@
+Fetching sample data from daftar_upah_aggregation_history...
+Found 5 rows.
+--------------------------------------------------
+Period: 2026-2 | Div: MILL | Gang: MILL_GENERAL
+Upah Bersih: 1010768955 | HK: 4513 | Lembur: 396259364.45
+--- dynamic_premi_data ---
+[]
+--- informasi_tambahan ---
+Failed to parse informasi_tambahan: Source: VenusHR
+--------------------------------------------------
+--------------------------------------------------
+Period: 2026-2 | Div: P2A | Gang: C2T
+Upah Bersih: 33233540.4 | HK: 168 | Lembur: 5865910.4
+--- dynamic_premi_data ---
+[
+  {
+    "header": "PREMI ANGKUT TBS\n(AL3PT2310P2A)",
+    "total": 4285035
+  },
+  {
+    "header": "PREMI RITASE\n(AL3PT2305P2A)",
+    "total": 216000
+  }
+]
+--------------------------------------------------
+--------------------------------------------------
+Period: 2026-2 | Div: AB1 | Gang: G1H
+Upah Bersih: 159469359 | HK: 874 | Lembur: 0
+--- dynamic_premi_data ---
+[
+  {
+    "header": "BRONDOL",
+    "total": 7390250
+  },
+  {
+    "header": "Premi Pruning\n(AL3PM0601AB1)",
+    "total": 13183500
+  },
+  {
+    "header": "Premi Raking\n(AL3PM0106AB1)",
+    "total": 15705000
+  },
+  {
+    "header": "Premi TBS\n(AL3PM2201AB1)",
+    "total": 2598617
+  },
+  {
+    "header": "Premi Kinerja\n(AL3PM2201AB1)",
+    "total": 3775000
+  },
+  {
+    "header": "Premi Jaga Genset\n(AL0018AB1)",
+    "total": 250000
+  },
+  {
+    "header": "Premi Insentif Panen\n(AL3PM2201AB1)",
+    "total": 150000
+  }
+]
+--------------------------------------------------
+--------------------------------------------------
+Period: 2026-2 | Div: AB1 | Gang: G1M
+Upah Bersih: 95226763.7 | HK: 683 | Lembur: 4058323.7
+--- dynamic_premi_data ---
+[
+  {
+    "header": "Premi Pupuk\n(AL3PT2307AB1)",
+    "total": 133200
+  }
+]
+--------------------------------------------------
+--------------------------------------------------
+Period: 2026-2 | Div: AB1 | Gang: G1T
+Upah Bersih: 41379199.9 | HK: 214 | Lembur: 6215765.9
+--- dynamic_premi_data ---
+[
+  {
+    "header": "Premi Ritase\n(AL3PT2305AB1)",
+    "total": 539191
+  },
+  {
+    "header": "Premi Angkut PC\n(AL3PT2307AB1)",
+    "total": 861900
+  },
+  {
+    "header": "Premi Angkut TBS\n(AL3PT2310AB1)",
+    "total": 4626203
+  }
+]
+--------------------------------------------------

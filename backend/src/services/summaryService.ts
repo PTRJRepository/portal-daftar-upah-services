@@ -43,6 +43,11 @@ export class SummaryService {
     private extendDb: Database;
     private millDb: Database;
 
+    // Cache for mapping data to improve performance and avoid timeouts
+    private divisionDescriptionsCache: Record<string, string> | null = null;
+    private gangToDivisionMapCache: Record<string, string> | null = null;
+    private gangDescriptionsCache: Record<string, string> | null = null;
+
     private constructor() {
         // Enforce DB_PROFILE for summary reports
         this.db = Database.getInstance(undefined, Config.DB_PROFILE);
@@ -55,6 +60,16 @@ export class SummaryService {
             SummaryService.instance = new SummaryService();
         }
         return SummaryService.instance;
+    }
+
+    /**
+     * Clear all in-memory caches
+     */
+    public clearCache(): void {
+        this.divisionDescriptionsCache = null;
+        this.gangToDivisionMapCache = null;
+        this.gangDescriptionsCache = null;
+        console.log("[SummaryService] Caches cleared");
     }
 
     private async loadJsonData(filename: string): Promise<any> {
@@ -78,6 +93,8 @@ export class SummaryService {
     }
 
     private async getDivisionDescriptions(): Promise<Record<string, string>> {
+        if (this.divisionDescriptionsCache) return this.divisionDescriptionsCache;
+
         try {
             const rows = await this.extendDb.query<{ Divisi: string, Description: string }>(`
                 SELECT [Divisi], [Description] FROM [dbo].[Divisi_Description]
@@ -101,6 +118,7 @@ export class SummaryService {
                 }
             }
 
+            this.divisionDescriptionsCache = map;
             return map;
         } catch (e) {
 
@@ -115,6 +133,8 @@ export class SummaryService {
      * daftar_upah_aggregation_history stores division_code = 'ALL'.
      */
     private async getGangToDivisionMap(): Promise<Record<string, string>> {
+        if (this.gangToDivisionMapCache) return this.gangToDivisionMapCache;
+
         try {
             const gangRows = await this.db.query<{ GangCode: string; LocCode: string }>(`
                 SELECT RTRIM(GangCode) as GangCode, RTRIM(LocCode) as LocCode
@@ -127,6 +147,7 @@ export class SummaryService {
                 const lc = row.LocCode?.trim();
                 if (gc && lc) map[gc] = lc;
             }
+            this.gangToDivisionMapCache = map;
             return map;
         } catch (e) {
             console.error("[SummaryService] Failed to get gang-to-division map:", e);
@@ -313,24 +334,12 @@ export class SummaryService {
 
 
 
-        // STEP 5: NRS special handling — only retain upah_bersih, zero out other financial fields
+        // STEP 5: NRS — data already correctly extracted from P1B in Step 3.
+        // Previously this zeroed out all NRS financial fields, causing data loss.
+        // The subtraction in Step 3 already handles proper separation.
         if (virtualDivAgg['NRS']) {
             const nrs = virtualDivAgg['NRS'];
-            // Keep only upah_bersih for NRS
-            nrs.total_premi = 0;
-            nrs.total_employees = 0;
-            nrs.total_hk = 0;
-            nrs.total_pph21 = 0;
-            nrs.total_spsi = 0;
-            nrs.total_lembur = 0;
-            nrs.total_premi_brondol = 0;
-            nrs.total_premi_prunning = 0;
-            nrs.total_premi_insentif = 0;
-            nrs.total_premi_kinerja = 0;
-            nrs.total_koreksi = 0;
-            nrs.total_ffb_weight = 0;
-            nrs.total_weight_tbs = 0;
-            console.log(`[SummaryService] Step 5 - NRS: only upah_bersih retained = ${nrs.total_upah_bersih} `);
+            console.log(`[SummaryService] Step 5 - NRS retained: premi=${nrs.total_premi}, lembur=${nrs.total_lembur}, upah=${nrs.total_upah_bersih}`);
         }
 
         // STEP 6: Merge real + virtual into final divAgg for result building
@@ -622,7 +631,13 @@ export class SummaryService {
                 total_spsi_current: curr.total_spsi,
                 total_premi_current: curr.total_premi,
                 total_prunning_current: curr.total_premi_prunning,
+                total_brondol_current: curr.total_premi_brondol,
+                total_insentif_current: curr.total_premi_insentif,
+                total_kinerja_current: curr.total_premi_kinerja,
                 total_lembur_current: curr.total_lembur,
+                // Previous month premi breakdown
+                total_premi_previous: prev.total_premi || 0,
+                total_lembur_previous: prev.total_lembur || 0,
                 previous_month: {
                     gaji: prevGaji, // Using thumbprint data from JSON for previous month's gaji
                     tbs_weight: prev.total_ffb_weight || 0,
@@ -657,6 +672,14 @@ export class SummaryService {
             tbs_weight: {
                 current: sumField(comparisonRows, ['current_month', 'tbs_weight']),
                 previous: sumField(comparisonRows, ['previous_month', 'tbs_weight'])
+            },
+            total_premi: {
+                current: sumField(comparisonRows, ['total_premi_current']),
+                previous: sumField(comparisonRows, ['total_premi_previous'])
+            },
+            total_lembur: {
+                current: sumField(comparisonRows, ['total_lembur_current']),
+                previous: sumField(comparisonRows, ['total_lembur_previous'])
             }
         };
 
@@ -890,6 +913,16 @@ export class SummaryService {
             const currOt = curr.total_lembur || 0;
             const prevOt = prev.total_lembur || 0;
 
+            // Premi breakdown
+            const currPruning = curr.total_premi_prunning || 0;
+            const prevPruningVal = prev.total_premi_prunning || 0;
+            const currBrondol = curr.total_premi_brondol || 0;
+            const prevBrondol = prev.total_premi_brondol || 0;
+            const currInsentif = curr.total_premi_insentif || 0;
+            const prevInsentif = prev.total_premi_insentif || 0;
+            const currKinerja = curr.total_premi_kinerja || 0;
+            const prevKinerja = prev.total_premi_kinerja || 0;
+
             premiOtRows.push({
                 division_code: curr.division_code,
                 estate: curr.description,
@@ -899,7 +932,20 @@ export class SummaryService {
                 diff_premi: currPremi - prevPremi,
                 prev_ot: prevOt,
                 curr_ot: currOt,
-                diff_ot: currOt - prevOt
+                diff_ot: currOt - prevOt,
+                // Premi breakdown per division
+                curr_pruning: currPruning,
+                prev_pruning: prevPruningVal,
+                diff_pruning: currPruning - prevPruningVal,
+                curr_brondol: currBrondol,
+                prev_brondol: prevBrondol,
+                diff_brondol: currBrondol - prevBrondol,
+                curr_insentif: currInsentif,
+                prev_insentif: prevInsentif,
+                diff_insentif: currInsentif - prevInsentif,
+                curr_kinerja: currKinerja,
+                prev_kinerja: prevKinerja,
+                diff_kinerja: currKinerja - prevKinerja
             });
         }
 
@@ -949,7 +995,17 @@ export class SummaryService {
                 diff_ot: currOt - prevOt,
                 prev_pruning: prevPruning,
                 curr_pruning: currPruning,
-                diff_pruning: currPruning - prevPruning
+                diff_pruning: currPruning - prevPruning,
+                // Breakdown totals
+                curr_brondol: sum(premiOtRows, 'curr_brondol'),
+                prev_brondol: sum(premiOtRows, 'prev_brondol'),
+                diff_brondol: sum(premiOtRows, 'curr_brondol') - sum(premiOtRows, 'prev_brondol'),
+                curr_insentif: sum(premiOtRows, 'curr_insentif'),
+                prev_insentif: sum(premiOtRows, 'prev_insentif'),
+                diff_insentif: sum(premiOtRows, 'curr_insentif') - sum(premiOtRows, 'prev_insentif'),
+                curr_kinerja: sum(premiOtRows, 'curr_kinerja'),
+                prev_kinerja: sum(premiOtRows, 'prev_kinerja'),
+                diff_kinerja: sum(premiOtRows, 'curr_kinerja') - sum(premiOtRows, 'prev_kinerja')
             }
         };
     }
@@ -1350,6 +1406,78 @@ id, period_month, period_year, division_code, gang_code,
 
     public async updateThumbprint(month: number, year: number, divisionCode: string, value: number): Promise<boolean> {
         return await thumbprintService.updateThumbprintValue(month, year, divisionCode, value);
+    }
+
+    /**
+     * Phase 2: Detailed Gang Analysis for Upah Bersih and Lembur Breakdown
+     * Returns the aggregated components of Upah Bersih and ranked Lembur tasks.
+     */
+    public async getGangDetailedAnalysis(gangCode: string, month: number, year: number): Promise<any> {
+        try {
+            // 1. Fetch Summary Data for the gang
+            const summaryRow = await this.extendDb.query<any>(`
+                SELECT TOP 1 * 
+                FROM dbo.daftar_upah_aggregation_history
+                WHERE gang_code = ? AND period_month = ? AND period_year = ?
+            `, [gangCode, month, year]);
+
+            const summary = summaryRow[0] || null;
+
+            // 2. Fetch Detailed Lembur Data
+            // Join payroll_history_detail with payroll_history_header to filter by gang, month, year
+            const detailRows = await this.extendDb.query<any>(`
+                SELECT d.emp_name, d.lembur_jumlah, d.lembur_records
+                FROM dbo.payroll_history_detail d
+                JOIN dbo.payroll_history_header h ON d.history_id = h.history_id
+                WHERE h.gang_code = ? AND h.period_month = ? AND h.period_year = ?
+                  AND d.lembur_jumlah > 0 AND d.lembur_records IS NOT NULL
+            `, [gangCode, month, year]);
+
+            // Aggregate Lembur tasks
+            const taskMap: Record<string, { task_code: string, task_desc: string, total_hours: number, total_amount: number }> = {};
+
+            for (const row of detailRows) {
+                if (!row.lembur_records) continue;
+                try {
+                    const records = typeof row.lembur_records === 'string' ? JSON.parse(row.lembur_records) : row.lembur_records;
+                    for (const rec of records) {
+                        const code = rec.task_code || 'UNKNOWN';
+                        const desc = rec.task_desc || 'Unknown Task';
+                        const hrs = parseFloat(rec.hours || 0);
+                        const amt = parseFloat(rec.amount || 0);
+
+                        if (!taskMap[code]) {
+                            taskMap[code] = { task_code: code, task_desc: desc, total_hours: 0, total_amount: 0 };
+                        }
+                        taskMap[code].total_hours += hrs;
+                        taskMap[code].total_amount += amt;
+                    }
+                } catch (e) {
+                    console.error(`Failed to parse lembur_records for ${row.emp_name}:`, e);
+                }
+            }
+
+            // Rank tasks by total_amount descending
+            const rankedLemburTasks = Object.values(taskMap).sort((a, b) => b.total_amount - a.total_amount);
+
+            return {
+                success: true,
+                gang_code: gangCode,
+                month,
+                year,
+                summary_breakdown: summary,
+                lembur_analysis: {
+                    total_records: detailRows.length,
+                    tasks: rankedLemburTasks
+                }
+            };
+        } catch (e: any) {
+            console.error(`[SummaryService] Failed to get gang detailed analysis for ${gangCode}:`, e);
+            return {
+                success: false,
+                error: e.message
+            };
+        }
     }
 }
 

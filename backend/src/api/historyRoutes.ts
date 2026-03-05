@@ -16,6 +16,7 @@ import { historySeederService, SeederOptions, HistorySeederService } from "../se
 import { Config } from "../config";
 import { currentPeriodService } from "../services/currentPeriodService";
 import { ptkpTaxService } from "../services/ptkpTaxService";
+import { upahBersihDetailService, FilterMode } from "../services/upahBersihDetailService";
 
 // Helper to get month name in Indonesian
 function getMonthName(month: number): string {
@@ -692,6 +693,58 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
                 error: error.message || "Failed to fetch employee PTKP data"
             };
         }
+    })
+
+    // ============================================================================
+    // UPAH BERSIH DETAIL ENDPOINT
+    // ============================================================================
+
+    // Get detailed upah bersih report with lembur/premi drill-down
+    .get("/upah-bersih-detail", async ({ query, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const periodMonth = query.period_month ? parseInt(query.period_month) : 0;
+        const periodYear = query.period_year ? parseInt(query.period_year) : 0;
+        const divisionCode = query.division_code || undefined;
+        const gangCode = query.gang_code || undefined;
+        const filter = (query.filter || 'all') as FilterMode;
+
+        if (!periodMonth || !periodYear) {
+            set.status = 400;
+            return { success: false, error: "period_month and period_year are required" };
+        }
+
+        const validFilters: FilterMode[] = ['all', 'lembur', 'premi', 'upah_bersih'];
+        if (!validFilters.includes(filter)) {
+            set.status = 400;
+            return { success: false, error: `Invalid filter. Must be one of: ${validFilters.join(', ')}` };
+        }
+
+        try {
+            const result = await upahBersihDetailService.getDetail(
+                periodMonth, periodYear, filter, divisionCode, gangCode
+            );
+            return result;
+        } catch (error: any) {
+            console.error("[HistoryRoutes] Upah bersih detail error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to fetch upah bersih detail"
+            };
+        }
+    }, {
+        query: t.Object({
+            period_month: t.String(),
+            period_year: t.String(),
+            division_code: t.Optional(t.String()),
+            gang_code: t.Optional(t.String()),
+            filter: t.Optional(t.String())
+        })
     })
 
     // EMPLOYEE HISTORY REDIRECT - Redirect to employee routes for history

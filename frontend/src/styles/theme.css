@@ -1,3 +1,5 @@
+@import url('./print-optimization.css');
+
 :root {
   /* Brand Colors - Elegant Corporate Slate/Blue */
   --primary-50: #f8fafc;
@@ -367,7 +369,6 @@ body {
 /* =============================================
    GLOBAL PRINT FIX - Import Print Optimization
    ============================================= */
-@import url('./print-optimization.css');
 
 /* Fallback print styles for any component not covered by print-optimization.css */
 @media print {

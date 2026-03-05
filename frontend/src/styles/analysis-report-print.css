@@ -46,6 +46,52 @@
     color: #166534 !important;
 }
 
+/* Summary Premi & OT Table Specifics */
+.sw-table-wrapper {
+    overflow: visible !important;
+}
+
+.sw-table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+}
+
+.sw-table th, .sw-table td {
+    border: 1px solid #000 !important;
+    padding: 8px 12px !important;
+}
+
+.sw-table thead tr.sw-header-cols th {
+    background-color: #f8fafc !important;
+    color: #000 !important;
+    font-weight: 800 !important;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+}
+
+.sw-table tbody td {
+    font-size: 0.85rem;
+    color: #000 !important;
+}
+
+.sw-table tfoot tr td {
+    background-color: #fff !important;
+    font-weight: 800 !important;
+    border-top: 2px solid #000 !important;
+    border-bottom: 2px solid #000 !important;
+}
+
+/* Ensure Progress columns look clear */
+.sw-table td.diff-increase {
+    color: #000 !important; /* Keep black for print, or subtle color */
+    background-color: #fff1f2 !important;
+}
+
+.sw-table td.diff-decrease {
+    color: #000 !important;
+    background-color: #f0fdf4 !important;
+}
+
 /* Ensure the document can grow */
 .sw-document {
     min-height: 29.7cm; /* A4 Height */

@@ -8,8 +8,15 @@ import { Save, Trash2, Plus, RefreshCw, AlertCircle, Calculator, Download, Setti
 
 const INCOME_TYPES = ['THR', 'Bonus', 'Custom'];
 
-const OtherIncomesPage = () => {
+const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }) => {
     const { division, gang, month, year, setDivision, setGang, setMonth, setYear, allDivisions, gangs, gangLoading } = useReport();
+
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialMonth !== undefined && initialMonth !== month) setMonth(initialMonth);
+        if (initialYear !== undefined && initialYear !== year) setYear(initialYear);
+        if (initialDivision !== undefined && initialDivision !== division) setDivision(initialDivision);
+    }, [initialMonth, initialYear, initialDivision]);
 
     const [rowData, setRowData] = useState([]);
     const [loading, setLoading] = useState(false);

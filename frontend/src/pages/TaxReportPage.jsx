@@ -1484,6 +1484,13 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
         isLockedMode
     } = useReport();
 
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialMonth !== undefined && initialMonth !== month) setMonth(initialMonth);
+        if (initialYear !== undefined && initialYear !== year) setYear(initialYear);
+        if (initialDivision !== undefined && initialDivision !== division) setDivision(initialDivision);
+    }, [initialMonth, initialYear, initialDivision]);
+
     const getAsistensi = useCallback((gangCode, divCode) => {
         if (!gangCode) return null;
         const gc = gangCode.trim().toUpperCase();

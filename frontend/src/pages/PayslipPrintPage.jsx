@@ -148,27 +148,18 @@ export default function PayslipPrintPage() {
                 {payslipChunks.map((chunk, chunkIndex) => (
                     <div key={chunkIndex} className="payslip-a4-page">
                         <div className="payslip-grid">
-                            {/* Render 4 payslips per page - fill empty slots if less than 4 */}
-                            {[0, 1, 2, 3].map(slotIndex => {
-                                const employeeData = chunk[slotIndex];
-                                if (employeeData) {
-                                    return (
-                                        <PayslipCard
-                                            key={employeeData.emp_code || slotIndex}
-                                            data={employeeData}
-                                            month={month}
-                                            year={year}
-                                        />
-                                    );
-                                } else {
-                                    // Empty slot placeholder
-                                    return (
-                                        <div key={`empty-${slotIndex}`} className="payslip-card" style={{ visibility: 'hidden' }}>
-                                            {/* Empty card for layout */}
-                                        </div>
-                                    );
-                                }
-                            })}
+                            {chunk.map((employeeData, slotIndex) => (
+                                <PayslipCard
+                                    key={employeeData.emp_code || slotIndex}
+                                    data={employeeData}
+                                    month={month}
+                                    year={year}
+                                />
+                            ))}
+                            {/* Empty placeholders to maintain grid if less than 4 */}
+                            {chunk.length < 4 && Array.from({ length: 4 - chunk.length }).map((_, i) => (
+                                <div key={`empty-${i}`} className="payslip-card" style={{ border: 'none', visibility: 'hidden' }}></div>
+                            ))}
                         </div>
                     </div>
                 ))}

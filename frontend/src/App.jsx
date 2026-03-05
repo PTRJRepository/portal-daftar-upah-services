@@ -32,6 +32,10 @@ import WagesComparisonPage from './pages/WagesComparisonPage'
 import ImpactReportPage from './pages/ImpactReportPage'
 import TaxReportPage from './pages/TaxReportPage'
 import OtherIncomesPage from './pages/OtherIncomesPage'
+import ProductivityReportPage from './pages/ProductivityReportPage'
+import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
+import MillProductionReport from './pages/MillProductionReport'
+import UpahBersihDetailPage from './pages/UpahBersihDetailPage'
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
@@ -626,9 +630,9 @@ function AppInner() {
               <DashboardLayout />
             </ProtectedRoute>
           }>
-            <Route index element={<DashboardHome />} />
+            <Route index element={<DashboardHome key="dashboard-home" />} />
 
-            <Route path="operational" element={<OperationalReportWrapper />} />
+            <Route path="operational" element={<OperationalReportWrapper key="operational-route" />} />
             <Route path="employee-directory" element={<SummaryReportWrapper component={EmployeeDirectoryPage} />} />
 
             <Route path="summary" element={<SummaryReportWrapper component={SummaryReportPage} />} />
@@ -643,6 +647,10 @@ function AppInner() {
             <Route path="wages-comparison" element={<SummaryReportWrapper component={WagesComparisonPage} />} />
             <Route path="pendapatan-tidak-tetap" element={<SummaryReportWrapper component={OtherIncomesPage} />} />
             <Route path="report-pajak" element={<SummaryReportWrapper component={TaxReportPage} />} />
+            <Route path="productivity" element={<SummaryReportWrapper component={ProductivityReportPage} />} />
+            <Route path="detailed-salary" element={<SummaryReportWrapper component={DetailedSalaryAnalysisPage} />} />
+            <Route path="mill-production" element={<SummaryReportWrapper component={MillProductionReport} />} />
+            <Route path="detail-upah-bersih" element={<SummaryReportWrapper component={UpahBersihDetailPage} />} />
 
             {/* Development/Test Pages */}
             <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />
@@ -660,11 +668,15 @@ function AppInner() {
 const SummaryReportWrapper = ({ component: Component }) => {
   const { month, year, division } = useReport();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Existing pages have onBack prop. We can map it to navigate(-1) or navigate('/')
   const handleBack = () => navigate('/');
 
+  // Using location.pathname as key FORCES remount when navigating between DIFFERENT reports 
+  // that use the same wrapper, solving the 'stuck UI' bug
   return <Component
+    key={location.pathname}
     onBack={handleBack}
     initialMonth={month}
     initialYear={year}
