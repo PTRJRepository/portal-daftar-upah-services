@@ -922,6 +922,8 @@ export class SummaryService {
             const prevInsentif = prev.total_premi_insentif || 0;
             const currKinerja = curr.total_premi_kinerja || 0;
             const prevKinerja = prev.total_premi_kinerja || 0;
+            const currKoreksi = curr.total_koreksi || 0;
+            const prevKoreksi = prev.total_koreksi || 0;
 
             premiOtRows.push({
                 division_code: curr.division_code,
@@ -945,7 +947,10 @@ export class SummaryService {
                 diff_insentif: currInsentif - prevInsentif,
                 curr_kinerja: currKinerja,
                 prev_kinerja: prevKinerja,
-                diff_kinerja: currKinerja - prevKinerja
+                diff_kinerja: currKinerja - prevKinerja,
+                curr_koreksi: currKoreksi,
+                prev_koreksi: prevKoreksi,
+                diff_koreksi: currKoreksi - prevKoreksi
             });
         }
 
@@ -1005,7 +1010,10 @@ export class SummaryService {
                 diff_insentif: sum(premiOtRows, 'curr_insentif') - sum(premiOtRows, 'prev_insentif'),
                 curr_kinerja: sum(premiOtRows, 'curr_kinerja'),
                 prev_kinerja: sum(premiOtRows, 'prev_kinerja'),
-                diff_kinerja: sum(premiOtRows, 'curr_kinerja') - sum(premiOtRows, 'prev_kinerja')
+                diff_kinerja: sum(premiOtRows, 'curr_kinerja') - sum(premiOtRows, 'prev_kinerja'),
+                curr_koreksi: sum(premiOtRows, 'curr_koreksi'),
+                prev_koreksi: sum(premiOtRows, 'prev_koreksi'),
+                diff_koreksi: sum(premiOtRows, 'curr_koreksi') - sum(premiOtRows, 'prev_koreksi')
             }
         };
     }
