@@ -189,7 +189,7 @@ export default function PayslipCard({ data, month, year }) {
                             <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
                         </div>
                     ))}
-                    <div className="payslip-item" style={{ borderTop: '1px solid #eee', marginTop: '2px', paddingTop: '2px' }}>
+                    <div className="payslip-item" style={{ borderTop: '1px solid #000', marginTop: '2px', paddingTop: '2px' }}>
                         <span className="payslip-item-label" style={{ fontWeight: 'bold' }}>Total Gaji Pokok</span>
                         <span className="payslip-item-value" style={{ fontWeight: 'bold' }}>{formatCurrency(gajiPokok)}</span>
                     </div>
@@ -258,14 +258,14 @@ export default function PayslipCard({ data, month, year }) {
                                             <span className="payslip-item-label">{item.isCredit ? '+' : '-'} {item.label}</span>
                                             <span
                                                 className={`payslip-item-value ${item.isCredit ? '' : 'payslip-negative'}`}
-                                                style={item.isCredit ? { color: '#059669', fontWeight: 'bold' } : {}}
+                                                style={{ fontWeight: item.isCredit ? 'bold' : undefined }}
                                             >
                                                 {formatCurrency(item.value)}
                                             </span>
                                         </div>
                                         {/* Display Tax Calculation Breakdown below the PPh21 row */}
                                         {isTax && (payroll.status_ptkp || payroll.tarif_pajak_ter > 0) && (
-                                            <div className="payslip-item payslip-item-indent payslip-tax-breakdown" style={{ fontSize: '0.7em', color: '#666', marginTop: '-2px', fontStyle: 'italic' }}>
+                                            <div className="payslip-item payslip-item-indent payslip-tax-breakdown">
                                                 <span className="payslip-item-label">
                                                     (Bruto: Rp{formatCurrency(payroll.penghasilan_bruto)} • PTKP: {payroll.status_ptkp || '-'} • TER: {payroll.tarif_pajak_ter || 0}%)
                                                 </span>

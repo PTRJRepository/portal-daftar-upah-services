@@ -562,8 +562,34 @@ export default function CustomPayrollTable({
                 gangTotal.gang_code = gCode;
                 gangTotal.nama = `TOTAL GANG ${gCode}`;
                 gangTotal.emp_code = `${employees.length} Kary.`;
-                processedRows.push(gangTotal);
-            });
+                // Store data in localStorage for PayslipPrintPage optimization
+            if (processedRows.length > 0) {
+                const storageKey = `payroll_cache_${division}_${month}_${year}`;
+                const employeeDataMap = {};
+                
+                // Only store employee rows, indexed by emp_code/nik
+                processedRows.forEach(row => {
+                    if (row.type === 'employee') {
+                        const code = (row.emp_code || row.nik || '').toString().toUpperCase();
+                        if (code) employeeDataMap[code] = row;
+                    }
+                });
+                
+                // Keep only the last 3 caches to save space
+                try {
+                    const keys = Object.keys(localStorage).filter(k => k.startsWith('payroll_cache_'));
+                    if (keys.length > 3) {
+                        keys.sort().slice(0, keys.length - 3).forEach(k => localStorage.removeItem(k));
+                    }
+                    localStorage.setItem(storageKey, JSON.stringify({
+                        timestamp: Date.now(),
+                        data: employeeDataMap
+                    }));
+                } catch (e) {
+                    console.warn('[CustomPayrollTable] Failed to cache data to localStorage:', e);
+                }
+            }
+
             setRows(processedRows);
 
             // Determine which dynamic premi fields have values in current gang

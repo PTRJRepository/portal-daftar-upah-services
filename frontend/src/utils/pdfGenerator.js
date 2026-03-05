@@ -20,17 +20,17 @@ export const generatePDF = async (element, filename = 'report.pdf', options = {}
         margin: [0, 0, 0, 0], // Margins handled by CSS
         filename: filename,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-            scale: 2, 
-            useCORS: true, 
+        html2canvas: {
+            scale: 2,
+            useCORS: true,
             logging: false,
             letterRendering: true,
             allowTaint: true
         },
-        jsPDF: { 
-            unit: 'mm', 
-            format: 'a4', 
-            orientation: 'landscape',
+        jsPDF: {
+            unit: 'mm',
+            format: 'a4',
+            orientation: 'portrait',
             compress: true
         },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
@@ -40,31 +40,31 @@ export const generatePDF = async (element, filename = 'report.pdf', options = {}
 
     // Clone the element to avoid modifying the live UI
     const clone = element.cloneNode(true);
-    
+
     // Create a temporary container
     const container = document.createElement('div');
     container.style.position = 'fixed';
     container.style.left = '0';
     container.style.top = '0';
-    container.style.width = config.jsPDF.orientation === 'landscape' ? '297mm' : '210mm';
+    container.style.width = '210mm';
     container.style.zIndex = '-9999';
     container.style.backgroundColor = 'white';
     container.style.opacity = '0'; // Hide from user but keep 'visible' for capture
     container.style.pointerEvents = 'none';
-    
+
     // Apply export class to the clone
     clone.classList.add('pdf-export-active');
-    
+
     container.appendChild(clone);
     document.body.appendChild(container);
 
     try {
         // Wait a small amount for styles to settle
         await new Promise(resolve => setTimeout(resolve, 300));
-        
+
         // Execute capture on the clone
         await html2pdf().set(config).from(clone).save();
-        
+
         console.log('[PDF] Generation success');
     } catch (err) {
         console.error('[PDF] Generation error:', err);

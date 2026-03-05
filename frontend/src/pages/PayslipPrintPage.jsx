@@ -43,6 +43,64 @@ export default function PayslipPrintPage() {
             setError('');
 
             try {
+                // OPTIMIZATION: Check if data exists in localStorage from CustomPayrollTable
+                const storageKey = `payroll_cache_${division}_${month}_${year}`;
+                const cached = localStorage.getItem(storageKey);
+
+                if (cached) {
+                    const { data: employeeDataMap, timestamp } = JSON.parse(cached);
+                    // Check if cache is fresh (less than 15 minutes old)
+                    const isFresh = Date.now() - timestamp < 15 * 60 * 1000;
+
+                    if (isFresh) {
+                        const localResults = [];
+                        const missingInCache = [];
+
+                        empCodes.forEach(code => {
+                            const upperCode = code.toUpperCase();
+                            const row = employeeDataMap[upperCode];
+                            if (row) {
+                                // Transform row into the format PayslipCard expects
+                                localResults.push({
+                                    emp_code: row.emp_code || row.nik,
+                                    month,
+                                    year,
+                                    employee: {
+                                        nama: row.nama,
+                                        jabatan: row.jabatan_estate || row.task_desc,
+                                        gang_code: row.gang_code
+                                    },
+                                    attendance: {
+                                        summary: {
+                                            total_hadir: row.hari_kerja || row.kehadiran || 0,
+                                            cuti_tahunan: row.cuti_tahunan_hari || 0,
+                                            cuti_sakit: row.cuti_sakit_haid_hari || 0,
+                                            cuti_minggu: row.cuti_minggu_hari || 0,
+                                            libur: row.cuti_nasional_hari || 0,
+                                            alpa: row.alpa || 0
+                                        }
+                                    },
+                                    payroll_data: row
+                                });
+                            } else {
+                                missingInCache.push(code);
+                            }
+                        });
+
+                        // If everything was in cache, we're done!
+                        if (missingInCache.length === 0) {
+                            console.log('[PayslipPrintPage] Using 100% cached data from localStorage');
+                            setPayslipData(localResults);
+                            setLoading(false);
+                            return;
+                        }
+
+                        // If some were missing, we could potentially fetch only those, 
+                        // but for simplicity, if cache is incomplete we just proceed to batch fetch
+                    }
+                }
+
+                console.log('[PayslipPrintPage] Fetching data from API...');
                 const result = await getBatchEmployeeCheckroll(token, empCodes, month, year);
 
                 if (result.success) {
@@ -68,11 +126,11 @@ export default function PayslipPrintPage() {
 
     const handleSaveHistory = async () => {
         if (!token) return;
-        
+
         setSaving(true);
         setError('');
         setSuccessMessage('');
-        
+
         try {
             const result = await savePayslipHistory(token, month, year, division);
             if (result.success) {
@@ -95,8 +153,8 @@ export default function PayslipPrintPage() {
         try {
             const filename = `Slip_Gaji_${division || 'Batch'}_${getMonthName(month)}_${year}.pdf`;
             await generatePDF(printRef.current, filename, {
-                jsPDF: { orientation: 'landscape' }, // Diubah kembali ke landscape
-                margin: [0, 0, 0, 0] // Margins sudah diatur di CSS
+                jsPDF: { orientation: 'portrait' },
+                margin: [0, 0, 0, 0]
             });
         } catch (err) {
             console.error('PDF Export error:', err);
@@ -190,21 +248,21 @@ export default function PayslipPrintPage() {
                     <button className="payslip-preview-btn" onClick={handleBack}>
                         <ArrowLeft size={16} /> Kembali
                     </button>
-                    <button 
-                        className="payslip-preview-btn" 
+                    <button
+                        className="payslip-preview-btn"
                         onClick={handleSaveHistory}
                         disabled={saving}
                         style={successMessage ? { borderColor: '#059669', color: '#059669' } : {}}
                     >
-                        {saving ? <RefreshCw size={16} className="animate-spin" /> : <Database size={16} />} 
+                        {saving ? <RefreshCw size={16} className="animate-spin" /> : <Database size={16} />}
                         {saving ? 'Menyimpan...' : 'Simpan ke History'}
                     </button>
-                    <button 
-                        className="payslip-preview-btn" 
+                    <button
+                        className="payslip-preview-btn"
                         onClick={handleExportPDF}
                         disabled={exporting}
                     >
-                        {exporting ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />} 
+                        {exporting ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />}
                         {exporting ? 'Memproses...' : 'Simpan PDF'}
                     </button>
                     <button className="payslip-preview-btn payslip-preview-btn-primary" onClick={handlePrint}>
@@ -216,8 +274,8 @@ export default function PayslipPrintPage() {
             {/* Print Pages */}
             <div className="payslip-print-container" ref={printRef}>
                 {payslipChunks.map((chunk, chunkIndex) => (
-                    <div 
-                        key={chunkIndex} 
+                    <div
+                        key={chunkIndex}
                         className="payslip-a4-page"
                         style={chunkIndex === payslipChunks.length - 1 ? { pageBreakAfter: 'auto' } : {}}
                     >
@@ -230,10 +288,7 @@ export default function PayslipPrintPage() {
                                     year={year}
                                 />
                             ))}
-                            {/* Empty placeholders to maintain grid if less than 4 */}
-                            {chunk.length < 4 && Array.from({ length: 4 - chunk.length }).map((_, i) => (
-                                <div key={`empty-${i}`} className="payslip-card" style={{ border: 'none', visibility: 'hidden' }}></div>
-                            ))}
+                            {/* No empty placeholders - grid handles incomplete pages */}
                         </div>
                     </div>
                 ))}
@@ -242,7 +297,7 @@ export default function PayslipPrintPage() {
             {/* Print Instructions - Hidden when printing */}
             <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }} className="no-print">
                 <p style={{ marginBottom: '0.5rem' }}>
-                    💡 <strong>Tips Print:</strong> Gunakan pengaturan <strong>Landscape (Mendatar)</strong> di dialog print browser Anda agar 4 slip muat dalam 1 lembar A4.
+                    💡 <strong>Tips Print:</strong> Gunakan pengaturan <strong>Portrait (Tegak)</strong> di dialog print browser Anda agar 4 slip muat dalam 1 lembar A4.
                 </p>
                 <p style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
                     Pastikan Skala diatur ke <strong>Default (100%)</strong>.
