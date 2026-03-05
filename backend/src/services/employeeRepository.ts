@@ -22,6 +22,9 @@ export interface Employee {
     phone?: string;
     upah_dasar?: number;
     actual_nik?: string; // Expose permanent ICNo for history linking
+    religion?: string;
+    status?: string;
+    employee_type?: string;
 }
 
 // Division to GangCode prefix mapping
@@ -65,8 +68,10 @@ export class EmployeeRepository {
         gangCode?: string;
         locCode?: string;
         division?: string;
+        religion?: string;
+        status?: string;
     } = {}): Promise<Employee[]> {
-        const { skip = 0, limit = 100, gangCode, locCode, division } = options;
+        const { skip = 0, limit = 100, gangCode, locCode, division, religion, status } = options;
 
         try {
             const gc = gangCode?.trim().toUpperCase() || null;
@@ -93,7 +98,10 @@ export class EmployeeRepository {
                         e.Gender AS jenis_kelamin,
                         e.LocCode AS loc_code,
                         g.GangCode AS gang_code,
-                        p.PayRate as upah_dasar
+                        p.PayRate as upah_dasar,
+                        e.Religion AS religion,
+                        e.Status AS status,
+                        e.HREmpType AS employee_type
                     FROM HR_EMPLOYEE e
                     JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                     LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
@@ -108,7 +116,10 @@ export class EmployeeRepository {
                     jenis_kelamin: mapGender(r.jenis_kelamin),
                     loc_code: r.loc_code?.trim() || "",
                     gang_code: r.gang_code?.trim() || "",
-                    upah_dasar: r.upah_dasar || 0
+                    upah_dasar: r.upah_dasar || 0,
+                    religion: r.religion?.trim() || "",
+                    status: r.status?.trim() || "",
+                    employee_type: r.employee_type?.trim() || ""
                 }));
             } else {
                 // Specific gang
@@ -119,7 +130,10 @@ export class EmployeeRepository {
                         e.Gender AS jenis_kelamin,
                         e.LocCode AS loc_code,
                         g.GangCode AS gang_code,
-                        p.PayRate as upah_dasar
+                        p.PayRate as upah_dasar,
+                        e.Religion AS religion,
+                        e.Status AS status,
+                        e.HREmpType AS employee_type
                     FROM HR_EMPLOYEE e
                     JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                     LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
@@ -133,7 +147,10 @@ export class EmployeeRepository {
                     jenis_kelamin: mapGender(r.jenis_kelamin),
                     loc_code: r.loc_code?.trim() || "",
                     gang_code: r.gang_code?.trim() || gc || "",
-                    upah_dasar: r.upah_dasar || 0
+                    upah_dasar: r.upah_dasar || 0,
+                    religion: r.religion?.trim() || "",
+                    status: r.status?.trim() || "",
+                    employee_type: r.employee_type?.trim() || ""
                 }));
             }
 
@@ -141,6 +158,18 @@ export class EmployeeRepository {
             if (locCode) {
                 const lcClean = locCode.trim().toUpperCase();
                 employees = employees.filter(e => e.loc_code.toUpperCase() === lcClean);
+            }
+
+            // Apply religion filter if specified
+            if (religion) {
+                const relClean = religion.trim().toUpperCase();
+                employees = employees.filter(e => (e.religion || '').toUpperCase() === relClean);
+            }
+
+            // Apply status filter if specified
+            if (status) {
+                const statClean = status.trim().toUpperCase();
+                employees = employees.filter(e => (e.status || '').toUpperCase() === statClean);
             }
 
             // Apply pagination
@@ -245,7 +274,10 @@ export class EmployeeRepository {
                     e.EmpName AS nama,
                     e.Gender AS jenis_kelamin,
                     e.LocCode AS loc_code,
-                    g.GangCode AS gang_code
+                    g.GangCode AS gang_code,
+                    e.Religion AS religion,
+                    e.Status AS status,
+                    e.HREmpType AS employee_type
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                 WHERE ${whereClause}
@@ -259,10 +291,58 @@ export class EmployeeRepository {
                 nama: r.nama?.trim() || "",
                 jenis_kelamin: mapGender(r.jenis_kelamin),
                 loc_code: r.loc_code?.trim() || "",
-                gang_code: r.gang_code?.trim() || ""
+                gang_code: r.gang_code?.trim() || "",
+                religion: r.religion?.trim() || "",
+                status: r.status?.trim() || "",
+                employee_type: r.employee_type?.trim() || ""
             }));
         } catch (e) {
             console.error("[EmployeeRepository] search failed:", e);
+            return [];
+        }
+    }
+    /**
+     * Get available religions for filter dropdown
+     */
+    public async getAvailableReligions(): Promise<string[]> {
+        const cacheKey = "available_religions";
+        const cached = cacheService.get<string[]>(cacheKey);
+        if (cached) return cached;
+
+        try {
+            const rows = await this.db.query<{ Religion: string }>(`
+                SELECT DISTINCT Religion FROM HR_EMPLOYEE
+                WHERE Religion IS NOT NULL AND RTRIM(Religion) != ''
+                ORDER BY Religion
+            `);
+            const religions = rows.map(r => r.Religion?.trim()).filter(Boolean) as string[];
+            cacheService.set(cacheKey, religions, 600);
+            return religions;
+        } catch (e) {
+            console.error("[EmployeeRepository] getAvailableReligions failed:", e);
+            return [];
+        }
+    }
+
+    /**
+     * Get available statuses for filter dropdown
+     */
+    public async getAvailableStatuses(): Promise<string[]> {
+        const cacheKey = "available_statuses";
+        const cached = cacheService.get<string[]>(cacheKey);
+        if (cached) return cached;
+
+        try {
+            const rows = await this.db.query<{ Status: string }>(`
+                SELECT DISTINCT Status FROM HR_EMPLOYEE
+                WHERE Status IS NOT NULL AND RTRIM(Status) != ''
+                ORDER BY Status
+            `);
+            const statuses = rows.map(r => r.Status?.trim()).filter(Boolean) as string[];
+            cacheService.set(cacheKey, statuses, 600);
+            return statuses;
+        } catch (e) {
+            console.error("[EmployeeRepository] getAvailableStatuses failed:", e);
             return [];
         }
     }

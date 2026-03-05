@@ -17,6 +17,8 @@ export default function Employees({ token }) {
     { field: 'actual_nik', headerName: 'NIK (KTP)' },
     { field: 'nama', headerName: 'Nama' },
     { field: 'jenis_kelamin', headerName: 'Jenis Kelamin' },
+    { field: 'religion', headerName: 'Agama' },
+    { field: 'status', headerName: 'Status' },
     { field: 'loc_code', headerName: 'Lokasi' },
     { field: 'gang_code', headerName: 'Gang' },
     { field: 'gaji_pokok', headerName: 'Gaji Pokok', valueFormatter: currencyFormatter }

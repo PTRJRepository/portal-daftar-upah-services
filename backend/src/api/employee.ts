@@ -37,25 +37,29 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     .get("/list", async ({ query, currentUser }) => {
         let division = query.division || undefined;
         let gangCode = query.gang_code || undefined;
+        const religion = query.religion || undefined;
+        const status = query.status || undefined;
 
         // Strictly lock division for Kerani
         if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
             division = currentUser.divisions[0];
-            // If they pass a gang not starting with their division prefix, maybe nullify gangCode or just let the division filter handle it.
-            // EmployeeRepository will naturally restrict if both are passed, but division filter takes precedence if gangCode='ALL'
         }
 
         const employees = await employeeRepository.list({
             gangCode: gangCode,
             division: division,
+            religion: religion,
+            status: status,
             skip: parseInt(query.skip || "0"),
-            limit: parseInt(query.limit || "100")
+            limit: parseInt(query.limit || "500")
         });
         return { count: employees.length, data: employees };
     }, {
         query: t.Object({
             gang_code: t.Optional(t.String()),
             division: t.Optional(t.String()),
+            religion: t.Optional(t.String()),
+            status: t.Optional(t.String()),
             skip: t.Optional(t.String()),
             limit: t.Optional(t.String())
         })
@@ -85,6 +89,16 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
     .get("/available-gangs", async () => {
         const gangs = await employeeRepository.getAvailableGangs();
         return { count: gangs.length, gangs };
+    })
+    // --- Get Available Religions ---
+    .get("/available-religions", async () => {
+        const religions = await employeeRepository.getAvailableReligions();
+        return { count: religions.length, religions };
+    })
+    // --- Get Available Statuses ---
+    .get("/available-statuses", async () => {
+        const statuses = await employeeRepository.getAvailableStatuses();
+        return { count: statuses.length, statuses };
     })
 // --- Batch Checkroll Handler ---
 const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: string | number, yearStr: string | number, set: any) => {

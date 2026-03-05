@@ -7,7 +7,7 @@ import AgGridWrapper from '../components/common/AgGridWrapper';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
 
-async function searchEmployees(token, query, limit = 100) {
+async function searchEmployees(token, query, limit = 200) {
     if (!query || query.trim().length === 0) return [];
 
     try {
@@ -26,6 +26,60 @@ async function searchEmployees(token, query, limit = 100) {
     }
 }
 
+async function listEmployees(token, { division, religion, status, limit = 500 } = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (division) params.set('division', division);
+        if (religion) params.set('religion', religion);
+        if (status) params.set('status', status);
+        params.set('limit', String(limit));
+
+        const response = await fetch(`${API_BASE_URL}/payroll/employee/list?${params.toString()}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) throw new Error('Failed to list');
+        const json = await response.json();
+        return json.data || [];
+    } catch (err) {
+        console.error('Error listing employees:', err);
+        return [];
+    }
+}
+
+async function fetchAvailableReligions(token) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/payroll/employee/available-religions`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return [];
+        const json = await response.json();
+        return json.religions || [];
+    } catch (err) {
+        console.error('Error fetching religions:', err);
+        return [];
+    }
+}
+
+async function fetchAvailableStatuses(token) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/payroll/employee/available-statuses`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return [];
+        const json = await response.json();
+        return json.statuses || [];
+    } catch (err) {
+        console.error('Error fetching statuses:', err);
+        return [];
+    }
+}
+
+const DIVISIONS = [
+    'ALL', 'PG1A', 'PG1B', 'PG2A', 'PG2B', 'DME', 'ARA', 'ARB1', 'ARB2',
+    'INFRA', 'ARC', 'IJL', 'STF-OFFICE', 'SECURITY'
+];
+
 export default function EmployeeDirectoryPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
@@ -35,26 +89,70 @@ export default function EmployeeDirectoryPage() {
     const [results, setResults] = useState([]);
     const [hasSearched, setHasSearched] = useState(false);
 
+    // Filter states
+    const [filterDivision, setFilterDivision] = useState('ALL');
+    const [filterReligion, setFilterReligion] = useState('');
+    const [filterGender, setFilterGender] = useState('');
+    const [filterStatus, setFilterStatus] = useState('');
+
+    // Available filter options
+    const [availableReligions, setAvailableReligions] = useState([]);
+    const [availableStatuses, setAvailableStatuses] = useState([]);
+
+    // Load filter options on mount
+    useEffect(() => {
+        if (!token) return;
+        fetchAvailableReligions(token).then(setAvailableReligions);
+        fetchAvailableStatuses(token).then(setAvailableStatuses);
+    }, [token]);
+
     const handleSearch = useCallback(async (e) => {
         if (e) e.preventDefault();
-
-        if (!searchTerm || searchTerm.trim().length < 2) {
-            alert('Masukkan minimal 2 karakter (Nama atau NIK)');
-            return;
-        }
 
         setIsSearching(true);
         setHasSearched(true);
 
         try {
-            const data = await searchEmployees(token, searchTerm);
+            let data;
+
+            if (searchTerm && searchTerm.trim().length >= 2) {
+                // Text search mode
+                data = await searchEmployees(token, searchTerm);
+            } else {
+                // Filter-only mode — use list endpoint
+                data = await listEmployees(token, {
+                    division: filterDivision !== 'ALL' ? filterDivision : undefined,
+                    religion: filterReligion || undefined,
+                    status: filterStatus || undefined,
+                });
+            }
+
+            // Apply client-side gender filter (since backend doesn't have a gender param)
+            if (filterGender) {
+                data = data.filter(emp => emp.jenis_kelamin === filterGender);
+            }
+
+            // Apply client-side religion/status filter for search results (search endpoint doesn't filter these server-side)
+            if (searchTerm && searchTerm.trim().length >= 2) {
+                if (filterReligion) {
+                    data = data.filter(emp => (emp.religion || '').toUpperCase() === filterReligion.toUpperCase());
+                }
+                if (filterStatus) {
+                    data = data.filter(emp => (emp.status || '').toUpperCase() === filterStatus.toUpperCase());
+                }
+                if (filterDivision && filterDivision !== 'ALL') {
+                    // The search result has gang_code; use first letter(s) matching division prefix
+                    // This is approximate; the server already handles it for /search with division param
+                }
+            }
+
             setResults(data);
         } catch (error) {
             setResults([]);
         } finally {
             setIsSearching(false);
         }
-    }, [searchTerm, token]);
+    }, [searchTerm, token, filterDivision, filterReligion, filterGender, filterStatus]);
 
     // Auto-search on Enter key
     const handleKeyDown = (e) => {
@@ -84,9 +182,30 @@ export default function EmployeeDirectoryPage() {
         },
         { field: 'nik', headerName: 'Emp Code', width: 120 },
         { field: 'nama', headerName: 'Nama Karyawan', flex: 1, minWidth: 200 },
-        { field: 'jenis_kelamin', headerName: 'L/P', width: 80 },
-        { field: 'loc_code', headerName: 'Lokasi', width: 100 },
-        { field: 'gang_code', headerName: 'Gang', width: 100 },
+        { field: 'jenis_kelamin', headerName: 'L/P', width: 70 },
+        { field: 'religion', headerName: 'Agama', width: 100 },
+        {
+            field: 'status', headerName: 'Status', width: 90,
+            cellRenderer: params => {
+                if (!params.value) return '-';
+                const val = params.value.trim();
+                const isActive = val === '1' || val.toUpperCase() === 'ACTIVE' || val.toUpperCase() === 'A';
+                return (
+                    <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        backgroundColor: isActive ? '#dcfce7' : '#fee2e2',
+                        color: isActive ? '#166534' : '#991b1b'
+                    }}>
+                        {isActive ? 'Aktif' : 'Non-Aktif'}
+                    </span>
+                );
+            }
+        },
+        { field: 'loc_code', headerName: 'Lokasi', width: 90 },
+        { field: 'gang_code', headerName: 'Gang', width: 90 },
         {
             headerName: 'Aksi',
             width: 150,
@@ -115,64 +234,130 @@ export default function EmployeeDirectoryPage() {
         }
     ], []);
 
+    const selectStyle = {
+        padding: '8px 12px',
+        borderRadius: '6px',
+        border: '1px solid #cbd5e1',
+        fontSize: '0.9rem',
+        backgroundColor: 'white',
+        color: '#334155',
+        minWidth: '120px'
+    };
+
     return (
         <div style={{ padding: '2rem', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
 
-            <div style={{ marginBottom: '2rem' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
                 <h1 style={{ fontSize: '1.8rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.5rem' }}>
                     Employee Directory (HR)
                 </h1>
                 <p style={{ color: '#64748b' }}>
-                    Cari riwayat dan profil karyawan berdasarkan NIK KTP atau Nama.
+                    Cari riwayat dan profil karyawan berdasarkan NIK KTP atau Nama. Gunakan filter untuk mempersempit hasil.
                 </p>
             </div>
 
+            {/* Search + Filters */}
             <div style={{
                 backgroundColor: 'white',
-                padding: '1.5rem',
+                padding: '1.25rem 1.5rem',
                 borderRadius: '8px',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                marginBottom: '1.5rem',
-                display: 'flex',
-                gap: '1rem',
-                alignItems: 'center'
+                marginBottom: '1rem',
             }}>
-                <div style={{ flex: 1, position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: '12px', top: '10px', color: '#94a3b8' }}>
-                        🔍
-                    </span>
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Masukkan NIK KTP, Emp Code, atau Nama Karyawan..."
+                {/* Search bar row */}
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '12px', top: '10px', color: '#94a3b8' }}>
+                            🔍
+                        </span>
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Masukkan NIK KTP, Emp Code, atau Nama Karyawan... (kosongkan untuk filter saja)"
+                            style={{
+                                width: '100%',
+                                padding: '10px 10px 10px 36px',
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '1rem'
+                            }}
+                        />
+                    </div>
+                    <button
+                        onClick={handleSearch}
+                        disabled={isSearching}
                         style={{
-                            width: '100%',
-                            padding: '10px 10px 10px 36px',
+                            padding: '10px 24px',
+                            backgroundColor: '#0f172a',
+                            color: 'white',
+                            border: 'none',
                             borderRadius: '6px',
-                            border: '1px solid #cbd5e1',
-                            fontSize: '1rem'
+                            cursor: isSearching ? 'not-allowed' : 'pointer',
+                            fontWeight: '600',
+                            fontSize: '1rem',
+                            minWidth: '120px'
                         }}
-                    />
+                    >
+                        {isSearching ? 'Mencari...' : 'Cari / Filter'}
+                    </button>
                 </div>
-                <button
-                    onClick={handleSearch}
-                    disabled={isSearching}
-                    style={{
-                        padding: '10px 24px',
-                        backgroundColor: '#0f172a',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: isSearching ? 'not-allowed' : 'pointer',
-                        fontWeight: '600',
-                        fontSize: '1rem',
-                        minWidth: '120px'
-                    }}
-                >
-                    {isSearching ? 'Mencari...' : 'Cari Data'}
-                </button>
+
+                {/* Filter row */}
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#64748b', fontWeight: '600', fontSize: '0.85rem', marginRight: '0.25rem' }}>
+                        Filter:
+                    </span>
+
+                    {/* Division Filter */}
+                    <select
+                        value={filterDivision}
+                        onChange={(e) => setFilterDivision(e.target.value)}
+                        style={selectStyle}
+                    >
+                        {DIVISIONS.map(d => (
+                            <option key={d} value={d}>{d === 'ALL' ? 'Semua Divisi' : d}</option>
+                        ))}
+                    </select>
+
+                    {/* Religion Filter */}
+                    <select
+                        value={filterReligion}
+                        onChange={(e) => setFilterReligion(e.target.value)}
+                        style={selectStyle}
+                    >
+                        <option value="">Semua Agama</option>
+                        {availableReligions.map(r => (
+                            <option key={r} value={r}>{r}</option>
+                        ))}
+                    </select>
+
+                    {/* Gender Filter */}
+                    <select
+                        value={filterGender}
+                        onChange={(e) => setFilterGender(e.target.value)}
+                        style={selectStyle}
+                    >
+                        <option value="">Semua Jenis Kelamin</option>
+                        <option value="L">Laki-laki (L)</option>
+                        <option value="P">Perempuan (P)</option>
+                    </select>
+
+                    {/* Status Filter */}
+                    <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        style={selectStyle}
+                    >
+                        <option value="">Semua Status</option>
+                        {availableStatuses.map(s => {
+                            const isActive = s === '1' || s.toUpperCase() === 'ACTIVE' || s.toUpperCase() === 'A';
+                            const label = isActive ? `Aktif (${s})` : `Non-Aktif (${s})`;
+                            return <option key={s} value={s}>{label}</option>;
+                        })}
+                    </select>
+                </div>
             </div>
 
             <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -194,7 +379,7 @@ export default function EmployeeDirectoryPage() {
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
                                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
                                 <h3>Data tidak ditemukan</h3>
-                                <p>Coba gunakan kata kunci pencarian yang lain.</p>
+                                <p>Coba gunakan kata kunci pencarian yang lain atau ubah filter.</p>
                             </div>
                         )}
                     </>
@@ -202,7 +387,7 @@ export default function EmployeeDirectoryPage() {
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
                         <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👥</div>
                         <h3>Mulai Pencarian</h3>
-                        <p>Ketikkan nama atau NIK di kolom pencarian di atas.</p>
+                        <p>Ketikkan nama atau NIK, atau klik "Cari / Filter" dengan filter yang sudah diatur.</p>
                     </div>
                 )}
             </div>

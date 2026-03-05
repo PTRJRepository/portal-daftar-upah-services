@@ -99,35 +99,36 @@ export const generateMonthlyTaxExcel = async (
     // Column layout (dynamic based on premi count)
     // ─────────────────────────────────────────────────────────
     // Fixed columns:
-    //  1: NO, 2: NAMA, 3: NAMA ORANG TUA, 4: NIK, 5: L/P, 6: STAT, 7: GANG, 8: KAT TER     → IDENTITAS
-    //  9: HK, 10: UPAH DASAR, 11: GAJI STANDAR, 12: GP IDEAL, 13: GP AKTUAL, 14: KOREKSI → STRUKTUR UPAH
-    //  15: BERAS, 16: JABATAN, 17: SERVICE TIME ALLOW (Lembur)  → TUNJANGAN
-    // Dynamic premi cols (18 .. 17+N) → URAIAN PREMI
-    //  17+N+1: TOTAL PREMI
+    //  1: NO, 2: ID KARYAWAN, 3: NAMA, 4: NAMA ORANG TUA, 5: NIK, 6: L/P, 7: STAT, 8: GANG, 9: KAT TER     → IDENTITAS
+    //  10: HK, 11: UPAH DASAR, 12: GAJI STANDAR, 13: GP IDEAL, 14: GP AKTUAL, 15: KOREKSI → STRUKTUR UPAH
+    //  16: BERAS, 17: JABATAN, 18: SERVICE TIME ALLOW (Lembur)  → TUNJANGAN
+    // Dynamic premi cols (19 .. 18+N) → URAIAN PREMI
+    //  18+N+1: TOTAL PREMI
     // Fixed after premi:
     //  POT KOREKSI, THR, EXGRATIA, BPJS KES 4%, ASTEK 0.84%, UPAH KOTOR, PENGHASILAN BRUTO, TARIF TER, PPH21
 
     const COL_NO = 1;
-    const COL_NAMA = 2;
-    const COL_PARENT_NAME = 3;
-    const COL_NIK = 4;
-    const COL_GENDER = 5;
-    const COL_STAT = 6;
-    const COL_GANG = 7;
-    const COL_KAT = 8;
-    const COL_HK = 9;
-    const COL_UPAH_DASAR = 10;
-    const COL_GAJI_STANDAR = 11;
-    const COL_GP_IDEAL = 12;
-    const COL_GP_AKTUAL = 13;
-    const COL_KOREKSI = 14;
-    const COL_BERAS = 15;
-    const COL_JABATAN = 16;
-    const COL_SERVICE_TIME = 17; // Service Time Allow = Lembur value
+    const COL_EMP_CODE = 2;
+    const COL_NAMA = 3;
+    const COL_PARENT_NAME = 4;
+    const COL_NIK = 5;
+    const COL_GENDER = 6;
+    const COL_STAT = 7;
+    const COL_GANG = 8;
+    const COL_KAT = 9;
+    const COL_HK = 10;
+    const COL_UPAH_DASAR = 11;
+    const COL_GAJI_STANDAR = 12;
+    const COL_GP_IDEAL = 13;
+    const COL_GP_AKTUAL = 14;
+    const COL_KOREKSI = 15;
+    const COL_BERAS = 16;
+    const COL_JABATAN = 17;
+    const COL_SERVICE_TIME = 18; // Service Time Allow = Lembur value
 
     // Dynamic premi columns
-    const COL_PREMI_START = 18;
-    const COL_PREMI_END = 17 + allPremiKeys.length;  // inclusive
+    const COL_PREMI_START = 19;
+    const COL_PREMI_END = 18 + allPremiKeys.length;  // inclusive
     const COL_TOTAL_PREMI = COL_PREMI_END + 1;
 
     // Fixed after premi
@@ -148,9 +149,9 @@ export const generateMonthlyTaxExcel = async (
     // Define column widths
     const colWidths: number[] = [];
     for (let i = 1; i <= TOTAL_COLS; i++) {
-        if (i <= 8) colWidths.push(i === 2 ? 25 : i === 3 ? 20 : i <= 8 ? 8 : 5);
-        else if (i <= 14) colWidths.push(15);
-        else if (i <= 17) colWidths.push(12);
+        if (i <= 9) colWidths.push(i === 2 ? 15 : i === 3 ? 25 : i === 4 ? 20 : i <= 9 ? 8 : 5);
+        else if (i <= 15) colWidths.push(15);
+        else if (i <= 18) colWidths.push(12);
         else if (i < COL_TOTAL_PREMI) colWidths.push(13); // premi columns
         else if (i === COL_TOTAL_PREMI) colWidths.push(15);
         else if (i === COL_POT_KOREKSI) colWidths.push(15);
@@ -229,6 +230,7 @@ export const generateMonthlyTaxExcel = async (
     // ─────────────────────────────────────────────────────────
     const subHeaders: { col: number; label: string; bg: string; fg: string }[] = [
         { col: COL_NO, label: 'NO', bg: '1E3A8A', fg: 'FFFFFF' },
+        { col: COL_EMP_CODE, label: 'ID KARYAWAN', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_NAMA, label: 'NAMA', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_PARENT_NAME, label: 'NAMA ORANG TUA', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_NIK, label: 'NIK', bg: '1E3A8A', fg: 'FFFFFF' },
@@ -282,6 +284,7 @@ export const generateMonthlyTaxExcel = async (
 
         // Identity
         row.getCell(COL_NO).value = emp.no || (currentRowIndex - DATA_START + 1);
+        row.getCell(COL_EMP_CODE).value = emp.emp_code || '';
         row.getCell(COL_NAMA).value = emp.emp_name;
         row.getCell(COL_PARENT_NAME).value = emp.parent_name || '';
         row.getCell(COL_NIK).value = emp.nik || '';
@@ -596,24 +599,25 @@ export const generateMonthlyTaxExcel = async (
     // --- Build dynamic column layout ---
     const STD_COL_NO = 1;
     const STD_COL_NAMA = 2;
-    const STD_COL_NIK = 3;
-    const STD_COL_NPWP = 4;
-    const STD_COL_ALAMAT = 5;
-    const STD_COL_JABATAN = 6;
-    const STD_COL_GENDER = 7;
-    const STD_COL_PTKP = 8;
-    const STD_COL_TER = 9;
+    const STD_COL_EMP_CODE = 3;
+    const STD_COL_NIK = 4;
+    const STD_COL_NPWP = 5;
+    const STD_COL_ALAMAT = 6;
+    const STD_COL_JABATAN = 7;
+    const STD_COL_GENDER = 8;
+    const STD_COL_PTKP = 9;
+    const STD_COL_TER = 10;
 
-    const STD_COL_GAJI_POKOK = 10;
-    const STD_COL_ASTEK = 11;
-    const STD_COL_BPJS_KES = 12;
-    const STD_COL_BERAS = 13;
-    const STD_COL_JAB = 14;
-    const STD_COL_SERVICE_TIME = 15;
-    const STD_COL_MK = 16;
+    const STD_COL_GAJI_POKOK = 11;
+    const STD_COL_ASTEK = 12;
+    const STD_COL_BPJS_KES = 13;
+    const STD_COL_BERAS = 14;
+    const STD_COL_JAB = 15;
+    const STD_COL_SERVICE_TIME = 16;
+    const STD_COL_MK = 17;
 
-    const STD_COL_PREMI_START = 17;
-    const STD_COL_PREMI_END = 16 + allPremiKeys.length;
+    const STD_COL_PREMI_START = 18;
+    const STD_COL_PREMI_END = 17 + allPremiKeys.length;
 
     const STD_COL_POT_KOR = STD_COL_PREMI_END + 1;
     const STD_COL_POT_ALPA = STD_COL_POT_KOR + 1;
@@ -628,6 +632,7 @@ export const generateMonthlyTaxExcel = async (
     const stdHeaders: { header: string; width: number; meta_key?: string }[] = [
         { header: 'NO.', width: 5 },
         { header: 'NAMA KARYAWAN', width: 28 },
+        { header: 'ID KARYAWAN', width: 15 },
         { header: 'N I K', width: 18 },
         { header: 'N P W P', width: 18 },
         { header: 'A L A M A T', width: 35 },
@@ -731,6 +736,7 @@ export const generateMonthlyTaxExcel = async (
 
         row.getCell(STD_COL_NO).value = i + 1;
         row.getCell(STD_COL_NAMA).value = emp.emp_name;
+        row.getCell(STD_COL_EMP_CODE).value = emp.emp_code || '';
         row.getCell(STD_COL_NIK).value = emp.nik;
         row.getCell(STD_COL_NPWP).value = emp.npwp || '';
         row.getCell(STD_COL_ALAMAT).value = emp.alamat || '';
