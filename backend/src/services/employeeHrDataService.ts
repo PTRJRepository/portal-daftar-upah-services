@@ -5,6 +5,8 @@ export interface EmployeeHrData {
     emp_code: string;
     nik_ktp: string;
     npwp?: string;
+    bank_acc_no?: string;
+    bank_code?: string;
     updated_at?: Date | string;
     updated_by?: string;
     version?: number;
@@ -37,15 +39,26 @@ export class EmployeeHrDataService {
                 {
                     sql: `
                         IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='employee_hr_data' AND TABLE_SCHEMA='dbo')
-                        CREATE TABLE dbo.employee_hr_data (
-                            id INT IDENTITY(1,1) PRIMARY KEY,
-                            emp_code VARCHAR(50) NOT NULL UNIQUE,
-                            nik_ktp VARCHAR(50) NULL,
-                            npwp VARCHAR(50) NULL,
-                            updated_at DATETIME DEFAULT GETDATE(),
-                            updated_by VARCHAR(100) NULL,
-                            version INT DEFAULT 1
-                        );
+                        BEGIN
+                            CREATE TABLE dbo.employee_hr_data (
+                                id INT IDENTITY(1,1) PRIMARY KEY,
+                                emp_code VARCHAR(50) NOT NULL UNIQUE,
+                                nik_ktp VARCHAR(50) NULL,
+                                npwp VARCHAR(50) NULL,
+                                bank_acc_no VARCHAR(50) NULL,
+                                bank_code VARCHAR(50) NULL,
+                                updated_at DATETIME DEFAULT GETDATE(),
+                                updated_by VARCHAR(100) NULL,
+                                version INT DEFAULT 1
+                            );
+                        END
+                        ELSE
+                        BEGIN
+                            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='employee_hr_data' AND COLUMN_NAME='bank_acc_no')
+                                ALTER TABLE dbo.employee_hr_data ADD bank_acc_no VARCHAR(50) NULL;
+                            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='employee_hr_data' AND COLUMN_NAME='bank_code')
+                                ALTER TABLE dbo.employee_hr_data ADD bank_code VARCHAR(50) NULL;
+                        END
                     `
                 },
                 {
@@ -93,12 +106,9 @@ export class EmployeeHrDataService {
         if (!empCodes || empCodes.length === 0) return new Map();
 
         try {
-            // Need to split into chunks if empCodes is too large, but for standard usage IN clause is fine
-            // Using parameterization for safety
             const cleanCodes = empCodes.map(c => c.trim()).filter(c => c.length > 0);
             if (cleanCodes.length === 0) return new Map();
 
-            // Maximum params limit in SQL Server is 2100, we should chunk if larger, but for UI it's usually < 1000
             const placeholders = cleanCodes.map(() => '?').join(',');
 
             const rows = await this.db.query<EmployeeHrData>(
@@ -119,7 +129,7 @@ export class EmployeeHrDataService {
     }
 
     /**
-     * Update HR Data field (e.g. nik_ktp) and insert history record
+     * Update HR Data field (e.g. nik_ktp, bank_acc_no) and insert history record
      */
     public async updateHrDataField(
         empCode: string,
@@ -141,7 +151,7 @@ export class EmployeeHrDataService {
                 newVersion = (existing.version || 1) + 1;
             }
 
-            // If value hasn't changed, don't upate
+            // If value hasn't changed, don't update
             if (oldValue === newValue) {
                 return true;
             }
@@ -169,15 +179,14 @@ export class EmployeeHrDataService {
                     { sql: historySql, params: [cleanEmpCode, fieldName, oldValue, newValue, username, newVersion] }
                 ]);
             } else {
-                // Insert new. Need to dynamically handle which field is being inserted
-                // Since this service specifically handles NIK now, let's map it safely
-                let nik_val = fieldName === 'nik_ktp' ? newValue : null;
-                let npwp_val = fieldName === 'npwp' ? newValue : null;
+                // Insert new record with just this one field populated
+                const fields = ['emp_code', 'updated_by', 'version', fieldName];
+                const values = [cleanEmpCode, username, 1, newValue];
+                const placeholders = values.map(() => '?').join(', ');
 
                 const insertSql = `
-                    INSERT INTO dbo.employee_hr_data 
-                    (emp_code, nik_ktp, npwp, updated_by, version)
-                    VALUES (?, ?, ?, ?, 1)
+                    INSERT INTO dbo.employee_hr_data (${fields.join(', ')})
+                    VALUES (${placeholders})
                 `;
 
                 const historySql = `
@@ -187,7 +196,7 @@ export class EmployeeHrDataService {
                 `;
 
                 return await this.db.transaction([
-                    { sql: insertSql, params: [cleanEmpCode, nik_val, npwp_val, username] },
+                    { sql: insertSql, params: values },
                     { sql: historySql, params: [cleanEmpCode, fieldName, oldValue, newValue, username] }
                 ]);
             }

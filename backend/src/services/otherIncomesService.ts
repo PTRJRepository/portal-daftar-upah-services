@@ -126,12 +126,23 @@ export class OtherIncomesService {
                 const hrMap = new Map<string, { join_date: string; emp_code: string; religion: string; sex: string }>();
                 if (allNiks.length > 0) {
                     const placeholders = allNiks.map(() => '?').join(',');
-                    const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string; AppJoinDate: any; AppJoinGrpDate: any; Religion: string; Gender: string }>(`
-                        SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, em.AppJoinDate, em.AppJoinGrpDate, e.Religion, e.Gender
+                    const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string; AppJoinDate: any; AppJoinGrpDate: any; Religion: string; Gender: string; BankAccNo: string; BankCode: string }>(`
+                        SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, em.AppJoinDate, em.AppJoinGrpDate, e.Religion, e.Gender, 
+                               RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode
                         FROM HR_EMPLOYEE e
                         LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                        LEFT JOIN HR_PAYROLL p ON e.EmpCode = p.EmpCode
                         WHERE RTRIM(e.NewICNo) IN (${placeholders}) OR RTRIM(e.EmpCode) IN (${placeholders})
                     `, [...allNiks, ...allNiks]);
+
+                    // Fetch overrides from extend_db_ptrj
+                    const extendDb = Database.getExtendedInstance();
+                    const overrideRows = await extendDb.query<{ emp_code: string; bank_acc_no: string; bank_code: string }>(
+                        `SELECT emp_code, bank_acc_no, bank_code FROM employee_hr_data WHERE emp_code IN (${placeholders})`,
+                        allNiks
+                    );
+                    const overrideMap = new Map<string, { bank_acc_no: string; bank_code: string }>();
+                    overrideRows.forEach(o => overrideMap.set(o.emp_code.trim().toUpperCase(), { bank_acc_no: o.bank_acc_no, bank_code: o.bank_code }));
 
                     const religionMap: Record<string, string> = {
                         'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
@@ -146,8 +157,16 @@ export class OtherIncomesService {
                         const mappedRel = religionMap[rawRel] || '01 Islam';
                         const sex = (r.Gender || '').trim().toUpperCase() === 'FEMALE' ? 'P' : 'L';
                         const joinDate = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate);
-                        if (r.NewICNo) hrMap.set(r.NewICNo.trim().toUpperCase(), { join_date: joinDate || '', emp_code: r.EmpCode, religion: mappedRel, sex });
-                        if (r.EmpCode) hrMap.set(r.EmpCode.trim().toUpperCase(), { join_date: joinDate || '', emp_code: r.EmpCode, religion: mappedRel, sex });
+                        
+                        // Override logic: prefer extend_db if exists
+                        const override = overrideMap.get(r.EmpCode.trim().toUpperCase());
+                        const bankInfo = { 
+                            bank_acc_no: override?.bank_acc_no || r.BankAccNo, 
+                            bank_code: override?.bank_code || r.BankCode 
+                        };
+
+                        if (r.NewICNo) hrMap.set(r.NewICNo.trim().toUpperCase(), { join_date: joinDate || '', emp_code: r.EmpCode, religion: mappedRel, sex, ...bankInfo });
+                        if (r.EmpCode) hrMap.set(r.EmpCode.trim().toUpperCase(), { join_date: joinDate || '', emp_code: r.EmpCode, religion: mappedRel, sex, ...bankInfo });
                     });
                 }
 
@@ -249,12 +268,23 @@ export class OtherIncomesService {
                             nameClause = ` OR RTRIM(e.EmpName) IN (${namePlaceholders})`;
                             queryParams.push(...nameSet);
                         }
-                        const hrRows = await mainDb.query<{ EmpCode: string; Religion: string; Status: string; AppJoinDate: any; AppJoinGrpDate: any; NewICNo: string; EmpName: string }>(`
-                            SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpName) as EmpName, e.Religion, e.Status, em.AppJoinDate, em.AppJoinGrpDate
+                        const hrRows = await mainDb.query<{ EmpCode: string; Religion: string; Status: string; AppJoinDate: any; AppJoinGrpDate: any; NewICNo: string; EmpName: string; BankAccNo: string; BankCode: string }>(`
+                            SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpName) as EmpName, e.Religion, e.Status, em.AppJoinDate, em.AppJoinGrpDate,
+                                   RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode
                             FROM HR_EMPLOYEE e
                             LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                            LEFT JOIN HR_PAYROLL p ON e.EmpCode = p.EmpCode
                             WHERE RTRIM(e.EmpCode) IN (${nikPlaceholders}) OR RTRIM(e.NewICNo) IN (${nikPlaceholders})${nameClause}
                         `, queryParams);
+
+                        // Fetch overrides from extend_db_ptrj
+                        const extendDb = Database.getExtendedInstance();
+                        const overrideRows = await extendDb.query<{ emp_code: string; bank_acc_no: string; bank_code: string }>(
+                            `SELECT emp_code, bank_acc_no, bank_code FROM employee_hr_data WHERE emp_code IN (${nikPlaceholders})`,
+                            nikSet
+                        );
+                        const overrideMap = new Map<string, { bank_acc_no: string; bank_code: string }>();
+                        overrideRows.forEach(o => overrideMap.set(o.emp_code.trim().toUpperCase(), { bank_acc_no: o.bank_acc_no, bank_code: o.bank_code }));
 
                         const religionMap: Record<string, string> = {
                             'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
@@ -264,15 +294,21 @@ export class OtherIncomesService {
                             '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu'
                         };
 
-                        const hrMap = new Map<string, { religion: string; status: string; join_date: string; emp_code: string }>();
+                        const hrMap = new Map<string, { religion: string; status: string; join_date: string; emp_code: string; bank_acc_no: string; bank_code: string }>();
                         hrRows.forEach(r => {
                             const rawRel = (r.Religion || '').trim().toUpperCase();
                             const joinDate = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate);
+                            
+                            // Override logic: prefer extend_db if exists
+                            const override = overrideMap.get(r.EmpCode.trim().toUpperCase());
+                            
                             const data = {
                                 religion: religionMap[rawRel] || '01 Islam',
                                 status: r.Status?.trim() || '',
                                 join_date: joinDate || '',
-                                emp_code: r.EmpCode?.trim() || ''
+                                emp_code: r.EmpCode?.trim() || '',
+                                bank_acc_no: override?.bank_acc_no || r.BankAccNo || '',
+                                bank_code: override?.bank_code || r.BankCode || ''
                             };
                             if (r.EmpCode) hrMap.set(r.EmpCode.trim().toUpperCase(), data);
                             if (r.NewICNo) hrMap.set(r.NewICNo.trim().toUpperCase(), data);
@@ -288,6 +324,8 @@ export class OtherIncomesService {
                                 (income as any).emp_status = hrData.status;
                                 if (!((income as any).join_date)) (income as any).join_date = hrData.join_date;
                                 if (!((income as any).emp_code)) (income as any).emp_code = hrData.emp_code;
+                                (income as any).bank_acc_no = hrData.bank_acc_no;
+                                (income as any).bank_code = hrData.bank_code;
                             }
                         }
                         // Debug: report unmatched

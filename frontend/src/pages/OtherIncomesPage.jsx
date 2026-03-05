@@ -21,8 +21,10 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
     const [error, setError] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [exportType, setExportType] = useState('TOTAL');
-    const [filterReligion, setFilterReligion] = useState('ALL');
+    const [filterReligion, setFilterReligion] = useState('01 Islam');
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+    const [printOrientation, setPrintOrientation] = useState('landscape');
+    const [reportView, setReportView] = useState('MAIN'); // 'MAIN' or 'BANK_LIST'
 
     const RELIGION_OPTIONS = [
         { value: 'ALL', label: 'Semua Agama' },
@@ -99,7 +101,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
         if (window.confirm(`Hapus data ${data.emp_name}?`)) {
             try {
                 await otherIncomesService.deleteIncome(data.id);
-                setRowData(prev => prev.filter(r => r.id !== data.id));
+                setRowData(prev => prev.filter(r.id !== data.id));
             } catch (err) { alert('Gagal menghapus.'); }
         }
     };
@@ -151,67 +153,182 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
 
     const formatCurrency = (val) => new Intl.NumberFormat('id-ID').format(val || 0);
 
-    const getReportHTML = (data) => {
+    const getReportHTML = (data, orientation = 'landscape') => {
         const mName = getMonthName(month);
+        const isPortrait = orientation === 'portrait';
+        
         return `
             <style>
-                body { font-family: 'Arial Narrow', Arial, sans-serif; padding: 15px; font-size: 9px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                th, td { border: 1px solid black; padding: 3px 2px; text-align: left; }
-                th { background-color: #e5e7eb; text-align: center; text-transform: uppercase; font-size: 8px; }
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+                
+                * { box-sizing: border-box; }
+                
+                body { 
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+                    padding: 0; 
+                    margin: 0;
+                    font-size: ${isPortrait ? '7.5px' : '9px'}; 
+                    background-color: white;
+                    color: #1e293b;
+                }
+                
+                .report-container {
+                    width: 100%;
+                    padding: 20px;
+                }
+                
+                .header-banner {
+                    text-align: center;
+                    margin-bottom: 25px;
+                    border-bottom: 3px double #1a365d;
+                    padding-bottom: 15px;
+                }
+                
+                .company-name { 
+                    font-size: 16px; 
+                    font-weight: 700; 
+                    color: #1a365d; 
+                    margin: 0;
+                    letter-spacing: 1px;
+                }
+                
+                .report-title { 
+                    font-size: 22px; 
+                    font-weight: 800; 
+                    margin: 5px 0; 
+                    color: #1a365d; 
+                    text-transform: uppercase;
+                }
+                
+                .meta-info {
+                    display: flex;
+                    justify-content: center;
+                    gap: 30px;
+                    margin-top: 10px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #475569;
+                }
+                
+                .meta-item b { color: #1e293b; }
+                
+                table { 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    table-layout: fixed;
+                    box-shadow: 0 0 0 1px #cbd5e1;
+                }
+                
+                th, td { 
+                    border: 1px solid #cbd5e1; 
+                    padding: 5px 3px; 
+                    text-align: left; 
+                    word-wrap: break-word;
+                    overflow: hidden;
+                }
+                
+                thead th { 
+                    background-color: #1a365d !important; 
+                    color: white !important; 
+                    text-align: center; 
+                    text-transform: uppercase; 
+                    font-size: ${isPortrait ? '6.5px' : '8px'}; 
+                    font-weight: 700;
+                    -webkit-print-color-adjust: exact;
+                }
+                
+                tbody tr:nth-child(even) { background-color: #f8fafc; }
+                
+                tfoot th, tfoot td { 
+                    background-color: #1a365d !important; 
+                    color: #fbbf24 !important; 
+                    font-weight: 800; 
+                    font-size: ${isPortrait ? '8px' : '10px'};
+                    -webkit-print-color-adjust: exact;
+                }
+
                 .text-right { text-align: right; }
                 .text-center { text-align: center; }
-                .header { text-align: center; margin-bottom: 15px; position: relative; }
-                .signature-section { margin-top: 30px; display: flex; justify-content: space-around; }
-                .sig-box { text-align: center; width: 180px; }
-                .sig-space { height: 45px; }
-                .proporsi-row { background-color: #fef9c3 !important; }
-                .proporsi-tag { color: #dc2626; font-weight: bold; font-size: 7px; border: 0.5px solid #dc2626; padding: 0 2px; border-radius: 2px; }
-                .emp-code { color: #6b7280; font-size: 7px; }
-                @media print { .no-print { display: none; } @page { size: landscape; margin: 10mm; } }
+                .font-bold { font-weight: 700; }
+                
+                .proporsi-row { background-color: #fffbeb !important; }
+                .proporsi-tag { 
+                    color: #dc2626; 
+                    font-weight: 700; 
+                    font-size: 7px; 
+                    background: #fee2e2;
+                    padding: 1px 4px; 
+                    border-radius: 3px; 
+                    display: inline-block;
+                    margin-top: 2px;
+                }
+                
+                .emp-code { color: #64748b; font-size: 0.9em; }
+                
+                .signature-section { 
+                    margin-top: 50px; 
+                    display: flex; 
+                    justify-content: space-between;
+                    page-break-inside: avoid;
+                }
+                
+                .sig-box { 
+                    text-align: center; 
+                    width: 25%;
+                }
+                
+                .sig-title { font-weight: 600; margin-bottom: 60px; color: #475569; }
+                .sig-name { font-weight: 700; border-bottom: 1.5px solid #1e293b; display: inline-block; width: 80%; color: #1e293b; }
+                .sig-role { font-size: 0.9em; margin-top: 5px; color: #64748b; }
+                
+                @media print { 
+                    .no-print { display: none; } 
+                    @page { size: ${orientation}; margin: 8mm; } 
+                    .report-container { padding: 0; }
+                }
             </style>
-            <div class="header">
-                <div style="text-align: left; position: absolute; top: 0; left: 0;">
-                    <h4 style="margin:0; text-decoration: underline;">PT. REBINMAS JAYA</h4>
+            <div class="report-container">
+                <div class="header-banner">
+                    <div class="company-name">PT REBINMAS JAYA</div>
+                    <div class="report-title">Daftar Tunjangan Hari Raya</div>
+                    <div class="meta-info">
+                        <div class="meta-item">DIVISI: <b>${division === 'ALL' ? 'SEMUA' : division}</b></div>
+                        <div class="meta-item">GANG: <b>${gang === 'ALL' ? 'SEMUA' : gang}</b></div>
+                        ${gangPrefix ? `<div class="meta-item">GROUP: <b>${gangPrefix}</b></div>` : ''}
+                        <div class="meta-item">PERIODE: <b>${mName} ${year}</b></div>
+                    </div>
                 </div>
-                <h3 style="margin:0; text-decoration: underline;">DAFTAR PEMBAYARAN THR</h3>
-                <div style="display: flex; justify-content: space-between; margin-top: 15px; font-weight: bold;">
-                    <span>Bulan: ${mName} ${year}</span>
-                    <span>Perkebunan : ${division === 'ALL' ? 'SEMUA DIVISI' : division}${gangPrefix ? ` (Group ${gangPrefix})` : ''}</span>
-                </div>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th rowspan="3" style="width:30px">NO.<br/>URUT</th>
-                        <th rowspan="3" style="width:25px">L/P</th>
-                        <th rowspan="3" style="width:140px">NAMA KARYAWAN</th>
-                        <th rowspan="3" style="width:55px">EMP<br/>CODE</th>
-                        <th rowspan="3" style="width:60px">AGAMA</th>
-                        <th rowspan="3" style="width:65px">TANGGAL<br/>MASUK KERJA</th>
-                        <th rowspan="3" style="width:25px">HK</th>
-                        <th rowspan="3">UPAH<br/>DASAR<br/>(Rp)</th>
-                        <th rowspan="3">UPAH<br/>POKOK<br/>(Rp)</th>
-                        <th colspan="2">TUNJANGAN / PREMI</th>
-                        <th colspan="2">MASA KERJA</th>
-                        <th rowspan="3">JUMLAH<br/>UPAH KOTOR<br/>(Rp)</th>
-                        <th rowspan="3">PAJAK<br/>THR<br/>(Rp)</th>
-                        <th rowspan="3">KELAYAKAN<br/>THR</th>
-                        <th rowspan="3">JUMLAH<br/>UPAH BERSIH<br/>(Rp)</th>
-                    </tr>
-                    <tr>
-                        <th colspan="2">BERAS</th>
-                        <th colspan="2">masa</th>
-                    </tr>
-                    <tr>
-                        <th>(Rp)/HK</th>
-                        <th>Jumlah (Rp)</th>
-                        <th>THN</th>
-                        <th>JUMLAH (Rp)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.map((row, index) => {
+                <table>
+                    <thead>
+                        <tr>
+                            <th rowspan="3" style="width: 4%">NO</th>
+                            <th rowspan="3" style="width: 3%">L/P</th>
+                            <th rowspan="3" style="width: 14%">NAMA KARYAWAN</th>
+                            <th rowspan="3" style="width: 7%">NIK /<br/>EMP CODE</th>
+                            <th rowspan="3" style="width: 7%">AGAMA</th>
+                            <th rowspan="3" style="width: 8%">TGL MASUK</th>
+                            <th rowspan="3" style="width: 3%">HK</th>
+                            <th rowspan="3" style="width: 7%">UPAH<br/>DASAR</th>
+                            <th rowspan="3" style="width: 7%">UPAH<br/>POKOK</th>
+                            <th colspan="2" style="width: 14%">BERAS</th>
+                            <th colspan="2" style="width: 10%">MASA KERJA</th>
+                            <th rowspan="3" style="width: 8%">UPAH<br/>KOTOR</th>
+                            <th rowspan="3" style="width: 8%">PAJAK<br/>THR</th>
+                            <th rowspan="3" style="width: 8%">UPAH<br/>BERSIH</th>
+                        </tr>
+                        <tr>
+                            <th colspan="2">TUNJANGAN</th>
+                            <th colspan="2">PENGABDIAN</th>
+                        </tr>
+                        <tr>
+                            <th>RATE/HK</th>
+                            <th>JUMLAH</th>
+                            <th>THN</th>
+                            <th>JUMLAH</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map((row, index) => {
             const vars = row.details?.variables || {};
             const joinDate = vars.JOIN_DATE || row.join_date;
             const masaKerjaThn = vars.MASA_KERJA_TAHUN || 0;
@@ -220,7 +337,6 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             const empCode = row.emp_code || vars.EMP_CODE || '-';
             const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
 
-            // Detect proportional employee
             let isProporsi = false;
             let proporsiLabel = '';
             if (masaKerjaThn === 0 && joinDate) {
@@ -229,47 +345,46 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 const monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
                 if (monthsDiff < 12 && monthsDiff >= 0) {
                     isProporsi = true;
-                    proporsiLabel = `<br/><span class="proporsi-tag">★ PROPORSI ${monthsDiff + 1}/12</span>`;
+                    proporsiLabel = `<br/><span class="proporsi-tag">PROPORSI ${monthsDiff + 1}/12</span>`;
                 }
             }
 
             return `
-                            <tr class="${isProporsi ? 'proporsi-row' : ''}">
-                                <td class="text-center">${index + 1}</td>
-                                <td class="text-center">${vars.SEX || 'L'}</td>
-                                <td>${row.emp_name}${proporsiLabel}</td>
-                                <td class="text-center emp-code">${empCode}</td>
-                                <td class="text-center">${agama}</td>
-                                <td class="text-center">${joinDate ? new Date(joinDate).toLocaleDateString('id-ID') : '-'}</td>
-                                <td class="text-center">30</td>
-                                <td class="text-right">${formatCurrency(vars.UPAH_DASAR)}</td>
-                                <td class="text-right">${formatCurrency(vars.GAJI_POKOK)}</td>
-                                <td class="text-right">${formatCurrency(vars.BERAS_RATE)}</td>
-                                <td class="text-right">${formatCurrency((vars.BERAS_RATE || 0) * 30)}</td>
-                                <td class="text-center">${masaKerjaThn}</td>
-                                <td class="text-right">${formatCurrency(vars.MASA_KERJA_JUMLAH)}</td>
-                                <td class="text-right"><strong>${formatCurrency(upahKotor)}</strong></td>
-                                <td class="text-right">${formatCurrency(pajak)}</td>
-                                <td class="text-right">${formatCurrency(upahKotor)}</td>
-                                <td class="text-right"><strong>${formatCurrency(upahKotor - pajak)}</strong></td>
-                            </tr>
-                        `;
+                                <tr class="${isProporsi ? 'proporsi-row' : ''}">
+                                    <td class="text-center">${index + 1}</td>
+                                    <td class="text-center">${vars.SEX || 'L'}</td>
+                                    <td><div style="font-weight:700">${row.emp_name}</div>${proporsiLabel}</td>
+                                    <td class="text-center emp-code">${row.nik}<br/>${empCode}</td>
+                                    <td class="text-center">${agama}</td>
+                                    <td class="text-center">${joinDate ? new Date(joinDate).toLocaleDateString('id-ID') : '-'}</td>
+                                    <td class="text-center">30</td>
+                                    <td class="text-right">${formatCurrency(vars.UPAH_DASAR)}</td>
+                                    <td class="text-right">${formatCurrency(vars.GAJI_POKOK)}</td>
+                                    <td class="text-right">${formatCurrency(vars.BERAS_RATE)}</td>
+                                    <td class="text-right">${formatCurrency((vars.BERAS_RATE || 0) * 30)}</td>
+                                    <td class="text-center">${masaKerjaThn}</td>
+                                    <td class="text-right">${formatCurrency(vars.MASA_KERJA_JUMLAH)}</td>
+                                    <td class="text-right" style="font-weight:700">${formatCurrency(upahKotor)}</td>
+                                    <td class="text-right">${formatCurrency(pajak)}</td>
+                                    <td class="text-right" style="font-weight:800; color:#1a365d">${formatCurrency(upahKotor - pajak)}</td>
+                                </tr>
+                            `;
         }).join('')}
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <th colspan="13" class="text-right">TOTAL KESELURUHAN</th>
-                        <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
-                        <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0))}</th>
-                        <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
-                        <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
-                    </tr>
-                </tfoot>
-            </table>
-            <div class="signature-section">
-                <div class="sig-box"><p>Dibuat Oleh,</p><div class="sig-space"></div><p>____________________</p><p>KTU / Kerani</p></div>
-                <div class="sig-box"><p>Diperiksa Oleh,</p><div class="sig-space"></div><p>____________________</p><p>Estate Manager</p></div>
-                <div class="sig-box"><p>Disetujui Oleh,</p><div class="sig-space"></div><p>____________________</p><p>General Manager</p></div>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th colspan="13" class="text-right">TOTAL KESELURUHAN (IDR)</th>
+                            <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
+                            <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0))}</th>
+                            <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
+                        </tr>
+                    </tfoot>
+                </table>
+                <div class="signature-section">
+                    <div class="sig-box"><p class="sig-title">Dibuat Oleh,</p><div class="sig-name"></div><p class="sig-role">KTU / Kerani</p></div>
+                    <div class="sig-box"><p class="sig-title">Diperiksa Oleh,</p><div class="sig-name"></div><p class="sig-role">Estate Manager</p></div>
+                    <div class="sig-box"><p class="sig-title">Disetujui Oleh,</p><div class="sig-name"></div><p class="sig-role">General Manager</p></div>
+                </div>
             </div>
         `;
     };
@@ -279,11 +394,85 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
         if (gangPrefix) printData = printData.filter(r => getAsistensi(r.gang_code) === gangPrefix);
         if (printData.length === 0) return alert('Tidak ada data.');
         const win = window.open('', '_blank');
-        win.document.write(`<html><head><title>Laporan THR</title></head><body>${getReportHTML(printData)}<div class="no-print" style="text-align:center;margin-top:20px"><button onclick="window.print()">Cetak Sekarang</button></div></body></html>`);
+        win.document.write(`<html><head><title>Laporan THR - ${division}</title></head><body>${getReportHTML(printData, printOrientation)}<script>window.onload = function() { window.print(); }</script></body></html>`);
         win.document.close();
     };
 
-    // ReportTable column definitions — matching the DAFTAR THR layout
+    const getBankListHTML = (data) => {
+        const mName = getMonthName(month);
+        return `
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+                body { font-family: 'Inter', sans-serif; padding: 20px; font-size: 10px; color: #334155; }
+                .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #334155; padding-bottom: 10px; }
+                .title { font-size: 16px; font-weight: 700; text-transform: uppercase; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #cbd5e1; padding: 8px 6px; text-align: left; }
+                thead th { background-color: #f1f5f9; font-weight: 700; text-align: center; }
+                .text-right { text-align: right; }
+                .text-center { text-align: center; }
+                tfoot th, tfoot td { background-color: #f8fafc; font-weight: 700; }
+                @media print { @page { size: portrait; margin: 10mm; } }
+            </style>
+            <div class="header">
+                <div class="title">LIST PEMBAYARAN BANK - THR</div>
+                <div style="margin-top:5px">Unit: ${division} | Periode: ${mName} ${year}</div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:40px">NO</th>
+                        <th style="width:100px">EMP CODE</th>
+                        <th>NAMA KARYAWAN</th>
+                        <th style="width:120px">NO REKENING</th>
+                        <th style="width:80px">BANK</th>
+                        <th style="width:110px">JUMLAH (Rp)</th>
+                        <th>KETERANGAN</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.map((row, index) => {
+            const upahKotor = row.amount || 0;
+            const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
+            const upahBersih = upahKotor - pajak;
+            const bankAcc = row.bank_acc_no || (row.details?.variables?.BANK_ACC_NO) || '-';
+            const bankName = row.bank_code || (row.details?.variables?.BANK_CODE) || 'BRI';
+            const empCode = row.emp_code || (row.details?.variables?.EMP_CODE) || row.nik;
+
+            return `
+                            <tr>
+                                <td class="text-center">${index + 1}</td>
+                                <td class="text-center">${empCode}</td>
+                                <td><strong>${row.emp_name}</strong></td>
+                                <td class="text-center">${bankAcc}</td>
+                                <td class="text-center">${bankName}</td>
+                                <td class="text-right">${formatCurrency(upahBersih)}</td>
+                                <td>Transfer THR ${mName} ${year}</td>
+                            </tr>
+                        `;
+        }).join('')}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="5" class="text-right">TOTAL PEMBAYARAN</th>
+                        <th class="text-right">${formatCurrency(data.reduce((a, c) => a + ((c.amount || 0) - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
+                        <th></th>
+                    </tr>
+                </tfoot>
+            </table>
+        `;
+    };
+
+    const handlePrintBankList = () => {
+        let printData = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
+        if (gangPrefix) printData = printData.filter(r => getAsistensi(r.gang_code) === gangPrefix);
+        if (printData.length === 0) return alert('Tidak ada data.');
+        const win = window.open('', '_blank');
+        win.document.write(`<html><head><title>Bank List THR - ${division}</title></head><body>${getBankListHTML(printData)}<script>window.onload = function() { window.print(); }</script></body></html>`);
+        win.document.close();
+    };
+
+    // ReportTable column definitions
     const reportColumns = useMemo(() => [
         { field: '_no', headers: ['NO.\nURUT', null, null], w: 60, className: 'text-center', sticky: true, left: 0, valueGetter: (row) => row._no },
         { field: 'sex', headers: ['L/P', null, null], w: 45, className: 'text-center', sticky: true, left: 60, valueGetter: (row) => row.details?.variables?.SEX || 'L' },
@@ -377,7 +566,34 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
 
     return (
         <div style={{ padding: '1.5rem', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.2rem', backgroundColor: 'white', padding: '1rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            {reportView === 'BANK_LIST' ? (
+                <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <button onClick={() => setReportView('MAIN')} style={{ padding: '0.4rem 0.8rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <X size={16} /> Kembali ke Laporan Utama
+                            </button>
+                            <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Preview List Pembayaran Bank</h2>
+                        </div>
+                        <button onClick={handlePrintBankList} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                            <Printer size={16} /> Cetak List Bank
+                        </button>
+                    </div>
+                    <div style={{ flex: 1, overflow: 'auto', padding: '2rem', backgroundColor: '#f3f4f6' }}>
+                        <div style={{ 
+                            backgroundColor: 'white', 
+                            padding: '3rem', 
+                            width: '900px',
+                            margin: '0 auto',
+                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                        }}
+                            dangerouslySetInnerHTML={{ __html: getBankListHTML(displayData) }}
+                        />
+                    </div>
+                </div>
+            ) : (
+                <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.2rem', backgroundColor: 'white', padding: '1rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <div>
                     <h1 style={{ margin: 0, fontSize: '1.4rem' }}>Laporan THR</h1>
                     <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Daftar Pembayaran Tunjangan Hari Raya</p>
@@ -420,8 +636,20 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     </div>
 
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <select 
+                            value={printOrientation} 
+                            onChange={e => setPrintOrientation(e.target.value)}
+                            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                            title="Print Orientation"
+                        >
+                            <option value="landscape">Landscape</option>
+                            <option value="portrait">Portrait</option>
+                        </select>
                         <button onClick={() => setIsPreviewModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}>
                             <Eye size={16} /> Preview
+                        </button>
+                        <button onClick={() => setReportView('BANK_LIST')} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                            <Printer size={16} /> Tampilkan List Bank
                         </button>
                         <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
                             <Printer size={16} /> Print PDF
@@ -458,23 +686,58 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             </div>
 
             {/* Modal Preview Web */}
-            {isPreviewModalOpen && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', padding: '2rem' }}>
-                    <div style={{ backgroundColor: 'white', flex: 1, borderRadius: '8px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        <div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h2 style={{ margin: 0 }}>Preview Laporan THR</h2>
-                            <div style={{ display: 'flex', gap: '1rem' }}>
-                                <button onClick={handlePrintReport} style={{ padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cetak PDF</button>
-                                <button onClick={() => setIsPreviewModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+            {isPreviewModalOpen && (() => {
+                let previewData = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
+                if (gangPrefix) previewData = previewData.filter(r => getAsistensi(r.gang_code) === gangPrefix);
+                return (
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', padding: '2rem' }}>
+                        <div style={{ backgroundColor: 'white', flex: 1, borderRadius: '8px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                            <div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                                    <h2 style={{ margin: 0 }}>Preview Laporan THR</h2>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b' }}>Orientasi:</span>
+                                        <select 
+                                            value={printOrientation} 
+                                            onChange={e => setPrintOrientation(e.target.value)}
+                                            style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}
+                                        >
+                                            <option value="landscape">Landscape</option>
+                                            <option value="portrait">Portrait</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button onClick={() => {
+                                        const win = window.open('', '_blank');
+                                        win.document.write(`<html><head><title>Laporan THR - ${division}</title></head><body>${getReportHTML(previewData, printOrientation)}<script>window.onload = function() { window.print(); }</script></body></html>`);
+                                        win.document.close();
+                                    }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                        <Download size={16} /> Simpan PDF
+                                    </button>
+                                    <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                        <Printer size={16} /> Cetak PDF
+                                    </button>
+                                    <button onClick={() => setIsPreviewModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+                                </div>
+                            </div>
+                            <div style={{ flex: 1, overflow: 'auto', padding: '1rem', backgroundColor: '#f3f4f6' }}>
+                                <div style={{ 
+                                    backgroundColor: 'white', 
+                                    padding: '2rem', 
+                                    width: printOrientation === 'landscape' ? '1100px' : '800px',
+                                    margin: '0 auto',
+                                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                    transition: 'width 0.3s ease'
+                                }}
+                                    dangerouslySetInnerHTML={{ __html: getReportHTML(previewData, printOrientation) }}
+                                />
                             </div>
                         </div>
-                        <div style={{ flex: 1, overflow: 'auto', padding: '1rem', backgroundColor: '#f3f4f6' }}>
-                            <div style={{ backgroundColor: 'white', padding: '2rem', minWidth: '1100px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
-                                dangerouslySetInnerHTML={{ __html: getReportHTML(filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion)) }}
-                            />
-                        </div>
                     </div>
-                </div>
+                );
+            })()}
+                </>
             )}
         </div>
     );
