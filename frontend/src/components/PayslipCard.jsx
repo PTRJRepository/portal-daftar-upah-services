@@ -136,15 +136,11 @@ export default function PayslipCard({ data, month, year }) {
                 </div>
             </div>
 
-            {/* Employee Info */}
+            {/* Employee Info - 2 Columns to save space */}
             <div className="payslip-card-info">
                 <div className="payslip-info-row">
-                    <span className="payslip-info-label">NIK</span>
-                    <span className="payslip-info-value">: {emp_code}</span>
-                </div>
-                <div className="payslip-info-row">
-                    <span className="payslip-info-label">Nama</span>
-                    <span className="payslip-info-value">: {empInfo.nama || empInfo.EmpName || '-'}</span>
+                    <span className="payslip-info-label">NIK/Nama</span>
+                    <span className="payslip-info-value">: {emp_code} - {empInfo.nama || empInfo.EmpName || '-'}</span>
                 </div>
                 <div className="payslip-info-row">
                     <span className="payslip-info-label">Jabatan</span>
@@ -154,21 +150,19 @@ export default function PayslipCard({ data, month, year }) {
                     <span className="payslip-info-label">Gang</span>
                     <span className="payslip-info-value">: {empInfo.gang_code || empInfo.GangCode || '-'}</span>
                 </div>
-
                 <div className="payslip-info-row">
                     <span className="payslip-info-label">Absensi</span>
-                    <span className="payslip-info-value">: H:{attHadir} M:{attMgg} L:{attLibur} C:{attCuti} S:{attSakit} A:{attAlpa}</span>
+                    <span className="payslip-info-value">: H:{attHadir} M:{attMgg} L:{attLibur} C:{attCuti} S:{attSakit}</span>
                 </div>
-
                 <div className="payslip-info-row">
                     <span className="payslip-info-label">HK/Rate</span>
                     <span className="payslip-info-value">: {hk} / {formatCurrency(rate)}</span>
                 </div>
                 {hkKoreksi !== 0 && (
                     <div className="payslip-info-row">
-                        <span className="payslip-info-label">HK Koreksi</span>
-                        <span className="payslip-info-value" style={{ color: hkKoreksi < 0 ? '#dc2626' : '#059669', fontWeight: 'bold' }}>
-                            : {hkKoreksi > 0 ? '+' : ''}{hkKoreksi}
+                        <span className="payslip-info-label">Koreksi</span>
+                        <span className="payslip-info-value" style={{ color: '#000', fontWeight: 'bold' }}>
+                            : {hkKoreksi > 0 ? '+' : ''}{hkKoreksi} HK
                         </span>
                     </div>
                 )}

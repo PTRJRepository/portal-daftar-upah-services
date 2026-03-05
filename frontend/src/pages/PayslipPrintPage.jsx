@@ -167,8 +167,11 @@ export default function PayslipPrintPage() {
 
             {/* Print Instructions - Hidden when printing */}
             <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }} className="no-print">
-                <p style={{ marginBottom: '1rem' }}>
-                    💡 <strong>Tips Print:</strong> Pastikan printer dalam keadaan siap dan kertas A4 tersedia.
+                <p style={{ marginBottom: '0.5rem' }}>
+                    💡 <strong>Tips Print:</strong> Gunakan pengaturan <strong>Landscape (Mendatar)</strong> di dialog print browser Anda.
+                </p>
+                <p style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
+                    Pastikan Skala diatur ke <strong>Default (100%)</strong> agar 4 slip muat dalam 1 lembar A4.
                 </p>
                 <button
                     className="payslip-preview-btn payslip-preview-btn-primary"

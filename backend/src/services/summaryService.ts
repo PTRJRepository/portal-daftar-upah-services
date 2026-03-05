@@ -25,6 +25,7 @@ export interface DivisionSummary {
     total_premi_insentif: number;  // Insentif Panen from dynamic_premi
     total_premi_kinerja: number;   // Kinerja from dynamic_premi
     total_koreksi: number;         // Koreksi from dynamic_premi
+    dynamic_premi_data?: string;   // JSON string from DB
     total_ffb_weight: number;
     total_weight_tbs: number;      // TBS weight from database
     informasi_tambahan: string;    // Additional info from database
@@ -894,36 +895,37 @@ export class SummaryService {
         const prevMonth = month === 1 ? 12 : month - 1;
         const prevYear = month === 1 ? year - 1 : year;
 
-        const currentData = await this.getAllDivisionsPremiTotals(month, year);
-        const previousData = await this.getAllDivisionsPremiTotals(prevMonth, prevYear);
+        const currentData = await this.getDivisionSummary(undefined, month, year);
+        const previousData = await this.getDivisionSummary(undefined, prevMonth, prevYear);
 
-        const prevLookup = new Map(previousData.map(d => [d.division_code, d]));
+        const currentDivs = currentData.data || [];
+        const previousDivs = previousData.data || [];
+        const prevLookup = new Map(previousDivs.map((d: any) => [d.division_code, d]));
 
-        // Build premi & OT analysis table
+        // Collect all dynamic premi headers across all current divisions
+        const premiHeadersSet = new Set<string>();
+        currentDivs.forEach((d: any) => {
+            if (d._dynamic_premi_list && Array.isArray(d._dynamic_premi_list)) {
+                d._dynamic_premi_list.forEach((p: any) => {
+                    if (p.header) premiHeadersSet.add(p.header.toUpperCase());
+                });
+            }
+        });
+        const allPremiHeaders = Array.from(premiHeadersSet).sort();
+
+        // Build premi & OT analysis table (Month-to-Month comparison)
         const premiOtRows = [];
-        for (const curr of currentData) {
-            const prev = prevLookup.get(curr.division_code) || {} as Partial<DivisionSummary>;
+        for (const curr of currentDivs) {
+            const prev = prevLookup.get(curr.division_code) || {};
 
             // Apply filter
             if (filterType === 'ijl' && curr.division_code !== 'IJL') continue;
             if (filterType === 'non_ijl' && curr.division_code === 'IJL') continue;
 
-            const currPremi = curr.total_premi_excluding_special || 0;
-            const prevPremi = prev.total_premi_excluding_special || 0;
-            const currOt = curr.total_lembur || 0;
-            const prevOt = prev.total_lembur || 0;
-
-            // Premi breakdown
-            const currPruning = curr.total_premi_prunning || 0;
-            const prevPruningVal = prev.total_premi_prunning || 0;
-            const currBrondol = curr.total_premi_brondol || 0;
-            const prevBrondol = prev.total_premi_brondol || 0;
-            const currInsentif = curr.total_premi_insentif || 0;
-            const prevInsentif = prev.total_premi_insentif || 0;
-            const currKinerja = curr.total_premi_kinerja || 0;
-            const prevKinerja = prev.total_premi_kinerja || 0;
-            const currKoreksi = curr.total_koreksi || 0;
-            const prevKoreksi = prev.total_koreksi || 0;
+            const currPremi = Number(curr.total_premi) || 0;
+            const prevPremi = Number(prev.total_premi) || 0;
+            const currOt = Number(curr.total_lembur) || 0;
+            const prevOt = Number(prev.total_lembur) || 0;
 
             premiOtRows.push({
                 division_code: curr.division_code,
@@ -935,42 +937,12 @@ export class SummaryService {
                 prev_ot: prevOt,
                 curr_ot: currOt,
                 diff_ot: currOt - prevOt,
-                // Premi breakdown per division
-                curr_pruning: currPruning,
-                prev_pruning: prevPruningVal,
-                diff_pruning: currPruning - prevPruningVal,
-                curr_brondol: currBrondol,
-                prev_brondol: prevBrondol,
-                diff_brondol: currBrondol - prevBrondol,
-                curr_insentif: currInsentif,
-                prev_insentif: prevInsentif,
-                diff_insentif: currInsentif - prevInsentif,
-                curr_kinerja: currKinerja,
-                prev_kinerja: prevKinerja,
-                diff_kinerja: currKinerja - prevKinerja,
-                curr_koreksi: currKoreksi,
-                prev_koreksi: prevKoreksi,
-                diff_koreksi: currKoreksi - prevKoreksi
-            });
-        }
-
-        // Build pruning table
-        const pruningRows = [];
-        for (const curr of currentData) {
-            const prev = prevLookup.get(curr.division_code) || {} as Partial<DivisionSummary>;
-            if (filterType === 'ijl' && curr.division_code !== 'IJL') continue;
-            if (filterType === 'non_ijl' && curr.division_code === 'IJL') continue;
-
-            const currPruning = curr.total_premi_prunning || 0;
-            const prevPruning = prev.total_premi_prunning || 0;
-
-            pruningRows.push({
-                division_code: curr.division_code,
-                estate: curr.description,
-                description: curr.description,
-                prev_pruning: prevPruning,
-                curr_pruning: currPruning,
-                diff_pruning: currPruning - prevPruning
+                // Full premi breakdown for this division (current month)
+                premi_breakdown: allPremiHeaders.reduce((acc, header) => {
+                    const found = curr._dynamic_premi_list?.find((p: any) => p.header?.toUpperCase() === header);
+                    acc[header] = found ? Number(found.total) || 0 : 0;
+                    return acc;
+                }, {} as Record<string, number>)
             });
         }
 
@@ -981,8 +953,12 @@ export class SummaryService {
         const prevPremi = sum(premiOtRows, 'prev_premi');
         const currOt = sum(premiOtRows, 'curr_ot');
         const prevOt = sum(premiOtRows, 'prev_ot');
-        const currPruning = sum(pruningRows, 'curr_pruning');
-        const prevPruning = sum(pruningRows, 'prev_pruning');
+
+        // Totals for the breakdown columns
+        const breakdownTotals = allPremiHeaders.reduce((acc, header) => {
+            acc[header] = premiOtRows.reduce((sum, row) => sum + (row.premi_breakdown[header] || 0), 0);
+            return acc;
+        }, {} as Record<string, number>);
 
         return {
             success: true,
@@ -990,30 +966,15 @@ export class SummaryService {
             previous_period: { month: prevMonth, year: prevYear },
             filter_type: filterType,
             premi_ot_table: premiOtRows,
-            pruning_table: pruningRows,
+            all_premi_headers: allPremiHeaders,
+            breakdown_totals: breakdownTotals,
             totals: {
                 prev_premi: prevPremi,
                 curr_premi: currPremi,
                 diff_premi: currPremi - prevPremi,
                 prev_ot: prevOt,
                 curr_ot: currOt,
-                diff_ot: currOt - prevOt,
-                prev_pruning: prevPruning,
-                curr_pruning: currPruning,
-                diff_pruning: currPruning - prevPruning,
-                // Breakdown totals
-                curr_brondol: sum(premiOtRows, 'curr_brondol'),
-                prev_brondol: sum(premiOtRows, 'prev_brondol'),
-                diff_brondol: sum(premiOtRows, 'curr_brondol') - sum(premiOtRows, 'prev_brondol'),
-                curr_insentif: sum(premiOtRows, 'curr_insentif'),
-                prev_insentif: sum(premiOtRows, 'prev_insentif'),
-                diff_insentif: sum(premiOtRows, 'curr_insentif') - sum(premiOtRows, 'prev_insentif'),
-                curr_kinerja: sum(premiOtRows, 'curr_kinerja'),
-                prev_kinerja: sum(premiOtRows, 'prev_kinerja'),
-                diff_kinerja: sum(premiOtRows, 'curr_kinerja') - sum(premiOtRows, 'prev_kinerja'),
-                curr_koreksi: sum(premiOtRows, 'curr_koreksi'),
-                prev_koreksi: sum(premiOtRows, 'prev_koreksi'),
-                diff_koreksi: sum(premiOtRows, 'curr_koreksi') - sum(premiOtRows, 'prev_koreksi')
+                diff_ot: currOt - prevOt
             }
         };
     }

@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAnalysisReport, fetchAvailablePeriods } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
-import { Printer, RefreshCw, FileText, Settings, X, Search } from 'lucide-react';
+import { Printer, RefreshCw, FileText, Settings, X, Search, DollarSign, Clock, TrendingUp } from 'lucide-react';
 import AggregationSeederModal from '../components/AggregationSeederModal';
-import PrintModeSelector from '../components/common/PrintModeSelector';
 import PrintSignature from '../components/common/PrintSignature';
 import { initPrintMode } from '../utils/printOptimizer';
 import '../styles/wages-summary-professional.css';
@@ -14,7 +13,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
     const [filterType, setFilterType] = useState('all');
-
+    
     // Sync state with props when they change (fix navigation freeze)
     useEffect(() => {
         if (initialMonth !== undefined) setMonth(initialMonth);
@@ -28,7 +27,6 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     const [periods, setPeriods] = useState([]);
 
     // Range Filters
-    const [wageRange, setWageRange] = useState({ min: '', max: '' });
     const [otRange, setOtRange] = useState({ min: '', max: '' });
     const [premiRange, setPremiRange] = useState({ min: '', max: '' });
     const [showFilters, setShowFilters] = useState(false);
@@ -74,7 +72,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
 
     // Formatters
     const formatCurrency = (val) => {
-        if (val === null || val === undefined) return '-';
+        if (val === null || val === undefined) return '0';
         return new Intl.NumberFormat('id-ID').format(Math.round(val));
     };
 
@@ -82,12 +80,6 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
         if (val > 0) return 'text-diff-neg'; // Red for increase in cost
         if (val < 0) return 'text-diff-pos'; // Green for decrease in cost
         return 'text-neutral';
-    };
-
-    const getDiffLabel = (val) => {
-        if (val > 0) return '▲ ';
-        if (val < 0) return '▼ ';
-        return '';
     };
 
     const getMonthName = (m) => {
@@ -112,17 +104,10 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     // Filtered Data Sets
     const filteredMainTable = useMemo(() => {
         let data = reportData?.premi_ot_table || [];
-        if (wageRange.min || wageRange.max) data = filterData(data, 'curr_wage', wageRange);
         if (otRange.min || otRange.max) data = filterData(data, 'curr_ot', otRange);
         if (premiRange.min || premiRange.max) data = filterData(data, 'curr_premi', premiRange);
         return data;
-    }, [reportData, wageRange, otRange, premiRange]);
-
-    const filteredPruningTable = useMemo(() => {
-        let data = reportData?.pruning_table || [];
-        if (premiRange.min || premiRange.max) data = filterData(data, 'curr_pruning', premiRange);
-        return data;
-    }, [reportData, premiRange]);
+    }, [reportData, otRange, premiRange]);
 
     const handleSavePDF = () => {
         const element = document.getElementById('wsp-report-content');
@@ -140,6 +125,8 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
 
     const prevMonthName = reportData ? shortMonthNames[reportData.previous_period?.month] : '';
     const currMonthName = reportData ? shortMonthNames[reportData.current_period?.month] : '';
+    const prevYearShort = reportData ? reportData.previous_period?.year.toString().substring(2) : '';
+    const currYearShort = reportData ? reportData.current_period?.year.toString().substring(2) : '';
 
     return (
         <div className="wsp-container" style={{ padding: '1.5rem', backgroundColor: '#f8fafc' }}>
@@ -147,9 +134,9 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
             <div className="report-header-web no-print">
                 <div className="report-header-info">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <button
-                            onClick={onBack}
-                            className="wsp-btn"
+                        <button 
+                            onClick={onBack} 
+                            className="wsp-btn" 
                             style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer' }}
                         >
                             &larr; Kembali
@@ -157,19 +144,19 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                         <h1>Analysis & Progress Report</h1>
                     </div>
                     <p style={{ marginLeft: '4.5rem' }}>Laporan perbandingan biaya premi dan lembur antar periode.</p>
-
+                    
                     <div style={{ display: 'flex', gap: '8px', marginTop: '12px', marginLeft: '4.5rem' }}>
-                        <select
-                            value={month}
+                        <select 
+                            value={month} 
                             onChange={(e) => setMonth(parseInt(e.target.value))}
                             className="report-filter-badge"
                         >
-                            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                            {Array.from({length: 12}, (_, i) => i + 1).map(m => (
                                 <option key={m} value={m}>{getMonthName(m)}</option>
                             ))}
                         </select>
-                        <select
-                            value={year}
+                        <select 
+                            value={year} 
                             onChange={(e) => setYear(parseInt(e.target.value))}
                             className="report-filter-badge"
                         >
@@ -177,8 +164,8 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                                 <option key={y} value={y}>{y}</option>
                             )) : <option value={year}>{year}</option>}
                         </select>
-                        <select
-                            value={filterType}
+                        <select 
+                            value={filterType} 
                             onChange={(e) => setFilterType(e.target.value)}
                             className="report-filter-badge"
                         >
@@ -191,7 +178,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
 
                 <div className="report-header-actions">
                     <button onClick={() => setShowFilters(!showFilters)} className={`wsp-btn ${showFilters ? 'wsp-btn-primary' : ''}`}>
-                        {showFilters ? <X size={18} /> : <Settings size={18} />}
+                        {showFilters ? <X size={18} /> : <Settings size={18} />} 
                         {showFilters ? 'Tutup Filter' : 'Filter Range'}
                     </button>
                     <button onClick={() => setShowSeederModal(true)} className="wsp-btn" style={{ backgroundColor: '#fffbeb', color: '#92400e' }}>
@@ -211,18 +198,17 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
 
             {/* Range Filters Panel */}
             {showFilters && (
-                <div className="no-print" style={{
-                    padding: '1.5rem',
-                    background: '#fff',
-                    border: '1px solid #e2e8f0',
+                <div className="no-print" style={{ 
+                    padding: '1.5rem', 
+                    background: '#fff', 
+                    border: '1px solid #e2e8f0', 
                     borderRadius: '8px',
                     marginBottom: '1.5rem',
                     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gridTemplateColumns: 'repeat(2, 1fr)',
                     gap: '2rem'
                 }}>
-                    <RangeInput label="Range Upah Bersih" range={wageRange} setRange={setWageRange} />
                     <RangeInput label="Range Lembur (OT)" range={otRange} setRange={setOtRange} />
                     <RangeInput label="Range Total Premi" range={premiRange} setRange={setPremiRange} />
                 </div>
@@ -255,56 +241,59 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
 
                     {/* KPI Comparison Cards */}
                     <div className="wsp-kpi-grid comparison-grid">
-                        <KPIComparisonCard
-                            label="Total Premi"
-                            prevLabel={prevMonthName}
+                        <KPIComparisonCard 
+                            label="Total Premi" 
+                            prevLabel={prevMonthName} 
                             currLabel={currMonthName}
                             prevValue={reportData.totals?.prev_premi}
                             currValue={reportData.totals?.curr_premi}
                             diff={reportData.totals?.diff_premi}
                             format={formatCurrency}
-                            accent="#f59e0b"
+                            icon={<DollarSign size={16} />}
                         />
-                        <KPIComparisonCard
-                            label="Total Lembur (OT)"
-                            prevLabel={prevMonthName}
+                        <KPIComparisonCard 
+                            label="Total Lembur (OT)" 
+                            prevLabel={prevMonthName} 
                             currLabel={currMonthName}
                             prevValue={reportData.totals?.prev_ot}
                             currValue={reportData.totals?.curr_ot}
                             diff={reportData.totals?.diff_ot}
                             format={formatCurrency}
-                            accent="#8b5cf6"
+                            icon={<Clock size={16} />}
                         />
-                        <KPIComparisonCard
-                            label="Total Pruning"
-                            prevLabel={prevMonthName}
-                            currLabel={currMonthName}
-                            prevValue={reportData.totals?.prev_pruning}
-                            currValue={reportData.totals?.curr_pruning}
-                            diff={reportData.totals?.diff_pruning}
-                            format={formatCurrency}
-                            accent="#059669"
-                        />
+                        <div className="wsp-kpi-card comparison-card highlight">
+                            <div className="wsp-kpi-label flex items-center gap-2"><TrendingUp size={14}/> Progress Summary</div>
+                            <div style={{ padding: '0.5rem 0' }}>
+                                <div className={`text-sm font-bold ${getDiffClass(reportData.totals?.diff_premi)}`}>
+                                    Premi: {reportData.totals?.diff_premi > 0 ? '+' : ''}{formatCurrency(reportData.totals?.diff_premi)}
+                                </div>
+                                <div className={`text-sm font-bold ${getDiffClass(reportData.totals?.diff_ot)}`} style={{ marginTop: '4px' }}>
+                                    Lembur: {reportData.totals?.diff_ot > 0 ? '+' : ''}{formatCurrency(reportData.totals?.diff_ot)}
+                                </div>
+                            </div>
+                            <div className="wsp-kpi-diff neutral" style={{ justifyContent: 'center' }}>
+                                <span>VARIANCE PERIODE</span>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Main Table: Premi & OT Comparison with Breakdown */}
-                    <SummaryPremiOTTable
+                    {/* Section 1: Summary Premi & OT Analysis (Unified Table) */}
+                    <SummaryPremiOTTable 
                         data={filteredMainTable}
                         totals={reportData.totals}
-                        prevMonthName={prevMonthName}
-                        currMonthName={currMonthName}
-                        prevYear={reportData.previous_period?.year}
-                        currYear={reportData.current_period?.year}
+                        prevMonthLabel={`${prevMonthName}-${prevYearShort}`}
+                        currMonthLabel={`${currMonthName}-${currYearShort}`}
                         formatCurrency={formatCurrency}
                         getDiffClass={getDiffClass}
                     />
 
-                    {/* Individual Premi Analysis Tables — each type gets its own table */}
-                    <PremiTypeAnalysis title="Analisis Premi Pruning" fieldKey="pruning" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#92400e" accentBg="#fffbeb" />
-                    <PremiTypeAnalysis title="Analisis Premi Brondol" fieldKey="brondol" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#991b1b" accentBg="#fef2f2" />
-                    <PremiTypeAnalysis title="Analisis Insentif Panen" fieldKey="insentif" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#166534" accentBg="#f0fdf4" />
-                    <PremiTypeAnalysis title="Analisis Premi Kinerja" fieldKey="kinerja" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#1e40af" accentBg="#eff6ff" />
-                    <PremiTypeAnalysis title="Analisis Koreksi Panen" fieldKey="koreksi" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#6b21a8" accentBg="#faf5ff" />
+                    {/* Section 2: Full Premi Breakdown (Seluruh Variasi Premi) */}
+                    <FullPremiBreakdownTable 
+                        data={filteredMainTable}
+                        headers={reportData.all_premi_headers}
+                        breakdownTotals={reportData.breakdown_totals}
+                        formatCurrency={formatCurrency}
+                    />
 
                     {/* Signature Section */}
                     <div className="print-only">
@@ -341,8 +330,8 @@ const RangeInput = ({ label, range, setRange }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>{label}</label>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input
-                type="number"
+            <input 
+                type="number" 
                 placeholder="Min Rp"
                 value={range.min}
                 onChange={(e) => setRange({ ...range, min: e.target.value })}
@@ -350,8 +339,8 @@ const RangeInput = ({ label, range, setRange }) => (
                 style={{ flex: 1 }}
             />
             <span style={{ color: '#94a3b8' }}>-</span>
-            <input
-                type="number"
+            <input 
+                type="number" 
                 placeholder="Max Rp"
                 value={range.max}
                 onChange={(e) => setRange({ ...range, max: e.target.value })}
@@ -362,11 +351,11 @@ const RangeInput = ({ label, range, setRange }) => (
     </div>
 );
 
-const KPIComparisonCard = ({ label, prevLabel, currLabel, prevValue, currValue, diff, format, accent }) => {
+const KPIComparisonCard = ({ label, prevLabel, currLabel, prevValue, currValue, diff, format, icon }) => {
     const isIncrease = diff > 0;
     return (
-        <div className="wsp-kpi-card comparison-card" style={accent ? { borderLeft: `4px solid ${accent}` } : {}}>
-            <div className="wsp-kpi-label">{label}</div>
+        <div className="wsp-kpi-card comparison-card">
+            <div className="wsp-kpi-label flex items-center gap-2">{icon} {label}</div>
             <div className="wsp-kpi-compare-row">
                 <div className="wsp-kpi-trend-box prev">
                     <div className="trend-label">{prevLabel}</div>
@@ -385,57 +374,56 @@ const KPIComparisonCard = ({ label, prevLabel, currLabel, prevValue, currValue, 
     );
 };
 
-const AnalysisTable = ({ title, data, prevMonth, currMonth, fieldPrefix, totalDiff, prevTotal, currTotal, formatCurrency, getDiffClass, getDiffLabel }) => (
+const SummaryPremiOTTable = ({ data, totals, prevMonthLabel, currMonthLabel, formatCurrency, getDiffClass }) => (
     <div className="analysis-section" style={{ marginTop: '2rem' }}>
         <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderLeft: '4px solid #334155', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <span>{title}</span>
+            <span>Summary Premi & OT Progress</span>
             <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Unit: IDR (Rupiah)</span>
         </div>
-        <div className="wsp-table-wrapper">
-            <table className="wsp-table">
+        <div className="wsp-table-wrapper" style={{ border: '1px solid #000' }}>
+            <table className="wsp-table" style={{ borderCollapse: 'collapse' }}>
                 <thead>
                     <tr className="wsp-header-cols">
-                        <th style={{ width: '50px' }}>No</th>
-                        <th style={{ width: '100px' }}>Divisi</th>
-                        <th className="text-left">Estate / Description</th>
-                        <th className="text-right">{prevMonth}</th>
-                        <th className="text-right">{currMonth}</th>
-                        <th className="text-right">Selisih</th>
+                        <th rowSpan="2" style={{ border: '1px solid #000', textAlign: 'left', width: '180px' }}>ESTATE/DIVISION</th>
+                        <th colSpan="2" style={{ border: '1px solid #000' }}>{prevMonthLabel}</th>
+                        <th colSpan="2" style={{ border: '1px solid #000' }}>{currMonthLabel}</th>
+                        <th colSpan="2" style={{ border: '1px solid #000' }}>Progress (Variance)</th>
+                    </tr>
+                    <tr className="wsp-header-cols">
+                        <th style={{ border: '1px solid #000', width: '110px' }}>PREMI</th>
+                        <th style={{ border: '1px solid #000', width: '110px' }}>OT</th>
+                        <th style={{ border: '1px solid #000', width: '110px' }}>PREMI</th>
+                        <th style={{ border: '1px solid #000', width: '110px' }}>OT</th>
+                        <th style={{ border: '1px solid #000' }}>Premi Diff</th>
+                        <th style={{ border: '1px solid #000' }}>OT Diff</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {data.length > 0 ? (
-                        data.map((row, idx) => {
-                            const prev = row[`prev_${fieldPrefix}`];
-                            const curr = row[`curr_${fieldPrefix}`];
-                            const diff = row[`diff_${fieldPrefix}`];
-                            return (
-                                <tr key={idx}>
-                                    <td className="text-center">{idx + 1}</td>
-                                    <td className="text-center font-bold">{row.division_code}</td>
-                                    <td className="text-left">{row.description || row.estate}</td>
-                                    <td className="text-right">{formatCurrency(prev)}</td>
-                                    <td className="text-right font-bold">{formatCurrency(curr)}</td>
-                                    <td className={`text-right font-bold ${getDiffClass(diff)}`}>
-                                        {getDiffLabel(diff)}{formatCurrency(Math.abs(diff))}
-                                    </td>
-                                </tr>
-                            );
-                        })
-                    ) : (
-                        <tr>
-                            <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
-                                Tidak ada data yang sesuai dengan filter range.
+                    {data.map((row, idx) => (
+                        <tr key={idx}>
+                            <td className="text-left font-bold" style={{ border: '1px solid #000', textTransform: 'uppercase' }}>{row.description || row.division_code}</td>
+                            <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(row.prev_premi)}</td>
+                            <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(row.prev_ot)}</td>
+                            <td className="text-right font-bold" style={{ border: '1px solid #000' }}>{formatCurrency(row.curr_premi)}</td>
+                            <td className="text-right font-bold" style={{ border: '1px solid #000' }}>{formatCurrency(row.curr_ot)}</td>
+                            <td className={`text-right font-bold ${getDiffClass(row.diff_premi)}`} style={{ border: '1px solid #000' }}>
+                                {formatCurrency(row.diff_premi)}
+                            </td>
+                            <td className={`text-right font-bold ${getDiffClass(row.diff_ot)}`} style={{ border: '1px solid #000' }}>
+                                {formatCurrency(row.diff_ot)}
                             </td>
                         </tr>
-                    )}
+                    ))}
                 </tbody>
                 <tfoot>
-                    <tr className="wsp-grand-total">
-                        <td colSpan="3" className="text-right">TOTAL {title.toUpperCase()}</td>
-                        <td className="text-right">{formatCurrency(prevTotal)}</td>
-                        <td className="text-right">{formatCurrency(currTotal)}</td>
-                        <td className="text-right">{formatCurrency(totalDiff)}</td>
+                    <tr className="wsp-grand-total" style={{ fontWeight: 800 }}>
+                        <td className="text-right" style={{ border: '1px solid #000', paddingRight: '15px' }}>TOTAL C/ROLL</td>
+                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.prev_premi)}</td>
+                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.prev_ot)}</td>
+                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.curr_premi)}</td>
+                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.curr_ot)}</td>
+                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.diff_premi)}</td>
+                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.diff_ot)}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -443,168 +431,54 @@ const AnalysisTable = ({ title, data, prevMonth, currMonth, fieldPrefix, totalDi
     </div>
 );
 
-// Breakdown Mini Card — shows current value + trend
-const BreakdownCard = ({ label, value, diff, format, bg, border, color, labelColor }) => (
-    <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: '8px', padding: '0.85rem', textAlign: 'center' }}>
-        <div style={{ fontSize: '0.6rem', fontWeight: 700, color: labelColor, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{label}</div>
-        <div style={{ fontFamily: "'Roboto Mono', monospace", fontSize: '1rem', fontWeight: 700, color }}>{format(value)}</div>
-        {diff !== undefined && diff !== 0 && (
-            <div style={{ fontSize: '0.65rem', fontWeight: 600, marginTop: '0.25rem', color: diff > 0 ? '#dc2626' : '#16a34a' }}>
-                {diff > 0 ? '▲' : '▼'} {format(Math.abs(diff))}
-            </div>
-        )}
+const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, formatCurrency }) => (
+    <div className="analysis-section" style={{ marginTop: '3rem', pageBreakBefore: 'always' }}>
+        <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderLeft: '4px solid #1e40af', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <span>Uraian Premi Seluruh Variasi (Current Month)</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Rincian Lengkap Seluruh Premi</span>
+        </div>
+        <div className="wsp-table-wrapper" style={{ border: '1px solid #000', overflowX: 'auto' }}>
+            <table className="wsp-table" style={{ borderCollapse: 'collapse', minWidth: '100%' }}>
+                <thead>
+                    <tr className="wsp-header-cols">
+                        <th style={{ border: '1px solid #000', textAlign: 'left', width: '150px', position: 'sticky', left: 0, zIndex: 5, background: '#f8fafc' }}>DIVISI</th>
+                        {headers.map(h => (
+                            <th key={h} style={{ border: '1px solid #000', minWidth: '100px', fontSize: '0.65rem' }}>{h.replace('PREMI_', '').replace(/_/g, ' ')}</th>
+                        ))}
+                        <th style={{ border: '1px solid #000', minWidth: '120px', background: '#ecf2ff' }}>TOTAL PREMI</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {data.map((row, idx) => (
+                        <tr key={idx}>
+                            <td className="text-left font-bold" style={{ border: '1px solid #000', position: 'sticky', left: 0, zIndex: 4, background: idx % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                                {row.division_code}
+                            </td>
+                            {headers.map(h => (
+                                <td key={h} className="text-right" style={{ border: '1px solid #000' }}>
+                                    {formatCurrency(row.premi_breakdown[h])}
+                                </td>
+                            ))}
+                            <td className="text-right font-bold" style={{ border: '1px solid #000', background: '#f0f7ff' }}>
+                                {formatCurrency(row.curr_premi)}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                    <tr className="wsp-grand-total">
+                        <td className="text-left sticky-col" style={{ border: '1px solid #000', position: 'sticky', left: 0, zIndex: 5 }}>TOTAL</td>
+                        {headers.map(h => (
+                            <td key={h} className="text-right" style={{ border: '1px solid #000' }}>
+                                {formatCurrency(breakdownTotals[h])}
+                            </td>
+                        ))}
+                        <td className="text-right" style={{ border: '1px solid #000' }}>
+                            {formatCurrency(headers.reduce((sum, h) => sum + breakdownTotals[h], 0))}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
     </div>
 );
-
-// Unified Summary Premi & OT Table with Breakdown Columns
-const SummaryPremiOTTable = ({ data, totals, prevMonthName, currMonthName, prevYear, currYear, formatCurrency, getDiffClass }) => {
-    const cellBorder = { border: '1px solid #94a3b8' };
-    const monoFont = { fontFamily: "'Roboto Mono', monospace", fontSize: '0.75rem' };
-
-    return (
-        <div className="analysis-section" style={{ marginTop: '1.5rem' }}>
-            <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#0f172a', color: '#fff', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: 0, borderRadius: '6px 6px 0 0' }}>
-                <span>Summary Premi & OT — Per Division</span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 400, opacity: 0.8 }}>Amount in IDR</span>
-            </div>
-            <div className="wsp-table-wrapper" style={{ border: '2px solid #334155', borderTop: 'none', borderRadius: '0 0 6px 6px', overflow: 'auto' }}>
-                <table className="wsp-table" style={{ borderCollapse: 'collapse', minWidth: '900px' }}>
-                    <thead>
-                        {/* Master Header */}
-                        <tr style={{ backgroundColor: '#f1f5f9' }}>
-                            <th rowSpan="2" style={{ ...cellBorder, padding: '8px', textAlign: 'left', minWidth: '150px', position: 'sticky', left: 0, background: '#f1f5f9', zIndex: 2 }}>ESTATE/DIVISI</th>
-                            <th colSpan="5" style={{ ...cellBorder, textAlign: 'center', background: '#fffbeb', color: '#92400e', fontWeight: 700, fontSize: '0.75rem' }}>
-                                PREMI BREAKDOWN — {currMonthName} {currYear}
-                            </th>
-                            <th colSpan="2" style={{ ...cellBorder, textAlign: 'center', background: '#f5f3ff', color: '#5b21b6', fontWeight: 700, fontSize: '0.75rem' }}>
-                                OVERTIME
-                            </th>
-                            <th colSpan="2" style={{ ...cellBorder, textAlign: 'center', background: '#fff7ed', color: '#9a3412', fontWeight: 700, fontSize: '0.75rem' }}>
-                                PROGRESS (Δ)
-                            </th>
-                        </tr>
-                        {/* Sub Header */}
-                        <tr style={{ backgroundColor: '#f8fafc', fontSize: '0.7rem', fontWeight: 700 }}>
-                            <th style={{ ...cellBorder, background: '#fffbeb', color: '#92400e', minWidth: '80px', padding: '6px' }}>PRUNING</th>
-                            <th style={{ ...cellBorder, background: '#fffbeb', color: '#92400e', minWidth: '80px', padding: '6px' }}>BRONDOL</th>
-                            <th style={{ ...cellBorder, background: '#fffbeb', color: '#92400e', minWidth: '80px', padding: '6px' }}>INSENTIF</th>
-                            <th style={{ ...cellBorder, background: '#fffbeb', color: '#92400e', minWidth: '80px', padding: '6px' }}>KINERJA</th>
-                            <th style={{ ...cellBorder, background: '#fef3c7', color: '#78350f', fontWeight: 800, minWidth: '90px', padding: '6px' }}>TOTAL</th>
-                            <th style={{ ...cellBorder, background: '#f5f3ff', color: '#5b21b6', minWidth: '80px', padding: '6px' }}>{prevMonthName}</th>
-                            <th style={{ ...cellBorder, background: '#f5f3ff', color: '#5b21b6', minWidth: '80px', padding: '6px' }}>{currMonthName}</th>
-                            <th style={{ ...cellBorder, background: '#fff7ed', color: '#9a3412', fontSize: '0.65rem', minWidth: '80px', padding: '6px' }}>Δ PREMI</th>
-                            <th style={{ ...cellBorder, background: '#fff7ed', color: '#9a3412', fontSize: '0.65rem', minWidth: '80px', padding: '6px' }}>Δ OT</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.map((row, idx) => {
-                            const zeroCl = '#cbd5e1';
-                            return (
-                                <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#fafbfc' }}>
-                                    <td style={{ ...cellBorder, fontWeight: 700, padding: '6px 8px', textAlign: 'left', position: 'sticky', left: 0, background: idx % 2 === 0 ? '#fff' : '#fafbfc', zIndex: 1 }}>
-                                        <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.8rem' }}>{row.division_code}</span>
-                                        {row.description && row.description !== row.division_code && (
-                                            <span style={{ display: 'block', color: '#64748b', fontSize: '0.6rem', lineHeight: 1.2, marginTop: '1px' }}>{row.description}</span>
-                                        )}
-                                    </td>
-                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: (row.curr_pruning || 0) === 0 ? zeroCl : '#334155' }}>{formatCurrency(row.curr_pruning)}</td>
-                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: (row.curr_brondol || 0) === 0 ? zeroCl : '#334155' }}>{formatCurrency(row.curr_brondol)}</td>
-                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: (row.curr_insentif || 0) === 0 ? zeroCl : '#334155' }}>{formatCurrency(row.curr_insentif)}</td>
-                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: (row.curr_kinerja || 0) === 0 ? zeroCl : '#334155' }}>{formatCurrency(row.curr_kinerja)}</td>
-                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, fontWeight: 700, background: '#fefce8' }}>{formatCurrency(row.curr_premi)}</td>
-                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: '#64748b' }}>{formatCurrency(row.prev_ot)}</td>
-                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, fontWeight: 600 }}>{formatCurrency(row.curr_ot)}</td>
-                                    <td className={`text-right ${getDiffClass(row.diff_premi)}`} style={{ ...cellBorder, ...monoFont, fontWeight: 600 }}>
-                                        {formatCurrency(row.diff_premi)}
-                                    </td>
-                                    <td className={`text-right ${getDiffClass(row.diff_ot)}`} style={{ ...cellBorder, ...monoFont, fontWeight: 600 }}>
-                                        {formatCurrency(row.diff_ot)}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                    <tfoot>
-                        <tr style={{ backgroundColor: '#0f172a', color: '#fff', fontWeight: 800 }}>
-                            <td style={{ ...cellBorder, borderColor: '#334155', padding: '8px', textAlign: 'right', position: 'sticky', left: 0, background: '#0f172a', zIndex: 1, fontSize: '0.8rem' }}>TOTAL C/ROLL</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_pruning)}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_brondol)}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_insentif)}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_kinerja)}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont, fontWeight: 800 }}>{formatCurrency(totals.curr_premi)}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.prev_ot)}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont }}>{formatCurrency(totals.curr_ot)}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont, color: (totals.diff_premi || 0) > 0 ? '#fca5a5' : '#86efac' }}>
-                                {formatCurrency(totals.diff_premi)}
-                            </td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#334155', ...monoFont, color: (totals.diff_ot || 0) > 0 ? '#fca5a5' : '#86efac' }}>
-                                {formatCurrency(totals.diff_ot)}
-                            </td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-    );
-};
-
-// Individual Premi Type Analysis Table — prev/curr/progress per division
-const PremiTypeAnalysis = ({ title, fieldKey, data, totals, prevMonth, currMonth, formatCurrency, getDiffClass, getDiffLabel, accent, accentBg }) => {
-    const monoFont = { fontFamily: "'Roboto Mono', monospace", fontSize: '0.75rem' };
-    const cellBorder = { border: '1px solid #94a3b8' };
-
-    // Check if any division has data for this premi type
-    const hasData = data.some(row => (row[`curr_${fieldKey}`] || 0) !== 0 || (row[`prev_${fieldKey}`] || 0) !== 0);
-    if (!hasData) return null;
-
-    return (
-        <div className="analysis-section" style={{ marginTop: '1.5rem' }}>
-            <div className="analysis-section-title" style={{ padding: '0.6rem 1rem', background: accentBg, borderLeft: `4px solid ${accent}`, fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: 0, color: accent, fontSize: '0.85rem' }}>
-                <span>{title}</span>
-                <span style={{ fontSize: '0.7rem', fontWeight: 400, color: '#64748b' }}>Per Divisi (IDR)</span>
-            </div>
-            <div className="wsp-table-wrapper" style={{ border: `1px solid ${accent}`, borderTop: 'none' }}>
-                <table className="wsp-table" style={{ borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ backgroundColor: accentBg }}>
-                            <th style={{ ...cellBorder, width: '40px', padding: '6px', fontSize: '0.7rem' }}>No</th>
-                            <th style={{ ...cellBorder, width: '80px', padding: '6px', fontSize: '0.7rem' }}>Divisi</th>
-                            <th style={{ ...cellBorder, padding: '6px', textAlign: 'left', fontSize: '0.7rem' }}>Description</th>
-                            <th className="text-right" style={{ ...cellBorder, padding: '6px', fontSize: '0.7rem', minWidth: '100px' }}>{prevMonth}</th>
-                            <th className="text-right" style={{ ...cellBorder, padding: '6px', fontSize: '0.7rem', minWidth: '100px' }}>{currMonth}</th>
-                            <th className="text-right" style={{ ...cellBorder, padding: '6px', fontSize: '0.7rem', minWidth: '100px' }}>Progress</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.map((row, idx) => {
-                            const prev = row[`prev_${fieldKey}`] || 0;
-                            const curr = row[`curr_${fieldKey}`] || 0;
-                            const diff = row[`diff_${fieldKey}`] || 0;
-                            if (prev === 0 && curr === 0) return null; // Skip empty rows
-                            return (
-                                <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#fafbfc' }}>
-                                    <td className="text-center" style={{ ...cellBorder, ...monoFont }}>{idx + 1}</td>
-                                    <td className="text-center font-bold" style={{ ...cellBorder, fontSize: '0.8rem' }}>{row.division_code}</td>
-                                    <td className="text-left" style={{ ...cellBorder, fontSize: '0.75rem', color: '#475569' }}>{row.description || row.estate}</td>
-                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: '#64748b' }}>{formatCurrency(prev)}</td>
-                                    <td className="text-right font-bold" style={{ ...cellBorder, ...monoFont }}>{formatCurrency(curr)}</td>
-                                    <td className={`text-right font-bold ${getDiffClass(diff)}`} style={{ ...cellBorder, ...monoFont }}>
-                                        {getDiffLabel(diff)}{formatCurrency(Math.abs(diff))}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                    <tfoot>
-                        <tr style={{ backgroundColor: accent, color: '#fff', fontWeight: 800 }}>
-                            <td colSpan="3" className="text-right" style={{ ...cellBorder, borderColor: accent, padding: '6px 8px', fontSize: '0.8rem' }}>TOTAL</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: accent, ...monoFont }}>{formatCurrency(totals[`prev_${fieldKey}`])}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: accent, ...monoFont }}>{formatCurrency(totals[`curr_${fieldKey}`])}</td>
-                            <td className="text-right" style={{ ...cellBorder, borderColor: accent, ...monoFont }}>{formatCurrency(totals[`diff_${fieldKey}`])}</td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-    );
-};
