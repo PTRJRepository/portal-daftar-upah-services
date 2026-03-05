@@ -299,60 +299,12 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                         getDiffClass={getDiffClass}
                     />
 
-                    {/* Rincian Variasi Premi — ALL types per division */}
-                    <PremiVariasiTable
-                        data={filteredMainTable}
-                        totals={reportData.totals}
-                        currMonthName={currMonthName}
-                        currYear={reportData.current_period?.year}
-                        formatCurrency={formatCurrency}
-                    />
-
-                    {/* Section 4: Detailed Pruning Analysis */}
-                    {filteredPruningTable.length > 0 && (
-                        <div className="analysis-section" style={{ marginTop: '2rem' }}>
-                            <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#f1f5f9', borderLeft: '4px solid #0f172a', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                <span>Progressive Pruning Analysis</span>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Data per Divisi</span>
-                            </div>
-                            <div className="wsp-table-wrapper">
-                                <table className="wsp-table">
-                                    <thead>
-                                        <tr className="wsp-header-cols">
-                                            <th style={{ width: '50px' }}>No</th>
-                                            <th style={{ width: '100px' }}>Divisi</th>
-                                            <th className="text-left">Estate / Description</th>
-                                            <th className="text-right">{prevMonthName}</th>
-                                            <th className="text-right">{currMonthName}</th>
-                                            <th className="text-right">Progress</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredPruningTable.map((row, idx) => (
-                                            <tr key={idx}>
-                                                <td className="text-center">{idx + 1}</td>
-                                                <td className="text-center font-bold">{row.division_code}</td>
-                                                <td className="text-left">{row.description}</td>
-                                                <td className="text-right">{formatCurrency(row.prev_pruning)}</td>
-                                                <td className="text-right font-bold">{formatCurrency(row.curr_pruning)}</td>
-                                                <td className={`text-right font-bold ${getDiffClass(row.diff_pruning)}`}>
-                                                    {getDiffLabel(row.diff_pruning)}{formatCurrency(Math.abs(row.diff_pruning))}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                    <tfoot>
-                                        <tr className="wsp-grand-total">
-                                            <td colSpan="3" className="text-right">TOTAL PRUNING</td>
-                                            <td className="text-right">{formatCurrency(reportData.totals?.prev_pruning)}</td>
-                                            <td className="text-right">{formatCurrency(reportData.totals?.curr_pruning)}</td>
-                                            <td className="text-right">{formatCurrency(reportData.totals?.diff_pruning)}</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-                    )}
+                    {/* Individual Premi Analysis Tables — each type gets its own table */}
+                    <PremiTypeAnalysis title="Analisis Premi Pruning" fieldKey="pruning" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#92400e" accentBg="#fffbeb" />
+                    <PremiTypeAnalysis title="Analisis Premi Brondol" fieldKey="brondol" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#991b1b" accentBg="#fef2f2" />
+                    <PremiTypeAnalysis title="Analisis Insentif Panen" fieldKey="insentif" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#166534" accentBg="#f0fdf4" />
+                    <PremiTypeAnalysis title="Analisis Premi Kinerja" fieldKey="kinerja" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#1e40af" accentBg="#eff6ff" />
+                    <PremiTypeAnalysis title="Analisis Koreksi Panen" fieldKey="koreksi" data={filteredMainTable} totals={reportData.totals} prevMonth={prevMonthName} currMonth={currMonthName} formatCurrency={formatCurrency} getDiffClass={getDiffClass} getDiffLabel={getDiffLabel} accent="#6b21a8" accentBg="#faf5ff" />
 
                     {/* Signature Section */}
                     <div className="print-only">
@@ -596,80 +548,59 @@ const SummaryPremiOTTable = ({ data, totals, prevMonthName, currMonthName, prevY
     );
 };
 
-// Premi Variation Table — shows ALL premi types per division with totals
-const PremiVariasiTable = ({ data, totals, currMonthName, currYear, formatCurrency }) => {
-    const cellBorder = { border: '1px solid #94a3b8' };
+// Individual Premi Type Analysis Table — prev/curr/progress per division
+const PremiTypeAnalysis = ({ title, fieldKey, data, totals, prevMonth, currMonth, formatCurrency, getDiffClass, getDiffLabel, accent, accentBg }) => {
     const monoFont = { fontFamily: "'Roboto Mono', monospace", fontSize: '0.75rem' };
-    const zeroCl = '#cbd5e1';
+    const cellBorder = { border: '1px solid #94a3b8' };
 
-    // Premi types definition
-    const premiTypes = [
-        { key: 'pruning', label: 'PRUNING', color: '#92400e' },
-        { key: 'brondol', label: 'BRONDOL', color: '#991b1b' },
-        { key: 'insentif', label: 'INSENTIF PANEN', color: '#166534' },
-        { key: 'kinerja', label: 'KINERJA', color: '#1e40af' },
-        { key: 'koreksi', label: 'KOREKSI', color: '#6b21a8' },
-    ];
+    // Check if any division has data for this premi type
+    const hasData = data.some(row => (row[`curr_${fieldKey}`] || 0) !== 0 || (row[`prev_${fieldKey}`] || 0) !== 0);
+    if (!hasData) return null;
 
     return (
-        <div className="analysis-section" style={{ marginTop: '2rem' }}>
-            <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#065f46', color: '#fff', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: 0, borderRadius: '6px 6px 0 0' }}>
-                <span>Rincian Variasi Premi — Per Division ({currMonthName} {currYear})</span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 400, opacity: 0.8 }}>Amount in IDR</span>
+        <div className="analysis-section" style={{ marginTop: '1.5rem' }}>
+            <div className="analysis-section-title" style={{ padding: '0.6rem 1rem', background: accentBg, borderLeft: `4px solid ${accent}`, fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: 0, color: accent, fontSize: '0.85rem' }}>
+                <span>{title}</span>
+                <span style={{ fontSize: '0.7rem', fontWeight: 400, color: '#64748b' }}>Per Divisi (IDR)</span>
             </div>
-            <div className="wsp-table-wrapper" style={{ border: '2px solid #065f46', borderTop: 'none', borderRadius: '0 0 6px 6px', overflow: 'auto' }}>
-                <table className="wsp-table" style={{ borderCollapse: 'collapse', minWidth: '800px' }}>
+            <div className="wsp-table-wrapper" style={{ border: `1px solid ${accent}`, borderTop: 'none' }}>
+                <table className="wsp-table" style={{ borderCollapse: 'collapse' }}>
                     <thead>
-                        <tr style={{ backgroundColor: '#ecfdf5' }}>
-                            <th style={{ ...cellBorder, padding: '8px', textAlign: 'left', minWidth: '150px', position: 'sticky', left: 0, background: '#ecfdf5', zIndex: 2, fontWeight: 700, fontSize: '0.75rem' }}>
-                                ESTATE/DIVISI
-                            </th>
-                            {premiTypes.map(pt => (
-                                <th key={pt.key} style={{ ...cellBorder, minWidth: '95px', padding: '8px', textAlign: 'center', background: '#ecfdf5', color: pt.color, fontWeight: 700, fontSize: '0.7rem' }}>
-                                    {pt.label}
-                                </th>
-                            ))}
-                            <th style={{ ...cellBorder, minWidth: '110px', padding: '8px', textAlign: 'center', background: '#d1fae5', color: '#065f46', fontWeight: 800, fontSize: '0.75rem' }}>
-                                TOTAL PREMI
-                            </th>
+                        <tr style={{ backgroundColor: accentBg }}>
+                            <th style={{ ...cellBorder, width: '40px', padding: '6px', fontSize: '0.7rem' }}>No</th>
+                            <th style={{ ...cellBorder, width: '80px', padding: '6px', fontSize: '0.7rem' }}>Divisi</th>
+                            <th style={{ ...cellBorder, padding: '6px', textAlign: 'left', fontSize: '0.7rem' }}>Description</th>
+                            <th className="text-right" style={{ ...cellBorder, padding: '6px', fontSize: '0.7rem', minWidth: '100px' }}>{prevMonth}</th>
+                            <th className="text-right" style={{ ...cellBorder, padding: '6px', fontSize: '0.7rem', minWidth: '100px' }}>{currMonth}</th>
+                            <th className="text-right" style={{ ...cellBorder, padding: '6px', fontSize: '0.7rem', minWidth: '100px' }}>Progress</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {data.map((row, idx) => (
-                            <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f9fafb' }}>
-                                <td style={{ ...cellBorder, fontWeight: 700, padding: '6px 8px', textAlign: 'left', position: 'sticky', left: 0, background: idx % 2 === 0 ? '#fff' : '#f9fafb', zIndex: 1 }}>
-                                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.8rem' }}>{row.division_code}</span>
-                                    {row.description && row.description !== row.division_code && (
-                                        <span style={{ display: 'block', color: '#64748b', fontSize: '0.6rem', lineHeight: 1.2, marginTop: '1px' }}>{row.description}</span>
-                                    )}
-                                </td>
-                                {premiTypes.map(pt => {
-                                    const val = row[`curr_${pt.key}`] || 0;
-                                    return (
-                                        <td key={pt.key} className="text-right" style={{ ...cellBorder, ...monoFont, color: val === 0 ? zeroCl : '#334155' }}>
-                                            {formatCurrency(val)}
-                                        </td>
-                                    );
-                                })}
-                                <td className="text-right" style={{ ...cellBorder, ...monoFont, fontWeight: 700, background: '#ecfdf5', color: '#065f46' }}>
-                                    {formatCurrency(row.curr_premi)}
-                                </td>
-                            </tr>
-                        ))}
+                        {data.map((row, idx) => {
+                            const prev = row[`prev_${fieldKey}`] || 0;
+                            const curr = row[`curr_${fieldKey}`] || 0;
+                            const diff = row[`diff_${fieldKey}`] || 0;
+                            if (prev === 0 && curr === 0) return null; // Skip empty rows
+                            return (
+                                <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#fafbfc' }}>
+                                    <td className="text-center" style={{ ...cellBorder, ...monoFont }}>{idx + 1}</td>
+                                    <td className="text-center font-bold" style={{ ...cellBorder, fontSize: '0.8rem' }}>{row.division_code}</td>
+                                    <td className="text-left" style={{ ...cellBorder, fontSize: '0.75rem', color: '#475569' }}>{row.description || row.estate}</td>
+                                    <td className="text-right" style={{ ...cellBorder, ...monoFont, color: '#64748b' }}>{formatCurrency(prev)}</td>
+                                    <td className="text-right font-bold" style={{ ...cellBorder, ...monoFont }}>{formatCurrency(curr)}</td>
+                                    <td className={`text-right font-bold ${getDiffClass(diff)}`} style={{ ...cellBorder, ...monoFont }}>
+                                        {getDiffLabel(diff)}{formatCurrency(Math.abs(diff))}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                     <tfoot>
-                        <tr style={{ backgroundColor: '#065f46', color: '#fff', fontWeight: 800 }}>
-                            <td style={{ ...cellBorder, borderColor: '#047857', padding: '8px', textAlign: 'right', position: 'sticky', left: 0, background: '#065f46', zIndex: 1, fontSize: '0.8rem' }}>
-                                TOTAL
-                            </td>
-                            {premiTypes.map(pt => (
-                                <td key={pt.key} className="text-right" style={{ ...cellBorder, borderColor: '#047857', ...monoFont }}>
-                                    {formatCurrency(totals[`curr_${pt.key}`])}
-                                </td>
-                            ))}
-                            <td className="text-right" style={{ ...cellBorder, borderColor: '#047857', ...monoFont, fontWeight: 800 }}>
-                                {formatCurrency(totals.curr_premi)}
-                            </td>
+                        <tr style={{ backgroundColor: accent, color: '#fff', fontWeight: 800 }}>
+                            <td colSpan="3" className="text-right" style={{ ...cellBorder, borderColor: accent, padding: '6px 8px', fontSize: '0.8rem' }}>TOTAL</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: accent, ...monoFont }}>{formatCurrency(totals[`prev_${fieldKey}`])}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: accent, ...monoFont }}>{formatCurrency(totals[`curr_${fieldKey}`])}</td>
+                            <td className="text-right" style={{ ...cellBorder, borderColor: accent, ...monoFont }}>{formatCurrency(totals[`diff_${fieldKey}`])}</td>
                         </tr>
                     </tfoot>
                 </table>

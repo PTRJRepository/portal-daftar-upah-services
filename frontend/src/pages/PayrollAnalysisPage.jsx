@@ -527,16 +527,38 @@ export default function PayrollAnalysisPage({
       {/* Internal Print Styles */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          @page { size: A4 landscape; margin: 8mm; }
+          @page { size: A4 landscape; margin: 5mm; }
           .wsp-container { padding: 0 !important; background: white !important; }
-          .wsp-document { box-shadow: none !important; border: none !important; width: 100% !important; max-width: none !important; padding: 0 !important; }
-          .wsp-table { font-size: 6.5pt !important; table-layout: auto !important; }
-          .wsp-header-master th, .wsp-header-sub th { padding: 4px 2px !important; }
-          .wsp-table td { padding: 3px 2px !important; white-space: normal !important; word-wrap: break-word !important; }
-          .task-mini-card { border: 1px solid #ccc !important; box-shadow: none !important; }
+          .wsp-document { box-shadow: none !important; border: none !important; width: 100% !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+          .wsp-table-wrapper { border: none !important; overflow: visible !important; }
+          .wsp-table { 
+            font-size: 6pt !important; 
+            table-layout: auto !important; 
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+          .wsp-table th, .wsp-table td { 
+            padding: 2px 1px !important; 
+            white-space: normal !important; 
+            word-wrap: break-word !important; 
+            word-break: break-all !important;
+            border: 0.5px solid #000 !important;
+            line-height: 1 !important;
+          }
+          .wsp-header-master th, .wsp-header-sub th { 
+            background-color: #f1f5f9 !important; 
+            -webkit-print-color-adjust: exact;
+            font-weight: 800 !important;
+          }
+          .task-mini-card { border: 1px solid #ccc !important; box-shadow: none !important; padding: 4px !important; }
           .highlight { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; }
-          .wsp-grand-total { background-color: #e2e8f0 !important; -webkit-print-color-adjust: exact; }
+          .wsp-grand-total td { background-color: #e2e8f0 !important; -webkit-print-color-adjust: exact; color: #000 !important; font-weight: 800 !important; }
           .ot-task-summary-section .section-header { background-color: #fffbeb !important; -webkit-print-color-adjust: exact; }
+          
+          /* Hide non-essential columns in "semua" print to avoid extreme overflow if needed */
+          /* But for now, let's try to wrap everything */
+          
+          .font-mono { font-family: monospace !important; }
         }
         .row-has-detail { border-bottom: none !important; }
         .detail-row td { border-top: none !important; padding-top: 0 !important; }
