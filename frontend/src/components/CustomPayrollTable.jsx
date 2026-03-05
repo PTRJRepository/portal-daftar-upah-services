@@ -562,11 +562,14 @@ export default function CustomPayrollTable({
                 gangTotal.gang_code = gCode;
                 gangTotal.nama = `TOTAL GANG ${gCode}`;
                 gangTotal.emp_code = `${employees.length} Kary.`;
-                // Store data in localStorage for PayslipPrintPage optimization
+                processedRows.push(gangTotal);
+            });
+
+            // Store data in localStorage for PayslipPrintPage optimization
             if (processedRows.length > 0) {
                 const storageKey = `payroll_cache_${division}_${month}_${year}`;
                 const employeeDataMap = {};
-                
+
                 // Only store employee rows, indexed by emp_code/nik
                 processedRows.forEach(row => {
                     if (row.type === 'employee') {
@@ -574,7 +577,7 @@ export default function CustomPayrollTable({
                         if (code) employeeDataMap[code] = row;
                     }
                 });
-                
+
                 // Keep only the last 3 caches to save space
                 try {
                     const keys = Object.keys(localStorage).filter(k => k.startsWith('payroll_cache_'));
