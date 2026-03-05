@@ -165,7 +165,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 .signature-section { margin-top: 30px; display: flex; justify-content: space-around; }
                 .sig-box { text-align: center; width: 180px; }
                 .sig-space { height: 45px; }
-                .proporsi-tag { color: #dc2626; font-weight: bold; font-size: 7px; border: 0.5px solid #dc2626; padding: 0 1px; }
+                .proporsi-row { background-color: #fef9c3 !important; }
+                .proporsi-tag { color: #dc2626; font-weight: bold; font-size: 7px; border: 0.5px solid #dc2626; padding: 0 2px; border-radius: 2px; }
+                .emp-code { color: #6b7280; font-size: 7px; }
                 @media print { .no-print { display: none; } @page { size: landscape; margin: 10mm; } }
             </style>
             <div class="header">
@@ -175,24 +177,26 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 <h3 style="margin:0; text-decoration: underline;">DAFTAR PEMBAYARAN THR</h3>
                 <div style="display: flex; justify-content: space-between; margin-top: 15px; font-weight: bold;">
                     <span>Bulan: ${mName} ${year}</span>
-                    <span>Perkebunan : ${division === 'ALL' ? 'SEMUA DIVISI' : division}</span>
+                    <span>Perkebunan : ${division === 'ALL' ? 'SEMUA DIVISI' : division}${gangPrefix ? ` (Group ${gangPrefix})` : ''}</span>
                 </div>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th rowspan="3">NO.<br/>URUT</th>
-                        <th rowspan="3">L/P</th>
-                        <th rowspan="3">NAMA KARYAWAN</th>
-                        <th rowspan="3">TANGGAL MASUK KERJA</th>
-                        <th rowspan="3">HARI<br/>KERJA<br/>(HK)</th>
+                        <th rowspan="3" style="width:30px">NO.<br/>URUT</th>
+                        <th rowspan="3" style="width:25px">L/P</th>
+                        <th rowspan="3" style="width:140px">NAMA KARYAWAN</th>
+                        <th rowspan="3" style="width:55px">EMP<br/>CODE</th>
+                        <th rowspan="3" style="width:60px">AGAMA</th>
+                        <th rowspan="3" style="width:65px">TANGGAL<br/>MASUK KERJA</th>
+                        <th rowspan="3" style="width:25px">HK</th>
                         <th rowspan="3">UPAH<br/>DASAR<br/>(Rp)</th>
                         <th rowspan="3">UPAH<br/>POKOK<br/>(Rp)</th>
                         <th colspan="2">TUNJANGAN / PREMI</th>
                         <th colspan="2">MASA KERJA</th>
                         <th rowspan="3">JUMLAH<br/>UPAH KOTOR<br/>(Rp)</th>
                         <th rowspan="3">PAJAK<br/>THR<br/>(Rp)</th>
-                        <th rowspan="3">KELAYAKAN<br/>THR<br/>(Rp)</th>
+                        <th rowspan="3">KELAYAKAN<br/>THR</th>
                         <th rowspan="3">JUMLAH<br/>UPAH BERSIH<br/>(Rp)</th>
                     </tr>
                     <tr>
@@ -212,19 +216,30 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             const joinDate = vars.JOIN_DATE || row.join_date;
             const masaKerjaThn = vars.MASA_KERJA_TAHUN || 0;
             const upahKotor = row.amount || 0;
+            const agama = row.religion || vars.RELIGION || '-';
+            const empCode = row.emp_code || vars.EMP_CODE || '-';
+            const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
+
+            // Detect proportional employee
+            let isProporsi = false;
             let proporsiLabel = '';
             if (masaKerjaThn === 0 && joinDate) {
                 const jDate = new Date(joinDate);
                 const periodDate = new Date(year, month - 1, 1);
-                const months = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
-                if (months < 12 && months >= 0) proporsiLabel = `<br/><span class="proporsi-tag">PROP ${months}/12</span>`;
+                const monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
+                if (monthsDiff < 12 && monthsDiff >= 0) {
+                    isProporsi = true;
+                    proporsiLabel = `<br/><span class="proporsi-tag">★ PROPORSI ${monthsDiff + 1}/12</span>`;
+                }
             }
-            const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
+
             return `
-                            <tr>
+                            <tr class="${isProporsi ? 'proporsi-row' : ''}">
                                 <td class="text-center">${index + 1}</td>
                                 <td class="text-center">${vars.SEX || 'L'}</td>
-                                <td>${row.emp_name} ${proporsiLabel}</td>
+                                <td>${row.emp_name}${proporsiLabel}</td>
+                                <td class="text-center emp-code">${empCode}</td>
+                                <td class="text-center">${agama}</td>
                                 <td class="text-center">${joinDate ? new Date(joinDate).toLocaleDateString('id-ID') : '-'}</td>
                                 <td class="text-center">30</td>
                                 <td class="text-right">${formatCurrency(vars.UPAH_DASAR)}</td>
@@ -243,7 +258,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 </tbody>
                 <tfoot>
                     <tr>
-                        <th colspan="11" class="text-right">TOTAL KESELURUHAN</th>
+                        <th colspan="13" class="text-right">TOTAL KESELURUHAN</th>
                         <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
                         <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0))}</th>
                         <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
@@ -260,7 +275,8 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
     };
 
     const handlePrintReport = () => {
-        const printData = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
+        let printData = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
+        if (gangPrefix) printData = printData.filter(r => getAsistensi(r.gang_code) === gangPrefix);
         if (printData.length === 0) return alert('Tidak ada data.');
         const win = window.open('', '_blank');
         win.document.write(`<html><head><title>Laporan THR</title></head><body>${getReportHTML(printData)}<div class="no-print" style="text-align:center;margin-top:20px"><button onclick="window.print()">Cetak Sekarang</button></div></body></html>`);
