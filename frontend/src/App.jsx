@@ -513,7 +513,7 @@ const OperationalReportWrapper = () => {
       </div>
     </div>
   );
-});
+};
 
 OperationalReportWrapper.displayName = 'OperationalReportWrapper';
 
