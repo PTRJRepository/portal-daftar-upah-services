@@ -588,10 +588,10 @@ export class DataExtractorService {
                 const amount = Number(val) || 0;
                 // [MODIFIED] User requested to exclude ONLY 'koreksi' from total_premi
                 // Tiket, panen, pruning, etc. are all included as requested.
-                if (key !== "koreksi") { 
+                if (key !== "koreksi") {
                     total_premi += amount;
                 }
-                
+
                 // Add all individual premiums (except static/excluded ones) to dynamic set for UI columns
                 if (key !== "koreksi") {
                     dynamicPremiSet.add(key);
@@ -2011,16 +2011,16 @@ export class DataExtractorService {
         }
         return result;
     }
-/**
- * Get Job Title (Position) for each employee for the specified month from history table
- */
-private async getPositionHistory(empCodes: string[], month: number, year: number): Promise<Record<string, string>> {
-    if (!empCodes.length) return {};
-    try {
-        const extDb = Database.getExtendedInstance();
-        const empList = empCodes.map(e => `'${e}'`).join(",");
+    /**
+     * Get Job Title (Position) for each employee for the specified month from history table
+     */
+    private async getPositionHistory(empCodes: string[], month: number, year: number): Promise<Record<string, string>> {
+        if (!empCodes.length) return {};
+        try {
+            const extDb = Database.getExtendedInstance();
+            const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        const rows = await extDb.query<{ emp_code: string; position: string }>(`
+            const rows = await extDb.query<{ emp_code: string; position: string }>(`
             SELECT RTRIM(emp_code) as emp_code, position
             FROM history_hr_employee
             WHERE RTRIM(emp_code) IN (${empList})
@@ -2028,22 +2028,21 @@ private async getPositionHistory(empCodes: string[], month: number, year: number
               AND period_year = ?
         `, [month, year]);
 
-        const result: Record<string, string> = {};
-        for (const r of rows) {
-            if (r.emp_code && r.position) {
-                result[r.emp_code.trim()] = r.position.trim();
+            const result: Record<string, string> = {};
+            for (const r of rows) {
+                if (r.emp_code && r.position) {
+                    result[r.emp_code.trim()] = r.position.trim();
+                }
             }
+            return result;
+        } catch (e) {
+            console.error("[DataExtractor] Failed to get position history:", e);
+            return {};
         }
-        return result;
-    } catch (e) {
-        console.error("[DataExtractor] Failed to get position history:", e);
-        return {};
     }
-}
 
-/**
- * Get Task/Job Code for each employee for the specified month
- */
+    /**
+     * Get Task/Job Code for each employee for the specified month
      * Uses UNION ALL to combine data from both current (PR_TASKREGLN) and historical (PR_TASKREGLN_ARC) tables
      * Returns the most frequent task code for each employee (or the most recent one)
      */
