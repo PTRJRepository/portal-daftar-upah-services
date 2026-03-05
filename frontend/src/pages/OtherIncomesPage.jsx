@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReportTable from '../components/common/ReportTable';
 import { useReport } from '../context/ReportContext';
 import { otherIncomesService } from '../services/otherIncomesService';
+import { employeeHrDataService } from '../services/employeeHrDataService';
 import { Save, Trash2, Plus, RefreshCw, AlertCircle, Calculator, Download, Settings, X, Filter, Printer, Eye } from 'lucide-react';
 
 const INCOME_TYPES = ['THR', 'Bonus', 'Custom'];
@@ -472,6 +473,23 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
         win.document.close();
     };
 
+    const handleUpdateHrData = useCallback(async (empCode, field, value) => {
+        try {
+            await employeeHrDataService.updateHrDataField(empCode, field, value);
+            // Update local state to reflect change
+            setRowData(prev => prev.map(row => {
+                const rowEmpCode = row.emp_code || row.details?.variables?.EMP_CODE;
+                if (rowEmpCode === empCode) {
+                    return { ...row, [field]: value };
+                }
+                return row;
+            }));
+        } catch (err) {
+            console.error(`Failed to update ${field}:`, err);
+            alert(`Gagal update ${field}`);
+        }
+    }, []);
+
     // ReportTable column definitions
     const reportColumns = useMemo(() => [
         { field: '_no', headers: ['NO.\nURUT', null, null], w: 60, className: 'text-center', sticky: true, left: 0, valueGetter: (row) => row._no },
@@ -484,6 +502,22 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{row.nik} {row.emp_code ? `| ${row.emp_code}` : ''}</div>
                 </div>
             )
+        },
+        {
+            field: 'bank_acc_no', headers: ['NO REKENING', null, null], w: 130, className: 'text-center',
+            editable: true,
+            onCellValueChanged: (params) => {
+                const empCode = params.data.emp_code || params.data.details?.variables?.EMP_CODE;
+                if (empCode) handleUpdateHrData(empCode, 'bank_acc_no', params.newValue);
+            }
+        },
+        {
+            field: 'bank_code', headers: ['BANK', null, null], w: 80, className: 'text-center',
+            editable: true,
+            onCellValueChanged: (params) => {
+                const empCode = params.data.emp_code || params.data.details?.variables?.EMP_CODE;
+                if (empCode) handleUpdateHrData(empCode, 'bank_code', params.newValue);
+            }
         },
         {
             field: 'income_name', headers: ['TIPE & DESKRIPSI', null, null], w: 180, className: 'text-left',
