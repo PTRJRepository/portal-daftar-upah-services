@@ -44,16 +44,47 @@ export class SummaryService {
     private extendDb: Database;
     private millDb: Database;
 
+    // Flag to redirect origin DB queries to history DB (extend_db_ptrj)
+    // When true, HR_GANG etc. are queried from extend_db_ptrj instead of db_ptrj
+    private _useHistoryDb: boolean = false;
+
     // Cache for mapping data to improve performance and avoid timeouts
     private divisionDescriptionsCache: Record<string, string> | null = null;
     private gangToDivisionMapCache: Record<string, string> | null = null;
     private gangDescriptionsCache: Record<string, string> | null = null;
+
+    // TTL cache for getAllDivisionsPremiTotals results (key: "month-year", TTL: 5 min)
+    private premiTotalsCache: Map<string, { data: DivisionSummary[]; timestamp: number }> = new Map();
+    private static CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
     private constructor() {
         // Enforce DB_PROFILE for summary reports
         this.db = Database.getInstance(undefined, Config.DB_PROFILE);
         this.extendDb = Database.getInstance("extend_db_ptrj", Config.DB_EXTEND_PROFILE);
         this.millDb = Database.getMillInstance();
+    }
+
+    /**
+     * Set whether to use history DB (extend_db_ptrj) for ALL queries,
+     * including HR_GANG lookups that normally go to origin db_ptrj.
+     * This prevents load on origin DB when history mode is active.
+     */
+    public setUseHistoryDb(useHistory: boolean): void {
+        this._useHistoryDb = useHistory;
+        if (useHistory) {
+            // Clear caches when switching mode so data is re-fetched from correct DB
+            this.gangToDivisionMapCache = null;
+            this.gangDescriptionsCache = null;
+        }
+        console.log(`[SummaryService] useHistoryDb set to: ${useHistory}`);
+    }
+
+    /**
+     * Returns the appropriate DB instance for queries that normally go to origin db_ptrj.
+     * When useHistoryDb is true, returns extendDb instead.
+     */
+    private getDbForQuery(): Database {
+        return this._useHistoryDb ? this.extendDb : this.db;
     }
 
     public static getInstance(): SummaryService {
@@ -70,7 +101,8 @@ export class SummaryService {
         this.divisionDescriptionsCache = null;
         this.gangToDivisionMapCache = null;
         this.gangDescriptionsCache = null;
-        console.log("[SummaryService] Caches cleared");
+        this.premiTotalsCache.clear();
+        console.log("[SummaryService] Caches cleared (including TTL caches)");
     }
 
     private async loadJsonData(filename: string): Promise<any> {
@@ -137,7 +169,8 @@ export class SummaryService {
         if (this.gangToDivisionMapCache) return this.gangToDivisionMapCache;
 
         try {
-            const gangRows = await this.db.query<{ GangCode: string; LocCode: string }>(`
+            const queryDb = this.getDbForQuery();
+            const gangRows = await queryDb.query<{ GangCode: string; LocCode: string }>(`
                 SELECT RTRIM(GangCode) as GangCode, RTRIM(LocCode) as LocCode
                 FROM dbo.HR_GANG
                 WHERE GangCode IS NOT NULL AND LocCode IS NOT NULL
@@ -157,9 +190,23 @@ export class SummaryService {
     }
 
     public async getAllDivisionsPremiTotals(month: number, year: number): Promise<DivisionSummary[]> {
-        const descriptions = await this.getDivisionDescriptions();
-        const gangDivMap = await this.getGangToDivisionMap();
-        const allGangDescs = await this.getAllGangDescriptions();
+        // Check TTL cache first
+        const cacheKey = `${month}-${year}`;
+        const cached = this.premiTotalsCache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp) < SummaryService.CACHE_TTL_MS) {
+            console.log(`[SummaryService] Cache HIT for getAllDivisionsPremiTotals ${cacheKey}`);
+            return cached.data;
+        }
+
+        const startTime = Date.now();
+        console.log(`[SummaryService] Cache MISS for ${cacheKey}, computing...`);
+
+        // Parallelize lookup queries (all cacheable)
+        const [descriptions, gangDivMap, allGangDescs] = await Promise.all([
+            this.getDivisionDescriptions(),
+            this.getGangToDivisionMap(),
+            this.getAllGangDescriptions()
+        ]);
 
         // Fetch per-gang rows
         const query = `
@@ -184,12 +231,13 @@ export class SummaryService {
             WHERE period_month = ? AND period_year = ?
         `;
 
-        const rows = await this.extendDb.query<any>(query, [month, year]);
-        const thumbprintData = await this.loadThumbprintData(month, year);
-        const backfillData = await this.getBackfillData(month, year);
-
-        // Fetch tonase from db_ptrj_mill (server_3) - real-time per division
-        const tonaseFromMill = await this.fetchTonaseFromMill(month, year);
+        // Parallelize independent data fetches (DB query + thumbprint + backfill + tonase)
+        const [rows, thumbprintData, backfillData, tonaseFromMill] = await Promise.all([
+            this.extendDb.query<any>(query, [month, year]),
+            this.loadThumbprintData(month, year),
+            this.getBackfillData(month, year),
+            this.fetchTonaseFromMill(month, year)
+        ]);
 
         // Type for aggregation bucket
         type AggBucket = {
@@ -424,7 +472,13 @@ export class SummaryService {
             });
         }
 
-        return await deductionAdjustmentService.applyAdjustmentsToDivisionData(month, year, results);
+        const finalResults = await deductionAdjustmentService.applyAdjustmentsToDivisionData(month, year, results);
+
+        // Store in TTL cache
+        this.premiTotalsCache.set(cacheKey, { data: finalResults, timestamp: Date.now() });
+        console.log(`[SummaryService] getAllDivisionsPremiTotals ${cacheKey} completed in ${Date.now() - startTime}ms, cached.`);
+
+        return finalResults;
     }
 
 
@@ -891,12 +945,19 @@ export class SummaryService {
     }
 
     public async getAnalysisReportData(month: number, year: number, filterType: string = 'all'): Promise<any> {
+        const startTime = Date.now();
+        console.log(`[SummaryService] getAnalysisReportData starting for ${month}/${year}...`);
+
         // Get previous period
         const prevMonth = month === 1 ? 12 : month - 1;
         const prevYear = month === 1 ? year - 1 : year;
 
-        const currentData = await this.getDivisionSummary(undefined, month, year);
-        const previousData = await this.getDivisionSummary(undefined, prevMonth, prevYear);
+        // Parallelize current + previous month fetches (biggest perf win)
+        const [currentData, previousData] = await Promise.all([
+            this.getDivisionSummary(undefined, month, year),
+            this.getDivisionSummary(undefined, prevMonth, prevYear)
+        ]);
+        console.log(`[SummaryService] getAnalysisReportData parallel fetch done in ${Date.now() - startTime}ms`);
 
         const currentDivs = currentData.data || [];
         const previousDivs = previousData.data || [];
@@ -1292,8 +1353,9 @@ id, period_month, period_year, division_code, gang_code,
      */
     public async getAllGangDescriptions(): Promise<Record<string, string>> {
         try {
-            // Fetch from HR_GANG in db_ptrj (main database)
-            const gangRows = await this.db.query<{ GangCode: string; Description: string | null }>(`
+            // Fetch from HR_GANG — uses origin db_ptrj or extend_db_ptrj based on useHistoryDb flag
+            const queryDb = this.getDbForQuery();
+            const gangRows = await queryDb.query<{ GangCode: string; Description: string | null }>(`
                 SELECT RTRIM(GangCode) as GangCode, Description
                 FROM dbo.HR_GANG
                 WHERE GangCode IS NOT NULL

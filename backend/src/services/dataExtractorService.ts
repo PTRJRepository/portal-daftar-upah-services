@@ -414,7 +414,7 @@ export class DataExtractorService {
         const startParallel = performance.now();
         // Fetch all required data in parallel
         const [
-            attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes, bunchesBatch, manualAdjustmentsRaw
+            attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes, bunchesBatch, manualAdjustmentsRaw, positionHistory
         ] = await Promise.all([
             this.getAttendance(empCodes, startDate, endDate, serverProfile),
             this.getCuti(empCodes, startDate, endDate, serverProfile),
@@ -434,7 +434,8 @@ export class DataExtractorService {
             this.getTaskCodes(empCodes, startDate, endDate, serverProfile),
             // [OPTIMIZATION] Skip bunches fetch if requested (e.g. for Payslips)
             !skipHarvest ? this.getBunchesBatch(empCodes, month, year) : Promise.resolve(new Map()),
-            manualAdjustmentService.getAdjustments(month, year, gangCode || undefined)
+            manualAdjustmentService.getAdjustments(month, year, gangCode || undefined),
+            this.getPositionHistory(empCodes, month, year)
         ]);
 
         // [NEW] Use GajiPokokService for basic salary calculations in batch
@@ -530,7 +531,8 @@ export class DataExtractorService {
             const gpResult = gajiPokokBatchResult.results.get(emp.emp_code)?.output?.value;
             const empUpahDasar = gpResult?.upah_dasar?.value || emp.pay_rate || 0;
 
-            const empJobTitle = jobTitles[emp.emp_code] || "";
+            // Get job title from history override if available, otherwise use real-time
+            const empJobTitle = positionHistory[emp.emp_code] || jobTitles[emp.emp_code] || "";
 
             // ... (Rest of existing logic mostly unchanged until row creation)
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
@@ -2009,9 +2011,39 @@ export class DataExtractorService {
         }
         return result;
     }
+/**
+ * Get Job Title (Position) for each employee for the specified month from history table
+ */
+private async getPositionHistory(empCodes: string[], month: number, year: number): Promise<Record<string, string>> {
+    if (!empCodes.length) return {};
+    try {
+        const extDb = Database.getExtendedInstance();
+        const empList = empCodes.map(e => `'${e}'`).join(",");
 
-    /**
-     * Get Task/Job Code for each employee for the specified month
+        const rows = await extDb.query<{ emp_code: string; position: string }>(`
+            SELECT RTRIM(emp_code) as emp_code, position
+            FROM history_hr_employee
+            WHERE RTRIM(emp_code) IN (${empList})
+              AND period_month = ?
+              AND period_year = ?
+        `, [month, year]);
+
+        const result: Record<string, string> = {};
+        for (const r of rows) {
+            if (r.emp_code && r.position) {
+                result[r.emp_code.trim()] = r.position.trim();
+            }
+        }
+        return result;
+    } catch (e) {
+        console.error("[DataExtractor] Failed to get position history:", e);
+        return {};
+    }
+}
+
+/**
+ * Get Task/Job Code for each employee for the specified month
+ */
      * Uses UNION ALL to combine data from both current (PR_TASKREGLN) and historical (PR_TASKREGLN_ARC) tables
      * Returns the most frequent task code for each employee (or the most recent one)
      */

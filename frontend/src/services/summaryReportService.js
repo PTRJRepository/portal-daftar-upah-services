@@ -23,12 +23,13 @@ const BACKEND_BASE = getBackendBase();
  * @param {number} [params.year] - Year filter
  * @returns {Promise<Object>} Summary data response
  */
-export async function fetchDivisionSummary(token, { division, month, year }) {
+export async function fetchDivisionSummary(token, { division, month, year, useHistory = false }) {
     const params = new URLSearchParams();
 
     if (division) params.append('division', division);
     if (month) params.append('month', month.toString());
     if (year) params.append('year', year.toString());
+    if (useHistory) params.append('use_history', 'true');
 
     const url = `${BACKEND_BASE}/payroll/summary/division?${params.toString()}`;
 
@@ -125,8 +126,9 @@ export async function fetchGangsByLocCode(token, locCode) {
  * @param {number} params.year - Year
  * @returns {Promise<Object>} All divisions summary data
  */
-export async function fetchAllDivisionsTotals(token, { month, year }) {
-    const url = `${BACKEND_BASE}/payroll/summary/all-divisions?month=${month}&year=${year}`;
+export async function fetchAllDivisionsTotals(token, { month, year, useHistory = false }) {
+    let url = `${BACKEND_BASE}/payroll/summary/all-divisions?month=${month}&year=${year}`;
+    if (useHistory) url += '&use_history=true';
 
     const response = await axios.get(url, {
         headers: {
@@ -146,8 +148,9 @@ export async function fetchAllDivisionsTotals(token, { month, year }) {
  * @param {number} params.year - Year
  * @returns {Promise<Object>} Comparison data
  */
-export async function fetchComparisonSummary(token, { month, year }) {
-    const url = `${BACKEND_BASE}/payroll/summary/comparison?month=${month}&year=${year}`;
+export async function fetchComparisonSummary(token, { month, year, useHistory = false }) {
+    let url = `${BACKEND_BASE}/payroll/summary/comparison?month=${month}&year=${year}`;
+    if (useHistory) url += '&use_history=true';
 
     const response = await axios.get(url, {
         headers: {
@@ -167,8 +170,9 @@ export async function fetchComparisonSummary(token, { month, year }) {
  * @param {number} params.year - Year
  * @returns {Promise<Object>} Impact Report data
  */
-export async function fetchImpactReport(token, { month, year }) {
-    const url = `${BACKEND_BASE}/payroll/summary/impact-report?month=${month}&year=${year}`;
+export async function fetchImpactReport(token, { month, year, useHistory = false }) {
+    let url = `${BACKEND_BASE}/payroll/summary/impact-report?month=${month}&year=${year}`;
+    if (useHistory) url += '&use_history=true';
 
     const response = await axios.get(url, {
         headers: {
@@ -373,8 +377,9 @@ export async function fetchLuasAreaAdjustments(token, { month, year }) {
  * @param {number} params.year - Year
  * @returns {Promise<Object>} Analysis Report data
  */
-export async function fetchAnalysisReport(token, { month, year, type = 'all' }) {
-    const url = `${BACKEND_BASE}/payroll/summary/analysis-report?month=${month}&year=${year}&type=${type}`;
+export async function fetchAnalysisReport(token, { month, year, type = 'all', useHistory = false }) {
+    let url = `${BACKEND_BASE}/payroll/summary/analysis-report?month=${month}&year=${year}&type=${type}`;
+    if (useHistory) url += '&use_history=true';
 
     const response = await axios.get(url, {
         headers: {

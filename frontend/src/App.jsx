@@ -41,9 +41,7 @@ import UpahBersihDetailPage from './pages/UpahBersihDetailPage'
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
 
 // Wrapper for Operational Report
-const OperationalReportWrapper = memo(() => {
-  console.log('[OperationalReportWrapper] Component mounted/rendered');
-
+const OperationalReportWrapper = () => {
   const {
     division, setDivision,
     gang, setGang,
@@ -53,13 +51,7 @@ const OperationalReportWrapper = memo(() => {
   } = useReport();
   const { token } = useAuth();
   const navigate = useNavigate();
-
-  // Log when component unmounts
-  useEffect(() => {
-    return () => {
-      console.log('[OperationalReportWrapper] Component UNMOUNTED');
-    };
-  }, []);
+  const location = useLocation();
 
   const [fontSize, setFontSize] = useState(100);
   const [exportHandler, setExportHandler] = useState(null);
@@ -69,25 +61,33 @@ const OperationalReportWrapper = memo(() => {
   const [useHistoryDb, setUseHistoryDb] = useState(false);
   const [gangPrefix, setGangPrefix] = useState('');
 
-  // Helper to extract Asistensi group number from gang code
-  const getAsistensi = useCallback((gangCode) => {
-    if (!gangCode) return null;
-    const gc = gangCode.trim().toUpperCase();
-    if (gc.startsWith('K2')) return '1';
-    const match = gc.match(/\d+/);
-    return match ? match[0] : null;
-  }, []);
+  // Using location.pathname as key FORCES remount when navigating, solving 'stuck' UI
+  // Note: We return the actual content here, or wrap it.
+  
+  // Reset gangPrefix when division changes
+  useEffect(() => {
+    setGangPrefix('');
+  }, [division]);
 
+  // Sync state with global context if props were passed (usually via SummaryReportWrapper style logic)
+  // but here it's a direct route component.
+  
   // Available asistensi prefixes from loaded gangs
   const availablePrefixes = useMemo(() => {
     if (!gangs || gangs.length === 0) return [];
     const prefixes = new Set();
     gangs.forEach(g => {
-      const a = getAsistensi(g.gang_code);
+      const a = (gangCode => {
+        if (!gangCode) return null;
+        const gc = gangCode.trim().toUpperCase();
+        if (gc.startsWith('K2')) return '1';
+        const match = gc.match(/\d+/);
+        return match ? match[0] : null;
+      })(g.gang_code);
       if (a) prefixes.add(a);
     });
     return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
-  }, [gangs, getAsistensi]);
+  }, [gangs]);
 
   // Reset gangPrefix when division changes
   useEffect(() => {
@@ -630,9 +630,9 @@ function AppInner() {
               <DashboardLayout />
             </ProtectedRoute>
           }>
-            <Route index element={<DashboardHome key="dashboard-home" />} />
+            <Route index element={<DashboardHome key={location.pathname + location.search} />} />
 
-            <Route path="operational" element={<OperationalReportWrapper key="operational-route" />} />
+            <Route path="operational" element={<OperationalReportWrapper key={location.pathname + location.search} />} />
             <Route path="employee-directory" element={<SummaryReportWrapper component={EmployeeDirectoryPage} />} />
 
             <Route path="summary" element={<SummaryReportWrapper component={SummaryReportPage} />} />
@@ -673,10 +673,10 @@ const SummaryReportWrapper = ({ component: Component }) => {
   // Existing pages have onBack prop. We can map it to navigate(-1) or navigate('/')
   const handleBack = () => navigate('/');
 
-  // Using location.pathname as key FORCES remount when navigating between DIFFERENT reports 
-  // that use the same wrapper, solving the 'stuck UI' bug
+  // Using location.pathname + search as key FORCES remount when navigating, 
+  // solving the 'stuck UI' bug even when query params change
   return <Component
-    key={location.pathname}
+    key={location.pathname + location.search}
     onBack={handleBack}
     initialMonth={month}
     initialYear={year}

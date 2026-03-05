@@ -52,6 +52,9 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+    // History DB mode - when ON, queries go to extend_db_ptrj instead of db_ptrj
+    const [useHistory, setUseHistory] = useState(false);
+
     // Load available periods & Initialize print mode
     useEffect(() => {
         async function loadPeriods() {
@@ -84,14 +87,14 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
 
         try {
             if (comparisonMode) {
-                const result = await fetchComparisonSummary(token, { month, year });
+                const result = await fetchComparisonSummary(token, { month, year, useHistory });
                 if (result.success) {
                     setComparisonData(result);
                 } else {
                     setError('Failed to fetch comparison data');
                 }
             } else {
-                const result = await fetchAllDivisionsTotals(token, { month, year });
+                const result = await fetchAllDivisionsTotals(token, { month, year, useHistory });
                 if (result.success) {
                     setSummaryData(result.data || []);
                     setGrandTotal(result.grand_total || null);
@@ -105,7 +108,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         } finally {
             setLoading(false);
         }
-    }, [token, month, year, comparisonMode]);
+    }, [token, month, year, comparisonMode, useHistory]);
 
     // Handle Thumbprint Change
     const handleThumbprintChange = (divisionKey, value) => {
@@ -942,6 +945,23 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     >
                         {editMode ? 'Exit Edit' : 'Edit Mode'}
                     </button>
+                    {/* History DB Toggle */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: useHistory ? '#fef3c7' : 'var(--bg-card, #fff)', padding: '0.5rem 1rem', borderRadius: '8px', border: useHistory ? '1px solid #f59e0b' : '1px solid var(--border-color, #e2e8f0)', marginLeft: '0.5rem', transition: 'all 0.2s' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0, fontWeight: 500, fontSize: '0.875rem', color: useHistory ? '#92400e' : 'inherit' }} title="Ambil data dari history DB (extend_db_ptrj) — origin DB tidak terbebani">
+                            <input
+                                type="checkbox"
+                                checked={useHistory}
+                                onChange={(e) => {
+                                    setUseHistory(e.target.checked);
+                                    setSummaryData([]);
+                                    setGrandTotal(null);
+                                    setComparisonData(null);
+                                }}
+                                style={{ width: '16px', height: '16px', accentColor: '#f59e0b' }}
+                            />
+                            Mode History
+                        </label>
+                    </div>
                 </div>
             </div>
 

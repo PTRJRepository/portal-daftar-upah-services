@@ -522,6 +522,28 @@ export class EmployeeDetailService {
         }
     }
 
+    // --- Get Position (Jabatan) from History (extend_db_ptrj) ---
+    private async getPositionFromHistory(empCode: string, month: number, year: number): Promise<string | null> {
+        try {
+            const extDb = Database.getExtendedInstance();
+            const rows = await extDb.query<{ position: string }>(`
+                SELECT position
+                FROM history_hr_employee
+                WHERE RTRIM(emp_code) = RTRIM(?)
+                  AND period_month = ?
+                  AND period_year = ?
+            `, [empCode, month, year]);
+
+            if (rows.length > 0 && rows[0].position) {
+                return rows[0].position.trim();
+            }
+            return null;
+        } catch (e) {
+            console.error("[EmployeeDetailService] Failed to get position from history:", e);
+            return null;
+        }
+    }
+
     // --- Complete Checkroll ---
     public async getEmployeeCheckroll(rawEmpCode: string, month: number, year: number, skipHarvest: boolean = false): Promise<any> {
         const empCode = (rawEmpCode || '').trim().toUpperCase();
@@ -532,7 +554,43 @@ export class EmployeeDetailService {
             return { emp_code: empCode, error: "Employee not found" };
         }
 
-        // ... (existing code for upah_dasar and PTKP)
+        // OVERRIDE: Get upah_dasar from history table (extend_db_ptrj) instead of HR_PAYROLL
+        const historyUpahDasar = await this.getUpahDasarFromHistory(empCode, month, year);
+        if (historyUpahDasar !== null) {
+            employeeInfo.upah_dasar = historyUpahDasar;
+            console.log(`[EmployeeDetailService] Overriding upah_dasar with history value: ${historyUpahDasar}`);
+        }
+
+        // OVERRIDE: Get position (jabatan) from history table
+        const historyPosition = await this.getPositionFromHistory(empCode, month, year);
+        if (historyPosition !== null) {
+            employeeInfo.jabatan = historyPosition;
+            console.log(`[EmployeeDetailService] Overriding jabatan with history value: ${historyPosition}`);
+        }
+
+        // Get PTKP Status
+        try {
+            const extDb = Database.getExtendedInstance();
+            const ptkpRows = await extDb.query<{ ptkp_pajak: string }>(`
+                SELECT TOP 1 ptkp_pajak
+                FROM history_hr_employee
+                WHERE RTRIM(emp_code) = RTRIM(?)
+                  AND period_year = ? AND period_month = ?
+            `, [empCode, year, month]);
+
+            if (ptkpRows.length > 0 && ptkpRows[0].ptkp_pajak) {
+                employeeInfo.status_ptkp = ptkpRows[0].ptkp_pajak;
+            } else {
+                // Fallback to ptkpTaxService
+                const ptkpRecords = await ptkpTaxService.getPtkpByYear(year);
+                const ptkpRecord = ptkpRecords.find(p => p.emp_code.trim() === empCode);
+                if (ptkpRecord) {
+                    employeeInfo.status_ptkp = ptkpRecord.ptkp_status;
+                }
+            }
+        } catch (e) {
+            console.error("[EmployeeDetailService] Failed to get PTKP status:", e);
+        }
 
         const attendanceData = await this.getDailyAttendance(empCode, month, year);
         const overtimeData = await this.getDailyOvertime(empCode, month, year);

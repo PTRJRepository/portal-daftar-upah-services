@@ -22,7 +22,15 @@ const getMonthName = (month) => {
  * @param {number} props.year - Year
  */
 export default function PayslipCard({ data, month, year }) {
-    if (!data) return null;
+    if (!data || !data.payroll_data) {
+        return (
+            <div className="payslip-card">
+                <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                    Data Gaji Tidak Ditemukan ({data?.emp_code || 'N/A'})
+                </div>
+            </div>
+        );
+    }
 
     const { emp_code, employee, payroll_data, attendance } = data;
 

@@ -66,102 +66,142 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     .get("/all-divisions", async ({ query }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
-        const data = await summaryService.getAllDivisionsPremiTotals(month, year);
+        const useHistory = query.use_history === 'true';
 
-        // Calculate Grand Total
-        const gt = data.reduce((acc, curr) => ({
-            total_premi: acc.total_premi + curr.total_premi,
-            total_employees: acc.total_employees + curr.total_employees,
-            total_hk: acc.total_hk + curr.total_hk,
-            total_upah_bersih: acc.total_upah_bersih + curr.total_upah_bersih,
-            total_pph21: acc.total_pph21 + curr.total_pph21,
-            total_spsi: acc.total_spsi + curr.total_spsi,
-            total_lembur: acc.total_lembur + curr.total_lembur,
-            total_gangs: acc.total_gangs + curr.total_gangs,
-            thumb_print: acc.thumb_print + (curr.thumb_print || 0),
-            total_manual: acc.total_manual + curr.total_manual,
-            selisih: acc.selisih + curr.selisih
-        }), {
-            total_premi: 0, total_employees: 0, total_hk: 0, total_upah_bersih: 0,
-            total_pph21: 0, total_spsi: 0, total_lembur: 0, total_gangs: 0,
-            thumb_print: 0, total_manual: 0, selisih: 0
-        });
+        try {
+            summaryService.setUseHistoryDb(useHistory);
+            const data = await summaryService.getAllDivisionsPremiTotals(month, year);
 
-        return {
-            success: true,
-            month, year,
-            count: data.length,
-            data,
-            grand_total: {
-                description: "GRAND TOTAL",
-                ...gt,
-                is_grand_total: true
-            }
-        };
+            // Calculate Grand Total
+            const gt = data.reduce((acc, curr) => ({
+                total_premi: acc.total_premi + curr.total_premi,
+                total_employees: acc.total_employees + curr.total_employees,
+                total_hk: acc.total_hk + curr.total_hk,
+                total_upah_bersih: acc.total_upah_bersih + curr.total_upah_bersih,
+                total_pph21: acc.total_pph21 + curr.total_pph21,
+                total_spsi: acc.total_spsi + curr.total_spsi,
+                total_lembur: acc.total_lembur + curr.total_lembur,
+                total_gangs: acc.total_gangs + curr.total_gangs,
+                thumb_print: acc.thumb_print + (curr.thumb_print || 0),
+                total_manual: acc.total_manual + curr.total_manual,
+                selisih: acc.selisih + curr.selisih
+            }), {
+                total_premi: 0, total_employees: 0, total_hk: 0, total_upah_bersih: 0,
+                total_pph21: 0, total_spsi: 0, total_lembur: 0, total_gangs: 0,
+                thumb_print: 0, total_manual: 0, selisih: 0
+            });
+
+            return {
+                success: true,
+                month, year,
+                count: data.length,
+                data,
+                grand_total: {
+                    description: "GRAND TOTAL",
+                    ...gt,
+                    is_grand_total: true
+                }
+            };
+        } finally {
+            summaryService.setUseHistoryDb(false);
+        }
     }, {
         query: t.Object({
             month: t.String(),
-            year: t.String()
+            year: t.String(),
+            use_history: t.Optional(t.String())
         })
     })
     // --- Division Detail Summary ---
     .get("/division", async ({ query }) => {
         const { division, month, year } = query;
-        // Allow empty division for "ALL" - remove the requirement
-        const result = await summaryService.getDivisionSummary(
-            division || undefined,
-            month ? parseInt(month) : undefined,
-            year ? parseInt(year) : undefined
-        );
-        return {
-            success: true,
-            count: result.data.length,
-            data: result.data,
-            grand_total: result.grand_total,
-            filtered_headers: result.filtered_headers
-        };
+        const useHistory = query.use_history === 'true';
+
+        try {
+            summaryService.setUseHistoryDb(useHistory);
+            // Allow empty division for "ALL" - remove the requirement
+            const result = await summaryService.getDivisionSummary(
+                division || undefined,
+                month ? parseInt(month) : undefined,
+                year ? parseInt(year) : undefined
+            );
+            return {
+                success: true,
+                count: result.data.length,
+                data: result.data,
+                grand_total: result.grand_total,
+                filtered_headers: result.filtered_headers
+            };
+        } finally {
+            summaryService.setUseHistoryDb(false);
+        }
     }, {
         query: t.Object({
             division: t.Optional(t.String()),
             month: t.Optional(t.String()),
-            year: t.Optional(t.String())
+            year: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
         })
     })
     // --- Comparison Report ---
     .get("/comparison", async ({ query }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
-        const result = await summaryService.getAllDivisionsComparison(month, year);
-        return { success: true, ...result };
+        const useHistory = query.use_history === 'true';
+
+        try {
+            summaryService.setUseHistoryDb(useHistory);
+            const result = await summaryService.getAllDivisionsComparison(month, year);
+            return { success: true, ...result };
+        } finally {
+            summaryService.setUseHistoryDb(false);
+        }
     }, {
         query: t.Object({
             month: t.String(),
-            year: t.String()
+            year: t.String(),
+            use_history: t.Optional(t.String())
         })
     })
     // --- Impact Report ---
     .get("/impact-report", async ({ query }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
-        const result = await summaryService.getImpactReportData(month, year);
-        return result;
+        const useHistory = query.use_history === 'true';
+
+        try {
+            summaryService.setUseHistoryDb(useHistory);
+            const result = await summaryService.getImpactReportData(month, year);
+            return result;
+        } finally {
+            summaryService.setUseHistoryDb(false);
+        }
     }, {
         query: t.Object({
             month: t.String(),
-            year: t.String()
+            year: t.String(),
+            use_history: t.Optional(t.String())
         })
     })
     // --- Analysis Report ---
     .get("/analysis-report", async ({ query }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
-        const result = await summaryService.getAnalysisReportData(month, year, query.type);
-        return result;
+        const useHistory = query.use_history === 'true';
+
+        try {
+            summaryService.setUseHistoryDb(useHistory);
+            const result = await summaryService.getAnalysisReportData(month, year, query.type);
+            return result;
+        } finally {
+            summaryService.setUseHistoryDb(false);
+        }
     }, {
         query: t.Object({
             month: t.String(),
             year: t.String(),
-            type: t.Optional(t.String())
+            type: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
         })
     })
     // --- Mill PKS Totals ---

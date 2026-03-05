@@ -7,26 +7,30 @@ import html2pdf from 'html2pdf.js';
  * @param {string} filename - The name of the downloaded file.
  * @param {object} options - Optional configuration overrides.
  */
-export const generatePDF = (element, filename = 'report.pdf', options = {}) => {
+export const generatePDF = async (element, filename = 'report.pdf', options = {}) => {
     if (!element) {
         console.error('generatePDF: Element not found');
         return;
     }
 
+    console.log('[PDF] Generating:', filename);
+
+    // Default configuration
     const defaultOptions = {
-        margin: [5, 5, 5, 5], // Top, Left, Bottom, Right (mm)
+        margin: [0, 0, 0, 0], // Margins handled by CSS
         filename: filename,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { 
-            scale: 2, // Higher scale for better resolution
+            scale: 2, 
             useCORS: true, 
             logging: false,
-            letterRendering: true
+            letterRendering: true,
+            allowTaint: true
         },
         jsPDF: { 
             unit: 'mm', 
             format: 'a4', 
-            orientation: 'landscape', // Most reports are wide
+            orientation: 'landscape',
             compress: true
         },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
@@ -34,33 +38,40 @@ export const generatePDF = (element, filename = 'report.pdf', options = {}) => {
 
     const config = { ...defaultOptions, ...options };
 
-    // Clone the element to apply PDF-specific styles without affecting the UI
+    // Clone the element to avoid modifying the live UI
     const clone = element.cloneNode(true);
-    clone.classList.add('pdf-mode');
-
-    // Create a container to hold the clone off-screen
+    
+    // Create a temporary container
     const container = document.createElement('div');
-    container.style.position = 'absolute';
-    container.style.top = '-9999px';
-    container.style.left = '-9999px';
-    // Ensure container has enough width to simulate landscape paper if needed, or let it flow
-    container.style.width = '297mm'; // A4 Landscape width approx
+    container.style.position = 'fixed';
+    container.style.left = '0';
+    container.style.top = '0';
+    container.style.width = config.jsPDF.orientation === 'landscape' ? '297mm' : '210mm';
+    container.style.zIndex = '-9999';
+    container.style.backgroundColor = 'white';
+    container.style.opacity = '0'; // Hide from user but keep 'visible' for capture
+    container.style.pointerEvents = 'none';
+    
+    // Apply export class to the clone
+    clone.classList.add('pdf-export-active');
+    
     container.appendChild(clone);
     document.body.appendChild(container);
 
-    // Show loading state or promise
-    return html2pdf()
-        .set(config)
-        .from(clone)
-        .save()
-        .then(() => {
+    try {
+        // Wait a small amount for styles to settle
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Execute capture on the clone
+        await html2pdf().set(config).from(clone).save();
+        
+        console.log('[PDF] Generation success');
+    } catch (err) {
+        console.error('[PDF] Generation error:', err);
+        alert('Gagal membuat PDF: ' + err.message);
+    } finally {
+        if (document.body.contains(container)) {
             document.body.removeChild(container);
-        })
-        .catch(err => {
-            console.error('Error generating PDF:', err);
-            alert('Gagal membuat PDF. Silakan coba lagi.');
-            if (document.body.contains(container)) {
-                document.body.removeChild(container);
-            }
-        });
+        }
+    }
 };

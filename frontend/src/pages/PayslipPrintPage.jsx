@@ -95,7 +95,7 @@ export default function PayslipPrintPage() {
         try {
             const filename = `Slip_Gaji_${division || 'Batch'}_${getMonthName(month)}_${year}.pdf`;
             await generatePDF(printRef.current, filename, {
-                jsPDF: { orientation: 'portrait' }, // Diubah ke portrait sesuai layout CSS
+                jsPDF: { orientation: 'landscape' }, // Diubah kembali ke landscape
                 margin: [0, 0, 0, 0] // Margins sudah diatur di CSS
             });
         } catch (err) {
@@ -216,7 +216,11 @@ export default function PayslipPrintPage() {
             {/* Print Pages */}
             <div className="payslip-print-container" ref={printRef}>
                 {payslipChunks.map((chunk, chunkIndex) => (
-                    <div key={chunkIndex} className="payslip-a4-page">
+                    <div 
+                        key={chunkIndex} 
+                        className="payslip-a4-page"
+                        style={chunkIndex === payslipChunks.length - 1 ? { pageBreakAfter: 'auto' } : {}}
+                    >
                         <div className="payslip-grid">
                             {chunk.map((employeeData, slotIndex) => (
                                 <PayslipCard
@@ -238,7 +242,7 @@ export default function PayslipPrintPage() {
             {/* Print Instructions - Hidden when printing */}
             <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }} className="no-print">
                 <p style={{ marginBottom: '0.5rem' }}>
-                    💡 <strong>Tips Print:</strong> Gunakan pengaturan <strong>Portrait (Tegak)</strong> di dialog print browser Anda agar 4 slip muat dalam 1 lembar A4.
+                    💡 <strong>Tips Print:</strong> Gunakan pengaturan <strong>Landscape (Mendatar)</strong> di dialog print browser Anda agar 4 slip muat dalam 1 lembar A4.
                 </p>
                 <p style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
                     Pastikan Skala diatur ke <strong>Default (100%)</strong>.
