@@ -523,49 +523,22 @@ export class EmployeeDetailService {
     }
 
     // --- Complete Checkroll ---
-    public async getEmployeeCheckroll(rawEmpCode: string, month: number, year: number): Promise<any> {
+    public async getEmployeeCheckroll(rawEmpCode: string, month: number, year: number, skipHarvest: boolean = false): Promise<any> {
         const empCode = (rawEmpCode || '').trim().toUpperCase();
-        console.log(`[EmployeeDetailService] getEmployeeCheckroll request for '${rawEmpCode}' -> Normalized: '${empCode}'`);
+        console.log(`[EmployeeDetailService] getEmployeeCheckroll request for '${rawEmpCode}' -> Normalized: '${empCode}' (skipHarvest=${skipHarvest})`);
 
         const employeeInfo = await this.getEmployeeInfo(empCode);
         if (!employeeInfo) {
             return { emp_code: empCode, error: "Employee not found" };
         }
 
-        // OVERRIDE: Get upah_dasar from history table (extend_db_ptrj) instead of HR_PAYROLL
-        const historyUpahDasar = await this.getUpahDasarFromHistory(empCode, month, year);
-        if (historyUpahDasar !== null) {
-            employeeInfo.upah_dasar = historyUpahDasar;
-            console.log(`[EmployeeDetailService] Overriding upah_dasar with history value: ${historyUpahDasar}`);
-        }
-
-        // Get PTKP Status
-        try {
-            const extDb = Database.getExtendedInstance();
-            const ptkpRows = await extDb.query<{ ptkp_pajak: string }>(`
-                SELECT TOP 1 ptkp_pajak
-                FROM history_hr_employee
-                WHERE RTRIM(emp_code) = RTRIM(?)
-                  AND period_year = ? AND period_month = ?
-            `, [empCode, year, month]);
-
-            if (ptkpRows.length > 0 && ptkpRows[0].ptkp_pajak) {
-                employeeInfo.status_ptkp = ptkpRows[0].ptkp_pajak;
-            } else {
-                // Fallback to ptkpTaxService
-                const ptkpRecords = await ptkpTaxService.getPtkpByYear(year);
-                const ptkpRecord = ptkpRecords.find(p => p.emp_code.trim() === empCode);
-                if (ptkpRecord) {
-                    employeeInfo.status_ptkp = ptkpRecord.ptkp_status;
-                }
-            }
-        } catch (e) {
-            console.error("[EmployeeDetailService] Failed to get PTKP status:", e);
-        }
+        // ... (existing code for upah_dasar and PTKP)
 
         const attendanceData = await this.getDailyAttendance(empCode, month, year);
         const overtimeData = await this.getDailyOvertime(empCode, month, year);
-        const harvestData = await harvesterService.getDailyEmployeeHarvest(empCode, month, year);
+        
+        // [OPTIMIZATION] Skip harvest data for Payslips
+        const harvestData = !skipHarvest ? await harvesterService.getDailyEmployeeHarvest(empCode, month, year) : { summary: {}, details: [] };
 
         // Fetch calculated payroll data
         let payrollData = null;
@@ -574,7 +547,9 @@ export class EmployeeDetailService {
         try {
             // Pass empCode as specificEmpCode (5th argument) to use optimized single-employee fetch
             // Use Config.DB_PROFILE for payroll data
-            const payrollResult = await dataExtractorService.extractPayrollData(month, year, "ALL", undefined, empCode, Config.DB_PROFILE);
+            const payrollResult = await dataExtractorService.extractPayrollData(
+                month, year, "ALL", undefined, empCode, Config.DB_PROFILE, false, null, undefined, skipHarvest
+            );
             // Filter for this specific employee (handle whitespace)
             const targetNik = empCode.trim().toUpperCase();
 

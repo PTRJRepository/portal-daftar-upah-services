@@ -57,19 +57,34 @@ export async function getBatchEmployeeCheckroll(token, empCodes, month, year) {
  * @param {number} year - Year
  * @returns {Promise<Object>} Checkroll data
  */
-export async function getEmployeeCheckroll(token, empCode, month, year) {
+/**
+ * Save payslip data to history database
+ * @param {string} token - JWT token
+ * @param {number} month - Month (1-12)
+ * @param {number} year - Year
+ * @param {string} division - Division code (optional)
+ * @returns {Promise<Object>} Result of the save operation
+ */
+export async function savePayslipHistory(token, month, year, division = '') {
     try {
-        const params = { month, year }
+        const backendHost = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL
+        const host = backendHost?.endsWith('/') ? backendHost.slice(0, -1) : (backendHost || '')
+        const url = `${host}/payroll/history/seed`
 
-        const baseUrl = getBaseUrl()
-        const response = await axios.get(`${baseUrl}/${empCode}/checkroll`, {
-            headers: { Authorization: `Bearer ${token}` },
-            params
+        const body = {
+            period_month: month,
+            period_year: year,
+            division_code: division || undefined,
+            force: true // Usually want to overwrite if re-saving from print page
+        }
+
+        const response = await axios.post(url, body, {
+            headers: { Authorization: `Bearer ${token}` }
         })
 
         return response.data
     } catch (error) {
-        console.error('[PayslipService] Failed to get employee checkroll:', error)
+        console.error('[PayslipService] Failed to save payslip history:', error)
         throw error
     }
 }

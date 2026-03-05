@@ -178,7 +178,7 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
             // Fetch payroll data for each division needed
             for (const div of divisions) {
                 const payrollResult = await dataExtractorService.extractPayrollData(
-                    month, year, div, undefined, undefined, "SERVER_PROFILE_2"
+                    month, year, div, undefined, undefined, "SERVER_PROFILE_2", false, null, undefined, true // skipHarvest=true
                 );
                 if (payrollResult?.data_rows) {
                     allPayrollData = allPayrollData.concat(payrollResult.data_rows);
@@ -254,7 +254,7 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
                 // Employee not found in payroll data - try individual fetch as fallback
                 try {
                     console.log(`[Batch Checkroll] Employee ${normalizedCode} not in batch data, fetching individually...`);
-                    const individualResult = await employeeDetailService.getEmployeeCheckroll(normalizedCode, month, year);
+                    const individualResult = await employeeDetailService.getEmployeeCheckroll(normalizedCode, month, year, true); // skipHarvest=true
                     if (!individualResult.error && individualResult.payroll_data) {
                         results.push(individualResult);
                     } else {
@@ -346,7 +346,7 @@ employeeRoutes
                 }
             }
 
-            const result = await employeeDetailService.getEmployeeCheckroll(empCode, month, year);
+            const result = await employeeDetailService.getEmployeeCheckroll(empCode, month, year, true); // skipHarvest=true
             console.log("[API DEBUG] Checkroll Result Keys:", Object.keys(result));
 
             if (result.error) {

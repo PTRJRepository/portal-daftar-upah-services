@@ -266,7 +266,8 @@ export class DataExtractorService {
         serverProfile?: string,
         includeVirtualGangs: boolean = false,
         useHistoryDb?: boolean | null,
-        gangPrefix?: string
+        gangPrefix?: string,
+        skipHarvest: boolean = false
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -431,7 +432,8 @@ export class DataExtractorService {
 
             EmployeeEstateService.getEmployeeJobs(),
             this.getTaskCodes(empCodes, startDate, endDate, serverProfile),
-            this.getBunchesBatch(empCodes, month, year), // Add bunches data fetch
+            // [OPTIMIZATION] Skip bunches fetch if requested (e.g. for Payslips)
+            !skipHarvest ? this.getBunchesBatch(empCodes, month, year) : Promise.resolve(new Map()),
             manualAdjustmentService.getAdjustments(month, year, gangCode || undefined)
         ]);
 

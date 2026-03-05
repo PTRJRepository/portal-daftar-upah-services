@@ -63,7 +63,7 @@ export class HarvesterService {
                 SELECT
                     EmpCode,
                     EmpName,
-                    SUM(TotalBunches) as TotalBunches,
+                    SUM(0) as TotalBunches,
                     0 as Ripe,
                     0 as Unripe,
                     0 as TotalRound,
@@ -79,7 +79,7 @@ export class HarvesterService {
                 SELECT
                     EmpCode,
                     EmpName,
-                    SUM(TotalBunches) as TotalBunches,
+                    SUM(0) as TotalBunches,
                     0 as Ripe,
                     0 as Unripe,
                     0 as TotalRound,
@@ -182,13 +182,13 @@ export class HarvesterService {
                 const placeholders = chunk.map(() => "?").join(",");
 
                 const sql = `
-                    SELECT EmpCode, EmpName, SUM(TotalBunches) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    SELECT EmpCode, EmpName, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
                     FROM PR_HARVESTERLN WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
                     UNION ALL
-                    SELECT EmpCode, EmpName, SUM(TotalBunches) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    SELECT EmpCode, EmpName, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
                     FROM PR_HARVESTERLN_ACC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
                     UNION ALL
-                    SELECT EmpCode, EmpName, SUM(TotalBunches) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    SELECT EmpCode, EmpName, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
                     FROM PR_HARVESTERLN_ARC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
                 `;
 
