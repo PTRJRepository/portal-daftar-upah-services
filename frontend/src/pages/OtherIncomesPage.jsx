@@ -390,15 +390,14 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             const gangRows = gangKeys.map(gcode => {
                 const items = gangsInGroup[gcode];
                 const subTotal = items.reduce((a, c) => a + (Number(c.amount) || 0), 0);
-                const getBankListHTML = (data) => {
-                    const cleanName = (name) => (name || '').split('(')[0].trim();
-                    const displayMonth = month === 12 ? 1 : month + 1;
-                ...
-                            const rows = items.map((r, i) => {
-                                const netPay = Number(r.amount); // THR tidak ada pajak
-                                const empCodeStr = r.emp_code || r.details?.variables?.EMP_CODE || '-';
-                                return `<tr><td class="tc">${i + 1}</td><td><b>${cleanName(r.emp_name)}</b><br/><small>${empCodeStr}</small></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
-                            }).join('');
+                groupTotal += subTotal;
+
+                const rows = items.map((r, i) => {
+                    const netPay = Number(r.amount); // THR tidak ada pajak
+                    const empCodeStr = r.emp_code || r.details?.variables?.EMP_CODE || '-';
+                    return `<tr><td class="tc">${i + 1}</td><td><b>${r.emp_name}</b><br/><small>${empCodeStr}</small></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
+                }).join('');
+
                 return `
                     <tr><td colspan="5" style="background:#f8fafc; font-weight:700; padding-left:15px; border:1pt solid #000; -webkit-print-color-adjust: exact;">GANG: ${gcode}</td></tr>
                     ${rows}
