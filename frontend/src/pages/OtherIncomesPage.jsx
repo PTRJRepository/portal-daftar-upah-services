@@ -325,6 +325,21 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         return f.map((r, i) => ({ ...r, _no: i + 1, _id: r.id || `row-${i}` }));
     }, [rowData, filterReligion, gangPrefix, getAsistensi]);
 
+    const uniqueDivisions = useMemo(() => {
+        const divSet = new Set(allDivisions);
+        const filtered = [];
+        for (const d of allDivisions) {
+            if (!filtered.includes(d)) {
+                // If it's a P-prefix (like P1A) and the PG-prefix (PG1A) exists, hide the old P-prefix to avoid duplicates
+                if (d.startsWith('P') && d.length === 3 && divSet.has('PG' + d.substring(1))) continue;
+                // If it's a pure virtual division typically not used for direct THR data entry, hide it
+                if (['INF', 'NRS', 'WKS_PG', 'WKS_AR', 'WORKSHOP', 'MILL'].includes(d)) continue;
+                filtered.push(d);
+            }
+        }
+        return filtered;
+    }, [allDivisions]);
+
     const footerData = useMemo(() => { if (!displayData.length) return null; const tk = displayData.reduce((a, c) => a + (Number(c.amount) || 0), 0); return { amount: tk, pajak: 0, upah_bersih: tk }; }, [displayData]); // Tidak ada pajak THR
     const openPreview = (type) => { setPreviewType(type); setIsPreviewModalOpen(true); };
 
@@ -340,7 +355,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             <div style={{ flex: 1, backgroundColor: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <div style={{ padding: '0.5rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <select value={division} onChange={e => { setDivision(e.target.value); setGangPrefix(''); }}>{allDivisions.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                        <select value={division} onChange={e => { setDivision(e.target.value); setGangPrefix(''); }}>{uniqueDivisions.map(d => <option key={d} value={d}>{d}</option>)}</select>
                         <select value={gangPrefix} onChange={e => setGangPrefix(e.target.value)}><option value="">SEMUA GROUP</option>{availablePrefixes.map(p => <option key={p} value={p}>Group {p}</option>)}</select>
                         <select value={gang} onChange={e => setGang(e.target.value)}><option value="ALL">SEMUA GANG</option>{filteredGangs.map(g => <option key={g.gang_code} value={g.gang_code}>{g.gang_code}</option>)}</select>
                         <select value={filterReligion} onChange={e => setFilterReligion(e.target.value)}>{RELIGION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
