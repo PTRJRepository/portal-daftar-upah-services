@@ -459,15 +459,21 @@ export class OtherIncomesService {
                     } catch { continue; }
 
                     let proportionDesc = '';
-                    if (masaKerjaTahun === 0 && joinDateRaw) {
+                    if (joinDateRaw) {
                         const jDate = new Date(joinDateRaw);
                         if (!isNaN(jDate.getTime())) {
                             const periodDate = new Date(year, month - 1, 1);
                             let monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
-                            if (monthsDiff < 12) {
-                                const workingMonths = Math.min(12, Math.max(0, monthsDiff) + 1);
-                                thrAmount = (thrAmount * workingMonths) / 12;
-                                proportionDesc = ` (Proporsi ${workingMonths}/12)`;
+                            
+                            // If worked less than 12 months, apply proportion
+                            if (monthsDiff < 12 && monthsDiff >= 0) {
+                                // Rule: Add 1 month to the actual difference, capped at 12
+                                const workingMonths = Math.min(12, monthsDiff + 1);
+                                
+                                if (workingMonths < 12) {
+                                    thrAmount = (thrAmount * workingMonths) / 12;
+                                    proportionDesc = ` (Proporsi ${workingMonths}/12)`;
+                                }
                             }
                         }
                     }

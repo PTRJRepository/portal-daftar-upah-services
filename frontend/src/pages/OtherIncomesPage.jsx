@@ -21,9 +21,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
     const [error, setError] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [exportType, setExportType] = useState('TOTAL');
-    const [filterReligion, setFilterReligion] = useState('ALL');
+    const [filterReligion, setFilterReligion] = useState('01 Islam');
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
-    const [printOrientation, setPrintOrientation] = useState('landscape');
+    const [printOrientation, setPrintOrientation] = useState('portrait');
     const [reportView, setReportView] = useState('MAIN'); // 'MAIN' or 'BANK_LIST'
 
     const RELIGION_OPTIONS = [
