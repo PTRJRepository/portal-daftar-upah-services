@@ -737,8 +737,14 @@ export class HistoryDatabaseService {
         if (divisionCode && gangCode === "ALL" && divisionDefinition.isVirtualDivision(divisionCode)) {
             const virtualGangs = await divisionDefinition.getGangsForDivision(divisionCode, false);
             const virtualGangCodes = new Set(virtualGangs.map(g => g.gang_code.toUpperCase()));
-            finalDetails = details.filter((d: any) => virtualGangCodes.has(d.gang_code?.trim()?.toUpperCase()));
-            console.log(`[DEBUG] Virtual Division Filter (${divisionCode}): Reduced ${details.length} to ${finalDetails.length} rows`);
+            const filtered = details.filter((d: any) => virtualGangCodes.has(d.gang_code?.trim()?.toUpperCase()));
+            console.log(`[DEBUG] Virtual Division Filter (${divisionCode}): Reduced ${details.length} to ${filtered.length} rows. VirtualGangs: ${[...virtualGangCodes].join(',')}`);
+            // Fallback: if virtual gang filter results in empty rows, use all source division details
+            // This handles cases where data was stored with source division code (e.g. P1A) instead of virtual (INF)
+            finalDetails = filtered.length > 0 ? filtered : details;
+            if (filtered.length === 0 && details.length > 0) {
+                console.log(`[DEBUG] Virtual Division Filter fallback: using all ${details.length} source division rows`);
+            }
         }
 
         const empCodesForHr = finalDetails.map((d: any) => d.emp_code?.trim()).filter(Boolean);
