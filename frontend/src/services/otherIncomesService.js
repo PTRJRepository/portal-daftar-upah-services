@@ -69,6 +69,36 @@ export const otherIncomesService = {
         }
     },
 
+    getBlacklist: async (year, month, type = 'THR') => {
+        try {
+            const response = await api.get(`/other-incomes/blacklist?year=${year}&month=${month}&type=${type}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching blacklist:', error);
+            throw error;
+        }
+    },
+
+    removeFromBlacklist: async (id) => {
+        try {
+            const response = await api.delete(`/other-incomes/blacklist/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error removing from blacklist:', error);
+            throw error;
+        }
+    },
+
+    addToBlacklist: async (nik, emp_name, year, month, type = 'THR', reason = 'Manual') => {
+        try {
+            const response = await api.post(`/other-incomes/blacklist`, { nik, emp_name, year, month, type, reason });
+            return response.data;
+        } catch (error) {
+            console.error('Error adding to blacklist:', error);
+            throw error;
+        }
+    },
+
     calculateTHR: async (year, month, divisionCode, gangCode) => {
         try {
             const data = { year, month };

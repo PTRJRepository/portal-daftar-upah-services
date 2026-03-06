@@ -90,8 +90,48 @@ export class OtherIncomesService {
                     INSERT INTO employee_other_incomes_formulas (income_type, formula_string) 
                     VALUES ('THR', '(UPAH_DASAR * 30) + (BERAS_RATE * 30) + MASA_KERJA_JUMLAH');
                 END
+
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'employee_other_incomes_blacklist' AND TABLE_SCHEMA = 'dbo')
+                BEGIN
+                    CREATE TABLE employee_other_incomes_blacklist (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        nik VARCHAR(50) NOT NULL,
+                        emp_name VARCHAR(150),
+                        period_year INT NOT NULL,
+                        period_month INT NOT NULL,
+                        income_type VARCHAR(50) NOT NULL,
+                        reason VARCHAR(255),
+                        created_at DATETIME DEFAULT GETDATE()
+                    );
+                    CREATE INDEX IX_blacklist_nik_period ON employee_other_incomes_blacklist(nik, period_year, period_month);
+                END
             `);
         } catch (e) { console.error("Init table error:", e); }
+    }
+
+    static async addToBlacklist(nik: string, name: string, year: number, month: number, type: string, reason: string = 'User deleted'): Promise<boolean> {
+        const db = Database.getExtendedInstance();
+        try {
+            const existing = await db.query(`SELECT id FROM employee_other_incomes_blacklist WHERE nik = ? AND period_year = ? AND period_month = ? AND income_type = ?`, [nik, year, month, type]);
+            if (existing && existing.length > 0) return true;
+            await db.query(`INSERT INTO employee_other_incomes_blacklist (nik, emp_name, period_year, period_month, income_type, reason) VALUES (?, ?, ?, ?, ?, ?)`, [nik, name, year, month, type, reason]);
+            return true;
+        } catch (e) { return false; }
+    }
+
+    static async removeFromBlacklist(id: number): Promise<boolean> {
+        const db = Database.getExtendedInstance();
+        try {
+            await db.query(`DELETE FROM employee_other_incomes_blacklist WHERE id = ?`, [id]);
+            return true;
+        } catch (e) { return false; }
+    }
+
+    static async getBlacklist(year: number, month: number, type: string): Promise<any[]> {
+        const db = Database.getExtendedInstance();
+        try {
+            return await db.query(`SELECT * FROM employee_other_incomes_blacklist WHERE period_year = ? AND period_month = ? AND income_type = ? ORDER BY emp_name`, [year, month, type]);
+        } catch (e) { return []; }
     }
 
     static async getFormula(incomeType: string): Promise<{ formula: string; is_paid_in_thp: boolean; is_taxable: boolean }> {
@@ -149,7 +189,16 @@ export class OtherIncomesService {
                 params.push(...divList);
             }
             if (gangCode && gangCode !== 'ALL') { sql += ` AND gang_code = ?`; params.push(gangCode); }
-            return (await db.query(sql, params)) as OtherIncome[];
+            
+            const rows = (await db.query(sql, params)) as OtherIncome[];
+            
+            // AGGRESSIVE DEDUPLICATION: Ensure one record per NIK
+            const uniqueMap = new Map<string, OtherIncome>();
+            rows.forEach(r => {
+                const key = (r.nik || '').trim().toUpperCase();
+                if (key && !uniqueMap.has(key)) uniqueMap.set(key, r);
+            });
+            return Array.from(uniqueMap.values());
         } catch (e) { return []; }
     }
 
@@ -290,8 +339,22 @@ export class OtherIncomesService {
         const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', divisionCode || undefined);
         if (!historyData?.data_rows?.length) return [];
         const formulaConfig = await this.getFormula('THR');
+        
+        // Fetch blacklist for this period
+        const blacklist = await this.getBlacklist(year, month, 'THR');
+        const blacklistedNIKs = new Set(blacklist.map(b => String(b.nik || '').trim().toUpperCase()));
+
+        // AGGRESSIVE DEDUPLICATION: Ensure unique NIK before calculation
+        const uniqueHistoryMap = new Map<string, any>();
+        historyData.data_rows.forEach(row => {
+            const nik = String(row.nik || '').trim().toUpperCase();
+            if (nik && !uniqueHistoryMap.has(nik) && !blacklistedNIKs.has(nik)) {
+                uniqueHistoryMap.set(nik, row);
+            }
+        });
+
         const results: OtherIncome[] = [];
-        for (const row of historyData.data_rows) {
+        for (const row of uniqueHistoryMap.values()) {
             const nik = String(row.nik || '').trim().toUpperCase();
             const upahDasar = row.upah_dasar || 0;
             const mathVars = { UPAH_DASAR: upahDasar, GAJI_POKOK: upahDasar * 30, BERAS_RATE: row.beras_rate || 0, MASA_KERJA_JUMLAH: row.masa_kerja_jumlah || 0, MASA_KERJA_TAHUN: row.masa_kerja_tahun || 0, HK: 30 };
@@ -319,7 +382,7 @@ export class OtherIncomesService {
                 'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
                 'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
             };
-            const mappedRel = religionMap[rawRowRel] || relRow || '01 Islam';
+            const mappedRel = religionMap[rawRowRel] || relRow || null; // Use null if unknown to avoid fake 'Islam' labels
 
             results.push({
                 nik, 
@@ -412,19 +475,35 @@ export class OtherIncomesService {
 
     static async deleteIncome(id: number): Promise<boolean> {
         const db = Database.getExtendedInstance();
-        try { await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [id]); return true; }
+        try { 
+            const rows = await db.query(`SELECT nik, emp_name, period_year, period_month, income_type FROM employee_other_incomes WHERE id = ?`, [id]);
+            if (rows && rows.length > 0) {
+                const r = rows[0];
+                await this.addToBlacklist(r.nik, r.emp_name, r.period_year, r.period_month, r.income_type);
+            }
+            await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [id]); 
+            return true; 
+        }
         catch (e) { return false; }
     }
 
     static async deleteIncomesByPeriod(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<{ success: boolean; count: number }> {
         const db = Database.getExtendedInstance();
         try {
+            console.log(`[OtherIncomesService] Request DELETE by period: ${month}/${year}, Div: ${divisionCode}, Gang: ${gangCode}`);
+            
             let sql = `DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
             const params: any[] = [year, month];
 
             if (divisionCode && divisionCode !== 'ALL') {
+                // Determine all division codes that should be cleared
                 const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
                 const allPossibleDivs = new Set<string>([divisionCode]);
+                
+                // Add variants like PG vs P
+                if (divisionCode.startsWith('P') && divisionCode.length === 3) allPossibleDivs.add('PG' + divisionCode.substring(1));
+                if (divisionCode.startsWith('PG') && divisionCode.length === 4) allPossibleDivs.add('P' + divisionCode.substring(2));
+
                 for (const sd of sourceDivs) {
                     allPossibleDivs.add(sd);
                     if (sd.startsWith('P') && sd.length === 3) allPossibleDivs.add('PG' + sd.substring(1));
@@ -433,10 +512,16 @@ export class OtherIncomesService {
                     const virtuals = await divisionDefinition.getVirtualDivisionsForSource(sd);
                     virtuals.forEach(v => {
                         const config = divisionDefinition.getVirtualDivisionConfig(v);
-                        if (!config?.exclude_from_source) allPossibleDivs.add(v);
+                        // IMPORTANT: We clear the virtual division IF it's NOT excluded from source,
+                        // OR if the user explicitly selected that virtual division.
+                        if (!config?.exclude_from_source || v === divisionCode) {
+                            allPossibleDivs.add(v);
+                        }
                     });
                 }
+                
                 const divList = Array.from(allPossibleDivs);
+                console.log(`[OtherIncomesService] Deleting for divisions: ${divList.join(', ')}`);
                 sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
                 params.push(...divList);
             }
@@ -447,10 +532,11 @@ export class OtherIncomesService {
             }
 
             const result = await db.query(sql, params);
-            return { success: true, count: 0 }; // mssql-node might not return row count easily here
+            console.log(`[OtherIncomesService] DELETE successful for ${month}/${year}`);
+            return { success: true, count: 0 };
         } catch (e: any) {
-            console.error("deleteIncomesByPeriod error:", e);
-            return { success: false, count: 0 };
+            console.error("[OtherIncomesService] deleteIncomesByPeriod error:", e);
+            return { success: false, error: e.message, count: 0 } as any;
         }
     }
 

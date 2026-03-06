@@ -730,7 +730,19 @@ export class HistoryDatabaseService {
         }
 
         console.log(`[DEBUG] detailQuery: ${detailQuery}`, detailParams);
-        const details = await db.query<any>(detailQuery, detailParams);
+        const rawDetails = await db.query<any>(detailQuery, detailParams);
+        
+        // Mitigation: Filter out duplicate employees (Strict unique by NIK/EmpCode)
+        const uniqueDetailsMap = new Map<string, any>();
+        for (const d of rawDetails) {
+            const key = (d.nik || d.emp_code || '').trim().toUpperCase();
+            if (!key) continue;
+            if (!uniqueDetailsMap.has(key)) {
+                uniqueDetailsMap.set(key, d);
+            }
+        }
+        const details = Array.from(uniqueDetailsMap.values());
+        console.log(`[DEBUG] History Detail Fetch for ${divisionCode}/${gangCode}: Raw=${rawDetails.length}, Unique=${details.length}`);
 
         // Filter details if it's a virtual division or real division needing exclusion
         let finalDetails = details;

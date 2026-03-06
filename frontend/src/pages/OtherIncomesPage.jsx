@@ -19,6 +19,8 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [filterReligion, setFilterReligion] = useState('ALL');
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+    const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
+    const [blacklistData, setBlacklistData] = useState([]);
     const [printOrientation, setPrintOrientation] = useState('portrait');
     const [previewType, setPreviewType] = useState('MAIN');
 
@@ -33,6 +35,25 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     ];
 
     const getMonthName = (m) => ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"][m - 1] || "";
+
+    const fetchBlacklist = useCallback(async () => {
+        try {
+            const data = await otherIncomesService.getBlacklist(year, month, 'THR');
+            setBlacklistData(data);
+        } catch (e) { console.error(e); }
+    }, [year, month]);
+
+    const handleRestoreFromBlacklist = async (id) => {
+        try {
+            const r = await otherIncomesService.removeFromBlacklist(id);
+            if (r.success) {
+                alert('Berhasil mengembalikan karyawan!');
+                await fetchBlacklist();
+                if (isLivePreview) await handleLivePreviewTHR();
+                else await fetchIncomes();
+            }
+        } catch (e) { alert('Gagal memulihkan.'); }
+    };
 
     const getAsistensi = useCallback((gangCode) => {
         if (!gangCode) return "1";
@@ -56,7 +77,15 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         setIsLivePreview(false);
         try {
             const data = await otherIncomesService.getIncomes(year, month, division, gang);
-            setRowData(data);
+            // STRICT UNIQUE MITIGATION: One row per NIK
+            const uniqueMap = new Map();
+            data.forEach(item => {
+                const nik = (item.nik || '').toString().trim().toUpperCase();
+                if (nik && !uniqueMap.has(nik)) {
+                    uniqueMap.set(nik, item);
+                }
+            });
+            setRowData(Array.from(uniqueMap.values()));
         } catch (e) {
             console.error(e);
         } finally {
@@ -83,11 +112,20 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     };
 
     const handleLivePreviewTHR = async () => {
+        if (isCalculating) return;
         setIsCalculating(true);
         try {
             const r = await otherIncomesService.previewTHR(year, month, division, gang);
             if (r.success) {
-                setRowData(r.data.map(x => ({ ...x, isPreview: true })));
+                // STRICT UNIQUE MITIGATION: One row per NIK
+                const uniqueMap = new Map();
+                r.data.forEach(item => {
+                    const nik = (item.nik || '').toString().trim().toUpperCase();
+                    if (nik && !uniqueMap.has(nik)) {
+                        uniqueMap.set(nik, { ...item, isPreview: true });
+                    }
+                });
+                setRowData(Array.from(uniqueMap.values()));
                 setIsLivePreview(true);
             } else {
                 alert('Gagal: ' + (r.error || r.message));
@@ -118,12 +156,15 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     };
 
     const handleResetData = async () => {
-        if (!window.confirm(`HAPUS SEMUA data THR untuk ${division} Periode ${month}/${year}? Tindakan ini tidak dapat dibatalkan.`)) return;
+        if (!window.confirm(`HAPUS SEMUA data THR yang tersimpan untuk ${division} Periode ${month}/${year}? Tindakan ini tidak dapat dibatalkan.`)) return;
         setLoading(true);
         try {
             const r = await otherIncomesService.deleteByPeriod(year, month, division, gang);
             if (r.success) {
-                alert('Berhasil meriset data!');
+                alert('Berhasil meriset data untuk periode ini!');
+                // Immediate local clear
+                setRowData([]);
+                // Then refetch to be sure
                 await fetchIncomes();
             } else {
                 alert('Gagal: ' + (r.error || 'Terjadi kesalahan'));
@@ -151,7 +192,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         const displayYear = month === 12 ? year + 1 : year;
         const mName = getMonthName(displayMonth);
         const isPortrait = orient === 'portrait';
-        const fs = isPortrait ? '6.2pt' : '8pt';
+        const fs = isPortrait ? '5.5pt' : '6.8pt';
 
         const groupedData = {};
         let totalPenuh = 0;
@@ -242,7 +283,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     <tr>
                         <th rowspan="2" class="fit">NO</th>
                         <th rowspan="2" class="fit">L/P</th>
-                        <th rowspan="2" class="name-col">NAMA KARYAWAN / NIK</th>
+                        <th rowspan="2" class="name-col">NAMA KARYAWAN</th>
                         <th rowspan="2" class="fit">AGAMA</th>
                         <th rowspan="2" class="fit">TGL MASUK</th>
                         <th rowspan="2" class="fit">UPAH DASAR</th>
@@ -280,7 +321,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     return `<tr>
                                     <td class="tc fit">${i + 1}</td>
                                     <td class="tc fit">${v.SEX || 'L'}</td>
-                                    <td class="name-col"><b>${r.emp_name}</b><br/><small>${r.nik}</small>${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}</td>
+                                    <td class="name-col"><b>${r.emp_name}</b>${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}</td>
                                     <td class="tc fit">${(r.religion || '').replace(/^\d+\s+/, '')}</td>
                                     <td class="tc fit">${v.JOIN_DATE ? new Date(v.JOIN_DATE).toLocaleDateString('id-ID') : '-'}</td>
                                     <td class="tr fit num">${formatCurrency(v.UPAH_DASAR)}</td>
@@ -344,7 +385,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             const rows = items.map((r, i) => {
                 const netPay = Number(r.amount); // THR tidak ada pajak
                 const empCodeStr = r.emp_code || r.details?.variables?.EMP_CODE || '-';
-                return `<tr><td class="tc">${i + 1}</td><td><b>${r.emp_name}</b><br/><small>${r.nik} | ${empCodeStr}</small></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
+                return `<tr><td class="tc">${i + 1}</td><td><b>${r.emp_name}</b><br/><small>${empCodeStr}</small></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
             }).join('');
 
             return `
@@ -429,6 +470,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                         <button onClick={handleResetData} disabled={loading || isLivePreview} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Trash2 size={16} /> Hapus Semua</button>
                         <button onClick={fetchIncomes} disabled={loading} style={{ background: 'white', border: '1px solid #ccc', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><RefreshCw size={16} /> {isLivePreview ? 'Batal' : 'Refresh'}</button>
                         <button onClick={() => openPreview('MAIN')} style={{ background: '#f1f5f9', border: '1px solid #ccc', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Eye size={16} /> Preview Print</button>
+                        <button onClick={() => { fetchBlacklist(); setIsBlacklistModalOpen(true); }} style={{ background: '#4b5563', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }} title="Daftar Karyawan yang Dihapus/Dikecualikan"><Trash2 size={16} /> Blacklist</button>
                         <button onClick={() => openPreview('BANK')} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Printer size={16} /> Bank List</button>
                     </div>
                 </div>
@@ -445,6 +487,53 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 </div>
             </div>
             {isPreviewModalOpen && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', padding: '2rem' }}><div style={{ background: 'white', flex: 1, display: 'flex', flexDirection: 'column', borderRadius: '8px', overflow: 'hidden' }}><div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2>Preview {previewType === 'MAIN' ? 'Laporan Utama' : 'Bank List'}</h2><div style={{ display: 'flex', gap: '1rem' }}>{previewType === 'MAIN' && <select value={printOrientation} onChange={e => setPrintOrientation(e.target.value)}><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select>}<button onClick={() => { const win = window.open('', '_blank'); win.document.write(`<html><body>${previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData)}<script>window.onload=function(){window.print();}</script></body></html>`); win.document.close(); }} style={{ background: '#6366f1', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Print PDF</button><button onClick={() => setIsPreviewModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={24} /></button></div></div><div style={{ flex: 1, overflow: 'auto', padding: '2rem', background: '#f3f4f6' }} dangerouslySetInnerHTML={{ __html: previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData) }} /></div></div>}
+            
+            {isBlacklistModalOpen && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: 'white', width: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', borderRadius: '8px', overflow: 'hidden' }}>
+                        <div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1f2937', color: 'white' }}>
+                            <h3 style={{ margin: 0 }}>Blacklist Karyawan (Dikecualikan) - {getMonthName(month)} {year}</h3>
+                            <button onClick={() => setIsBlacklistModalOpen(false)} style={{ color: 'white', border: 'none', background: 'none', cursor: 'pointer' }}><X size={24} /></button>
+                        </div>
+                        <div style={{ flex: 1, overflow: 'auto', padding: '1rem' }}>
+                            {blacklistData.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>Tidak ada karyawan dalam daftar blacklist.</div>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
+                                            <th style={{ padding: '0.5rem' }}>Nama / NIK</th>
+                                            <th style={{ padding: '0.5rem' }}>Alasan</th>
+                                            <th style={{ padding: '0.5rem', textAlign: 'center' }}>Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {blacklistData.map(b => (
+                                            <tr key={b.id} style={{ borderBottom: '1px solid #eee' }}>
+                                                <td style={{ padding: '0.5rem' }}>
+                                                    <b>{b.emp_name}</b><br/><small>{b.nik}</small>
+                                                </td>
+                                                <td style={{ padding: '0.5rem' }}><small>{b.reason}</small></td>
+                                                <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                                    <button 
+                                                        onClick={() => handleRestoreFromBlacklist(b.id)}
+                                                        style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                    >
+                                                        Restore
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                        <div style={{ padding: '1rem', borderTop: '1px solid #eee', textAlign: 'right' }}>
+                            <button onClick={() => setIsBlacklistModalOpen(false)} style={{ padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Tutup</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

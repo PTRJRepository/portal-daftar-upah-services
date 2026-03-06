@@ -56,6 +56,22 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
         }
     })
 
+    .get("/blacklist", async ({ query }) => {
+        const { year, month, type } = query as any;
+        return await OtherIncomesService.getBlacklist(parseInt(year), parseInt(month), type || 'THR');
+    })
+
+    .delete("/blacklist/:id", async ({ params: { id } }) => {
+        const success = await OtherIncomesService.removeFromBlacklist(parseInt(id));
+        return { success };
+    })
+
+    .post("/blacklist", async ({ body }) => {
+        const { nik, emp_name, year, month, type, reason } = body as any;
+        const success = await OtherIncomesService.addToBlacklist(nik, emp_name, year, month, type || 'THR', reason);
+        return { success };
+    })
+
     .delete("/:id", async ({ params: { id } }) => {
         try {
             const success = await OtherIncomesService.deleteIncome(parseInt(id));
@@ -68,16 +84,19 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
 
     .delete("/delete-by-period", async ({ query }) => {
         try {
-            const { year, month, divisionCode, gangCode } = query as any;
+            const { year, month, division, gang, divisionCode, gangCode } = query as any;
             if (!year || !month) {
                 return { success: false, error: "Year and month are required" };
             }
 
+            const finalDiv = division || divisionCode;
+            const finalGang = gang || gangCode;
+
             const result = await OtherIncomesService.deleteIncomesByPeriod(
                 parseInt(year),
                 parseInt(month),
-                divisionCode,
-                gangCode
+                finalDiv,
+                finalGang
             );
             return result;
         } catch (error: any) {
