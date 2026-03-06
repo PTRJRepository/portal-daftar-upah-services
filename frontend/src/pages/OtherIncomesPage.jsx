@@ -320,7 +320,14 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     ], [handleDelete]);
 
     const displayData = useMemo(() => {
-        let f = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
+        let f = rowData;
+        if (filterReligion !== 'ALL') {
+            const normalizedFilter = filterReligion.replace(/^\d+\s+/, '').toLowerCase().trim();
+            f = f.filter(r => {
+                const rRel = (r.religion || '').replace(/^\d+\s+/, '').toLowerCase().trim();
+                return rRel === normalizedFilter;
+            });
+        }
         if (gangPrefix) f = f.filter(r => getAsistensi(r.gang_code) === gangPrefix);
         return f.map((r, i) => ({ ...r, _no: i + 1, _id: r.id || `row-${i}` }));
     }, [rowData, filterReligion, gangPrefix, getAsistensi]);
