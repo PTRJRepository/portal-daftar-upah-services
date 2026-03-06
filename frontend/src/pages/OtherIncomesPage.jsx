@@ -157,8 +157,16 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
         const mName = getMonthName(month);
         const isPortrait = orientation === 'portrait';
         const baseFontSize = isPortrait ? '7px' : '9px';
-        const headerFontSize = isPortrait ? '6px' : '7.5px';
-        const footerFontSize = isPortrait ? '8px' : '10px';
+        const headerFontSize = isPortrait ? '5.5px' : '7.5px';
+        const footerFontSize = isPortrait ? '7px' : '10px';
+
+        // Calculate Totals
+        const totalKaryawan = data.length;
+        const totalKotor = data.reduce((a, c) => a + (c.amount || 0), 0);
+        const totalPajak = data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0);
+        const totalBersih = totalKotor - totalPajak;
+        const totalBeras = data.reduce((a, c) => a + ((c.details?.variables?.BERAS_RATE || 0) * 30), 0);
+        const totalMasaKerja = data.reduce((a, c) => a + (c.details?.variables?.MASA_KERJA_JUMLAH || 0), 0);
 
         return `
             <style>
@@ -218,6 +226,36 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 }
                 
                 .meta-grid b { color: #000; }
+                
+                .summary-cards {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    margin-bottom: 15px;
+                }
+                
+                .sum-card {
+                    flex: 1;
+                    min-width: 120px;
+                    border: 1px solid #000;
+                    padding: 6px 10px;
+                    background-color: #f8fafc;
+                    border-left: 4px solid #1a1a2e;
+                }
+                
+                .sum-title {
+                    font-size: ${isPortrait ? '8px' : '9px'};
+                    color: #475569;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    margin-bottom: 4px;
+                }
+                
+                .sum-val {
+                    font-size: ${isPortrait ? '11px' : '13px'};
+                    font-weight: 800;
+                    color: #000;
+                }
                 
                 table { 
                     width: 100%; 
@@ -312,23 +350,22 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 .sig-name { font-weight: 700; border-bottom: 1.5px solid #000; display: inline-block; min-width: 85%; color: #000; }
                 .sig-role { font-size: 8px; font-weight: 600; color: #555; margin-top: 2px; }
 
-                .col-no { width: 2.5%; }
-                .col-sex { width: 2%; }
-                .col-name { width: 12.5%; }
-                .col-agama { width: 5%; }
-                .col-tgl { width: 6%; }
-                .col-hk { width: 2%; }
-                .col-updasar { width: 6%; }
-                .col-uppokok { width: 6.5%; }
-                .col-brate { width: 4%; }
-                .col-bjml { width: 5.5%; }
-                .col-mkthn { width: 2.5%; }
-                .col-mkjml { width: 5.5%; }
-                .col-kotor { width: 7%; }
-                .col-pajak { width: 5%; }
-                .col-kelayakan { width: 7%; }
-                .col-bersih { width: 7%; }
-                .col-rekening { width: 11.5%; }
+                .col-no { width: 3%; }
+                .col-sex { width: 2.5%; }
+                .col-name { width: 15%; }
+                .col-agama { width: 6.5%; }
+                .col-tgl { width: 7.5%; }
+                .col-hk { width: 3%; }
+                .col-updasar { width: 8%; }
+                .col-uppokok { width: 8%; }
+                .col-brate { width: 5%; }
+                .col-bjml { width: 7%; }
+                .col-mkthn { width: 3.5%; }
+                .col-mkjml { width: 7%; }
+                .col-kotor { width: 8%; }
+                .col-pajak { width: 6.5%; }
+                .col-kelayakan { width: 9%; }
+                .col-bersih { width: 9%; }
                 
                 @media print { 
                     .no-print { display: none; } 
@@ -347,6 +384,30 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                         <div style="text-align:right">GANG: <b>${gang === 'ALL' ? 'SEMUA GANG' : gang}</b></div>
                     </div>
                 </div>
+                
+                <div class="summary-cards">
+                    <div class="sum-card">
+                        <div class="sum-title">Total Karyawan</div>
+                        <div class="sum-val">${totalKaryawan} Orang</div>
+                    </div>
+                    <div class="sum-card">
+                        <div class="sum-title">Total THR (Kotor)</div>
+                        <div class="sum-val">Rp ${formatCurrency(totalKotor)}</div>
+                    </div>
+                    <div class="sum-card">
+                        <div class="sum-title">Total THR (Bersih)</div>
+                        <div class="sum-val">Rp ${formatCurrency(totalBersih)}</div>
+                    </div>
+                    <div class="sum-card">
+                        <div class="sum-title">Total Beras</div>
+                        <div class="sum-val">Rp ${formatCurrency(totalBeras)}</div>
+                    </div>
+                    <div class="sum-card">
+                        <div class="sum-title">Total Masa Kerja</div>
+                        <div class="sum-val">Rp ${formatCurrency(totalMasaKerja)}</div>
+                    </div>
+                </div>
+
                 <table>
                     <thead>
                         <tr>
@@ -364,7 +425,6 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                             <th rowspan="3" class="col-pajak">PAJAK<br/>THR</th>
                             <th rowspan="3" class="col-kelayakan">KELAYAKAN<br/>THR</th>
                             <th rowspan="3" class="col-bersih">UPAH<br/>BERSIH</th>
-                            <th rowspan="3" class="col-rekening">NO REKENING<br/>BANK</th>
                         </tr>
                         <tr>
                             <th colspan="2">TUNJANGAN</th>
@@ -386,8 +446,10 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
             const upahBersih = upahKotor - pajak;
             const empCode = row.emp_code || vars.EMP_CODE || '-';
-            const bankAcc = row.bank_acc_no || vars.BANK_ACC_NO || '-';
-            const bankName = row.bank_code || vars.BANK_CODE || '';
+
+            // Clean up religion string (remove "01 ", "02 ", etc.)
+            const rawReligion = row.religion || vars.RELIGION || '-';
+            const cleanReligion = rawReligion.replace(/^\d+\s+/, '');
 
             let propLabel = '';
             let kelayakanLabel = '';
@@ -408,7 +470,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                         ${propLabel}
                                     </div>
                                 </td>
-                                <td class="text-center" style="font-size:0.85em">${row.religion || vars.RELIGION || '-'}</td>
+                                <td class="text-center" style="font-size:0.85em">${cleanReligion}</td>
                                 <td class="text-center">${joinDate ? new Date(joinDate).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}</td>
                                 <td class="text-center">${vars.HK || 30}</td>
                                 <td class="text-right">${formatCurrency(vars.UPAH_DASAR)}</td>
@@ -420,24 +482,17 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                 <td class="text-right font-bold">${formatCurrency(upahKotor)}</td>
                                 <td class="text-right">${formatCurrency(pajak)}</td>
                                 <td class="text-center">${kelayakanLabel}</td>
-                                <td class="text-right font-bold">${formatCurrency(upahBersih)}</td>
-                                <td style="font-size:0.85em">
-                                    <div class="emp-info">
-                                        <span style="font-weight:600">${bankAcc}</span>
-                                        ${bankName ? `<span class="emp-sub">${bankName}</span>` : ''}
-                                    </div>
-                                </td>
+                                <td class="text-right font-bold" style="color:#1a365d">${formatCurrency(upahBersih)}</td>
                             </tr>
                         `;
         }).join('')}
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="13" class="text-right">TOTAL KESELURUHAN (IDR)</th>
+                            <th colspan="12" class="text-right">TOTAL KESELURUHAN (IDR)</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0))}</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
-                            <th></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -455,7 +510,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     <div class="sig-box">
                         <div class="sig-title">Disetujui Oleh,</div>
                         <div class="sig-name"></div>
-                        <div class="sig-role">General Manager</div>
+                        <div class="sig-role">Senior Manager</div>
                     </div>
                 </div>
             </div>
@@ -474,231 +529,172 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
     const getBankListHTML = (data) => {
         const mName = getMonthName(month);
         const totalTransfer = data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0);
+
+        const formatAmount = (val) => {
+            return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
+        };
+
+        // Calculate total pages (approx 35 rows per page)
+        const rowsPerPage = 35;
+        const totalPages = Math.ceil(data.length / rowsPerPage);
+
+        // Split data into pages
+        const pages = [];
+        for (let i = 0; i < data.length; i += rowsPerPage) {
+            pages.push(data.slice(i, i + rowsPerPage));
+        }
+
         return `
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-                
                 * { box-sizing: border-box; margin: 0; padding: 0; }
                 
                 body { 
-                    font-family: 'Inter', -apple-system, sans-serif; 
-                    padding: 15mm 12mm; 
-                    font-size: 10px; 
-                    color: #1e293b;
-                    -webkit-print-color-adjust: exact !important;
-                    print-color-adjust: exact !important;
+                    font-family: 'Segoe UI', Tahoma, Arial, sans-serif; 
+                    padding: 0; 
+                    margin: 0;
+                    font-size: 11px; 
+                    color: #000;
                 }
                 
-                .header-section {
-                    text-align: center;
-                    margin-bottom: 15px;
-                    border-bottom: 2.5px solid #000;
-                    padding-bottom: 10px;
+                .page {
+                    padding: 8mm 10mm;
+                    page-break-after: always;
                 }
                 
-                .company-name { 
-                    font-size: 13px; 
+                .page:last-child {
+                    page-break-after: auto;
+                }
+                
+                .header {
+                    margin-bottom: 8px;
+                }
+                
+                .division-name { 
+                    font-size: 16px; 
                     font-weight: 700; 
-                    color: #000; 
-                    text-align: left;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
+                    text-align: center;
+                    margin-bottom: 2px;
                 }
                 
-                .report-title { 
-                    font-size: 15px; 
-                    font-weight: 800; 
-                    margin: 4px 0; 
-                    color: #000; 
-                    text-transform: uppercase;
-                }
-                
-                .meta-info {
+                .header-row {
                     display: flex;
                     justify-content: space-between;
-                    margin-top: 5px;
-                    font-size: 10px;
+                    align-items: baseline;
+                    font-size: 11px;
                     font-weight: 600;
-                    color: #333;
+                }
+
+                .header-row .period {
+                    font-size: 13px;
+                    font-weight: 700;
                 }
                 
-                .meta-info b { color: #000; }
+                .page-info {
+                    text-align: right;
+                    font-size: 10px;
+                    color: #333;
+                }
                 
                 table { 
                     width: 100%; 
                     border-collapse: collapse; 
                     table-layout: fixed;
-                    margin-top: 10px; 
-                    border: 1.5px solid #000;
                 }
                 
                 th, td { 
-                    border: 1px solid #555; 
-                    padding: 6px 5px; 
+                    border: 1px solid #999; 
+                    padding: 4px 6px; 
                     text-align: left; 
                     word-wrap: break-word;
                     overflow: hidden;
-                    font-size: 10px;
+                    font-size: 11px;
                 }
                 
                 thead th { 
-                    background-color: #1a1a2e !important; 
-                    color: white !important; 
+                    background-color: #e8e8e8 !important; 
                     font-weight: 700; 
-                    text-align: center;
-                    text-transform: uppercase;
-                    font-size: 9px;
-                    padding: 8px 5px;
-                    border: 0.5px solid #ccc;
+                    text-align: left;
+                    padding: 6px;
+                    border: 1px solid #999;
                     -webkit-print-color-adjust: exact !important;
                     print-color-adjust: exact !important;
                 }
                 
-                tbody tr:nth-child(even) { background-color: #f5f5f5; }
-                
-                .text-right { text-align: right; padding-right: 5px; }
+                .text-right { text-align: right; }
                 .text-center { text-align: center; }
                 
-                tfoot th, tfoot td { 
-                    background-color: #1a1a2e !important; 
-                    color: #ffd700 !important; 
-                    font-weight: 800; 
-                    font-size: 11px;
-                    border-top: 2.5px solid #000;
-                    -webkit-print-color-adjust: exact !important;
-                    print-color-adjust: exact !important;
+                tfoot td, tfoot th { 
+                    font-weight: 700; 
+                    border-top: 2px solid #000;
                 }
-                
-                .summary-box {
-                    margin-top: 12px;
-                    font-size: 10px;
-                    display: flex;
-                    justify-content: flex-end;
-                }
-                
-                .summary-table {
-                    border-collapse: collapse;
-                    border: 1.5px solid #000;
-                }
-                
-                .summary-table td {
-                    padding: 5px 12px;
-                    border: 1px solid #555;
-                    font-weight: 600;
-                }
-                
-                .signature-section { 
-                    margin-top: 35px; 
-                    display: flex; 
-                    justify-content: space-between;
-                    page-break-inside: avoid;
-                }
-                
-                .sig-box { 
-                    text-align: center; 
-                    width: 28%;
-                }
-                
-                .sig-title { font-weight: 600; color: #333; font-size: 10px; margin-bottom: 55px; }
-                .sig-name { font-weight: 700; border-bottom: 1.5px solid #000; display: inline-block; min-width: 85%; color: #000; }
-                .sig-role { font-size: 9px; font-weight: 600; color: #555; margin-top: 3px; }
-                
-                .col-no { width: 5%; }
-                .col-code { width: 11%; }
-                .col-name { width: 22%; }
-                .col-nik { width: 14%; }
-                .col-rek { width: 16%; }
-                .col-bank { width: 8%; }
-                .col-amount { width: 14%; }
-                .col-ket { width: 10%; }
+
+                .col-no { width: 4%; }
+                .col-bankno { width: 22%; }
+                .col-amount { width: 18%; }
+                .col-name { width: 30%; }
+                .col-bankcode { width: 12%; }
+                .col-empcode { width: 14%; }
                 
                 @media print { 
-                    @page { size: portrait; margin: 10mm; } 
+                    @page { size: portrait; margin: 8mm; } 
                     body { padding: 0; }
+                    .page { padding: 5mm 8mm; }
                 }
             </style>
-            <div class="header-section">
-                <div class="company-name">PT REBINMAS JAYA</div>
-                <div class="report-title">List Pembayaran Bank - THR</div>
-                <div class="meta-info">
-                    <div>UNIT: <b>${division === 'ALL' ? 'SEMUA UNIT' : division}</b></div>
-                    <div>PERIODE: <b>${mName} ${year}</b></div>
-                    <div style="text-align:right">JUMLAH DATA: <b>${data.length} Karyawan</b></div>
-                </div>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th class="col-no">NO</th>
-                        <th class="col-code">EMP CODE</th>
-                        <th class="col-name">NAMA KARYAWAN</th>
-                        <th class="col-nik">NIK / KTP</th>
-                        <th class="col-rek">NO REKENING</th>
-                        <th class="col-bank">BANK</th>
-                        <th class="col-amount">JUMLAH (Rp)</th>
-                        <th class="col-ket">KETERANGAN</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.map((row, index) => {
-            const upahKotor = row.amount || 0;
-            const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
-            const upahBersih = upahKotor - pajak;
-            const bankAcc = row.bank_acc_no || (row.details?.variables?.BANK_ACC_NO) || '-';
-            const bankName = row.bank_code || (row.details?.variables?.BANK_CODE) || 'BRI';
-            const empCode = row.emp_code || (row.details?.variables?.EMP_CODE) || row.nik;
-
+            ${pages.map((pageData, pageIndex) => {
+            const startNo = pageIndex * rowsPerPage;
             return `
-                            <tr>
-                                <td class="text-center">${index + 1}</td>
-                                <td class="text-center" style="font-weight:600">${empCode}</td>
-                                <td><strong>${row.emp_name}</strong></td>
-                                <td class="text-center" style="font-size:9px">${row.nik || '-'}</td>
-                                <td style="font-weight:600; letter-spacing:0.3px">${bankAcc}</td>
-                                <td class="text-center" style="font-weight:600">${bankName}</td>
-                                <td class="text-right" style="font-weight:700">${formatCurrency(upahBersih)}</td>
-                                <td style="font-size:9px">THR ${mName} ${year}</td>
-                            </tr>
-                        `;
-        }).join('')}
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <th colspan="6" class="text-right">TOTAL TRANSFER</th>
-                        <th class="text-right">${formatCurrency(totalTransfer)}</th>
-                        <th></th>
-                    </tr>
-                </tfoot>
-            </table>
-            <div class="summary-box">
-                <table class="summary-table">
-                    <tr>
-                        <td>Total Karyawan</td>
-                        <td style="text-align:right"><strong>${data.length}</strong></td>
-                    </tr>
-                    <tr>
-                        <td>Total Transfer</td>
-                        <td style="text-align:right"><strong>Rp ${formatCurrency(totalTransfer)}</strong></td>
-                    </tr>
+            <div class="page">
+                <div class="header">
+                    <div class="division-name">${division === 'ALL' ? 'SEMUA UNIT' : division}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:baseline">
+                        <div style="font-size:11px; font-weight:600">Dept: D1</div>
+                        <div class="period">${mName} ${year}</div>
+                        <div class="page-info">PAGE : ${pageIndex + 1} of ${totalPages}</div>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="col-no">.</th>
+                            <th class="col-bankno">Bank Acc. No.</th>
+                            <th class="col-amount">Amount</th>
+                            <th class="col-name">Employee Name</th>
+                            <th class="col-bankcode">Bank Code</th>
+                            <th class="col-empcode">Employee Code</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${pageData.map((row, index) => {
+                const upahKotor = row.amount || 0;
+                const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
+                const upahBersih = upahKotor - pajak;
+                const bankAcc = row.bank_acc_no || (row.details?.variables?.BANK_ACC_NO) || '';
+                const bankName = row.bank_code || (row.details?.variables?.BANK_CODE) || 'BRI';
+                const empCode = row.emp_code || (row.details?.variables?.EMP_CODE) || row.nik;
+
+                return `
+                        <tr>
+                            <td class="text-center">${startNo + index + 1}</td>
+                            <td>${bankAcc}</td>
+                            <td class="text-right">${formatAmount(upahBersih)}</td>
+                            <td>${row.emp_name}</td>
+                            <td class="text-center">${bankName}</td>
+                            <td class="text-center">${empCode}</td>
+                        </tr>`;
+            }).join('')}
+                    </tbody>
+                    ${pageIndex === pages.length - 1 ? `
+                    <tfoot>
+                        <tr>
+                            <td colspan="2" class="text-right" style="font-weight:700">TOTAL</td>
+                            <td class="text-right" style="font-weight:700">${formatAmount(totalTransfer)}</td>
+                            <td colspan="3" style="font-weight:700">${data.length} Karyawan</td>
+                        </tr>
+                    </tfoot>` : ''}
                 </table>
-            </div>
-            <div class="signature-section">
-                <div class="sig-box">
-                    <div class="sig-title">Dibuat Oleh,</div>
-                    <div class="sig-name"></div>
-                    <div class="sig-role">KTU / Kerani</div>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-title">Diperiksa Oleh,</div>
-                    <div class="sig-name"></div>
-                    <div class="sig-role">Estate Manager</div>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-title">Disetujui Oleh,</div>
-                    <div class="sig-name"></div>
-                    <div class="sig-role">General Manager</div>
-                </div>
-            </div>
+            </div>`;
+        }).join('')}
         `;
     };
 
@@ -794,7 +790,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
         console.log('[DEBUG] rowData count:', rowData.length);
         let filtered = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
         console.log('[DEBUG] after religion filter:', filtered.length, 'Filter:', filterReligion);
-        
+
         // Filter by gang group (asistensi)
         if (gangPrefix) {
             filtered = filtered.filter(r => {
@@ -803,7 +799,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             });
             console.log('[DEBUG] after group filter:', filtered.length, 'Group:', gangPrefix);
         }
-        
+
         const mapped = filtered.map((row, i) => ({ ...row, _no: i + 1, _id: row.id || `row-${i}` }));
         console.log('[DEBUG] Final displayData count:', mapped.length);
         return mapped;
