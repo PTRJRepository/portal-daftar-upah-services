@@ -3,7 +3,7 @@ import { OtherIncomesService } from './otherIncomesService';
 
 export class OtherIncomesExcelService {
     public static async generateExcel(year: number, month: number, divisionCode?: string, gangCode?: string, incomeType?: string): Promise<Buffer> {
-        // ... (existing code)
+        throw new Error("Method not implemented. THR Excel uses generateBankListExcel.");
     }
 
     private static getAsistensi(gangCode: string): string {
@@ -136,6 +136,45 @@ export class OtherIncomesExcelService {
         totalRow.getCell(1).alignment = { horizontal: 'right' };
         totalRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } }; c.font = { color: { argb: 'FFFFFFFF' }, bold: true }; });
         worksheet.mergeCells(`A${currentRow - 1}`, `D${currentRow - 1}`);
+
+        // Signatures
+        currentRow += 2; // Add some empty rows before signature
+
+        const titleSignRow = worksheet.getRow(currentRow++);
+        titleSignRow.getCell(2).value = 'Dibuat Oleh,';
+        titleSignRow.getCell(3).value = 'Diperiksa Oleh,';
+        titleSignRow.getCell(4).value = 'Mengetahui,';
+        titleSignRow.getCell(5).value = 'Disetujui Oleh,';
+
+        [2, 3, 4, 5].forEach(col => {
+            titleSignRow.getCell(col).alignment = { horizontal: 'center' };
+            titleSignRow.getCell(col).font = { bold: true };
+        });
+
+        // Add 3 empty rows for signature space
+        currentRow += 3;
+
+        const spaceSignRow = worksheet.getRow(currentRow++);
+        spaceSignRow.getCell(2).value = '( ...................................... )';
+        spaceSignRow.getCell(3).value = '( ...................................... )';
+        spaceSignRow.getCell(4).value = '( ...................................... )';
+        spaceSignRow.getCell(5).value = '( ...................................... )';
+
+        [2, 3, 4, 5].forEach(col => {
+            spaceSignRow.getCell(col).alignment = { horizontal: 'center' };
+            spaceSignRow.getCell(col).font = { bold: true };
+        });
+
+        const roleSignRow = worksheet.getRow(currentRow++);
+        roleSignRow.getCell(2).value = 'KTU / Kerani';
+        roleSignRow.getCell(3).value = 'Asisten';
+        roleSignRow.getCell(4).value = 'Estate Manager';
+        roleSignRow.getCell(5).value = 'Senior Manager';
+
+        [2, 3, 4, 5].forEach(col => {
+            roleSignRow.getCell(col).alignment = { horizontal: 'center' };
+            roleSignRow.getCell(col).font = { size: 9 };
+        });
 
         const buffer = await workbook.xlsx.writeBuffer();
         return buffer as any as Buffer;

@@ -240,9 +240,18 @@ export class OtherIncomesService {
 
                 hrRows.forEach(r => {
                     const rawRel = (r.Religion || '').trim().toUpperCase();
+                    const rawJD = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate) || r.history_join_date || r.CreateDate;
+                    let joinDateStr = null;
+                    if (rawJD) {
+                        try {
+                            const d = new Date(rawJD);
+                            if (!isNaN(d.getTime())) joinDateStr = d.toISOString();
+                        } catch (e) {}
+                    }
+
                     const data = {
-                        religion: religionMap[rawRel] || '01 Islam',
-                        join_date: this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate),
+                        religion: religionMap[rawRel] || r.Religion || null,
+                        join_date: joinDateStr,
                         emp_code: (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : (r.EmpCode?.trim() || ''),
                         bank_acc_no: r.BankAccNo || '', bank_code: r.BankCode || '',
                         sex: (r.Gender || '').trim().toUpperCase() === 'FEMALE' ? 'P' : 'L',

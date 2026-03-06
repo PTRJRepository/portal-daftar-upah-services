@@ -198,6 +198,21 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
 
     const formatCurrency = (val) => new Intl.NumberFormat('id-ID').format(val || 0);
 
+    const safeDate = (val) => {
+        if (!val || val === "" || val === "null" || val === "undefined") return '-';
+        try {
+            // Already formatted DD/MM/YYYY or similar with slashes
+            if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(String(val))) return String(val);
+            const d = new Date(val);
+            if (isNaN(d.getTime())) return String(val) || '-';
+            // Use 2-digit for day and month to ensure consistency
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}/${month}/${year}`;
+        } catch (e) { return String(val) || '-'; }
+    };
+
     const getSigs = () => `
         <div style="margin-top:35px; display:flex; justify-content:space-between; page-break-inside:avoid; text-align:center;">
             <div style="width:23%"><div>Dibuat Oleh,</div><div style="height:55px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:0.85em;">( .................... )</div><div style="font-size:0.8em;">KTU / Kerani</div></div>
@@ -339,16 +354,18 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     const v = r.details?.variables || {}; const k = Number(r.amount) || 0; const p = 0; // THR tidak ada pajak
                     const pr = v.PROPORTION_FACTOR; const hasPrp = pr && pr !== '12/12';
                     const propLabel = hasPrp ? `<span class="prp">${pr}</span>` : 'PENUH';
+                    const actualJoinDate = v.JOIN_DATE || r.join_date;
+                    
                     return `<tr>
                                     <td class="tc fit">${i + 1}</td>
-                                    <td class="tc fit">${v.SEX || 'L'}</td>
+                                    <td class="tc fit">${v.SEX || r.sex || 'L'}</td>
                                     <td class="name-col"><b>${cleanName(r.emp_name)}</b>${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}</td>
                                     <td class="tc fit">${(r.religion || '').replace(/^\d+\s+/, '')}</td>
-                                    <td class="tc fit">${v.JOIN_DATE ? new Date(v.JOIN_DATE).toLocaleDateString('id-ID') : '-'}</td>
-                                    <td class="tr fit num">${formatCurrency(v.UPAH_DASAR)}</td>
-                                    <td class="tr fit num">${formatCurrency((v.UPAH_DASAR || 0) * 30)}</td>
-                                    <td class="tr fit num">${formatCurrency(v.BERAS_RATE)}</td>
-                                    <td class="tr fit num">${formatCurrency((v.BERAS_RATE || 0) * 30)}</td>
+                                    <td class="tc fit">${safeDate(actualJoinDate)}</td>
+                                    <td class="tr fit num">${formatCurrency(v.UPAH_DASAR || r.upah_dasar)}</td>
+                                    <td class="tr fit num">${formatCurrency((v.UPAH_DASAR || r.upah_dasar || 0) * 30)}</td>
+                                    <td class="tr fit num">${formatCurrency(v.BERAS_RATE || r.beras_rate)}</td>
+                                    <td class="tr fit num">${formatCurrency((v.BERAS_RATE || r.beras_rate || 0) * 30)}</td>
                                     <td class="tc fit num">${v.MASA_KERJA_TAHUN || 0}</td>
                                     <td class="tr fit num">${formatCurrency(v.MASA_KERJA_JUMLAH)}</td>
                                     <td class="tr fit fb num">${formatCurrency(k)}</td>
@@ -441,7 +458,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         { field: 'sex', headers: ['L/P', null, null], w: 40, className: 'text-center', sticky: true, left: 50, valueGetter: (r) => r.details?.variables?.SEX || r.sex || 'L' },
         { field: 'emp_name', headers: ['NAMA KARYAWAN', null, null], w: 200, className: 'text-left', sticky: true, left: 90, render: (r) => (<div><b>{r.emp_name}</b><br /><small>{r.nik} {r.emp_code ? `| ${r.emp_code}` : ''}</small>{r.isPreview && <span style={{ fontSize: '0.6rem', color: 'green', display: 'block' }}> (Preview)</span>}</div>) },
         { field: 'religion', headers: ['AGAMA', null, null], w: 100, className: 'text-center', valueGetter: (r) => (r.religion || '').replace(/^\d+\s+/, '') },
-        { field: 'join_date', headers: ['TGL MASUK', null, null], w: 100, className: 'text-center', valueGetter: (r) => r.details?.variables?.JOIN_DATE ? new Date(r.details.variables.JOIN_DATE).toLocaleDateString('id-ID') : (r.join_date ? new Date(r.join_date).toLocaleDateString('id-ID') : '-') },
+        { field: 'join_date', headers: ['TGL MASUK', null, null], w: 100, className: 'text-center', valueGetter: (r) => safeDate(r.details?.variables?.JOIN_DATE || r.join_date) },
         { field: 'upah_dasar', headers: ['UPAH DASAR', null, null], w: 110, className: 'text-right', format: 'currency', valueGetter: (r) => r.details?.variables?.UPAH_DASAR || r.upah_dasar || 0 },
         { field: 'upah_pokok', headers: ['UPAH POKOK', '(30 HK)', null], w: 110, className: 'text-right', format: 'currency', valueGetter: (r) => (r.details?.variables?.UPAH_DASAR || r.upah_dasar || 0) * 30 },
         { field: 'beras', headers: ['TUNJANGAN', 'BERAS', 'JML'], w: 100, className: 'text-right', format: 'currency', valueGetter: (r) => (r.details?.variables?.BERAS_RATE || r.beras_rate || 0) * 30 },
