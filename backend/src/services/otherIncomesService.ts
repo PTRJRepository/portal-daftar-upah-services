@@ -225,7 +225,7 @@ export class OtherIncomesService {
             };
             const hrMap = new Map<string, any>();
             for (const chunk of nikChunks) {
-                // ... (logic chunking remains same)
+                const placeholders = chunk.map(() => '?').join(',');
                 const hrRows = await mainDb.query<any>(`
                     SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpName) as EmpName, e.Religion, e.Gender, e.Status, e.CreateDate, em.AppJoinDate, em.AppJoinGrpDate,
                            RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode, RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember,
