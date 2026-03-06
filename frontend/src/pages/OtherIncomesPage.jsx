@@ -144,9 +144,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 alert(`Berhasil mengkalkulasi ${result.count} data THR.`);
             }
             else alert('Gagal: ' + result.message);
-        } catch (err) { 
+        } catch (err) {
             console.error('Calculation error:', err);
-            alert('Kesalahan server saat kalkulasi.'); 
+            alert('Kesalahan server saat kalkulasi.');
         }
         finally { setIsCalculating(false); }
     };
@@ -156,38 +156,43 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
     const getReportHTML = (data, orientation = 'landscape') => {
         const mName = getMonthName(month);
         const isPortrait = orientation === 'portrait';
-        
+        const baseFontSize = isPortrait ? '7px' : '9px';
+        const headerFontSize = isPortrait ? '6px' : '7.5px';
+        const footerFontSize = isPortrait ? '8px' : '10px';
+
         return `
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
                 
-                * { box-sizing: border-box; }
+                * { box-sizing: border-box; margin: 0; padding: 0; }
                 
                 body { 
                     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
                     padding: 0; 
                     margin: 0;
-                    font-size: ${isPortrait ? '6.5px' : '8px'}; 
+                    font-size: ${baseFontSize}; 
                     background-color: white;
                     color: #1e293b;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 
                 .report-container {
                     width: 100%;
-                    padding: 10px;
+                    padding: 8mm;
                 }
                 
                 .header-section {
                     text-align: center;
-                    margin-bottom: 15px;
-                    border-bottom: 2.5px solid #1a365d;
-                    padding-bottom: 10px;
+                    margin-bottom: 12px;
+                    border-bottom: 2.5px solid #000;
+                    padding-bottom: 8px;
                 }
                 
                 .company-name { 
-                    font-size: 14px; 
+                    font-size: 13px; 
                     font-weight: 700; 
-                    color: #1a365d; 
+                    color: #000; 
                     margin: 0;
                     text-align: left;
                     text-transform: uppercase;
@@ -195,61 +200,65 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 }
                 
                 .report-title { 
-                    font-size: 18px; 
+                    font-size: 16px; 
                     font-weight: 800; 
-                    margin: 5px 0; 
-                    color: #1a365d; 
+                    margin: 4px 0; 
+                    color: #000; 
                     text-transform: uppercase;
                     letter-spacing: 0.5px;
                 }
                 
                 .meta-grid {
-                    display: grid;
-                    grid-template-columns: 1fr 1.2fr 1fr;
-                    gap: 10px;
-                    margin-top: 8px;
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 6px;
                     font-size: 9px;
                     font-weight: 600;
-                    color: #475569;
+                    color: #333;
                 }
                 
-                .meta-item b { color: #1e293b; }
+                .meta-grid b { color: #000; }
                 
                 table { 
                     width: 100%; 
                     border-collapse: collapse; 
                     table-layout: fixed;
-                    border: 1.5px solid #1a365d;
+                    border: 1.5px solid #000;
                 }
                 
                 th, td { 
-                    border: 1px solid #94a3b8; 
-                    padding: 3.5px 2px; 
+                    border: 1px solid #666; 
+                    padding: 3px 2px; 
                     text-align: left; 
                     word-wrap: break-word;
                     overflow: hidden;
+                    font-size: ${baseFontSize};
                 }
                 
                 thead th { 
-                    background-color: #1a365d !important; 
+                    background-color: #1a1a2e !important; 
                     color: white !important; 
                     text-align: center; 
                     text-transform: uppercase; 
-                    font-size: ${isPortrait ? '5.5px' : '7px'}; 
+                    font-size: ${headerFontSize}; 
                     font-weight: 700;
-                    border: 0.5px solid #f8fafc;
-                    -webkit-print-color-adjust: exact;
+                    border: 0.5px solid #ccc;
+                    padding: 4px 2px;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 
-                tbody tr:nth-child(even) { background-color: #f8fafc; }
+                tbody tr:nth-child(even) { background-color: #f5f5f5; }
+                tbody tr:hover { background-color: #eef; }
                 
                 tfoot th, tfoot td { 
-                    background-color: #1a365d !important; 
-                    color: #fbbf24 !important; 
+                    background-color: #1a1a2e !important; 
+                    color: #ffd700 !important; 
                     font-weight: 800; 
-                    font-size: ${isPortrait ? '7.5px' : '9px'};
-                    border-top: 2px solid #1a365d;
-                    -webkit-print-color-adjust: exact;
+                    font-size: ${footerFontSize};
+                    border-top: 2.5px solid #000;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
 
                 .text-right { text-align: right; padding-right: 3px; }
@@ -257,27 +266,38 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 .font-bold { font-weight: 700; }
                 
                 .proporsi-tag { 
-                    color: #dc2626; 
+                    color: #c00; 
                     font-weight: 700; 
-                    font-size: 5.5px; 
-                    background: #fee2e2;
-                    padding: 0px 2px; 
+                    font-size: 6px; 
+                    background: #ffe0e0;
+                    padding: 1px 3px; 
                     border-radius: 2px; 
                     display: inline-block;
-                    border: 0.5px solid #f87171;
+                    border: 0.5px solid #c00;
                     margin-top: 1px;
+                }
+                
+                .kelayakan-tag {
+                    font-size: 6.5px;
+                    font-weight: 700;
+                    color: #b45309;
+                    background: #fef3c7;
+                    padding: 1px 3px;
+                    border-radius: 2px;
+                    display: inline-block;
+                    border: 0.5px solid #d97706;
                 }
                 
                 .emp-info {
                     display: flex;
                     flex-direction: column;
-                    line-height: 1.1;
+                    line-height: 1.2;
                 }
-                .emp-name { font-weight: 700; color: #0f172a; }
-                .emp-sub { font-size: 0.9em; color: #64748b; }
+                .emp-name { font-weight: 700; color: #000; }
+                .emp-sub { font-size: 0.85em; color: #555; }
                 
                 .signature-section { 
-                    margin-top: 35px; 
+                    margin-top: 30px; 
                     display: flex; 
                     justify-content: space-between;
                     page-break-inside: avoid;
@@ -285,17 +305,36 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 
                 .sig-box { 
                     text-align: center; 
-                    width: 25%;
+                    width: 28%;
                 }
                 
-                .sig-title { font-weight: 600; color: #475569; font-size: 9px; margin-bottom: 50px; }
-                .sig-name { font-weight: 700; border-bottom: 1.5px solid #1e293b; display: inline-block; min-width: 85%; color: #1e293b; }
-                .sig-role { font-size: 8px; font-weight: 600; color: #64748b; margin-top: 2px; }
+                .sig-title { font-weight: 600; color: #333; font-size: 9px; margin-bottom: 50px; }
+                .sig-name { font-weight: 700; border-bottom: 1.5px solid #000; display: inline-block; min-width: 85%; color: #000; }
+                .sig-role { font-size: 8px; font-weight: 600; color: #555; margin-top: 2px; }
+
+                .col-no { width: 2.5%; }
+                .col-sex { width: 2%; }
+                .col-name { width: 12.5%; }
+                .col-agama { width: 5%; }
+                .col-tgl { width: 6%; }
+                .col-hk { width: 2%; }
+                .col-updasar { width: 6%; }
+                .col-uppokok { width: 6.5%; }
+                .col-brate { width: 4%; }
+                .col-bjml { width: 5.5%; }
+                .col-mkthn { width: 2.5%; }
+                .col-mkjml { width: 5.5%; }
+                .col-kotor { width: 7%; }
+                .col-pajak { width: 5%; }
+                .col-kelayakan { width: 7%; }
+                .col-bersih { width: 7%; }
+                .col-rekening { width: 11.5%; }
                 
                 @media print { 
                     .no-print { display: none; } 
-                    @page { size: ${orientation}; margin: 8mm; } 
+                    @page { size: ${orientation}; margin: 6mm; } 
                     .report-container { padding: 0; }
+                    body { font-size: ${baseFontSize}; }
                 }
             </style>
             <div class="report-container">
@@ -303,37 +342,39 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     <div class="company-name">PT REBINMAS JAYA</div>
                     <div class="report-title">Daftar Pembayaran Tunjangan Hari Raya (THR)</div>
                     <div class="meta-grid">
-                        <div style="text-align:left">PERIODE: <b>${mName} ${year}</b></div>
-                        <div style="text-align:center">DIVISI: <b>${division === 'ALL' ? 'SEMUA UNIT' : division}</b></div>
+                        <div>PERIODE: <b>${mName} ${year}</b></div>
+                        <div>DIVISI: <b>${division === 'ALL' ? 'SEMUA UNIT' : division}</b></div>
                         <div style="text-align:right">GANG: <b>${gang === 'ALL' ? 'SEMUA GANG' : gang}</b></div>
                     </div>
                 </div>
                 <table>
                     <thead>
                         <tr>
-                            <th rowspan="3" style="width: 3.5%">NO</th>
-                            <th rowspan="3" style="width: 3%">L/P</th>
-                            <th rowspan="3" style="width: 16%">NAMA KARYAWAN / NIK / CODE</th>
-                            <th rowspan="3" style="width: 7.5%">AGAMA</th>
-                            <th rowspan="3" style="width: 8%">TGL MASUK</th>
-                            <th rowspan="3" style="width: 3%">HK</th>
-                            <th rowspan="3" style="width: 7.5%">UPAH<br/>DASAR</th>
-                            <th rowspan="3" style="width: 7.5%">UPAH<br/>POKOK</th>
-                            <th colspan="2" style="width: 12%">BERAS</th>
-                            <th colspan="2" style="width: 10%">MASA KERJA</th>
-                            <th rowspan="3" style="width: 8%">UPAH<br/>KOTOR</th>
-                            <th rowspan="3" style="width: 6.5%">PAJAK<br/>THR</th>
-                            <th rowspan="3" style="width: 8.5%">UPAH<br/>BERSIH</th>
+                            <th rowspan="3" class="col-no">NO</th>
+                            <th rowspan="3" class="col-sex">L/P</th>
+                            <th rowspan="3" class="col-name">NAMA KARYAWAN<br/>NIK / CODE</th>
+                            <th rowspan="3" class="col-agama">AGAMA</th>
+                            <th rowspan="3" class="col-tgl">TGL<br/>MASUK</th>
+                            <th rowspan="3" class="col-hk">HK</th>
+                            <th rowspan="3" class="col-updasar">UPAH<br/>DASAR</th>
+                            <th rowspan="3" class="col-uppokok">UPAH<br/>POKOK</th>
+                            <th colspan="2">BERAS</th>
+                            <th colspan="2">MASA KERJA</th>
+                            <th rowspan="3" class="col-kotor">UPAH<br/>KOTOR</th>
+                            <th rowspan="3" class="col-pajak">PAJAK<br/>THR</th>
+                            <th rowspan="3" class="col-kelayakan">KELAYAKAN<br/>THR</th>
+                            <th rowspan="3" class="col-bersih">UPAH<br/>BERSIH</th>
+                            <th rowspan="3" class="col-rekening">NO REKENING<br/>BANK</th>
                         </tr>
                         <tr>
                             <th colspan="2">TUNJANGAN</th>
                             <th colspan="2">PENGABDIAN</th>
                         </tr>
                         <tr>
-                            <th style="width:5%">RATE</th>
-                            <th style="width:7%">JUMLAH</th>
-                            <th style="width:3%">THN</th>
-                            <th style="width:7%">JUMLAH</th>
+                            <th class="col-brate">RATE</th>
+                            <th class="col-bjml">JUMLAH</th>
+                            <th class="col-mkthn">THN</th>
+                            <th class="col-mkjml">JUMLAH</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -345,10 +386,15 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
             const upahBersih = upahKotor - pajak;
             const empCode = row.emp_code || vars.EMP_CODE || '-';
+            const bankAcc = row.bank_acc_no || vars.BANK_ACC_NO || '-';
+            const bankName = row.bank_code || vars.BANK_CODE || '';
 
             let propLabel = '';
+            let kelayakanLabel = '';
             if (vars.PROPORTION_FACTOR && vars.PROPORTION_FACTOR !== '12/12') {
                 propLabel = `<span class="proporsi-tag">PROP ${vars.PROPORTION_FACTOR}</span>`;
+                const workingMonths = vars.WORKING_MONTHS || vars.PROPORTION_FACTOR.split('/')[0];
+                kelayakanLabel = `<span class="kelayakan-tag">Proporsi ${workingMonths} bln (${vars.PROPORTION_FACTOR})</span>`;
             }
 
             return `
@@ -362,7 +408,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                         ${propLabel}
                                     </div>
                                 </td>
-                                <td class="text-center">${row.religion || vars.RELIGION || '-'}</td>
+                                <td class="text-center" style="font-size:0.85em">${row.religion || vars.RELIGION || '-'}</td>
                                 <td class="text-center">${joinDate ? new Date(joinDate).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}</td>
                                 <td class="text-center">${vars.HK || 30}</td>
                                 <td class="text-right">${formatCurrency(vars.UPAH_DASAR)}</td>
@@ -373,17 +419,25 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                 <td class="text-right">${formatCurrency(vars.MASA_KERJA_JUMLAH)}</td>
                                 <td class="text-right font-bold">${formatCurrency(upahKotor)}</td>
                                 <td class="text-right">${formatCurrency(pajak)}</td>
-                                <td class="text-right font-bold" style="color:#1a365d; background-color: #f0f9ff;">${formatCurrency(upahBersih)}</td>
+                                <td class="text-center">${kelayakanLabel}</td>
+                                <td class="text-right font-bold">${formatCurrency(upahBersih)}</td>
+                                <td style="font-size:0.85em">
+                                    <div class="emp-info">
+                                        <span style="font-weight:600">${bankAcc}</span>
+                                        ${bankName ? `<span class="emp-sub">${bankName}</span>` : ''}
+                                    </div>
+                                </td>
                             </tr>
                         `;
         }).join('')}
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="12" class="text-right">TOTAL KESELURUHAN (IDR)</th>
+                            <th colspan="13" class="text-right">TOTAL KESELURUHAN (IDR)</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0))}</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
+                            <th></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -419,34 +473,170 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
 
     const getBankListHTML = (data) => {
         const mName = getMonthName(month);
+        const totalTransfer = data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0);
         return `
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-                body { font-family: 'Inter', sans-serif; padding: 20px; font-size: 10px; color: #334155; }
-                .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #334155; padding-bottom: 10px; }
-                .title { font-size: 16px; font-weight: 700; text-transform: uppercase; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                th, td { border: 1px solid #cbd5e1; padding: 8px 6px; text-align: left; }
-                thead th { background-color: #f1f5f9; font-weight: 700; text-align: center; }
-                .text-right { text-align: right; }
+                
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                
+                body { 
+                    font-family: 'Inter', -apple-system, sans-serif; 
+                    padding: 15mm 12mm; 
+                    font-size: 10px; 
+                    color: #1e293b;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                .header-section {
+                    text-align: center;
+                    margin-bottom: 15px;
+                    border-bottom: 2.5px solid #000;
+                    padding-bottom: 10px;
+                }
+                
+                .company-name { 
+                    font-size: 13px; 
+                    font-weight: 700; 
+                    color: #000; 
+                    text-align: left;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+                
+                .report-title { 
+                    font-size: 15px; 
+                    font-weight: 800; 
+                    margin: 4px 0; 
+                    color: #000; 
+                    text-transform: uppercase;
+                }
+                
+                .meta-info {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 5px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    color: #333;
+                }
+                
+                .meta-info b { color: #000; }
+                
+                table { 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    table-layout: fixed;
+                    margin-top: 10px; 
+                    border: 1.5px solid #000;
+                }
+                
+                th, td { 
+                    border: 1px solid #555; 
+                    padding: 6px 5px; 
+                    text-align: left; 
+                    word-wrap: break-word;
+                    overflow: hidden;
+                    font-size: 10px;
+                }
+                
+                thead th { 
+                    background-color: #1a1a2e !important; 
+                    color: white !important; 
+                    font-weight: 700; 
+                    text-align: center;
+                    text-transform: uppercase;
+                    font-size: 9px;
+                    padding: 8px 5px;
+                    border: 0.5px solid #ccc;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                tbody tr:nth-child(even) { background-color: #f5f5f5; }
+                
+                .text-right { text-align: right; padding-right: 5px; }
                 .text-center { text-align: center; }
-                tfoot th, tfoot td { background-color: #f8fafc; font-weight: 700; }
-                @media print { @page { size: portrait; margin: 10mm; } }
+                
+                tfoot th, tfoot td { 
+                    background-color: #1a1a2e !important; 
+                    color: #ffd700 !important; 
+                    font-weight: 800; 
+                    font-size: 11px;
+                    border-top: 2.5px solid #000;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                
+                .summary-box {
+                    margin-top: 12px;
+                    font-size: 10px;
+                    display: flex;
+                    justify-content: flex-end;
+                }
+                
+                .summary-table {
+                    border-collapse: collapse;
+                    border: 1.5px solid #000;
+                }
+                
+                .summary-table td {
+                    padding: 5px 12px;
+                    border: 1px solid #555;
+                    font-weight: 600;
+                }
+                
+                .signature-section { 
+                    margin-top: 35px; 
+                    display: flex; 
+                    justify-content: space-between;
+                    page-break-inside: avoid;
+                }
+                
+                .sig-box { 
+                    text-align: center; 
+                    width: 28%;
+                }
+                
+                .sig-title { font-weight: 600; color: #333; font-size: 10px; margin-bottom: 55px; }
+                .sig-name { font-weight: 700; border-bottom: 1.5px solid #000; display: inline-block; min-width: 85%; color: #000; }
+                .sig-role { font-size: 9px; font-weight: 600; color: #555; margin-top: 3px; }
+                
+                .col-no { width: 5%; }
+                .col-code { width: 11%; }
+                .col-name { width: 22%; }
+                .col-nik { width: 14%; }
+                .col-rek { width: 16%; }
+                .col-bank { width: 8%; }
+                .col-amount { width: 14%; }
+                .col-ket { width: 10%; }
+                
+                @media print { 
+                    @page { size: portrait; margin: 10mm; } 
+                    body { padding: 0; }
+                }
             </style>
-            <div class="header">
-                <div class="title">LIST PEMBAYARAN BANK - THR</div>
-                <div style="margin-top:5px">Unit: ${division} | Periode: ${mName} ${year}</div>
+            <div class="header-section">
+                <div class="company-name">PT REBINMAS JAYA</div>
+                <div class="report-title">List Pembayaran Bank - THR</div>
+                <div class="meta-info">
+                    <div>UNIT: <b>${division === 'ALL' ? 'SEMUA UNIT' : division}</b></div>
+                    <div>PERIODE: <b>${mName} ${year}</b></div>
+                    <div style="text-align:right">JUMLAH DATA: <b>${data.length} Karyawan</b></div>
+                </div>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th style="width:40px">NO</th>
-                        <th style="width:100px">EMP CODE</th>
-                        <th>NAMA KARYAWAN</th>
-                        <th style="width:120px">NO REKENING</th>
-                        <th style="width:80px">BANK</th>
-                        <th style="width:110px">JUMLAH (Rp)</th>
-                        <th>KETERANGAN</th>
+                        <th class="col-no">NO</th>
+                        <th class="col-code">EMP CODE</th>
+                        <th class="col-name">NAMA KARYAWAN</th>
+                        <th class="col-nik">NIK / KTP</th>
+                        <th class="col-rek">NO REKENING</th>
+                        <th class="col-bank">BANK</th>
+                        <th class="col-amount">JUMLAH (Rp)</th>
+                        <th class="col-ket">KETERANGAN</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -461,24 +651,54 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             return `
                             <tr>
                                 <td class="text-center">${index + 1}</td>
-                                <td class="text-center">${empCode}</td>
+                                <td class="text-center" style="font-weight:600">${empCode}</td>
                                 <td><strong>${row.emp_name}</strong></td>
-                                <td class="text-center">${bankAcc}</td>
-                                <td class="text-center">${bankName}</td>
-                                <td class="text-right">${formatCurrency(upahBersih)}</td>
-                                <td>THR ${mName} ${year}</td>
+                                <td class="text-center" style="font-size:9px">${row.nik || '-'}</td>
+                                <td style="font-weight:600; letter-spacing:0.3px">${bankAcc}</td>
+                                <td class="text-center" style="font-weight:600">${bankName}</td>
+                                <td class="text-right" style="font-weight:700">${formatCurrency(upahBersih)}</td>
+                                <td style="font-size:9px">THR ${mName} ${year}</td>
                             </tr>
                         `;
         }).join('')}
                 </tbody>
                 <tfoot>
                     <tr>
-                        <th colspan="5" class="text-right">TOTAL TRANSFER</th>
-                        <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
+                        <th colspan="6" class="text-right">TOTAL TRANSFER</th>
+                        <th class="text-right">${formatCurrency(totalTransfer)}</th>
                         <th></th>
                     </tr>
                 </tfoot>
             </table>
+            <div class="summary-box">
+                <table class="summary-table">
+                    <tr>
+                        <td>Total Karyawan</td>
+                        <td style="text-align:right"><strong>${data.length}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Total Transfer</td>
+                        <td style="text-align:right"><strong>Rp ${formatCurrency(totalTransfer)}</strong></td>
+                    </tr>
+                </table>
+            </div>
+            <div class="signature-section">
+                <div class="sig-box">
+                    <div class="sig-title">Dibuat Oleh,</div>
+                    <div class="sig-name"></div>
+                    <div class="sig-role">KTU / Kerani</div>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-title">Diperiksa Oleh,</div>
+                    <div class="sig-name"></div>
+                    <div class="sig-role">Estate Manager</div>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-title">Disetujui Oleh,</div>
+                    <div class="sig-name"></div>
+                    <div class="sig-role">General Manager</div>
+                </div>
+            </div>
         `;
     };
 
@@ -492,7 +712,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
     const reportColumns = useMemo(() => [
         { field: '_no', headers: ['NO.\nURUT', null, null], w: 60, className: 'text-center', sticky: true, left: 0, valueGetter: (row) => row._no },
         { field: 'sex', headers: ['L/P', null, null], w: 45, className: 'text-center', sticky: true, left: 60, valueGetter: (row) => row.details?.variables?.SEX || 'L' },
-        { 
+        {
             field: 'emp_name', headers: ['NAMA KARYAWAN', null, null], w: 200, className: 'text-left', sticky: true, left: 105,
             render: (row) => (
                 <div>
@@ -538,7 +758,21 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             field: 'pajak_thr', headers: ['PAJAK\nTHR', null, null], w: 100, className: 'text-right', format: 'currency',
             valueGetter: (row) => row.is_taxable ? Math.round((row.amount || 0) * 0.05) : 0
         },
-        { field: 'kelayakan', headers: ['KELAYAKAN\nTHR', null, null], w: 110, className: 'text-right', valueGetter: () => '' },
+        {
+            field: 'kelayakan', headers: ['KELAYAKAN\nTHR', null, null], w: 130, className: 'text-center',
+            render: (row) => {
+                const vars = row.details?.variables || {};
+                if (vars.PROPORTION_FACTOR && vars.PROPORTION_FACTOR !== '12/12') {
+                    const workingMonths = vars.WORKING_MONTHS || vars.PROPORTION_FACTOR.split('/')[0];
+                    return (
+                        <span style={{ fontSize: '0.7rem', padding: '2px 5px', backgroundColor: '#fef3c7', borderRadius: '4px', border: '1px solid #d97706', color: '#b45309', fontWeight: 600 }}>
+                            Proporsi {workingMonths} bln ({vars.PROPORTION_FACTOR})
+                        </span>
+                    );
+                }
+                return '';
+            }
+        },
         {
             field: 'upah_bersih', headers: ['JUMLAH\nUPAH BERSIH\n(Rp)', null, null], w: 150, className: 'text-right font-bold', format: 'currency',
             valueGetter: (row) => (row.amount || 0) - (row.is_taxable ? Math.round((row.amount || 0) * 0.05) : 0)
@@ -557,12 +791,22 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
 
     // Prepare display data with row numbers
     const displayData = useMemo(() => {
+        console.log('[DEBUG] rowData count:', rowData.length);
         let filtered = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
+        console.log('[DEBUG] after religion filter:', filtered.length, 'Filter:', filterReligion);
+        
         // Filter by gang group (asistensi)
         if (gangPrefix) {
-            filtered = filtered.filter(r => getAsistensi(r.gang_code) === gangPrefix);
+            filtered = filtered.filter(r => {
+                const asistensi = getAsistensi(r.gang_code);
+                return asistensi === gangPrefix;
+            });
+            console.log('[DEBUG] after group filter:', filtered.length, 'Group:', gangPrefix);
         }
-        return filtered.map((row, i) => ({ ...row, _no: i + 1, _id: row.id || `row-${i}` }));
+        
+        const mapped = filtered.map((row, i) => ({ ...row, _no: i + 1, _id: row.id || `row-${i}` }));
+        console.log('[DEBUG] Final displayData count:', mapped.length);
+        return mapped;
     }, [rowData, filterReligion, gangPrefix, getAsistensi]);
 
     // Footer totals
@@ -592,9 +836,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                         </button>
                     </div>
                     <div style={{ flex: 1, overflow: 'auto', padding: '2rem', backgroundColor: '#f3f4f6' }}>
-                        <div style={{ 
-                            backgroundColor: 'white', 
-                            padding: '3rem', 
+                        <div style={{
+                            backgroundColor: 'white',
+                            padding: '3rem',
                             width: '900px',
                             margin: '0 auto',
                             boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
@@ -606,149 +850,149 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             ) : (
                 <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.2rem', backgroundColor: 'white', padding: '1rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <div>
-                    <h1 style={{ margin: 0, fontSize: '1.4rem' }}>Laporan THR</h1>
-                    <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Daftar Pembayaran Tunjangan Hari Raya</p>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <select value={month} onChange={e => setMonth(Number(e.target.value))} style={{ padding: '0.4rem', borderRadius: '4px' }}>
-                        {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Bulan {i + 1}</option>)}
-                    </select>
-                    <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} style={{ padding: '0.4rem', width: '80px', borderRadius: '4px' }} />
-                </div>
-            </div>
-
-            <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ padding: '0.75rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <select value={division} onChange={e => { setDivision(e.target.value); setGangPrefix(''); }} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
-                            <option value="ALL">SEMUA DIVISI</option>
-                            {allDivisions.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                        <select
-                            value={gangPrefix}
-                            onChange={e => setGangPrefix(e.target.value)}
-                            style={{
-                                padding: '0.4rem', borderRadius: '4px',
-                                border: `1px solid ${gangPrefix ? '#93c5fd' : '#cbd5e1'}`,
-                                backgroundColor: gangPrefix ? '#eff6ff' : 'white',
-                                fontWeight: gangPrefix ? 600 : 400
-                            }}
-                        >
-                            <option value="">SEMUA GROUP</option>
-                            {availablePrefixes.map(p => <option key={p} value={p}>Group {p}</option>)}
-                        </select>
-                        <select value={gang} onChange={e => setGang(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
-                            <option value="ALL">SEMUA GANG{gangPrefix ? ` (Group ${gangPrefix})` : ''}</option>
-                            {filteredGangs.map(g => <option key={g.gang_code} value={g.gang_code}>{g.gang_code}</option>)}
-                        </select>
-                        <select value={filterReligion} onChange={e => setFilterReligion(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
-                            {RELIGION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <select 
-                            value={printOrientation} 
-                            onChange={e => setPrintOrientation(e.target.value)}
-                            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-                            title="Print Orientation"
-                        >
-                            <option value="landscape">Landscape</option>
-                            <option value="portrait">Portrait</option>
-                        </select>
-                        <button onClick={() => setIsPreviewModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}>
-                            <Eye size={16} /> Preview
-                        </button>
-                        <button onClick={() => setReportView('BANK_LIST')} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                            <Printer size={16} /> Tampilkan List Bank
-                        </button>
-                        <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                            <Printer size={16} /> Print PDF
-                        </button>
-                        <button onClick={handleCalculateTHR} disabled={loading || isCalculating} style={{ padding: '0.4rem 0.8rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: (loading || isCalculating) ? 'not-allowed' : 'pointer', opacity: (loading || isCalculating) ? 0.6 : 1 }}>
-                            <Calculator size={16} /> {isCalculating ? 'Mengkalkulasi...' : 'Kalkulasi THR'}
-                        </button>
-                        <button onClick={fetchIncomes} disabled={loading || isCalculating} style={{ padding: '0.4rem 0.8rem', background: 'white', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}>
-                            <RefreshCw size={16} className={loading ? 'spin' : ''} /> Refresh
-                        </button>
-                        <button onClick={handleAddRow} style={{ padding: '0.4rem 0.8rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                            <Plus size={16} /> Tambah
-                        </button>
-                    </div>
-                </div>
-
-                <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                    {isCalculating && (
-                        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                            <RefreshCw size={48} className="spin" style={{ color: '#f59e0b', marginBottom: '1rem' }} />
-                            <h3 style={{ margin: 0 }}>Sedang Menghitung THR...</h3>
-                            <p style={{ color: '#64748b' }}>Mohon tunggu sebentar.</p>
+                        <div>
+                            <h1 style={{ margin: 0, fontSize: '1.4rem' }}>Laporan THR</h1>
+                            <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Daftar Pembayaran Tunjangan Hari Raya</p>
                         </div>
-                    )}
-                    <ReportTable
-                        columns={reportColumns}
-                        data={displayData}
-                        footerData={displayData.length > 0 ? footerData : null}
-                        footerLabel="TOTAL KESELURUHAN"
-                        footerLabelColSpan={12}
-                        statusBar={<><strong>Total:</strong> {displayData.length} karyawan</>}
-                    />
-                </div>
-            </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <select value={month} onChange={e => setMonth(Number(e.target.value))} style={{ padding: '0.4rem', borderRadius: '4px' }}>
+                                {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Bulan {i + 1}</option>)}
+                            </select>
+                            <input type="number" value={year} onChange={e => setYear(Number(e.target.value))} style={{ padding: '0.4rem', width: '80px', borderRadius: '4px' }} />
+                        </div>
+                    </div>
 
-            {/* Modal Preview Web */}
-            {isPreviewModalOpen && (() => {
-                let previewData = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
-                if (gangPrefix) previewData = previewData.filter(r => getAsistensi(r.gang_code) === gangPrefix);
-                return (
-                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', padding: '2rem' }}>
-                        <div style={{ backgroundColor: 'white', flex: 1, borderRadius: '8px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                            <div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                                    <h2 style={{ margin: 0 }}>Preview Laporan THR</h2>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b' }}>Orientasi:</span>
-                                        <select 
-                                            value={printOrientation} 
-                                            onChange={e => setPrintOrientation(e.target.value)}
-                                            style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}
-                                        >
-                                            <option value="landscape">Landscape</option>
-                                            <option value="portrait">Portrait</option>
-                                        </select>
+                    <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <div style={{ padding: '0.75rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                <select value={division} onChange={e => { setDivision(e.target.value); setGangPrefix(''); }} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+                                    <option value="ALL">SEMUA DIVISI</option>
+                                    {allDivisions.map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                                <select
+                                    value={gangPrefix}
+                                    onChange={e => setGangPrefix(e.target.value)}
+                                    style={{
+                                        padding: '0.4rem', borderRadius: '4px',
+                                        border: `1px solid ${gangPrefix ? '#93c5fd' : '#cbd5e1'}`,
+                                        backgroundColor: gangPrefix ? '#eff6ff' : 'white',
+                                        fontWeight: gangPrefix ? 600 : 400
+                                    }}
+                                >
+                                    <option value="">SEMUA GROUP</option>
+                                    {availablePrefixes.map(p => <option key={p} value={p}>Group {p}</option>)}
+                                </select>
+                                <select value={gang} onChange={e => setGang(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+                                    <option value="ALL">SEMUA GANG{gangPrefix ? ` (Group ${gangPrefix})` : ''}</option>
+                                    {filteredGangs.map(g => <option key={g.gang_code} value={g.gang_code}>{g.gang_code}</option>)}
+                                </select>
+                                <select value={filterReligion} onChange={e => setFilterReligion(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+                                    {RELIGION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                </select>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <select
+                                    value={printOrientation}
+                                    onChange={e => setPrintOrientation(e.target.value)}
+                                    style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                                    title="Print Orientation"
+                                >
+                                    <option value="landscape">Landscape</option>
+                                    <option value="portrait">Portrait</option>
+                                </select>
+                                <button onClick={() => setIsPreviewModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}>
+                                    <Eye size={16} /> Preview
+                                </button>
+                                <button onClick={() => setReportView('BANK_LIST')} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                    <Printer size={16} /> Tampilkan List Bank
+                                </button>
+                                <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                    <Printer size={16} /> Print PDF
+                                </button>
+                                <button onClick={handleCalculateTHR} disabled={loading || isCalculating} style={{ padding: '0.4rem 0.8rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: (loading || isCalculating) ? 'not-allowed' : 'pointer', opacity: (loading || isCalculating) ? 0.6 : 1 }}>
+                                    <Calculator size={16} /> {isCalculating ? 'Mengkalkulasi...' : 'Kalkulasi THR'}
+                                </button>
+                                <button onClick={fetchIncomes} disabled={loading || isCalculating} style={{ padding: '0.4rem 0.8rem', background: 'white', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}>
+                                    <RefreshCw size={16} className={loading ? 'spin' : ''} /> Refresh
+                                </button>
+                                <button onClick={handleAddRow} style={{ padding: '0.4rem 0.8rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                    <Plus size={16} /> Tambah
+                                </button>
+                            </div>
+                        </div>
+
+                        <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            {isCalculating && (
+                                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                                    <RefreshCw size={48} className="spin" style={{ color: '#f59e0b', marginBottom: '1rem' }} />
+                                    <h3 style={{ margin: 0 }}>Sedang Menghitung THR...</h3>
+                                    <p style={{ color: '#64748b' }}>Mohon tunggu sebentar.</p>
+                                </div>
+                            )}
+                            <ReportTable
+                                columns={reportColumns}
+                                data={displayData}
+                                footerData={displayData.length > 0 ? footerData : null}
+                                footerLabel="TOTAL KESELURUHAN"
+                                footerLabelColSpan={12}
+                                statusBar={<><strong>Total:</strong> {displayData.length} karyawan</>}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Modal Preview Web */}
+                    {isPreviewModalOpen && (() => {
+                        let previewData = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
+                        if (gangPrefix) previewData = previewData.filter(r => getAsistensi(r.gang_code) === gangPrefix);
+                        return (
+                            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', padding: '2rem' }}>
+                                <div style={{ backgroundColor: 'white', flex: 1, borderRadius: '8px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                    <div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                                            <h2 style={{ margin: 0 }}>Preview Laporan THR</h2>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b' }}>Orientasi:</span>
+                                                <select
+                                                    value={printOrientation}
+                                                    onChange={e => setPrintOrientation(e.target.value)}
+                                                    style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem', cursor: 'pointer' }}
+                                                >
+                                                    <option value="landscape">Landscape</option>
+                                                    <option value="portrait">Portrait</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button onClick={() => {
+                                                const win = window.open('', '_blank');
+                                                win.document.write(`<html><head><title>Laporan THR - ${division}</title></head><body>${getReportHTML(previewData, printOrientation)}<script>window.onload = function() { window.print(); }</script></body></html>`);
+                                                win.document.close();
+                                            }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                                <Download size={16} /> Simpan PDF
+                                            </button>
+                                            <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                                <Printer size={16} /> Cetak PDF
+                                            </button>
+                                            <button onClick={() => setIsPreviewModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+                                        </div>
+                                    </div>
+                                    <div style={{ flex: 1, overflow: 'auto', padding: '1rem', backgroundColor: '#f3f4f6' }}>
+                                        <div style={{
+                                            backgroundColor: 'white',
+                                            padding: '2rem',
+                                            width: printOrientation === 'landscape' ? '1100px' : '800px',
+                                            margin: '0 auto',
+                                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                            transition: 'width 0.3s ease'
+                                        }}
+                                            dangerouslySetInnerHTML={{ __html: getReportHTML(previewData, printOrientation) }}
+                                        />
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    <button onClick={() => {
-                                        const win = window.open('', '_blank');
-                                        win.document.write(`<html><head><title>Laporan THR - ${division}</title></head><body>${getReportHTML(previewData, printOrientation)}<script>window.onload = function() { window.print(); }</script></body></html>`);
-                                        win.document.close();
-                                    }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                                        <Download size={16} /> Simpan PDF
-                                    </button>
-                                    <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                                        <Printer size={16} /> Cetak PDF
-                                    </button>
-                                    <button onClick={() => setIsPreviewModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
-                                </div>
                             </div>
-                            <div style={{ flex: 1, overflow: 'auto', padding: '1rem', backgroundColor: '#f3f4f6' }}>
-                                <div style={{ 
-                                    backgroundColor: 'white', 
-                                    padding: '2rem', 
-                                    width: printOrientation === 'landscape' ? '1100px' : '800px',
-                                    margin: '0 auto',
-                                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                                    transition: 'width 0.3s ease'
-                                }}
-                                    dangerouslySetInnerHTML={{ __html: getReportHTML(previewData, printOrientation) }}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
+                        );
+                    })()}
                 </>
             )}
         </div>
