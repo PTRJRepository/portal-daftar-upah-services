@@ -103,6 +103,36 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
         }
     })
 
+    .post("/preview-thr", async ({ body }) => {
+        try {
+            const data = body as { year: number, month: number, divisionCode?: string, gangCode?: string };
+            if (!data.year || !data.month) {
+                return { success: false, error: "Missing required fields: year and month" };
+            }
+
+            const dataRows = await OtherIncomesService.calculateTHRData(data.year, data.month, data.divisionCode, data.gangCode);
+            return { success: true, data: dataRows };
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to preview THR", error);
+            return { success: false, error: error.message };
+        }
+    })
+
+    .post("/bulk-save", async ({ body }) => {
+        try {
+            const { incomes } = body as { incomes: OtherIncome[] };
+            if (!incomes || !Array.isArray(incomes)) {
+                return { success: false, error: "Incomes array is required" };
+            }
+
+            const result = await OtherIncomesService.bulkSaveIncomes(incomes);
+            return result;
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed bulk save", error);
+            return { success: false, error: error.message };
+        }
+    })
+
     .get("/export", async ({ query, set }) => {
         try {
             const { year, month, divisionCode, gangCode, incomeType } = query as any;

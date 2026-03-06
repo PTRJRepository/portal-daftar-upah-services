@@ -34,11 +34,33 @@ export class OtherIncomesService {
     }
 
     /**
-     * Helper to get earliest valid date between two inputs, ignoring year 1900
+     * Helper to safely parse date strings from various formats
+     */
+    private static parseDate(dateStr: any): Date | null {
+        if (!dateStr) return null;
+        if (dateStr instanceof Date) return dateStr;
+        let d = new Date(dateStr);
+        if (!isNaN(d.getTime())) return d;
+        
+        // Try DD/MM/YYYY
+        const parts = String(dateStr).split(/[\/\-]/);
+        if (parts.length === 3) {
+            if (parts[2].length === 4) { // DD/MM/YYYY
+                d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+            } else if (parts[0].length === 4) { // YYYY/MM/DD
+                d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            }
+            if (!isNaN(d.getTime())) return d;
+        }
+        return null;
+    }
+
+    /**
+     * Helper to get earliest valid date between two inputs
      */
     private static getEarliestValidDate(d1: any, d2: any): string | null {
-        const date1 = d1 ? new Date(d1) : null;
-        const date2 = d2 ? new Date(d2) : null;
+        const date1 = this.parseDate(d1);
+        const date2 = this.parseDate(d2);
         const isValid = (d: Date | null) => d && !isNaN(d.getTime()) && d.getFullYear() > 1905;
         const v1 = isValid(date1) ? date1 : null;
         const v2 = isValid(date2) ? date2 : null;
@@ -139,7 +161,6 @@ export class OtherIncomesService {
                 const hrMap = new Map<string, { join_date: string; emp_code: string; religion: string; sex: string; bank_acc_no: string; bank_code: string }>();
                 
                 if (allNiks.length > 0) {
-                    // Chunk Niks to avoid 2100 param limit
                     const nikChunks = this.chunkArray(allNiks, 500);
                     for (const chunk of nikChunks) {
                         const placeholders = chunk.map(() => '?').join(',');
@@ -208,13 +229,13 @@ export class OtherIncomesService {
                             const hr = hrMap.get(nik);
                             const prev = prevDict[nik];
                             const upahDasar = row.upah_dasar || 0;
-                            const joinDateRaw = hr?.join_date;
+                            const joinDateRaw = hr?.join_date || row.join_date;
                             let workingMonths = 12;
                             let proportionFactor = "12/12";
 
                             if (joinDateRaw) {
-                                const jDate = new Date(joinDateRaw);
-                                if (!isNaN(jDate.getTime())) {
+                                const jDate = this.parseDate(joinDateRaw);
+                                if (jDate) {
                                     const periodDate = new Date(year, month - 1, 1);
                                     let monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
                                     if (monthsDiff < 12 && monthsDiff >= 0) {
@@ -292,7 +313,6 @@ export class OtherIncomesService {
                 try {
                     const mainDb = Database.getInstance();
                     const nikSet = [...new Set(incomes.map(i => i.nik?.trim()).filter(Boolean))];
-                    const nameSet = [...new Set(incomes.map(i => (i as any).emp_name?.trim()).filter(Boolean))];
                     if (nikSet.length > 0) {
                         const nikChunks = this.chunkArray(nikSet, 500);
                         const religionMap: Record<string, string> = {
@@ -306,9 +326,6 @@ export class OtherIncomesService {
 
                         for (const chunk of nikChunks) {
                             const nikPlaceholders = chunk.map(() => '?').join(',');
-                            let nameClause = '';
-                            const queryParams: any[] = [...chunk, ...chunk];
-                            
                             const hrRows = await mainDb.query<{ EmpCode: string; Religion: string; Status: string; AppJoinDate: any; AppJoinGrpDate: any; NewICNo: string; EmpName: string; BankAccNo: string; BankCode: string; GangCode: string; GangMember: string }>(`
                                 SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpName) as EmpName, e.Religion, e.Status, em.AppJoinDate, em.AppJoinGrpDate,
                                        RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode, RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember
@@ -321,7 +338,7 @@ export class OtherIncomesService {
                                     CASE WHEN e.Status = '1' THEN 0 ELSE 1 END,
                                     em.AppJoinDate DESC, 
                                     e.EmpCode DESC
-                            `, queryParams);
+                            `, [...chunk, ...chunk]);
 
                             const extendDb = Database.getExtendedInstance();
                             const overrideRows = await extendDb.query<{ emp_code: string; bank_acc_no: string; bank_code: string }>(
@@ -348,7 +365,6 @@ export class OtherIncomesService {
                                 };
                                 const empKey = r.EmpCode.trim().toUpperCase();
                                 const nikKey = r.NewICNo?.trim().toUpperCase();
-                                const nameKey = r.EmpName?.trim().toUpperCase();
 
                                 if (gangCode && r.GangCode === gangCode) {
                                     if (empKey) hrMap.set(empKey, data);
@@ -378,133 +394,206 @@ export class OtherIncomesService {
         } catch (e) { return []; }
     }
 
+    static async calculateTHRData(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
+        const historyService = HistoryDatabaseService.getInstance();
+        const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', divisionCode || undefined);
+        if (!historyData?.data_rows?.length) return [];
+
+        const prevMonth = month === 1 ? 12 : month - 1;
+        const prevYear = month === 1 ? year - 1 : year;
+        const prevHistoryData = await historyService.getHistoricalPayrollDataAsExtractorFormat(prevMonth, prevYear, gangCode || 'ALL', divisionCode || undefined);
+        const prevHistoryDict: Record<string, any> = {};
+        if (prevHistoryData?.data_rows) {
+            for (const row of prevHistoryData.data_rows) {
+                const nik = String(row.nik || row.nik_ktp || '').trim().toUpperCase();
+                if (nik) prevHistoryDict[nik] = row;
+            }
+        }
+
+        const mainDb = Database.getInstance();
+        const allNiks = historyData.data_rows.map(r => String(r.nik || r.nik_ktp || '').trim()).filter(Boolean);
+        const hrMap = new Map<string, { join_date: any; emp_code: string; religion: string; sex: string; bank_acc_no: string; bank_code: string }>();
+        
+        if (allNiks.length > 0) {
+            const nikChunks = this.chunkArray(allNiks, 500);
+            for (const chunk of nikChunks) {
+                const placeholders = chunk.map(() => '?').join(',');
+                const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string; AppJoinDate: any; AppJoinGrpDate: any; Status: string; GangCode: string; GangMember: string; Religion: string; Gender: string; BankAccNo: string; BankCode: string }>(`
+                    SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, em.AppJoinDate, em.AppJoinGrpDate, e.Status, 
+                           RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember, e.Religion, e.Gender,
+                           RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode
+                    FROM HR_EMPLOYEE e
+                    LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                    LEFT JOIN HR_PAYROLL p ON e.EmpCode = p.EmpCode
+                    LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
+                    WHERE RTRIM(e.NewICNo) IN (${placeholders}) OR RTRIM(e.EmpCode) IN (${placeholders})
+                    ORDER BY 
+                        CASE WHEN e.Status = '1' THEN 0 ELSE 1 END,
+                        em.AppJoinDate DESC, 
+                        e.EmpCode DESC
+                `, [...chunk, ...chunk]);
+
+                const religionMap: Record<string, string> = {
+                    'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
+                    'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
+                    'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu',
+                    '01': '01 Islam', '02': '02 Katolik', '03': '03 Protestan',
+                    '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu'
+                };
+
+                hrRows.forEach(r => {
+                    const joinDate = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate);
+                    const nikKey = r.NewICNo?.trim().toUpperCase();
+                    const empKey = r.EmpCode.trim().toUpperCase();
+                    const resolvedEmpCode = (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : r.EmpCode;
+                    const rawRel = (r.Religion || '').trim().toUpperCase();
+                    
+                    const existing = hrMap.get(nikKey || '') || hrMap.get(empKey || '');
+                    if (existing && existing.join_date && !joinDate) return;
+
+                    const entry = { 
+                        join_date: joinDate, 
+                        emp_code: resolvedEmpCode,
+                        religion: religionMap[rawRel] || '01 Islam',
+                        sex: (r.Gender || '').trim().toUpperCase() === 'FEMALE' ? 'P' : 'L',
+                        bank_acc_no: r.BankAccNo || '',
+                        bank_code: r.BankCode || ''
+                    };
+
+                    if (gangCode && r.GangCode === gangCode) {
+                        if (nikKey) hrMap.set(nikKey, entry);
+                        if (empKey) hrMap.set(empKey, entry);
+                    } else {
+                        if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, entry);
+                        if (empKey && !hrMap.has(empKey)) hrMap.set(empKey, entry);
+                    }
+                });
+            }
+        }
+
+        const formulaConfig = await this.getFormula('THR');
+        const results: OtherIncome[] = [];
+        const processedNiks = new Set<string>();
+
+        const historyJoinDateMap = new Map<string, string>();
+        historyData.data_rows.forEach(r => {
+            const nik = String(r.nik || r.nik_ktp || '').trim().toUpperCase();
+            if (nik && r.join_date) {
+                const currentBest = historyJoinDateMap.get(nik);
+                if (!currentBest || new Date(r.join_date) < new Date(currentBest)) historyJoinDateMap.set(nik, r.join_date);
+            }
+        });
+
+        for (const row of historyData.data_rows) {
+            const nik = String(row.nik || row.nik_ktp || '').trim().toUpperCase();
+            if (!nik || processedNiks.has(nik)) continue;
+            processedNiks.add(nik);
+
+            const hrInfo = hrMap.get(nik);
+            const joinDateRaw = hrInfo?.join_date || historyJoinDateMap.get(nik) || row.join_date;
+            
+            let masaKerjaTahun = row.masa_kerja_tahun || 0;
+            let masaKerjaJumlah = (row.masa_kerja_jumlah || 0) || (prevHistoryDict[nik]?.masa_kerja_jumlah || 0);
+            if (masaKerjaTahun === 0 && prevHistoryDict[nik]) masaKerjaTahun = prevHistoryDict[nik].masa_kerja_tahun || 0;
+
+            const upahDasar = row.upah_dasar || 0;
+            const berasRate = row.beras_rate || 0;
+            const mathVars = {
+                UPAH_DASAR: upahDasar, GAJI_POKOK: upahDasar * 30, BERAS_RATE: berasRate,
+                MASA_KERJA_JUMLAH: masaKerjaJumlah, MASA_KERJA_TAHUN: masaKerjaTahun, HK: 30
+            };
+            
+            let fullThrAmount = 0;
+            try {
+                const evaluator = new Function(...Object.keys(mathVars), `return ${formulaConfig.formula};`);
+                fullThrAmount = evaluator(...Object.values(mathVars));
+            } catch { continue; }
+
+            let thrAmount = fullThrAmount;
+            let proportionDesc = '';
+            let workingMonths = 12;
+            let proportionFactor = "12/12";
+            
+            if (joinDateRaw) {
+                const jDate = this.parseDate(joinDateRaw);
+                if (jDate) {
+                    const periodDate = new Date(year, month - 1, 1);
+                    let monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
+                    
+                    if (monthsDiff < 12 && monthsDiff >= 0) {
+                        workingMonths = Math.min(12, monthsDiff + 1);
+                        if (workingMonths < 12) {
+                            proportionFactor = `${workingMonths}/12`;
+                            thrAmount = Math.round((fullThrAmount * workingMonths) / 12);
+                            proportionDesc = ` (Proporsi ${workingMonths}/12)`;
+                        }
+                    }
+                }
+            }
+
+            if (thrAmount > 0) {
+                const finalDivisionCode = (divisionCode && divisionCode !== 'ALL') ? divisionCode : (row.division_code || row.loc_code);
+                results.push({
+                    nik: nik,
+                    emp_name: row.nama || row.emp_name || '',
+                    division_code: finalDivisionCode,
+                    gang_code: row.gang_code || gangCode || null,
+                    period_year: year,
+                    period_month: month,
+                    income_type: 'THR',
+                    income_name: `Tunjangan Hari Raya${proportionDesc}`,
+                    amount: thrAmount,
+                    is_paid_in_thp: formulaConfig.is_paid_in_thp ? true : false,
+                    is_taxable: formulaConfig.is_taxable ? true : false,
+                    details: {
+                        formula: formulaConfig.formula,
+                        variables: {
+                            ...mathVars,
+                            JOIN_DATE: joinDateRaw,
+                            WORKING_MONTHS: workingMonths,
+                            PROPORTION_FACTOR: proportionFactor,
+                            RELIGION: hrInfo?.religion,
+                            SEX: hrInfo?.sex || (row.sex === 'FEMALE' ? 'P' : 'L'),
+                            BANK_ACC_NO: hrInfo?.bank_acc_no,
+                            BANK_CODE: hrInfo?.bank_code,
+                            EMP_CODE: hrInfo?.emp_code || row.emp_code
+                        }
+                    }
+                });
+            }
+        }
+        return results;
+    }
+
     static async calculateAndSaveTHR(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<{ success: boolean; count: number; message?: string }> {
         try {
-            const historyService = HistoryDatabaseService.getInstance();
-            const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', divisionCode || undefined);
-            if (!historyData?.data_rows?.length) return { success: false, count: 0, message: "No history data found." };
-
-            const prevMonth = month === 1 ? 12 : month - 1;
-            const prevYear = month === 1 ? year - 1 : year;
-            const prevHistoryData = await historyService.getHistoricalPayrollDataAsExtractorFormat(prevMonth, prevYear, gangCode || 'ALL', divisionCode || undefined);
-            const prevHistoryDict: Record<string, any> = {};
-            if (prevHistoryData?.data_rows) {
-                for (const row of prevHistoryData.data_rows) {
-                    const nik = String(row.nik || row.nik_ktp || '').trim().toUpperCase();
-                    if (nik) prevHistoryDict[nik] = row;
-                }
-            }
-
-            const mainDb = Database.getInstance();
-            const allNiks = historyData.data_rows.map(r => String(r.nik || r.nik_ktp || '').trim()).filter(Boolean);
-            const hrMap = new Map<string, { join_date: any; emp_code: string }>();
-            if (allNiks.length > 0) {
-                const nikChunks = this.chunkArray(allNiks, 500);
-                for (const chunk of nikChunks) {
-                    const placeholders = chunk.map(() => '?').join(',');
-                    const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string; AppJoinDate: any; AppJoinGrpDate: any; Status: string; GangCode: string; GangMember: string }>(`
-                        SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, em.AppJoinDate, em.AppJoinGrpDate, e.Status, RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember
-                        FROM HR_EMPLOYEE e
-                        LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
-                        LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
-                        WHERE RTRIM(e.NewICNo) IN (${placeholders}) OR RTRIM(e.EmpCode) IN (${placeholders})
-                        ORDER BY 
-                            CASE WHEN e.Status = '1' THEN 0 ELSE 1 END,
-                            em.AppJoinDate DESC, 
-                            e.EmpCode DESC
-                    `, [...chunk, ...chunk]);
-                    hrRows.forEach(r => {
-                        const joinDate = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate);
-                        const nikKey = r.NewICNo?.trim().toUpperCase();
-                        const empKey = r.EmpCode.trim().toUpperCase();
-                        const resolvedEmpCode = (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : r.EmpCode;
-                        const entry = { join_date: joinDate, emp_code: resolvedEmpCode };
-
-                        if (gangCode && r.GangCode === gangCode) {
-                            if (nikKey) hrMap.set(nikKey, entry);
-                            if (empKey) hrMap.set(empKey, entry);
-                        } else {
-                            if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, entry);
-                            if (empKey && !hrMap.has(empKey)) hrMap.set(empKey, entry);
-                        }
-                    });
-                }
-            }
-
-            const formulaConfig = await this.getFormula('THR');
-            if (!formulaConfig?.formula) return { success: false, count: 0, message: "Formula THR belum dikonfigurasi." };
+            const calculatedRows = await this.calculateTHRData(year, month, divisionCode, gangCode);
+            if (calculatedRows.length === 0) return { success: false, count: 0, message: "No data calculated." };
 
             const db = Database.getExtendedInstance();
-            let insertedCount = 0;
-            const processedNiks = new Set<string>();
-
-            // Sort history rows so we process most recent or best records first if duplicates exist
-            const rows = historyData.data_rows;
-
-            for (const row of rows) {
-                const nik = String(row.nik || row.nik_ktp || '').trim().toUpperCase();
-                if (!nik || processedNiks.has(nik)) continue;
-                processedNiks.add(nik);
-
-                const hrInfo = hrMap.get(nik);
-                // Priority: Live HR > History DB
-                const joinDateRaw = hrInfo?.join_date || row.join_date;
-                
-                let masaKerjaTahun = row.masa_kerja_tahun || 0;
-                let masaKerjaJumlah = (row.masa_kerja_jumlah || 0) || (prevHistoryDict[nik]?.masa_kerja_jumlah || 0);
-                if (masaKerjaTahun === 0 && prevHistoryDict[nik]) masaKerjaTahun = prevHistoryDict[nik].masa_kerja_tahun || 0;
-
-                const upahDasar = row.upah_dasar || 0;
-                const berasRate = row.beras_rate || 0;
-                const mathVars = {
-                    UPAH_DASAR: upahDasar, GAJI_POKOK: upahDasar * 30, BERAS_RATE: berasRate,
-                    MASA_KERJA_JUMLAH: masaKerjaJumlah, MASA_KERJA_TAHUN: masaKerjaTahun, HK: 30
-                };
-                
-                let thrAmount = 0;
-                try {
-                    const evaluator = new Function(...Object.keys(mathVars), `return ${formulaConfig.formula};`);
-                    thrAmount = evaluator(...Object.values(mathVars));
-                } catch { continue; }
-
-                let proportionDesc = '';
-                let appliedProportion = 1;
-
-                if (joinDateRaw) {
-                    const jDate = new Date(joinDateRaw);
-                    if (!isNaN(jDate.getTime())) {
-                        const periodDate = new Date(year, month - 1, 1);
-                        let monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
-                        
-                        // Rule: Everyone with less than 12 months service gets proportional + 1 month bonus
-                        if (monthsDiff < 12 && monthsDiff >= 0) {
-                            const workingMonths = Math.min(12, monthsDiff + 1);
-                            if (workingMonths < 12) {
-                                appliedProportion = workingMonths / 12;
-                                thrAmount = Math.round(thrAmount * appliedProportion);
-                                proportionDesc = ` (Proporsi ${workingMonths}/12)`;
-                                console.log(`[THR] Proportional: ${row.nama || row.emp_name} (${nik}) - Months:${monthsDiff}+1, Prop:${workingMonths}/12, Amt:${thrAmount}`);
-                            }
-                        }
-                    }
-                }
-
-                if (thrAmount > 0) {
-                    const incomeName = `Tunjangan Hari Raya${proportionDesc}`;
-                    const existing = await db.query(`SELECT id FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ? AND income_type = 'THR'`, [year, month, nik]);
-                    const finalDivisionCode = (divisionCode && divisionCode !== 'ALL') ? divisionCode : (row.division_code || row.loc_code);
-                    
-                    if (existing?.length) { 
-                        await db.query(`UPDATE employee_other_incomes SET amount = ?, income_name = ?, division_code = ?, updated_at = GETDATE() WHERE id = ?`, [thrAmount, incomeName, finalDivisionCode, existing[0].id]); 
-                    } else {
-                        await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'THR', ?, ?, ?, ?, GETDATE(), GETDATE())`, 
-                            [nik, row.nama || row.emp_name || '', finalDivisionCode, row.gang_code || gangCode || null, year, month, incomeName, thrAmount, formulaConfig.is_paid_in_thp ? 1 : 0, formulaConfig.is_taxable ? 1 : 0]);
-                    }
-                    insertedCount++;
-                }
+            for (const row of calculatedRows) {
+                await db.query(`DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ? AND income_type = 'THR'`, [year, month, row.nik]);
+                await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'THR', ?, ?, ?, ?, GETDATE(), GETDATE())`, 
+                    [row.nik, row.emp_name, row.division_code, row.gang_code, year, month, row.income_name, row.amount, row.is_paid_in_thp ? 1 : 0, row.is_taxable ? 1 : 0]);
             }
-            return { success: true, count: insertedCount };
+            return { success: true, count: calculatedRows.length };
         } catch (e: any) { return { success: false, count: 0, message: e.message }; }
+    }
+
+    static async bulkSaveIncomes(incomes: OtherIncome[]): Promise<{ success: boolean; count: number }> {
+        const db = Database.getExtendedInstance();
+        let count = 0;
+        try {
+            for (const inc of incomes) {
+                await db.query(`DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ? AND income_type = ? AND income_name = ?`, 
+                    [inc.period_year, inc.period_month, inc.nik, inc.income_type, inc.income_name]);
+                
+                await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())`,
+                    [inc.nik, inc.emp_name, inc.division_code, inc.gang_code, inc.period_year, inc.period_month, inc.income_type, inc.income_name, inc.amount, inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0]);
+                count++;
+            }
+            return { success: true, count };
+        } catch (e) { return { success: false, count }; }
     }
 
     static async addIncome(data: any): Promise<OtherIncome | null> {

@@ -65,6 +65,30 @@ export const otherIncomesService = {
         }
     },
 
+    previewTHR: async (year, month, divisionCode, gangCode) => {
+        try {
+            const data = { year, month };
+            if (divisionCode) data.divisionCode = divisionCode;
+            if (gangCode) data.gangCode = gangCode;
+
+            const response = await api.post('/other-incomes/preview-thr', data);
+            return response.data;
+        } catch (error) {
+            console.error('Error previewing THR:', error);
+            throw error;
+        }
+    },
+
+    bulkSave: async (incomes) => {
+        try {
+            const response = await api.post('/other-incomes/bulk-save', { incomes });
+            return response.data;
+        } catch (error) {
+            console.error('Error bulk saving incomes:', error);
+            throw error;
+        }
+    },
+
     getFormula: async (type) => {
         try {
             const response = await api.get(`/other-incomes/formulas/${type}`);
