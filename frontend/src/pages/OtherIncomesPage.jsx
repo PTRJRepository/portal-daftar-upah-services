@@ -106,7 +106,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
 
     const handleDelete = async (d) => {
         const isPreview = !d.id || d.isPreview;
-        const confirmMsg = isPreview 
+        const confirmMsg = isPreview
             ? `Hapus ${d.emp_name} dari kalkulasi ini? (Karyawan akan dimasukkan ke Blacklist agar tidak muncul lagi)`
             : `Hapus permanent data THR ${d.emp_name}? (Data akan dipindah ke Blacklist)`;
 
@@ -214,11 +214,11 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     };
 
     const getSigs = () => `
-        <div style="margin-top:35px; display:flex; justify-content:space-between; page-break-inside:avoid; text-align:center;">
-            <div style="width:23%"><div>Dibuat Oleh,</div><div style="height:55px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:0.85em;">( .................... )</div><div style="font-size:0.8em;">KTU / Kerani</div></div>
-            <div style="width:23%"><div>Diperiksa Oleh,</div><div style="height:55px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:0.85em;">( .................... )</div><div style="font-size:0.8em;">Asisten</div></div>
-            <div style="width:23%"><div>Mengetahui,</div><div style="height:55px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:0.85em;">( .................... )</div><div style="font-size:0.8em;">Estate Manager</div></div>
-            <div style="width:23%"><div>Disetujui Oleh,</div><div style="height:55px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:0.85em;">( .................... )</div><div style="font-size:0.8em;">Senior Manager</div></div>
+        <div style="margin-top:40px; display:flex; justify-content:space-between; page-break-inside:avoid; text-align:center;">
+            <div style="width:23%"><div style="font-size:1.1em;">Dibuat Oleh,</div><div style="height:60px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:1.1em;">( .................... )</div><div style="font-size:1.1em; font-weight:bold;">KTU / Kerani</div></div>
+            <div style="width:23%"><div style="font-size:1.1em;">Diperiksa Oleh,</div><div style="height:60px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:1.1em;">( .................... )</div><div style="font-size:1.1em; font-weight:bold;">Asisten</div></div>
+            <div style="width:23%"><div style="font-size:1.1em;">Mengetahui,</div><div style="height:60px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:1.1em;">( .................... )</div><div style="font-size:1.1em; font-weight:bold;">Estate Manager</div></div>
+            <div style="width:23%"><div style="font-size:1.1em;">Disetujui Oleh,</div><div style="height:60px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:1.1em;">( .................... )</div><div style="font-size:1.1em; font-weight:bold;">Senior Manager</div></div>
         </div>`;
 
     const getReportHTML = (data, orient = 'landscape') => {
@@ -355,7 +355,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     const pr = v.PROPORTION_FACTOR; const hasPrp = pr && pr !== '12/12';
                     const propLabel = hasPrp ? `<span class="prp">${pr}</span>` : 'PENUH';
                     const actualJoinDate = v.JOIN_DATE || r.join_date;
-                    
+
                     return `<tr>
                                     <td class="tc fit">${i + 1}</td>
                                     <td class="tc fit">${v.SEX || r.sex || 'L'}</td>
@@ -512,7 +512,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const handleDownloadPDF = () => {
         const element = document.createElement('div');
         element.innerHTML = previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData);
-        
+
         const opt = {
             margin: [10, 5, 10, 5],
             filename: `${previewType === 'MAIN' ? 'Laporan_THR' : 'Bank_List_THR'}_${division}_${month}_${year}.pdf`,
@@ -564,10 +564,10 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 </div>
             </div>
             {isPreviewModalOpen && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', padding: '2rem' }}><div style={{ background: 'white', flex: 1, display: 'flex', flexDirection: 'column', borderRadius: '8px', overflow: 'hidden' }}><div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2>Preview {previewType === 'MAIN' ? 'Laporan Utama' : 'Bank List'}</h2><div style={{ display: 'flex', gap: '1rem' }}>{previewType === 'MAIN' && <select value={printOrientation} onChange={e => setPrintOrientation(e.target.value)}><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select>}<button onClick={() => { const win = window.open('', '_blank'); win.document.write(`<html><body>${previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData)}<script>window.onload=function(){window.print();}</script></body></html>`); win.document.close(); }} style={{ background: '#6366f1', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Print PDF</button>
-<button onClick={handleDownloadPDF} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}><FileDown size={16} /> Save to PDF</button>
-{previewType === 'BANK' && <button onClick={handleExportBankList} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Export Excel</button>}
-<button onClick={() => setIsPreviewModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={24} /></button></div></div><div style={{ flex: 1, overflow: 'auto', padding: '2rem', background: '#f3f4f6' }} dangerouslySetInnerHTML={{ __html: previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData) }} /></div></div>}
-            
+                <button onClick={handleDownloadPDF} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}><FileDown size={16} /> Save to PDF</button>
+                {previewType === 'BANK' && <button onClick={handleExportBankList} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Export Excel</button>}
+                <button onClick={() => setIsPreviewModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={24} /></button></div></div><div style={{ flex: 1, overflow: 'auto', padding: '2rem', background: '#f3f4f6' }} dangerouslySetInnerHTML={{ __html: previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData) }} /></div></div>}
+
             {isBlacklistModalOpen && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ background: 'white', width: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', borderRadius: '8px', overflow: 'hidden' }}>
@@ -591,11 +591,11 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                                         {blacklistData.map(b => (
                                             <tr key={b.id} style={{ borderBottom: '1px solid #eee' }}>
                                                 <td style={{ padding: '0.5rem' }}>
-                                                    <b>{b.emp_name}</b><br/><small>{b.nik}</small>
+                                                    <b>{b.emp_name}</b><br /><small>{b.nik}</small>
                                                 </td>
                                                 <td style={{ padding: '0.5rem' }}><small>{b.reason}</small></td>
                                                 <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                                                    <button 
+                                                    <button
                                                         onClick={() => handleRestoreFromBlacklist(b.id)}
                                                         style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                                                     >

@@ -173,7 +173,7 @@ export class OtherIncomesExcelService {
 
         [2, 3, 4, 5].forEach(col => {
             roleSignRow.getCell(col).alignment = { horizontal: 'center' };
-            roleSignRow.getCell(col).font = { size: 9 };
+            roleSignRow.getCell(col).font = { size: 11, bold: true };
         });
 
         const buffer = await workbook.xlsx.writeBuffer();
