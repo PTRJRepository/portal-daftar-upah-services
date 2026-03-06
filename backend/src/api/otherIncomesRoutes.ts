@@ -200,4 +200,33 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
             set.status = 500;
             return error.message;
         }
+    })
+
+    .get("/export-bank-list", async ({ query, set }) => {
+        try {
+            const { year, month, divisionCode, gangCode } = query as any;
+            if (!year || !month) {
+                set.status = 400;
+                return "Year and month are required parameters";
+            }
+
+            const buffer = await OtherIncomesExcelService.generateBankListExcel(
+                parseInt(year),
+                parseInt(month),
+                divisionCode,
+                gangCode
+            );
+
+            const fileName = `Bank_List_THR_${month}_${year}_${divisionCode || 'ALL'}.xlsx`;
+            set.headers = {
+                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition': `attachment; filename="${fileName}"`
+            };
+
+            return buffer;
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to export bank list excel", error);
+            set.status = 500;
+            return error.message;
+        }
     });
