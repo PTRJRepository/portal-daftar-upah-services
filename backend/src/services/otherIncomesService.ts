@@ -212,13 +212,13 @@ export class OtherIncomesService {
                             let workingMonths = 12;
                             let proportionFactor = "12/12";
 
-                            if ((row.masa_kerja_tahun || 0) === 0 && joinDateRaw) {
+                            if (joinDateRaw) {
                                 const jDate = new Date(joinDateRaw);
                                 if (!isNaN(jDate.getTime())) {
                                     const periodDate = new Date(year, month - 1, 1);
                                     let monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
-                                    if (monthsDiff < 12) {
-                                        workingMonths = Math.min(12, Math.max(0, monthsDiff) + 1);
+                                    if (monthsDiff < 12 && monthsDiff >= 0) {
+                                        workingMonths = Math.min(12, monthsDiff + 1);
                                         proportionFactor = `${workingMonths}/12`;
                                     }
                                 }
@@ -436,60 +436,71 @@ export class OtherIncomesService {
 
             const db = Database.getExtendedInstance();
             let insertedCount = 0;
+            const processedNiks = new Set<string>();
 
-            for (const row of historyData.data_rows) {
+            // Sort history rows so we process most recent or best records first if duplicates exist
+            const rows = historyData.data_rows;
+
+            for (const row of rows) {
                 const nik = String(row.nik || row.nik_ktp || '').trim().toUpperCase();
+                if (!nik || processedNiks.has(nik)) continue;
+                processedNiks.add(nik);
+
                 const hrInfo = hrMap.get(nik);
-                const joinDateRaw = hrInfo?.join_date;
+                // Priority: Live HR > History DB
+                const joinDateRaw = hrInfo?.join_date || row.join_date;
+                
                 let masaKerjaTahun = row.masa_kerja_tahun || 0;
                 let masaKerjaJumlah = (row.masa_kerja_jumlah || 0) || (prevHistoryDict[nik]?.masa_kerja_jumlah || 0);
                 if (masaKerjaTahun === 0 && prevHistoryDict[nik]) masaKerjaTahun = prevHistoryDict[nik].masa_kerja_tahun || 0;
 
-                if (nik) {
-                    const upahDasar = row.upah_dasar || 0;
-                    const berasRate = row.beras_rate || 0;
-                    const mathVars = {
-                        UPAH_DASAR: upahDasar, GAJI_POKOK: upahDasar * 30, BERAS_RATE: berasRate,
-                        MASA_KERJA_JUMLAH: masaKerjaJumlah, MASA_KERJA_TAHUN: masaKerjaTahun, HK: 30
-                    };
-                    let thrAmount = 0;
-                    try {
-                        const evaluator = new Function(...Object.keys(mathVars), `return ${formulaConfig.formula};`);
-                        thrAmount = evaluator(...Object.values(mathVars));
-                    } catch { continue; }
+                const upahDasar = row.upah_dasar || 0;
+                const berasRate = row.beras_rate || 0;
+                const mathVars = {
+                    UPAH_DASAR: upahDasar, GAJI_POKOK: upahDasar * 30, BERAS_RATE: berasRate,
+                    MASA_KERJA_JUMLAH: masaKerjaJumlah, MASA_KERJA_TAHUN: masaKerjaTahun, HK: 30
+                };
+                
+                let thrAmount = 0;
+                try {
+                    const evaluator = new Function(...Object.keys(mathVars), `return ${formulaConfig.formula};`);
+                    thrAmount = evaluator(...Object.values(mathVars));
+                } catch { continue; }
 
-                    let proportionDesc = '';
-                    if (joinDateRaw) {
-                        const jDate = new Date(joinDateRaw);
-                        if (!isNaN(jDate.getTime())) {
-                            const periodDate = new Date(year, month - 1, 1);
-                            let monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
-                            
-                            // If worked less than 12 months, apply proportion
-                            if (monthsDiff < 12 && monthsDiff >= 0) {
-                                // Rule: Add 1 month to the actual difference, capped at 12
-                                const workingMonths = Math.min(12, monthsDiff + 1);
-                                
-                                if (workingMonths < 12) {
-                                    thrAmount = (thrAmount * workingMonths) / 12;
-                                    proportionDesc = ` (Proporsi ${workingMonths}/12)`;
-                                }
+                let proportionDesc = '';
+                let appliedProportion = 1;
+
+                if (joinDateRaw) {
+                    const jDate = new Date(joinDateRaw);
+                    if (!isNaN(jDate.getTime())) {
+                        const periodDate = new Date(year, month - 1, 1);
+                        let monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
+                        
+                        // Rule: Everyone with less than 12 months service gets proportional + 1 month bonus
+                        if (monthsDiff < 12 && monthsDiff >= 0) {
+                            const workingMonths = Math.min(12, monthsDiff + 1);
+                            if (workingMonths < 12) {
+                                appliedProportion = workingMonths / 12;
+                                thrAmount = Math.round(thrAmount * appliedProportion);
+                                proportionDesc = ` (Proporsi ${workingMonths}/12)`;
+                                console.log(`[THR] Proportional: ${row.nama || row.emp_name} (${nik}) - Months:${monthsDiff}+1, Prop:${workingMonths}/12, Amt:${thrAmount}`);
                             }
                         }
                     }
+                }
 
-                    if (thrAmount > 0) {
-                        const incomeName = `Tunjangan Hari Raya${proportionDesc}`;
-                        const existing = await db.query(`SELECT id FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ? AND income_type = 'THR'`, [year, month, nik]);
-                        const finalDivisionCode = (divisionCode && divisionCode !== 'ALL') ? divisionCode : (row.division_code || row.loc_code);
-                        if (existing?.length) { 
-                            await db.query(`UPDATE employee_other_incomes SET amount = ?, income_name = ?, division_code = ?, updated_at = GETDATE() WHERE id = ?`, [thrAmount, incomeName, finalDivisionCode, existing[0].id]); 
-                        } else {
-                            await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'THR', ?, ?, ?, ?, GETDATE(), GETDATE())`, 
-                                [nik, row.nama || row.emp_name || '', finalDivisionCode, row.gang_code || gangCode || null, year, month, incomeName, thrAmount, formulaConfig.is_paid_in_thp ? 1 : 0, formulaConfig.is_taxable ? 1 : 0]);
-                        }
-                        insertedCount++;
+                if (thrAmount > 0) {
+                    const incomeName = `Tunjangan Hari Raya${proportionDesc}`;
+                    const existing = await db.query(`SELECT id FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ? AND income_type = 'THR'`, [year, month, nik]);
+                    const finalDivisionCode = (divisionCode && divisionCode !== 'ALL') ? divisionCode : (row.division_code || row.loc_code);
+                    
+                    if (existing?.length) { 
+                        await db.query(`UPDATE employee_other_incomes SET amount = ?, income_name = ?, division_code = ?, updated_at = GETDATE() WHERE id = ?`, [thrAmount, incomeName, finalDivisionCode, existing[0].id]); 
+                    } else {
+                        await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'THR', ?, ?, ?, ?, GETDATE(), GETDATE())`, 
+                            [nik, row.nama || row.emp_name || '', finalDivisionCode, row.gang_code || gangCode || null, year, month, incomeName, thrAmount, formulaConfig.is_paid_in_thp ? 1 : 0, formulaConfig.is_taxable ? 1 : 0]);
                     }
+                    insertedCount++;
                 }
             }
             return { success: true, count: insertedCount };

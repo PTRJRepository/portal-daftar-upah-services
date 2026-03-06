@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReportTable from '../components/common/ReportTable';
 import { useReport } from '../context/ReportContext';
 import { otherIncomesService } from '../services/otherIncomesService';
-import { Save, Trash2, Plus, RefreshCw, AlertCircle, Calculator, Download, Settings, X, Filter, Printer, Eye } from 'lucide-react';
+import { Save, Trash2, Plus, RefreshCw, AlertCircle, Calculator, Download, Settings, X, Filter, Printer, Eye, FileSpreadsheet } from 'lucide-react';
+import * as xlsx from 'xlsx';
 
 const INCOME_TYPES = ['THR', 'Bonus', 'Custom'];
 
@@ -438,30 +439,56 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                         </tr>
                     </thead>
                     <tbody>
-                        ${data.map((row, index) => {
-            const vars = row.details?.variables || {};
-            const joinDate = vars.JOIN_DATE || row.join_date;
-            const masaKerjaThn = vars.MASA_KERJA_TAHUN || 0;
-            const upahKotor = row.amount || 0;
-            const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
-            const upahBersih = upahKotor - pajak;
-            const empCode = row.emp_code || vars.EMP_CODE || '-';
+                        ${(() => {
+                // Group data by gang_code
+                const gangGroups = {};
+                data.forEach(row => {
+                    const gc = row.gang_code || 'TANPA GANG';
+                    if (!gangGroups[gc]) gangGroups[gc] = [];
+                    gangGroups[gc].push(row);
+                });
+                const gangKeys = Object.keys(gangGroups).sort();
+                const hasMultipleGangs = gangKeys.length > 1;
+                let globalNo = 0;
 
-            // Clean up religion string (remove "01 ", "02 ", etc.)
-            const rawReligion = row.religion || vars.RELIGION || '-';
-            const cleanReligion = rawReligion.replace(/^\d+\s+/, '');
+                return gangKeys.map(gangCode => {
+                    const gangRows = gangGroups[gangCode];
+                    const gangKotor = gangRows.reduce((a, c) => a + (c.amount || 0), 0);
+                    const gangPajak = gangRows.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0);
+                    const gangBersih = gangKotor - gangPajak;
 
-            let propLabel = '';
-            let kelayakanLabel = '';
-            if (vars.PROPORTION_FACTOR && vars.PROPORTION_FACTOR !== '12/12') {
-                propLabel = `<span class="proporsi-tag">PROP ${vars.PROPORTION_FACTOR}</span>`;
-                const workingMonths = vars.WORKING_MONTHS || vars.PROPORTION_FACTOR.split('/')[0];
-                kelayakanLabel = `<span class="kelayakan-tag">Proporsi ${workingMonths} bln (${vars.PROPORTION_FACTOR})</span>`;
-            }
-
-            return `
+                    // Gang header row
+                    const gangHeader = hasMultipleGangs ? `
                             <tr>
-                                <td class="text-center">${index + 1}</td>
+                                <td colspan="16" style="background-color:#e2e8f0; font-weight:800; font-size:${isPortrait ? '7.5px' : '10px'}; padding:5px 8px; border:1px solid #666; color:#1e293b;">
+                                    GANG: ${gangCode} &nbsp;&nbsp;(${gangRows.length} Karyawan)
+                                </td>
+                            </tr>` : '';
+
+                    // Individual rows
+                    const rows = gangRows.map(row => {
+                        globalNo++;
+                        const vars = row.details?.variables || {};
+                        const joinDate = vars.JOIN_DATE || row.join_date;
+                        const masaKerjaThn = vars.MASA_KERJA_TAHUN || 0;
+                        const upahKotor = row.amount || 0;
+                        const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
+                        const upahBersih = upahKotor - pajak;
+                        const empCode = row.emp_code || vars.EMP_CODE || '-';
+                        const rawReligion = row.religion || vars.RELIGION || '-';
+                        const cleanReligion = rawReligion.replace(/^\d+\s+/, '');
+
+                        let propLabel = '';
+                        let kelayakanLabel = '';
+                        if (vars.PROPORTION_FACTOR && vars.PROPORTION_FACTOR !== '12/12') {
+                            propLabel = `<span class="proporsi-tag">PROP ${vars.PROPORTION_FACTOR}</span>`;
+                            const workingMonths = vars.WORKING_MONTHS || vars.PROPORTION_FACTOR.split('/')[0];
+                            kelayakanLabel = `<span class="kelayakan-tag">Proporsi ${workingMonths} bln (${vars.PROPORTION_FACTOR})</span>`;
+                        }
+
+                        return `
+                            <tr>
+                                <td class="text-center">${globalNo}</td>
                                 <td class="text-center">${vars.SEX || 'L'}</td>
                                 <td>
                                     <div class="emp-info">
@@ -483,15 +510,31 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                 <td class="text-right">${formatCurrency(pajak)}</td>
                                 <td class="text-center">${kelayakanLabel}</td>
                                 <td class="text-right font-bold" style="color:#1a365d">${formatCurrency(upahBersih)}</td>
-                            </tr>
-                        `;
-        }).join('')}
+                            </tr>`;
+                    }).join('');
+
+                    // Gang subtotal row (only when multiple gangs)
+                    const gangSubtotal = hasMultipleGangs ? `
+                            <tr style="background-color:#fef3c7; font-weight:700; border-top:2px solid #000;">
+                                <td colspan="12" class="text-right" style="font-size:${isPortrait ? '6.5px' : '8.5px'}; padding:4px 6px;">
+                                    SUBTOTAL ${gangCode} (${gangRows.length} karyawan)
+                                </td>
+                                <td class="text-right" style="font-weight:800">${formatCurrency(gangKotor)}</td>
+                                <td class="text-right">${formatCurrency(gangPajak)}</td>
+                                <td></td>
+                                <td class="text-right" style="font-weight:800; color:#1a365d">${formatCurrency(gangBersih)}</td>
+                            </tr>` : '';
+
+                    return gangHeader + rows + gangSubtotal;
+                }).join('');
+            })()}
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="12" class="text-right">TOTAL KESELURUHAN (IDR)</th>
+                            <th colspan="12" class="text-right">TOTAL KESELURUHAN (${data.length} Karyawan)</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0))}</th>
+                            <th></th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
                         </tr>
                     </tfoot>
@@ -704,6 +747,82 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
         win.document.close();
     };
 
+    const handleExportExcelTHR = () => {
+        let exportData = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
+        if (gangPrefix) exportData = exportData.filter(r => getAsistensi(r.gang_code) === gangPrefix);
+        if (exportData.length === 0) return alert('Tidak ada data untuk diekspor.');
+
+        const wsData = exportData.map((row, i) => {
+            const vars = row.details?.variables || {};
+            const upahKotor = row.amount || 0;
+            const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
+            const upahBersih = upahKotor - pajak;
+            const masaKerjaThn = vars.MASA_KERJA_TAHUN || 0;
+            const joinDate = vars.JOIN_DATE || row.join_date;
+
+            let kelayakanStr = '';
+            if (vars.PROPORTION_FACTOR && vars.PROPORTION_FACTOR !== '12/12') {
+                const workingMonths = vars.WORKING_MONTHS || vars.PROPORTION_FACTOR.split('/')[0];
+                kelayakanStr = `Proporsi ${workingMonths} bln (${vars.PROPORTION_FACTOR})`;
+            }
+
+            return {
+                'NO': i + 1,
+                'L/P': vars.SEX || 'L',
+                'NAMA KARYAWAN': row.emp_name,
+                'NIK': row.nik,
+                'CODE': row.emp_code || vars.EMP_CODE || '-',
+                'AGAMA': (row.religion || vars.RELIGION || '-').replace(/^\d+\s+/, ''),
+                'TGL MASUK': joinDate ? new Date(joinDate).toLocaleDateString('id-ID') : '-',
+                'HK': vars.HK || 30,
+                'UPAH DASAR (Rp)': vars.UPAH_DASAR || 0,
+                'UPAH POKOK (Rp)': vars.GAJI_POKOK || 0,
+                'TUNJANGAN BERAS RATE (Rp)': vars.BERAS_RATE || 0,
+                'TUNJANGAN BERAS JUMLAH (Rp)': (vars.BERAS_RATE || 0) * 30,
+                'PENGABDIAN THN': masaKerjaThn,
+                'PENGABDIAN JUMLAH (Rp)': vars.MASA_KERJA_JUMLAH || 0,
+                'UPAH KOTOR (Rp)': upahKotor,
+                'PAJAK THR (Rp)': pajak,
+                'KELAYAKAN THR': kelayakanStr,
+                'UPAH BERSIH (Rp)': upahBersih
+            };
+        });
+
+        const ws = xlsx.utils.json_to_sheet(wsData);
+        const wb = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(wb, ws, "Laporan THR");
+        const fileName = `Laporan_THR_${division}_${getMonthName(month)}_${year}.xlsx`;
+        xlsx.writeFile(wb, fileName);
+    };
+
+    const handleExportExcelBankList = () => {
+        if (displayData.length === 0) return alert('Tidak ada data list bank.');
+
+        const wsData = displayData.map((row, i) => {
+            const upahKotor = row.amount || 0;
+            const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
+            const upahBersih = upahKotor - pajak;
+            const bankAcc = row.bank_acc_no || (row.details?.variables?.BANK_ACC_NO) || '';
+            const bankName = row.bank_code || (row.details?.variables?.BANK_CODE) || 'BRI';
+            const empCode = row.emp_code || (row.details?.variables?.EMP_CODE) || row.nik;
+
+            return {
+                'No.': i + 1,
+                'Bank Acc. No.': bankAcc,
+                'Amount': upahBersih,
+                'Employee Name': row.emp_name,
+                'Bank Code': bankName,
+                'Employee Code': empCode
+            };
+        });
+
+        const ws = xlsx.utils.json_to_sheet(wsData);
+        const wb = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(wb, ws, "Bank List THR");
+        const fileName = `BankList_THR_${division}_${getMonthName(month)}_${year}.xlsx`;
+        xlsx.writeFile(wb, fileName);
+    };
+
     // ReportTable column definitions — matching the DAFTAR THR layout
     const reportColumns = useMemo(() => [
         { field: '_no', headers: ['NO.\nURUT', null, null], w: 60, className: 'text-center', sticky: true, left: 0, valueGetter: (row) => row._no },
@@ -793,8 +912,19 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
 
         // Filter by gang group (asistensi)
         if (gangPrefix) {
+            // Debug: show sample gang codes
+            if (filtered.length > 0) {
+                const sampleCodes = filtered.slice(0, 5).map(r => ({
+                    name: r.emp_name,
+                    gang_code: r.gang_code,
+                    var_gang: r.details?.variables?.GANG_CODE,
+                    extracted: getAsistensi(r.gang_code || r.details?.variables?.GANG_CODE)
+                }));
+                console.log('[DEBUG] Sample gang codes:', JSON.stringify(sampleCodes, null, 2));
+            }
             filtered = filtered.filter(r => {
-                const asistensi = getAsistensi(r.gang_code);
+                const gc = r.gang_code || r.details?.variables?.GANG_CODE;
+                const asistensi = getAsistensi(gc);
                 return asistensi === gangPrefix;
             });
             console.log('[DEBUG] after group filter:', filtered.length, 'Group:', gangPrefix);
@@ -827,9 +957,14 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                             </button>
                             <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Preview List Pembayaran Bank</h2>
                         </div>
-                        <button onClick={handlePrintBankList} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                            <Printer size={16} /> Cetak List Bank
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button onClick={handleExportExcelBankList} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                <FileSpreadsheet size={16} /> Export Excel
+                            </button>
+                            <button onClick={handlePrintBankList} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                <Printer size={16} /> Cetak List Bank
+                            </button>
+                        </div>
                     </div>
                     <div style={{ flex: 1, overflow: 'auto', padding: '2rem', backgroundColor: '#f3f4f6' }}>
                         <div style={{
@@ -903,6 +1038,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                 <button onClick={() => setReportView('BANK_LIST')} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
                                     <Printer size={16} /> Tampilkan List Bank
                                 </button>
+                                <button onClick={handleExportExcelTHR} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                    <FileSpreadsheet size={16} /> Export Excel
+                                </button>
                                 <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
                                     <Printer size={16} /> Print PDF
                                 </button>
@@ -966,6 +1104,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                                 win.document.close();
                                             }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
                                                 <Download size={16} /> Simpan PDF
+                                            </button>
+                                            <button onClick={handleExportExcelTHR} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                                                <FileSpreadsheet size={16} /> Export Excel
                                             </button>
                                             <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', background: '#6366f1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
                                                 <Printer size={16} /> Cetak PDF
