@@ -17,7 +17,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const [isCalculating, setIsCalculating] = useState(false);
     const [isLivePreview, setIsLivePreview] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [filterReligion, setFilterReligion] = useState('01 Islam');
+    const [filterReligion, setFilterReligion] = useState('ALL');
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
     const [printOrientation, setPrintOrientation] = useState('landscape');
     const [previewType, setPreviewType] = useState('MAIN');
@@ -340,7 +340,8 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 // If it's a P-prefix (like P1A) and the PG-prefix (PG1A) exists, hide the old P-prefix to avoid duplicates
                 if (d.startsWith('P') && d.length === 3 && divSet.has('PG' + d.substring(1))) continue;
                 // If it's a pure virtual division typically not used for direct THR data entry, hide it
-                if (['INF', 'NRS', 'WKS_PG', 'WKS_AR', 'WORKSHOP', 'MILL'].includes(d)) continue;
+                // Aggregate ones like WORKSHOP should still be hidden as they don't have direct members usually
+                if (['WORKSHOP', 'MILL'].includes(d)) continue;
                 filtered.push(d);
             }
         }

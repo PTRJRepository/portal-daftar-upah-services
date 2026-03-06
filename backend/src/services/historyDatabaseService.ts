@@ -750,6 +750,22 @@ export class HistoryDatabaseService {
         const empCodesForHr = finalDetails.map((d: any) => d.emp_code?.trim()).filter(Boolean);
         const hrDataMap = await employeeHrDataService.getHrDataBulk(empCodesForHr);
 
+        // Fetch religion from history_hr_employee if available
+        const religionHistoryMap = new Map<string, string>();
+        if (empCodesForHr.length > 0) {
+            try {
+                const placeholders = empCodesForHr.map(() => '?').join(',');
+                const relRows = await db.query<{ emp_code: string, religion: string }>(`
+                    SELECT RTRIM(emp_code) as emp_code, religion 
+                    FROM dbo.history_hr_employee 
+                    WHERE period_month = ? AND period_year = ? AND RTRIM(emp_code) IN (${placeholders})
+                `, [periodMonth, periodYear, ...empCodesForHr]);
+                relRows.forEach(r => religionHistoryMap.set(r.emp_code.trim().toUpperCase(), r.religion));
+            } catch (e) {
+                console.error("[historyDatabaseService] Error fetching religion from history_hr_employee", e);
+            }
+        }
+
         // Fetch live HR_EMPLOYEE data for address, type, actual_nik
         const hrEmployeeMap = new Map<string, any>();
         if (empCodesForHr.length > 0) {
@@ -758,7 +774,7 @@ export class HistoryDatabaseService {
                 // Maximum params limit in SQL Server is 2100, we should chunk if larger, but for UI it's usually < 1000
                 const placeholders = empCodesForHr.map(() => '?').join(',');
                 const liveHrRows = await liveDb.query<any>(`
-                    SELECT RTRIM(EmpCode) as emp_code, ResAddress as res_address, HREmpType as hr_emp_type, NewICNo as actual_nik
+                    SELECT RTRIM(EmpCode) as emp_code, ResAddress as res_address, HREmpType as hr_emp_type, NewICNo as actual_nik, Religion
                     FROM dbo.HR_EMPLOYEE
                     WHERE RTRIM(EmpCode) IN (${placeholders})
                 `, empCodesForHr);
@@ -775,16 +791,19 @@ export class HistoryDatabaseService {
             const empCodeClean = d.emp_code?.trim().toUpperCase() || "";
             const hrOverride = hrDataMap.get(empCodeClean);
             const liveHr = hrEmployeeMap.get(empCodeClean);
+            const histReligion = religionHistoryMap.get(empCodeClean);
 
             const actualNik = liveHr?.actual_nik?.trim() || d.nik?.trim() || "";
             const finalNik = hrOverride?.nik_ktp?.trim() || actualNik;
             const finalNpwp = hrOverride?.npwp?.trim() || "";
+            const finalReligion = histReligion || liveHr?.Religion || "";
 
             const resolvedLocCode = divisionDefinition.getVirtualDivisionForGang(d.gang_code, d.loc_code || d.division_code, d.gang_description || d.task_desc || "") || d.loc_code || d.division_code;
 
             const row: any = {
                 nik: finalNik,
                 pajak_npwp: finalNpwp,
+                religion: finalReligion,
                 res_address: liveHr?.res_address?.trim() || "",
                 hr_emp_type: liveHr?.hr_emp_type?.trim() || "",
                 nama: d.emp_name,

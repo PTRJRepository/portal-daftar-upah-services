@@ -194,6 +194,17 @@ export class DivisionDefinition {
         return sourceLocCodes.size > 0 ? Array.from(sourceLocCodes) : [resolved];
     }
 
+    public async getVirtualDivisionsForSource(sourceDivCode: string): Promise<string[]> {
+        const results: string[] = [];
+        const source = sourceDivCode.trim().toUpperCase();
+        for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
+            if (config.source_division && config.source_division.toUpperCase() === source) {
+                results.push(virtCode);
+            }
+        }
+        return results;
+    }
+
     private async getRealDivisionGangs(locCode: string, excludeVirtual: boolean = true): Promise<Gang[]> {
         const db = Database.getInstance(undefined, "SERVER_PROFILE_2");
         const cleanedLoc = locCode.toUpperCase();

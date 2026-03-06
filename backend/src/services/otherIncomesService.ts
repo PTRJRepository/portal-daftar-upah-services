@@ -128,11 +128,15 @@ export class OtherIncomesService {
             if (divisionCode && divisionCode !== 'ALL') {
                 const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
                 const allPossibleDivs = new Set<string>([divisionCode]);
-                sourceDivs.forEach(sd => {
+                for (const sd of sourceDivs) {
                     allPossibleDivs.add(sd);
                     if (sd.startsWith('P') && sd.length === 3) allPossibleDivs.add('PG' + sd.substring(1));
                     if (sd.startsWith('PG') && sd.length === 4) allPossibleDivs.add('P' + sd.substring(2));
-                });
+                    
+                    // Also find all virtual divisions that map to this source division
+                    const virtuals = await divisionDefinition.getVirtualDivisionsForSource(sd);
+                    virtuals.forEach(v => allPossibleDivs.add(v));
+                }
                 const divList = Array.from(allPossibleDivs);
                 sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
                 params.push(...divList);
@@ -157,6 +161,8 @@ export class OtherIncomesService {
             const nikSet = [...new Set(incomes.map(i => i.nik?.trim()).filter(Boolean))];
             const nikChunks = this.chunkArray(nikSet, 500);
             const religionMap: Record<string, string> = {
+                '01': '01 Islam', '02': '02 Katolik', '03': '03 Protestan',
+                '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu',
                 'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
                 'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
                 'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
@@ -300,6 +306,8 @@ export class OtherIncomesService {
             let relRow = row.religion || '';
             const rawRowRel = relRow.trim().toUpperCase();
             const religionMap: Record<string, string> = {
+                '01': '01 Islam', '02': '02 Katolik', '03': '03 Protestan',
+                '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu',
                 'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
                 'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
                 'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
@@ -315,10 +323,28 @@ export class OtherIncomesService {
     }
 
     static async bulkSaveIncomes(incomes: OtherIncome[]): Promise<{ success: boolean; count: number }> {
+        if (!incomes.length) return { success: true, count: 0 };
         const db = Database.getExtendedInstance(); let count = 0;
         try {
+            // Determine unique groups to clear before inserting
+            const groupsToClear = new Set<string>();
             for (const inc of incomes) {
-                await db.query(`DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ? AND income_type = ?`, [inc.period_year, inc.period_month, inc.nik, inc.income_type]);
+                const gangOrDiv = inc.gang_code ? `GANG|${inc.gang_code}` : `DIV|${inc.division_code}`;
+                groupsToClear.add(`${inc.period_year}|${inc.period_month}|${inc.income_type}|${gangOrDiv}`);
+            }
+
+            // Clear old data for these groups
+            for (const group of groupsToClear) {
+                const [year, month, type, level, code] = group.split('|');
+                if (level === 'GANG') {
+                    await db.query(`DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND income_type = ? AND gang_code = ?`, [year, month, type, code]);
+                } else {
+                    await db.query(`DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND income_type = ? AND division_code = ? AND (gang_code IS NULL OR gang_code = '')`, [year, month, type, code]);
+                }
+            }
+
+            for (const inc of incomes) {
+                // We no longer need to delete per NIK here since we cleared the whole division/gang
                 await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())`,
                     [inc.nik, inc.emp_name, inc.division_code, inc.gang_code, inc.period_year, inc.period_month, inc.income_type, inc.income_name, inc.amount, inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0]);
                 count++;
