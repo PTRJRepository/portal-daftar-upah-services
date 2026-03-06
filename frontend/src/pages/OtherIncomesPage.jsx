@@ -356,11 +356,15 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     const propLabel = hasPrp ? `<span class="prp">${pr}</span>` : 'PENUH';
                     const actualJoinDate = v.JOIN_DATE || r.join_date;
 
-                    return `<tr>
+                    return `<tr style="${r.isBlacklisted ? 'color: #ef4444;' : ''}">
                                     <td class="tc fit">${i + 1}</td>
                                     <td class="tc fit">${v.SEX || r.sex || 'L'}</td>
-                                    <td class="name-col"><b>${cleanName(r.emp_name)}</b>${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}</td>
-                                    <td class="tc fit">${(r.religion || '').replace(/^\d+\s+/, '')}</td>
+                                    <td class="name-col">
+                                        <b>${cleanName(r.emp_name)}</b>
+                                        ${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}
+                                        ${r.isBlacklisted ? '<br/><small style="font-weight:bold;">(BLACKLISTED)</small>' : ''}
+                                    </td>
+                                    <td class="tc fit">${(r.religion || v.RELIGION || '01 Islam').replace(/^\d+\s+/, '')}</td>
                                     <td class="tc fit">${safeDate(actualJoinDate)}</td>
                                     <td class="tr fit num">${formatCurrency(v.UPAH_DASAR || r.upah_dasar)}</td>
                                     <td class="tr fit num">${formatCurrency((v.UPAH_DASAR || r.upah_dasar || 0) * 30)}</td>
@@ -370,7 +374,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                                     <td class="tr fit num">${formatCurrency(v.MASA_KERJA_JUMLAH)}</td>
                                     <td class="tr fit fb num">${formatCurrency(k)}</td>
                                     <td class="tr fit num">${formatCurrency(p)}</td>
-                                    <td class="tc fit"><small>${propLabel}</small></td>
+                                    <td class="tc fit"><small>${r.isBlacklisted ? 'BLACKLIST' : (hasPrp ? pr : 'PENUH')}</small></td>
                                     <td class="tr fit fb num">${formatCurrency(k - p)}</td>
                                 </tr>`;
                 }).join('')}
@@ -456,8 +460,15 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const reportColumns = useMemo(() => [
         { field: '_no', headers: ['NO', null, null], w: 50, className: 'text-center', sticky: true, left: 0, valueGetter: (r) => r._no },
         { field: 'sex', headers: ['L/P', null, null], w: 40, className: 'text-center', sticky: true, left: 50, valueGetter: (r) => r.details?.variables?.SEX || r.sex || 'L' },
-        { field: 'emp_name', headers: ['NAMA KARYAWAN', null, null], w: 200, className: 'text-left', sticky: true, left: 90, render: (r) => (<div><b>{r.emp_name}</b><br /><small>{r.nik} {r.emp_code ? `| ${r.emp_code}` : ''}</small>{r.isPreview && <span style={{ fontSize: '0.6rem', color: 'green', display: 'block' }}> (Preview)</span>}</div>) },
-        { field: 'religion', headers: ['AGAMA', null, null], w: 100, className: 'text-center', valueGetter: (r) => (r.religion || '').replace(/^\d+\s+/, '') },
+        { field: 'emp_name', headers: ['NAMA KARYAWAN', null, null], w: 200, className: 'text-left', sticky: true, left: 90, render: (r) => (
+            <div style={{ color: r.isBlacklisted ? '#ef4444' : 'inherit' }}>
+                <b>{r.emp_name}</b>
+                <br /><small>{r.nik} {r.emp_code ? `| ${r.emp_code}` : ''}</small>
+                {r.isPreview && <span style={{ fontSize: '0.6rem', color: 'green', display: 'block' }}> (Preview)</span>}
+                {r.isBlacklisted && <span style={{ fontSize: '0.6rem', color: '#ef4444', display: 'block', fontWeight: 'bold' }}> (BLACKLISTED)</span>}
+            </div>
+        ) },
+        { field: 'religion', headers: ['AGAMA', null, null], w: 100, className: 'text-center', valueGetter: (r) => (r.religion || '01 Islam').replace(/^\d+\s+/, '') },
         { field: 'join_date', headers: ['TGL MASUK', null, null], w: 100, className: 'text-center', valueGetter: (r) => safeDate(r.details?.variables?.JOIN_DATE || r.join_date) },
         { field: 'upah_dasar', headers: ['UPAH DASAR', null, null], w: 110, className: 'text-right', format: 'currency', valueGetter: (r) => r.details?.variables?.UPAH_DASAR || r.upah_dasar || 0 },
         { field: 'upah_pokok', headers: ['UPAH POKOK', '(30 HK)', null], w: 110, className: 'text-right', format: 'currency', valueGetter: (r) => (r.details?.variables?.UPAH_DASAR || r.upah_dasar || 0) * 30 },
@@ -471,16 +482,37 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
 
     const displayData = useMemo(() => {
         let f = rowData;
+        
+        // Combine current rowData with Blacklist data
+        const combinedData = [...f];
+        blacklistData.forEach(b => {
+            if (!combinedData.find(r => r.nik === b.nik)) {
+                combinedData.push({
+                    ...b,
+                    isBlacklisted: true,
+                    amount: 0,
+                    income_name: `DIKECUALIKAN: ${b.reason || 'Manual'}`,
+                    religion: b.religion || '01 Islam' // PERSISTENCE RULE
+                });
+            }
+        });
+
+        let result = combinedData;
         if (filterReligion !== 'ALL') {
             const normalizedFilter = filterReligion.replace(/^\d+\s+/, '').toLowerCase().trim();
-            f = f.filter(r => {
-                const rRel = (r.religion || '').replace(/^\d+\s+/, '').toLowerCase().trim();
+            result = result.filter(r => {
+                const rRel = (r.religion || '01 Islam').replace(/^\d+\s+/, '').toLowerCase().trim();
                 return rRel === normalizedFilter;
             });
         }
-        if (gangPrefix) f = f.filter(r => getAsistensi(r.gang_code) === gangPrefix);
-        return f.map((r, i) => ({ ...r, _no: i + 1, _id: r.id || `row-${i}` }));
-    }, [rowData, filterReligion, gangPrefix, getAsistensi]);
+        if (gangPrefix) result = result.filter(r => getAsistensi(r.gang_code) === gangPrefix);
+        return result.map((r, i) => ({ 
+            ...r, 
+            religion: r.religion || '01 Islam', // PERSISTENCE RULE
+            _no: i + 1, 
+            _id: r.id || `row-${i}` 
+        }));
+    }, [rowData, blacklistData, filterReligion, gangPrefix, getAsistensi]);
 
     const uniqueDivisions = useMemo(() => {
         const divSet = new Set(allDivisions);

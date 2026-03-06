@@ -284,11 +284,8 @@ export class OtherIncomesService {
                     if (!inc.emp_name || inc.emp_name === inc.nik) inc.emp_name = hr.emp_name;
                     (inc as any).upah_dasar = hr.upah_dasar; (inc as any).beras_rate = hr.beras_rate; (inc as any).sex = hr.sex;
                 }
-                // ... (THR proportion logic remains same)
-            });
-            return filteredIncomes;
-        } catch (e) { console.error("Enrich error:", e); return incomes; }
-    }
+                
+                // PERSISTENCE RULE: Auto-recalculate THR proportion for saved data if needed
                 if (inc.income_type === 'THR' && inc.join_date) {
                     const jd = this.parseDate(inc.join_date);
                     if (jd) {
@@ -297,12 +294,10 @@ export class OtherIncomesService {
                         if (diff < 12 && diff >= 0) {
                             const workingMonths = Math.min(12, diff + 1);
                             if (workingMonths < 12) {
-                                // If the name does not explicitly state it's proportioned, apply it.
                                 if (!inc.income_name || !inc.income_name.toLowerCase().includes('proporsi')) {
                                     const fullAmt = inc.amount || 0;
                                     inc.amount = Math.round((fullAmt * workingMonths) / 12);
                                     inc.income_name = `Tunjangan Hari Raya (Proporsi ${workingMonths}/12)`;
-
                                     if (inc.details && inc.details.variables) {
                                         inc.details.variables.WORKING_MONTHS = workingMonths;
                                         inc.details.variables.PROPORTION_FACTOR = `${workingMonths}/12`;
@@ -313,8 +308,8 @@ export class OtherIncomesService {
                     }
                 }
             });
-        } catch (e) { console.error("Enrich error:", e); }
-        return incomes;
+            return filteredIncomes;
+        } catch (e) { console.error("Enrich error:", e); return incomes; }
     }
 
     static async getIncomesWithDetails(year: number, month: number, divisionCode?: string, gangCode?: string, incomeType?: string): Promise<OtherIncome[]> {
