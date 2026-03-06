@@ -187,6 +187,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         </div>`;
 
     const getReportHTML = (data, orient = 'landscape') => {
+        const cleanName = (name) => (name || '').split('(')[0].trim();
         // THR usually targets the next month's holiday, so we display month + 1
         const displayMonth = month === 12 ? 1 : month + 1;
         const displayYear = month === 12 ? year + 1 : year;
@@ -321,7 +322,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     return `<tr>
                                     <td class="tc fit">${i + 1}</td>
                                     <td class="tc fit">${v.SEX || 'L'}</td>
-                                    <td class="name-col"><b>${r.emp_name}</b>${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}</td>
+                                    <td class="name-col"><b>${cleanName(r.emp_name)}</b>${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}</td>
                                     <td class="tc fit">${(r.religion || '').replace(/^\d+\s+/, '')}</td>
                                     <td class="tc fit">${v.JOIN_DATE ? new Date(v.JOIN_DATE).toLocaleDateString('id-ID') : '-'}</td>
                                     <td class="tr fit num">${formatCurrency(v.UPAH_DASAR)}</td>
@@ -354,8 +355,10 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         const groupedData = {};
         data.forEach(item => {
             const grp = getAsistensi(item.gang_code);
-            if (!groupedData[grp]) groupedData[grp] = [];
-            groupedData[grp].push(item);
+            const gcode = item.gang_code || 'TANPA GANG';
+            if (!groupedData[grp]) groupedData[grp] = {};
+            if (!groupedData[grp][gcode]) groupedData[grp][gcode] = [];
+            groupedData[grp][gcode].push(item);
         });
         const groupKeys = Object.keys(groupedData).sort();
 
@@ -371,7 +374,8 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             .tr { text-align: right; white-space: nowrap; } 
             .tc { text-align: center; }
             .gh { background-color: #e2e8f0; font-weight: 800; text-align: left; padding: 6px; border: 1pt solid #000; -webkit-print-color-adjust: exact;}
-            .gs-tot { background-color: #f8fafc; font-weight: bold; font-style: italic; -webkit-print-color-adjust: exact;}
+            .gang-sub { background-color: #f9fafb; font-weight: bold; font-style: italic; -webkit-print-color-adjust: exact; }
+            .gs-tot { background-color: #fef3c7; font-weight: bold; font-style: italic; -webkit-print-color-adjust: exact;}
         </style>
         <div class="tit">LIST PEMBAYARAN BANK - THR</div>
         <div class="sub-tit">PERIODE: ${mName.toUpperCase()} ${displayYear} | UNIT: ${division}</div>
@@ -379,19 +383,33 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             <thead><tr><th style="width:40px">NO</th><th>NAMA KARYAWAN / NIK / EMPCODE</th><th style="width:150px">NO REKENING</th><th style="width:80px">BANK</th><th style="width:120px">JUMLAH (Rp)</th></tr></thead>
             <tbody>
                 ${groupKeys.map(gk => {
-            const items = groupedData[gk];
-            const subTotal = items.reduce((a, c) => a + (Number(c.amount) || 0), 0); // Tidak ada pajak THR
+            const gangsInGroup = groupedData[gk];
+            const gangKeys = Object.keys(gangsInGroup).sort();
+            let groupTotal = 0;
 
-            const rows = items.map((r, i) => {
-                const netPay = Number(r.amount); // THR tidak ada pajak
-                const empCodeStr = r.emp_code || r.details?.variables?.EMP_CODE || '-';
-                return `<tr><td class="tc">${i + 1}</td><td><b>${r.emp_name}</b><br/><small>${empCodeStr}</small></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
+            const gangRows = gangKeys.map(gcode => {
+                const items = gangsInGroup[gcode];
+                const subTotal = items.reduce((a, c) => a + (Number(c.amount) || 0), 0);
+                const getBankListHTML = (data) => {
+                    const cleanName = (name) => (name || '').split('(')[0].trim();
+                    const displayMonth = month === 12 ? 1 : month + 1;
+                ...
+                            const rows = items.map((r, i) => {
+                                const netPay = Number(r.amount); // THR tidak ada pajak
+                                const empCodeStr = r.emp_code || r.details?.variables?.EMP_CODE || '-';
+                                return `<tr><td class="tc">${i + 1}</td><td><b>${cleanName(r.emp_name)}</b><br/><small>${empCodeStr}</small></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
+                            }).join('');
+                return `
+                    <tr><td colspan="5" style="background:#f8fafc; font-weight:700; padding-left:15px; border:1pt solid #000; -webkit-print-color-adjust: exact;">GANG: ${gcode}</td></tr>
+                    ${rows}
+                    <tr class="gang-sub"><td colspan="4" class="tr">SUBTOTAL GANG ${gcode}</td><td class="tr">${formatCurrency(subTotal)}</td></tr>
+                `;
             }).join('');
 
             return `
                         <tr><td colspan="5" class="gh">GROUP ASISTENSI: ${gk}</td></tr>
-                        ${rows}
-                        <tr class="gs-tot"><td colspan="4" class="tr">SUBTOTAL GROUP ${gk}</td><td class="tr">${formatCurrency(subTotal)}</td></tr>
+                        ${gangRows}
+                        <tr class="gs-tot"><td colspan="4" class="tr">SUBTOTAL GROUP ${gk}</td><td class="tr">${formatCurrency(groupTotal)}</td></tr>
                     `;
         }).join('')}
             </tbody>
