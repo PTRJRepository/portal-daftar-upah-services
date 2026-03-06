@@ -104,10 +104,29 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     }, [initialMonth, initialYear, initialDivision, setMonth, setYear, setDivision]);
 
     const handleDelete = async (d) => {
-        if (!d.id) { setRowData(p => p.filter(r => r !== d)); return; }
-        if (window.confirm(`Hapus data ${d.emp_name}?`)) {
-            try { await otherIncomesService.deleteIncome(d.id); setRowData(p => p.filter(r => r.id !== d.id)); }
-            catch (e) { alert('Gagal menghapus.'); }
+        const isPreview = !d.id || d.isPreview;
+        const confirmMsg = isPreview 
+            ? `Hapus ${d.emp_name} dari kalkulasi ini? (Karyawan akan dimasukkan ke Blacklist agar tidak muncul lagi)`
+            : `Hapus permanent data THR ${d.emp_name}? (Data akan dipindah ke Blacklist)`;
+
+        if (window.confirm(confirmMsg)) {
+            setLoading(true);
+            try {
+                if (isPreview) {
+                    // Directly add to blacklist for preview items
+                    await otherIncomesService.addToBlacklist(d.nik, d.emp_name, year, month, 'THR', 'Dihapus dari preview');
+                    setRowData(p => p.filter(r => r.nik !== d.nik));
+                } else {
+                    // Backend deleteIncome already handles adding to blacklist
+                    await otherIncomesService.deleteIncome(d.id);
+                    setRowData(p => p.filter(r => r.id !== d.id));
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Gagal menghapus data.');
+            } finally {
+                setLoading(false);
+            }
         }
     };
 
