@@ -117,6 +117,24 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         }
     };
 
+    const handleResetData = async () => {
+        if (!window.confirm(`HAPUS SEMUA data THR untuk ${division} Periode ${month}/${year}? Tindakan ini tidak dapat dibatalkan.`)) return;
+        setLoading(true);
+        try {
+            const r = await otherIncomesService.deleteByPeriod(year, month, division, gang);
+            if (r.success) {
+                alert('Berhasil meriset data!');
+                await fetchIncomes();
+            } else {
+                alert('Gagal: ' + (r.error || 'Terjadi kesalahan'));
+            }
+        } catch (e) {
+            alert('Kesalahan server.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const formatCurrency = (val) => new Intl.NumberFormat('id-ID').format(val || 0);
 
     const getSigs = () => `
@@ -408,6 +426,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                         {isLivePreview && <button onClick={handleBulkSaveTHR} disabled={isSaving} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Save size={16} /> Simpan</button>}
                         <button onClick={handleLivePreviewTHR} disabled={loading || isCalculating} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Calculator size={16} /> Kalkulasi Live</button>
+                        <button onClick={handleResetData} disabled={loading || isLivePreview} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Trash2 size={16} /> Hapus Semua</button>
                         <button onClick={fetchIncomes} disabled={loading} style={{ background: 'white', border: '1px solid #ccc', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><RefreshCw size={16} /> {isLivePreview ? 'Batal' : 'Refresh'}</button>
                         <button onClick={() => openPreview('MAIN')} style={{ background: '#f1f5f9', border: '1px solid #ccc', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Eye size={16} /> Preview Print</button>
                         <button onClick={() => openPreview('BANK')} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Printer size={16} /> Bank List</button>
