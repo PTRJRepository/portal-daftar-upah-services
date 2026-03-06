@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReportTable from '../components/common/ReportTable';
 import { useReport } from '../context/ReportContext';
 import { otherIncomesService } from '../services/otherIncomesService';
-import { employeeHrDataService } from '../services/employeeHrDataService';
 import { Save, Trash2, Plus, RefreshCw, AlertCircle, Calculator, Download, Settings, X, Filter, Printer, Eye } from 'lucide-react';
 
 const INCOME_TYPES = ['THR', 'Bonus', 'Custom'];
@@ -22,7 +21,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
     const [error, setError] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [exportType, setExportType] = useState('TOTAL');
-    const [filterReligion, setFilterReligion] = useState('01 Islam');
+    const [filterReligion, setFilterReligion] = useState('ALL');
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
     const [printOrientation, setPrintOrientation] = useState('landscape');
     const [reportView, setReportView] = useState('MAIN'); // 'MAIN' or 'BANK_LIST'
@@ -102,7 +101,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
         if (window.confirm(`Hapus data ${data.emp_name}?`)) {
             try {
                 await otherIncomesService.deleteIncome(data.id);
-                setRowData(prev => prev.filter(r.id !== data.id));
+                setRowData(prev => prev.filter(r => r.id !== data.id));
             } catch (err) { alert('Gagal menghapus.'); }
         }
     };
@@ -145,9 +144,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 alert(`Berhasil mengkalkulasi ${result.count} data THR.`);
             }
             else alert('Gagal: ' + result.message);
-        } catch (err) {
+        } catch (err) { 
             console.error('Calculation error:', err);
-            alert('Kesalahan server saat kalkulasi.');
+            alert('Kesalahan server saat kalkulasi.'); 
         }
         finally { setIsCalculating(false); }
     };
@@ -168,45 +167,48 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
                     padding: 0; 
                     margin: 0;
-                    font-size: ${isPortrait ? '7.5px' : '9px'}; 
+                    font-size: ${isPortrait ? '6.5px' : '8px'}; 
                     background-color: white;
                     color: #1e293b;
                 }
                 
                 .report-container {
                     width: 100%;
-                    padding: 20px;
+                    padding: 10px;
                 }
                 
-                .header-banner {
+                .header-section {
                     text-align: center;
-                    margin-bottom: 25px;
-                    border-bottom: 3px double #1a365d;
-                    padding-bottom: 15px;
+                    margin-bottom: 15px;
+                    border-bottom: 2.5px solid #1a365d;
+                    padding-bottom: 10px;
                 }
                 
                 .company-name { 
-                    font-size: 16px; 
+                    font-size: 14px; 
                     font-weight: 700; 
                     color: #1a365d; 
                     margin: 0;
+                    text-align: left;
+                    text-transform: uppercase;
                     letter-spacing: 1px;
                 }
                 
                 .report-title { 
-                    font-size: 22px; 
+                    font-size: 18px; 
                     font-weight: 800; 
                     margin: 5px 0; 
                     color: #1a365d; 
                     text-transform: uppercase;
+                    letter-spacing: 0.5px;
                 }
                 
-                .meta-info {
-                    display: flex;
-                    justify-content: center;
-                    gap: 30px;
-                    margin-top: 10px;
-                    font-size: 11px;
+                .meta-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1.2fr 1fr;
+                    gap: 10px;
+                    margin-top: 8px;
+                    font-size: 9px;
                     font-weight: 600;
                     color: #475569;
                 }
@@ -217,12 +219,12 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     width: 100%; 
                     border-collapse: collapse; 
                     table-layout: fixed;
-                    box-shadow: 0 0 0 1px #cbd5e1;
+                    border: 1.5px solid #1a365d;
                 }
                 
                 th, td { 
-                    border: 1px solid #cbd5e1; 
-                    padding: 5px 3px; 
+                    border: 1px solid #94a3b8; 
+                    padding: 3.5px 2px; 
                     text-align: left; 
                     word-wrap: break-word;
                     overflow: hidden;
@@ -233,8 +235,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     color: white !important; 
                     text-align: center; 
                     text-transform: uppercase; 
-                    font-size: ${isPortrait ? '6.5px' : '8px'}; 
+                    font-size: ${isPortrait ? '5.5px' : '7px'}; 
                     font-weight: 700;
+                    border: 0.5px solid #f8fafc;
                     -webkit-print-color-adjust: exact;
                 }
                 
@@ -244,30 +247,37 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     background-color: #1a365d !important; 
                     color: #fbbf24 !important; 
                     font-weight: 800; 
-                    font-size: ${isPortrait ? '8px' : '10px'};
+                    font-size: ${isPortrait ? '7.5px' : '9px'};
+                    border-top: 2px solid #1a365d;
                     -webkit-print-color-adjust: exact;
                 }
 
-                .text-right { text-align: right; }
+                .text-right { text-align: right; padding-right: 3px; }
                 .text-center { text-align: center; }
                 .font-bold { font-weight: 700; }
                 
-                .proporsi-row { background-color: #fffbeb !important; }
                 .proporsi-tag { 
                     color: #dc2626; 
                     font-weight: 700; 
-                    font-size: 7px; 
+                    font-size: 5.5px; 
                     background: #fee2e2;
-                    padding: 1px 4px; 
-                    border-radius: 3px; 
+                    padding: 0px 2px; 
+                    border-radius: 2px; 
                     display: inline-block;
-                    margin-top: 2px;
+                    border: 0.5px solid #f87171;
+                    margin-top: 1px;
                 }
                 
-                .emp-code { color: #64748b; font-size: 0.9em; }
+                .emp-info {
+                    display: flex;
+                    flex-direction: column;
+                    line-height: 1.1;
+                }
+                .emp-name { font-weight: 700; color: #0f172a; }
+                .emp-sub { font-size: 0.9em; color: #64748b; }
                 
                 .signature-section { 
-                    margin-top: 50px; 
+                    margin-top: 35px; 
                     display: flex; 
                     justify-content: space-between;
                     page-break-inside: avoid;
@@ -278,9 +288,9 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     width: 25%;
                 }
                 
-                .sig-title { font-weight: 600; margin-bottom: 60px; color: #475569; }
-                .sig-name { font-weight: 700; border-bottom: 1.5px solid #1e293b; display: inline-block; width: 80%; color: #1e293b; }
-                .sig-role { font-size: 0.9em; margin-top: 5px; color: #64748b; }
+                .sig-title { font-weight: 600; color: #475569; font-size: 9px; margin-bottom: 50px; }
+                .sig-name { font-weight: 700; border-bottom: 1.5px solid #1e293b; display: inline-block; min-width: 85%; color: #1e293b; }
+                .sig-role { font-size: 8px; font-weight: 600; color: #64748b; margin-top: 2px; }
                 
                 @media print { 
                     .no-print { display: none; } 
@@ -289,43 +299,41 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 }
             </style>
             <div class="report-container">
-                <div class="header-banner">
+                <div class="header-section">
                     <div class="company-name">PT REBINMAS JAYA</div>
-                    <div class="report-title">Daftar Tunjangan Hari Raya</div>
-                    <div class="meta-info">
-                        <div class="meta-item">DIVISI: <b>${division === 'ALL' ? 'SEMUA' : division}</b></div>
-                        <div class="meta-item">GANG: <b>${gang === 'ALL' ? 'SEMUA' : gang}</b></div>
-                        ${gangPrefix ? `<div class="meta-item">GROUP: <b>${gangPrefix}</b></div>` : ''}
-                        <div class="meta-item">PERIODE: <b>${mName} ${year}</b></div>
+                    <div class="report-title">Daftar Pembayaran Tunjangan Hari Raya (THR)</div>
+                    <div class="meta-grid">
+                        <div style="text-align:left">PERIODE: <b>${mName} ${year}</b></div>
+                        <div style="text-align:center">DIVISI: <b>${division === 'ALL' ? 'SEMUA UNIT' : division}</b></div>
+                        <div style="text-align:right">GANG: <b>${gang === 'ALL' ? 'SEMUA GANG' : gang}</b></div>
                     </div>
                 </div>
                 <table>
                     <thead>
                         <tr>
-                            <th rowspan="3" style="width: 4%">NO</th>
+                            <th rowspan="3" style="width: 3.5%">NO</th>
                             <th rowspan="3" style="width: 3%">L/P</th>
-                            <th rowspan="3" style="width: 14%">NAMA KARYAWAN</th>
-                            <th rowspan="3" style="width: 7%">NIK /<br/>EMP CODE</th>
-                            <th rowspan="3" style="width: 7%">AGAMA</th>
+                            <th rowspan="3" style="width: 16%">NAMA KARYAWAN / NIK / CODE</th>
+                            <th rowspan="3" style="width: 7.5%">AGAMA</th>
                             <th rowspan="3" style="width: 8%">TGL MASUK</th>
                             <th rowspan="3" style="width: 3%">HK</th>
-                            <th rowspan="3" style="width: 7%">UPAH<br/>DASAR</th>
-                            <th rowspan="3" style="width: 7%">UPAH<br/>POKOK</th>
-                            <th colspan="2" style="width: 14%">BERAS</th>
+                            <th rowspan="3" style="width: 7.5%">UPAH<br/>DASAR</th>
+                            <th rowspan="3" style="width: 7.5%">UPAH<br/>POKOK</th>
+                            <th colspan="2" style="width: 12%">BERAS</th>
                             <th colspan="2" style="width: 10%">MASA KERJA</th>
                             <th rowspan="3" style="width: 8%">UPAH<br/>KOTOR</th>
-                            <th rowspan="3" style="width: 8%">PAJAK<br/>THR</th>
-                            <th rowspan="3" style="width: 8%">UPAH<br/>BERSIH</th>
+                            <th rowspan="3" style="width: 6.5%">PAJAK<br/>THR</th>
+                            <th rowspan="3" style="width: 8.5%">UPAH<br/>BERSIH</th>
                         </tr>
                         <tr>
                             <th colspan="2">TUNJANGAN</th>
                             <th colspan="2">PENGABDIAN</th>
                         </tr>
                         <tr>
-                            <th>RATE/HK</th>
-                            <th>JUMLAH</th>
-                            <th>THN</th>
-                            <th>JUMLAH</th>
+                            <th style="width:5%">RATE</th>
+                            <th style="width:7%">JUMLAH</th>
+                            <th style="width:3%">THN</th>
+                            <th style="width:7%">JUMLAH</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -334,47 +342,45 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             const joinDate = vars.JOIN_DATE || row.join_date;
             const masaKerjaThn = vars.MASA_KERJA_TAHUN || 0;
             const upahKotor = row.amount || 0;
-            const agama = row.religion || vars.RELIGION || '-';
-            const empCode = row.emp_code || vars.EMP_CODE || '-';
             const pajak = row.is_taxable ? Math.round(upahKotor * 0.05) : 0;
+            const upahBersih = upahKotor - pajak;
+            const empCode = row.emp_code || vars.EMP_CODE || '-';
 
-            let isProporsi = false;
-            let proporsiLabel = '';
-            if (masaKerjaThn === 0 && joinDate) {
-                const jDate = new Date(joinDate);
-                const periodDate = new Date(year, month - 1, 1);
-                const monthsDiff = (periodDate.getFullYear() - jDate.getFullYear()) * 12 + (periodDate.getMonth() - jDate.getMonth());
-                if (monthsDiff < 12 && monthsDiff >= 0) {
-                    isProporsi = true;
-                    proporsiLabel = `<br/><span class="proporsi-tag">PROPORSI ${monthsDiff + 1}/12</span>`;
-                }
+            let propLabel = '';
+            if (vars.PROPORTION_FACTOR && vars.PROPORTION_FACTOR !== '12/12') {
+                propLabel = `<span class="proporsi-tag">PROP ${vars.PROPORTION_FACTOR}</span>`;
             }
 
             return `
-                                <tr class="${isProporsi ? 'proporsi-row' : ''}">
-                                    <td class="text-center">${index + 1}</td>
-                                    <td class="text-center">${vars.SEX || 'L'}</td>
-                                    <td><div style="font-weight:700">${row.emp_name}</div>${proporsiLabel}</td>
-                                    <td class="text-center emp-code">${row.nik}<br/>${empCode}</td>
-                                    <td class="text-center">${agama}</td>
-                                    <td class="text-center">${joinDate ? new Date(joinDate).toLocaleDateString('id-ID') : '-'}</td>
-                                    <td class="text-center">30</td>
-                                    <td class="text-right">${formatCurrency(vars.UPAH_DASAR)}</td>
-                                    <td class="text-right">${formatCurrency(vars.GAJI_POKOK)}</td>
-                                    <td class="text-right">${formatCurrency(vars.BERAS_RATE)}</td>
-                                    <td class="text-right">${formatCurrency((vars.BERAS_RATE || 0) * 30)}</td>
-                                    <td class="text-center">${masaKerjaThn}</td>
-                                    <td class="text-right">${formatCurrency(vars.MASA_KERJA_JUMLAH)}</td>
-                                    <td class="text-right" style="font-weight:700">${formatCurrency(upahKotor)}</td>
-                                    <td class="text-right">${formatCurrency(pajak)}</td>
-                                    <td class="text-right" style="font-weight:800; color:#1a365d">${formatCurrency(upahKotor - pajak)}</td>
-                                </tr>
-                            `;
+                            <tr>
+                                <td class="text-center">${index + 1}</td>
+                                <td class="text-center">${vars.SEX || 'L'}</td>
+                                <td>
+                                    <div class="emp-info">
+                                        <span class="emp-name">${row.emp_name}</span>
+                                        <span class="emp-sub">${row.nik} | ${empCode}</span>
+                                        ${propLabel}
+                                    </div>
+                                </td>
+                                <td class="text-center">${row.religion || vars.RELIGION || '-'}</td>
+                                <td class="text-center">${joinDate ? new Date(joinDate).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}</td>
+                                <td class="text-center">${vars.HK || 30}</td>
+                                <td class="text-right">${formatCurrency(vars.UPAH_DASAR)}</td>
+                                <td class="text-right">${formatCurrency(vars.GAJI_POKOK)}</td>
+                                <td class="text-right">${formatCurrency(vars.BERAS_RATE)}</td>
+                                <td class="text-right">${formatCurrency((vars.BERAS_RATE || 0) * 30)}</td>
+                                <td class="text-center">${masaKerjaThn}</td>
+                                <td class="text-right">${formatCurrency(vars.MASA_KERJA_JUMLAH)}</td>
+                                <td class="text-right font-bold">${formatCurrency(upahKotor)}</td>
+                                <td class="text-right">${formatCurrency(pajak)}</td>
+                                <td class="text-right font-bold" style="color:#1a365d; background-color: #f0f9ff;">${formatCurrency(upahBersih)}</td>
+                            </tr>
+                        `;
         }).join('')}
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="13" class="text-right">TOTAL KESELURUHAN (IDR)</th>
+                            <th colspan="12" class="text-right">TOTAL KESELURUHAN (IDR)</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0))}</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
@@ -382,9 +388,21 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     </tfoot>
                 </table>
                 <div class="signature-section">
-                    <div class="sig-box"><p class="sig-title">Dibuat Oleh,</p><div class="sig-name"></div><p class="sig-role">KTU / Kerani</p></div>
-                    <div class="sig-box"><p class="sig-title">Diperiksa Oleh,</p><div class="sig-name"></div><p class="sig-role">Estate Manager</p></div>
-                    <div class="sig-box"><p class="sig-title">Disetujui Oleh,</p><div class="sig-name"></div><p class="sig-role">General Manager</p></div>
+                    <div class="sig-box">
+                        <div class="sig-title">Dibuat Oleh,</div>
+                        <div class="sig-name"></div>
+                        <div class="sig-role">KTU / Kerani</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-title">Diperiksa Oleh,</div>
+                        <div class="sig-name"></div>
+                        <div class="sig-role">Estate Manager</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-title">Disetujui Oleh,</div>
+                        <div class="sig-name"></div>
+                        <div class="sig-role">General Manager</div>
+                    </div>
                 </div>
             </div>
         `;
@@ -448,15 +466,15 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                 <td class="text-center">${bankAcc}</td>
                                 <td class="text-center">${bankName}</td>
                                 <td class="text-right">${formatCurrency(upahBersih)}</td>
-                                <td>Transfer THR ${mName} ${year}</td>
+                                <td>THR ${mName} ${year}</td>
                             </tr>
                         `;
         }).join('')}
                 </tbody>
                 <tfoot>
                     <tr>
-                        <th colspan="5" class="text-right">TOTAL PEMBAYARAN</th>
-                        <th class="text-right">${formatCurrency(data.reduce((a, c) => a + ((c.amount || 0) - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
+                        <th colspan="5" class="text-right">TOTAL TRANSFER</th>
+                        <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
                         <th></th>
                     </tr>
                 </tfoot>
@@ -465,36 +483,16 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
     };
 
     const handlePrintBankList = () => {
-        let printData = filterReligion === 'ALL' ? rowData : rowData.filter(r => r.religion === filterReligion);
-        if (gangPrefix) printData = printData.filter(r => getAsistensi(r.gang_code) === gangPrefix);
-        if (printData.length === 0) return alert('Tidak ada data.');
         const win = window.open('', '_blank');
-        win.document.write(`<html><head><title>Bank List THR - ${division}</title></head><body>${getBankListHTML(printData)}<script>window.onload = function() { window.print(); }</script></body></html>`);
+        win.document.write(`<html><head><title>Bank List - THR</title></head><body>${getBankListHTML(displayData)}<script>window.onload = function() { window.print(); }</script></body></html>`);
         win.document.close();
     };
 
-    const handleUpdateHrData = useCallback(async (empCode, field, value) => {
-        try {
-            await employeeHrDataService.updateHrDataField(empCode, field, value);
-            // Update local state to reflect change
-            setRowData(prev => prev.map(row => {
-                const rowEmpCode = row.emp_code || row.details?.variables?.EMP_CODE;
-                if (rowEmpCode === empCode) {
-                    return { ...row, [field]: value };
-                }
-                return row;
-            }));
-        } catch (err) {
-            console.error(`Failed to update ${field}:`, err);
-            alert(`Gagal update ${field}`);
-        }
-    }, []);
-
-    // ReportTable column definitions
+    // ReportTable column definitions — matching the DAFTAR THR layout
     const reportColumns = useMemo(() => [
         { field: '_no', headers: ['NO.\nURUT', null, null], w: 60, className: 'text-center', sticky: true, left: 0, valueGetter: (row) => row._no },
         { field: 'sex', headers: ['L/P', null, null], w: 45, className: 'text-center', sticky: true, left: 60, valueGetter: (row) => row.details?.variables?.SEX || 'L' },
-        {
+        { 
             field: 'emp_name', headers: ['NAMA KARYAWAN', null, null], w: 200, className: 'text-left', sticky: true, left: 105,
             render: (row) => (
                 <div>
@@ -504,22 +502,6 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
             )
         },
         {
-            field: 'bank_acc_no', headers: ['NO REKENING', null, null], w: 130, className: 'text-center',
-            editable: true,
-            onCellValueChanged: (params) => {
-                const empCode = params.data.emp_code || params.data.details?.variables?.EMP_CODE;
-                if (empCode) handleUpdateHrData(empCode, 'bank_acc_no', params.newValue);
-            }
-        },
-        {
-            field: 'bank_code', headers: ['BANK', null, null], w: 80, className: 'text-center',
-            editable: true,
-            onCellValueChanged: (params) => {
-                const empCode = params.data.emp_code || params.data.details?.variables?.EMP_CODE;
-                if (empCode) handleUpdateHrData(empCode, 'bank_code', params.newValue);
-            }
-        },
-        {
             field: 'income_name', headers: ['TIPE & DESKRIPSI', null, null], w: 180, className: 'text-left',
             render: (row) => (
                 <div>
@@ -527,10 +509,6 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     <span style={{ fontSize: '0.8rem' }}>{row.income_name}</span>
                 </div>
             )
-        },
-        {
-            field: 'religion', headers: ['AGAMA', null, null], w: 100, className: 'text-center',
-            valueGetter: (row) => row.religion || row.details?.variables?.RELIGION || '-'
         },
         {
             field: 'join_date', headers: ['TANGGAL MASUK\nKERJA', null, null], w: 120, className: 'text-center',

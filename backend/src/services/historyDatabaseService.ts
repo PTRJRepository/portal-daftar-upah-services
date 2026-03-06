@@ -15,6 +15,7 @@ import { Database } from "../db/client";
 import { Config } from "../config";
 import { gangService } from "./gangService";
 import { employeeHrDataService } from "./employeeHrDataService";
+import { divisionDefinition } from "./divisionDefinition";
 
 // Environment variable untuk database transaksi
 const DB_EXTEND_TRANS_DATABASE = Config.DB_EXTEND_TRANS_DATABASE;
@@ -666,9 +667,12 @@ export class HistoryDatabaseService {
         console.log(`[DEBUG] getHistoricalPayrollDataAsExtractorFormat params: M:${periodMonth} Y:${periodYear} Gang:${gangCode} Div:${divisionCode}`);
 
         if (divisionCode) {
+            const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
             const locCode = gangService.convertDivisionToLocCode(divisionCode);
-            masterQuery += ` AND (division_code = ? OR division_code = ? OR division_code = 'ALL')`;
-            masterParams.push(divisionCode, locCode);
+            const allPossibleDivs = [...new Set([divisionCode, locCode, ...sourceDivs])];
+            const placeholders = allPossibleDivs.map(() => '?').join(',');
+            masterQuery += ` AND (division_code IN (${placeholders}) OR division_code = 'ALL')`;
+            masterParams.push(...allPossibleDivs);
         }
         if (gangCode && gangCode !== "ALL") {
             masterQuery += ` AND (gang_code = ? OR gang_code = 'ALL')`;
@@ -716,15 +720,28 @@ export class HistoryDatabaseService {
             detailParams.push(gangCode);
         } else if (divisionCode && divisionCode !== "ALL") {
             // Jika gang ALL tapi divisi spesifik, pastikan kita hanya fetch pegawai dari divisi tersebut
+            // Untuk virtual division, kita akan filter lebih lanjut di memori
+            const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
             const locCode = gangService.convertDivisionToLocCode(divisionCode);
-            detailQuery += ` AND (division_code = ? OR loc_code = ?)`;
-            detailParams.push(divisionCode, locCode);
+            const allPossibleDivs = [...new Set([divisionCode, locCode, ...sourceDivs])];
+            const placeholders = allPossibleDivs.map(() => '?').join(',');
+            detailQuery += ` AND (division_code IN (${placeholders}) OR loc_code IN (${placeholders}))`;
+            detailParams.push(...allPossibleDivs, ...allPossibleDivs);
         }
 
         console.log(`[DEBUG] detailQuery: ${detailQuery}`, detailParams);
         const details = await db.query<any>(detailQuery, detailParams);
 
-        const empCodesForHr = details.map((d: any) => d.emp_code?.trim()).filter(Boolean);
+        // Filter details if it's a virtual division and gangCode is ALL
+        let finalDetails = details;
+        if (divisionCode && gangCode === "ALL" && divisionDefinition.isVirtualDivision(divisionCode)) {
+            const virtualGangs = await divisionDefinition.getGangsForDivision(divisionCode, false);
+            const virtualGangCodes = new Set(virtualGangs.map(g => g.gang_code.toUpperCase()));
+            finalDetails = details.filter((d: any) => virtualGangCodes.has(d.gang_code?.trim()?.toUpperCase()));
+            console.log(`[DEBUG] Virtual Division Filter (${divisionCode}): Reduced ${details.length} to ${finalDetails.length} rows`);
+        }
+
+        const empCodesForHr = finalDetails.map((d: any) => d.emp_code?.trim()).filter(Boolean);
         const hrDataMap = await employeeHrDataService.getHrDataBulk(empCodesForHr);
 
         // Fetch live HR_EMPLOYEE data for address, type, actual_nik
@@ -748,7 +765,7 @@ export class HistoryDatabaseService {
             }
         }
 
-        const data_rows = details.map(d => {
+        const data_rows = finalDetails.map(d => {
             const empCodeClean = d.emp_code?.trim().toUpperCase() || "";
             const hrOverride = hrDataMap.get(empCodeClean);
             const liveHr = hrEmployeeMap.get(empCodeClean);
@@ -756,6 +773,8 @@ export class HistoryDatabaseService {
             const actualNik = liveHr?.actual_nik?.trim() || d.nik?.trim() || "";
             const finalNik = hrOverride?.nik_ktp?.trim() || actualNik;
             const finalNpwp = hrOverride?.npwp?.trim() || "";
+
+            const resolvedLocCode = divisionDefinition.getVirtualDivisionForGang(d.gang_code, d.loc_code || d.division_code, d.gang_description || d.task_desc || "") || d.loc_code || d.division_code;
 
             const row: any = {
                 nik: finalNik,
@@ -767,9 +786,9 @@ export class HistoryDatabaseService {
                 jenis_kelamin: d.gender,
                 status_ptkp: d.status_ptkp,
                 kategori_ter: d.kategori_ter,
-                loc_code: d.loc_code,
+                loc_code: resolvedLocCode,
                 gang_code: d.gang_code,
-                division_code: d.division_code,
+                division_code: resolvedLocCode,
                 upah_dasar: parseFloat(d.upah_dasar) || 0,
                 jumlah_hk: parseFloat(d.jumlah_hk) || 0,
                 total_jam_kerja: parseFloat(d.total_jam_kerja) || 0,

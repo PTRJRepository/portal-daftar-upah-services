@@ -1,0 +1,758 @@
+=== Checking extend_db_ptrj Database Schema ===
+
+--- ALL TABLES in extend_db_ptrj ---
+Found 34 tables:
+  - AccessControl (BASE TABLE)
+  - daftar_upah_aggregation_history (BASE TABLE)
+  - Divisi_Description (BASE TABLE)
+  - employee_estate (BASE TABLE)
+  - employee_hr_data (BASE TABLE)
+  - employee_hr_data_history (BASE TABLE)
+  - employee_mill (BASE TABLE)
+  - employee_other_incomes (BASE TABLE)
+  - employee_other_incomes_formulas (BASE TABLE)
+  - history_adtrans (BASE TABLE)
+  - history_employee_jabatan_changelog (BASE TABLE)
+  - history_gang_member (BASE TABLE)
+  - history_hr_employee (BASE TABLE)
+  - history_hr_gang (BASE TABLE)
+  - history_metadata (BASE TABLE)
+  - history_ptkp_pajak (BASE TABLE)
+  - history_ptkp_pajak_changelog (BASE TABLE)
+  - history_taskreg (BASE TABLE)
+  - payroll_history_detail (BASE TABLE)
+  - payroll_history_header (BASE TABLE)
+  - payroll_history_master (BASE TABLE)
+  - payroll_manual_adjustments (BASE TABLE)
+  - pm_comments (BASE TABLE)
+  - pm_project_members (BASE TABLE)
+  - pm_projects (BASE TABLE)
+  - pm_task_docs (BASE TABLE)
+  - pm_task_statuses (BASE TABLE)
+  - pm_tasks (BASE TABLE)
+  - pm_users (BASE TABLE)
+  - role_service_permission (BASE TABLE)
+  - service_ptrj (BASE TABLE)
+  - sysdiagrams (BASE TABLE)
+  - tunjangan_rate (BASE TABLE)
+  - user_ptrj (BASE TABLE)
+
+--- COLUMN DETAILS ---
+
+[Table: AccessControl] (3 columns)
+  id: int | nullable=NO | default=none
+  userId: nvarchar(255) | nullable=NO | default=none
+  serviceId: nvarchar(50) | nullable=NO | default=none
+
+[Table: daftar_upah_aggregation_history] (41 columns)
+  id: int | nullable=NO | default=none
+  period_month: int | nullable=YES | default=none
+  period_year: int | nullable=YES | default=none
+  division_code: varchar(50) | nullable=YES | default=none
+  gang_code: varchar(50) | nullable=YES | default=none
+  gang_description: varchar(255) | nullable=YES | default=none
+  total_employees: int | nullable=YES | default=none
+  total_hk: decimal | nullable=YES | default=none
+  total_hari_kerja: decimal | nullable=YES | default=none
+  total_cuti_tahunan: decimal | nullable=YES | default=none
+  total_cuti_sakit: decimal | nullable=YES | default=none
+  total_cuti_minggu: decimal | nullable=YES | default=none
+  total_cuti_nasional: decimal | nullable=YES | default=none
+  total_upah_dasar: decimal | nullable=YES | default=none
+  total_upah_pokok: decimal | nullable=YES | default=none
+  total_gaji_pokok: decimal | nullable=YES | default=none
+  total_beras: decimal | nullable=YES | default=none
+  total_jabatan: decimal | nullable=YES | default=none
+  total_masa_kerja: decimal | nullable=YES | default=none
+  total_lembur: decimal | nullable=YES | default=none
+  total_tunjangan: decimal | nullable=YES | default=none
+  total_premi_brondol: decimal | nullable=YES | default=none
+  total_premi_prunning: decimal | nullable=YES | default=none
+  total_premi: decimal | nullable=YES | default=none
+  total_potongan: decimal | nullable=YES | default=none
+  total_pph21: decimal | nullable=YES | default=none
+  total_bpjs_pekerja: decimal | nullable=YES | default=none
+  total_bpjs_majikan: decimal | nullable=YES | default=none
+  total_spsi: decimal | nullable=YES | default=none
+  total_upah_kotor: decimal | nullable=YES | default=none
+  total_upah_bersih: decimal | nullable=YES | default=none
+  created_at: datetime | nullable=YES | default=none
+  updated_at: datetime | nullable=YES | default=none
+  source_endpoint: varchar(255) | nullable=YES | default=none
+  dynamic_premi_data: nvarchar(-1) | nullable=YES | default=none
+  total_koreksi: decimal | nullable=YES | default=none
+  informasi_tambahan: nvarchar(-1) | nullable=YES | default=none
+  total_ffb_weight: decimal | nullable=YES | default=none
+  total_weight_tbs: decimal | nullable=YES | default=none
+  total_premi_insentif: decimal | nullable=YES | default=((0))
+  total_premi_kinerja: decimal | nullable=YES | default=((0))
+
+[Table: Divisi_Description] (3 columns)
+  Divisi: varchar(50) | nullable=NO | default=none
+  Description: varchar(255) | nullable=YES | default=none
+  Luas_Hektar: decimal | nullable=YES | default=((0))
+
+[Table: employee_estate] (6 columns)
+  empcode: nvarchar(50) | nullable=NO | default=none
+  employee_name: nvarchar(255) | nullable=YES | default=none
+  gang: nvarchar(50) | nullable=YES | default=none
+  divisi_id: nvarchar(50) | nullable=YES | default=none
+  jabatan: nvarchar(50) | nullable=YES | default=('Karyawan')
+  updated_at: datetime | nullable=YES | default=(getdate())
+
+[Table: employee_hr_data] (9 columns)
+  id: int | nullable=NO | default=none
+  emp_code: varchar(50) | nullable=NO | default=none
+  nik_ktp: varchar(50) | nullable=YES | default=none
+  npwp: varchar(50) | nullable=YES | default=none
+  updated_at: datetime | nullable=YES | default=(getdate())
+  updated_by: varchar(100) | nullable=YES | default=none
+  version: int | nullable=YES | default=((1))
+  bank_acc_no: varchar(50) | nullable=YES | default=none
+  bank_code: varchar(50) | nullable=YES | default=none
+
+[Table: employee_hr_data_history] (8 columns)
+  id: int | nullable=NO | default=none
+  emp_code: varchar(50) | nullable=NO | default=none
+  field_name: varchar(50) | nullable=NO | default=none
+  old_value: nvarchar(255) | nullable=YES | default=none
+  new_value: nvarchar(255) | nullable=YES | default=none
+  changed_at: datetime | nullable=YES | default=(getdate())
+  changed_by: varchar(100) | nullable=YES | default=none
+  version: int | nullable=NO | default=none
+
+[Table: employee_mill] (10 columns)
+  id: int | nullable=NO | default=none
+  nik: nvarchar(50) | nullable=YES | default=none
+  employee_name: nvarchar(200) | nullable=NO | default=none
+  venus_employee_id: nvarchar(50) | nullable=NO | default=none
+  ptrj_employee_id: nvarchar(50) | nullable=YES | default=none
+  charge_job: nvarchar(500) | nullable=YES | default=none
+  is_active: bit | nullable=YES | default=((1))
+  created_at: datetime | nullable=YES | default=(getdate())
+  updated_at: datetime | nullable=YES | default=(getdate())
+  is_karyawan: bit | nullable=NO | default=((1))
+
+[Table: employee_other_incomes] (14 columns)
+  id: int | nullable=NO | default=none
+  nik: varchar(50) | nullable=NO | default=none
+  emp_name: varchar(150) | nullable=YES | default=none
+  division_code: varchar(50) | nullable=YES | default=none
+  gang_code: varchar(50) | nullable=YES | default=none
+  period_year: int | nullable=NO | default=none
+  period_month: int | nullable=NO | default=none
+  income_type: varchar(50) | nullable=NO | default=none
+  income_name: varchar(150) | nullable=YES | default=none
+  amount: decimal | nullable=YES | default=((0))
+  is_paid_in_thp: bit | nullable=YES | default=((0))
+  is_taxable: bit | nullable=YES | default=((0))
+  created_at: datetime | nullable=YES | default=(getdate())
+  updated_at: datetime | nullable=YES | default=(getdate())
+
+[Table: employee_other_incomes_formulas] (3 columns)
+  income_type: varchar(50) | nullable=NO | default=none
+  formula_string: varchar(500) | nullable=NO | default=none
+  updated_at: datetime | nullable=YES | default=(getdate())
+
+[Table: history_adtrans] (28 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  original_master_id: int | nullable=YES | default=none
+  doc_no: varchar(50) | nullable=YES | default=none
+  doc_date: datetime | nullable=YES | default=none
+  doc_desc: varchar(100) | nullable=YES | default=none
+  emp_code: varchar(20) | nullable=YES | default=none
+  gang_code: varchar(20) | nullable=YES | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  original_line_id: int | nullable=YES | default=none
+  line_no: int | nullable=YES | default=none
+  task_code: varchar(50) | nullable=YES | default=none
+  task_desc: varchar(100) | nullable=YES | default=none
+  amount: decimal | nullable=YES | default=none
+  quantity: decimal | nullable=YES | default=none
+  uom: varchar(20) | nullable=YES | default=none
+  category: varchar(50) | nullable=YES | default=none
+  sub_category: varchar(50) | nullable=YES | default=none
+  is_dynamic: bit | nullable=YES | default=none
+  dynamic_header_name: varchar(50) | nullable=YES | default=none
+  is_premi_pph: bit | nullable=YES | default=none
+  is_koreksi: bit | nullable=YES | default=none
+  is_potongan: bit | nullable=YES | default=none
+  is_premi: bit | nullable=YES | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  source_table: varchar(50) | nullable=NO | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+
+[Table: history_employee_jabatan_changelog] (6 columns)
+  id: int | nullable=NO | default=none
+  empcode: varchar(50) | nullable=NO | default=none
+  jabatan_lama: varchar(100) | nullable=YES | default=none
+  jabatan_baru: varchar(100) | nullable=NO | default=none
+  changed_at: datetime | nullable=YES | default=(getdate())
+  changed_by: varchar(100) | nullable=YES | default=none
+
+[Table: history_gang_member] (14 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  gang_code: varchar(20) | nullable=NO | default=none
+  gang_description: varchar(100) | nullable=YES | default=none
+  division_code: varchar(10) | nullable=NO | default=none
+  loc_code: varchar(20) | nullable=YES | default=none
+  emp_code: varchar(20) | nullable=NO | default=none
+  emp_name: varchar(100) | nullable=YES | default=none
+  join_date: datetime | nullable=YES | default=none
+  is_active: bit | nullable=YES | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  source_table: varchar(50) | nullable=NO | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+
+[Table: history_hr_employee] (29 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  nik: varchar(50) | nullable=YES | default=none
+  emp_code: varchar(20) | nullable=NO | default=none
+  emp_name: varchar(100) | nullable=YES | default=none
+  company_code: varchar(10) | nullable=YES | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  loc_code: varchar(20) | nullable=YES | default=none
+  gang_code: varchar(20) | nullable=YES | default=none
+  job_code: varchar(20) | nullable=YES | default=none
+  position: varchar(100) | nullable=YES | default=none
+  join_date: datetime | nullable=YES | default=none
+  terminate_date: datetime | nullable=YES | default=none
+  status: varchar(20) | nullable=YES | default=none
+  employee_type: varchar(20) | nullable=YES | default=none
+  gender: varchar(10) | nullable=YES | default=none
+  religion: varchar(20) | nullable=YES | default=none
+  birth_place: varchar(50) | nullable=YES | default=none
+  birth_date: datetime | nullable=YES | default=none
+  marital_status: varchar(20) | nullable=YES | default=none
+  tax_status: varchar(20) | nullable=YES | default=none
+  ptkp_beras: varchar(20) | nullable=YES | default=none
+  ptkp_pajak: varchar(20) | nullable=YES | default=none
+  upah_dasar: decimal | nullable=YES | default=none
+  total_hk: decimal | nullable=YES | default=none
+  source_table: varchar(50) | nullable=NO | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+
+[Table: history_hr_gang] (18 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  loc_code: varchar(20) | nullable=YES | default=none
+  gang_code: varchar(20) | nullable=NO | default=none
+  gang_description: varchar(100) | nullable=YES | default=none
+  mandor_code: varchar(20) | nullable=YES | default=none
+  mandor_name: varchar(100) | nullable=YES | default=none
+  mandor_1_code: varchar(20) | nullable=YES | default=none
+  mandor_1_name: varchar(100) | nullable=YES | default=none
+  assistant_code: varchar(20) | nullable=YES | default=none
+  assistant_name: varchar(100) | nullable=YES | default=none
+  total_members: int | nullable=YES | default=none
+  is_active: bit | nullable=YES | default=none
+  source_table: varchar(50) | nullable=NO | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+
+[Table: history_metadata] (20 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  operation: varchar(20) | nullable=NO | default=none
+  entity_type: varchar(50) | nullable=NO | default=none
+  entity_id: varchar(50) | nullable=YES | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  gang_code: varchar(20) | nullable=YES | default=none
+  description: varchar(255) | nullable=YES | default=none
+  old_values: nvarchar(-1) | nullable=YES | default=none
+  new_values: nvarchar(-1) | nullable=YES | default=none
+  record_count: int | nullable=YES | default=none
+  status: varchar(20) | nullable=YES | default=none
+  error_message: varchar(-1) | nullable=YES | default=none
+  performed_by: varchar(50) | nullable=YES | default=none
+  ip_address: varchar(50) | nullable=YES | default=none
+  user_agent: varchar(255) | nullable=YES | default=none
+  session_id: varchar(50) | nullable=YES | default=none
+  performed_at: datetime | nullable=YES | default=(getdate())
+
+[Table: history_ptkp_pajak] (15 columns)
+  id: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  emp_code: varchar(20) | nullable=NO | default=none
+  emp_name: nvarchar(100) | nullable=YES | default=none
+  nik: varchar(30) | nullable=YES | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  gang_code: varchar(30) | nullable=YES | default=none
+  loc_code: varchar(10) | nullable=YES | default=none
+  beras_rate: decimal | nullable=YES | default=((0))
+  ptkp_status: varchar(10) | nullable=NO | default=none
+  kategori_ter: varchar(10) | nullable=YES | default=none
+  source: varchar(50) | nullable=YES | default=('HR_PAYROLL.RiceRation')
+  created_at: datetime | nullable=YES | default=(getdate())
+  updated_at: datetime | nullable=YES | default=(getdate())
+  created_by: varchar(50) | nullable=YES | default=('system')
+
+[Table: history_ptkp_pajak_changelog] (11 columns)
+  id: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  emp_code: varchar(50) | nullable=NO | default=none
+  old_ptkp_status: varchar(10) | nullable=YES | default=none
+  new_ptkp_status: varchar(10) | nullable=NO | default=none
+  old_kategori_ter: varchar(10) | nullable=YES | default=none
+  new_kategori_ter: varchar(10) | nullable=NO | default=none
+  source: varchar(50) | nullable=NO | default=none
+  changed_by: varchar(100) | nullable=NO | default=('system')
+  changed_at: datetime | nullable=NO | default=(getdate())
+  remarks: nvarchar(255) | nullable=YES | default=none
+
+[Table: history_taskreg] (30 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  original_master_id: int | nullable=YES | default=none
+  reg_no: varchar(50) | nullable=YES | default=none
+  reg_date: datetime | nullable=YES | default=none
+  emp_code: varchar(20) | nullable=YES | default=none
+  gang_code: varchar(20) | nullable=YES | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  original_line_id: int | nullable=YES | default=none
+  line_no: int | nullable=YES | default=none
+  trx_date: datetime | nullable=YES | default=none
+  task_code: varchar(50) | nullable=YES | default=none
+  task_desc: varchar(100) | nullable=YES | default=none
+  hours: decimal | nullable=YES | default=none
+  ot: bit | nullable=YES | default=none
+  rate: decimal | nullable=YES | default=none
+  amount: decimal | nullable=YES | default=none
+  tapping_type: varchar(20) | nullable=YES | default=none
+  location_code: varchar(20) | nullable=YES | default=none
+  status: varchar(20) | nullable=YES | default=none
+  is_cuti_tahunan: bit | nullable=YES | default=none
+  is_cuti_sakit: bit | nullable=YES | default=none
+  is_cuti_minggu: bit | nullable=YES | default=none
+  is_cuti_nasional: bit | nullable=YES | default=none
+  is_hari_kerja: bit | nullable=YES | default=none
+  is_lembur: bit | nullable=YES | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  source_table: varchar(50) | nullable=NO | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+
+[Table: payroll_history_detail] (65 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  master_id: int | nullable=NO | default=none
+  emp_code: varchar(20) | nullable=NO | default=none
+  emp_name: varchar(100) | nullable=YES | default=none
+  nik: varchar(50) | nullable=YES | default=none
+  gender: varchar(10) | nullable=YES | default=none
+  gang_code: varchar(20) | nullable=YES | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  loc_code: varchar(20) | nullable=YES | default=none
+  status_ptkp: varchar(20) | nullable=YES | default=none
+  kategori_ter: varchar(10) | nullable=YES | default=none
+  hari_kerja: int | nullable=YES | default=none
+  cuti_tahunan_hari: int | nullable=YES | default=none
+  cuti_sakit_haid_hari: int | nullable=YES | default=none
+  cuti_minggu_hari: int | nullable=YES | default=none
+  cuti_nasional_hari: int | nullable=YES | default=none
+  jumlah_hk: decimal | nullable=YES | default=none
+  total_jam_kerja: decimal | nullable=YES | default=none
+  upah_dasar: decimal | nullable=YES | default=none
+  upah_pokok: decimal | nullable=YES | default=none
+  gaji_pokok: decimal | nullable=YES | default=none
+  gaji_pokok_ideal: decimal | nullable=YES | default=none
+  gaji_pokok_aktual: decimal | nullable=YES | default=none
+  koreksi_hk: decimal | nullable=YES | default=none
+  beras_rate: decimal | nullable=YES | default=none
+  beras_jumlah: decimal | nullable=YES | default=none
+  jabatan_rate: decimal | nullable=YES | default=none
+  jabatan_jumlah: decimal | nullable=YES | default=none
+  masa_kerja_tahun: int | nullable=YES | default=none
+  masa_kerja_rate: decimal | nullable=YES | default=none
+  masa_kerja_jumlah: decimal | nullable=YES | default=none
+  lembur_jam: decimal | nullable=YES | default=none
+  lembur_rate: decimal | nullable=YES | default=none
+  lembur_jumlah: decimal | nullable=YES | default=none
+  lembur_records: nvarchar(-1) | nullable=YES | default=none
+  total_tunjangan: decimal | nullable=YES | default=none
+  premi_brondol: decimal | nullable=YES | default=none
+  premi_pph: decimal | nullable=YES | default=none
+  total_premi: decimal | nullable=YES | default=none
+  premi_detail: nvarchar(-1) | nullable=YES | default=none
+  pot_spsi: decimal | nullable=YES | default=none
+  pot_pph21: decimal | nullable=YES | default=none
+  pot_koreksi: decimal | nullable=YES | default=none
+  pot_bpjs_kesehatan_pekerja: decimal | nullable=YES | default=none
+  pot_bpjs_kesehatan_majikan: decimal | nullable=YES | default=none
+  pot_bpjs_pensiun_pekerja: decimal | nullable=YES | default=none
+  pot_bpjs_pensiun_majikan: decimal | nullable=YES | default=none
+  pot_bpjs_pekerja_total: decimal | nullable=YES | default=none
+  pot_astek_pekerja: decimal | nullable=YES | default=none
+  pot_astek_majikan: decimal | nullable=YES | default=none
+  pot_astek_jumlah: decimal | nullable=YES | default=none
+  potongan_detail: nvarchar(-1) | nullable=YES | default=none
+  total_potongan: decimal | nullable=YES | default=none
+  total_potongan_bersih: decimal | nullable=YES | default=none
+  jumlah_upah_kotor: decimal | nullable=YES | default=none
+  upah_kotor_pajak: decimal | nullable=YES | default=none
+  penghasilan_bruto: decimal | nullable=YES | default=none
+  tarif_pajak_ter: decimal | nullable=YES | default=none
+  pph21_ter: decimal | nullable=YES | default=none
+  upah_bersih: decimal | nullable=YES | default=none
+  task_code: varchar(50) | nullable=YES | default=none
+  task_desc: varchar(100) | nullable=YES | default=none
+  shortage_details: nvarchar(-1) | nullable=YES | default=none
+  shortage_total_hours: decimal | nullable=YES | default=none
+
+[Table: payroll_history_header] (45 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  gang_code: varchar(20) | nullable=YES | default=none
+  gang_description: varchar(100) | nullable=YES | default=none
+  total_employees: int | nullable=YES | default=none
+  total_hk: decimal | nullable=YES | default=none
+  total_hari_kerja: int | nullable=YES | default=none
+  total_cuti_tahunan: int | nullable=YES | default=none
+  total_cuti_sakit: int | nullable=YES | default=none
+  total_cuti_minggu: int | nullable=YES | default=none
+  total_cuti_nasional: int | nullable=YES | default=none
+  total_upah_dasar: decimal | nullable=YES | default=none
+  total_upah_pokok: decimal | nullable=YES | default=none
+  total_gaji_pokok: decimal | nullable=YES | default=none
+  total_beras: decimal | nullable=YES | default=none
+  total_jabatan: decimal | nullable=YES | default=none
+  total_masa_kerja: decimal | nullable=YES | default=none
+  total_lembur: decimal | nullable=YES | default=none
+  total_tunjangan: decimal | nullable=YES | default=none
+  total_premi_brondol: decimal | nullable=YES | default=none
+  total_premi_prunning: decimal | nullable=YES | default=none
+  total_premi_insentif: decimal | nullable=YES | default=none
+  total_premi_kinerja: decimal | nullable=YES | default=none
+  total_premi: decimal | nullable=YES | default=none
+  dynamic_premi_data: nvarchar(-1) | nullable=YES | default=none
+  total_koreksi: decimal | nullable=YES | default=none
+  total_potongan: decimal | nullable=YES | default=none
+  total_pph21: decimal | nullable=YES | default=none
+  total_bpjs_pekerja: decimal | nullable=YES | default=none
+  total_bpjs_majikan: decimal | nullable=YES | default=none
+  total_spsi: decimal | nullable=YES | default=none
+  dynamic_potongan_data: nvarchar(-1) | nullable=YES | default=none
+  total_upah_kotor: decimal | nullable=YES | default=none
+  total_upah_bersih: decimal | nullable=YES | default=none
+  total_ffb_weight: decimal | nullable=YES | default=none
+  total_weight_tbs: decimal | nullable=YES | default=none
+  informasi_tambahan: nvarchar(-1) | nullable=YES | default=none
+  created_by: varchar(50) | nullable=YES | default=none
+  source_endpoint: varchar(100) | nullable=YES | default=none
+  is_locked: bit | nullable=YES | default=none
+  lock_reason: varchar(200) | nullable=YES | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+
+[Table: payroll_history_master] (45 columns)
+  id: int | nullable=NO | default=none
+  history_id: varchar(50) | nullable=NO | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  division_code: varchar(10) | nullable=YES | default=none
+  gang_code: varchar(20) | nullable=YES | default=none
+  gang_description: varchar(100) | nullable=YES | default=none
+  total_employees: int | nullable=YES | default=none
+  total_hk: decimal | nullable=YES | default=none
+  total_hari_kerja: int | nullable=YES | default=none
+  total_cuti_tahunan: int | nullable=YES | default=none
+  total_cuti_sakit: int | nullable=YES | default=none
+  total_cuti_minggu: int | nullable=YES | default=none
+  total_cuti_nasional: int | nullable=YES | default=none
+  total_upah_dasar: decimal | nullable=YES | default=none
+  total_upah_pokok: decimal | nullable=YES | default=none
+  total_gaji_pokok: decimal | nullable=YES | default=none
+  total_beras: decimal | nullable=YES | default=none
+  total_jabatan: decimal | nullable=YES | default=none
+  total_masa_kerja: decimal | nullable=YES | default=none
+  total_lembur: decimal | nullable=YES | default=none
+  total_tunjangan: decimal | nullable=YES | default=none
+  total_premi_brondol: decimal | nullable=YES | default=none
+  total_premi_prunning: decimal | nullable=YES | default=none
+  total_premi_insentif: decimal | nullable=YES | default=none
+  total_premi_kinerja: decimal | nullable=YES | default=none
+  total_premi: decimal | nullable=YES | default=none
+  dynamic_premi_data: nvarchar(-1) | nullable=YES | default=none
+  total_koreksi: decimal | nullable=YES | default=none
+  total_potongan: decimal | nullable=YES | default=none
+  total_pph21: decimal | nullable=YES | default=none
+  total_bpjs_pekerja: decimal | nullable=YES | default=none
+  total_bpjs_majikan: decimal | nullable=YES | default=none
+  total_spsi: decimal | nullable=YES | default=none
+  dynamic_potongan_data: nvarchar(-1) | nullable=YES | default=none
+  total_upah_kotor: decimal | nullable=YES | default=none
+  total_upah_bersih: decimal | nullable=YES | default=none
+  total_ffb_weight: decimal | nullable=YES | default=none
+  total_weight_tbs: decimal | nullable=YES | default=none
+  informasi_tambahan: nvarchar(-1) | nullable=YES | default=none
+  created_by: varchar(50) | nullable=YES | default=none
+  source_endpoint: varchar(100) | nullable=YES | default=none
+  is_locked: bit | nullable=YES | default=none
+  lock_reason: varchar(200) | nullable=YES | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+
+[Table: payroll_manual_adjustments] (14 columns)
+  id: int | nullable=NO | default=none
+  period_month: int | nullable=NO | default=none
+  period_year: int | nullable=NO | default=none
+  emp_code: varchar(50) | nullable=NO | default=none
+  gang_code: varchar(50) | nullable=NO | default=none
+  division_code: varchar(50) | nullable=YES | default=none
+  adjustment_type: varchar(20) | nullable=NO | default=none
+  adjustment_name: varchar(100) | nullable=NO | default=none
+  amount: decimal | nullable=NO | default=((0))
+  remarks: varchar(255) | nullable=YES | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+  created_by: varchar(50) | nullable=YES | default=none
+  updated_at: datetime | nullable=YES | default=(getdate())
+  updated_by: varchar(50) | nullable=YES | default=none
+
+[Table: pm_comments] (6 columns)
+  id: nvarchar(255) | nullable=NO | default=none
+  task_id: nvarchar(255) | nullable=NO | default=none
+  user_id: nvarchar(255) | nullable=NO | default=none
+  content: nvarchar(-1) | nullable=NO | default=none
+  created_at: datetime | nullable=NO | default=(getdate())
+  updated_at: datetime | nullable=NO | default=(getdate())
+
+[Table: pm_project_members] (6 columns)
+  id: varchar(255) | nullable=NO | default=none
+  project_id: varchar(255) | nullable=NO | default=none
+  user_id: varchar(255) | nullable=NO | default=none
+  role: varchar(50) | nullable=NO | default=('MEMBER')
+  joined_at: datetime | nullable=YES | default=(getdate())
+  added_by: varchar(255) | nullable=YES | default=none
+
+[Table: pm_projects] (12 columns)
+  id: nvarchar(255) | nullable=NO | default=none
+  name: nvarchar(255) | nullable=NO | default=none
+  description: nvarchar(-1) | nullable=YES | default=none
+  start_date: datetime | nullable=YES | default=none
+  end_date: datetime | nullable=YES | default=none
+  priority: nvarchar(20) | nullable=NO | default=('MEDIUM')
+  banner_image: nvarchar(500) | nullable=YES | default=none
+  status: nvarchar(20) | nullable=YES | default=none
+  owner_id: nvarchar(255) | nullable=NO | default=none
+  created_at: datetime | nullable=NO | default=(getdate())
+  updated_at: datetime | nullable=NO | default=(getdate())
+  canvas_data: nvarchar(-1) | nullable=YES | default=none
+
+[Table: pm_task_docs] (6 columns)
+  id: nvarchar(50) | nullable=NO | default=none
+  task_id: nvarchar(50) | nullable=NO | default=none
+  title: nvarchar(255) | nullable=NO | default=none
+  content: nvarchar(-1) | nullable=YES | default=none
+  created_at: datetime | nullable=YES | default=(getdate())
+  updated_at: datetime | nullable=YES | default=(getdate())
+
+[Table: pm_task_statuses] (6 columns)
+  id: nvarchar(255) | nullable=NO | default=none
+  name: nvarchar(255) | nullable=NO | default=none
+  order: int | nullable=NO | default=((0))
+  project_id: nvarchar(255) | nullable=NO | default=none
+  created_at: datetime | nullable=NO | default=(getdate())
+  updated_at: datetime | nullable=NO | default=(getdate())
+
+[Table: pm_tasks] (16 columns)
+  id: nvarchar(255) | nullable=NO | default=none
+  title: nvarchar(255) | nullable=NO | default=none
+  description: nvarchar(-1) | nullable=YES | default=none
+  priority: nvarchar(20) | nullable=NO | default=('MEDIUM')
+  due_date: datetime | nullable=YES | default=none
+  estimated_hours: float | nullable=YES | default=none
+  actual_hours: float | nullable=YES | default=none
+  documentation: nvarchar(-1) | nullable=YES | default=none
+  progress: int | nullable=NO | default=((0))
+  last_alert_sent: datetime | nullable=YES | default=none
+  project_id: nvarchar(255) | nullable=NO | default=none
+  status_id: nvarchar(255) | nullable=NO | default=none
+  assignee_id: nvarchar(255) | nullable=YES | default=none
+  created_at: datetime | nullable=NO | default=(getdate())
+  updated_at: datetime | nullable=NO | default=(getdate())
+  completed_at: datetime | nullable=YES | default=none
+
+[Table: pm_users] (9 columns)
+  id: nvarchar(255) | nullable=NO | default=none
+  username: nvarchar(255) | nullable=NO | default=none
+  email: nvarchar(255) | nullable=NO | default=none
+  password: nvarchar(255) | nullable=NO | default=none
+  name: nvarchar(255) | nullable=NO | default=none
+  role: nvarchar(50) | nullable=NO | default=('MEMBER')
+  avatar_url: nvarchar(500) | nullable=YES | default=none
+  created_at: datetime | nullable=NO | default=(getdate())
+  updated_at: datetime | nullable=NO | default=(getdate())
+
+[Table: role_service_permission] (3 columns)
+  id: int | nullable=NO | default=none
+  role: nvarchar(50) | nullable=NO | default=none
+  serviceId: nvarchar(50) | nullable=NO | default=none
+
+[Table: service_ptrj] (9 columns)
+  serviceId: nvarchar(50) | nullable=NO | default=none
+  name: nvarchar(100) | nullable=NO | default=none
+  description: nvarchar(255) | nullable=YES | default=none
+  serviceUrl: nvarchar(255) | nullable=NO | default=none
+  path: nvarchar(100) | nullable=YES | default=none
+  enabled: bit | nullable=YES | default=((1))
+  createdAt: datetime | nullable=YES | default=(getdate())
+  updatedAt: datetime | nullable=YES | default=(getdate())
+  imagePath: nvarchar(255) | nullable=YES | default=none
+
+[Table: sysdiagrams] (5 columns)
+  name: nvarchar(128) | nullable=NO | default=none
+  principal_id: int | nullable=NO | default=none
+  diagram_id: int | nullable=NO | default=none
+  version: int | nullable=YES | default=none
+  definition: varbinary(-1) | nullable=YES | default=none
+
+[Table: tunjangan_rate] (5 columns)
+  id: int | nullable=NO | default=none
+  category: varchar(50) | nullable=NO | default=none
+  item_key: varchar(100) | nullable=NO | default=none
+  rate: decimal | nullable=YES | default=((0))
+  updated_at: datetime | nullable=YES | default=(getdate())
+
+[Table: user_ptrj] (8 columns)
+  id: int | nullable=NO | default=none
+  email: nvarchar(100) | nullable=NO | default=none
+  name: nvarchar(100) | nullable=YES | default=none
+  password: nvarchar(255) | nullable=NO | default=none
+  role: nvarchar(50) | nullable=NO | default=('KERANI')
+  divisi: nvarchar(50) | nullable=YES | default=none
+  createdAt: datetime | nullable=YES | default=(getdate())
+  updatedAt: datetime | nullable=YES | default=(getdate())
+
+--- employee_other_incomes DATA SUMMARY ---
+Income types:
+[
+  {
+    "income_type": "THR",
+    "count": 1126,
+    "min_year": 2026,
+    "max_year": 2026,
+    "min_month": 1,
+    "max_month": 2,
+    "total_amount": 4498384140.1
+  }
+]
+
+--- employee_other_incomes_formulas ---
+Formulas:
+[
+  {
+    "income_type": "THR",
+    "formula_string": "{\"formula\":\"(UPAH_DASAR * 30) + (BERAS_RATE * 30) + MASA_KERJA_JUMLAH\",\"is_paid_in_thp\":false,\"is_taxable\":false}",
+    "updated_at": "2026-03-03T16:41:01.293Z"
+  }
+]
+
+--- SAMPLE DATA (top 5 rows) ---
+[
+  {
+    "id": 2566,
+    "nik": "1402120610810001",
+    "emp_name": "MUHKODAM ( JINEM )",
+    "division_code": "DME",
+    "gang_code": "E3P",
+    "period_year": 2026,
+    "period_month": 2,
+    "income_type": "THR",
+    "income_name": "Tunjangan Hari Raya (Proporsi 3/12)",
+    "amount": 1008750,
+    "is_paid_in_thp": false,
+    "is_taxable": false,
+    "created_at": "2026-03-05T16:28:47.550Z",
+    "updated_at": "2026-03-05T16:33:23.453Z"
+  },
+  {
+    "id": 2565,
+    "nik": "1207242007030004",
+    "emp_name": "T RAFLI NAUFAL FAKHAR ( ERMILAWATI )",
+    "division_code": "DME",
+    "gang_code": "E3P",
+    "period_year": 2026,
+    "period_month": 2,
+    "income_type": "THR",
+    "income_name": "Tunjangan Hari Raya (Proporsi 4/12)",
+    "amount": 1367500,
+    "is_paid_in_thp": false,
+    "is_taxable": false,
+    "created_at": "2026-03-05T16:28:47.537Z",
+    "updated_at": "2026-03-05T16:33:23.447Z"
+  },
+  {
+    "id": 2564,
+    "nik": "5203192509970002",
+    "emp_name": "SAHRUN NADI ( MINARAH )",
+    "division_code": "DME",
+    "gang_code": "E1P",
+    "period_year": 2026,
+    "period_month": 2,
+    "income_type": "THR",
+    "income_name": "Tunjangan Hari Raya (Proporsi 4/12)",
+    "amount": 1367500,
+    "is_paid_in_thp": false,
+    "is_taxable": false,
+    "created_at": "2026-03-05T16:28:47.520Z",
+    "updated_at": "2026-03-05T16:33:23.440Z"
+  },
+  {
+    "id": 2563,
+    "nik": "1902041412020004",
+    "emp_name": "RIDWAN APRIYANTO ( MARLINA )",
+    "division_code": "DME",
+    "gang_code": "E3T",
+    "period_year": 2026,
+    "period_month": 2,
+    "income_type": "THR",
+    "income_name": "Tunjangan Hari Raya (Proporsi 5/12)",
+    "amount": 1727500,
+    "is_paid_in_thp": false,
+    "is_taxable": false,
+    "created_at": "2026-03-05T16:28:47.510Z",
+    "updated_at": "2026-03-05T16:33:23.437Z"
+  },
+  {
+    "id": 2562,
+    "nik": "1905012307030001",
+    "emp_name": "ABDULLAH SYUKRON (Soliha)",
+    "division_code": "DME",
+    "gang_code": "E3T",
+    "period_year": 2026,
+    "period_month": 2,
+    "income_type": "THR",
+    "income_name": "Tunjangan Hari Raya",
+    "amount": 4148500,
+    "is_paid_in_thp": false,
+    "is_taxable": false,
+    "created_at": "2026-03-05T16:28:47.490Z",
+    "updated_at": "2026-03-05T16:33:23.430Z"
+  }
+]
+
+--- DISTINCT PERIODS ---
+[
+  {
+    "period_year": 2026,
+    "period_month": 2,
+    "income_type": "THR"
+  },
+  {
+    "period_year": 2026,
+    "period_month": 1,
+    "income_type": "THR"
+  }
+]

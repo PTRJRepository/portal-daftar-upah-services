@@ -18,6 +18,7 @@ import { wagesRoutes } from "./api/wagesRoutes";
 import { logsRoutes } from "./api/logsRoutes";
 import { taxReportRoutes } from "./api/taxReportRoutes";
 import { employeeHrDataRoutes } from "./api/employeeHrDataRoutes";
+import { employeeGangHistoryRoutes } from "./api/employeeGangHistoryRoutes";
 import { Database } from "./db/client";
 import { employeeHrDataService } from "./services/employeeHrDataService";
 import { otherIncomesRoutes } from "./api/otherIncomesRoutes";
@@ -219,6 +220,7 @@ const app = new Elysia()
     .use(taxReportRoutes)
     // Employee HR Data (NIK override, etc)
     .use(employeeHrDataRoutes)
+    .use(employeeGangHistoryRoutes)
     // Other Incomes (THR, Bonus, Custom)
     .use(otherIncomesRoutes)
     // Mill Production Report
@@ -246,6 +248,7 @@ const app = new Elysia()
         .use(devConfigRoutes)
         .use(taxReportRoutes)
         .use(employeeHrDataRoutes)
+        .use(employeeGangHistoryRoutes)
         .use(otherIncomesRoutes)
         .group("/api/mill-production", nestedApp => nestedApp.use(millProductionRoutes))
     )

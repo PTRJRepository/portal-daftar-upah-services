@@ -1,5 +1,7 @@
 import { Database } from "../db/client";
 import { HistoryDatabaseService } from "./historyDatabaseService";
+import { divisionDefinition } from "./divisionDefinition";
+import { employeeGangHistoryService } from "./employeeGangHistoryService";
 
 export interface OtherIncome {
     id?: number;
@@ -126,13 +128,20 @@ export class OtherIncomesService {
                 const hrMap = new Map<string, { join_date: string; emp_code: string; religion: string; sex: string }>();
                 if (allNiks.length > 0) {
                     const placeholders = allNiks.map(() => '?').join(',');
-                    const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string; AppJoinDate: any; AppJoinGrpDate: any; Religion: string; Gender: string; BankAccNo: string; BankCode: string }>(`
+                    // Prioritize active and gang match in HR query
+                    const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string; AppJoinDate: any; AppJoinGrpDate: any; Religion: string; Gender: string; BankAccNo: string; BankCode: string; GangCode: string; GangMember: string }>(`
                         SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, em.AppJoinDate, em.AppJoinGrpDate, e.Religion, e.Gender, 
-                               RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode
+                               RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode, RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember
                         FROM HR_EMPLOYEE e
                         LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
                         LEFT JOIN HR_PAYROLL p ON e.EmpCode = p.EmpCode
+                        LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
                         WHERE RTRIM(e.NewICNo) IN (${placeholders}) OR RTRIM(e.EmpCode) IN (${placeholders})
+                        ORDER BY 
+                            CASE WHEN e.Status = '1' THEN 0 ELSE 1 END,
+                            CASE WHEN gl.GangCode = '${gangCode || ''}' THEN 0 ELSE 1 END,
+                            em.AppJoinDate DESC, 
+                            e.EmpCode DESC
                     `, [...allNiks, ...allNiks]);
 
                     // Fetch overrides from extend_db_ptrj
@@ -157,16 +166,28 @@ export class OtherIncomesService {
                         const mappedRel = religionMap[rawRel] || '01 Islam';
                         const sex = (r.Gender || '').trim().toUpperCase() === 'FEMALE' ? 'P' : 'L';
                         const joinDate = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate);
-                        
-                        // Override logic: prefer extend_db if exists
+
                         const override = overrideMap.get(r.EmpCode.trim().toUpperCase());
-                        const bankInfo = { 
-                            bank_acc_no: override?.bank_acc_no || r.BankAccNo, 
-                            bank_code: override?.bank_code || r.BankCode 
+                        const bankInfo = {
+                            bank_acc_no: override?.bank_acc_no || r.BankAccNo,
+                            bank_code: override?.bank_code || r.BankCode
                         };
 
-                        if (r.NewICNo) hrMap.set(r.NewICNo.trim().toUpperCase(), { join_date: joinDate || '', emp_code: r.EmpCode, religion: mappedRel, sex, ...bankInfo });
-                        if (r.EmpCode) hrMap.set(r.EmpCode.trim().toUpperCase(), { join_date: joinDate || '', emp_code: r.EmpCode, religion: mappedRel, sex, ...bankInfo });
+                        const nikKey = r.NewICNo?.trim().toUpperCase();
+                        const empKey = r.EmpCode.trim().toUpperCase();
+                        // Use GangMember as emp_code when gang matches (it's the correct EmpCode for that gang)
+                        const resolvedEmpCode = (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : r.EmpCode;
+                        const entry = { join_date: joinDate || '', emp_code: resolvedEmpCode, religion: mappedRel, sex, ...bankInfo, gang_code: r.GangCode };
+
+                        // If gangCode specified, strictly prefer the one in that gang
+                        if (gangCode && r.GangCode === gangCode) {
+                            if (nikKey) hrMap.set(nikKey, entry);
+                            if (empKey) hrMap.set(empKey, entry);
+                        } else {
+                            // Otherwise standard latest-active resolution
+                            if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, entry);
+                            if (empKey && !hrMap.has(empKey)) hrMap.set(empKey, entry);
+                        }
                     });
                 }
 
@@ -205,7 +226,9 @@ export class OtherIncomesService {
                                 RELIGION: hr?.religion,
                                 SEX: hr?.sex || (row.sex === 'FEMALE' ? 'P' : 'L'),
                                 WORKING_MONTHS: workingMonths,
-                                PROPORTION_FACTOR: proportionFactor
+                                PROPORTION_FACTOR: proportionFactor,
+                                BANK_ACC_NO: hr?.bank_acc_no,
+                                BANK_CODE: hr?.bank_code
                             };
                         }
                     }
@@ -219,27 +242,13 @@ export class OtherIncomesService {
                 const nikKey = inc.nik?.trim().toUpperCase() || '';
                 const variables = historyDict[nikKey] || null;
                 inc.details = { formula: thrFormula?.formula || '', variables: variables };
-                // Enrich religion: prefer historyDict, keep existing from getIncomes() as fallback
                 if (variables?.RELIGION) (inc as any).religion = variables.RELIGION;
                 if (variables?.JOIN_DATE && !(inc as any).join_date) (inc as any).join_date = variables.JOIN_DATE;
-                // If religion still missing, try to look it up from emp_code
-                if (!(inc as any).religion && variables?.EMP_CODE) {
-                    const empKey = String(variables.EMP_CODE).trim().toUpperCase();
-                    const hrLookup = historyDict[empKey];
-                    if (hrLookup?.RELIGION) (inc as any).religion = hrLookup.RELIGION;
-                }
+                if (variables?.BANK_ACC_NO) (inc as any).bank_acc_no = variables.BANK_ACC_NO;
+                if (variables?.BANK_CODE) (inc as any).bank_code = variables.BANK_CODE;
+                if (variables?.EMP_CODE) (inc as any).emp_code = variables.EMP_CODE;
             }
         }
-        // Debug: Log any rows that are still missing religion
-        const missingReligion = incomes.filter(inc => !(inc as any).religion);
-        if (missingReligion.length > 0) {
-            console.warn(`[THR] ${missingReligion.length} row(s) missing religion:`, missingReligion.map(r => r.nik).slice(0, 5));
-        }
-        // Detailed debug: show religion values for first 5 rows
-        console.log(`[THR-DEBUG] Returning ${incomes.length} rows. Religion sampling:`);
-        incomes.slice(0, 5).forEach((inc, i) => {
-            console.log(`  [${i}] nik="${inc.nik}" name="${(inc as any).emp_name}" religion="${(inc as any).religion}" has_variables=${!!(inc as any).details?.variables}`);
-        });
         return incomes;
     }
 
@@ -248,19 +257,29 @@ export class OtherIncomesService {
         try {
             let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
             const params: any[] = [year, month];
-            if (divisionCode && divisionCode !== 'ALL') { sql += ` AND division_code = ?`; params.push(divisionCode); }
-            if (gangCode && gangCode !== 'ALL') { sql += ` AND gang_code = ?`; params.push(gangCode); }
+            
+            if (divisionCode && divisionCode !== 'ALL') {
+                // Handle virtual divisions by also searching for source divisions
+                const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+                const allPossibleDivs = [...new Set([divisionCode, ...sourceDivs])];
+                const placeholders = allPossibleDivs.map(() => '?').join(',');
+                sql += ` AND division_code IN (${placeholders})`;
+                params.push(...allPossibleDivs);
+            }
+            
+            if (gangCode && gangCode !== 'ALL') { 
+                sql += ` AND gang_code = ?`; 
+                params.push(gangCode); 
+            }
 
             const incomes = (await db.query(sql, params)) as OtherIncome[];
             if (incomes.length > 0) {
                 try {
                     const mainDb = Database.getInstance();
-                    // Collect all possible identifiers: nik (which is nik_ktp) AND emp_name
                     const nikSet = [...new Set(incomes.map(i => i.nik?.trim()).filter(Boolean))];
                     const nameSet = [...new Set(incomes.map(i => (i as any).emp_name?.trim()).filter(Boolean))];
                     if (nikSet.length > 0) {
                         const nikPlaceholders = nikSet.map(() => '?').join(',');
-                        // Also try matching by name if nik lookup fails
                         let nameClause = '';
                         const queryParams: any[] = [...nikSet, ...nikSet];
                         if (nameSet.length > 0) {
@@ -268,16 +287,21 @@ export class OtherIncomesService {
                             nameClause = ` OR RTRIM(e.EmpName) IN (${namePlaceholders})`;
                             queryParams.push(...nameSet);
                         }
-                        const hrRows = await mainDb.query<{ EmpCode: string; Religion: string; Status: string; AppJoinDate: any; AppJoinGrpDate: any; NewICNo: string; EmpName: string; BankAccNo: string; BankCode: string }>(`
+                        const hrRows = await mainDb.query<{ EmpCode: string; Religion: string; Status: string; AppJoinDate: any; AppJoinGrpDate: any; NewICNo: string; EmpName: string; BankAccNo: string; BankCode: string; GangCode: string; GangMember: string }>(`
                             SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpName) as EmpName, e.Religion, e.Status, em.AppJoinDate, em.AppJoinGrpDate,
-                                   RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode
+                                   RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode, RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember
                             FROM HR_EMPLOYEE e
                             LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
                             LEFT JOIN HR_PAYROLL p ON e.EmpCode = p.EmpCode
+                            LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
                             WHERE RTRIM(e.EmpCode) IN (${nikPlaceholders}) OR RTRIM(e.NewICNo) IN (${nikPlaceholders})${nameClause}
+                            ORDER BY 
+                                CASE WHEN e.Status = '1' THEN 0 ELSE 1 END,
+                                CASE WHEN gl.GangCode = '${gangCode || ''}' THEN 0 ELSE 1 END,
+                                em.AppJoinDate DESC, 
+                                e.EmpCode DESC
                         `, queryParams);
 
-                        // Fetch overrides from extend_db_ptrj
                         const extendDb = Database.getExtendedInstance();
                         const overrideRows = await extendDb.query<{ emp_code: string; bank_acc_no: string; bank_code: string }>(
                             `SELECT emp_code, bank_acc_no, bank_code FROM employee_hr_data WHERE emp_code IN (${nikPlaceholders})`,
@@ -294,44 +318,51 @@ export class OtherIncomesService {
                             '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu'
                         };
 
-                        const hrMap = new Map<string, { religion: string; status: string; join_date: string; emp_code: string; bank_acc_no: string; bank_code: string }>();
+                        const hrMap = new Map<string, { religion: string; status: string; join_date: string; emp_code: string; bank_acc_no: string; bank_code: string; gang_code: string }>();
                         hrRows.forEach(r => {
                             const rawRel = (r.Religion || '').trim().toUpperCase();
                             const joinDate = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate);
-                            
-                            // Override logic: prefer extend_db if exists
                             const override = overrideMap.get(r.EmpCode.trim().toUpperCase());
-                            
+
+                            // Use GangMember as emp_code when gang matches
+                            const resolvedEmpCode = (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : (r.EmpCode?.trim() || '');
                             const data = {
                                 religion: religionMap[rawRel] || '01 Islam',
                                 status: r.Status?.trim() || '',
                                 join_date: joinDate || '',
-                                emp_code: r.EmpCode?.trim() || '',
+                                emp_code: resolvedEmpCode,
                                 bank_acc_no: override?.bank_acc_no || r.BankAccNo || '',
-                                bank_code: override?.bank_code || r.BankCode || ''
+                                bank_code: override?.bank_code || r.BankCode || '',
+                                gang_code: r.GangCode || ''
                             };
-                            if (r.EmpCode) hrMap.set(r.EmpCode.trim().toUpperCase(), data);
-                            if (r.NewICNo) hrMap.set(r.NewICNo.trim().toUpperCase(), data);
-                            if (r.EmpName) hrMap.set(r.EmpName.trim().toUpperCase(), data);
+
+                            const empKey = r.EmpCode.trim().toUpperCase();
+                            const nikKey = r.NewICNo?.trim().toUpperCase();
+                            const nameKey = r.EmpName?.trim().toUpperCase();
+
+                            // Logic: match by GangCode first if possible
+                            if (gangCode && r.GangCode === gangCode) {
+                                if (empKey) hrMap.set(empKey, data);
+                                if (nikKey) hrMap.set(nikKey, data);
+                                if (nameKey) hrMap.set(nameKey, data);
+                            } else {
+                                if (empKey && !hrMap.has(empKey)) hrMap.set(empKey, data);
+                                if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, data);
+                                if (nameKey && !hrMap.has(nameKey)) hrMap.set(nameKey, data);
+                            }
                         });
 
                         for (const income of incomes) {
-                            // Try nik first, then emp_name
                             const hrData = hrMap.get(income.nik?.trim()?.toUpperCase() || '')
                                 || hrMap.get(((income as any).emp_name || '').trim().toUpperCase());
                             if (hrData) {
                                 (income as any).religion = hrData.religion;
                                 (income as any).emp_status = hrData.status;
                                 if (!((income as any).join_date)) (income as any).join_date = hrData.join_date;
-                                if (!((income as any).emp_code)) (income as any).emp_code = hrData.emp_code;
+                                (income as any).emp_code = hrData.emp_code;
                                 (income as any).bank_acc_no = hrData.bank_acc_no;
                                 (income as any).bank_code = hrData.bank_code;
                             }
-                        }
-                        // Debug: report unmatched
-                        const unmatched = incomes.filter(inc => !(inc as any).religion);
-                        if (unmatched.length > 0) {
-                            console.warn(`[getIncomes] ${unmatched.length} rows still missing religion after enrichment:`, unmatched.map(r => ({ nik: r.nik, name: (r as any).emp_name })).slice(0, 5));
                         }
                     }
                 } catch (hrErr) { console.error("Enrich error:", hrErr); }
@@ -362,16 +393,34 @@ export class OtherIncomesService {
             const hrMap = new Map<string, { join_date: any; emp_code: string }>();
             if (allNiks.length > 0) {
                 const placeholders = allNiks.map(() => '?').join(',');
-                const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string; AppJoinDate: any; AppJoinGrpDate: any }>(`
-                    SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, em.AppJoinDate, em.AppJoinGrpDate
+                const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string; AppJoinDate: any; AppJoinGrpDate: any; Status: string; GangCode: string; GangMember: string }>(`
+                    SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, em.AppJoinDate, em.AppJoinGrpDate, e.Status, RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember
                     FROM HR_EMPLOYEE e
                     LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                    LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
                     WHERE RTRIM(e.NewICNo) IN (${placeholders}) OR RTRIM(e.EmpCode) IN (${placeholders})
+                    ORDER BY 
+                        CASE WHEN e.Status = '1' THEN 0 ELSE 1 END,
+                        CASE WHEN gl.GangCode = '${gangCode || ''}' THEN 0 ELSE 1 END,
+                        em.AppJoinDate DESC, 
+                        e.EmpCode DESC
                 `, [...allNiks, ...allNiks]);
                 hrRows.forEach(r => {
                     const joinDate = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate);
-                    if (r.NewICNo) hrMap.set(r.NewICNo.trim().toUpperCase(), { join_date: joinDate, emp_code: r.EmpCode });
-                    if (r.EmpCode) hrMap.set(r.EmpCode.trim().toUpperCase(), { join_date: joinDate, emp_code: r.EmpCode });
+                    const nikKey = r.NewICNo?.trim().toUpperCase();
+                    const empKey = r.EmpCode.trim().toUpperCase();
+
+                    // Use GangMember as emp_code when gang matches
+                    const resolvedEmpCode = (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : r.EmpCode;
+                    const entry = { join_date: joinDate, emp_code: resolvedEmpCode };
+
+                    if (gangCode && r.GangCode === gangCode) {
+                        if (nikKey) hrMap.set(nikKey, entry);
+                        if (empKey) hrMap.set(empKey, entry);
+                    } else {
+                        if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, entry);
+                        if (empKey && !hrMap.has(empKey)) hrMap.set(empKey, entry);
+                    }
                 });
             }
 
@@ -392,7 +441,6 @@ export class OtherIncomesService {
                 if (nik) {
                     const upahDasar = row.upah_dasar || 0;
                     const berasRate = row.beras_rate || 0;
-                    // Formula Base: (UPAH_DASAR * 30) + (BERAS_RATE * 30) + MASA_KERJA_JUMLAH
                     const mathVars = {
                         UPAH_DASAR: upahDasar,
                         GAJI_POKOK: upahDasar * 30,
@@ -409,7 +457,6 @@ export class OtherIncomesService {
                     } catch { continue; }
 
                     let proportionDesc = '';
-                    // PROPORSI LOGIC: (Upah Pokok + Masa Kerja + Beras) * (Bulan + 1)/12
                     if (masaKerjaTahun === 0 && joinDateRaw) {
                         const jDate = new Date(joinDateRaw);
                         if (!isNaN(jDate.getTime())) {
@@ -426,40 +473,44 @@ export class OtherIncomesService {
                     if (thrAmount > 0) {
                         const incomeName = `Tunjangan Hari Raya${proportionDesc}`;
                         const existing = await db.query(`SELECT id FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND nik = ? AND income_type = 'THR'`, [year, month, nik]);
-                        if (existing?.length) {
-                            await db.query(`UPDATE employee_other_incomes SET amount = ?, income_name = ?, updated_at = GETDATE() WHERE id = ?`, [thrAmount, incomeName, existing[0].id]);
+
+                        // Prioritize the requested divisionCode (e.g. NRS) if it's specific
+                        const finalDivisionCode = (divisionCode && divisionCode !== 'ALL') ? divisionCode : (row.division_code || row.loc_code);
+
+                        if (existing?.length) { 
+                            await db.query(`UPDATE employee_other_incomes SET amount = ?, income_name = ?, division_code = ?, updated_at = GETDATE() WHERE id = ?`, [thrAmount, incomeName, finalDivisionCode, existing[0].id]); 
                         }
                         else {
                             await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at)
-                                VALUES (?, ?, ?, ?, ?, ?, 'THR', ?, ?, ?, ?, GETDATE(), GETDATE())`,
-                                [nik, row.nama || row.emp_name || '', row.division_code || divisionCode || null, row.gang_code || gangCode || null, year, month, incomeName, thrAmount, formulaConfig.is_paid_in_thp ? 1 : 0, formulaConfig.is_taxable ? 1 : 0]);
+                                VALUES (?, ?, ?, ?, ?, ?, 'THR', ?, ?, ?, ?, GETDATE(), GETDATE())`, 
+                                [nik, row.nama || row.emp_name || '', finalDivisionCode, row.gang_code || gangCode || null, year, month, incomeName, thrAmount, formulaConfig.is_paid_in_thp ? 1 : 0, formulaConfig.is_taxable ? 1 : 0]);
                         }
                         insertedCount++;
-                    }
-                }
+                    }                }
             }
             return { success: true, count: insertedCount };
         } catch (e: any) { return { success: false, count: 0, message: e.message }; }
     }
 
-    static async updateIncome(id: number, data: Partial<OtherIncome>): Promise<boolean> {
+    static async addIncome(data: any): Promise<OtherIncome | null> {
         const db = Database.getExtendedInstance();
         try {
-            const updates: string[] = [];
-            const params: any[] = [];
-            const updatableFields = ['amount', 'is_paid_in_thp', 'is_taxable', 'income_name', 'income_type'];
-            for (const field of updatableFields) {
-                if (data[field as keyof OtherIncome] !== undefined) {
-                    updates.push(`${field} = ?`);
-                    const value = data[field as keyof OtherIncome];
-                    params.push(typeof value === 'boolean' ? (value ? 1 : 0) : value);
-                }
-            }
-            if (updates.length > 0) {
-                updates.push(`updated_at = GETDATE()`);
-                params.push(id);
-                await db.query(`UPDATE employee_other_incomes SET ${updates.join(', ')} WHERE id = ?`, params);
-            }
+            const result = await db.query(`INSERT INTO employee_other_incomes 
+                (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at)
+                OUTPUT INSERTED.*
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())`,
+                [data.nik, data.emp_name, data.division_code, data.gang_code, data.period_year, data.period_month, data.income_type, data.income_name, data.amount, data.is_paid_in_thp ? 1 : 0, data.is_taxable ? 1 : 0]);
+            return result[0];
+        } catch (e) { return null; }
+    }
+
+    static async updateIncome(id: number, data: any): Promise<boolean> {
+        const db = Database.getExtendedInstance();
+        try {
+            await db.query(`UPDATE employee_other_incomes SET 
+                nik = ?, emp_name = ?, amount = ?, income_name = ?, is_paid_in_thp = ?, is_taxable = ?, updated_at = GETDATE()
+                WHERE id = ?`,
+                [data.nik, data.emp_name, data.amount, data.income_name, data.is_paid_in_thp ? 1 : 0, data.is_taxable ? 1 : 0, id]);
             return true;
         } catch (e) { return false; }
     }

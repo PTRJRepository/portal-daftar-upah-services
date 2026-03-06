@@ -14,6 +14,8 @@ import { historyDatabaseService, PayrollHistoryMaster, PayrollHistoryDetail, His
 import { dataExtractorService } from "./dataExtractorService";
 import { gangService } from "./gangService";
 import { PayrollDataService } from "./payrollDataService";
+import { employeeHrDataService } from "./employeeHrDataService";
+import { employeeGangHistoryService } from "./employeeGangHistoryService";
 
 export interface SeederResult {
     success: boolean;
@@ -304,6 +306,7 @@ export class HistorySeederService {
             total_gaji_pokok: 0,
             total_beras: 0,
             total_jabatan: 0,
+            total_call_jabatan: 0,
             total_masa_kerja: 0,
             total_lembur: 0,
             total_tunjangan: 0,
@@ -364,7 +367,7 @@ export class HistorySeederService {
             nik: emp.nik,  // PayrollRow.nik = actual KTP (NewICNo)
             gender: emp.jenis_kelamin || emp.gender,
             gang_code: emp.gang_code,
-            division_code: emp.division_code,
+            division_code: emp.loc_code, // Use resolved LocCode (e.g. NRS) as division_code
             loc_code: emp.loc_code,
             status_ptkp: emp.status_ptkp,
             kategori_ter: emp.kategori_ter,
@@ -621,7 +624,7 @@ export class HistorySeederService {
             let sql = `
                 SELECT 
                     g.GangCode, g.Description as GangDesc, g.LocCode,
-                    gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate
+                    gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate, e.NewICNo
                 FROM HR_GANG g
                 JOIN HR_GANGLN gl ON g.GangCode = gl.GangCode
                 JOIN HR_EMPLOYEE e ON gl.GangMember = e.EmpCode
@@ -637,21 +640,32 @@ export class HistorySeederService {
                 sql += ` AND g.GangCode = '${options.gangCode}'`;
             }
 
+            // Order by date to help with latest code resolution
+            sql += ` ORDER BY em.AppJoinGrpDate DESC`;
+
             const gangMembers = await db.query<any>(sql);
+            
+            // Resolve latest codes
+            const niks = gangMembers.map((r: any) => r.NewICNo?.trim()).filter(Boolean);
+            const latestEmpCodeMap = await employeeGangHistoryService.resolveLatestEmpCodes(niks);
 
             for (const row of gangMembers) {
+                const nikClean = row.NewICNo?.trim().toUpperCase() || "";
+                const latestEmpCode = latestEmpCodeMap.get(nikClean) || row.EmpCode;
+
                 const gangMemberData: HistoryGangMember = {
                     history_id: historyId,
                     gang_code: row.GangCode?.trim(),
                     gang_description: row.GangDesc?.trim(),
                     division_code: options.divisionCode || 'ALL',
                     loc_code: row.LocCode?.trim(),
-                    emp_code: row.EmpCode?.trim(),
+                    emp_code: latestEmpCode?.trim(),
                     emp_name: row.EmpName?.trim(),
+                    nik: row.NewICNo?.trim(),
+                    period_month: options.month,
+                    period_year: options.year,
                     join_date: row.AppJoinGrpDate,
                     is_active: true,
-                    period_month: options.periodMonth,
-                    period_year: options.periodYear,
                     source_table: 'HR_GANGLN'
                 };
 
@@ -722,19 +736,29 @@ export class HistorySeederService {
                 sql += ` AND g.GangCode = '${options.gangCode}'`;
             }
 
+            // ORDER BY to help with latest resolution
+            sql += ` ORDER BY em.AppJoinGrpDate DESC`;
+
             const employees = await db.query<any>(sql);
 
             if (!result.records_inserted['hr_employee']) {
                 result.records_inserted['hr_employee'] = 0;
             }
 
+            // Resolve latest codes
+            const niks = employees.map((r: any) => r.nik?.trim()).filter(Boolean);
+            const latestEmpCodeMap = await employeeGangHistoryService.resolveLatestEmpCodes(niks);
+
             for (const row of employees) {
+                const nikClean = row.nik?.trim().toUpperCase() || "";
+                const latestEmpCode = latestEmpCodeMap.get(nikClean) || row.emp_code;
+
                 const hrData: HistoryHrEmployee = {
                     history_id: historyId,
                     period_month: options.periodMonth,
                     period_year: options.periodYear,
                     nik: row.nik?.trim(),
-                    emp_code: row.emp_code?.trim(),
+                    emp_code: latestEmpCode?.trim(),
                     emp_name: row.emp_name?.trim(),
                     company_code: row.company_code?.trim(),
                     division_code: row.division_code?.trim(),

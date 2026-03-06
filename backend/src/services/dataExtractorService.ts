@@ -14,6 +14,8 @@ import { lemburService, premiService, tunjanganService, potonganService, pph21Te
 import { gajiPokokService } from "./payroll/components/GajiPokokService";
 import { manualAdjustmentService } from "./manualAdjustmentService";
 import { employeeHrDataService } from "./employeeHrDataService";
+import { divisionDefinition } from "./divisionDefinition";
+import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { OtherIncomesService } from "./otherIncomesService";
 import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
 
@@ -486,11 +488,22 @@ export class DataExtractorService {
             }
         }
 
+        // [NEW] Resolve latest EmpCodes with gang preference
+        const niksToResolve = employees.map(e => e.actual_nik).filter(Boolean) as string[];
+        const prefGangMap = new Map<string, string>();
+        if (gangCode && gangCode !== 'ALL') {
+            niksToResolve.forEach(nik => prefGangMap.set(nik.toUpperCase(), gangCode));
+        }
+        const latestEmpCodeMap = await employeeGangHistoryService.resolveLatestEmpCodes(niksToResolve, prefGangMap);
+
         const dataRows: PayrollRow[] = [];
         const dynamicPremiSet = new Set<string>();
         const dynamicPotonganSet = new Set<string>();
 
         for (const emp of employees) {
+            const nikClean = emp.actual_nik?.trim().toUpperCase() || "";
+            const latestEmpCode = latestEmpCodeMap.get(nikClean) || emp.emp_code;
+
             const attData = attendanceMap[emp.emp_code] || { hk: 0, total_hours: 0, shortage_count: 0, total_amount_rp: 0 };
             const hk = attData.hk;
             const empCuti = cuti[emp.emp_code] || { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
@@ -769,7 +782,7 @@ export class DataExtractorService {
             const tarif_pajak_ter = pph21TerResult.rate_percent; // Rate as percentage (e.g., 5 for 5%)
             const pph21_ter = pph21TerResult.tax_amount;
             const row: PayrollRow = {
-                emp_code: emp.emp_code,  // Actual EmpCode (e.g. A0023)
+                emp_code: latestEmpCode,  // Use resolved latest EmpCode
                 nik: emp.actual_nik || emp.emp_code,  // Actual NIK KTP (e.g. 1902050504860001)
                 nama: emp.emp_name,
                 jabatan_estate: empJobTitle,
@@ -946,6 +959,7 @@ export class DataExtractorService {
                     e.Gender as gender,
                     RTRIM(e.LocCode) as loc_code,
                     COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
+                    RTRIM(g.Description) as gang_desc,
                     COALESCE(p.PayRate, 0) as pay_rate,
                     COALESCE(p.RiceRation, 0) as beras_rate,
                     em.AppJoinGrpDate as join_date,
@@ -973,6 +987,7 @@ export class DataExtractorService {
                     e.Gender as gender,
                     RTRIM(e.LocCode) as loc_code,
                     RTRIM(gl.GangCode) as gang_code,
+                    RTRIM(g.Description) as gang_desc,
                     COALESCE(p.PayRate, 0) as pay_rate,
                     COALESCE(p.RiceRation, 0) as beras_rate,
                     em.AppJoinGrpDate as join_date,
@@ -1011,6 +1026,7 @@ export class DataExtractorService {
                         e.Gender as gender,
                         RTRIM(e.LocCode) as loc_code,
                         COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
+                        RTRIM(g.Description) as gang_desc,
                         COALESCE(p.PayRate, 0) as pay_rate,
                         COALESCE(p.RiceRation, 0) as beras_rate,
                         em.AppJoinGrpDate as join_date,
@@ -1041,6 +1057,12 @@ export class DataExtractorService {
 
         return rows.map((r: any) => {
             const rawGangCode = r.gang_code?.trim() || "";
+            const rawLocCode = r.loc_code?.trim() || "";
+            const rawDesc = r.gang_desc?.trim() || "";
+            
+            // Resolve display LocCode (checks for virtual divisions like NRS, INF, etc.)
+            const resolvedLocCode = divisionDefinition.getVirtualDivisionForGang(rawGangCode, rawLocCode, rawDesc) || rawLocCode;
+
             const empCodeClean = r.emp_code?.trim().toUpperCase() || "";
             const hrOverride = hrDataMap.get(empCodeClean);
 
@@ -1054,7 +1076,7 @@ export class DataExtractorService {
                 pajak_npwp: finalNpwp,
                 emp_name: r.emp_name?.trim() || "",
                 gender: String(r.gender || "1"),
-                loc_code: r.loc_code?.trim() || "",
+                loc_code: resolvedLocCode,
                 gang_code: rawGangCode, // Return exact fetched code
                 pay_rate: r.pay_rate || 0,
                 beras_rate: r.beras_rate || 0,

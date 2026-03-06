@@ -5,6 +5,7 @@ import { employeeDetailService } from "../services/employeeDetailService";
 import { lemburCalculator } from "../services/lemburCalculator";
 import { employeeRepository } from "../services/employeeRepository";
 import { dataExtractorService } from "../services/dataExtractorService";
+import { employeeCareerHistoryService } from "../services/employeeCareerHistoryService";
 import { Config } from "../config";
 import { User } from "../types/user";
 
@@ -694,6 +695,99 @@ employeeRoutes
             set.status = 500;
             return { error: error.message || "Failed to fetch HR changelog" };
         }
+    })
+    // ========================
+    // EMPLOYEE CAREER HISTORY TRACKING
+    // ========================
+    // --- Get Career Summary by NIK or EmpCode ---
+    .get("/career/:identifier", async ({ params, set }) => {
+        try {
+            const summary = await employeeCareerHistoryService.getCareerSummary(params.identifier);
+            if (!summary) {
+                set.status = 404;
+                return { error: "Employee not found" };
+            }
+            return summary;
+        } catch (error: any) {
+            console.error("[CareerSummary] Error:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to fetch career summary" };
+        }
+    })
+    // --- Get Career Timeline ---
+    .get("/career/:identifier/timeline", async ({ params, query, set }) => {
+        try {
+            const history = await employeeCareerHistoryService.getCareerHistory(params.identifier, {
+                fromYear: query.from_year ? parseInt(query.from_year) : undefined,
+                toYear: query.to_year ? parseInt(query.to_year) : undefined,
+                includeCurrent: query.include_current !== "false"
+            });
+            return { count: history.length, data: history };
+        } catch (error: any) {
+            console.error("[CareerTimeline] Error:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to fetch career timeline" };
+        }
+    }, {
+        query: t.Object({
+            from_year: t.Optional(t.String()),
+            to_year: t.Optional(t.String()),
+            include_current: t.Optional(t.String())
+        })
+    })
+    // --- Get Gang Changes (Perpindahan Gang) ---
+    .get("/career/:identifier/gang-changes", async ({ params, set }) => {
+        try {
+            const changes = await employeeCareerHistoryService.getGangChanges(params.identifier);
+            return { count: changes.length, data: changes };
+        } catch (error: any) {
+            console.error("[GangChanges] Error:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to fetch gang changes" };
+        }
+    })
+    // --- Search Career History by Name ---
+    .get("/career/search", async ({ query, set }) => {
+        try {
+            const name = query.name;
+            if (!name || name.length < 2) {
+                set.status = 400;
+                return { error: "Name must be at least 2 characters" };
+            }
+            const summaries = await employeeCareerHistoryService.searchByName(name, parseInt(query.limit || "20"));
+            return { count: summaries.length, data: summaries };
+        } catch (error: any) {
+            console.error("[CareerSearch] Error:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to search career history" };
+        }
+    }, {
+        query: t.Object({
+            name: t.String(),
+            limit: t.Optional(t.String())
+        })
+    })
+    // --- Get Gang Transfers by Period ---
+    .get("/career/transfers/:month/:year", async ({ params, set }) => {
+        try {
+            const month = parseInt(params.month);
+            const year = parseInt(params.year);
+            if (isNaN(month) || isNaN(year) || month < 1 || month > 12) {
+                set.status = 400;
+                return { error: "Invalid month or year" };
+            }
+            const transfers = await employeeCareerHistoryService.getGangTransfers(month, year);
+            return { count: transfers.length, data: transfers };
+        } catch (error: any) {
+            console.error("[GangTransfers] Error:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to fetch gang transfers" };
+        }
+    }, {
+        params: t.Object({
+            month: t.String(),
+            year: t.String()
+        })
     });
 
 // Helper function for month name
