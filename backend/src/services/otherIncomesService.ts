@@ -185,7 +185,7 @@ export class OtherIncomesService {
                 hrRows.forEach(r => {
                     const rawRel = (r.Religion || '').trim().toUpperCase();
                     const data = {
-                        religion: religionMap[rawRel] || rawRel,
+                        religion: religionMap[rawRel] || '01 Islam',
                         join_date: this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate),
                         emp_code: (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : (r.EmpCode?.trim() || ''),
                         bank_acc_no: r.BankAccNo || '', bank_code: r.BankCode || '',
@@ -312,10 +312,11 @@ export class OtherIncomesService {
                 'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
                 'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
             };
-            const mappedRel = religionMap[rawRowRel] || relRow;
+            const mappedRel = religionMap[rawRowRel] || relRow || '01 Islam';
 
             results.push({
                 nik, emp_name: row.nama || row.emp_name || '', division_code: divisionCode || row.loc_code, gang_code: row.gang_code, period_year: year, period_month: month, income_type: 'THR', income_name: `Tunjangan Hari Raya${propDesc}`, amount: thrAmt, is_paid_in_thp: true, is_taxable: true,
+                religion: mappedRel,
                 details: { formula: formulaConfig.formula, variables: { ...mathVars, JOIN_DATE: row.join_date, WORKING_MONTHS: workingMonths, PROPORTION_FACTOR: propFactor, RELIGION: mappedRel, SEX: row.jenis_kelamin === 'FEMALE' ? 'P' : 'L', EMP_CODE: row.emp_code } }
             });
         }
