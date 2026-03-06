@@ -219,21 +219,22 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 .sig-title { font-weight: 600; color: #333; font-size: 9px; margin-bottom: 50px; }
                 .sig-name { font-weight: 700; border-bottom: 1.5px solid #000; display: inline-block; min-width: 85%; color: #000; }
                 .sig-role { font-size: 8px; font-weight: 600; color: #555; margin-top: 2px; }
-                .col-no { width: 3%; }
-                .col-sex { width: 2.5%; }
-                .col-name { width: 18%; }
-                .col-agama { width: 6.5%; }
-                .col-tgl { width: 7.5%; }
-                .col-updasar { width: 8.5%; }
-                .col-uppokok { width: 9.5%; }
-                .col-brate { width: 5.5%; }
-                .col-bjml { width: 7.5%; }
-                .col-mkthn { width: 3.5%; }
-                .col-mkjml { width: 7.5%; }
-                .col-kotor { width: 9%; }
-                .col-pajak { width: 6.5%; }
-                .col-kelayakan { width: 10%; }
-                .col-bersih { width: 10%; }
+                .col-no { width: 2.5%; }
+                .col-sex { width: 2%; }
+                .col-name { width: 16%; }
+                .col-agama { width: 5%; }
+                .col-tgl { width: 6%; }
+                .col-hk { width: 2.5%; }
+                .col-updasar { width: 7.5%; white-space: nowrap; }
+                .col-uppokok { width: 8.5%; white-space: nowrap; }
+                .col-brate { width: 5%; white-space: nowrap; }
+                .col-bjml { width: 6.5%; white-space: nowrap; }
+                .col-mkthn { width: 3%; }
+                .col-mkjml { width: 6.5%; white-space: nowrap; }
+                .col-kotor { width: 7.5%; white-space: nowrap; }
+                .col-pajak { width: 5%; white-space: nowrap; }
+                .col-kelayakan { width: 8%; }
+                .col-bersih { width: 8.5%; white-space: nowrap; }
                 @media print { .no-print { display: none; } @page { size: ${orientation}; margin: 6mm; } .report-container { padding: 0; } body { font-size: ${baseFontSize}; } }
             </style>
             <div class="report-container">
@@ -261,6 +262,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                             <th rowspan="3" class="col-name">NAMA KARYAWAN<br/>NIK / CODE</th>
                             <th rowspan="3" class="col-agama">AGAMA</th>
                             <th rowspan="3" class="col-tgl">TGL<br/>MASUK</th>
+                            <th rowspan="3" class="col-hk">HK</th>
                             <th rowspan="3" class="col-updasar">UPAH<br/>DASAR</th>
                             <th rowspan="3" class="col-uppokok">UPAH POKOK<br/>(30 HK)</th>
                             <th colspan="2">TUNJANGAN</th>
@@ -297,7 +299,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     const gangKotor = gangRows.reduce((a, c) => a + (c.amount || 0), 0);
                     const gangPajak = gangRows.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0);
                     const gangBersih = gangKotor - gangPajak;
-                    const gangHeader = hasMultipleGangs ? `<tr><td colspan="15" style="background-color:#e2e8f0; font-weight:800; font-size:${isPortrait ? '7.5px' : '10px'}; padding:5px 8px; border:1px solid #666; color:#1e293b;">GANG: ${gangCode} &nbsp;&nbsp;(${gangRows.length} Karyawan)</td></tr>` : '';
+                    const gangHeader = hasMultipleGangs ? `<tr><td colspan="16" style="background-color:#e2e8f0; font-weight:800; font-size:${isPortrait ? '7.5px' : '10px'}; padding:5px 8px; border:1px solid #666; color:#1e293b;">GANG: ${gangCode} &nbsp;&nbsp;(${gangRows.length} Karyawan)</td></tr>` : '';
                     const rows = gangRows.map(row => {
                         globalNo++;
                         const vars = row.details?.variables || {};
@@ -342,26 +344,28 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                                 <td class="text-right font-bold" style="color:#1a365d">${formatCurrency(upahBersih)}</td>
                             </tr>`;
                     }).join('');
-                    const gangSubtotal = hasMultipleGangs ? `<tr style="background-color:#fef3c7; font-weight:700; border-top:2px solid #000;"><td colspan="11" class="text-right" style="font-size:${isPortrait ? '6.5px' : '8.5px'}; padding:4px 6px;">SUBTOTAL ${gangCode} (${gangRows.length} karyawan)</td><td class="text-right" style="font-weight:800">${formatCurrency(gangKotor)}</td><td class="text-right">${formatCurrency(gangPajak)}</td><td></td><td class="text-right" style="font-weight:800; color:#1a365d">${formatCurrency(gangBersih)}</td></tr>` : '';
+                    const gangSubtotal = hasMultipleGangs ? `<tr style="background-color:#fef3c7; font-weight:700; border-top:2px solid #000;"><td colspan="12" class="text-right" style="font-size:${isPortrait ? '6.5px' : '8.5px'}; padding:4px 6px;">SUBTOTAL ${gangCode} (${gangRows.length} karyawan)</td><td class="text-right" style="font-weight:800">${formatCurrency(gangKotor)}</td><td class="text-right">${formatCurrency(gangPajak)}</td><td></td><td class="text-right" style="font-weight:800; color:#1a365d">${formatCurrency(gangBersih)}</td></tr>` : '';
                     return gangHeader + rows + gangSubtotal;
                 }).join('');
             })()}
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="11" class="text-right">TOTAL KESELURUHAN (${data.length} Karyawan)</th>
+                            <th colspan="12" class="text-right">TOTAL KESELURUHAN (${data.length} Karyawan)</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount || 0), 0))}</th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.is_taxable ? Math.round(c.amount * 0.05) : 0), 0))}</th>
                             <th></th>
                             <th class="text-right">${formatCurrency(data.reduce((a, c) => a + (c.amount - (c.is_taxable ? Math.round(c.amount * 0.05) : 0)), 0))}</th>
                         </tr>
-                    </tfoot>
-                </table>
-                <div class="signature-section">
-                    <div class="sig-box"><div class="sig-title">Dibuat Oleh,</div><div class="sig-name"></div><div class="sig-role">KTU / Kerani</div></div>
-                    <div class="sig-box"><div class="sig-title">Diperiksa Oleh,</div><div class="sig-name"></div><div class="sig-role">Estate Manager</div></div>
-                    <div class="sig-box"><div class="sig-title">Disetujui Oleh,</div><div class="sig-name"></div><div class="sig-role">Senior Manager</div></div>
-                </div>
+                    .sig-box { text-align: center; width: 23%; }
+                    ...
+                    <div class="signature-section">
+                        <div class="sig-box"><div class="sig-title">Dibuat Oleh,</div><div class="sig-name"></div><div class="sig-role">KTU / Kerani</div></div>
+                        <div class="sig-box"><div class="sig-title">Diperiksa Oleh,</div><div class="sig-name"></div><div class="sig-role">Asisten Manager</div></div>
+                        <div class="sig-box"><div class="sig-title">Diketahui Oleh,</div><div class="sig-name"></div><div class="sig-role">Estate Manager</div></div>
+                        <div class="sig-box"><div class="sig-title">Disetujui Oleh,</div><div class="sig-name"></div><div class="sig-role">Senior Manager</div></div>
+                    </div>
+
             </div>
         `;
     };
@@ -397,6 +401,11 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 .text-center { text-align: center; }
                 tfoot td, tfoot th { font-weight: 700; border-top: 2px solid #000; }
                 .col-no { width: 4%; } .col-bankno { width: 22%; } .col-amount { width: 18%; } .col-name { width: 30%; } .col-bankcode { width: 12%; } .col-empcode { width: 14%; }
+                .signature-section { margin-top: 30px; display: flex; justify-content: space-between; page-break-inside: avoid; }
+                .sig-box { text-align: center; width: 23%; }
+                .sig-title { font-weight: 600; color: #333; font-size: 10px; margin-bottom: 50px; }
+                .sig-name { font-weight: 700; border-bottom: 1.5px solid #000; display: inline-block; min-width: 85%; color: #000; }
+                .sig-role { font-size: 9px; font-weight: 600; color: #555; margin-top: 2px; }
                 @media print { @page { size: portrait; margin: 8mm; } body { padding: 0; } .page { padding: 5mm 8mm; } }
             </style>
             ${pages.map((pageData, pageIndex) => `
@@ -412,11 +421,18 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                 <table>
                     <thead><tr><th class="col-no">.</th><th class="col-bankno">Bank Acc. No.</th><th class="col-amount">Amount</th><th class="col-name">Employee Name</th><th class="col-bankcode">Bank Code</th><th class="col-empcode">Employee Code</th></tr></thead>
                     <tbody>${pageData.map((row, index) => {
-                const upahBersih = (row.amount || 0) - (row.is_taxable ? Math.round((row.amount || 0) * 0.05) : 0);
-                return `<tr><td class="text-center">${pageIndex * rowsPerPage + index + 1}</td><td>${row.bank_acc_no || row.details?.variables?.BANK_ACC_NO || ''}</td><td class="text-right">${formatAmount(upahBersih)}</td><td>${row.emp_name}</td><td class="text-center">${row.bank_code || row.details?.variables?.BANK_CODE || 'BRI'}</td><td class="text-center">${row.emp_code || row.details?.variables?.EMP_CODE || row.nik}</td></tr>`;
-            }).join('')}</tbody>
+            const upahBersih = (row.amount || 0) - (row.is_taxable ? Math.round((row.amount || 0) * 0.05) : 0);
+            return `<tr><td class="text-center">${pageIndex * rowsPerPage + index + 1}</td><td>${row.bank_acc_no || row.details?.variables?.BANK_ACC_NO || ''}</td><td class="text-right">${formatAmount(upahBersih)}</td><td>${row.emp_name}</td><td class="text-center">${row.bank_code || row.details?.variables?.BANK_CODE || 'BRI'}</td><td class="text-center">${row.emp_code || row.details?.variables?.EMP_CODE || row.nik}</td></tr>`;
+        }).join('')}</tbody>
                     ${pageIndex === pages.length - 1 ? `<tfoot><tr><td colspan="2" class="text-right" style="font-weight:700">TOTAL</td><td class="text-right" style="font-weight:700">${formatAmount(totalTransfer)}</td><td colspan="3" style="font-weight:700">${data.length} Karyawan</td></tr></tfoot>` : ''}
                 </table>
+                ${pageIndex === pages.length - 1 ? `
+                <div class="signature-section">
+                    <div class="sig-box"><div class="sig-title">Dibuat Oleh,</div><div class="sig-name"></div><div class="sig-role">KTU / Kerani</div></div>
+                    <div class="sig-box"><div class="sig-title">Diperiksa Oleh,</div><div class="sig-name"></div><div class="sig-role">Asisten Manager</div></div>
+                    <div class="sig-box"><div class="sig-title">Diketahui Oleh,</div><div class="sig-name"></div><div class="sig-role">Estate Manager</div></div>
+                    <div class="sig-box"><div class="sig-title">Disetujui Oleh,</div><div class="sig-name"></div><div class="sig-role">Senior Manager</div></div>
+                </div>` : ''}
             </div>`).join('')}
         `;
     };
@@ -518,7 +534,7 @@ const OtherIncomesPage = ({ onBack, initialMonth, initialYear, initialDivision }
                     <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         <div style={{ padding: '0.75rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}><select value={division} onChange={e => { setDivision(e.target.value); setGangPrefix(''); }} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}><option value="ALL">SEMUA DIVISI</option>{allDivisions.map(d => <option key={d} value={d}>{d}</option>)}</select><select value={gangPrefix} onChange={e => setGangPrefix(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: `1px solid ${gangPrefix ? '#93c5fd' : '#cbd5e1'}`, backgroundColor: gangPrefix ? '#eff6ff' : 'white', fontWeight: gangPrefix ? 600 : 400 }}><option value="">SEMUA GROUP</option>{availablePrefixes.map(p => <option key={p} value={p}>Group {p}</option>)}</select><select value={gang} onChange={e => setGang(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}><option value="ALL">SEMUA GANG{gangPrefix ? ` (Group ${gangPrefix})` : ''}</option>{filteredGangs.map(g => <option key={g.gang_code} value={g.gang_code}>{g.gang_code}</option>)}</select><select value={filterReligion} onChange={e => setFilterReligion(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>{RELIGION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>{isLivePreview && (<button onClick={handleBulkSaveTHR} disabled={isSaving} style={{ padding: '0.4rem 0.8rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', boxShadow: '0 0 8px rgba(16,185,129,0.4)' }}><Save size={16} /> {isSaving ? 'Menyimpan...' : 'Simpan ke Database'}</button>)}<button onClick={handleLivePreviewTHR} disabled={loading || isCalculating} style={{ padding: '0.4rem 0.8rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Calculator size={16} /> Kalkulasi Live</button><button onClick={fetchIncomes} disabled={loading || isCalculating} style={{ padding: '0.4rem 0.8rem', background: 'white', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><RefreshCw size={16} className={loading ? 'spin' : ''} /> {isLivePreview ? 'Batalkan' : 'Refresh'}</button><div style={{ width: '1px', background: '#e2e8f0', margin: '0 4px' }}></div><button onClick={() => setIsPreviewModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}><Eye size={16} /> Preview Print</button><button onClick={handleExportExcelTHR} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}><FileSpreadsheet size={16} /> Export</button></div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>{isLivePreview && (<button onClick={handleBulkSaveTHR} disabled={isSaving} style={{ padding: '0.4rem 0.8rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', boxShadow: '0 0 8px rgba(16,185,129,0.4)' }}><Save size={16} /> {isSaving ? 'Menyimpan...' : 'Simpan ke Database'}</button>)}<button onClick={handleLivePreviewTHR} disabled={loading || isCalculating} style={{ padding: '0.4rem 0.8rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Calculator size={16} /> Kalkulasi Live</button><button onClick={fetchIncomes} disabled={loading || isCalculating} style={{ padding: '0.4rem 0.8rem', background: 'white', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><RefreshCw size={16} className={loading ? 'spin' : ''} /> {isLivePreview ? 'Batalkan' : 'Refresh'}</button><div style={{ width: '1px', background: '#e2e8f0', margin: '0 4px' }}></div><button onClick={() => setReportView('BANK_LIST')} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}><Printer size={16} /> Bank List</button><button onClick={() => setIsPreviewModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}><Eye size={16} /> Preview Print</button><button onClick={handleExportExcelTHR} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}><FileSpreadsheet size={16} /> Export</button></div>
                         </div>
                         <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0 }}>{(isCalculating || isSaving) && (<div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}><RefreshCw size={48} className="spin" style={{ color: isSaving ? '#10b981' : '#f59e0b', marginBottom: '1rem' }} /><h3 style={{ margin: 0 }}>{isSaving ? 'Menyimpan ke Database...' : 'Mengkalkulasi THR...'}</h3><p style={{ color: '#64748b' }}>Mohon tunggu sebentar.</p></div>)}{isLivePreview && (<div style={{ padding: '0.5rem 1rem', background: '#fffbeb', borderBottom: '1px solid #fef3c7', color: '#b45309', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><AlertCircle size={14} /> <strong>Mode Pratinjau:</strong> Data di bawah adalah hasil kalkulasi sistem terbaru. Tekan tombol <strong>Simpan ke Database</strong> untuk mempermanenkan.</div>)}<ReportTable columns={reportColumns} data={displayData} footerData={displayData.length > 0 ? footerData : null} footerLabel="TOTAL KESELURUHAN" footerLabelColSpan={11} statusBar={<><strong>Total:</strong> {displayData.length} karyawan</>} /></div>
                     </div>
