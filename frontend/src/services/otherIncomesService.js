@@ -51,6 +51,24 @@ export const otherIncomesService = {
         }
     },
 
+    deleteByPeriod: async (year, month, divisionCode, gangCode) => {
+        try {
+            const params = new URLSearchParams({
+                year: year.toString(),
+                month: month.toString()
+            });
+
+            if (divisionCode) params.append('divisionCode', divisionCode);
+            if (gangCode) params.append('gangCode', gangCode);
+
+            const response = await api.delete(`/other-incomes/delete-by-period?${params.toString()}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error deleting by period:', error);
+            throw error;
+        }
+    },
+
     calculateTHR: async (year, month, divisionCode, gangCode) => {
         try {
             const data = { year, month };

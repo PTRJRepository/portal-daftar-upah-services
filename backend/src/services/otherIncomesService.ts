@@ -135,7 +135,14 @@ export class OtherIncomesService {
                     
                     // Also find all virtual divisions that map to this source division
                     const virtuals = await divisionDefinition.getVirtualDivisionsForSource(sd);
-                    virtuals.forEach(v => allPossibleDivs.add(v));
+                    virtuals.forEach(v => {
+                        const config = divisionDefinition.getVirtualDivisionConfig(v);
+                        // Only auto-include if NOT excluded from source.
+                        // If it IS excluded, it has its own entry in the dropdown and shouldn't mix.
+                        if (!config?.exclude_from_source) {
+                            allPossibleDivs.add(v);
+                        }
+                    });
                 }
                 const divList = Array.from(allPossibleDivs);
                 sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
@@ -315,8 +322,17 @@ export class OtherIncomesService {
             const mappedRel = religionMap[rawRowRel] || relRow || '01 Islam';
 
             results.push({
-                nik, emp_name: row.nama || row.emp_name || '', division_code: divisionCode || row.loc_code, gang_code: row.gang_code, period_year: year, period_month: month, income_type: 'THR', income_name: `Tunjangan Hari Raya${propDesc}`, amount: thrAmt, is_paid_in_thp: true, is_taxable: true,
-                religion: mappedRel,
+                nik, 
+                emp_name: row.nama || row.emp_name || '', 
+                division_code: row.loc_code || divisionCode || row.division_code, 
+                gang_code: row.gang_code, 
+                period_year: year, 
+                period_month: month, 
+                income_type: 'THR', 
+                income_name: `Tunjangan Hari Raya${propDesc}`, 
+                amount: thrAmt, 
+                is_paid_in_thp: true, 
+                is_taxable: true,
                 details: { formula: formulaConfig.formula, variables: { ...mathVars, JOIN_DATE: row.join_date, WORKING_MONTHS: workingMonths, PROPORTION_FACTOR: propFactor, RELIGION: mappedRel, SEX: row.jenis_kelamin === 'FEMALE' ? 'P' : 'L', EMP_CODE: row.emp_code } }
             });
         }
@@ -327,31 +343,43 @@ export class OtherIncomesService {
         if (!incomes.length) return { success: true, count: 0 };
         const db = Database.getExtendedInstance(); let count = 0;
         try {
-            // Determine unique groups to clear before inserting
-            const groupsToClear = new Set<string>();
-            for (const inc of incomes) {
-                const gangOrDiv = inc.gang_code ? `GANG|${inc.gang_code}` : `DIV|${inc.division_code}`;
-                groupsToClear.add(`${inc.period_year}|${inc.period_month}|${inc.income_type}|${gangOrDiv}`);
-            }
+            // Process in smaller batches to avoid connection timeouts for large datasets
+            const batchSize = 50;
+            for (let i = 0; i < incomes.length; i += batchSize) {
+                const batch = incomes.slice(i, i + batchSize);
+                for (const inc of batch) {
+                    // 1. Delete existing record for this NIK + Period + Type
+                    // This ensures absolute uniqueness regardless of gang/division changes
+                    await db.query(`
+                        DELETE FROM employee_other_incomes 
+                        WHERE period_year = ? 
+                          AND period_month = ? 
+                          AND RTRIM(nik) = ? 
+                          AND income_type = ?
+                    `, [inc.period_year, inc.period_month, inc.nik.trim(), inc.income_type]);
 
-            // Clear old data for these groups
-            for (const group of groupsToClear) {
-                const [year, month, type, level, code] = group.split('|');
-                if (level === 'GANG') {
-                    await db.query(`DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND income_type = ? AND gang_code = ?`, [year, month, type, code]);
-                } else {
-                    await db.query(`DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND income_type = ? AND division_code = ? AND (gang_code IS NULL OR gang_code = '')`, [year, month, type, code]);
+                    // 2. Insert new calculated record
+                    await db.query(`
+                        INSERT INTO employee_other_incomes (
+                            nik, emp_name, division_code, gang_code, 
+                            period_year, period_month, income_type, 
+                            income_name, amount, is_paid_in_thp, is_taxable, 
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
+                    `, [
+                        inc.nik, inc.emp_name, inc.division_code, inc.gang_code, 
+                        inc.period_year, inc.period_month, inc.income_type, 
+                        inc.income_name, inc.amount, 
+                        inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0
+                    ]);
+                    count++;
                 }
             }
-
-            for (const inc of incomes) {
-                // We no longer need to delete per NIK here since we cleared the whole division/gang
-                await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())`,
-                    [inc.nik, inc.emp_name, inc.division_code, inc.gang_code, inc.period_year, inc.period_month, inc.income_type, inc.income_name, inc.amount, inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0]);
-                count++;
-            }
             return { success: true, count };
-        } catch (e) { return { success: false, count }; }
+        } catch (e) { 
+            console.error("Bulk save error:", e);
+            return { success: false, count }; 
+        }
     }
 
     static async addIncome(data: any): Promise<OtherIncome | null> {
@@ -386,6 +414,44 @@ export class OtherIncomesService {
         const db = Database.getExtendedInstance();
         try { await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [id]); return true; }
         catch (e) { return false; }
+    }
+
+    static async deleteIncomesByPeriod(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<{ success: boolean; count: number }> {
+        const db = Database.getExtendedInstance();
+        try {
+            let sql = `DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
+            const params: any[] = [year, month];
+
+            if (divisionCode && divisionCode !== 'ALL') {
+                const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+                const allPossibleDivs = new Set<string>([divisionCode]);
+                for (const sd of sourceDivs) {
+                    allPossibleDivs.add(sd);
+                    if (sd.startsWith('P') && sd.length === 3) allPossibleDivs.add('PG' + sd.substring(1));
+                    if (sd.startsWith('PG') && sd.length === 4) allPossibleDivs.add('P' + sd.substring(2));
+                    
+                    const virtuals = await divisionDefinition.getVirtualDivisionsForSource(sd);
+                    virtuals.forEach(v => {
+                        const config = divisionDefinition.getVirtualDivisionConfig(v);
+                        if (!config?.exclude_from_source) allPossibleDivs.add(v);
+                    });
+                }
+                const divList = Array.from(allPossibleDivs);
+                sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
+                params.push(...divList);
+            }
+
+            if (gangCode && gangCode !== 'ALL') {
+                sql += ` AND gang_code = ?`;
+                params.push(gangCode);
+            }
+
+            const result = await db.query(sql, params);
+            return { success: true, count: 0 }; // mssql-node might not return row count easily here
+        } catch (e: any) {
+            console.error("deleteIncomesByPeriod error:", e);
+            return { success: false, count: 0 };
+        }
     }
 
     // calculateAndSaveTHR: calculates THR for all employees and saves to DB

@@ -732,30 +732,41 @@ export class HistoryDatabaseService {
         console.log(`[DEBUG] detailQuery: ${detailQuery}`, detailParams);
         const details = await db.query<any>(detailQuery, detailParams);
 
-        // Filter details if it's a virtual division and gangCode is ALL
+        // Filter details if it's a virtual division or real division needing exclusion
         let finalDetails = details;
         if (divisionCode && gangCode === "ALL") {
-            if (divisionDefinition.isVirtualDivision(divisionCode)) {
+            const isVirtual = divisionDefinition.isVirtualDivision(divisionCode);
+            if (isVirtual) {
                 const virtualGangs = await divisionDefinition.getGangsForDivision(divisionCode, false);
                 const virtualGangCodes = new Set(virtualGangs.map(g => g.gang_code.toUpperCase()));
                 const filtered = details.filter((d: any) => virtualGangCodes.has(d.gang_code?.trim()?.toUpperCase()));
-                console.log(`[DEBUG] Virtual Division Filter (${divisionCode}): Reduced ${details.length} to ${filtered.length} rows. VirtualGangs: ${[...virtualGangCodes].join(',')}`);
-                // Fallback: if virtual gang filter results in empty rows, use all source division details
+                console.log(`[DEBUG] Virtual Division Filter (${divisionCode}): Reduced ${details.length} to ${filtered.length} rows.`);
                 finalDetails = filtered.length > 0 ? filtered : details;
             } else {
-                // If it's a REAL division, we must EXCLUDE gangs that belong to virtual divisions
-                // e.g. If P1A is selected, exclude gangs starting with 'IN' (INFRA) or 'AMC' (Workshop)
-                const virtDivs = await divisionDefinition.getVirtualDivisionsForSource(divisionCode);
-                if (virtDivs.length > 0) {
-                    const allExcludedGangs = new Set<string>();
-                    for (const v of virtDivs) {
-                        const vGangs = await divisionDefinition.getGangsForDivision(v, false);
-                        vGangs.forEach(g => allExcludedGangs.add(g.gang_code.toUpperCase()));
+                // REAL division: exclude gangs that belong to virtual divisions with exclude_from_source=true
+                const filtered = [];
+                for (const d of details) {
+                    const gCode = d.gang_code?.trim()?.toUpperCase() || "";
+                    const lCode = d.loc_code?.trim()?.toUpperCase() || d.division_code?.trim()?.toUpperCase() || "";
+                    const desc = d.gang_description?.trim() || d.task_desc?.trim() || "";
+                    
+                    let virtDiv = divisionDefinition.getVirtualDivisionForGang(gCode, lCode, desc);
+                    
+                    // Fallback: if not found by strict loc_code + pattern, check by pattern only for exclusions
+                    if (!virtDiv) {
+                        virtDiv = divisionDefinition.getVirtualDivisionByPatternOnly(gCode, desc);
                     }
-                    const filtered = details.filter((d: any) => !allExcludedGangs.has(d.gang_code?.trim()?.toUpperCase()));
-                    console.log(`[DEBUG] Real Division Filter (${divisionCode}): Excluded ${details.length - filtered.length} virtual gang rows.`);
-                    finalDetails = filtered;
+
+                    if (virtDiv) {
+                        const config = divisionDefinition.getVirtualDivisionConfig(virtDiv);
+                        if (config?.exclude_from_source) {
+                            // This gang belongs to a virtual division that should be excluded from its source
+                            continue;
+                        }
+                    }
+                    filtered.push(d);
                 }
+                finalDetails = filtered;
             }
         }
 
@@ -810,7 +821,11 @@ export class HistoryDatabaseService {
             const finalNpwp = hrOverride?.npwp?.trim() || "";
             const finalReligion = histReligion || liveHr?.Religion || "01 Islam";
 
-            const resolvedLocCode = divisionDefinition.getVirtualDivisionForGang(d.gang_code, d.loc_code || d.division_code, d.gang_description || d.task_desc || "") || d.loc_code || d.division_code;
+            const gCodeTrimmed = (d.gang_code || '').trim();
+            const locCodeTrimmed = (d.loc_code || d.division_code || '').trim();
+            const descTrimmed = (d.gang_description || d.task_desc || '').trim();
+
+            const resolvedLocCode = divisionDefinition.getVirtualDivisionForGang(gCodeTrimmed, locCodeTrimmed, descTrimmed) || locCodeTrimmed;
 
             const row: any = {
                 nik: finalNik,
@@ -824,7 +839,7 @@ export class HistoryDatabaseService {
                 status_ptkp: d.status_ptkp,
                 kategori_ter: d.kategori_ter,
                 loc_code: resolvedLocCode,
-                gang_code: d.gang_code,
+                gang_code: gCodeTrimmed,
                 division_code: resolvedLocCode,
                 upah_dasar: parseFloat(d.upah_dasar) || 0,
                 jumlah_hk: parseFloat(d.jumlah_hk) || 0,

@@ -19,7 +19,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [filterReligion, setFilterReligion] = useState('ALL');
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
-    const [printOrientation, setPrintOrientation] = useState('landscape');
+    const [printOrientation, setPrintOrientation] = useState('portrait');
     const [previewType, setPreviewType] = useState('MAIN');
 
     const RELIGION_OPTIONS = [
@@ -133,7 +133,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         const displayYear = month === 12 ? year + 1 : year;
         const mName = getMonthName(displayMonth);
         const isPortrait = orient === 'portrait';
-        const fs = isPortrait ? '7pt' : '8pt';
+        const fs = isPortrait ? '6.2pt' : '8pt';
 
         const groupedData = {};
         let totalPenuh = 0;
@@ -168,20 +168,23 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 .co { font-weight: bold; text-transform: uppercase; font-size: 1.2em; }
                 .tit { text-align: center; font-weight: 800; font-size: 1.4em; margin: 0 0 10px 0; text-transform: uppercase; }
                 .summary-cards { display: flex; gap: 8px; margin-bottom: 15px; page-break-inside: avoid; }
-                .card { flex: 1; border: 1pt solid #000; padding: 5px; text-align: center; background: #fff; -webkit-print-color-adjust: exact; box-shadow: 2px 2px 0px rgba(0,0,0,0.1); }
-                .card-title { font-size: 0.85em; font-weight: bold; color: #555; text-transform: uppercase; margin-bottom: 3px; }
-                .card-value { font-size: 1.2em; font-weight: 900; color: #000; }
-                .card-sub { font-size: 0.75em; color: #666; margin-top: 2px; }
+                .card { flex: 1; border: 1pt solid #000; padding: 4px; text-align: center; background: #fff; -webkit-print-color-adjust: exact; box-shadow: 1px 1px 0px rgba(0,0,0,0.1); }
+                .card-title { font-size: 0.8em; font-weight: bold; color: #555; text-transform: uppercase; margin-bottom: 2px; }
+                .card-value { font-size: 1.1em; font-weight: 900; color: #000; }
+                .card-sub { font-size: 0.7em; color: #666; margin-top: 1px; }
                 .meta { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; border: 1pt solid #000; padding: 5px; background: #eee; -webkit-print-color-adjust: exact; }
-                table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1.5pt solid #000; }
-                th, td { border: 0.5pt solid #000; padding: 3px 2px; overflow: hidden; word-wrap: break-word; }
+                table { width: 100%; border-collapse: collapse; table-layout: auto; border: 1.2pt solid #000; }
+                th, td { border: 0.5pt solid #000; padding: 2px 2px; overflow: hidden; word-wrap: break-word; }
                 thead th { background-color: #000 !important; color: #fff !important; font-weight: bold; text-align: center; -webkit-print-color-adjust: exact; font-size: 0.85em; }
                 tbody tr:nth-child(even) { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; }
                 .tr { text-align: right; white-space: nowrap; } .tc { text-align: center; } .fb { font-weight: bold; }
-                .prp { font-size: 0.75em; font-weight: bold; background-color: #ef4444; color: #fff; padding: 2px 4px; border-radius: 3px; display: inline-block; margin-top: 3px; -webkit-print-color-adjust: exact; }
+                .prp { font-size: 0.75em; font-weight: bold; background-color: #ef4444; color: #fff; padding: 1px 3px; border-radius: 2px; display: inline-block; margin-top: 2px; -webkit-print-color-adjust: exact; }
                 tfoot th { background-color: #000 !important; color: #fff !important; -webkit-print-color-adjust: exact; }
                 .gh { background-color: #e2e8f0; font-weight: 800; text-align: left; padding: 4px 6px; border: 1pt solid #000; }
                 .gang-sub { background-color: #f9fafb; font-weight: bold; font-style: italic; }
+                .fit { width: 1%; white-space: nowrap; }
+                .name-col { width: auto; min-width: 100px; }
+                .num { font-size: 0.95em; letter-spacing: -0.2px; }
             </style>
             
             <div class="header-container">
@@ -203,12 +206,12 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     <div class="card-sub">${totalProporsi} Proporsi</div>
                 </div>
                 <div class="card">
-                    <div class="card-title">Total Tunj. Masa Kerja</div>
+                    <div class="card-title">Tunj. Masa Kerja</div>
                     <div class="card-value">${formatCurrency(totalMasaKerja)}</div>
                     <div class="card-sub">Rupiah</div>
                 </div>
                 <div class="card">
-                    <div class="card-title">Total Tunj. Beras</div>
+                    <div class="card-title">Tunj. Beras</div>
                     <div class="card-value">${formatCurrency(totalBeras)}</div>
                     <div class="card-sub">Rupiah</div>
                 </div>
@@ -218,9 +221,27 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             
             <table>
                 <thead>
-                    <tr><th rowspan="3" style="width:25px">NO</th><th rowspan="3" style="width:20px">L/P</th><th rowspan="3">NAMA KARYAWAN / NIK</th><th rowspan="3" style="width:45px">AGAMA</th><th rowspan="3" style="width:60px">TGL MASUK</th><th rowspan="3" style="width:65px">UPAH DASAR</th><th rowspan="3" style="width:65px">UPAH POKOK<br/>(30 HK)</th><th colspan="2">TUNJANGAN</th><th colspan="2">MASA KERJA</th><th rowspan="3" style="width:70px">UPAH KOTOR</th><th rowspan="3" style="width:55px">PAJAK THR</th><th rowspan="3" style="width:60px">KELAYAKAN</th><th rowspan="3" style="width:75px">UPAH BERSIH</th></tr>
-                    <tr><th colspan="2">BERAS</th><th colspan="2">PENGABDIAN</th></tr>
-                    <tr><th style="width:45px">RATE</th><th style="width:55px">JUMLAH</th><th style="width:25px">THN</th><th style="width:55px">JUMLAH</th></tr>
+                    <tr>
+                        <th rowspan="2" class="fit">NO</th>
+                        <th rowspan="2" class="fit">L/P</th>
+                        <th rowspan="2" class="name-col">NAMA KARYAWAN / NIK</th>
+                        <th rowspan="2" class="fit">AGAMA</th>
+                        <th rowspan="2" class="fit">TGL MASUK</th>
+                        <th rowspan="2" class="fit">UPAH DASAR</th>
+                        <th rowspan="2" class="fit">UPAH POKOK<br/>(30 HK)</th>
+                        <th colspan="2" class="fit">TUNJANGAN BERAS</th>
+                        <th colspan="2" class="fit">MASA KERJA</th>
+                        <th rowspan="2" class="fit">UPAH KOTOR</th>
+                        <th rowspan="2" class="fit">PAJAK THR</th>
+                        <th rowspan="2" class="fit">KELAYAKAN</th>
+                        <th rowspan="2" class="fit">UPAH BERSIH</th>
+                    </tr>
+                    <tr>
+                        <th class="fit">RATE</th>
+                        <th class="fit">JUMLAH</th>
+                        <th class="fit">THN</th>
+                        <th class="fit">JUMLAH</th>
+                    </tr>
                 </thead>
                 <tbody>
                     ${groupKeys.map(gk => {
@@ -238,15 +259,31 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     const v = r.details?.variables || {}; const k = Number(r.amount) || 0; const p = 0; // THR tidak ada pajak
                     const pr = v.PROPORTION_FACTOR; const hasPrp = pr && pr !== '12/12';
                     const propLabel = hasPrp ? `<span class="prp">${pr}</span>` : 'PENUH';
-                    return `<tr><td class="tc">${i + 1}</td><td class="tc">${v.SEX || 'L'}</td><td><b>${r.emp_name}</b><br/><small>${r.nik}</small>${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}</td><td class="tc">${(r.religion || '').replace(/^\d+\s+/, '')}</td><td class="tc">${v.JOIN_DATE ? new Date(v.JOIN_DATE).toLocaleDateString('id-ID') : '-'}</td><td class="tr">${formatCurrency(v.UPAH_DASAR)}</td><td class="tr">${formatCurrency((v.UPAH_DASAR || 0) * 30)}</td><td class="tr">${formatCurrency(v.BERAS_RATE)}</td><td class="tr">${formatCurrency((v.BERAS_RATE || 0) * 30)}</td><td class="tc">${v.MASA_KERJA_TAHUN || 0}</td><td class="tr">${formatCurrency(v.MASA_KERJA_JUMLAH)}</td><td class="tr fb">${formatCurrency(k)}</td><td class="tr">${formatCurrency(p)}</td><td class="tc"><small>${propLabel}</small></td><td class="tr fb">${formatCurrency(k - p)}</td></tr>`;
+                    return `<tr>
+                                    <td class="tc fit">${i + 1}</td>
+                                    <td class="tc fit">${v.SEX || 'L'}</td>
+                                    <td class="name-col"><b>${r.emp_name}</b><br/><small>${r.nik}</small>${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}</td>
+                                    <td class="tc fit">${(r.religion || '').replace(/^\d+\s+/, '')}</td>
+                                    <td class="tc fit">${v.JOIN_DATE ? new Date(v.JOIN_DATE).toLocaleDateString('id-ID') : '-'}</td>
+                                    <td class="tr fit num">${formatCurrency(v.UPAH_DASAR)}</td>
+                                    <td class="tr fit num">${formatCurrency((v.UPAH_DASAR || 0) * 30)}</td>
+                                    <td class="tr fit num">${formatCurrency(v.BERAS_RATE)}</td>
+                                    <td class="tr fit num">${formatCurrency((v.BERAS_RATE || 0) * 30)}</td>
+                                    <td class="tc fit num">${v.MASA_KERJA_TAHUN || 0}</td>
+                                    <td class="tr fit num">${formatCurrency(v.MASA_KERJA_JUMLAH)}</td>
+                                    <td class="tr fit fb num">${formatCurrency(k)}</td>
+                                    <td class="tr fit num">${formatCurrency(p)}</td>
+                                    <td class="tc fit"><small>${propLabel}</small></td>
+                                    <td class="tr fit fb num">${formatCurrency(k - p)}</td>
+                                </tr>`;
                 }).join('')}
-                                <tr class="gang-sub"><td colspan="11" class="tr">SUBTOTAL GANG ${gcode}</td><td class="tr">${formatCurrency(subKotor)}</td><td class="tr">-</td><td></td><td class="tr">${formatCurrency(subKotor)}</td></tr>
+                                <tr class="gang-sub"><td colspan="11" class="tr">SUBTOTAL GANG ${gcode}</td><td class="tr fit num">${formatCurrency(subKotor)}</td><td class="tr fit num">-</td><td class="fit"></td><td class="tr fit num">${formatCurrency(subKotor)}</td></tr>
                             `;
             }).join('');
-            return `<tr><td colspan="15" class="gh">GROUP ASISTENSI: ${gk}</td></tr>${gangRows}<tr style="background-color:#fef3c7; font-weight:bold; -webkit-print-color-adjust: exact;"><td colspan="11" class="tr">SUBTOTAL GROUP ${gk}</td><td class="tr">${formatCurrency(groupKotor)}</td><td class="tr">-</td><td></td><td class="tr">${formatCurrency(groupKotor)}</td></tr>`;
+            return `<tr><td colspan="15" class="gh">GROUP ASISTENSI: ${gk}</td></tr>${gangRows}<tr style="background-color:#fef3c7; font-weight:bold; -webkit-print-color-adjust: exact;"><td colspan="11" class="tr">SUBTOTAL GROUP ${gk}</td><td class="tr fit num">${formatCurrency(groupKotor)}</td><td class="tr fit num">-</td><td class="fit"></td><td class="tr fit num">${formatCurrency(groupKotor)}</td></tr>`;
         }).join('')}
                 </tbody>
-                <tfoot><tr><th colspan="11" class="tr">TOTAL KESELURUHAN (Rp)</th><th class="tr">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th><th class="tr">-</th><th></th><th class="tr">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th></tr></tfoot>
+                <tfoot><tr><th colspan="11" class="tr">TOTAL KESELURUHAN (Rp)</th><th class="tr fit num">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th><th class="tr fit num">-</th><th class="fit"></th><th class="tr fit num">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th></tr></tfoot>
             </table>${getSigs()}`;
     };
 
@@ -341,7 +378,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 if (d.startsWith('P') && d.length === 3 && divSet.has('PG' + d.substring(1))) continue;
                 // If it's a pure virtual division typically not used for direct THR data entry, hide it
                 // Aggregate ones like WORKSHOP should still be hidden as they don't have direct members usually
-                if (['WORKSHOP', 'MILL'].includes(d)) continue;
+                if (['WORKSHOP'].includes(d)) continue;
                 filtered.push(d);
             }
         }

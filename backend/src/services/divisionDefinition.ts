@@ -65,6 +65,13 @@ export class DivisionDefinition {
             "pattern": "^J",
             "exclude_from_source": false,
             "description": "Divisi Air Ruak Central - Gang J"
+        },
+        "MILL": {
+            "name": "Palm Oil Mill",
+            "source_division": null,
+            "pattern": "^M",
+            "exclude_from_source": true,
+            "description": "Divisi Pabrik (Mill) - Gang yang dimulai dengan M"
         }
     };
 
@@ -114,7 +121,6 @@ export class DivisionDefinition {
 
     public isVirtualDivision(divisionCode: string): boolean {
         const resolved = this.resolveDivisionCode(divisionCode);
-        if (resolved === "MILL") return false;
         return !!this.getVirtualDivisionConfig(resolved);
     }
 

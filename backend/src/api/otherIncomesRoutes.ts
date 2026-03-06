@@ -66,6 +66,26 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
         }
     })
 
+    .delete("/delete-by-period", async ({ query }) => {
+        try {
+            const { year, month, divisionCode, gangCode } = query as any;
+            if (!year || !month) {
+                return { success: false, error: "Year and month are required" };
+            }
+
+            const result = await OtherIncomesService.deleteIncomesByPeriod(
+                parseInt(year),
+                parseInt(month),
+                divisionCode,
+                gangCode
+            );
+            return result;
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to delete incomes by period", error);
+            return { success: false, error: error.message };
+        }
+    })
+
     .get("/formulas/:type", async ({ params: { type } }) => {
         try {
             const formula = await OtherIncomesService.getFormula(type.toUpperCase());
