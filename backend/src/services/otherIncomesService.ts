@@ -259,12 +259,26 @@ export class OtherIncomesService {
             const params: any[] = [year, month];
             
             if (divisionCode && divisionCode !== 'ALL') {
-                // Handle virtual divisions by also searching for source divisions
+                // Handle virtual divisions and aliases
                 const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-                const allPossibleDivs = [...new Set([divisionCode, ...sourceDivs])];
-                const placeholders = allPossibleDivs.map(() => '?').join(',');
+                const allPossibleDivs = new Set<string>([divisionCode]);
+                
+                sourceDivs.forEach(sd => {
+                    allPossibleDivs.add(sd);
+                    // Handle Pxx -> PGxx mapping (e.g. P1B -> PG1B)
+                    if (sd.startsWith('P') && sd.length === 3) {
+                        allPossibleDivs.add('PG' + sd.substring(1));
+                    }
+                    // Handle PGxx -> Pxx mapping (e.g. PG1B -> P1B)
+                    if (sd.startsWith('PG') && sd.length === 4) {
+                        allPossibleDivs.add('P' + sd.substring(2));
+                    }
+                });
+
+                const divList = Array.from(allPossibleDivs);
+                const placeholders = divList.map(() => '?').join(',');
                 sql += ` AND division_code IN (${placeholders})`;
-                params.push(...allPossibleDivs);
+                params.push(...divList);
             }
             
             if (gangCode && gangCode !== 'ALL') { 
