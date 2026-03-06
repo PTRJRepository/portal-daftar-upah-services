@@ -177,8 +177,9 @@ export class OtherIncomesService {
                 `, [...chunk, ...chunk]);
 
                 hrRows.forEach(r => {
+                    const rawRel = (r.Religion || '').trim().toUpperCase();
                     const data = {
-                        religion: religionMap[(r.Religion || '').trim().toUpperCase()] || '01 Islam',
+                        religion: religionMap[rawRel] || rawRel,
                         join_date: this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate),
                         emp_code: (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : (r.EmpCode?.trim() || ''),
                         bank_acc_no: r.BankAccNo || '', bank_code: r.BankCode || '',
@@ -296,9 +297,18 @@ export class OtherIncomesService {
                     if (workingMonths < 12) { propFactor = `${workingMonths}/12`; thrAmt = Math.round((fullThr * workingMonths) / 12); propDesc = ` (Proporsi ${workingMonths}/12)`; }
                 }
             }
+            let relRow = row.religion || '';
+            const rawRowRel = relRow.trim().toUpperCase();
+            const religionMap: Record<string, string> = {
+                'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
+                'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
+                'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
+            };
+            const mappedRel = religionMap[rawRowRel] || relRow;
+
             results.push({
                 nik, emp_name: row.nama || row.emp_name || '', division_code: divisionCode || row.loc_code, gang_code: row.gang_code, period_year: year, period_month: month, income_type: 'THR', income_name: `Tunjangan Hari Raya${propDesc}`, amount: thrAmt, is_paid_in_thp: true, is_taxable: true,
-                details: { formula: formulaConfig.formula, variables: { ...mathVars, JOIN_DATE: row.join_date, WORKING_MONTHS: workingMonths, PROPORTION_FACTOR: propFactor, RELIGION: row.religion, SEX: row.jenis_kelamin === 'FEMALE' ? 'P' : 'L', EMP_CODE: row.emp_code } }
+                details: { formula: formulaConfig.formula, variables: { ...mathVars, JOIN_DATE: row.join_date, WORKING_MONTHS: workingMonths, PROPORTION_FACTOR: propFactor, RELIGION: mappedRel, SEX: row.jenis_kelamin === 'FEMALE' ? 'P' : 'L', EMP_CODE: row.emp_code } }
             });
         }
         return this.enrichWithHrData(results, gangCode);
