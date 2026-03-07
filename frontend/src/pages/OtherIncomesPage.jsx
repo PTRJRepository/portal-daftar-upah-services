@@ -374,7 +374,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                                         ${hasPrp ? `<br/><span class="prp">PROP ${pr}</span>` : ''}
                                         ${r.isBlacklisted ? '<br/><small style="font-weight:bold;">(BLACKLISTED)</small>' : ''}
                                     </td>
-                                    <td class="tc fit">${(r.religion || v.RELIGION || '01 Islam').replace(/^\d+\s+/, '')}</td>
+                                    <td class="tc fit">${((r.religion || v.RELIGION || '').replace(/^\d+\s+/, '') || 'TIDAK ADA')}</td>
                                     <td class="tc fit">${safeDate(actualJoinDate)}</td>
                                     <td class="tr fit num">${formatCurrency(v.UPAH_DASAR || r.upah_dasar)}</td>
                                     <td class="tr fit num">${formatCurrency((v.UPAH_DASAR || r.upah_dasar || 0) * 30)}</td>
@@ -478,7 +478,11 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 {r.isBlacklisted && <span style={{ fontSize: '0.6rem', color: '#ef4444', display: 'block', fontWeight: 'bold' }}> (BLACKLISTED)</span>}
             </div>
         ) },
-        { field: 'religion', headers: ['AGAMA', null, null], w: 100, className: 'text-center', valueGetter: (r) => (r.religion || '01 Islam').replace(/^\d+\s+/, '') },
+        { field: 'religion', headers: ['AGAMA', null, null], w: 100, className: 'text-center', valueGetter: (r) => {
+            const rel = r.religion || '';
+            if (!rel || rel === '' || rel === 'null' || rel === 'undefined') return 'TIDAK ADA';
+            return rel.replace(/^\d+\s+/, '');
+        }},
         { field: 'join_date', headers: ['TGL MASUK', null, null], w: 100, className: 'text-center', valueGetter: (r) => safeDate(r.details?.variables?.JOIN_DATE || r.join_date) },
         { field: 'upah_dasar', headers: ['UPAH DASAR', null, null], w: 110, className: 'text-right', format: 'currency', valueGetter: (r) => r.details?.variables?.UPAH_DASAR || r.upah_dasar || 0 },
         { field: 'upah_pokok', headers: ['UPAH POKOK', '(30 HK)', null], w: 110, className: 'text-right', format: 'currency', valueGetter: (r) => (r.details?.variables?.UPAH_DASAR || r.upah_dasar || 0) * 30 },
@@ -499,24 +503,21 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             return rel;
         };
 
-        // Combine current rowData with Blacklist data
-        const combinedData = [...f];
-        blacklistData.forEach(b => {
-            if (!combinedData.find(r => r.nik === b.nik)) {
-                combinedData.push({
-                    ...b,
-                    isBlacklisted: true,
-                    amount: 0,
-                    income_name: `DIKECUALIKAN: ${b.reason || 'Manual'}`,
-                    religion: getEffectiveReligion(b.religion)
-                });
-            }
-        });
-
-        let result = combinedData;
+        // NOTE: Blacklist is NO LONGER combined with main data
+        // Blacklist entries are excluded from the THR report (they shouldn't appear)
+        // Blacklist is only visible in the Blacklist modal for management
+        let result = f;
         if (filterReligion !== 'ALL') {
             const normalizedFilter = filterReligion.replace(/^\d+\s+/, '').toLowerCase().trim();
             result = result.filter(r => {
+                // Check both current religion and original religion (from DB before enrichment)
+                const currentRel = r.religion || '';
+                const originalRel = r.original_religion || ''; // from DB before enrichment
+                const hasNoReligion = !currentRel || currentRel === '' || currentRel === 'null' || currentRel === 'undefined' ||
+                                     !originalRel || originalRel === '' || originalRel === 'null' || originalRel === 'undefined';
+                // If employee has no religion (either current or original), show in ALL religion filters
+                if (hasNoReligion) return true;
+                // Otherwise filter by matching religion
                 const rRel = getEffectiveReligion(r.religion).replace(/^\d+\s+/, '').toLowerCase().trim();
                 return rRel === normalizedFilter;
             });

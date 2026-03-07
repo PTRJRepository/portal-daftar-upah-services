@@ -19,6 +19,7 @@ export interface OtherIncome {
     updated_at?: string;
     details?: any; // For detailed reporting (formula variables)
     religion?: string;
+    original_religion?: string; // Track religion BEFORE enrichment (for frontend filtering)
     join_date?: string;
     emp_code?: string;
     bank_acc_no?: string;
@@ -250,8 +251,11 @@ export class OtherIncomesService {
                         } catch (e) {}
                     }
 
+                    // Save ORIGINAL religion before mapping/defaulting - this is used by frontend to detect "no religion"
+                    const originalReligion = r.Religion || '';
                     const data = {
                         religion: religionMap[rawRel] || r.Religion || '01 Islam',
+                        original_religion: originalReligion, // Store original for frontend filtering
                         join_date: joinDateStr,
                         emp_code: (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : (r.EmpCode?.trim() || ''),
                         bank_acc_no: r.BankAccNo || '', bank_code: r.BankCode || '',
@@ -278,7 +282,9 @@ export class OtherIncomesService {
             filteredIncomes.forEach(inc => {
                 const hr = hrMap.get(inc.nik?.trim().toUpperCase());
                 if (hr) {
-                    inc.religion = hr.religion; inc.emp_code = hr.emp_code; inc.bank_acc_no = hr.bank_acc_no; inc.bank_code = hr.bank_code;
+                    inc.religion = hr.religion;
+                    inc.original_religion = hr.original_religion; // Pass original religion to frontend
+                    inc.emp_code = hr.emp_code; inc.bank_acc_no = hr.bank_acc_no; inc.bank_code = hr.bank_code;
                     if (!inc.join_date) inc.join_date = hr.join_date;
                     if (!inc.emp_name || inc.emp_name === inc.nik) inc.emp_name = hr.emp_name;
                     (inc as any).upah_dasar = hr.upah_dasar; (inc as any).beras_rate = hr.beras_rate; (inc as any).sex = hr.sex;
@@ -405,17 +411,18 @@ export class OtherIncomesService {
             const mappedRel = religionMap[rawRowRel] || relRow || '01 Islam'; // PERSISTENCE: Default to '01 Islam' if religion missing
 
             results.push({
-                nik, 
-                emp_name: row.nama || row.emp_name || '', 
-                division_code: row.loc_code || divisionCode || row.division_code, 
-                gang_code: row.gang_code, 
-                period_year: year, 
-                period_month: month, 
-                income_type: 'THR', 
-                income_name: `Tunjangan Hari Raya${propDesc}`, 
-                amount: thrAmt, 
-                is_paid_in_thp: true, 
+                nik,
+                emp_name: row.nama || row.emp_name || '',
+                division_code: row.loc_code || divisionCode || row.division_code,
+                gang_code: row.gang_code,
+                period_year: year,
+                period_month: month,
+                income_type: 'THR',
+                income_name: `Tunjangan Hari Raya${propDesc}`,
+                amount: thrAmt,
+                is_paid_in_thp: true,
                 is_taxable: true,
+                original_religion: row.religion || '', // Save original religion before enrichment
                 details: { formula: formulaConfig.formula, variables: { ...mathVars, JOIN_DATE: row.join_date, WORKING_MONTHS: workingMonths, PROPORTION_FACTOR: propFactor, RELIGION: mappedRel, SEX: row.jenis_kelamin === 'FEMALE' ? 'P' : 'L', EMP_CODE: row.emp_code } }
             });
         }
