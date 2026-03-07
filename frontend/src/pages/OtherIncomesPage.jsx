@@ -144,9 +144,12 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const handleLivePreviewTHR = async () => {
         if (isCalculating) return;
         setIsCalculating(true);
+        console.log('[THR] Starting calculation:', { year, month, division, gang });
         try {
             const r = await otherIncomesService.previewTHR(year, month, division, gang);
-            if (r.success) {
+            console.log('[THR] Calculation result:', r);
+            if (r.success && r.data) {
+                console.log('[THR] Received data rows:', r.data.length);
                 // STRICT UNIQUE MITIGATION: One row per NIK
                 const uniqueMap = new Map();
                 r.data.forEach(item => {
@@ -155,10 +158,12 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                         uniqueMap.set(nik, { ...item, isPreview: true });
                     }
                 });
+                console.log('[THR] Unique rows:', uniqueMap.size);
                 setRowData(Array.from(uniqueMap.values()));
                 setIsLivePreview(true);
             } else {
-                alert('Gagal: ' + (r.error || r.message));
+                console.error('[THR] Calculation failed or no data:', r);
+                alert('Gagal: ' + (r.error || r.message || 'Tidak ada data'));
             }
         } catch (e) {
             alert('Kesalahan server.');

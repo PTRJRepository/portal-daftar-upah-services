@@ -47,14 +47,18 @@ export class OtherIncomesService {
         return null;
     }
 
-    private static getEarliestValidDate(d1: any, d2: any): string | null {
+    /**
+     * Get the LATEST/MOST RECENT valid date from two date values.
+     * Used for getting the most current join date.
+     */
+    private static getLatestValidDate(d1: any, d2: any): string | null {
         const date1 = this.parseDate(d1); const date2 = this.parseDate(d2);
         const isValid = (d: Date | null) => d && !isNaN(d.getTime()) && d.getFullYear() > 1905;
         const v1 = isValid(date1) ? date1 : null; const v2 = isValid(date2) ? date2 : null;
-        let earliest: Date | null = null;
-        if (v1 && v2) earliest = v1.getTime() < v2.getTime() ? v1 : v2;
-        else earliest = v1 || v2;
-        return earliest ? earliest.toISOString() : null;
+        let latest: Date | null = null;
+        if (v1 && v2) latest = v1.getTime() > v2.getTime() ? v1 : v2;
+        else latest = v1 || v2;
+        return latest ? latest.toISOString() : null;
     }
 
     static async initTable() {
@@ -228,21 +232,53 @@ export class OtherIncomesService {
             
             for (const chunk of nikChunks) {
                 const placeholders = chunk.map(() => '?').join(',');
-                // Optimized query: No subquery, joining only essential tables
+                // Get employee data with their gang assignments
+                // ORDER BY ensures the last record we process is the most recent
                 const hrRows = await mainDb.query<any>(`
-                    SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpName) as EmpName, e.Religion, e.Gender, e.Status, e.CreateDate, em.AppJoinDate, em.AppJoinGrpDate,
-                           RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode, RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember,
-                           COALESCE(p.PayRate, 0) as PayRate, COALESCE(p.RiceRation, 0) as RiceRation
+                    SELECT
+                        RTRIM(e.EmpCode) as EmpCode,
+                        RTRIM(e.NewICNo) as NewICNo,
+                        RTRIM(e.EmpName) as EmpName,
+                        e.Religion,
+                        e.Gender,
+                        e.Status,
+                        e.CreateDate,
+                        em.AppJoinDate,
+                        em.AppJoinGrpDate,
+                        RTRIM(p.BankAccNo) as BankAccNo,
+                        RTRIM(p.BankCode) as BankCode,
+                        COALESCE(p.PayRate, 0) as PayRate,
+                        COALESCE(p.RiceRation, 0) as RiceRation,
+                        gl.GangCode as GangCode,
+                        gl.GangMember as GangMember
                     FROM HR_EMPLOYEE e
                     LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
                     LEFT JOIN HR_PAYROLL p ON e.EmpCode = p.EmpCode
                     LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
                     WHERE RTRIM(e.EmpCode) IN (${placeholders}) OR RTRIM(e.NewICNo) IN (${placeholders})
+                    ORDER BY
+                        CASE WHEN e.Status = '1' THEN 0 ELSE 1 END, -- Active employees first
+                        em.AppJoinDate DESC, -- Most recent join date first
+                        e.EmpCode DESC -- Then by EmpCode descending
                 `, [...chunk, ...chunk]);
+
+                // Group by employee and get the LATEST gang
+                // Since we ORDER BY AppJoinDate DESC, the FIRST row we see is the most recent
+                // So we only set if NOT already set (keep the first/latest, ignore rest)
+                const empGangMap = new Map<string, any>();
+                hrRows.forEach(r => {
+                    const empKey = r.EmpCode?.trim().toUpperCase();
+                    if (!empKey) return;
+                    // Only set if not already set - this keeps the FIRST (most recent due to ORDER BY DESC)
+                    if (!empGangMap.has(empKey)) {
+                        empGangMap.set(empKey, { gangCode: r.GangCode, gangMember: r.GangMember });
+                    }
+                });
 
                 hrRows.forEach(r => {
                     const rawRel = (r.Religion || '').trim().toUpperCase();
-                    const rawJD = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate) || r.CreateDate;
+                    // Use LATEST join date (most recent) instead of earliest
+                    const rawJD = this.getLatestValidDate(r.AppJoinDate, r.AppJoinGrpDate) || r.CreateDate;
                     let joinDateStr = null;
                     if (rawJD) {
                         try {
@@ -251,19 +287,27 @@ export class OtherIncomesService {
                         } catch (e) {}
                     }
 
+                    // Get the LATEST gang from the map (most recent gang assignment)
+                    const empKey = r.EmpCode?.trim().toUpperCase();
+                    const latestGang = empKey ? empGangMap.get(empKey) : null;
+
                     // Save ORIGINAL religion before mapping/defaulting - this is used by frontend to detect "no religion"
                     const originalReligion = r.Religion || '';
                     const data = {
                         religion: religionMap[rawRel] || r.Religion || '01 Islam',
                         original_religion: originalReligion, // Store original for frontend filtering
                         join_date: joinDateStr,
-                        emp_code: (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : (r.EmpCode?.trim() || ''),
+                        // Use latest gang's GangMember as emp_code (most recent assignment)
+                        // If there's a latest gang, use its GangMember, otherwise fall back to EmpCode
+                        emp_code: (latestGang?.gangMember?.trim()) || (r.EmpCode?.trim() || ''),
+                        // Also store the latest gang code for reference
+                        latest_gang_code: latestGang?.gangCode?.trim() || '',
                         bank_acc_no: r.BankAccNo || '', bank_code: r.BankCode || '',
                         sex: (r.Gender || '').trim().toUpperCase() === 'FEMALE' ? 'P' : 'L',
                         upah_dasar: r.PayRate || 0, beras_rate: r.RiceRation || 0, emp_name: r.EmpName
                     };
-                    const empKey = r.EmpCode.trim().toUpperCase(); const nikKey = r.NewICNo?.trim().toUpperCase();
-                    if (!hrMap.has(empKey)) hrMap.set(empKey, data);
+                    const empKeyUpper = r.EmpCode.trim().toUpperCase(); const nikKey = r.NewICNo?.trim().toUpperCase();
+                    if (!hrMap.has(empKeyUpper)) hrMap.set(empKeyUpper, data);
                     if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, data);
                 });
             }
@@ -362,8 +406,44 @@ export class OtherIncomesService {
 
     static async calculateTHRData(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
         const historyService = HistoryDatabaseService.getInstance();
-        const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', divisionCode || undefined);
-        if (!historyData?.data_rows?.length) return [];
+
+        // Resolve virtual division to actual source divisions for history query
+        let effectiveDivisionCode = divisionCode;
+        let virtualGangFilter: string | null = null; // Gang pattern to filter for virtual divisions
+
+        if (divisionCode && divisionDefinition.isVirtualDivision(divisionCode)) {
+            const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+            // Use first source division for history query (for single virtual divisions)
+            effectiveDivisionCode = sourceDivs[0];
+
+            // Get gang pattern for this virtual division
+            const config = divisionDefinition.getVirtualDivisionConfig(divisionCode);
+            if (config?.pattern) {
+                // Extract the gang pattern (e.g., "^AMC$" -> "AMC")
+                const match = config.pattern.match(/\^?([A-Za-z0-9]+)\$/);
+                if (match) {
+                    virtualGangFilter = match[1].toUpperCase();
+                    console.log(`[OtherIncomes] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode} with gang filter: ${virtualGangFilter}`);
+                }
+            }
+            console.log(`[OtherIncomes] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode} for THR calculation`);
+        }
+
+        const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', effectiveDivisionCode || undefined);
+        if (!historyData?.data_rows?.length) {
+            console.log(`[OtherIncomes] No history data for ${effectiveDivisionCode}, gang: ${gangCode}, period: ${month}/${year}`);
+            return [];
+        }
+
+        // Apply gang filter for virtual divisions (WKS_AR = HMC, WKS_PG = AMC, etc)
+        let filteredDataRows = historyData.data_rows;
+        if (virtualGangFilter) {
+            filteredDataRows = historyData.data_rows.filter(row => {
+                const rowGang = (row.gang_code || '').trim().toUpperCase();
+                return rowGang === virtualGangFilter;
+            });
+            console.log(`[OtherIncomes] Filtered to gang ${virtualGangFilter}: ${filteredDataRows.length} employees from ${historyData.data_rows.length} total`);
+        }
         const formulaConfig = await this.getFormula('THR');
         
         // Fetch blacklist for this period
@@ -372,7 +452,7 @@ export class OtherIncomesService {
 
         // AGGRESSIVE DEDUPLICATION: Ensure unique NIK before calculation
         const uniqueHistoryMap = new Map<string, any>();
-        historyData.data_rows.forEach(row => {
+        filteredDataRows.forEach(row => {
             const nik = String(row.nik || '').trim().toUpperCase();
             if (nik && !uniqueHistoryMap.has(nik) && !blacklistedNIKs.has(nik)) {
                 uniqueHistoryMap.set(nik, row);
