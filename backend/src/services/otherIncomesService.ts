@@ -224,24 +224,24 @@ export class OtherIncomesService {
                 'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
             };
             const hrMap = new Map<string, any>();
+            
             for (const chunk of nikChunks) {
                 const placeholders = chunk.map(() => '?').join(',');
+                // Optimized query: No subquery, joining only essential tables
                 const hrRows = await mainDb.query<any>(`
                     SELECT RTRIM(e.EmpCode) as EmpCode, RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpName) as EmpName, e.Religion, e.Gender, e.Status, e.CreateDate, em.AppJoinDate, em.AppJoinGrpDate,
                            RTRIM(p.BankAccNo) as BankAccNo, RTRIM(p.BankCode) as BankCode, RTRIM(gl.GangCode) as GangCode, RTRIM(gl.GangMember) as GangMember,
-                           COALESCE(p.PayRate, 0) as PayRate, COALESCE(p.RiceRation, 0) as RiceRation,
-                           (SELECT TOP 1 h.AppJoinDate FROM HR_HISTORY h WHERE h.EmpCode = e.EmpCode AND h.AppJoinDate IS NOT NULL ORDER BY h.AccYear DESC, h.AccMonth DESC) as history_join_date
+                           COALESCE(p.PayRate, 0) as PayRate, COALESCE(p.RiceRation, 0) as RiceRation
                     FROM HR_EMPLOYEE e
                     LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
                     LEFT JOIN HR_PAYROLL p ON e.EmpCode = p.EmpCode
                     LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
                     WHERE RTRIM(e.EmpCode) IN (${placeholders}) OR RTRIM(e.NewICNo) IN (${placeholders})
-                    ORDER BY CASE WHEN e.Status = '1' THEN 0 ELSE 1 END, em.AppJoinDate DESC
                 `, [...chunk, ...chunk]);
 
                 hrRows.forEach(r => {
                     const rawRel = (r.Religion || '').trim().toUpperCase();
-                    const rawJD = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate) || r.history_join_date || r.CreateDate;
+                    const rawJD = this.getEarliestValidDate(r.AppJoinDate, r.AppJoinGrpDate) || r.CreateDate;
                     let joinDateStr = null;
                     if (rawJD) {
                         try {
@@ -251,7 +251,6 @@ export class OtherIncomesService {
                     }
 
                     const data = {
-                        // PERSISTENCE RULE: If religion is missing, default to '01 Islam'
                         religion: religionMap[rawRel] || r.Religion || '01 Islam',
                         join_date: joinDateStr,
                         emp_code: (gangCode && r.GangCode === gangCode && r.GangMember) ? r.GangMember : (r.EmpCode?.trim() || ''),
@@ -265,7 +264,7 @@ export class OtherIncomesService {
                 });
             }
             
-            // Fetch blacklist once to filter enriched results
+            // Only fetch blacklist if we have data to filter
             const periodYear = incomes[0].period_year;
             const periodMonth = incomes[0].period_month;
             const blacklist = await this.getBlacklist(periodYear, periodMonth, 'THR');

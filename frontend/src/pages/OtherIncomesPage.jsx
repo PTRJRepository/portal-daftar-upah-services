@@ -9,7 +9,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const {
         division, gang, month, year,
         setDivision, setGang, setMonth, setYear,
-        allDivisions, gangs, gangLoading,
+        allDivisions, gangs,
         gangPrefix, setGangPrefix
     } = useReport();
 
@@ -73,11 +73,19 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const filteredGangs = useMemo(() => (!gangPrefix ? gangs : gangs.filter(g => getAsistensi(g.gang_code) === gangPrefix)), [gangs, gangPrefix, getAsistensi]);
 
     const fetchIncomes = useCallback(async () => {
-        if (!division || gangLoading) return;
+        console.log('[OtherIncomes] fetchIncomes called:', { year, month, division, gang });
+        // Don't block on gangLoading - allow fetch but show loading state
+        if (!division) {
+            console.log('[OtherIncomes] No division selected, clearing data');
+            setRowData([]);
+            return;
+        }
         setLoading(true);
         setIsLivePreview(false);
         try {
+            console.log('[OtherIncomes] Calling API for:', division, gang);
             const data = await otherIncomesService.getIncomes(year, month, division, gang);
+            console.log('[OtherIncomes] API returned:', data.length, 'rows');
             // STRICT UNIQUE MITIGATION: One row per NIK
             const uniqueMap = new Map();
             data.forEach(item => {
@@ -87,12 +95,14 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 }
             });
             setRowData(Array.from(uniqueMap.values()));
+            console.log(`[OtherIncomes] Loaded ${uniqueMap.size} rows for ${division} ${month}/${year}`);
         } catch (e) {
-            console.error(e);
+            console.error('[OtherIncomes] Fetch error:', e);
+            setRowData([]);
         } finally {
             setLoading(false);
         }
-    }, [year, month, division, gang, gangLoading]);
+    }, [year, month, division, gang]);
 
     useEffect(() => {
         fetchIncomes();
@@ -483,6 +493,12 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const displayData = useMemo(() => {
         let f = rowData;
         
+        // PERSISTENCE RULE: If employee has no religion, treat as '01 Islam'
+        const getEffectiveReligion = (rel) => {
+            if (!rel || rel === "" || rel === "null" || rel === "undefined") return '01 Islam';
+            return rel;
+        };
+
         // Combine current rowData with Blacklist data
         const combinedData = [...f];
         blacklistData.forEach(b => {
@@ -492,7 +508,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     isBlacklisted: true,
                     amount: 0,
                     income_name: `DIKECUALIKAN: ${b.reason || 'Manual'}`,
-                    religion: b.religion || '01 Islam' // PERSISTENCE RULE
+                    religion: getEffectiveReligion(b.religion)
                 });
             }
         });
@@ -501,14 +517,14 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         if (filterReligion !== 'ALL') {
             const normalizedFilter = filterReligion.replace(/^\d+\s+/, '').toLowerCase().trim();
             result = result.filter(r => {
-                const rRel = (r.religion || '01 Islam').replace(/^\d+\s+/, '').toLowerCase().trim();
+                const rRel = getEffectiveReligion(r.religion).replace(/^\d+\s+/, '').toLowerCase().trim();
                 return rRel === normalizedFilter;
             });
         }
         if (gangPrefix) result = result.filter(r => getAsistensi(r.gang_code) === gangPrefix);
         return result.map((r, i) => ({ 
             ...r, 
-            religion: r.religion || '01 Islam', // PERSISTENCE RULE
+            religion: getEffectiveReligion(r.religion), 
             _no: i + 1, 
             _id: r.id || `row-${i}` 
         }));
@@ -568,9 +584,17 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             <div style={{ flex: 1, backgroundColor: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <div style={{ padding: '0.5rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <select value={division} onChange={e => { setDivision(e.target.value); setGangPrefix(''); }}>{uniqueDivisions.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                        <select value={division} onChange={e => {
+                            console.log('[OtherIncomes] Division changed to:', e.target.value);
+                            setDivision(e.target.value);
+                            setGang(''); // Reset gang when division changes
+                            setGangPrefix('');
+                        }}>{uniqueDivisions.map(d => <option key={d} value={d}>{d}</option>)}</select>
                         <select value={gangPrefix} onChange={e => setGangPrefix(e.target.value)}><option value="">SEMUA GROUP</option>{availablePrefixes.map(p => <option key={p} value={p}>Group {p}</option>)}</select>
-                        <select value={gang} onChange={e => setGang(e.target.value)}><option value="ALL">SEMUA GANG</option>{filteredGangs.map(g => <option key={g.gang_code} value={g.gang_code}>{g.gang_code}</option>)}</select>
+                        <select value={gang} onChange={e => {
+                            console.log('[OtherIncomes] Gang changed to:', e.target.value);
+                            setGang(e.target.value);
+                        }}><option value="ALL">SEMUA GANG</option>{filteredGangs.map(g => <option key={g.gang_code} value={g.gang_code}>{g.gang_code}</option>)}</select>
                         <select value={filterReligion} onChange={e => setFilterReligion(e.target.value)}>{RELIGION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>

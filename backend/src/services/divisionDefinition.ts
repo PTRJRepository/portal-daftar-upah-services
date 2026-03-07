@@ -1,6 +1,46 @@
-import { Database } from "../db/client";
+/**
+ * ============================================================================================
+ * DIVISION DEFINITION SERVICE
+ * ============================================================================================
+ *
+ * PURPOSE:
+ * Service ini mengelola definisi divisi (real dan virtual) untuk seluruh aplikasi.
+ * Menyediakan API terpusat untuk:
+ * - Mendapatkan semua divisi (real + virtual)
+ * - Mapping gang ke virtual division
+ * - Resolution virtual division ke real division untuk query database
+ *
+ * VIRTUAL DIVISIONS:
+ * Virtual divisions adalah grouping gang berdasarkan fungsi:
+ * - INF: Infrastruktur (gang IN*)
+ * - NRS: Nursery (gang B2N)
+ * - WKS_PG: Workshop Parit Gunung (gang AMC)
+ * - WKS_AR: Workshop Air Ruak (gang HMC)
+ * - WORKSHOP: Gabungan Workshop
+ * - ARC: Air Ruak Central (gang J)
+ * - MILL: Palm Oil Mill (gang M)
+ *
+ * MODULAR ARCHITECTURE:
+ * Sekarang menggunakan VirtualDivisionRegistry sebagai backend storage.
+ * DivisionDefinition menjadi thin wrapper yang menjaga backward compatibility.
+ *
+ * AI INDEXING TAGS:
+ * - division-definition
+ * - virtual-divisions
+ * - gang-mapping
+ * - payroll-system
+ * - modular-system
+ * ============================================================================================
+ */
 
-interface VirtualDivisionConfig {
+import { Database } from "../db/client";
+import { virtualDivisionRegistry } from "./virtualDivisionRegistry";
+
+/**
+ * Interface untuk konfigurasi virtual division.
+ * DIJAGA UNTUK BACKWARD COMPATIBILITY - Gunakan VirtualDivisionPlugin dari virtualDivisionRegistry
+ */
+export interface VirtualDivisionConfig {
     name: string;
     source_division: string | null;
     pattern: string | null;
@@ -9,6 +49,9 @@ interface VirtualDivisionConfig {
     description: string;
 }
 
+/**
+ * Interface untuk data gang
+ */
 export interface Gang {
     gang_code: string;
     description: string;
@@ -17,82 +60,36 @@ export interface Gang {
     asistensi?: string;
 }
 
+/**
+ * Main Division Definition Service
+ *
+ * Sekarang menggunakan VirtualDivisionRegistry secara internal untuk definisi.
+ * Semua method publik dipertahankan untuk backward compatibility.
+ *
+ * SERVICES YANG MENGGUNAKAN:
+ * - taxReportService: Untuk resolve virtual division ke real division
+ * - summaryService: Untuk agregasi data per virtual division
+ * - otherIncomesService: Untuk filtering THR per virtual division
+ * - historyDatabaseService: Untuk query data berdasarkan virtual division
+ * - wagesService: Untuk laporan wages per virtual division
+ * - gangService: Untuk mendapatkan list gang per divisi
+ */
 export class DivisionDefinition {
     private static instance: DivisionDefinition;
 
-    private readonly VIRTUAL_DIVISIONS: Record<string, VirtualDivisionConfig> = {
-        "INF": {
-            "name": "Infrastruktur",
-            "source_division": "P1A",
-            "pattern": "^IN",
-            "exclude_from_source": true,
-            "description": "Divisi Infrastruktur - Gang yang dimulai dengan IN"
-        },
-        "NRS": {
-            "name": "Nursery",
-            "source_division": "P1B",
-            "pattern": "^B2N$",
-            "exclude_from_source": true,
-            "description": "Divisi Nursery - Gang B2N"
-        },
-        "WKS_PG": {
-            "name": "Workshop Parit Gunung (PGE)",
-            "source_division": "P1A",
-            "pattern": "^AMC$",
-            "description_pattern": "workshop.*(parit|pge|p\\.g|harapan\\s*mukti)",
-            "exclude_from_source": true,
-            "description": "Divisi Workshop Parit Gunung"
-        },
-        "WKS_AR": {
-            "name": "Workshop Air Ruak (AB2)",
-            "source_division": "AB2",
-            "pattern": "^HMC$",
-            "description_pattern": "workshop.*(air\\s*ruak|are|a\\.r)|.*traksi.*air\\s*ruak",
-            "exclude_from_source": true,
-            "description": "Divisi Workshop Air Ruak"
-        },
-        "WORKSHOP": {
-            "name": "Workshop All",
-            "source_division": null,
-            "pattern": null,
-            "description_pattern": "workshop.*(parit|pge|p\\.g|air\\s*ruak|are|a\\.r)|.*traksi.*air\\s*ruak",
-            "exclude_from_source": false,
-            "description": "Gabungan Workshop Parit Gunung dan Air Ruak"
-        },
-        "ARC": {
-            "name": "Air Ruak Central",
-            "source_division": "ARC",
-            "pattern": "^J",
-            "exclude_from_source": false,
-            "description": "Divisi Air Ruak Central - Gang J"
-        },
-        "MILL": {
-            "name": "Palm Oil Mill",
-            "source_division": null,
-            "pattern": "^M",
-            "exclude_from_source": true,
-            "description": "Divisi Pabrik (Mill) - Gang yang dimulai dengan M"
-        }
-    };
-
-    private readonly DIVISION_ALIASES: Record<string, string> = {
-        "INFRA": "INF",
-        "NURSERY": "NRS",
-        "AREC": "ARC",
-        "WORKSHOP_AR": "WKS_AR",
-        "WORKSHOP AR": "WKS_AR",
-        "WKS AR": "WKS_AR",
-        "HMC": "WKS_AR",
-        "WORKSHOP_PG": "WKS_PG",
-        "WORKSHOP PG": "WKS_PG",
-        "WKS PG": "WKS_PG",
-        "AMC": "WKS_PG"
-    };
-
-    public readonly VIRTUAL_DIVISION_ORDER = ["INF", "NRS", "WKS_PG", "WKS_AR", "WORKSHOP", "ARC", "MILL"];
-
+    /**
+     * Constructor private untuk singleton pattern.
+     * Secara internal menggunakan VirtualDivisionRegistry.
+     */
     private constructor() { }
 
+    /**
+     * Mendapatkan instance singleton.
+     *
+     * Usage:
+     *   const divDef = DivisionDefinition.getInstance();
+     *   const gangs = await divDef.getGangsForDivision('INF');
+     */
     public static getInstance(): DivisionDefinition {
         if (!DivisionDefinition.instance) {
             DivisionDefinition.instance = new DivisionDefinition();
@@ -100,6 +97,20 @@ export class DivisionDefinition {
         return DivisionDefinition.instance;
     }
 
+    /**
+     * Mendapatkan nomor asistensi dari kode gang.
+     * Aturan:
+     * - Gang yang dimulai dengan K2 -> Asistensi 1
+     * - Angka dalam gang code menjadi nomor asistensi
+     *
+     * Usage:
+     *   const asistensi = divDef.getAsistensiFromGang('D2'); // returns '2'
+     *   const asistensi = divDef.getAsistensiFromGang('P1A'); // returns '1'
+     *   const asistensi = divDef.getAsistensiFromGang('K2A'); // returns '1' (K2 rule)
+     *
+     * @param gangCode - Kode gang (misal: 'D2', 'P1A', 'K2A')
+     * @param locCode - Optional, kode divisi
+     */
     public getAsistensiFromGang(gangCode: string, locCode?: string): string | null {
         if (!gangCode) return null;
         const gc = gangCode.trim().toUpperCase();
@@ -114,35 +125,80 @@ export class DivisionDefinition {
         return match ? match[0] : null;
     }
 
+    /**
+     * Resolve kode division (termasuk alias) ke kode actual.
+     *
+     * Usage:
+     *   const code = divDef.resolveDivisionCode('INFRA'); // returns 'INF'
+     *   const code = divDef.resolveDivisionCode('WORKSHOP AR'); // returns 'WKS_AR'
+     *
+     * @param code - Kode atau alias division
+     */
     public resolveDivisionCode(code: string): string {
-        const upper = code.trim().toUpperCase();
-        return this.DIVISION_ALIASES[upper] || upper;
+        return virtualDivisionRegistry.resolveCode(code);
     }
 
+    /**
+     * Mengecek apakah kode adalah virtual division.
+     *
+     * Usage:
+     *   const isVirtual = divDef.isVirtualDivision('INF'); // returns true
+     *   const isVirtual = divDef.isVirtualDivision('AB1'); // returns false
+     *
+     * @param divisionCode - Kode division yang akan dicek
+     */
     public isVirtualDivision(divisionCode: string): boolean {
-        const resolved = this.resolveDivisionCode(divisionCode);
-        return !!this.getVirtualDivisionConfig(resolved);
+        return virtualDivisionRegistry.isVirtualDivision(divisionCode);
     }
 
+    /**
+     * Mendapatkan konfigurasi virtual division.
+     *
+     * Usage:
+     *   const config = divDef.getVirtualDivisionConfig('INF');
+     *   // returns { name: 'Infrastruktur', source_division: 'P1A', ... }
+     *
+     * @param divisionCode - Kode virtual division
+     */
     public getVirtualDivisionConfig(divisionCode: string): VirtualDivisionConfig | undefined {
-        const resolved = this.resolveDivisionCode(divisionCode);
-        return this.VIRTUAL_DIVISIONS[resolved];
+        const plugin = virtualDivisionRegistry.getPlugin(divisionCode);
+        if (!plugin) return undefined;
+
+        // Convert to legacy format for backward compatibility
+        return {
+            name: plugin.name,
+            source_division: plugin.sourceDivision,
+            pattern: plugin.gangPattern ? plugin.gangPattern.source : null,
+            description_pattern: plugin.descriptionPattern ? plugin.descriptionPattern.source : undefined,
+            exclude_from_source: plugin.excludeFromSource,
+            description: plugin.description
+        };
     }
 
+    /**
+     * Mendapatkan semua divisi (real + virtual).
+     *
+     * Usage:
+     *   const allDivisions = await divDef.getAllDivisions(true);
+     *   // returns ['AB1', 'AB2', 'P1A', 'P1B', ..., 'INF', 'NRS', ...]
+     *
+     * @param includeVirtual - Apakah menyertakan virtual divisions
+     */
     public async getAllDivisions(includeVirtual: boolean = true): Promise<string[]> {
         try {
             const db = Database.getInstance(undefined, "SERVER_PROFILE_2");
             const rows = await db.query<{ LocCode: string }>(`
-            SELECT DISTINCT [LocCode]
-            FROM [dbo].[HR_GANG]
-            WHERE LocCode IS NOT NULL AND LocCode != ''
-            ORDER BY [LocCode]
-        `);
+                SELECT DISTINCT [LocCode]
+                FROM [dbo].[HR_GANG]
+                WHERE LocCode IS NOT NULL AND LocCode != ''
+                ORDER BY [LocCode]
+            `);
 
             const realDivisions = rows.map(r => r.LocCode.trim()).filter(Boolean);
 
             if (includeVirtual) {
-                return [...realDivisions, ...this.VIRTUAL_DIVISION_ORDER];
+                const virtualCodes = virtualDivisionRegistry.getAllCodes();
+                return [...realDivisions, ...virtualCodes];
             }
             return realDivisions;
 
@@ -152,6 +208,17 @@ export class DivisionDefinition {
         }
     }
 
+    /**
+     * Mendapatkan semua gang untuk division tertentu.
+     * Jika division adalah virtual, returns gangs yang termasuk dalam virtual division tersebut.
+     *
+     * Usage:
+     *   const gangs = await divDef.getGangsForDivision('INF');
+     *   // returns [{ gang_code: 'IN01', description: '...', loc_code: 'INF', ... }]
+     *
+     * @param divisionCode - Kode division (real atau virtual)
+     * @param excludeVirtualGangs - Apakah exclude gangs yang termasuk virtual division lain
+     */
     public async getGangsForDivision(divisionCode: string, excludeVirtualGangs: boolean = true): Promise<Gang[]> {
         const resolved = this.resolveDivisionCode(divisionCode);
 
@@ -163,14 +230,22 @@ export class DivisionDefinition {
     }
 
     /**
-     * Get the REAL source division(s) for a virtual division.
-     * This is needed for aggregation to know which actual divisions to query.
-     * Returns array of source division codes (e.g., WKS_PG -> ["P1A"])
+     * Mendapatkan REAL source divisions untuk sebuah virtual division.
+     * PENTING untuk aggregation - mengetahui divisi mana yang di-query.
+     *
+     * Usage:
+     *   const sources = await divDef.getSourceDivisionsForAggregation('WKS_PG');
+     *   // returns ['P1A']
+     *
+     *   const sources = await divDef.getSourceDivisionsForAggregation('WORKSHOP');
+     *   // returns ['P1A', 'AB2'] (dari matched gangs)
+     *
+     * @param divisionCode - Kode virtual division
      */
     public async getSourceDivisionsForAggregation(divisionCode: string): Promise<string[]> {
         const resolved = this.resolveDivisionCode(divisionCode);
 
-        // If not a virtual division, return as-is
+        // Jika bukan virtual division, return sendiri
         if (!this.isVirtualDivision(resolved)) {
             return [resolved];
         }
@@ -180,18 +255,17 @@ export class DivisionDefinition {
             return [resolved];
         }
 
-        // If virtual division has a specific source_division, use that
+        // Jika virtual division punya source_division spesifik, gunakan itu
         if (config.source_division) {
             return [config.source_division];
         }
 
-        // For virtual divisions without source_division (like WKS_PG, WKS_AR),
-        // we need to get the source LocCodes from the matched gangs
+        // Untuk virtual divisions tanpa source_division (seperti WORKSHOP),
+        // kita perlu dapat source LocCodes dari matched gangs
         const gangs = await this.getVirtualDivisionGangs(resolved);
         const sourceLocCodes = new Set<string>();
 
         for (const gang of gangs) {
-            // Use source_loc_code if available (from original gang), otherwise skip
             if (gang.source_loc_code) {
                 sourceLocCodes.add(gang.source_loc_code);
             }
@@ -200,27 +274,44 @@ export class DivisionDefinition {
         return sourceLocCodes.size > 0 ? Array.from(sourceLocCodes) : [resolved];
     }
 
+    /**
+     * Mendapatkan semua virtual divisions untuk sebuah source division.
+     *
+     * Usage:
+     *   const virtuals = await divDef.getVirtualDivisionsForSource('P1A');
+     *   // returns ['INF', 'WKS_PG']
+     *
+     * @param sourceDivCode - Kode divisi sumber
+     */
     public async getVirtualDivisionsForSource(sourceDivCode: string): Promise<string[]> {
         const results: string[] = [];
         const source = sourceDivCode.trim().toUpperCase();
-        for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
-            if (config.source_division && config.source_division.toUpperCase() === source) {
-                results.push(virtCode);
+        const plugins = virtualDivisionRegistry.getAllPlugins();
+
+        for (const plugin of plugins) {
+            if (plugin.sourceDivision && plugin.sourceDivision.toUpperCase() === source) {
+                results.push(plugin.code);
             }
         }
         return results;
     }
 
+    /**
+     * Mendapatkan gangs untuk division real.
+     *
+     * @param locCode - Kode divisi
+     * @param excludeVirtual - Apakah exclude gangs yang termasuk virtual division lain
+     */
     private async getRealDivisionGangs(locCode: string, excludeVirtual: boolean = true): Promise<Gang[]> {
         const db = Database.getInstance(undefined, "SERVER_PROFILE_2");
         const cleanedLoc = locCode.toUpperCase();
 
         const rows = await db.query<{ GangCode: string, Description: string, LocCode: string }>(`
-        SELECT [GangCode], [Description], [LocCode]
-        FROM [dbo].[HR_GANG]
-        WHERE RTRIM(LTRIM(UPPER(LocCode))) = ?
-        ORDER BY [GangCode]
-    `, [cleanedLoc]);
+            SELECT [GangCode], [Description], [LocCode]
+            FROM [dbo].[HR_GANG]
+            WHERE RTRIM(LTRIM(UPPER(LocCode))) = ?
+            ORDER BY [GangCode]
+        `, [cleanedLoc]);
 
         const results: Gang[] = [];
         for (const row of rows) {
@@ -241,6 +332,11 @@ export class DivisionDefinition {
         return results;
     }
 
+    /**
+     * Mendapatkan gangs untuk virtual division.
+     *
+     * @param virtualCode - Kode virtual division
+     */
     private async getVirtualDivisionGangs(virtualCode: string): Promise<Gang[]> {
         const config = this.getVirtualDivisionConfig(virtualCode);
         if (!config) return [];
@@ -251,18 +347,18 @@ export class DivisionDefinition {
 
         if (config.source_division) {
             rows = await db.query(`
-             SELECT [GangCode], [Description], [LocCode]
-             FROM [dbo].[HR_GANG]
-              WHERE RTRIM(LTRIM(UPPER(LocCode))) = ?
-             ORDER BY [GangCode]
-        `, [config.source_division]);
+                SELECT [GangCode], [Description], [LocCode]
+                FROM [dbo].[HR_GANG]
+                WHERE RTRIM(LTRIM(UPPER(LocCode))) = ?
+                ORDER BY [GangCode]
+            `, [config.source_division]);
         } else {
             rows = await db.query(`
-             SELECT [GangCode], [Description], [LocCode]
-             FROM [dbo].[HR_GANG]
-             WHERE LocCode IS NOT NULL AND LocCode != ''
-             ORDER BY [GangCode]
-        `);
+                SELECT [GangCode], [Description], [LocCode]
+                FROM [dbo].[HR_GANG]
+                WHERE LocCode IS NOT NULL AND LocCode != ''
+                ORDER BY [GangCode]
+            `);
         }
 
         const results: Gang[] = [];
@@ -288,72 +384,75 @@ export class DivisionDefinition {
         return results;
     }
 
+    /**
+     * Mendeteksi virtual division untuk sebuah gang.
+     *
+     * Usage:
+     *   const virtDiv = divDef.getVirtualDivisionForGang('IN01', 'P1A', 'Infrastruktur Afdeling 1');
+     *   // returns 'INF'
+     *
+     * @param gangCode - Kode gang
+     * @param sourceLocCode - Kode divisi sumber
+     * @param description - Deskripsi gang
+     */
     public getVirtualDivisionForGang(gangCode: string, sourceLocCode: string, description: string): string | null {
-        for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
-            // Check LocCode if source_division is specified
-            if (config.source_division && config.source_division.toUpperCase() !== sourceLocCode.toUpperCase()) {
-                continue;
-            }
-
-            // Check pattern
-            if (config.pattern) {
-                const regex = new RegExp(config.pattern, "i");
-                if (regex.test(gangCode)) return virtCode;
-            }
-
-            // Check description
-            if (config.description_pattern) {
-                const regex = new RegExp(config.description_pattern, "i");
-                if (regex.test(description)) return virtCode;
-            }
-        }
-        return null;
+        return virtualDivisionRegistry.matchGang(gangCode, description, sourceLocCode);
     }
 
     /**
-     * Fallback: detect virtual division by gang code pattern/description ONLY,
-     * without validating source_division. Used when gang is not found in gangDivMap.
+     * Fallback: deteksi virtual division hanya berdasarkan pattern (tanpa validasi source).
+     * Digunakan ketika gang tidak ditemukan di gangDivMap.
+     *
+     * @param gangCode - Kode gang
+     * @param description - Deskripsi gang
      */
     public getVirtualDivisionByPatternOnly(gangCode: string, description: string): string | null {
-        for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
-            // Skip aggregate-only virtual divisions (no direct pattern)
-            if (virtCode === 'WORKSHOP') continue;
-
-            if (config.pattern) {
-                const regex = new RegExp(config.pattern, "i");
-                if (regex.test(gangCode)) return virtCode;
-            }
-            if (config.description_pattern) {
-                const regex = new RegExp(config.description_pattern, "i");
-                if (regex.test(description)) return virtCode;
-            }
-        }
-        return null;
+        return virtualDivisionRegistry.matchGangByPatternOnly(gangCode, description);
     }
 
+    /**
+     * Mengecek apakah gang termasuk dalam virtual division manapun.
+     *
+     * @param gangCode - Kode gang
+     * @param sourceLocCode - Kode divisi sumber
+     * @param description - Deskripsi gang
+     */
     private gangBelongsToVirtual(gangCode: string, sourceLocCode: string, description: string): boolean {
-        for (const [virtCode, config] of Object.entries(this.VIRTUAL_DIVISIONS)) {
-            if (!config.exclude_from_source) continue;
+        const gc = gangCode.trim().toUpperCase();
+        const desc = description.trim().toUpperCase();
+        const source = sourceLocCode.trim().toUpperCase();
+
+        const plugins = virtualDivisionRegistry.getAllPlugins();
+
+        for (const plugin of plugins) {
+            if (!plugin.excludeFromSource) continue;
 
             // Check LocCode
-            if (config.source_division && config.source_division.toUpperCase() !== sourceLocCode.toUpperCase()) {
+            if (plugin.sourceDivision && plugin.sourceDivision.toUpperCase() !== source) {
                 continue;
             }
 
-            // Check pattern
-            if (config.pattern) {
-                const regex = new RegExp(config.pattern, "i");
-                if (regex.test(gangCode)) return true;
+            // Check gang pattern
+            if (plugin.gangPattern && plugin.gangPattern.test(gc)) {
+                return true;
             }
 
-            // Check description
-            if (config.description_pattern) {
-                const regex = new RegExp(config.description_pattern, "i");
-                if (regex.test(description)) return true;
+            // Check description pattern
+            if (plugin.descriptionPattern && plugin.descriptionPattern.test(desc)) {
+                return true;
             }
         }
         return false;
     }
+
+    /**
+     * Mendapatkan urutan display untuk virtual divisions.
+     * DIJAGA UNTUK BACKWARD COMPATIBILITY.
+     */
+    public get VIRTUAL_DIVISION_ORDER(): string[] {
+        return virtualDivisionRegistry.getDisplayOrder();
+    }
 }
 
+// Export singleton instance
 export const divisionDefinition = DivisionDefinition.getInstance();

@@ -96,7 +96,8 @@
       "Bash(bun test:*)",
       "Bash(ls:*)",
       "Bash(sqlite3:*)",
-      "Bash(bun -e:*)"
+      "Bash(bun -e:*)",
+      "Bash(bunx tsc --noEmit)"
     ],
     "deny": [],
     "ask": []
