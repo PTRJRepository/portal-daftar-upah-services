@@ -84,6 +84,12 @@ export class OtherIncomesService {
                         updated_at DATETIME DEFAULT GETDATE()
                     );
                 END
+
+                -- Add details_json column if it doesn't exist
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'details_json')
+                BEGIN
+                    ALTER TABLE employee_other_incomes ADD details_json NVARCHAR(MAX) NULL;
+                END
                 
                 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'employee_other_incomes_formulas' AND TABLE_SCHEMA = 'dbo')
                 BEGIN
@@ -171,36 +177,50 @@ export class OtherIncomesService {
             let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
             const params: any[] = [year, month];
             if (divisionCode && divisionCode !== 'ALL') {
-                const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-                const allPossibleDivs = new Set<string>([divisionCode]);
-                for (const sd of sourceDivs) {
-                    allPossibleDivs.add(sd);
-                    if (sd.startsWith('P') && sd.length === 3) allPossibleDivs.add('PG' + sd.substring(1));
-                    if (sd.startsWith('PG') && sd.length === 4) allPossibleDivs.add('P' + sd.substring(2));
-                    
-                    // Also find all virtual divisions that map to this source division
-                    const virtuals = await divisionDefinition.getVirtualDivisionsForSource(sd);
-                    virtuals.forEach(v => {
-                        const config = divisionDefinition.getVirtualDivisionConfig(v);
-                        // Only auto-include if NOT excluded from source.
-                        // If it IS excluded, it has its own entry in the dropdown and shouldn't mix.
-                        if (!config?.exclude_from_source) {
-                            allPossibleDivs.add(v);
+                // Use unified mapping for consistent division handling
+                const allPossibleDivs = new Set<string>();
+                let virtualGangs: string[] = [];
+
+                try {
+                    const { gangService } = await import('./gangService');
+
+                    // Check if this is a virtual division - handle separately
+                    if (gangService.isVirtualDivision(divisionCode)) {
+                        // For virtual divisions, filter by gang_code instead
+                        virtualGangs = await gangService.getVirtualDivisionGangs(divisionCode);
+                        if (virtualGangs.length > 0) {
+                            sql += ` AND gang_code IN (${virtualGangs.map(() => '?').join(',')})`;
+                            params.push(...virtualGangs);
                         }
-                    });
-                }
-                const divList = Array.from(allPossibleDivs);
-                sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
-                params.push(...divList);
+                    } else {
+                        // Regular division - use unified mapping
+                        const aliases = gangService.getAllDivisionAliases(divisionCode);
+                        aliases.forEach(a => allPossibleDivs.add(a));
+                        // Also get from source divisions
+                        const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+                        for (const sd of sourceDivs) {
+                            allPossibleDivs.add(sd);
+                            const srcAliases = gangService.getAllDivisionAliases(sd);
+                            srcAliases.forEach(a => allPossibleDivs.add(a));
+                        }
+                        const divList = Array.from(allPossibleDivs);
+                        sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
+                        params.push(...divList);
+                    }
+                } catch { /* gangService not available */ }
             }
             if (gangCode && gangCode !== 'ALL') { sql += ` AND gang_code = ?`; params.push(gangCode); }
-            
-            const rows = (await db.query(sql, params)) as OtherIncome[];
-            
+
+            const rows = (await db.query(sql, params)) as any[];
+
             // AGGRESSIVE DEDUPLICATION: Ensure one record per NIK
             const uniqueMap = new Map<string, OtherIncome>();
             rows.forEach(r => {
                 const key = (r.nik || '').trim().toUpperCase();
+                // Parse details_json back into details object
+                if (r.details_json) {
+                    try { r.details = JSON.parse(r.details_json); } catch { r.details = null; }
+                }
                 if (key && !uniqueMap.has(key)) uniqueMap.set(key, r);
             });
             return Array.from(uniqueMap.values());
@@ -229,7 +249,7 @@ export class OtherIncomesService {
                 'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
             };
             const hrMap = new Map<string, any>();
-            
+
             for (const chunk of nikChunks) {
                 const placeholders = chunk.map(() => '?').join(',');
                 // Get employee data with their gang assignments
@@ -284,7 +304,7 @@ export class OtherIncomesService {
                         try {
                             const d = new Date(rawJD);
                             if (!isNaN(d.getTime())) joinDateStr = d.toISOString();
-                        } catch (e) {}
+                        } catch (e) { }
                     }
 
                     // Get the LATEST gang from the map (most recent gang assignment)
@@ -311,7 +331,7 @@ export class OtherIncomesService {
                     if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, data);
                 });
             }
-            
+
             // Only fetch blacklist if we have data to filter
             const periodYear = incomes[0].period_year;
             const periodMonth = incomes[0].period_month;
@@ -333,7 +353,7 @@ export class OtherIncomesService {
                     if (!inc.emp_name || inc.emp_name === inc.nik) inc.emp_name = hr.emp_name;
                     (inc as any).upah_dasar = hr.upah_dasar; (inc as any).beras_rate = hr.beras_rate; (inc as any).sex = hr.sex;
                 }
-                
+
                 // PERSISTENCE RULE: Auto-recalculate THR proportion for saved data if needed
                 if (inc.income_type === 'THR' && inc.join_date) {
                     const jd = this.parseDate(inc.join_date);
@@ -381,7 +401,7 @@ export class OtherIncomesService {
         return filtered.map(inc => {
             const nikKey = inc.nik?.trim().toUpperCase(); const h = historyDict[nikKey];
             const upahDasar = h?.upah_dasar || (inc as any).upah_dasar || 0;
-            const vars = {
+            const recalcVars: any = {
                 UPAH_DASAR: upahDasar,
                 GAJI_POKOK: upahDasar * 30,
                 BERAS_RATE: h?.beras_rate || (inc as any).beras_rate || 0,
@@ -394,12 +414,16 @@ export class OtherIncomesService {
                 BANK_CODE: inc.bank_code || h?.bank_code,
                 EMP_CODE: inc.emp_code || h?.emp_code
             };
-            const jd = this.parseDate(vars.JOIN_DATE);
+            const jd = this.parseDate(recalcVars.JOIN_DATE);
             if (jd) {
                 const periodDate = new Date(year, month - 1, 1);
                 const diff = (periodDate.getFullYear() - jd.getFullYear()) * 12 + (periodDate.getMonth() - jd.getMonth());
-                if (diff < 12 && diff >= 0) { vars.PROPORTION_FACTOR = `${Math.min(12, diff + 1)}/12`; }
+                if (diff < 12 && diff >= 0) { recalcVars.PROPORTION_FACTOR = `${Math.min(12, diff + 1)}/12`; }
             }
+            // Merge: saved details_json variables (from calculateTHRData) take precedence
+            // This preserves JABATAN_JUMLAH, TOTAL_TUNJANGAN_JABATAN, TOTAL_TUNJANGAN_BERAS, IS_FULL, etc.
+            const savedVars = (inc as any).details?.variables || {};
+            const vars = { ...recalcVars, ...savedVars };
             return { ...inc, details: { formula: thrFormula.formula, variables: vars } };
         });
     }
@@ -407,45 +431,23 @@ export class OtherIncomesService {
     static async calculateTHRData(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
         const historyService = HistoryDatabaseService.getInstance();
 
-        // Resolve virtual division to actual source divisions for history query
-        let effectiveDivisionCode = divisionCode;
-        let virtualGangFilter: string | null = null; // Gang pattern to filter for virtual divisions
+        // NOTE: Do NOT resolve virtual division to source!
+        // The history service already handles virtual division filtering correctly.
+        // If we resolve WKS_AR -> AB2 here, the history service will treat it as a real division
+        // and won't apply the virtual gang filtering.
+        // Instead, pass the virtual division code as-is to let history service handle it.
 
-        if (divisionCode && divisionDefinition.isVirtualDivision(divisionCode)) {
-            const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-            // Use first source division for history query (for single virtual divisions)
-            effectiveDivisionCode = sourceDivs[0];
-
-            // Get gang pattern for this virtual division
-            const config = divisionDefinition.getVirtualDivisionConfig(divisionCode);
-            if (config?.pattern) {
-                // Extract the gang pattern (e.g., "^AMC$" -> "AMC")
-                const match = config.pattern.match(/\^?([A-Za-z0-9]+)\$/);
-                if (match) {
-                    virtualGangFilter = match[1].toUpperCase();
-                    console.log(`[OtherIncomes] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode} with gang filter: ${virtualGangFilter}`);
-                }
-            }
-            console.log(`[OtherIncomes] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode} for THR calculation`);
-        }
-
-        const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', effectiveDivisionCode || undefined);
+        const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', divisionCode || undefined);
         if (!historyData?.data_rows?.length) {
-            console.log(`[OtherIncomes] No history data for ${effectiveDivisionCode}, gang: ${gangCode}, period: ${month}/${year}`);
+            console.log(`[OtherIncomes] No history data for ${divisionCode}, gang: ${gangCode}, period: ${month}/${year}`);
             return [];
         }
 
-        // Apply gang filter for virtual divisions (WKS_AR = HMC, WKS_PG = AMC, etc)
-        let filteredDataRows = historyData.data_rows;
-        if (virtualGangFilter) {
-            filteredDataRows = historyData.data_rows.filter(row => {
-                const rowGang = (row.gang_code || '').trim().toUpperCase();
-                return rowGang === virtualGangFilter;
-            });
-            console.log(`[OtherIncomes] Filtered to gang ${virtualGangFilter}: ${filteredDataRows.length} employees from ${historyData.data_rows.length} total`);
-        }
+        // The history service already filtered by virtual division gangs (if applicable)
+        // No additional filtering needed here
+        const filteredDataRows = historyData.data_rows;
         const formulaConfig = await this.getFormula('THR');
-        
+
         // Fetch blacklist for this period
         const blacklist = await this.getBlacklist(year, month, 'THR');
         const blacklistedNIKs = new Set(blacklist.map(b => String(b.nik || '').trim().toUpperCase()));
@@ -459,26 +461,66 @@ export class OtherIncomesService {
             }
         });
 
+        // Summary counters
+        let fullWorkers = 0; // 12/12
+        let proportionalWorkers = 0;
+
         const results: OtherIncome[] = [];
         for (const row of uniqueHistoryMap.values()) {
             const nik = String(row.nik || '').trim().toUpperCase();
             const upahDasar = row.upah_dasar || 0;
-            const mathVars = { UPAH_DASAR: upahDasar, GAJI_POKOK: upahDasar * 30, BERAS_RATE: row.beras_rate || 0, MASA_KERJA_JUMLAH: row.masa_kerja_jumlah || 0, MASA_KERJA_TAHUN: row.masa_kerja_tahun || 0, HK: 30 };
+            const berasRate = row.beras_rate || 0;
+            const jabatanRate = row.jabatan_rate || 0;
+            const masaKerjaJumlah = row.masa_kerja_jumlah || 0;
+
+            // Calculate component values
+            const gajiPokok = upahDasar * 30;
+            const tunjanganBeras = berasRate * 30;
+            const tunjanganJabatan = row.jabatan_jumlah || (jabatanRate * 30);
+            const tunjanganMasaKerja = masaKerjaJumlah;
+
+            const mathVars = {
+                UPAH_DASAR: upahDasar,
+                GAJI_POKOK: gajiPokok,
+                BERAS_RATE: berasRate,
+                BERAS_JUMLAH: tunjanganBeras,
+                JABATAN_RATE: jabatanRate,
+                JABATAN_JUMLAH: tunjanganJabatan,
+                MASA_KERJA_JUMLAH: tunjanganMasaKerja,
+                MASA_KERJA_TAHUN: row.masa_kerja_tahun || 0,
+                HK: 30
+            };
             let fullThr = 0;
             try {
                 const evalFn = new Function(...Object.keys(mathVars), `return ${formulaConfig.formula};`);
                 fullThr = evalFn(...Object.values(mathVars));
-            } catch { fullThr = (upahDasar * 30) + (row.beras_rate * 30) + (row.masa_kerja_jumlah || 0); }
-            let thrAmt = fullThr; let propDesc = ''; let workingMonths = 12; let propFactor = "12/12";
+            } catch { fullThr = gajiPokok + tunjanganBeras + tunjanganMasaKerja; }
+
+            let thrAmt = fullThr;
+            let propDesc = '';
+            let workingMonths = 12;
+            let propFactor = "12/12";
             const jd = this.parseDate(row.join_date);
             if (jd) {
                 const periodDate = new Date(year, month - 1, 1);
                 let diff = (periodDate.getFullYear() - jd.getFullYear()) * 12 + (periodDate.getMonth() - jd.getMonth());
                 if (diff < 12 && diff >= 0) {
                     workingMonths = Math.min(12, diff + 1);
-                    if (workingMonths < 12) { propFactor = `${workingMonths}/12`; thrAmt = Math.round((fullThr * workingMonths) / 12); propDesc = ` (Proporsi ${workingMonths}/12)`; }
+                    if (workingMonths < 12) {
+                        propFactor = `${workingMonths}/12`;
+                        thrAmt = Math.round((fullThr * workingMonths) / 12);
+                        propDesc = ` (Proporsi ${workingMonths}/12)`;
+                        proportionalWorkers++;
+                    } else {
+                        fullWorkers++;
+                    }
+                } else {
+                    fullWorkers++;
                 }
+            } else {
+                fullWorkers++;
             }
+
             let relRow = row.religion || '';
             const rawRowRel = relRow.trim().toUpperCase();
             const religionMap: Record<string, string> = {
@@ -488,12 +530,12 @@ export class OtherIncomesService {
                 'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
                 'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
             };
-            const mappedRel = religionMap[rawRowRel] || relRow || '01 Islam'; // PERSISTENCE: Default to '01 Islam' if religion missing
+            const mappedRel = religionMap[rawRowRel] || relRow || '01 Islam';
 
             results.push({
                 nik,
                 emp_name: row.nama || row.emp_name || '',
-                division_code: row.loc_code || divisionCode || row.division_code,
+                division_code: divisionCode || row.loc_code || row.division_code,
                 gang_code: row.gang_code,
                 period_year: year,
                 period_month: month,
@@ -502,8 +544,25 @@ export class OtherIncomesService {
                 amount: thrAmt,
                 is_paid_in_thp: true,
                 is_taxable: true,
-                original_religion: row.religion || '', // Save original religion before enrichment
-                details: { formula: formulaConfig.formula, variables: { ...mathVars, JOIN_DATE: row.join_date, WORKING_MONTHS: workingMonths, PROPORTION_FACTOR: propFactor, RELIGION: mappedRel, SEX: row.jenis_kelamin === 'FEMALE' ? 'P' : 'L', EMP_CODE: row.emp_code } }
+                original_religion: row.religion || '',
+                details: {
+                    formula: formulaConfig.formula,
+                    variables: {
+                        ...mathVars,
+                        JOIN_DATE: row.join_date,
+                        WORKING_MONTHS: workingMonths,
+                        PROPORTION_FACTOR: propFactor,
+                        RELIGION: mappedRel,
+                        SEX: row.jenis_kelamin === 'FEMALE' ? 'P' : 'L',
+                        EMP_CODE: row.emp_code,
+                        // Summary values
+                        TOTAL_GAJI_POKOK: gajiPokok,
+                        TOTAL_TUNJANGAN_BERAS: tunjanganBeras,
+                        TOTAL_TUNJANGAN_JABATAN: tunjanganJabatan,
+                        TOTAL_TUNJANGAN_MASA_KERJA: tunjanganMasaKerja,
+                        IS_FULL: workingMonths === 12
+                    }
+                }
             });
         }
         // enrichWithHrData already handles filtering by blacklist
@@ -529,27 +588,29 @@ export class OtherIncomesService {
                           AND income_type = ?
                     `, [inc.period_year, inc.period_month, inc.nik.trim(), inc.income_type]);
 
-                    // 2. Insert new calculated record
+                    // 2. Insert new calculated record (including details_json)
+                    const detailsJson = inc.details ? JSON.stringify(inc.details) : null;
                     await db.query(`
                         INSERT INTO employee_other_incomes (
                             nik, emp_name, division_code, gang_code, 
                             period_year, period_month, income_type, 
                             income_name, amount, is_paid_in_thp, is_taxable, 
-                            created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
+                            details_json, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
                     `, [
-                        inc.nik, inc.emp_name, inc.division_code, inc.gang_code, 
-                        inc.period_year, inc.period_month, inc.income_type, 
-                        inc.income_name, inc.amount, 
-                        inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0
+                        inc.nik, inc.emp_name, inc.division_code, inc.gang_code,
+                        inc.period_year, inc.period_month, inc.income_type,
+                        inc.income_name, inc.amount,
+                        inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0,
+                        detailsJson
                     ]);
                     count++;
                 }
             }
             return { success: true, count };
-        } catch (e) { 
+        } catch (e) {
             console.error("Bulk save error:", e);
-            return { success: false, count }; 
+            return { success: false, count };
         }
     }
 
@@ -583,14 +644,14 @@ export class OtherIncomesService {
 
     static async deleteIncome(id: number): Promise<boolean> {
         const db = Database.getExtendedInstance();
-        try { 
+        try {
             const rows = await db.query(`SELECT nik, emp_name, period_year, period_month, income_type FROM employee_other_incomes WHERE id = ?`, [id]);
             if (rows && rows.length > 0) {
                 const r = rows[0];
                 await this.addToBlacklist(r.nik, r.emp_name, r.period_year, r.period_month, r.income_type);
             }
-            await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [id]); 
-            return true; 
+            await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [id]);
+            return true;
         }
         catch (e) { return false; }
     }
@@ -599,39 +660,54 @@ export class OtherIncomesService {
         const db = Database.getExtendedInstance();
         try {
             console.log(`[OtherIncomesService] Request DELETE by period: ${month}/${year}, Div: ${divisionCode}, Gang: ${gangCode}`);
-            
+
             let sql = `DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
             const params: any[] = [year, month];
 
             if (divisionCode && divisionCode !== 'ALL') {
-                // Determine all division codes that should be cleared
-                const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-                const allPossibleDivs = new Set<string>([divisionCode]);
-                
-                // Add variants like PG vs P
-                if (divisionCode.startsWith('P') && divisionCode.length === 3) allPossibleDivs.add('PG' + divisionCode.substring(1));
-                if (divisionCode.startsWith('PG') && divisionCode.length === 4) allPossibleDivs.add('P' + divisionCode.substring(2));
+                // Use unified mapping for consistent handling
+                const allPossibleDivs = new Set<string>();
+                let virtualGangs: string[] = [];
 
-                for (const sd of sourceDivs) {
-                    allPossibleDivs.add(sd);
-                    if (sd.startsWith('P') && sd.length === 3) allPossibleDivs.add('PG' + sd.substring(1));
-                    if (sd.startsWith('PG') && sd.length === 4) allPossibleDivs.add('P' + sd.substring(2));
-                    
-                    const virtuals = await divisionDefinition.getVirtualDivisionsForSource(sd);
-                    virtuals.forEach(v => {
-                        const config = divisionDefinition.getVirtualDivisionConfig(v);
-                        // IMPORTANT: We clear the virtual division IF it's NOT excluded from source,
-                        // OR if the user explicitly selected that virtual division.
-                        if (!config?.exclude_from_source || v === divisionCode) {
-                            allPossibleDivs.add(v);
+                try {
+                    const { gangService } = await import('./gangService');
+
+                    // Check if this is a virtual division - handle separately
+                    if (gangService.isVirtualDivision(divisionCode)) {
+                        // For virtual divisions, filter by gang_code
+                        virtualGangs = await gangService.getVirtualDivisionGangs(divisionCode);
+                        if (virtualGangs.length > 0) {
+                            sql += ` AND gang_code IN (${virtualGangs.map(() => '?').join(',')})`;
+                            params.push(...virtualGangs);
+                            console.log(`[OtherIncomesService] Deleting for virtual division gangs: ${virtualGangs.join(', ')}`);
                         }
-                    });
-                }
-                
-                const divList = Array.from(allPossibleDivs);
-                console.log(`[OtherIncomesService] Deleting for divisions: ${divList.join(', ')}`);
-                sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
-                params.push(...divList);
+                    } else {
+                        // Regular division - use unified mapping
+                        const aliases = gangService.getAllDivisionAliases(divisionCode);
+                        aliases.forEach(a => allPossibleDivs.add(a));
+
+                        // Also get from source divisions
+                        const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+                        for (const sd of sourceDivs) {
+                            allPossibleDivs.add(sd);
+                            const srcAliases = gangService.getAllDivisionAliases(sd);
+                            srcAliases.forEach(a => allPossibleDivs.add(a));
+
+                            // Include virtual divisions for source
+                            const virtuals = await divisionDefinition.getVirtualDivisionsForSource(sd);
+                            virtuals.forEach(v => {
+                                const config = divisionDefinition.getVirtualDivisionConfig(v);
+                                if (!config?.exclude_from_source || v === divisionCode) {
+                                    allPossibleDivs.add(v);
+                                }
+                            });
+                        }
+                        const divList = Array.from(allPossibleDivs);
+                        console.log(`[OtherIncomesService] Deleting for divisions: ${divList.join(', ')}`);
+                        sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
+                        params.push(...divList);
+                    }
+                } catch { /* gangService not available */ }
             }
 
             if (gangCode && gangCode !== 'ALL') {
@@ -649,12 +725,95 @@ export class OtherIncomesService {
     }
 
     // calculateAndSaveTHR: calculates THR for all employees and saves to DB
-    static async calculateAndSaveTHR(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<{ success: boolean; count?: number; error?: string }> {
+    // Always deletes old data first for the selected period/division/gang, then saves new data
+    // This ensures no duplicates and data is always fresh
+    static async calculateAndSaveTHR(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<{ success: boolean; count?: number; error?: string; summary?: { total_karyawan: number; full_workers: number; proportional_workers: number; total_thr: number; total_gaji_pokok: number; total_tunjangan_beras: number; total_tunjangan_jabatan: number } }> {
         try {
+            // 1. Calculate THR data
             const data = await this.calculateTHRData(year, month, divisionCode, gangCode);
             if (!data.length) return { success: false, error: 'Tidak ada data karyawan untuk periode ini.' };
+
+            // 2. Calculate summary
+            let fullWorkers = 0;
+            let proportionalWorkers = 0;
+            let totalThr = 0;
+            let totalGajiPokok = 0;
+            let totalTunjanganBeras = 0;
+            let totalTunjanganJabatan = 0;
+
+            for (const inc of data) {
+                totalThr += inc.amount || 0;
+                const vars = (inc as any).details?.variables || {};
+                totalGajiPokok += vars.TOTAL_GAJI_POKOK || 0;
+                totalTunjanganBeras += vars.TOTAL_TUNJANGAN_BERAS || 0;
+                totalTunjanganJabatan += vars.TOTAL_TUNJANGAN_JABATAN || 0;
+                if (vars.IS_FULL) {
+                    fullWorkers++;
+                } else {
+                    proportionalWorkers++;
+                }
+            }
+
+            const summary = {
+                total_karyawan: data.length,
+                full_workers: fullWorkers,
+                proportional_workers: proportionalWorkers,
+                total_thr: totalThr,
+                total_gaji_pokok: totalGajiPokok,
+                total_tunjangan_beras: totalTunjanganBeras,
+                total_tunjangan_jabatan: totalTunjanganJabatan
+            };
+
+            // 3. Delete existing data for this period/division/gang FIRST
+            const db = Database.getExtendedInstance();
+            let deleteSql = `DELETE FROM employee_other_incomes WHERE period_year = ? AND period_month = ? AND income_type = 'THR'`;
+            const deleteParams: any[] = [year, month];
+
+            if (divisionCode && divisionCode !== 'ALL') {
+                // Use unified mapping for consistent division handling
+                const allPossibleDivs = new Set<string>();
+                let virtualGangs: string[] = [];
+
+                try {
+                    const { gangService } = await import('./gangService');
+
+                    // Check if this is a virtual division - handle separately
+                    if (gangService.isVirtualDivision(divisionCode)) {
+                        // For virtual divisions, filter by gang_code
+                        virtualGangs = await gangService.getVirtualDivisionGangs(divisionCode);
+                        if (virtualGangs.length > 0) {
+                            deleteSql += ` AND gang_code IN (${virtualGangs.map(() => '?').join(',')})`;
+                            deleteParams.push(...virtualGangs);
+                        }
+                    } else {
+                        // Regular division - use unified mapping
+                        const aliases = gangService.getAllDivisionAliases(divisionCode);
+                        aliases.forEach(a => allPossibleDivs.add(a));
+
+                        // Also get from source divisions
+                        const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+                        for (const sd of sourceDivs) {
+                            allPossibleDivs.add(sd);
+                            const srcAliases = gangService.getAllDivisionAliases(sd);
+                            srcAliases.forEach(a => allPossibleDivs.add(a));
+                        }
+                        const divList = Array.from(allPossibleDivs);
+                        deleteSql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
+                        deleteParams.push(...divList);
+                    }
+                } catch { /* gangService not available */ }
+            }
+
+            if (gangCode && gangCode !== 'ALL') {
+                deleteSql += ` AND gang_code = ?`;
+                deleteParams.push(gangCode);
+            }
+
+            await db.query(deleteSql, deleteParams);
+
+            // 4. Insert new data
             const result = await this.bulkSaveIncomes(data);
-            return result;
+            return { success: result.success, count: result.count, summary };
         } catch (e: any) { return { success: false, error: e.message }; }
     }
 
@@ -663,5 +822,140 @@ export class OtherIncomesService {
     static async previewTHR(year: number, month: number, division?: string, gang?: string) {
         try { const data = await this.calculateTHRData(year, month, division, gang); return { success: true, data }; }
         catch (e: any) { return { success: false, error: e.message }; }
+    }
+
+    /**
+     * Get summary of saved THR data grouped by gang
+     * Automatically excludes blacklisted employees (done via getIncomesWithDetails)
+     */
+    static async getThrSummary(year: number, month: number, divisionCode?: string) {
+        try {
+            // Use getRawIncomes directly - avoid heavy full recalculation
+            const raw = await this.getRawIncomes(year, month, divisionCode);
+            // Filter to THR only
+            const incomes = raw.filter(r => r.income_type === 'THR');
+
+            if (!incomes || incomes.length === 0) {
+                return { data: [], grand_total: null };
+            }
+
+            // Build a history dict for records that DON'T have details_json
+            // This provides fallback masa_kerja and beras data
+            const needsHistory = incomes.filter(inc => !(inc as any).details?.variables);
+            let historyDict: Record<string, any> = {};
+            if (needsHistory.length > 0) {
+                try {
+                    const historyService = HistoryDatabaseService.getInstance();
+                    // Fetch ALL divisions' history at once (pass undefined for div)
+                    const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, 'ALL', undefined);
+                    if (historyData?.data_rows) {
+                        historyData.data_rows.forEach((row: any) => {
+                            const nik = String(row.nik || '').trim().toUpperCase();
+                            if (nik) historyDict[nik] = row;
+                        });
+                    }
+                } catch (e) { /* ignore history fallback errors */ }
+            }
+
+            const gangMap = new Map<string, {
+                gang_code: string;
+                gang_description?: string;
+                total_employees: number;
+                full_workers: number;
+                prop_workers: number;
+                total_thr: number;
+                total_tunjangan_beras: number;
+                total_masa_kerja: number;
+            }>();
+
+            const grandTotal = {
+                total_employees: 0,
+                full_workers: 0,
+                prop_workers: 0,
+                total_thr: 0,
+                total_tunjangan_beras: 0,
+                total_masa_kerja: 0
+            };
+
+            for (const inc of incomes) {
+                const gangCode = inc.gang_code || 'UNKNOWN';
+                const amt = inc.amount || 0;
+                let vars = (inc as any).details?.variables || {};
+
+                // Fallback: if no details_json, use history data
+                if (Object.keys(vars).length === 0) {
+                    const nikKey = inc.nik?.trim().toUpperCase();
+                    const h = historyDict[nikKey || ''];
+                    if (h) {
+                        vars = {
+                            BERAS_RATE: h.beras_rate || 0,
+                            BERAS_JUMLAH: (h.beras_rate || 0) * 30,
+                            MASA_KERJA_JUMLAH: h.masa_kerja_jumlah || 0,
+                            PROPORTION_FACTOR: '12/12'
+                        };
+                    }
+                }
+
+                // Always detect proportion from income_name as override
+                // This fixes cases where details_json has incorrect PROPORTION_FACTOR
+                const propMatch = inc.income_name?.match(/Proporsi\s+(\d+)\/12/i);
+                if (propMatch) {
+                    vars.PROPORTION_FACTOR = `${propMatch[1]}/12`;
+                    vars.WORKING_MONTHS = parseInt(propMatch[1]);
+                }
+
+                // Determine if full or proportional
+                // Use PROPORTION_FACTOR as primary source (if not '12/12', it's proportional)
+                const propFactor = vars.PROPORTION_FACTOR || '12/12';
+                const isFull = propFactor === '12/12';
+
+                // Get tunjangan values
+                const tunjanganBeras = vars.TOTAL_TUNJANGAN_BERAS || vars.BERAS_JUMLAH || ((vars.BERAS_RATE || 0) * 30);
+                const masaKerja = vars.MASA_KERJA_JUMLAH || 0;
+
+                if (!gangMap.has(gangCode)) {
+                    gangMap.set(gangCode, {
+                        gang_code: gangCode,
+                        gang_description: gangCode,
+                        total_employees: 0,
+                        full_workers: 0,
+                        prop_workers: 0,
+                        total_thr: 0,
+                        total_tunjangan_beras: 0,
+                        total_masa_kerja: 0
+                    });
+                }
+
+                const gangSum = gangMap.get(gangCode)!;
+                gangSum.total_employees += 1;
+                gangSum.total_thr += amt;
+                gangSum.total_tunjangan_beras += tunjanganBeras;
+                gangSum.total_masa_kerja += masaKerja;
+
+                if (isFull) {
+                    gangSum.full_workers += 1;
+                    grandTotal.full_workers += 1;
+                } else {
+                    gangSum.prop_workers += 1;
+                    grandTotal.prop_workers += 1;
+                }
+
+                grandTotal.total_employees += 1;
+                grandTotal.total_thr += amt;
+                grandTotal.total_tunjangan_beras += tunjanganBeras;
+                grandTotal.total_masa_kerja += masaKerja;
+            }
+
+            const data = Array.from(gangMap.values()).sort((a, b) => a.gang_code.localeCompare(b.gang_code));
+
+            return {
+                data,
+                grand_total: grandTotal
+            };
+
+        } catch (error: any) {
+            console.error("Error in getThrSummary:", error);
+            throw error;
+        }
     }
 }

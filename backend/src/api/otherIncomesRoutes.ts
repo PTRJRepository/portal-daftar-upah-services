@@ -26,6 +26,25 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
         }
     })
 
+    .get("/summary", async ({ query }) => {
+        try {
+            const { year, month, divisionCode } = query as any;
+            if (!year || !month) {
+                return { success: false, error: "Year and month are required parameters" };
+            }
+
+            const summary = await OtherIncomesService.getThrSummary(
+                parseInt(year),
+                parseInt(month),
+                divisionCode !== 'ALL' ? divisionCode : undefined
+            );
+            return { success: true, ...summary };
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to fetch THR summary", error);
+            return { success: false, error: error.message };
+        }
+    })
+
     .post("/", async ({ body }) => {
         try {
             const data = body as OtherIncome;

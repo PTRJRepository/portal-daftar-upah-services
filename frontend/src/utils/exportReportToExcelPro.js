@@ -460,18 +460,21 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
 
     worksheet.addRow([]);
 
-    // Creating a layout for 3 signatures spreading cross the sheet
-    // We'll place them roughly at col 2, col middle, col near end
+    // Creating a layout for 4 signatures spreading across the sheet
+    // We'll place them roughly at col 2, col 1/4, col 1/2, col 3/4
     const colCount = flatCols.length;
-    const midCol = Math.floor(colCount / 2);
-    const endCol = colCount - 2 > midCol ? colCount - 2 : colCount;
+    const col1 = 2;
+    const col2 = Math.max(Math.floor(colCount * 0.3), col1 + 3);
+    const col3 = Math.max(Math.floor(colCount * 0.55), col2 + 3);
+    const col4 = Math.max(colCount - 2, col3 + 3);
 
     const titleSignRow = worksheet.addRow(Array(colCount).fill(''));
-    titleSignRow.getCell(2).value = 'Dibuat Oleh,';
-    titleSignRow.getCell(midCol).value = 'Diperiksa Oleh,';
-    titleSignRow.getCell(endCol).value = 'Disetujui Oleh,';
+    titleSignRow.getCell(col1).value = 'Dibuat Oleh,';
+    titleSignRow.getCell(col2).value = 'Diperiksa Oleh,';
+    titleSignRow.getCell(col3).value = 'Diketahui Oleh,';
+    titleSignRow.getCell(col4).value = 'Disetujui Oleh,';
 
-    [2, midCol, endCol].forEach(c => {
+    [col1, col2, col3, col4].forEach(c => {
         titleSignRow.getCell(c).font = { bold: true };
         titleSignRow.getCell(c).alignment = { horizontal: 'center' };
     });
@@ -480,20 +483,22 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
     for (let i = 0; i < 4; i++) worksheet.addRow([]);
 
     const nameSignRow = worksheet.addRow(Array(colCount).fill(''));
-    nameSignRow.getCell(2).value = '( ...................................... )';
-    nameSignRow.getCell(midCol).value = '( ...................................... )';
-    nameSignRow.getCell(endCol).value = '( ...................................... )';
+    nameSignRow.getCell(col1).value = '( ...................................... )';
+    nameSignRow.getCell(col2).value = '( ...................................... )';
+    nameSignRow.getCell(col3).value = '( ...................................... )';
+    nameSignRow.getCell(col4).value = '( ...................................... )';
 
-    [2, midCol, endCol].forEach(c => {
+    [col1, col2, col3, col4].forEach(c => {
         nameSignRow.getCell(c).alignment = { horizontal: 'center' };
     });
 
     const roleSignRow = worksheet.addRow(Array(colCount).fill(''));
-    roleSignRow.getCell(2).value = 'Clerk / Krani';
-    roleSignRow.getCell(midCol).value = 'Ka. Tata Usaha';
-    roleSignRow.getCell(endCol).value = 'Asisten Kepala / Manager';
+    roleSignRow.getCell(col1).value = 'Admin Payroll';
+    roleSignRow.getCell(col2).value = 'HR Manager';
+    roleSignRow.getCell(col3).value = 'Senior Manager';
+    roleSignRow.getCell(col4).value = 'General Manager';
 
-    [2, midCol, endCol].forEach(c => {
+    [col1, col2, col3, col4].forEach(c => {
         roleSignRow.getCell(c).font = { italic: true, size: 9 };
         roleSignRow.getCell(c).alignment = { horizontal: 'center' };
     });

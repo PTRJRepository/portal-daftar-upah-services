@@ -396,7 +396,11 @@ export class HistorySeederService {
             lembur_jumlah: emp.lembur_jumlah || 0,
             lembur_records: emp.lembur_records ? JSON.stringify(emp.lembur_records) : undefined,
             total_tunjangan: emp.total_tunjangan || 0,
-            premi_brondol: emp.premi_brondol || 0,
+            // [PHASE 2.5] Brondol dual source breakdown
+            premi_brondol: emp.premi_brondol || 0,  // Keep for backward compatibility (combined total)
+            premi_brondol_loosefruit: emp.premi_brondol_loosefruit || 0,
+            premi_brondol_adtrans: emp.premi_brondol_adtrans || 0,
+            premi_brondol_total: emp.premi_brondol_total || (emp.premi_brondol || 0),
             premi_pph: emp.premi_pph || 0,
             total_premi: emp.total_premi || 0,
             premi_detail: emp.premi ? JSON.stringify(emp.premi) : undefined,
@@ -632,18 +636,25 @@ export class HistorySeederService {
                 WHERE 1=1
             `;
 
-            if (options.divisionCode) {
-                sql += ` AND g.LocCode = '${options.divisionCode}'`;
+            const queryParams: any[] = [];
+
+            if (options.divisionCode && options.divisionCode !== 'ALL') {
+                // Use unified division mapping for LocCode filtering
+                const locCodes = gangService.getAllDivisionAliases(options.divisionCode);
+                const placeholders = locCodes.map(() => '?').join(',');
+                sql += ` AND g.LocCode IN (${placeholders})`;
+                queryParams.push(...locCodes);
             }
 
             if (options.gangCode && options.gangCode !== 'ALL') {
-                sql += ` AND g.GangCode = '${options.gangCode}'`;
+                sql += ` AND g.GangCode = ?`;
+                queryParams.push(options.gangCode);
             }
 
             // Order by date to help with latest code resolution
             sql += ` ORDER BY em.AppJoinGrpDate DESC`;
 
-            const gangMembers = await db.query<any>(sql);
+            const gangMembers = await db.query<any>(sql, queryParams);
             
             // Resolve latest codes
             const niks = gangMembers.map((r: any) => r.NewICNo?.trim()).filter(Boolean);
@@ -728,18 +739,25 @@ export class HistorySeederService {
                 WHERE 1=1
             `;
 
-            if (options.divisionCode) {
-                sql += ` AND g.LocCode = '${options.divisionCode}'`;
+            const empQueryParams: any[] = [];
+
+            if (options.divisionCode && options.divisionCode !== 'ALL') {
+                // Use unified division mapping for LocCode filtering
+                const locCodes = gangService.getAllDivisionAliases(options.divisionCode);
+                const placeholders = locCodes.map(() => '?').join(',');
+                sql += ` AND g.LocCode IN (${placeholders})`;
+                empQueryParams.push(...locCodes);
             }
 
             if (options.gangCode && options.gangCode !== 'ALL') {
-                sql += ` AND g.GangCode = '${options.gangCode}'`;
+                sql += ` AND g.GangCode = ?`;
+                empQueryParams.push(options.gangCode);
             }
 
             // ORDER BY to help with latest resolution
             sql += ` ORDER BY em.AppJoinGrpDate DESC`;
 
-            const employees = await db.query<any>(sql);
+            const employees = await db.query<any>(sql, empQueryParams);
 
             if (!result.records_inserted['hr_employee']) {
                 result.records_inserted['hr_employee'] = 0;
@@ -820,15 +838,22 @@ export class HistorySeederService {
                 WHERE 1=1
             `;
 
-            if (options.divisionCode) {
-                sql += ` AND g.LocCode = '${options.divisionCode}'`;
+            const gangQueryParams: any[] = [];
+
+            if (options.divisionCode && options.divisionCode !== 'ALL') {
+                // Use unified division mapping for LocCode filtering
+                const locCodes = gangService.getAllDivisionAliases(options.divisionCode);
+                const placeholders = locCodes.map(() => '?').join(',');
+                sql += ` AND g.LocCode IN (${placeholders})`;
+                gangQueryParams.push(...locCodes);
             }
 
             if (options.gangCode && options.gangCode !== 'ALL') {
-                sql += ` AND g.GangCode = '${options.gangCode}'`;
+                sql += ` AND g.GangCode = ?`;
+                gangQueryParams.push(options.gangCode);
             }
 
-            const gangs = await db.query<any>(sql);
+            const gangs = await db.query<any>(sql, gangQueryParams);
 
             if (!result.records_inserted['hr_gang']) {
                 result.records_inserted['hr_gang'] = 0;
@@ -873,14 +898,26 @@ export class HistorySeederService {
             FROM HR_EMPLOYEE e
             INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
             INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
-            WHERE g.LocCode = '${options.divisionCode}'
         `;
 
-        if (options.gangCode && options.gangCode !== 'ALL') {
-            sql += ` AND g.GangCode = '${options.gangCode}'`;
+        const empCodeParams: any[] = [];
+
+        if (options.divisionCode && options.divisionCode !== 'ALL') {
+            // Use unified division mapping for LocCode filtering
+            const locCodes = gangService.getAllDivisionAliases(options.divisionCode);
+            const placeholders = locCodes.map(() => '?').join(',');
+            sql += ` WHERE g.LocCode IN (${placeholders})`;
+            empCodeParams.push(...locCodes);
+        } else {
+            sql += ` WHERE 1=1`;
         }
 
-        const rows = await db.query<{ emp_code: string }>(sql);
+        if (options.gangCode && options.gangCode !== 'ALL') {
+            sql += ` AND g.GangCode = ?`;
+            empCodeParams.push(options.gangCode);
+        }
+
+        const rows = await db.query<{ emp_code: string }>(sql, empCodeParams);
         return rows.map(r => r.emp_code);
     }
 

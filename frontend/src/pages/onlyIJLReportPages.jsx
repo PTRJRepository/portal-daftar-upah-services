@@ -753,14 +753,22 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 <div className="wsp-signature-block">
                                     <div className="wsp-signature-title">DIBUAT OLEH :</div>
                                     <div className="wsp-signature-name">( ........................................ )</div>
+                                    <div className="wsp-signature-role">Admin Payroll</div>
                                 </div>
                                 <div className="wsp-signature-block">
                                     <div className="wsp-signature-title">DIPERIKSA OLEH :</div>
                                     <div className="wsp-signature-name">( ........................................ )</div>
+                                    <div className="wsp-signature-role">HR Manager</div>
+                                </div>
+                                <div className="wsp-signature-block">
+                                    <div className="wsp-signature-title">DIKETAHUI OLEH :</div>
+                                    <div className="wsp-signature-name">( ........................................ )</div>
+                                    <div className="wsp-signature-role">Senior Manager</div>
                                 </div>
                                 <div className="wsp-signature-block">
                                     <div className="wsp-signature-title">DISETUJUI OLEH :</div>
                                     <div className="wsp-signature-name">( ........................................ )</div>
+                                    <div className="wsp-signature-role">General Manager</div>
                                 </div>
                             </div>
 

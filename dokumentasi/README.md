@@ -7,6 +7,7 @@ Dokumentasi ini menjelaskan secara menyeluruh arsitektur sistem report daftar up
 ```
 dokumentasi/
 ├── README.md                     # Dokumentasi utama (file ini)
+├── Project_Structure_Diagram.md  # Bagan Struktur Project (Mermaid)
 ├── BackendStructure.md          # Struktur dan arsitektur backend
 ├── API_Documentation.md         # Spesifikasi API endpoints
 ├── Database_Configuration.md    # Konfigurasi dan arsitektur database

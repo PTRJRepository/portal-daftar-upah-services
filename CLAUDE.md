@@ -16,7 +16,7 @@ refactor_production/
 │       ├── services/             # Business logic (singleton pattern)
 │       ├── db/                   # SQL Gateway client (not direct DB connection)
 │       ├── config.ts             # Environment configuration
-│       └── scripts/              # Utility scripts for debugging/testing
+│       └── scripts/              # Core test/verification scripts ONLY
 ├── frontend/                     # React + Vite + AG Grid Enterprise
 │   └── src/
 │       ├── pages/                # Page components (.jsx files)
@@ -26,6 +26,11 @@ refactor_production/
 │       ├── hooks/                # Custom React hooks
 │       └── utils/                # Utility functions
 ├── backend/data/                 # Data files (thumbprint_data.json)
+├── _dev_utils/                  # Development utilities (NOT part of production)
+│   ├── scripts/debugging/        # Debug/test scripts (run as needed)
+│   ├── tests/                    # Integration tests
+│   ├── planning/                 # Feature planning documents
+│   └── prompts/                  # AI prompts and notes
 └── dokumentasi/                  # Indonesian documentation
 ```
 
@@ -81,13 +86,49 @@ npm run dev:lan               # LAN mode with backend at 10.0.0.128
 npm run preview               # Preview production build
 ```
 
-### Running Backend Scripts
-The `backend/src/scripts/` directory contains utility scripts:
+### Development Scripts Organization
+
+#### Core Test Scripts (Keep in `backend/src/scripts/`)
+These are essential verification scripts that should remain in the codebase:
 ```bash
 cd backend
-bun run src/scripts/seed_aggregation.ts       # Seed aggregation data
-bun run src/scripts/get_token.ts              # Generate auth token
-bun run src/scripts/check_aggregation_data.ts # Debug aggregation
+bun run src/scripts/test_division_mapping.ts  # Test unified division mapping
+bun run src/scripts/test_thr_summary.ts        # Test THR summary report
+bun run src/scripts/check_thr_data.ts          # Check THR saved data
+```
+
+#### Debugging/Development Scripts (Use `_dev_utils/`)
+All exploratory, debugging, and one-off test scripts MUST be placed in `_dev_utils/`:
+
+```
+_dev_utils/
+├── scripts/
+│   └── debugging/          # All debugging/test scripts go here
+│       ├── test_api_*.ts
+│       ├── check_*.ts
+│       └── debug_*.ts
+├── tests/
+│   └── *.ts              # Integration tests
+├── planning/              # Feature planning documents
+└── prompts/               # AI prompts and notes
+```
+
+**Rules:**
+1. DO NOT add debugging scripts to `backend/src/scripts/` - use `_dev_utils/scripts/debugging/` instead
+2. DO NOT add debugging scripts to `backend/scripts/` - this folder should not exist
+3. Only keep essential verification scripts in `backend/src/scripts/`
+4. All temporary/test scripts for investigation go in `_dev_utils/`
+
+#### Running Core Scripts
+```bash
+# Test division mapping
+cd backend && bun run src/scripts/test_division_mapping.ts
+
+# Test THR summary
+cd backend && bun run src/scripts/test_thr_summary.ts
+
+# Check THR data
+cd backend && bun run src/scripts/check_thr_data.ts
 ```
 
 ## Database Connection Rules (CRITICAL)
@@ -201,11 +242,12 @@ export const dataExtractorService = DataExtractorService.getInstance();
 
 | Service | Responsibility |
 |---------|---------------|
+| `divisionConfigService` | **Single Source of Truth** for all division definitions |
+| `gangService` | Fetch gangs/divisions, uses divisionConfigService |
 | `dataExtractorService` | Extract payroll data from PR_TASKREGLN, PR_ADTRANS, etc. |
 | `payrollService` | Calculate salary, BPJS, deductions |
 | `summaryService` | Aggregate division/summary data |
 | `aggregationService` | Seed aggregation history |
-| `gangService` | Fetch gangs/divisions from HR_GANG |
 | `headerService` | Generate dynamic AG Grid headers |
 | `authService` | JWT token verification |
 | `lemburCalculator` | Calculate overtime (lembur) amounts with tier-based rates |
@@ -218,8 +260,214 @@ export const dataExtractorService = DataExtractorService.getInstance();
 | `currentPeriodService` | Get current payroll period |
 | `deductionAdjustmentService` | Handle deduction adjustments |
 | `luasAreaService` | Calculate area-based values |
-| `divisionDefinition` | Define division hierarchies |
+| `divisionDefinition` | Define division hierarchies (uses divisionConfigService) |
 | `employeeRepository` | Employee data repository pattern |
+
+## New OOP Services (Mar 2026)
+
+The following services follow the OOP singleton pattern and provide centralized business logic:
+
+### TaxCalculationService
+**Location:** `backend/src/services/tax/TaxCalculationService.ts`
+
+Centralized tax calculations (PTKP & PPh21 TER):
+
+```typescript
+import { taxCalculationService } from './services/tax/TaxCalculationService';
+
+// Map beras rate to PTKP status
+const ptkpStatus = taxCalculationService.mapBerasRateToPTKP(4650); // → 'K/1'
+
+// Map PTKP to TER category
+const terCategory = taxCalculationService.mapPTKPToTER('K/3'); // → 'TER C'
+
+// Get PTKP amount
+const amount = taxCalculationService.getPTKPAmount('K/1', 2025); // → 63000000
+
+// Full tax calculation
+const result = taxCalculationService.calculate({
+    empCode: 'EMP001',
+    berasRate: 4650,
+    grossIncome: 5000000,
+    periodYear: 2025
+});
+```
+
+### EmployeeResolutionService
+**Location:** `backend/src/services/employee/EmployeeResolutionService.ts`
+
+Employee identity resolution:
+
+```typescript
+import { employeeResolutionService } from './services/employee/EmployeeResolutionService';
+
+// Single resolution
+const result = await employeeResolutionService.resolve({
+    nik: '1234567890',
+    preferredGangCode: 'G1H'
+});
+
+// Batch resolution
+const map = await employeeResolutionService.resolveBatch(
+    ['NIK1', 'NIK2', 'NIK3'],
+    preferredGangsMap
+);
+
+// Check if employee exists
+const exists = await employeeResolutionService.employeeExists('EMP001');
+```
+
+### CarumanService
+**Location:** `backend/src/services/payroll/CarumanService.ts`
+
+BPJS/Caruman calculations:
+
+```typescript
+import { carumanService } from './services/payroll/CarumanService';
+
+// Calculate all caruman components
+const result = carumanService.calculateAllCaruman(upahDasar, masaKerjaJumlah);
+// Returns: { base, gajiStandar, astek_*, bpjs_*, totals }
+
+// Get only PPh21-relevant components
+const pph21Components = carumanService.getForPph21(upahDasar, masaKerjaJumlah);
+```
+
+### CutiService
+**Location:** `backend/src/services/employee/CutiService.ts`
+
+Employee leave (cuti) management:
+
+```typescript
+import { cutiService } from './services/employee/CutiService';
+
+// Calculate working days after leave
+const result = cutiService.calculateWorkingDays({
+    totalHk: 25,
+    cutiTahunan: 0,
+    cutiSakit: 2,
+    cutiMinggu: 0,
+    cutiNasional: 0
+});
+
+// Check if should be excluded from payroll (CRITICAL FILTER LOGIC)
+const shouldExclude = cutiService.shouldExcludeFromPayroll(empCutiData);
+
+// Get leave data for period
+const cuti = await cutiService.getCutiData('EMP001', 2, 2026);
+```
+
+### PayrollNormalizationService
+**Location:** `backend/src/services/payroll/PayrollNormalizationService.ts`
+
+Normalize payroll component names:
+
+```typescript
+import { payrollNormalizationService } from './services/payroll/PayrollNormalizationService';
+
+// Normalize premi
+const premi = payrollNormalizationService.normalizePremi('PREMI PANEN AL');
+// → { normalizedKey: 'premi_panen_al', category: 'PREMI_PANEN' }
+
+// Normalize potongan
+const pot = payrollNormalizationService.normalizePotongan('PPH21', 'PPh 21', 'TAX001');
+// → { normalizedKey: 'potongan_pph21', category: 'PPH21' }
+
+// Check exclusions
+const isExcluded = payrollNormalizationService.isExcludedFromPremi('PPH21');
+```
+
+### PayrollComponentRegistry
+**Location:** `backend/src/services/payroll/`
+
+Orchestrates all payroll component calculations:
+
+```typescript
+import { payrollComponentRegistry } from './services/payroll';
+
+// Get registry status
+const status = payrollComponentRegistry.getHealthStatus();
+// → { registered_count: 6, components: ['lembur', 'premi', 'tunjangan', ...] }
+
+// Calculate all components for single employee
+const results = await payrollComponentRegistry.calculateAll(input);
+
+// Calculate for batch employees
+const batchResults = await payrollComponentRegistry.calculateAllBatch(inputs);
+```
+
+Registered components: `lembur`, `premi`, `tunjangan`, `potongan`, `pph21_ter`, `gaji_pokok`
+
+## DivisionConfigService - Single Source of Truth
+
+### Overview
+
+`DivisionConfigService` (`backend/src/services/config/DivisionConfigService.ts`) is the **single source of truth** for all division-related logic. All services should use this service instead of duplicating mapping logic.
+
+### Supported Divisions
+
+**Real Divisions:**
+| Code | Name | Aliases |
+|------|------|---------|
+| PG1A | Plasma 1 Afdeling | P1A, PG1A |
+| PG1B | Plasma 1 Blok | P1B, PG1B |
+| PG2A | Plasma 2 Afdeling | P2A, PG2A |
+| PG2B | Plasma 2 Blok | P2B, PG2B |
+| AB1 | Afdeling 1 | AB1, ARB1 |
+| AB2 | Afdeling 2 | AB2, ARB2 |
+| ARA | Area | ARA |
+| ARC | Air Ruak Central | ARC, AREC |
+| DME | Dempo | DME |
+| IJL | Ijuk | IJL, L |
+
+**Virtual Divisions:**
+| Code | Name | Source | Gang Pattern |
+|------|------|--------|--------------|
+| INF | Infrastruktur | PG1A | /^IN\d*$/i |
+| NRS | Nursery | PG1B | /^B2N$/i |
+| WKS_AR | Workshop Air Ruak | AB2 | /^HMC$/i |
+| WKS_PG | Workshop Parit Gunung | PG1A | /^AMC$/i |
+| WORKSHOP | Workshop All | - | /^(HMC|AMC)$/i |
+| MILL | Palm Oil Mill | - | /^M\d*$/i |
+
+### Usage
+
+```typescript
+import { divisionConfigService } from './services/config/DivisionConfigService';
+
+// Resolve alias to canonical
+const canonical = divisionConfigService.resolveCode('HMC');  // → 'WKS_AR'
+const canonical = divisionConfigService.resolveCode('ARB1');  // → 'AB1'
+
+// Check if virtual
+const isVirtual = divisionConfigService.isVirtualDivision('INF');  // → true
+
+// Get all aliases
+const aliases = divisionConfigService.getAliases('AB1');  // → ['AB1', 'AB-1', 'ARB1', ...]
+
+// Build SQL WHERE clause
+const { sql, params } = divisionConfigService.buildDivisionWhereClause('AB1', 'division_code');
+// sql: ' AND division_code IN (?,?,?,?)', params: ['AB1', 'AB-1', ...]
+
+// Get gangs for division (handles virtual)
+const gangs = await divisionConfigService.getGangsForDivision('WKS_AR');
+```
+
+### gangService Integration
+
+`gangService` delegates to `divisionConfigService`:
+
+```typescript
+// These are equivalent:
+gangService.normalizeDivisionCode('HMC')
+divisionConfigService.resolveCode('HMC')
+
+// Both return 'WKS_AR'
+```
+
+### Documentation
+
+See `dokumentasi/DivisionConfigService.md` for full documentation.
 
 ## Data Flow Example: Payroll Report
 

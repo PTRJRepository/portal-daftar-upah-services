@@ -1,5 +1,6 @@
 import { Database } from "../db/client";
 import { divisionDefinition } from "./divisionDefinition";
+import { gangService } from "./gangService";
 import { join } from "path";
 import { file } from "bun";
 import { Config } from "../config";
@@ -1157,9 +1158,10 @@ id, period_month, period_year, division_code, gang_code,
                 query += ` AND gang_code IN(${placeholders})`;
                 params.push(...gangs.map(g => g.gang_code));
             } else {
-                // Fallback: try division_code directly
-                query += ` AND division_code = ? `;
-                params.push(divisionCode);
+                // Fallback: use unified division mapping
+                const aliases = gangService.getAllDivisionAliases(divisionCode);
+                query += ` AND division_code IN (${aliases.map(() => '?').join(',')})`;
+                params.push(...aliases);
             }
         }
 

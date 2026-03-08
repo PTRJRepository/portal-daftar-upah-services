@@ -106,7 +106,11 @@ export interface PayrollHistoryDetail {
     lembur_jumlah: number;
     lembur_records?: string;
     total_tunjangan: number;
-    premi_brondol: number;
+    // [PHASE 2.5] Brondol dual source breakdown
+    premi_brondol: number;  // Keep for backward compatibility (combined total)
+    premi_brondol_loosefruit?: number;
+    premi_brondol_adtrans?: number;
+    premi_brondol_total?: number;
     premi_pph: number;
     total_premi: number;
     premi_detail?: string;
@@ -502,9 +506,13 @@ export class HistoryDatabaseService {
         const params: any[] = [periodMonth, periodYear];
 
         if (divisionCode) {
-            const locCode = gangService.convertDivisionToLocCode(divisionCode);
-            sql += ` AND (division_code = ? OR division_code = ?)`;
-            params.push(divisionCode, locCode);
+            // Use unified division mapping
+            const aliases = gangService.getAllDivisionAliases(divisionCode);
+            if (aliases.length > 0) {
+                const placeholders = aliases.map(() => '?').join(',');
+                sql += ` AND division_code IN (${placeholders})`;
+                params.push(...aliases);
+            }
         }
 
         if (gangCode) {
@@ -563,7 +571,9 @@ export class HistoryDatabaseService {
                     upah_pokok = ?, gaji_pokok = ?, gaji_pokok_ideal = ?, gaji_pokok_aktual = ?, koreksi_hk = ?,
                     beras_rate = ?, beras_jumlah = ?, jabatan_rate = ?, jabatan_jumlah = ?, masa_kerja_tahun = ?,
                     masa_kerja_rate = ?, masa_kerja_jumlah = ?, lembur_jam = ?, lembur_rate = ?, lembur_jumlah = ?,
-                    lembur_records = ?, total_tunjangan = ?, premi_brondol = ?, premi_pph = ?, total_premi = ?, premi_detail = ?,
+                    lembur_records = ?, total_tunjangan = ?,
+                    premi_brondol = ?, premi_brondol_loosefruit = ?, premi_brondol_adtrans = ?, premi_brondol_total = ?,
+                    premi_pph = ?, total_premi = ?, premi_detail = ?,
                     pot_spsi = ?, pot_pph21 = ?, pot_koreksi = ?, pot_bpjs_kesehatan_pekerja = ?, pot_bpjs_kesehatan_majikan = ?,
                     pot_bpjs_pensiun_pekerja = ?, pot_bpjs_pensiun_majikan = ?, pot_bpjs_pekerja_total = ?,
                     pot_astek_pekerja = ?, pot_astek_majikan = ?, pot_astek_jumlah = ?, potongan_detail = ?,
@@ -578,7 +588,9 @@ export class HistoryDatabaseService {
                 data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
                 data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
                 data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
-                data.lembur_records, data.total_tunjangan, data.premi_brondol, data.premi_pph, data.total_premi, data.premi_detail,
+                data.lembur_records, data.total_tunjangan,
+                data.premi_brondol, data.premi_brondol_loosefruit || 0, data.premi_brondol_adtrans || 0, data.premi_brondol_total || 0,
+                data.premi_pph, data.total_premi, data.premi_detail,
                 data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
                 data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
                 data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
@@ -596,7 +608,9 @@ export class HistoryDatabaseService {
                     upah_pokok, gaji_pokok, gaji_pokok_ideal, gaji_pokok_aktual, koreksi_hk,
                     beras_rate, beras_jumlah, jabatan_rate, jabatan_jumlah, masa_kerja_tahun,
                     masa_kerja_rate, masa_kerja_jumlah, lembur_jam, lembur_rate, lembur_jumlah,
-                    lembur_records, total_tunjangan, premi_brondol, premi_pph, total_premi, premi_detail,
+                    lembur_records, total_tunjangan,
+                    premi_brondol, premi_brondol_loosefruit, premi_brondol_adtrans, premi_brondol_total,
+                    premi_pph, total_premi, premi_detail,
                     pot_spsi, pot_pph21, pot_koreksi, pot_bpjs_kesehatan_pekerja, pot_bpjs_kesehatan_majikan,
                     pot_bpjs_pensiun_pekerja, pot_bpjs_pensiun_majikan, pot_bpjs_pekerja_total,
                     pot_astek_pekerja, pot_astek_majikan, pot_astek_jumlah, potongan_detail,
@@ -616,7 +630,9 @@ export class HistoryDatabaseService {
                 data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
                 data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
                 data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
-                data.lembur_records, data.total_tunjangan, data.premi_brondol, data.premi_pph, data.total_premi, data.premi_detail,
+                data.lembur_records, data.total_tunjangan,
+                data.premi_brondol, data.premi_brondol_loosefruit || 0, data.premi_brondol_adtrans || 0, data.premi_brondol_total || 0,
+                data.premi_pph, data.total_premi, data.premi_detail,
                 data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
                 data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
                 data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
@@ -667,12 +683,38 @@ export class HistoryDatabaseService {
         console.log(`[DEBUG] getHistoricalPayrollDataAsExtractorFormat params: M:${periodMonth} Y:${periodYear} Gang:${gangCode} Div:${divisionCode}`);
 
         if (divisionCode) {
-            const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-            const locCode = gangService.convertDivisionToLocCode(divisionCode);
-            const allPossibleDivs = [...new Set([divisionCode, locCode, ...sourceDivs])];
-            const placeholders = allPossibleDivs.map(() => '?').join(',');
-            masterQuery += ` AND (division_code IN (${placeholders}) OR division_code = 'ALL')`;
-            masterParams.push(...allPossibleDivs);
+            // Use unified mapping for consistent division handling
+            const allPossibleDivs = new Set<string>();
+            try {
+                // Check if this is a virtual division - handle separately with gang filtering
+                if (gangService.isVirtualDivision(divisionCode)) {
+                    // For virtual divisions, filter by gang_code instead of division_code
+                    const virtualGangs = await gangService.getVirtualDivisionGangs(divisionCode);
+                    if (virtualGangs.length > 0) {
+                        const placeholders = virtualGangs.map(() => '?').join(',');
+                        masterQuery += ` AND gang_code IN (${placeholders})`;
+                        masterParams.push(...virtualGangs);
+                    }
+                } else {
+                    // Regular division - use unified mapping
+                    const aliases = gangService.getAllDivisionAliases(divisionCode);
+                    aliases.forEach(a => allPossibleDivs.add(a));
+                    // Also get from source divisions
+                    const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+                    for (const sd of sourceDivs) {
+                        allPossibleDivs.add(sd);
+                        const srcAliases = gangService.getAllDivisionAliases(sd);
+                        srcAliases.forEach(a => allPossibleDivs.add(a));
+                    }
+                    const divList = Array.from(allPossibleDivs);
+                    const placeholders = divList.map(() => '?').join(',');
+                    masterQuery += ` AND (division_code IN (${placeholders}) OR division_code = 'ALL')`;
+                    masterParams.push(...divList);
+                }
+            } catch (e) {
+                console.error("[historyDatabaseService] Error handling division filter:", e);
+                /* fallback to original logic */
+            }
         }
         if (gangCode && gangCode !== "ALL") {
             masterQuery += ` AND (gang_code = ? OR gang_code = 'ALL')`;
@@ -720,13 +762,24 @@ export class HistoryDatabaseService {
             detailParams.push(gangCode);
         } else if (divisionCode && divisionCode !== "ALL") {
             // Jika gang ALL tapi divisi spesifik, pastikan kita hanya fetch pegawai dari divisi tersebut
-            // Untuk virtual division, kita akan filter lebih lanjut di memori
-            const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-            const locCode = gangService.convertDivisionToLocCode(divisionCode);
-            const allPossibleDivs = [...new Set([divisionCode, locCode, ...sourceDivs])];
-            const placeholders = allPossibleDivs.map(() => '?').join(',');
+            // Use unified mapping for consistent division handling
+            const allPossibleDivs = new Set<string>();
+            try {
+                // Get all aliases using unified mapping
+                const aliases = gangService.getAllDivisionAliases(divisionCode);
+                aliases.forEach(a => allPossibleDivs.add(a));
+                // Also get from source divisions
+                const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
+                for (const sd of sourceDivs) {
+                    allPossibleDivs.add(sd);
+                    const srcAliases = gangService.getAllDivisionAliases(sd);
+                    srcAliases.forEach(a => allPossibleDivs.add(a));
+                }
+            } catch { /* fallback to original logic */ }
+            const divList = Array.from(allPossibleDivs);
+            const placeholders = divList.map(() => '?').join(',');
             detailQuery += ` AND (division_code IN (${placeholders}) OR loc_code IN (${placeholders}))`;
-            detailParams.push(...allPossibleDivs, ...allPossibleDivs);
+            detailParams.push(...divList, ...divList);
         }
 
         console.log(`[DEBUG] detailQuery: ${detailQuery}`, detailParams);
@@ -984,9 +1037,14 @@ export class HistoryDatabaseService {
         let findHeadersSql = `SELECT id, history_id FROM dbo.payroll_history_header WHERE period_month = ? AND period_year = ? `;
         const headerParams: any[] = [periodMonth, periodYear];
 
-        if (divisionCode) {
-            findHeadersSql += ` AND division_code = ? `;
-            headerParams.push(divisionCode);
+        if (divisionCode && divisionCode !== 'ALL') {
+            // Use unified division mapping
+            const aliases = gangService.getAllDivisionAliases(divisionCode);
+            if (aliases.length > 0) {
+                const placeholders = aliases.map(() => '?').join(',');
+                findHeadersSql += ` AND division_code IN (${placeholders})`;
+                headerParams.push(...aliases);
+            }
         }
         if (gangCode && gangCode !== 'ALL') {
             findHeadersSql += ` AND gang_code = ? `;

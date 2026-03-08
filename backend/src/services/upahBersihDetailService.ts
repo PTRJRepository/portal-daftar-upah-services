@@ -11,6 +11,7 @@
 
 import { Database } from "../db/client";
 import { Config } from "../config";
+import { gangService } from "./gangService";
 
 export type FilterMode = 'all' | 'lembur' | 'premi' | 'upah_bersih';
 
@@ -114,8 +115,13 @@ class UpahBersihDetailService {
         const headerParams: any[] = [periodMonth, periodYear];
 
         if (divisionCode && divisionCode !== 'ALL') {
-            headerSql += ` AND division_code = ?`;
-            headerParams.push(divisionCode);
+            // Use unified division mapping
+            const aliases = gangService.getAllDivisionAliases(divisionCode);
+            if (aliases.length > 0) {
+                const placeholders = aliases.map(() => '?').join(',');
+                headerSql += ` AND division_code IN (${placeholders})`;
+                headerParams.push(...aliases);
+            }
         }
         if (gangCode && gangCode !== 'ALL') {
             headerSql += ` AND gang_code = ?`;

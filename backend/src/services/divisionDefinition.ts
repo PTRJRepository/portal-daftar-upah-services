@@ -34,7 +34,9 @@
  */
 
 import { Database } from "../db/client";
+import { divisionConfigService } from "./config/DivisionConfigService";
 import { virtualDivisionRegistry } from "./virtualDivisionRegistry";
+import { gangService } from "./gangService";
 
 /**
  * Interface untuk konfigurasi virtual division.
@@ -135,7 +137,8 @@ export class DivisionDefinition {
      * @param code - Kode atau alias division
      */
     public resolveDivisionCode(code: string): string {
-        return virtualDivisionRegistry.resolveCode(code);
+        // Use DivisionConfigService as single source of truth
+        return divisionConfigService.resolveCode(code);
     }
 
     /**
@@ -148,7 +151,8 @@ export class DivisionDefinition {
      * @param divisionCode - Kode division yang akan dicek
      */
     public isVirtualDivision(divisionCode: string): boolean {
-        return virtualDivisionRegistry.isVirtualDivision(divisionCode);
+        // Use DivisionConfigService as single source of truth
+        return divisionConfigService.isVirtualDivision(divisionCode);
     }
 
     /**
@@ -197,7 +201,8 @@ export class DivisionDefinition {
             const realDivisions = rows.map(r => r.LocCode.trim()).filter(Boolean);
 
             if (includeVirtual) {
-                const virtualCodes = virtualDivisionRegistry.getAllCodes();
+                // Use DivisionConfigService as single source of truth for virtual codes
+                const virtualCodes = divisionConfigService.getAllDivisionCodes();
                 return [...realDivisions, ...virtualCodes];
             }
             return realDivisions;
@@ -245,9 +250,11 @@ export class DivisionDefinition {
     public async getSourceDivisionsForAggregation(divisionCode: string): Promise<string[]> {
         const resolved = this.resolveDivisionCode(divisionCode);
 
-        // Jika bukan virtual division, return sendiri
+        // Jika bukan virtual division, return semua aliases menggunakan unified mapping
         if (!this.isVirtualDivision(resolved)) {
-            return [resolved];
+            // Use gangService unified mapping to get all aliases
+            const aliases = gangService.getAllDivisionAliases(resolved);
+            return aliases.length > 0 ? aliases : [resolved];
         }
 
         const config = this.getVirtualDivisionConfig(resolved);

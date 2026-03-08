@@ -26,6 +26,7 @@
 import { Database } from "../db/client";
 import { Config } from "../config";
 import { divisionDefinition } from "./divisionDefinition";
+import { gangService } from "./gangService";
 
 export interface WagesHeader {
     wages_id: number;

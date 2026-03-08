@@ -1,6 +1,8 @@
 import { Database } from "../db/client";
 import { DataExtractorService, dataExtractorService } from "./dataExtractorService";
 import { Config } from "../config";
+import { gangService } from "./gangService";
+import { divisionDefinition } from "./divisionDefinition";
 
 export class DashboardService {
     private static instance: DashboardService;
@@ -556,14 +558,16 @@ export class DashboardService {
                 SUM(ISNULL(agg.total_employees, 0)) as headcount
             FROM dbo.daftar_upah_aggregation_history agg
             LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
-            WHERE agg.period_month = ? AND agg.period_year = ? 
-            ${divisionCode && divisionCode !== 'ALL' ? 'AND agg.division_code = ?' : ''}
+            WHERE agg.period_month = ? AND agg.period_year = ?
+            ${divisionCode && divisionCode !== 'ALL' ? `AND agg.division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
             GROUP BY agg.gang_code, g.Description
             ORDER BY agg.gang_code
         `;
 
         const params: (string | number)[] = [month, year];
-        if (divisionCode && divisionCode !== 'ALL') params.push(divisionCode);
+        if (divisionCode && divisionCode !== 'ALL') {
+            params.push(...gangService.getAllDivisionAliases(divisionCode));
+        }
 
         const rows = await this.extendDb.query<any>(query, params);
         return rows.map(r => ({
@@ -591,12 +595,14 @@ export class DashboardService {
                 dynamic_premi_data
             FROM dbo.daftar_upah_aggregation_history
             WHERE period_month = ? AND period_year = ?
-            ${divisionCode && divisionCode !== 'ALL' ? 'AND division_code = ?' : ''}
+            ${divisionCode && divisionCode !== 'ALL' ? `AND division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
             GROUP BY dynamic_premi_data
         `;
 
         const params: (string | number)[] = [month, year];
-        if (divisionCode && divisionCode !== 'ALL') params.push(divisionCode);
+        if (divisionCode && divisionCode !== 'ALL') {
+            params.push(...gangService.getAllDivisionAliases(divisionCode));
+        }
 
         const rows = await this.extendDb.query<any>(query, params);
 
@@ -713,13 +719,15 @@ export class DashboardService {
                 SUM(ISNULL(total_lembur, 0)) as total_lembur
             FROM dbo.daftar_upah_aggregation_history
             WHERE period_month = ? AND period_year = ?
-            ${divisionCode && divisionCode !== 'ALL' ? 'AND division_code = ?' : ''}
+            ${divisionCode && divisionCode !== 'ALL' ? `AND division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
             GROUP BY division_code
             ORDER BY total_lembur DESC
         `;
 
         const params: (string | number)[] = [month, year];
-        if (divisionCode && divisionCode !== 'ALL') params.push(divisionCode);
+        if (divisionCode && divisionCode !== 'ALL') {
+            params.push(...gangService.getAllDivisionAliases(divisionCode));
+        }
 
         const rows = await this.extendDb.query<any>(query, params);
 
@@ -855,8 +863,10 @@ export class DashboardService {
             } else if (divisionCode === 'NON_IJL') {
                 sql += " AND agg.division_code NOT LIKE 'L%'";
             } else {
-                sql += " AND agg.division_code = ?";
-                params.push(divisionCode);
+                // Use unified division mapping for regular divisions
+                const aliases = gangService.getAllDivisionAliases(divisionCode);
+                sql += ` AND agg.division_code IN (${aliases.map(() => '?').join(',')})`;
+                params.push(...aliases);
             }
         }
 

@@ -769,6 +769,13 @@
     width: 100%;
 }
 
+.wsp-signature-role {
+    font-size: 0.65rem;
+    font-style: italic;
+    color: #333;
+    margin-top: 0.2rem;
+}
+
 /* =============================================
    FOOTER
    ============================================= */

@@ -21,6 +21,23 @@ export const otherIncomesService = {
         }
     },
 
+    getThrSummary: async (year, month, divisionCode) => {
+        try {
+            const params = new URLSearchParams({
+                year: year.toString(),
+                month: month.toString()
+            });
+
+            if (divisionCode) params.append('divisionCode', divisionCode);
+
+            const response = await api.get(`/other-incomes/summary?${params.toString()}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching THR summary:', error);
+            throw error;
+        }
+    },
+
     addIncome: async (data) => {
         try {
             const response = await api.post('/other-incomes', data);

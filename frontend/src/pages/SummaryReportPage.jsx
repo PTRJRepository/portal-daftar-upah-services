@@ -10,6 +10,7 @@ import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, va
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintSignature from '../components/common/PrintSignature';
+import { otherIncomesService } from '../services/otherIncomesService';
 import '../styles/wages-summary-professional.css';
 import '../styles/print-optimization.css';
 
@@ -39,6 +40,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [division, setDivision] = useState(initialDivision || '');
     const [month, setMonth] = useState(initialMonth || 11);  // Default to 11
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
+    const [reportMode, setReportMode] = useState('payroll'); // 'payroll' or 'thr'
 
     // Sync state with props when they change (fix navigation freeze)
     useEffect(() => {
@@ -201,18 +203,29 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         setError('');
 
         try {
-            const result = await fetchDivisionSummary(token, {
-                division: division || undefined,
-                month: month || undefined,
-                year: year || undefined
-            });
-
-            if (result.success) {
-                setSummaryData(result.data || []);
-                setGrandTotal(result.grand_total || null);
-                setFilteredHeaders(result.filtered_headers || []);
+            if (reportMode === 'thr') {
+                const result = await otherIncomesService.getThrSummary(year, month, division);
+                if (result.success !== false) { // the backend returns success: true or error
+                    setSummaryData(result.data || []);
+                    setGrandTotal(result.grand_total || null);
+                    setFilteredHeaders([]); // not needed for THR
+                } else {
+                    setError('Failed to fetch THR summary data');
+                }
             } else {
-                setError('Failed to fetch summary data');
+                const result = await fetchDivisionSummary(token, {
+                    division: division || undefined,
+                    month: month || undefined,
+                    year: year || undefined
+                });
+
+                if (result.success) {
+                    setSummaryData(result.data || []);
+                    setGrandTotal(result.grand_total || null);
+                    setFilteredHeaders(result.filtered_headers || []);
+                } else {
+                    setError('Failed to fetch summary data');
+                }
             }
         } catch (e) {
             console.error('Error fetching summary:', e);
@@ -220,7 +233,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         } finally {
             setLoading(false);
         }
-    }, [token, division, month, year]);
+    }, [token, division, month, year, reportMode]);
 
     // Fetch data when filters change
     useEffect(() => {
@@ -299,6 +312,30 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
     // Handle Export CSV
     const handleExport = () => {
+        if (reportMode === 'thr') {
+            let header = `Gang,Workers,Total THR\n`;
+            let csv = header;
+
+            mergedSummaryData.forEach(row => {
+                csv += `"${row.gang_description || row.gang_code}",` +
+                    `${row.total_employees || 0},` +
+                    `${row.total_thr || 0}\n`;
+            });
+
+            if (grandTotal) {
+                csv += `"GRAND TOTAL",` +
+                    `${grandTotal.total_employees || 0},` +
+                    `${grandTotal.total_thr || 0}\n`;
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Summary_THR_${division || 'ALL'}_${month}_${year}.csv`;
+            link.click();
+            return;
+        }
+
         let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Total Upah Bersih\n`;
         let csv = header;
 
@@ -345,8 +382,27 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             <div className="report-header-web no-print">
                 <div className="report-header-info">
                     <h1>Summary Report Detail</h1>
-                    <p>Rekapitulasi total pekerja, HK, premi, dan upah bersih per estate/gang.</p>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <p>{reportMode === 'thr' ? 'Rekapitulasi total pekerja dan pendapatan THR per estate/gang.' : 'Rekapitulasi total pekerja, HK, premi, dan upah bersih per estate/gang.'}</p>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <select
+                            value={reportMode}
+                            onChange={e => setReportMode(e.target.value)}
+                            className="wsp-btn-secondary"
+                            style={{
+                                cursor: 'pointer',
+                                outline: 'none',
+                                backgroundColor: '#eef2ff',
+                                color: '#4f46e5',
+                                borderColor: '#c7d2fe',
+                                fontWeight: 'bold',
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                height: '36px'
+                            }}
+                        >
+                            <option value="payroll">Mode Payroll</option>
+                            <option value="thr">Mode THR</option>
+                        </select>
                         <select
                             value={division}
                             onChange={e => {
@@ -378,7 +434,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         <span className="report-filter-badge">{getMonthName(month)} {year}</span>
                     </div>
                 </div>
-                <div className="report-header-actions">
+                <div className="report-header-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <button onClick={handlePrint} className="wsp-btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Printer size={18} /> Cetak Report
                     </button>
@@ -412,7 +468,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             }}
                         />
                         <h1 className="wsp-company-name">{companyInfo.name}</h1>
-                        <div className="wsp-report-title">SUMMARY REPORT DETAIL</div>
+                        <div className="wsp-report-title">{reportMode === 'thr' ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : 'SUMMARY REPORT DETAIL'}</div>
                         <div className="wsp-report-period">
                             Division: <strong style={{ color: '#0f172a' }}>{division || 'ALL'}</strong> | Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
                         </div>
@@ -423,20 +479,39 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         <div className="wsp-kpi-grid">
                             <div className="wsp-kpi-card">
                                 <div className="wsp-kpi-label">TOTAL WORKERS</div>
-                                <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal.total_employees)}</div>
+                                <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal?.total_employees || 0)}</div>
                             </div>
-                            <div className="wsp-kpi-card">
-                                <div className="wsp-kpi-label">TOTAL HK CHEKROLL</div>
-                                <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal.total_hk)}</div>
-                            </div>
-                            <div className="wsp-kpi-card secondary">
-                                <div className="wsp-kpi-label">TOTAL PREMI</div>
-                                <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal.total_premi)}</div>
-                            </div>
-                            <div className="wsp-kpi-card highlight">
-                                <div className="wsp-kpi-label">TOTAL UPAH BERSIH</div>
-                                <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal.total_upah_bersih)}</div>
-                            </div>
+                            {reportMode === 'payroll' ? (
+                                <>
+                                    <div className="wsp-kpi-card">
+                                        <div className="wsp-kpi-label">TOTAL HK CHEKROLL</div>
+                                        <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal?.total_hk || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card secondary">
+                                        <div className="wsp-kpi-label">TOTAL PREMI</div>
+                                        <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal?.total_premi || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card highlight">
+                                        <div className="wsp-kpi-label">TOTAL UPAH BERSIH</div>
+                                        <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal?.total_upah_bersih || 0)}</div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="wsp-kpi-card">
+                                        <div className="wsp-kpi-label">PEKERJA FULL (12/12)</div>
+                                        <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal?.full_workers || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card secondary">
+                                        <div className="wsp-kpi-label">PEKERJA PROPORSI</div>
+                                        <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal?.prop_workers || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card highlight">
+                                        <div className="wsp-kpi-label">TOTAL THR</div>
+                                        <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal?.total_thr || 0)}</div>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
 
@@ -444,95 +519,135 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     <div className="wsp-table-wrapper">
                         <table className="wsp-table">
                             <thead>
-                                <tr className="wsp-header-master">
-                                    <th rowSpan="2" style={{ minWidth: '300px', width: '300px' }}>ESTATE / GANG</th>
-                                    <th colSpan="2">MANPOWER</th>
-                                    {/* Screen: Show full PREMI INCOME with all dynamic columns */}
-                                    <th colSpan={dynamicPremiHeaders.length + 1} className="print-hide-detail">PREMI INCOME</th>
-                                    {/* Print: Show only PREMI INCOME with 1 column (Total Premi) */}
-                                    <th className="print-show-only">PREMI INCOME</th>
-                                    <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
-                                    <th colSpan="2">DEDUCTIONS</th>
-                                    <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
-                                </tr>
-                                <tr className="wsp-header-sub">
-                                    {/* Manpower */}
-                                    <th style={{ width: '60px' }}>WORKERS</th>
-                                    <th style={{ width: '60px' }}>HK</th>
+                                {reportMode === 'payroll' ? (
+                                    <>
+                                        <tr className="wsp-header-master">
+                                            <th rowSpan="2" style={{ minWidth: '300px', width: '300px' }}>ESTATE / GANG</th>
+                                            <th colSpan="2">MANPOWER</th>
+                                            {/* Screen: Show full PREMI INCOME with all dynamic columns */}
+                                            <th colSpan={dynamicPremiHeaders.length + 1} className="print-hide-detail">PREMI INCOME</th>
+                                            {/* Print: Show only PREMI INCOME with 1 column (Total Premi) */}
+                                            <th className="print-show-only">PREMI INCOME</th>
+                                            <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
+                                            <th colSpan="2">DEDUCTIONS</th>
+                                            <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
+                                        </tr>
+                                        <tr className="wsp-header-sub">
+                                            {/* Manpower */}
+                                            <th style={{ width: '60px' }}>WORKERS</th>
+                                            <th style={{ width: '60px' }}>HK</th>
 
-                                    {/* Premi Dynamic - Hidden on Print */}
-                                    {dynamicPremiHeaders.map((h, i) => (
-                                        <th key={i} style={{ minWidth: '90px' }} className="print-hide-detail">{h}</th>
-                                    ))}
+                                            {/* Premi Dynamic - Hidden on Print */}
+                                            {dynamicPremiHeaders.map((h, i) => (
+                                                <th key={i} style={{ minWidth: '90px' }} className="print-hide-detail">{h}</th>
+                                            ))}
 
-                                    <th style={{ width: '100px', background: '#334155' }}>TOTAL PREMI</th>
+                                            <th style={{ width: '100px', background: '#334155' }}>TOTAL PREMI</th>
 
-                                    {/* Deductions */}
-                                    <th style={{ width: '90px' }}>PPH 21</th>
-                                    <th style={{ width: '90px' }}>SPSI</th>
-                                </tr>
+                                            {/* Deductions */}
+                                            <th style={{ width: '90px' }}>PPH 21</th>
+                                            <th style={{ width: '90px' }}>SPSI</th>
+                                        </tr>
+                                    </>
+                                ) : (
+                                    <tr className="wsp-header-master" style={{ backgroundColor: '#000', color: '#fff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                        <th style={{ minWidth: '300px', width: '300px', textAlign: 'left', border: '1.5pt solid #000', fontWeight: 800 }}>ESTATE / GANG</th>
+                                        <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>WORKERS</th>
+                                        <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>FULL</th>
+                                        <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>PROPORSI</th>
+                                        <th style={{ width: '140px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>TUNJ. BERAS</th>
+                                        <th style={{ width: '140px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>MASA KERJA</th>
+                                        <th style={{ width: '160px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>TOTAL THR</th>
+                                    </tr>
+                                )}
                             </thead>
                             <tbody>
                                 {filteredSummaryData.length === 0 ? (
                                     <tr><td colSpan="15" className="text-center" style={{ padding: '3rem' }}>No Data Available</td></tr>
                                 ) : (
                                     filteredSummaryData.map((row, idx) => (
-                                        <tr key={idx}>
-                                            <td className="text-left">{row.gang_description || row.gang_code}</td>
-                                            <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`}>{formatNumber(row.total_employees)}</td>
-                                            <td className={`text-right ${!Number(row.total_hk) && 'val-zero'}`}>{formatNumber(row.total_hk)}</td>
+                                        reportMode === 'payroll' ? (
+                                            <tr key={idx}>
+                                                <td className="text-left">{row.gang_description || row.gang_code}</td>
+                                                <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`}>{formatNumber(row.total_employees)}</td>
+                                                <td className={`text-right ${!Number(row.total_hk) && 'val-zero'}`}>{formatNumber(row.total_hk)}</td>
 
-                                            {/* Dynamic Premi Cols */}
-                                            {dynamicPremiHeaders.map(header => {
-                                                const val = getDynamicPremiValue(row, header);
-                                                return (
-                                                    <td key={header} className={`text-right print-hide-detail ${!val && 'val-zero'}`}>
-                                                        {formatNumber(val)}
-                                                    </td>
-                                                );
-                                            })}
+                                                {/* Dynamic Premi Cols */}
+                                                {dynamicPremiHeaders.map(header => {
+                                                    const val = getDynamicPremiValue(row, header);
+                                                    return (
+                                                        <td key={header} className={`text-right print-hide-detail ${!val && 'val-zero'}`}>
+                                                            {formatNumber(val)}
+                                                        </td>
+                                                    );
+                                                })}
 
-                                            {/* Total Premi - Show FULL total from portal */}
-                                            <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
-                                                {formatNumber(row.total_premi)}
-                                            </td>
+                                                {/* Total Premi - Show FULL total from portal */}
+                                                <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
+                                                    {formatNumber(row.total_premi)}
+                                                </td>
 
-                                            <td className={`text-right ${!Number(row.total_lembur) && 'val-zero'}`}>{formatNumber(row.total_lembur)}</td>
-                                            <td className={`text-right ${!Number(row.total_pph21) && 'val-zero'}`}>{formatNumber(row.total_pph21)}</td>
-                                            <td className={`text-right ${!Number(row.total_spsi) && 'val-zero'}`}>{formatNumber(row.total_spsi)}</td>
+                                                <td className={`text-right ${!Number(row.total_lembur) && 'val-zero'}`}>{formatNumber(row.total_lembur)}</td>
+                                                <td className={`text-right ${!Number(row.total_pph21) && 'val-zero'}`}>{formatNumber(row.total_pph21)}</td>
+                                                <td className={`text-right ${!Number(row.total_spsi) && 'val-zero'}`}>{formatNumber(row.total_spsi)}</td>
 
-                                            <td className={`text-right ${!Number(row.total_upah_bersih) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 600 }}>
-                                                {formatNumber(row.total_upah_bersih)}
-                                            </td>
-                                        </tr>
+                                                <td className={`text-right ${!Number(row.total_upah_bersih) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 600 }}>
+                                                    {formatNumber(row.total_upah_bersih)}
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            <tr key={idx} style={{ borderBottom: '1pt solid #000', backgroundColor: idx % 2 === 0 ? '#fff' : '#f2f2f2', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                                <td className="text-left" style={{ border: '0.5pt solid #000', fontWeight: 600 }}>{row.gang_description || row.gang_code}</td>
+                                                <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.total_employees)}</td>
+                                                <td className={`text-right ${!Number(row.full_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.full_workers)}</td>
+                                                <td className={`text-right ${!Number(row.prop_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.prop_workers)}</td>
+                                                <td className={`text-right ${!Number(row.total_tunjangan_beras) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.total_tunjangan_beras)}</td>
+                                                <td className={`text-right ${!Number(row.total_masa_kerja) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.total_masa_kerja)}</td>
+                                                <td className={`text-right ${!Number(row.total_thr) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 700, border: '0.5pt solid #000' }}>
+                                                    {formatNumber(row.total_thr)}
+                                                </td>
+                                            </tr>
+                                        )
                                     ))
                                 )}
                             </tbody>
 
                             {filteredGrandTotal && (
                                 <tfoot>
-                                    <tr className="wsp-grand-total">
-                                        <td>{groupFilter ? `TOTAL GROUP ${groupFilter}` : 'GRAND TOTAL'}</td>
-                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_employees)}</td>
-                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_hk)}</td>
+                                    {reportMode === 'payroll' ? (
+                                        <tr className="wsp-grand-total">
+                                            <td>{groupFilter ? `TOTAL GROUP ${groupFilter}` : 'GRAND TOTAL'}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_employees)}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_hk)}</td>
 
-                                        {/* Dynamic Premi Totals - Hidden on Print */}
-                                        {dynamicPremiHeaders.map(header => {
-                                            const total = filteredGrandTotal.dynamic_premi_totals?.[header] || 0;
-                                            return (
-                                                <td key={header} className="text-right print-hide-detail">{formatNumber(total)}</td>
-                                            );
-                                        })}
+                                            {/* Dynamic Premi Totals - Hidden on Print */}
+                                            {dynamicPremiHeaders.map(header => {
+                                                const total = filteredGrandTotal.dynamic_premi_totals?.[header] || 0;
+                                                return (
+                                                    <td key={header} className="text-right print-hide-detail">{formatNumber(total)}</td>
+                                                );
+                                            })}
 
-                                        {/* Total Premi - FULL from portal */}
-                                        <td className="text-right" style={{ background: '#1e293b', color: 'white' }}>{formatNumber(filteredGrandTotal.total_premi)}</td>
+                                            {/* Total Premi - FULL from portal */}
+                                            <td className="text-right" style={{ background: '#1e293b', color: 'white' }}>{formatNumber(filteredGrandTotal.total_premi)}</td>
 
-                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_lembur)}</td>
-                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_pph21)}</td>
-                                        <td className="text-right">{formatNumber(filteredGrandTotal.total_spsi)}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_lembur)}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_pph21)}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_spsi)}</td>
 
-                                        <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(filteredGrandTotal.total_upah_bersih)}</td>
-                                    </tr>
+                                            <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(filteredGrandTotal.total_upah_bersih)}</td>
+                                        </tr>
+                                    ) : (
+                                        <tr className="wsp-grand-total" style={{ backgroundColor: '#000', color: '#fff', fontWeight: 800, WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                            <td style={{ border: '1.5pt solid #000' }}>{groupFilter ? `TOTAL GROUP ${groupFilter}` : 'GRAND TOTAL'}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_employees)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.full_workers)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.prop_workers)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_tunjangan_beras)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_masa_kerja)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_thr)}</td>
+                                        </tr>
+                                    )}
                                 </tfoot>
                             )}
                         </table>

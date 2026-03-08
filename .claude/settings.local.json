@@ -97,9 +97,16 @@
       "Bash(ls:*)",
       "Bash(sqlite3:*)",
       "Bash(bun -e:*)",
-      "Bash(bunx tsc --noEmit)"
+      "Bash(bunx tsc --noEmit)",
+      "Read(//d/Gawean Rebinmas/Monitoring Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/**)",
+      "Read(//d d:/Gawean Rebinmas/Monitoring Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/**)",
+      "Read(//c/Users/nbgmf/AppData/Local/Temp/claude/d--Gawean-Rebinmas-Monitoring-Database-Plantware-Auto-Report-Daftar-Upahbaru-payroll-daftar-upah-refactor-production/tasks/**)",
+      "Read(//c/Users/nbgmf/AppData/Local/Temp/claude/d--Gawean-Rebinmas-Monitoring-Database-Plantware-Auto-Report-Daftar-Upah baru-payroll-daftar-upah-refactor-production/tasks/**)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "d:\\Gawean Rebinmas\\Monitoring Database\\Plantware_Auto_Report\\Daftar_Upah_baru\\payroll_daftar_upah\\refactor_production\\backend\\scripts"
+    ]
   }
 }

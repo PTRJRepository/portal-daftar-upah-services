@@ -245,14 +245,22 @@ export default function SummaryWagesReport({
                     <div className="sw-signature-block">
                         <div className="sw-signature-title">DIBUAT OLEH :</div>
                         <div className="sw-signature-name">( ........................................ )</div>
+                        <div className="sw-signature-role">Admin Payroll</div>
                     </div>
                     <div className="sw-signature-block">
                         <div className="sw-signature-title">DIPERIKSA OLEH :</div>
                         <div className="sw-signature-name">( ........................................ )</div>
+                        <div className="sw-signature-role">HR Manager</div>
+                    </div>
+                    <div className="sw-signature-block">
+                        <div className="sw-signature-title">DIKETAHUI OLEH :</div>
+                        <div className="sw-signature-name">( ........................................ )</div>
+                        <div className="sw-signature-role">Senior Manager</div>
                     </div>
                     <div className="sw-signature-block">
                         <div className="sw-signature-title">DISETUJUI OLEH :</div>
                         <div className="sw-signature-name">( ........................................ )</div>
+                        <div className="sw-signature-role">General Manager</div>
                     </div>
                 </div>
 

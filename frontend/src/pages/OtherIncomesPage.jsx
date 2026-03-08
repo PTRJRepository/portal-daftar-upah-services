@@ -175,16 +175,21 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const handleBulkSaveTHR = async () => {
         const rows = rowData.filter(r => r.isPreview);
         if (!rows.length) return;
-        if (!window.confirm(`Simpan ${rows.length} data THR?`)) return;
+        if (!window.confirm(`Simpan ${rows.length} data THR? Data lama pada periode ini akan ditimpa.`)) return;
         setIsSaving(true);
         try {
-            const r = await otherIncomesService.bulkSave(rows);
+            // Use calculateTHR which calls calculateAndSaveTHR on backend
+            // This properly: 1) Recalculates, 2) Deletes old data for the period/division/gang, 3) Inserts fresh data
+            const r = await otherIncomesService.calculateTHR(year, month, division, gang);
             if (r.success) {
-                alert('Berhasil!');
+                alert(`Berhasil menyimpan ${r.count || rows.length} data THR!`);
+                setIsLivePreview(false);
                 await fetchIncomes();
+            } else {
+                alert('Gagal menyimpan: ' + (r.error || 'Unknown error'));
             }
         } catch (e) {
-            alert('Kesalahan');
+            alert('Kesalahan: ' + (e.message || e));
         } finally {
             setIsSaving(false);
         }
@@ -475,19 +480,23 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const reportColumns = useMemo(() => [
         { field: '_no', headers: ['NO', null, null], w: 50, className: 'text-center', sticky: true, left: 0, valueGetter: (r) => r._no },
         { field: 'sex', headers: ['L/P', null, null], w: 40, className: 'text-center', sticky: true, left: 50, valueGetter: (r) => r.details?.variables?.SEX || r.sex || 'L' },
-        { field: 'emp_name', headers: ['NAMA KARYAWAN', null, null], w: 200, className: 'text-left', sticky: true, left: 90, render: (r) => (
-            <div style={{ color: r.isBlacklisted ? '#ef4444' : 'inherit' }}>
-                <b>{r.emp_name}</b>
-                <br /><small>{r.nik} {r.emp_code ? `| ${r.emp_code}` : ''}</small>
-                {r.isPreview && <span style={{ fontSize: '0.6rem', color: 'green', display: 'block' }}> (Preview)</span>}
-                {r.isBlacklisted && <span style={{ fontSize: '0.6rem', color: '#ef4444', display: 'block', fontWeight: 'bold' }}> (BLACKLISTED)</span>}
-            </div>
-        ) },
-        { field: 'religion', headers: ['AGAMA', null, null], w: 100, className: 'text-center', valueGetter: (r) => {
-            const rel = r.religion || '';
-            if (!rel || rel === '' || rel === 'null' || rel === 'undefined') return 'TIDAK ADA';
-            return rel.replace(/^\d+\s+/, '');
-        }},
+        {
+            field: 'emp_name', headers: ['NAMA KARYAWAN', null, null], w: 200, className: 'text-left', sticky: true, left: 90, render: (r) => (
+                <div style={{ color: r.isBlacklisted ? '#ef4444' : 'inherit' }}>
+                    <b>{r.emp_name}</b>
+                    <br /><small>{r.nik} {r.emp_code ? `| ${r.emp_code}` : ''}</small>
+                    {r.isPreview && <span style={{ fontSize: '0.6rem', color: 'green', display: 'block' }}> (Preview)</span>}
+                    {r.isBlacklisted && <span style={{ fontSize: '0.6rem', color: '#ef4444', display: 'block', fontWeight: 'bold' }}> (BLACKLISTED)</span>}
+                </div>
+            )
+        },
+        {
+            field: 'religion', headers: ['AGAMA', null, null], w: 100, className: 'text-center', valueGetter: (r) => {
+                const rel = r.religion || '';
+                if (!rel || rel === '' || rel === 'null' || rel === 'undefined') return 'TIDAK ADA';
+                return rel.replace(/^\d+\s+/, '');
+            }
+        },
         { field: 'join_date', headers: ['TGL MASUK', null, null], w: 100, className: 'text-center', valueGetter: (r) => safeDate(r.details?.variables?.JOIN_DATE || r.join_date) },
         { field: 'upah_dasar', headers: ['UPAH DASAR', null, null], w: 110, className: 'text-right', format: 'currency', valueGetter: (r) => r.details?.variables?.UPAH_DASAR || r.upah_dasar || 0 },
         { field: 'upah_pokok', headers: ['UPAH POKOK', '(30 HK)', null], w: 110, className: 'text-right', format: 'currency', valueGetter: (r) => (r.details?.variables?.UPAH_DASAR || r.upah_dasar || 0) * 30 },
@@ -501,7 +510,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
 
     const displayData = useMemo(() => {
         let f = rowData;
-        
+
         // PERSISTENCE RULE: If employee has no religion, treat as '01 Islam'
         const getEffectiveReligion = (rel) => {
             if (!rel || rel === "" || rel === "null" || rel === "undefined") return '01 Islam';
@@ -519,7 +528,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 const currentRel = r.religion || '';
                 const originalRel = r.original_religion || ''; // from DB before enrichment
                 const hasNoReligion = !currentRel || currentRel === '' || currentRel === 'null' || currentRel === 'undefined' ||
-                                     !originalRel || originalRel === '' || originalRel === 'null' || originalRel === 'undefined';
+                    !originalRel || originalRel === '' || originalRel === 'null' || originalRel === 'undefined';
                 // If employee has no religion (either current or original), show in ALL religion filters
                 if (hasNoReligion) return true;
                 // Otherwise filter by matching religion
@@ -528,11 +537,11 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             });
         }
         if (gangPrefix) result = result.filter(r => getAsistensi(r.gang_code) === gangPrefix);
-        return result.map((r, i) => ({ 
-            ...r, 
-            religion: getEffectiveReligion(r.religion), 
-            _no: i + 1, 
-            _id: r.id || `row-${i}` 
+        return result.map((r, i) => ({
+            ...r,
+            religion: getEffectiveReligion(r.religion),
+            _no: i + 1,
+            _id: r.id || `row-${i}`
         }));
     }, [rowData, blacklistData, filterReligion, gangPrefix, getAsistensi]);
 

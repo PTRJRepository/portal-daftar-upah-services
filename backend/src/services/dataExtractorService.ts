@@ -139,6 +139,10 @@ interface PayrollRow {
     bunches_transactions?: number;
     total_tunjangan: number;
     premi_brondol: number;
+    // [PHASE 2.5] Brondol dual source breakdown
+    premi_brondol_loosefruit: number;  // From PR_LOOSEFRUIT
+    premi_brondol_adtrans: number;     // From PR_ADTRANS (DocDesc containing BRONDOL)
+    premi_brondol_total: number;        // Combined total (loosefruit + adtrans)
     premi_pph: number; // PREMI PPH - ADDED (+) to upah_bersih, not subtracted
     total_premi: number;
     premi: Record<string, number>;
@@ -558,7 +562,12 @@ export class DataExtractorService {
             if (effective_work_hk <= 0 && other_cuti == 0 && total_earnings <= 0) continue;
 
             const upah_pokok = attData.total_amount_rp || 0;
-            const empBrondol = brondol[emp.emp_code] || 0;
+            // [PHASE 2.5] Brondol dual source tracking
+            const empBrondolLoosefruit = brondol[emp.emp_code] || 0;
+            const empBrondolAdtrans = empPremi["brondol"] || 0; // From PR_ADTRANS (before adding loosefruit)
+            const empBrondolTotal = empBrondolLoosefruit + empBrondolAdtrans;
+            // Keep empBrondol for backward compatibility (total)
+            const empBrondol = empBrondolTotal;
 
             let masaKerjaLama = 0;
             if (emp.join_date) {
@@ -589,9 +598,11 @@ export class DataExtractorService {
             const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlahPure;
 
             // PREMI CALCULATION - Ensure everything is summed into total_premi
-            // Add Brondol to empPremi first
-            if (empBrondol > 0) {
-                empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondol;
+            // [PHASE 2.5] Brondol is now combined at line 570 (empBrondol = empBrondolTotal)
+            // empPremi["brondol"] already contains adtrans, we need to add ONLY loosefruit portion
+            if (empBrondolLoosefruit > 0) {
+                // empPremi["brondol"] currently has adtrans, add loosefruit to combine both sources
+                empPremi["brondol"] = (empPremi["brondol"] || 0) + empBrondolLoosefruit;
                 premiTitleMap["brondol"] = "PREMI BRONDOL";
             }
 
@@ -841,7 +852,12 @@ export class DataExtractorService {
                     bunches_transactions: bunchesBatch.get(emp.emp_code)?.bunches_transactions || 0,
                 } : {}),
                 total_tunjangan,
+                // [PHASE 2.5] Brondol dual source breakdown
+                // Keep premi_brondol for backward compatibility (combined total)
                 premi_brondol: empBrondol,
+                premi_brondol_loosefruit: empBrondolLoosefruit,
+                premi_brondol_adtrans: empBrondolAdtrans,
+                premi_brondol_total: empBrondolTotal,
                 upah_pokok,
                 total_premi,
                 jumlah_upah_kotor,
