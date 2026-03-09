@@ -301,15 +301,15 @@ export class VirtualDivisionRegistry {
 
     /** Register semua virtual divisions bawaan */
     private registerBuiltInDivisions(): void {
-        // INF: Infrastruktur - Gang yang dimulai dengan 'IN'
+        // INF: Infrastruktur - Gang INF dan INT dari P1A
         this.register({
             code: 'INF',
             name: 'Infrastruktur',
             sourceDivision: 'P1A',
-            gangPattern: /^IN/i,
+            gangPattern: /^IN(?:F|T)$/i,
             descriptionPattern: null,
             excludeFromSource: true,
-            description: 'Divisi Infrastruktur - Gang yang dimulai dengan IN'
+            description: 'Divisi Infrastruktur - Gang INF dan INT'
         });
 
         // NRS: Nursery - Gang B2N

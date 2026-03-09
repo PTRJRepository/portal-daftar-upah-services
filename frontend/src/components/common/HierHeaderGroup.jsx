@@ -19,6 +19,7 @@ export default function HierHeaderGroup(props) {
     return children.map(c => c.getColId())
   }
 
+
   const toggle = () => {
     const ids = collectLeafIds(columnGroup)
     api.setColumnsVisible(ids, !expanded)
@@ -31,16 +32,16 @@ export default function HierHeaderGroup(props) {
   }, [columnGroup])
   const upper = String(label || '').toUpperCase()
   const kind = (upper.includes('POTONGAN') ? 'kind-deduction'
-                : (upper.includes('PENDAPATAN') || upper.includes('TUNJANGAN') || upper.includes('PREMI')) ? 'kind-income'
-                : 'kind-neutral')
+    : (upper.includes('PENDAPATAN') || upper.includes('TUNJANGAN') || upper.includes('PREMI')) ? 'kind-income'
+      : 'kind-neutral')
 
   const indent = (level - 1) * 8
   return (
-    <div className={`hdr-group hdr-level-${level} ${kind}`} style={{ 
-      paddingLeft: indent, 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
+    <div className={`hdr-group hdr-level-${level} ${kind}`} style={{
+      paddingLeft: indent,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
       width: '100%',
       height: '100%',
       whiteSpace: 'normal',

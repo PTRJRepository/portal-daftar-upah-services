@@ -38,6 +38,20 @@ export const otherIncomesService = {
         }
     },
 
+    getThrRecapAll: async (year, month) => {
+        try {
+            const params = new URLSearchParams({
+                year: year.toString(),
+                month: month.toString()
+            });
+            const response = await api.get(`/other-incomes/recap-all?${params.toString()}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching THR recap all:', error);
+            throw error;
+        }
+    },
+
     addIncome: async (data) => {
         try {
             const response = await api.post('/other-incomes', data);

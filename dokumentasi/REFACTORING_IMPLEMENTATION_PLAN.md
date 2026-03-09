@@ -937,15 +937,15 @@ export const payrollRepository = PayrollRepository.getInstance();
 - ✅ Backward compatible - `premi_brondol` remains as combined total
 
 **Database Migration Required:**
-```sql
--- Add new columns to payroll_history_detail table
-ALTER TABLE dbo.payroll_history_detail
-ADD premi_brondol_loosefruit DECIMAL(18,2) DEFAULT 0,
-    premi_brondol_adtrans DECIMAL(18,2) DEFAULT 0,
-    premi_brondol_total DECIMAL(18,2) DEFAULT 0;
-```
+- **TIDAK ADA** - Perubahan backward compatible, tidak perlu migration
 
-**Next Step:** Re-seed aggregation for affected periods (02/2026) to populate new columns
+**Catatan:**
+- Field baru (`premi_brondol_loosefruit`, `premi_brondol_adtrans`, `premi_brondol_total`) adalah optional
+- Data lama tetap menggunakan `premi_brondol` (combined total)
+- Data baru akan punya breakdown lengkap
+- Tidak perlu re-seed karena tidak mempengaruhi data yang sudah ada
+
+**Next Step:** Tidak ada - perubahan sudah backward compatible
 
 | Issue | Files to Modify | Priority | Status |
 |-------|-----------------|----------|--------|

@@ -11,7 +11,10 @@
 import { Elysia, t } from "elysia";
 import { wagesService } from "../services/wagesService";
 import { dataExtractorService } from "../services/dataExtractorService";
+import { divisionDefinition } from "../services/divisionDefinition";
+import { summaryService } from "../services/summaryService";
 import { AuthService } from "../services/authService";
+import { Database } from "../db/client";
 import { User } from "../types/user";
 
 const authService = AuthService.getInstance();
@@ -96,6 +99,163 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
     }, {
         query: t.Object({
             division: t.Optional(t.String())
+        })
+    })
+
+    // ========================
+    // GET ALL DIVISIONS RECAP (THR Mode) - No thumbprint, just totals
+    // Uses extend_db_ptrj aggregation data (like summary report)
+    // ========================
+    .get("/recap-all/:month/:year", async ({ params, query, set }) => {
+        try {
+            const month = parseInt(params.month);
+            const year = parseInt(params.year);
+            const includeThumbprint = query.include_thumbprint === 'true';
+
+            if (isNaN(month) || isNaN(year) || month < 1 || month > 12) {
+                set.status = 400;
+                return { error: "Invalid month or year" };
+            }
+
+            // List of divisions to include (excluding MILL)
+            const divisions = ['P1A', 'P1B', 'P2A', 'P2B', 'AB1', 'AB2', 'ARC', 'ARA', 'DME', 'IJL'];
+
+            // Use extend_db_ptrj database to get aggregation data
+            const extendDb = Database.getExtendedInstance();
+
+            // Get all gang codes for each division
+            const divisionGangs: Record<string, string[]> = {};
+            for (const divCode of divisions) {
+                const gangs = await divisionDefinition.getGangsForDivision(divCode);
+                divisionGangs[divCode] = gangs.map(g => g.gang_code);
+            }
+
+            // Build query to get all data for these gangs
+            const allGangs = Object.values(divisionGangs).flat();
+            if (allGangs.length === 0) {
+                return {
+                    success: true,
+                    period: { month, year, label: `${getMonthName(month)} ${year}` },
+                    mode: 'recap_all',
+                    include_thumbprint: includeThumbprint,
+                    divisions: [],
+                    grand_total: {
+                        total_karyawan: 0,
+                        total_hk: 0,
+                        total_upah_pokok: 0,
+                        total_tunjangan: 0,
+                        total_premi: 0,
+                        total_lembur: 0,
+                        total_potongan: 0,
+                        total_upah_bersih: 0
+                    }
+                };
+            }
+
+            const placeholders = allGangs.map(() => '?').join(',');
+            const query_sql = `
+                SELECT
+                    division_code, gang_code,
+                    SUM(total_employees) as total_karyawan,
+                    SUM(total_hk) as total_hk,
+                    SUM(total_upah_pokok) as total_upah_pokok,
+                    SUM(total_tunjangan) as total_tunjangan,
+                    SUM(total_premi) as total_premi,
+                    SUM(total_lembur) as total_lembur,
+                    SUM(total_potongan) as total_potongan,
+                    SUM(total_upah_bersih) as total_upah_bersih
+                FROM dbo.daftar_upah_aggregation_history
+                WHERE period_month = ? AND period_year = ?
+                AND gang_code IN (${placeholders})
+                GROUP BY division_code, gang_code
+            `;
+
+            const rows = await extendDb.query<any>(query_sql, [month, year, ...allGangs]);
+
+            // Group by division
+            const divAggregation: Record<string, any> = {};
+            for (const divCode of divisions) {
+                divAggregation[divCode] = {
+                    total_karyawan: 0,
+                    total_hk: 0,
+                    total_upah_pokok: 0,
+                    total_tunjangan: 0,
+                    total_premi: 0,
+                    total_lembur: 0,
+                    total_potongan: 0,
+                    total_upah_bersih: 0
+                };
+            }
+
+            for (const row of rows) {
+                const divCode = row.division_code;
+                if (divAggregation[divCode]) {
+                    divAggregation[divCode].total_karyawan += (row.total_karyawan || 0);
+                    divAggregation[divCode].total_hk += (row.total_hk || 0);
+                    divAggregation[divCode].total_upah_pokok += (row.total_upah_pokok || 0);
+                    divAggregation[divCode].total_tunjangan += (row.total_tunjangan || 0);
+                    divAggregation[divCode].total_premi += (row.total_premi || 0);
+                    divAggregation[divCode].total_lembur += (row.total_lembur || 0);
+                    divAggregation[divCode].total_potongan += (row.total_potongan || 0);
+                    divAggregation[divCode].total_upah_bersih += (row.total_upah_bersih || 0);
+                }
+            }
+
+            // Build division data array
+            const divisionData: any[] = [];
+            let grandTotal = {
+                total_karyawan: 0,
+                total_hk: 0,
+                total_upah_pokok: 0,
+                total_tunjangan: 0,
+                total_premi: 0,
+                total_lembur: 0,
+                total_potongan: 0,
+                total_upah_bersih: 0
+            };
+
+            for (const divCode of divisions) {
+                const totals = divAggregation[divCode];
+                if (totals.total_karyawan > 0 || totals.total_upah_bersih > 0) {
+                    divisionData.push({
+                        division: divCode,
+                        karyawan_count: totals.total_karyawan,
+                        total_hk: totals.total_hk,
+                        total_upah_pokok: totals.total_upah_pokok,
+                        total_tunjangan: totals.total_tunjangan,
+                        total_premi: totals.total_premi,
+                        total_lembur: totals.total_lembur,
+                        total_potongan: totals.total_potongan,
+                        total_upah_bersih: totals.total_upah_bersih
+                    });
+
+                    grandTotal.total_karyawan += totals.total_karyawan;
+                    grandTotal.total_hk += totals.total_hk;
+                    grandTotal.total_upah_pokok += totals.total_upah_pokok;
+                    grandTotal.total_tunjangan += totals.total_tunjangan;
+                    grandTotal.total_premi += totals.total_premi;
+                    grandTotal.total_lembur += totals.total_lembur;
+                    grandTotal.total_potongan += totals.total_potongan;
+                    grandTotal.total_upah_bersih += totals.total_upah_bersih;
+                }
+            }
+
+            return {
+                success: true,
+                period: { month, year, label: `${getMonthName(month)} ${year}` },
+                mode: 'recap_all',
+                include_thumbprint: includeThumbprint,
+                divisions: divisionData,
+                grand_total: grandTotal
+            };
+        } catch (e: any) {
+            console.error("[WagesRoutes] Error fetching recap all:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            include_thumbprint: t.Optional(t.String())
         })
     })
 

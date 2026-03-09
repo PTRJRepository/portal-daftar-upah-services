@@ -9,6 +9,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Printer, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary, updatePPH21, updateSPSI } from '../services/summaryReportService';
+import { fetchWagesRecapAll } from '../services/wagesService';
+import { otherIncomesService } from '../services/otherIncomesService';
 import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import PrintModeSelector from '../components/common/PrintModeSelector';
@@ -33,10 +35,15 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     const [comparisonMode, setComparisonMode] = useState(searchParams.get('mode') === 'comparison');
     const [comparisonData, setComparisonData] = useState(null);
 
-    // Sync comparisonMode if URL search params change
+    // THR Mode State - Rekap Semua Divisi (tanpa thumbprint)
+    const [thrMode, setThrMode] = useState(searchParams.get('mode') === 'thr');
+    const [thrData, setThrData] = useState(null);
+
+    // Sync modes if URL search params change
     useEffect(() => {
         const mode = searchParams.get('mode');
         setComparisonMode(mode === 'comparison');
+        setThrMode(mode === 'thr');
     }, [searchParams]);
 
     // Impact Report State
@@ -93,6 +100,14 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 } else {
                     setError('Failed to fetch comparison data');
                 }
+            } else if (thrMode) {
+                // THR Mode - Rekap Semua Divisi (tanpa thumbprint)
+                const result = await otherIncomesService.getThrRecapAll(year, month);
+                if (result.success !== false) {
+                    setThrData(result);
+                } else {
+                    setError('Failed to fetch THR recap data');
+                }
             } else {
                 const result = await fetchAllDivisionsTotals(token, { month, year, useHistory });
                 if (result.success) {
@@ -108,7 +123,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         } finally {
             setLoading(false);
         }
-    }, [token, month, year, comparisonMode, useHistory]);
+    }, [token, month, year, comparisonMode, thrMode, useHistory]);
 
     // Handle Thumbprint Change
     const handleThumbprintChange = (divisionKey, value) => {
@@ -904,7 +919,9 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 <option key={y} value={y}>{y}</option>
                             ))}
                         </select>
-                        <span className="report-filter-badge">{comparisonMode ? 'Mode Perbandingan' : 'Mode Standar'}</span>
+                        <span className="report-filter-badge" style={{ backgroundColor: thrMode ? '#8b5cf6' : (comparisonMode ? '#10b981' : '#64748b') }}>
+                            {thrMode ? 'Mode THR' : (comparisonMode ? 'Mode Perbandingan' : 'Mode Standar')}
+                        </span>
                     </div>
                 </div>
 
@@ -927,6 +944,15 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
                         <RefreshCw size={18} /> Refresh
+                    </button>
+                    <button
+                        onClick={() => setThrMode(!thrMode)}
+                        className={`wsp-btn ${thrMode ? 'wsp-btn-primary' : ''}`}
+                        title="Toggle THR Mode - Rekap Semua Divisi"
+                        style={{ marginLeft: '0.5rem', backgroundColor: thrMode ? '#8b5cf6' : '' }}
+                        disabled={loading || comparisonMode || impactReportMode}
+                    >
+                        {thrMode ? 'Back to Summary' : 'THR Mode'}
                     </button>
                     <button
                         onClick={() => setImpactReportMode(!impactReportMode)}
@@ -993,13 +1019,32 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />
                                 <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
                                 <div className="wsp-report-title">
-                                    {comparisonMode ? 'Monthly Wages Comparison Report' : 'Monthly Wages Summary Report'}
+                                    {thrMode ? 'Rekap Semua Divisi (THR Mode)' : (comparisonMode ? 'Monthly Wages Comparison Report' : 'Monthly Wages Summary Report')}
                                 </div>
                                 <div className="wsp-report-period">Periode: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong></div>
                             </div>
 
                             {/* KPI Cards */}
-                            {comparisonMode ? renderComparisonKPI() : (
+                            {thrMode ? (
+                                <div className="wsp-kpi-grid">
+                                    <div className="wsp-kpi-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                                        <div className="wsp-kpi-label">Total Divisi</div>
+                                        <div className="wsp-kpi-value">{thrData?.divisions?.length || 0}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                                        <div className="wsp-kpi-label">Pekerja Full (12/12)</div>
+                                        <div className="wsp-kpi-value">{formatNumber(thrData?.grand_total?.full_workers || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                                        <div className="wsp-kpi-label">Pekerja Proporsi</div>
+                                        <div className="wsp-kpi-value">{formatNumber(thrData?.grand_total?.prop_workers || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card highlight" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                                        <div className="wsp-kpi-label">Total THR</div>
+                                        <div className="wsp-kpi-value">Rp {formatNumber(thrData?.grand_total?.total_thr || 0)}</div>
+                                    </div>
+                                </div>
+                            ) : comparisonMode ? renderComparisonKPI() : (
                                 <div className="wsp-kpi-grid">
                                     <div className="wsp-kpi-card">
                                         <div className="wsp-kpi-label">Total Divisi</div>
@@ -1021,7 +1066,45 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             )}
 
                             {/* Data Table */}
-                            {comparisonMode ? renderComparisonTable() : (
+                            {thrMode ? (
+                                <div className="wsp-table-wrapper">
+                                    <table className="wsp-table">
+                                        <thead>
+                                            <tr className="wsp-header-master">
+                                                <th className="th-sticky-col">ESTATE / DIVISI</th>
+                                                <th>WORKERS</th>
+                                                <th>FULL</th>
+                                                <th>PROPORSI</th>
+                                                <th>TUNJ. BERAS</th>
+                                                <th>MASA KERJA</th>
+                                                <th>TOTAL THR</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {thrData?.divisions?.map((div, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="th-sticky-col"><strong>{div.division} {div.division !== div.gang_description ? `(${div.gang_description})` : ''}</strong></td>
+                                                    <td style={{ textAlign: 'right' }}>{formatNumber(div.karyawan_count)}</td>
+                                                    <td style={{ textAlign: 'right' }}>{formatNumber(div.full_workers)}</td>
+                                                    <td style={{ textAlign: 'right' }}>{formatNumber(div.prop_workers)}</td>
+                                                    <td style={{ textAlign: 'right' }}>Rp {formatNumber(div.total_tunjangan_beras)}</td>
+                                                    <td style={{ textAlign: 'right' }}>Rp {formatNumber(div.total_masa_kerja)}</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>Rp {formatNumber(div.total_thr)}</td>
+                                                </tr>
+                                            ))}
+                                            <tr className="wsp-footer-total">
+                                                <td className="th-sticky-col"><strong>TOTAL</strong></td>
+                                                <td style={{ textAlign: 'right' }}><strong>{formatNumber(thrData?.grand_total?.total_employees || 0)}</strong></td>
+                                                <td style={{ textAlign: 'right' }}><strong>{formatNumber(thrData?.grand_total?.full_workers || 0)}</strong></td>
+                                                <td style={{ textAlign: 'right' }}><strong>{formatNumber(thrData?.grand_total?.prop_workers || 0)}</strong></td>
+                                                <td style={{ textAlign: 'right' }}><strong>Rp {formatNumber(thrData?.grand_total?.total_tunjangan_beras || 0)}</strong></td>
+                                                <td style={{ textAlign: 'right' }}><strong>Rp {formatNumber(thrData?.grand_total?.total_masa_kerja || 0)}</strong></td>
+                                                <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#0f172a' }}><strong>Rp {formatNumber(thrData?.grand_total?.total_thr || 0)}</strong></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : comparisonMode ? renderComparisonTable() : (
                                 <div className="wsp-table-wrapper">
                                     <table className="wsp-table">
                                         <thead>

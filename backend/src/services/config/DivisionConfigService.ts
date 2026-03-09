@@ -190,10 +190,10 @@ export class DivisionConfigService {
             type: 'virtual',
             aliases: ['INF', 'inf', 'INFRA', 'infra', 'INFRASTRUKTUR', 'Infrastruktur'],
             sourceDivision: 'PG1A',
-            gangPattern: /^IN(?:G|T|\d+)?$/i,  // Matches INF, INT, IN01, IN1, etc.
+            gangPattern: /^IN(?:F|T)$/i,  // Matches INF and INT only
             descriptionPattern: /INFRA(STRUKTUR|STUKTUR)?/i,
             excludeFromSource: true,
-            description: 'Infrastruktur - mengambil gang dari Plasma 1A dengan prefix IN'
+            description: 'Infrastruktur - gang INF dan INT dari Plasma 1A'
         });
 
         this.registerDivision({

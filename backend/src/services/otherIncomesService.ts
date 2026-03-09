@@ -1,6 +1,7 @@
 import { Database } from "../db/client";
 import { HistoryDatabaseService } from "./historyDatabaseService";
 import { divisionDefinition } from "./divisionDefinition";
+import { employeeHrDataService } from "./employeeHrDataService";
 
 export interface OtherIncome {
     id?: number;
@@ -331,6 +332,118 @@ export class OtherIncomesService {
                     if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, data);
                 });
             }
+
+            // Collect NIKs/empcodes to query HR_EMPLOYEE for latest empcode
+            const keysForBankLookup = new Set<string>();
+            hrMap.forEach((hrData, key) => {
+                keysForBankLookup.add(key);
+            });
+
+            // Query HR_EMPLOYEE to find the latest/newest empcode for each NIK/empcode
+            const latestEmpCodeMap = new Map<string, string>(); // key: original key, value: latest empcode
+            if (keysForBankLookup.size > 0) {
+                try {
+                    const keysArray = Array.from(keysForBankLookup);
+                    const placeholders = keysArray.map(() => '?').join(',');
+
+                    // Get latest empcode by ordering by CreateDate DESC to get newest
+                    const empRows = await mainDb.query<any>(`
+                        SELECT
+                            RTRIM(e.EmpCode) as EmpCode,
+                            RTRIM(e.NewICNo) as NewICNo,
+                            e.CreateDate
+                        FROM HR_EMPLOYEE e
+                        WHERE RTRIM(e.EmpCode) IN (${placeholders}) OR RTRIM(e.NewICNo) IN (${placeholders})
+                        ORDER BY e.CreateDate DESC
+                    `, [...keysArray, ...keysArray]);
+
+                    // Map each NIK/empcode to its latest empcode
+                    for (const row of empRows) {
+                        const empCode = row.EmpCode?.trim().toUpperCase();
+                        const nik = row.NewICNo?.trim().toUpperCase();
+
+                        if (empCode) {
+                            if (!latestEmpCodeMap.has(empCode)) {
+                                latestEmpCodeMap.set(empCode, empCode);
+                            }
+                        }
+                        if (nik) {
+                            // Store mapping from old NIK to latest empcode
+                            if (!latestEmpCodeMap.has(nik)) {
+                                latestEmpCodeMap.set(nik, empCode);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("[OtherIncomesService] Error fetching latest empcode from HR_EMPLOYEE:", e);
+                }
+            }
+
+            // Fetch bank account data using latest empcode from HR_EMPLOYEE
+            const hrDataMap = new Map<string, any>();
+            const payrollBankMap = new Map<string, any>();
+
+            const empCodeArray = Array.from(latestEmpCodeMap.values());
+            const uniqueEmpCodes = [...new Set(empCodeArray)].filter((c): c is string => Boolean(c));
+            if (uniqueEmpCodes.length > 0) {
+                // Query employee_hr_data table
+                try {
+                    const hrDataResult = await employeeHrDataService.getHrDataBulk(uniqueEmpCodes);
+                    hrDataResult.forEach((value, key) => {
+                        hrDataMap.set(key, value);
+                    });
+                } catch (e) {
+                    console.error("[OtherIncomesService] Error fetching HR data for bank accounts:", e);
+                }
+
+                // Query HR_PAYROLL table using latest empcode from HR_EMPLOYEE
+                try {
+                    const placeholders = uniqueEmpCodes.map(() => '?').join(',');
+                    const payrollRows = await mainDb.query<any>(`
+                        SELECT
+                            RTRIM(EmpCode) as EmpCode,
+                            RTRIM(BankAccNo) as BankAccNo,
+                            RTRIM(BankCode) as BankCode
+                        FROM HR_PAYROLL
+                        WHERE RTRIM(EmpCode) IN (${placeholders})
+                    `, uniqueEmpCodes);
+
+                    for (const row of payrollRows) {
+                        const empCodeKey = row.EmpCode?.trim().toUpperCase();
+                        if (empCodeKey && row.BankAccNo?.trim()) {
+                            payrollBankMap.set(empCodeKey, { bank_acc_no: row.BankAccNo.trim(), bank_code: row.BankCode?.trim() || '' });
+                        }
+                    }
+                } catch (e) {
+                    console.error("[OtherIncomesService] Error fetching bank from HR_PAYROLL:", e);
+                }
+            }
+
+            // Override bank info: prefer employee_hr_data, fallback to HR_PAYROLL using latest empcode from HR_EMPLOYEE
+            hrMap.forEach((hrData, key) => {
+                // Get latest empcode from HR_EMPLOYEE
+                const latestEmpCode = latestEmpCodeMap.get(key) || hrData.emp_code?.toUpperCase();
+                if (!latestEmpCode) return;
+
+                // First try employee_hr_data
+                if (hrDataMap.has(latestEmpCode)) {
+                    const hrDataEntry = hrDataMap.get(latestEmpCode);
+                    if (hrDataEntry?.bank_acc_no) {
+                        hrData.bank_acc_no = hrDataEntry.bank_acc_no;
+                        hrData.bank_code = hrDataEntry.bank_code;
+                        return;
+                    }
+                }
+
+                // Fallback to HR_PAYROLL using latest empcode from HR_EMPLOYEE
+                if (payrollBankMap.has(latestEmpCode)) {
+                    const payrollEntry = payrollBankMap.get(latestEmpCode);
+                    if (payrollEntry?.bank_acc_no) {
+                        hrData.bank_acc_no = payrollEntry.bank_acc_no;
+                        hrData.bank_code = payrollEntry.bank_code;
+                    }
+                }
+            });
 
             // Only fetch blacklist if we have data to filter
             const periodYear = incomes[0].period_year;
@@ -955,6 +1068,127 @@ export class OtherIncomesService {
 
         } catch (error: any) {
             console.error("Error in getThrSummary:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get summary of saved THR data grouped by division (for Rebinmas-wide recap)
+     * Automatically excludes blacklisted employees
+     */
+    static async getThrRecapAll(year: number, month: number) {
+        try {
+            // Use getRawIncomes directly for all divisions
+            const raw = await this.getRawIncomes(year, month);
+            // Filter to THR only
+            const incomes = raw.filter(r => r.income_type === 'THR');
+
+            if (!incomes || incomes.length === 0) {
+                return { divisions: [], grand_total: null };
+            }
+
+            // Build a history dict for records that DON'T have details_json
+            const needsHistory = incomes.filter(inc => !(inc as any).details?.variables);
+            let historyDict: Record<string, any> = {};
+            if (needsHistory.length > 0) {
+                try {
+                    const historyService = HistoryDatabaseService.getInstance();
+                    const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, 'ALL', undefined);
+                    if (historyData?.data_rows) {
+                        historyData.data_rows.forEach((row: any) => {
+                            const nik = String(row.nik || '').trim().toUpperCase();
+                            if (nik) historyDict[nik] = row;
+                        });
+                    }
+                } catch (e) { /* ignore history fallback errors */ }
+            }
+
+            const divMap = new Map<string, any>();
+
+            const grandTotal = {
+                total_employees: 0,
+                full_workers: 0,
+                prop_workers: 0,
+                total_thr: 0,
+                total_tunjangan_beras: 0,
+                total_masa_kerja: 0
+            };
+
+            for (const inc of incomes) {
+                // Group by division instead of gang
+                const divCode = inc.division_code || 'UNKNOWN';
+                const amt = inc.amount || 0;
+                let vars = (inc as any).details?.variables || {};
+
+                // Fallback: if no details_json, use history data
+                if (Object.keys(vars).length === 0) {
+                    const nikKey = inc.nik?.trim().toUpperCase();
+                    const h = historyDict[nikKey || ''];
+                    if (h) {
+                        vars = {
+                            BERAS_RATE: h.beras_rate || 0,
+                            BERAS_JUMLAH: (h.beras_rate || 0) * 30,
+                            MASA_KERJA_JUMLAH: h.masa_kerja_jumlah || 0,
+                            PROPORTION_FACTOR: '12/12'
+                        };
+                    }
+                }
+
+                // Always detect proportion from income_name as override
+                const propMatch = inc.income_name?.match(/Proporsi\s+(\d+)\/12/i);
+                if (propMatch) {
+                    vars.PROPORTION_FACTOR = `${propMatch[1]}/12`;
+                    vars.WORKING_MONTHS = parseInt(propMatch[1]);
+                }
+
+                const propFactor = vars.PROPORTION_FACTOR || '12/12';
+                const isFull = propFactor === '12/12';
+
+                const tunjanganBeras = vars.TOTAL_TUNJANGAN_BERAS || vars.BERAS_JUMLAH || ((vars.BERAS_RATE || 0) * 30);
+                const masaKerja = vars.MASA_KERJA_JUMLAH || 0;
+
+                if (!divMap.has(divCode)) {
+                    divMap.set(divCode, {
+                        division: divCode,
+                        gang_description: divCode, // Add this so frontend can show description if requested
+                        karyawan_count: 0,
+                        full_workers: 0,
+                        prop_workers: 0,
+                        total_thr: 0,
+                        total_tunjangan_beras: 0,
+                        total_masa_kerja: 0
+                    });
+                }
+
+                const divSum = divMap.get(divCode)!;
+                divSum.karyawan_count += 1;
+                divSum.total_thr += amt;
+                divSum.total_tunjangan_beras += tunjanganBeras;
+                divSum.total_masa_kerja += masaKerja;
+
+                if (isFull) {
+                    divSum.full_workers += 1;
+                    grandTotal.full_workers += 1;
+                } else {
+                    divSum.prop_workers += 1;
+                    grandTotal.prop_workers += 1;
+                }
+
+                grandTotal.total_employees += 1;
+                grandTotal.total_thr += amt;
+                grandTotal.total_tunjangan_beras += tunjanganBeras;
+                grandTotal.total_masa_kerja += masaKerja;
+            }
+
+            const divisions = Array.from(divMap.values()).sort((a, b) => a.division.localeCompare(b.division));
+
+            return {
+                divisions,
+                grand_total: grandTotal
+            };
+
+        } catch (error: any) {
+            console.error("Error in getThrRecapAll:", error);
             throw error;
         }
     }

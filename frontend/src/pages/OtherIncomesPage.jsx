@@ -441,7 +441,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         <div class="tit">LIST PEMBAYARAN BANK - THR</div>
         <div class="sub-tit">PERIODE: ${mName.toUpperCase()} ${displayYear} | UNIT: ${division}</div>
         <table>
-            <thead><tr><th style="width:40px">NO</th><th>NAMA KARYAWAN / NIK / EMPCODE</th><th style="width:150px">NO REKENING</th><th style="width:80px">BANK</th><th style="width:120px">JUMLAH (Rp)</th></tr></thead>
+            <thead><tr><th style="width:40px">NO</th><th style="width:80px">EMPCODE</th><th>NAMA REKENING</th><th style="width:120px">NO REKENING</th><th style="width:60px">BANK</th><th style="width:100px">JUMLAH (Rp)</th></tr></thead>
             <tbody>
                 ${groupKeys.map(gk => {
             const gangsInGroup = groupedData[gk];
@@ -456,24 +456,25 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 const rows = items.map((r, i) => {
                     const netPay = Number(r.amount); // THR tidak ada pajak
                     const empCodeStr = r.emp_code || r.details?.variables?.EMP_CODE || '-';
-                    return `<tr><td class="tc">${i + 1}</td><td><b>${r.emp_name}</b><br/><small>${empCodeStr}</small></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
+                    const cleanedName = (r.emp_name || '').split('(')[0].trim();
+                    return `<tr><td class="tc">${i + 1}</td><td class="tc">${empCodeStr}</td><td><b>${cleanedName}</b></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
                 }).join('');
 
                 return `
-                    <tr><td colspan="5" style="background:#f8fafc; font-weight:700; padding-left:15px; border:1pt solid #000; -webkit-print-color-adjust: exact;">GANG: ${gcode}</td></tr>
+                    <tr><td colspan="6" style="background:#f8fafc; font-weight:700; padding-left:15px; border:1pt solid #000; -webkit-print-color-adjust: exact;">GANG: ${gcode}</td></tr>
                     ${rows}
-                    <tr class="gang-sub"><td colspan="4" class="tr">SUBTOTAL GANG ${gcode}</td><td class="tr">${formatCurrency(subTotal)}</td></tr>
+                    <tr class="gang-sub"><td colspan="5" class="tr">SUBTOTAL GANG ${gcode}</td><td class="tr">${formatCurrency(subTotal)}</td></tr>
                 `;
             }).join('');
 
             return `
-                        <tr><td colspan="5" class="gh">GROUP ASISTENSI: ${gk}</td></tr>
+                        <tr><td colspan="6" class="gh">GROUP ASISTENSI: ${gk}</td></tr>
                         ${gangRows}
-                        <tr class="gs-tot"><td colspan="4" class="tr">SUBTOTAL GROUP ${gk}</td><td class="tr">${formatCurrency(groupTotal)}</td></tr>
+                        <tr class="gs-tot"><td colspan="5" class="tr">SUBTOTAL GROUP ${gk}</td><td class="tr">${formatCurrency(groupTotal)}</td></tr>
                     `;
         }).join('')}
             </tbody>
-            <tfoot><tr><th colspan="4" class="tr">TOTAL TRANSFER KESELURUHAN</th><th class="tr">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th></tr></tfoot>
+            <tfoot><tr><th colspan="5" class="tr">TOTAL TRANSFER KESELURUHAN</th><th class="tr">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th></tr></tfoot>
         </table>${getSigs()}`;
     };
 

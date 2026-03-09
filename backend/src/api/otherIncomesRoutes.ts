@@ -45,6 +45,24 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
         }
     })
 
+    .get("/recap-all", async ({ query }) => {
+        try {
+            const { year, month } = query as any;
+            if (!year || !month) {
+                return { success: false, error: "Year and month are required parameters" };
+            }
+
+            const summary = await OtherIncomesService.getThrRecapAll(
+                parseInt(year),
+                parseInt(month)
+            );
+            return { success: true, ...summary };
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to fetch THR recap all", error);
+            return { success: false, error: error.message };
+        }
+    })
+
     .post("/", async ({ body }) => {
         try {
             const data = body as OtherIncome;

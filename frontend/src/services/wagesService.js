@@ -48,6 +48,34 @@ export async function fetchWagesByPeriod(token, month, year, division = null) {
 }
 
 /**
+ * Fetch recap all divisions (THR mode) - No thumbprint, just totals
+ * @param {string} token - Auth token
+ * @param {number} month - Month (1-12)
+ * @param {number} year - Year
+ * @param {boolean} includeThumbprint - Include thumbprint (default: false)
+ */
+export async function fetchWagesRecapAll(token, month, year, includeThumbprint = false) {
+    const baseUrl = getBackendUrl();
+    const params = new URLSearchParams();
+    if (includeThumbprint) params.append('include_thumbprint', 'true');
+
+    const url = `${baseUrl}/payroll/wages/recap-all/${month}/${year}?${params.toString()}`;
+
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch recap all: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+/**
  * Fetch wages comparison data for a specific period
  * @param {string} token - Auth token
  * @param {number} month - Month (1-12)
