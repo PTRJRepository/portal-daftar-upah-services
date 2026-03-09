@@ -96,9 +96,16 @@ export class OtherIncomesExcelService {
                     row.getCell(2).value = empCode;
                     row.getCell(2).alignment = { horizontal: 'center' };
                     row.getCell(3).value = cleanedName;
-                    row.getCell(4).value = item.bank_acc_no || item.details?.variables?.BANK_ACC_NO || '-';
+                    // ONLY use bank_acc_no - NO FALLBACK to details.variables (can contain wrong data like dates)
+                    // Validate: must be numeric, min 5 digits, no dates
+                    const rawBankAccNo = (item.bank_acc_no || '').trim();
+                    const bankDigits = rawBankAccNo.replace(/[-\s]/g, '');
+                    const bankAccNo = rawBankAccNo && /^\d{5,}$/.test(bankDigits) ? rawBankAccNo : '-';
+                    row.getCell(4).value = bankAccNo;
                     row.getCell(4).alignment = { horizontal: 'center' };
-                    row.getCell(5).value = item.bank_code || item.details?.variables?.BANK_CODE || 'BRI';
+                    // ONLY use bank_code - NO FALLBACK
+                    const bankCode = item.bank_code && item.bank_code !== '0' ? item.bank_code : 'BRI';
+                    row.getCell(5).value = bankCode;
                     row.getCell(5).alignment = { horizontal: 'center' };
                     row.getCell(6).value = Number(item.amount);
                     row.getCell(6).numFmt = '#,##0';

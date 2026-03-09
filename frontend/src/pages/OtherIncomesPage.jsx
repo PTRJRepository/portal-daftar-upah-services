@@ -453,11 +453,22 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 const subTotal = items.reduce((a, c) => a + (Number(c.amount) || 0), 0);
                 groupTotal += subTotal;
 
+                const isValidBankAcc = (v) => {
+                    if (!v || typeof v !== 'string') return false;
+                    const t = v.trim();
+                    if (!t || /^0+$/.test(t)) return false;
+                    // Must be digits only (no dates, no text), min 5 digits
+                    const digits = t.replace(/[-\s]/g, '');
+                    return /^\d{5,}$/.test(digits);
+                };
                 const rows = items.map((r, i) => {
                     const netPay = Number(r.amount); // THR tidak ada pajak
                     const empCodeStr = r.emp_code || r.details?.variables?.EMP_CODE || '-';
                     const cleanedName = (r.emp_name || '').split('(')[0].trim();
-                    return `<tr><td class="tc">${i + 1}</td><td class="tc">${empCodeStr}</td><td><b>${cleanedName}</b></td><td class="tc">${r.bank_acc_no || r.details?.variables?.BANK_ACC_NO || '-'}</td><td class="tc">${r.bank_code || r.details?.variables?.BANK_CODE || 'BRI'}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
+                    // ONLY use bank_acc_no directly - NO FALLBACK to details.variables (can contain dates)
+                    const bankAccNo = isValidBankAcc(r.bank_acc_no) ? r.bank_acc_no : '-';
+                    const bankCode = r.bank_code && r.bank_code !== '0' ? r.bank_code : 'BRI';
+                    return `<tr><td class="tc">${i + 1}</td><td class="tc">${empCodeStr}</td><td><b>${cleanedName}</b></td><td class="tc">${bankAccNo}</td><td class="tc">${bankCode}</td><td class="tr">${formatCurrency(netPay)}</td></tr>`;
                 }).join('');
 
                 return `

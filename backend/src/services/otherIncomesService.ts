@@ -63,14 +63,26 @@ export class OtherIncomesService {
     }
 
     /**
-     * Check if a bank account number is valid (non-empty, non-zero).
-     * Treats '0', '00', '000' etc. as invalid since they indicate missing data.
+     * Check if a bank account number is valid.
+     * Rejects: null, empty, all-zeros, date-like strings, non-numeric values.
+     * Bank accounts should be numeric (digits only, optionally with dashes/spaces), min 5 digits.
      */
     private static isValidBankAccNo(val: string | null | undefined): boolean {
         if (!val) return false;
         const trimmed = val.trim();
         if (!trimmed) return false;
+        // Reject all-zero strings (e.g., '0', '00', '000')
         if (/^0+$/.test(trimmed)) return false;
+        // Reject date-like patterns (e.g., '2024-01-15', '15/01/2024', 'Jan 2024')
+        if (/\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(trimmed)) return false;
+        if (/\d{1,2}[-\/]\d{1,2}[-\/]\d{4}/.test(trimmed)) return false;
+        if (/[A-Za-z]{3,}\s+\d{4}/.test(trimmed)) return false; // 'Jan 2024' etc.
+        // Extract only digits
+        const digitsOnly = trimmed.replace(/[-\s]/g, '');
+        // Must be all digits (after removing dashes/spaces)
+        if (!/^\d+$/.test(digitsOnly)) return false;
+        // Bank account numbers should have at least 5 digits
+        if (digitsOnly.length < 5) return false;
         return true;
     }
 
@@ -670,7 +682,7 @@ export class OtherIncomesService {
                 JOIN_DATE: inc.join_date || h?.join_date,
                 PROPORTION_FACTOR: "12/12",
                 SEX: (inc as any).sex || (h?.gender === 'FEMALE' ? 'P' : 'L'),
-                BANK_ACC_NO: inc.bank_acc_no || h?.bank_acc_no,
+                BANK_ACC_NO: this.isValidBankAccNo(inc.bank_acc_no) ? inc.bank_acc_no : (this.isValidBankAccNo(h?.bank_acc_no) ? h.bank_acc_no : ''),
                 BANK_CODE: inc.bank_code || h?.bank_code,
                 EMP_CODE: inc.emp_code || h?.emp_code
             };
