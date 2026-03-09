@@ -1070,36 +1070,40 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 <div className="wsp-table-wrapper">
                                     <table className="wsp-table">
                                         <thead>
-                                            <tr className="wsp-header-master">
-                                                <th className="th-sticky-col">ESTATE / DIVISI</th>
-                                                <th>WORKERS</th>
-                                                <th>FULL</th>
-                                                <th>PROPORSI</th>
-                                                <th>TUNJ. BERAS</th>
-                                                <th>MASA KERJA</th>
-                                                <th>TOTAL THR</th>
+                                            <tr className="wsp-header-master" style={{ backgroundColor: '#000', color: '#fff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                                <th style={{ minWidth: '300px', width: '300px', textAlign: 'left', border: '1.5pt solid #000', fontWeight: 800 }}>ESTATE / DIVISI</th>
+                                                <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>WORKERS</th>
+                                                <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>FULL</th>
+                                                <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>PROPORSI</th>
+                                                <th style={{ width: '140px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>TUNJ. BERAS</th>
+                                                <th style={{ width: '140px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>MASA KERJA</th>
+                                                <th style={{ width: '160px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>TOTAL THR</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {thrData?.divisions?.map((div, idx) => (
-                                                <tr key={idx}>
-                                                    <td className="th-sticky-col"><strong>{div.division} {div.division !== div.gang_description ? `(${div.gang_description})` : ''}</strong></td>
-                                                    <td style={{ textAlign: 'right' }}>{formatNumber(div.karyawan_count)}</td>
-                                                    <td style={{ textAlign: 'right' }}>{formatNumber(div.full_workers)}</td>
-                                                    <td style={{ textAlign: 'right' }}>{formatNumber(div.prop_workers)}</td>
-                                                    <td style={{ textAlign: 'right' }}>Rp {formatNumber(div.total_tunjangan_beras)}</td>
-                                                    <td style={{ textAlign: 'right' }}>Rp {formatNumber(div.total_masa_kerja)}</td>
-                                                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>Rp {formatNumber(div.total_thr)}</td>
+                                                <tr key={idx} style={{ borderBottom: '1pt solid #000', backgroundColor: idx % 2 === 0 ? '#fff' : '#f2f2f2', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                                    <td className="text-left" style={{ border: '0.5pt solid #000', fontWeight: 600 }}>{div.division} {div.division !== div.gang_description ? `(${div.gang_description})` : ''}</td>
+                                                    <td className={`text-right ${!Number(div.karyawan_count) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.karyawan_count)}</td>
+                                                    <td className={`text-right ${!Number(div.full_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.full_workers)}</td>
+                                                    <td className={`text-right ${!Number(div.prop_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.prop_workers)}</td>
+                                                    <td className={`text-right ${!Number(div.total_tunjangan_beras) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.total_tunjangan_beras)}</td>
+                                                    <td className={`text-right ${!Number(div.total_masa_kerja) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.total_masa_kerja)}</td>
+                                                    <td className={`text-right ${!Number(div.total_thr) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 700, border: '0.5pt solid #000' }}>
+                                                        {formatNumber(div.total_thr)}
+                                                    </td>
                                                 </tr>
                                             ))}
-                                            <tr className="wsp-footer-total">
-                                                <td className="th-sticky-col"><strong>TOTAL</strong></td>
-                                                <td style={{ textAlign: 'right' }}><strong>{formatNumber(thrData?.grand_total?.total_employees || 0)}</strong></td>
-                                                <td style={{ textAlign: 'right' }}><strong>{formatNumber(thrData?.grand_total?.full_workers || 0)}</strong></td>
-                                                <td style={{ textAlign: 'right' }}><strong>{formatNumber(thrData?.grand_total?.prop_workers || 0)}</strong></td>
-                                                <td style={{ textAlign: 'right' }}><strong>Rp {formatNumber(thrData?.grand_total?.total_tunjangan_beras || 0)}</strong></td>
-                                                <td style={{ textAlign: 'right' }}><strong>Rp {formatNumber(thrData?.grand_total?.total_masa_kerja || 0)}</strong></td>
-                                                <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#0f172a' }}><strong>Rp {formatNumber(thrData?.grand_total?.total_thr || 0)}</strong></td>
+                                            <tr className="wsp-grand-total" style={{ backgroundColor: '#e2e8f0', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact', border: '1.5pt solid #000' }}>
+                                                <td style={{ border: '1.5pt solid #000', fontWeight: 800 }}>GRAND TOTAL</td>
+                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.total_employees || 0)}</td>
+                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.full_workers || 0)}</td>
+                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.prop_workers || 0)}</td>
+                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.total_tunjangan_beras || 0)}</td>
+                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.total_masa_kerja || 0)}</td>
+                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 900, color: '#16a34a' }}>
+                                                    {formatNumber(thrData?.grand_total?.total_thr || 0)}
+                                                </td>
                                             </tr>
                                         </tbody>
                                     </table>

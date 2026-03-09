@@ -62,6 +62,18 @@ export class OtherIncomesService {
         return latest ? latest.toISOString() : null;
     }
 
+    /**
+     * Check if a bank account number is valid (non-empty, non-zero).
+     * Treats '0', '00', '000' etc. as invalid since they indicate missing data.
+     */
+    private static isValidBankAccNo(val: string | null | undefined): boolean {
+        if (!val) return false;
+        const trimmed = val.trim();
+        if (!trimmed) return false;
+        if (/^0+$/.test(trimmed)) return false;
+        return true;
+    }
+
     static async initTable() {
         const db = Database.getExtendedInstance();
         try {
@@ -323,7 +335,7 @@ export class OtherIncomesService {
                         emp_code: (latestGang?.gangMember?.trim()) || (r.EmpCode?.trim() || ''),
                         // Also store the latest gang code for reference
                         latest_gang_code: latestGang?.gangCode?.trim() || '',
-                        bank_acc_no: r.BankAccNo || '', bank_code: r.BankCode || '',
+                        bank_acc_no: this.isValidBankAccNo(r.BankAccNo) ? r.BankAccNo : '', bank_code: r.BankCode || '',
                         sex: (r.Gender || '').trim().toUpperCase() === 'FEMALE' ? 'P' : 'L',
                         upah_dasar: r.PayRate || 0, beras_rate: r.RiceRation || 0, emp_name: r.EmpName
                     };
@@ -333,62 +345,128 @@ export class OtherIncomesService {
                 });
             }
 
-            // Collect NIKs/empcodes to query HR_EMPLOYEE for latest empcode
+            // Collect all NIKs/empcodes and emp_names to query HR_EMPLOYEE for empcode history
             const keysForBankLookup = new Set<string>();
+            const empNamesForBankLookup = new Set<string>();
             hrMap.forEach((hrData, key) => {
                 keysForBankLookup.add(key);
+                if (hrData.emp_name) {
+                    empNamesForBankLookup.add(hrData.emp_name.trim().toUpperCase());
+                }
             });
 
-            // Query HR_EMPLOYEE to find the latest/newest empcode for each NIK/empcode
-            const latestEmpCodeMap = new Map<string, string>(); // key: original key, value: latest empcode
-            if (keysForBankLookup.size > 0) {
+            // Query HR_EMPLOYEE to find ALL empcodes for each NIK (ordered by CreateDate DESC - newest first)
+            const allEmpCodesByKey = new Map<string, string[]>(); // key: original key, value: array of empcodes (newest first)
+            if (keysForBankLookup.size > 0 || empNamesForBankLookup.size > 0) {
                 try {
                     const keysArray = Array.from(keysForBankLookup);
-                    const placeholders = keysArray.map(() => '?').join(',');
 
-                    // Get latest empcode by ordering by CreateDate DESC to get newest
-                    const empRows = await mainDb.query<any>(`
-                        SELECT
-                            RTRIM(e.EmpCode) as EmpCode,
-                            RTRIM(e.NewICNo) as NewICNo,
-                            e.CreateDate
-                        FROM HR_EMPLOYEE e
-                        WHERE RTRIM(e.EmpCode) IN (${placeholders}) OR RTRIM(e.NewICNo) IN (${placeholders})
-                        ORDER BY e.CreateDate DESC
-                    `, [...keysArray, ...keysArray]);
+                    // Get all empcodes ordered by CreateDate DESC (newest first) - by empcode/NIK
+                    let empRows: any[] = [];
+                    if (keysArray.length > 0) {
+                        const placeholders = keysArray.map(() => '?').join(',');
+                        empRows = await mainDb.query<any>(`
+                            SELECT
+                                RTRIM(e.EmpCode) as EmpCode,
+                                RTRIM(e.NewICNo) as NewICNo,
+                                RTRIM(e.EmpName) as EmpName,
+                                e.CreateDate
+                            FROM HR_EMPLOYEE e
+                            WHERE RTRIM(e.EmpCode) IN (${placeholders}) OR RTRIM(e.NewICNo) IN (${placeholders})
+                            ORDER BY e.CreateDate DESC
+                        `, [...keysArray, ...keysArray]);
+                    }
 
-                    // Map each NIK/empcode to its latest empcode
+                    // Also query by emp_name to find related empcodes
+                    const namesArray = Array.from(empNamesForBankLookup);
+                    if (namesArray.length > 0) {
+                        const namePlaceholders = namesArray.map(() => '?').join(',');
+                        const nameRows = await mainDb.query<any>(`
+                            SELECT
+                                RTRIM(e.EmpCode) as EmpCode,
+                                RTRIM(e.EmpName) as EmpName,
+                                e.CreateDate
+                            FROM HR_EMPLOYEE e
+                            WHERE RTRIM(e.EmpName) IN (${namePlaceholders})
+                            ORDER BY e.CreateDate DESC
+                        `, namesArray);
+
+                        // Combine both results
+                        empRows = [...empRows, ...nameRows];
+                    }
+
+                    // Build map of empName -> list of empcodes
+                    const empNameToCodes = new Map<string, string[]>();
+                    for (const row of empRows) {
+                        const empCode = row.EmpCode?.trim().toUpperCase();
+                        const empName = row.EmpName?.trim().toUpperCase();
+
+                        if (empName && empCode) {
+                            if (!empNameToCodes.has(empName)) {
+                                empNameToCodes.set(empName, []);
+                            }
+                            const arr = empNameToCodes.get(empName)!;
+                            if (!arr.includes(empCode)) arr.push(empCode);
+                        }
+                    }
+
+                    // Collect all empcodes for each key (newest first)
                     for (const row of empRows) {
                         const empCode = row.EmpCode?.trim().toUpperCase();
                         const nik = row.NewICNo?.trim().toUpperCase();
+                        const empName = row.EmpName?.trim().toUpperCase();
 
                         if (empCode) {
-                            if (!latestEmpCodeMap.has(empCode)) {
-                                latestEmpCodeMap.set(empCode, empCode);
+                            if (!allEmpCodesByKey.has(empCode)) {
+                                allEmpCodesByKey.set(empCode, []);
                             }
+                            // Add to front if not exists (newer entries come first)
+                            const arr = allEmpCodesByKey.get(empCode)!;
+                            if (!arr.includes(empCode)) arr.unshift(empCode);
                         }
                         if (nik) {
-                            // Store mapping from old NIK to latest empcode
-                            if (!latestEmpCodeMap.has(nik)) {
-                                latestEmpCodeMap.set(nik, empCode);
+                            if (!allEmpCodesByKey.has(nik)) {
+                                allEmpCodesByKey.set(nik, []);
+                            }
+                            const arr = allEmpCodesByKey.get(nik)!;
+                            if (!arr.includes(empCode)) arr.unshift(empCode);
+                        }
+                        // Also add by emp_name - try all empcodes with same name
+                        if (empName && empNameToCodes.has(empName)) {
+                            const relatedCodes = empNameToCodes.get(empName)!;
+                            if (!allEmpCodesByKey.has(empName)) {
+                                allEmpCodesByKey.set(empName, relatedCodes);
                             }
                         }
                     }
                 } catch (e) {
-                    console.error("[OtherIncomesService] Error fetching latest empcode from HR_EMPLOYEE:", e);
+                    console.error("[OtherIncomesService] Error fetching empcode history from HR_EMPLOYEE:", e);
                 }
             }
 
-            // Fetch bank account data using latest empcode from HR_EMPLOYEE
+            // Fetch bank account data for ALL empcodes (we'll try fallback later)
             const hrDataMap = new Map<string, any>();
             const payrollBankMap = new Map<string, any>();
+            const payrollBankByNameMap = new Map<string, any>(); // Fallback by name
 
-            const empCodeArray = Array.from(latestEmpCodeMap.values());
-            const uniqueEmpCodes = [...new Set(empCodeArray)].filter((c): c is string => Boolean(c));
-            if (uniqueEmpCodes.length > 0) {
-                // Query employee_hr_data table
+            // Collect ALL unique empcodes from the history
+            const allUniqueEmpCodes = new Set<string>();
+            allEmpCodesByKey.forEach((empCodes) => {
+                empCodes.forEach(ec => allUniqueEmpCodes.add(ec));
+            });
+
+            // Also add emp_codes from hrMap
+            hrMap.forEach((hrData) => {
+                if (hrData.emp_code) {
+                    allUniqueEmpCodes.add(hrData.emp_code.toUpperCase());
+                }
+            });
+
+            const empCodeArray = Array.from(allUniqueEmpCodes).filter(Boolean);
+            if (empCodeArray.length > 0) {
+                // Query employee_hr_data table for all empcodes
                 try {
-                    const hrDataResult = await employeeHrDataService.getHrDataBulk(uniqueEmpCodes);
+                    const hrDataResult = await employeeHrDataService.getHrDataBulk(empCodeArray);
                     hrDataResult.forEach((value, key) => {
                         hrDataMap.set(key, value);
                     });
@@ -396,9 +474,9 @@ export class OtherIncomesService {
                     console.error("[OtherIncomesService] Error fetching HR data for bank accounts:", e);
                 }
 
-                // Query HR_PAYROLL table using latest empcode from HR_EMPLOYEE
+                // Query HR_PAYROLL table for all empcodes
                 try {
-                    const placeholders = uniqueEmpCodes.map(() => '?').join(',');
+                    const placeholders = empCodeArray.map(() => '?').join(',');
                     const payrollRows = await mainDb.query<any>(`
                         SELECT
                             RTRIM(EmpCode) as EmpCode,
@@ -406,12 +484,20 @@ export class OtherIncomesService {
                             RTRIM(BankCode) as BankCode
                         FROM HR_PAYROLL
                         WHERE RTRIM(EmpCode) IN (${placeholders})
-                    `, uniqueEmpCodes);
+                    `, empCodeArray);
 
                     for (const row of payrollRows) {
                         const empCodeKey = row.EmpCode?.trim().toUpperCase();
-                        if (empCodeKey && row.BankAccNo?.trim()) {
-                            payrollBankMap.set(empCodeKey, { bank_acc_no: row.BankAccNo.trim(), bank_code: row.BankCode?.trim() || '' });
+                        const bankAccNo = row.BankAccNo?.trim() || '';
+                        // Store ALL entries (valid or '0') - prefer valid ones later
+                        if (empCodeKey && bankAccNo) {
+                            const existing = payrollBankMap.get(empCodeKey);
+                            if (!existing) {
+                                payrollBankMap.set(empCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                            } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existing.bank_acc_no)) {
+                                // Replace '0' with valid if we find one
+                                payrollBankMap.set(empCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                            }
                         }
                     }
                 } catch (e) {
@@ -419,28 +505,89 @@ export class OtherIncomesService {
                 }
             }
 
-            // Override bank info: prefer employee_hr_data, fallback to HR_PAYROLL using latest empcode from HR_EMPLOYEE
+            // Also query HR_PAYROLL by emp_name for additional bank account lookup
+            const empNamesForQuery = new Set<string>();
             hrMap.forEach((hrData, key) => {
-                // Get latest empcode from HR_EMPLOYEE
-                const latestEmpCode = latestEmpCodeMap.get(key) || hrData.emp_code?.toUpperCase();
-                if (!latestEmpCode) return;
+                if (hrData.emp_name) {
+                    empNamesForQuery.add(hrData.emp_name.trim().toUpperCase());
+                }
+            });
 
-                // First try employee_hr_data
-                if (hrDataMap.has(latestEmpCode)) {
-                    const hrDataEntry = hrDataMap.get(latestEmpCode);
-                    if (hrDataEntry?.bank_acc_no) {
-                        hrData.bank_acc_no = hrDataEntry.bank_acc_no;
-                        hrData.bank_code = hrDataEntry.bank_code;
-                        return;
+            if (empNamesForQuery.size > 0) {
+                try {
+                    const nameArray = Array.from(empNamesForQuery);
+                    const namePlaceholders = nameArray.map(() => '?').join(',');
+
+                    // Query HR_PAYROLL by emp_name to get bank accounts
+                    // Join with HR_EMPLOYEE to get emp_name
+                    const payrollByNameRows = await mainDb.query<any>(`
+                        SELECT
+                            RTRIM(p.EmpCode) as EmpCode,
+                            RTRIM(e.EmpName) as EmpName,
+                            RTRIM(p.BankAccNo) as BankAccNo,
+                            RTRIM(p.BankCode) as BankCode
+                        FROM HR_PAYROLL p
+                        LEFT JOIN HR_EMPLOYEE e ON p.EmpCode = e.EmpCode
+                        WHERE RTRIM(e.EmpName) IN (${namePlaceholders})
+                    `, nameArray);
+
+                    for (const row of payrollByNameRows) {
+                        const empName = row.EmpName?.trim().toUpperCase();
+                        const empCode = row.EmpCode?.trim().toUpperCase();
+                        const bankAccNo = row.BankAccNo?.trim() || '';
+
+                        // Store ALL entries (valid or '0') - prefer valid ones later
+                        if (empName && bankAccNo) {
+                            const existing = payrollBankByNameMap.get(empName);
+                            if (!existing) {
+                                payrollBankByNameMap.set(empName, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
+                            } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existing.bank_acc_no)) {
+                                // Replace '0' with valid if we find one
+                                payrollBankByNameMap.set(empName, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("[OtherIncomesService] Error fetching bank from HR_PAYROLL by name:", e);
+                }
+            }
+
+            // Override bank info with FALLBACK mechanism: try each empcode until we find one with bank account
+            hrMap.forEach((hrData, key) => {
+                // Get all empcodes for this key (newest first)
+                const empCodesToTry = allEmpCodesByKey.get(key) || (hrData.emp_code ? [hrData.emp_code.toUpperCase()] : []);
+
+                // Try each empcode in order (newest first) until we find bank account
+                for (const empCode of empCodesToTry) {
+                    if (!empCode) continue;
+
+                    // First try employee_hr_data
+                    if (hrDataMap.has(empCode)) {
+                        const hrDataEntry = hrDataMap.get(empCode);
+                        if (this.isValidBankAccNo(hrDataEntry?.bank_acc_no)) {
+                            hrData.bank_acc_no = hrDataEntry.bank_acc_no;
+                            hrData.bank_code = hrDataEntry.bank_code;
+                            break; // Found valid bank account, stop trying
+                        }
+                    }
+
+                    // Then try HR_PAYROLL
+                    if (payrollBankMap.has(empCode)) {
+                        const payrollEntry = payrollBankMap.get(empCode);
+                        if (this.isValidBankAccNo(payrollEntry?.bank_acc_no)) {
+                            hrData.bank_acc_no = payrollEntry.bank_acc_no;
+                            hrData.bank_code = payrollEntry.bank_code;
+                            break; // Found valid bank account, stop trying
+                        }
                     }
                 }
 
-                // Fallback to HR_PAYROLL using latest empcode from HR_EMPLOYEE
-                if (payrollBankMap.has(latestEmpCode)) {
-                    const payrollEntry = payrollBankMap.get(latestEmpCode);
-                    if (payrollEntry?.bank_acc_no) {
-                        hrData.bank_acc_no = payrollEntry.bank_acc_no;
-                        hrData.bank_code = payrollEntry.bank_code;
+                // Last fallback: try by emp_name in HR_PAYROLL
+                if (!this.isValidBankAccNo(hrData.bank_acc_no) && hrData.emp_name && payrollBankByNameMap.has(hrData.emp_name.toUpperCase())) {
+                    const byNameEntry = payrollBankByNameMap.get(hrData.emp_name.toUpperCase());
+                    if (this.isValidBankAccNo(byNameEntry?.bank_acc_no)) {
+                        hrData.bank_acc_no = byNameEntry.bank_acc_no;
+                        hrData.bank_code = byNameEntry.bank_code;
                     }
                 }
             });

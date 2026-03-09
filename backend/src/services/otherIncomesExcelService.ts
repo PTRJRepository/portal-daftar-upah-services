@@ -33,19 +33,19 @@ export class OtherIncomesExcelService {
         const asistensiKeys = Object.keys(groupedData).sort();
 
         // Title & Header
-        worksheet.mergeCells('A1', 'E1');
+        worksheet.mergeCells('A1', 'F1');
         const titleCell = worksheet.getCell('A1');
         titleCell.value = 'LIST PEMBAYARAN BANK - THR';
         titleCell.font = { bold: true, size: 14 };
         titleCell.alignment = { horizontal: 'center' };
 
-        worksheet.mergeCells('A2', 'E2');
+        worksheet.mergeCells('A2', 'F2');
         const subTitleCell = worksheet.getCell('A2');
         subTitleCell.value = `PERIODE: ${month}/${year} | UNIT: ${divisionCode || 'SEMUA'}`;
         subTitleCell.alignment = { horizontal: 'center' };
 
         const headerRow = worksheet.getRow(4);
-        headerRow.values = ['NO', 'NAMA KARYAWAN / NIK / EMPCODE', 'NO REKENING', 'BANK', 'JUMLAH (Rp)'];
+        headerRow.values = ['NO', 'EMPCODE', 'NAMA REKENING', 'NO REKENING', 'BANK', 'JUMLAH (Rp)'];
         headerRow.eachCell((cell) => {
             cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
@@ -55,7 +55,8 @@ export class OtherIncomesExcelService {
 
         worksheet.columns = [
             { width: 8 },  // NO
-            { width: 45 }, // NAME
+            { width: 15 }, // EMPCODE
+            { width: 45 }, // NAMA REKENING
             { width: 25 }, // ACCOUNT
             { width: 12 }, // BANK
             { width: 20 }, // AMOUNT
@@ -70,7 +71,7 @@ export class OtherIncomesExcelService {
             asistRow.getCell(1).value = `GROUP ASISTENSI: ${asistensi}`;
             asistRow.getCell(1).font = { bold: true };
             asistRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-            worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
+            worksheet.mergeCells(`A${currentRow - 1}`, `F${currentRow - 1}`);
 
             const gangs = groupedData[asistensi];
             const gangKeys = Object.keys(gangs).sort();
@@ -82,7 +83,7 @@ export class OtherIncomesExcelService {
                 gangHeaderRow.getCell(1).value = `GANG: ${gcode}`;
                 gangHeaderRow.getCell(1).font = { bold: true };
                 gangHeaderRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-                worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
+                worksheet.mergeCells(`A${currentRow - 1}`, `F${currentRow - 1}`);
 
                 const items = gangs[gcode];
                 let gangTotal = 0;
@@ -91,15 +92,19 @@ export class OtherIncomesExcelService {
                     const row = worksheet.getRow(currentRow++);
                     row.getCell(1).value = idx + 1;
                     const empCode = item.emp_code || item.details?.variables?.EMP_CODE || '-';
-                    row.getCell(2).value = `${item.emp_name}\n${item.nik} | ${empCode}`;
-                    row.getCell(2).alignment = { wrapText: true };
-                    row.getCell(3).value = item.bank_acc_no || item.details?.variables?.BANK_ACC_NO || '-';
-                    row.getCell(4).value = item.bank_code || item.details?.variables?.BANK_CODE || 'BRI';
-                    row.getCell(5).value = Number(item.amount);
-                    row.getCell(5).numFmt = '#,##0';
+                    const cleanedName = (item.emp_name || '').split('(')[0].trim();
+                    row.getCell(2).value = empCode;
+                    row.getCell(2).alignment = { horizontal: 'center' };
+                    row.getCell(3).value = cleanedName;
+                    row.getCell(4).value = item.bank_acc_no || item.details?.variables?.BANK_ACC_NO || '-';
+                    row.getCell(4).alignment = { horizontal: 'center' };
+                    row.getCell(5).value = item.bank_code || item.details?.variables?.BANK_CODE || 'BRI';
+                    row.getCell(5).alignment = { horizontal: 'center' };
+                    row.getCell(6).value = Number(item.amount);
+                    row.getCell(6).numFmt = '#,##0';
                     gangTotal += Number(item.amount);
 
-                    for (let i = 1; i <= 5; i++) {
+                    for (let i = 1; i <= 6; i++) {
                         row.getCell(i).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
                     }
                 });
@@ -107,35 +112,35 @@ export class OtherIncomesExcelService {
                 // Gang Subtotal
                 const gangSubRow = worksheet.getRow(currentRow++);
                 gangSubRow.getCell(1).value = `SUBTOTAL GANG ${gcode}`;
-                gangSubRow.getCell(5).value = gangTotal;
-                gangSubRow.getCell(5).numFmt = '#,##0';
+                gangSubRow.getCell(6).value = gangTotal;
+                gangSubRow.getCell(6).numFmt = '#,##0';
                 gangSubRow.font = { bold: true, italic: true };
                 gangSubRow.getCell(1).alignment = { horizontal: 'right' };
-                worksheet.mergeCells(`A${currentRow - 1}`, `D${currentRow - 1}`);
+                worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
                 asistensiTotal += gangTotal;
             }
 
             // Asistensi Subtotal
             const asistSubRow = worksheet.getRow(currentRow++);
             asistSubRow.getCell(1).value = `SUBTOTAL GROUP ${asistensi}`;
-            asistSubRow.getCell(5).value = asistensiTotal;
-            asistSubRow.getCell(5).numFmt = '#,##0';
+            asistSubRow.getCell(6).value = asistensiTotal;
+            asistSubRow.getCell(6).numFmt = '#,##0';
             asistSubRow.font = { bold: true };
             asistSubRow.getCell(1).alignment = { horizontal: 'right' };
             asistSubRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; });
-            worksheet.mergeCells(`A${currentRow - 1}`, `D${currentRow - 1}`);
+            worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
             totalAll += asistensiTotal;
         }
 
         // Grand Total
         const totalRow = worksheet.getRow(currentRow++);
         totalRow.getCell(1).value = 'TOTAL TRANSFER KESELURUHAN';
-        totalRow.getCell(5).value = totalAll;
-        totalRow.getCell(5).numFmt = '#,##0';
+        totalRow.getCell(6).value = totalAll;
+        totalRow.getCell(6).numFmt = '#,##0';
         totalRow.font = { bold: true };
         totalRow.getCell(1).alignment = { horizontal: 'right' };
         totalRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } }; c.font = { color: { argb: 'FFFFFFFF' }, bold: true }; });
-        worksheet.mergeCells(`A${currentRow - 1}`, `D${currentRow - 1}`);
+        worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
 
         // Signatures
         currentRow += 2; // Add some empty rows before signature
