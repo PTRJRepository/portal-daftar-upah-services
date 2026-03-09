@@ -20,17 +20,8 @@ export class OtherIncomesExcelService {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Bank List THR');
 
-        // Grouping logic
-        const groupedData: Record<string, Record<string, any[]>> = {};
-        incomes.forEach(item => {
-            const asistensi = this.getAsistensi(item.gang_code || '');
-            const gcode = item.gang_code || 'TANPA GANG';
-            if (!groupedData[asistensi]) groupedData[asistensi] = {};
-            if (!groupedData[asistensi][gcode]) groupedData[asistensi][gcode] = [];
-            groupedData[asistensi][gcode].push(item);
-        });
-
-        const asistensiKeys = Object.keys(groupedData).sort();
+        // Determine mode: single division or all divisions
+        const isSingleDivision = !!divisionCode && divisionCode !== 'ALL';
 
         // Title & Header
         worksheet.mergeCells('A1', 'F1');
@@ -65,52 +56,32 @@ export class OtherIncomesExcelService {
         let currentRow = 5;
         let totalAll = 0;
 
-        for (const asistensi of asistensiKeys) {
-            // Asistensi Header
-            const asistRow = worksheet.getRow(currentRow++);
-            asistRow.getCell(1).value = `GROUP ASISTENSI: ${asistensi}`;
-            asistRow.getCell(1).font = { bold: true };
-            asistRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-            worksheet.mergeCells(`A${currentRow - 1}`, `F${currentRow - 1}`);
+        if (isSingleDivision) {
+            // ===== SINGLE DIVISION MODE: Group by gang only, subtotal per gang =====
+            const gangGrouped: Record<string, any[]> = {};
+            incomes.forEach(item => {
+                const gcode = item.gang_code || 'TANPA GANG';
+                if (!gangGrouped[gcode]) gangGrouped[gcode] = [];
+                gangGrouped[gcode].push(item);
+            });
 
-            const gangs = groupedData[asistensi];
-            const gangKeys = Object.keys(gangs).sort();
-            let asistensiTotal = 0;
+            const gangKeys = Object.keys(gangGrouped).sort();
 
             for (const gcode of gangKeys) {
                 // Gang Header
                 const gangHeaderRow = worksheet.getRow(currentRow++);
                 gangHeaderRow.getCell(1).value = `GANG: ${gcode}`;
                 gangHeaderRow.getCell(1).font = { bold: true };
-                gangHeaderRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+                gangHeaderRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
                 worksheet.mergeCells(`A${currentRow - 1}`, `F${currentRow - 1}`);
 
-                const items = gangs[gcode];
+                const items = gangGrouped[gcode];
                 let gangTotal = 0;
 
                 items.forEach((item, idx) => {
                     const row = worksheet.getRow(currentRow++);
-                    row.getCell(1).value = idx + 1;
-                    const empCode = item.emp_code || item.details?.variables?.EMP_CODE || '-';
-                    const cleanedName = (item.emp_name || '').split('(')[0].trim();
-                    row.getCell(2).value = empCode;
-                    row.getCell(2).alignment = { horizontal: 'center' };
-                    row.getCell(3).value = cleanedName;
-                    // ONLY use bank_acc_no - NO FALLBACK to details.variables (can contain wrong data like dates)
-                    // Validate: must be numeric, min 5 digits, no dates
-                    const rawBankAccNo = (item.bank_acc_no || '').trim();
-                    const bankDigits = rawBankAccNo.replace(/[-\s]/g, '');
-                    const bankAccNo = rawBankAccNo && /^\d{5,}$/.test(bankDigits) ? rawBankAccNo : '-';
-                    row.getCell(4).value = bankAccNo;
-                    row.getCell(4).alignment = { horizontal: 'center' };
-                    // ONLY use bank_code - NO FALLBACK
-                    const bankCode = item.bank_code && item.bank_code !== '0' ? item.bank_code : 'BRI';
-                    row.getCell(5).value = bankCode;
-                    row.getCell(5).alignment = { horizontal: 'center' };
-                    row.getCell(6).value = Number(item.amount);
-                    row.getCell(6).numFmt = '#,##0';
+                    this.writeItemRow(row, item, idx);
                     gangTotal += Number(item.amount);
-
                     for (let i = 1; i <= 6; i++) {
                         row.getCell(i).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
                     }
@@ -118,30 +89,90 @@ export class OtherIncomesExcelService {
 
                 // Gang Subtotal
                 const gangSubRow = worksheet.getRow(currentRow++);
-                gangSubRow.getCell(1).value = `SUBTOTAL GANG ${gcode}`;
+                gangSubRow.getCell(1).value = `SUBTOTAL GANG ${gcode} (${items.length} orang)`;
                 gangSubRow.getCell(6).value = gangTotal;
                 gangSubRow.getCell(6).numFmt = '#,##0';
                 gangSubRow.font = { bold: true, italic: true };
                 gangSubRow.getCell(1).alignment = { horizontal: 'right' };
+                gangSubRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }; });
                 worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
-                asistensiTotal += gangTotal;
+                totalAll += gangTotal;
             }
+        } else {
+            // ===== ALL DIVISIONS MODE: Group by division → gang, subtotals for both =====
+            // Group: division_code → gang_code → items
+            const divGrouped: Record<string, Record<string, any[]>> = {};
+            incomes.forEach(item => {
+                const divCode = item.division_code || 'TANPA DIVISI';
+                const gcode = item.gang_code || 'TANPA GANG';
+                if (!divGrouped[divCode]) divGrouped[divCode] = {};
+                if (!divGrouped[divCode][gcode]) divGrouped[divCode][gcode] = [];
+                divGrouped[divCode][gcode].push(item);
+            });
 
-            // Asistensi Subtotal
-            const asistSubRow = worksheet.getRow(currentRow++);
-            asistSubRow.getCell(1).value = `SUBTOTAL GROUP ${asistensi}`;
-            asistSubRow.getCell(6).value = asistensiTotal;
-            asistSubRow.getCell(6).numFmt = '#,##0';
-            asistSubRow.font = { bold: true };
-            asistSubRow.getCell(1).alignment = { horizontal: 'right' };
-            asistSubRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; });
-            worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
-            totalAll += asistensiTotal;
+            const divKeys = Object.keys(divGrouped).sort();
+
+            for (const divKey of divKeys) {
+                // Division Header
+                const divHeaderRow = worksheet.getRow(currentRow++);
+                divHeaderRow.getCell(1).value = `DIVISI: ${divKey}`;
+                divHeaderRow.getCell(1).font = { bold: true, size: 12 };
+                divHeaderRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1D5DB' } };
+                worksheet.mergeCells(`A${currentRow - 1}`, `F${currentRow - 1}`);
+
+                const gangs = divGrouped[divKey];
+                const gangKeys = Object.keys(gangs).sort();
+                let divisionTotal = 0;
+                let divisionCount = 0;
+
+                for (const gcode of gangKeys) {
+                    // Gang Header
+                    const gangHeaderRow = worksheet.getRow(currentRow++);
+                    gangHeaderRow.getCell(1).value = `  GANG: ${gcode}`;
+                    gangHeaderRow.getCell(1).font = { bold: true };
+                    gangHeaderRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+                    worksheet.mergeCells(`A${currentRow - 1}`, `F${currentRow - 1}`);
+
+                    const items = gangs[gcode];
+                    let gangTotal = 0;
+
+                    items.forEach((item, idx) => {
+                        const row = worksheet.getRow(currentRow++);
+                        this.writeItemRow(row, item, idx);
+                        gangTotal += Number(item.amount);
+                        for (let i = 1; i <= 6; i++) {
+                            row.getCell(i).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                        }
+                    });
+
+                    // Gang Subtotal
+                    const gangSubRow = worksheet.getRow(currentRow++);
+                    gangSubRow.getCell(1).value = `SUBTOTAL GANG ${gcode} (${items.length} orang)`;
+                    gangSubRow.getCell(6).value = gangTotal;
+                    gangSubRow.getCell(6).numFmt = '#,##0';
+                    gangSubRow.font = { bold: true, italic: true };
+                    gangSubRow.getCell(1).alignment = { horizontal: 'right' };
+                    worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
+                    divisionTotal += gangTotal;
+                    divisionCount += items.length;
+                }
+
+                // Division Subtotal
+                const divSubRow = worksheet.getRow(currentRow++);
+                divSubRow.getCell(1).value = `SUBTOTAL DIVISI ${divKey} (${divisionCount} orang)`;
+                divSubRow.getCell(6).value = divisionTotal;
+                divSubRow.getCell(6).numFmt = '#,##0';
+                divSubRow.font = { bold: true };
+                divSubRow.getCell(1).alignment = { horizontal: 'right' };
+                divSubRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; });
+                worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
+                totalAll += divisionTotal;
+            }
         }
 
         // Grand Total
         const totalRow = worksheet.getRow(currentRow++);
-        totalRow.getCell(1).value = 'TOTAL TRANSFER KESELURUHAN';
+        totalRow.getCell(1).value = `TOTAL TRANSFER KESELURUHAN (${incomes.length} orang)`;
         totalRow.getCell(6).value = totalAll;
         totalRow.getCell(6).numFmt = '#,##0';
         totalRow.font = { bold: true };
@@ -190,5 +221,28 @@ export class OtherIncomesExcelService {
 
         const buffer = await workbook.xlsx.writeBuffer();
         return buffer as any as Buffer;
+    }
+
+    /**
+     * Helper: write a single employee item row
+     */
+    private static writeItemRow(row: ExcelJS.Row, item: any, idx: number) {
+        row.getCell(1).value = idx + 1;
+        const empCode = item.emp_code || item.details?.variables?.EMP_CODE || '-';
+        const cleanedName = (item.emp_name || '').split('(')[0].trim();
+        row.getCell(2).value = empCode;
+        row.getCell(2).alignment = { horizontal: 'center' };
+        row.getCell(3).value = cleanedName;
+        // Validate bank_acc_no: must be numeric, min 5 digits, no dates
+        const rawBankAccNo = (item.bank_acc_no || '').trim();
+        const bankDigits = rawBankAccNo.replace(/[-\s]/g, '');
+        const bankAccNo = rawBankAccNo && /^\d{5,}$/.test(bankDigits) ? rawBankAccNo : '-';
+        row.getCell(4).value = bankAccNo;
+        row.getCell(4).alignment = { horizontal: 'center' };
+        const bankCode = item.bank_code && item.bank_code !== '0' ? item.bank_code : 'BRI';
+        row.getCell(5).value = bankCode;
+        row.getCell(5).alignment = { horizontal: 'center' };
+        row.getCell(6).value = Number(item.amount);
+        row.getCell(6).numFmt = '#,##0';
     }
 }
