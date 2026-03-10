@@ -20,6 +20,7 @@ daftar_upah_services/
 ├── 09_DATABASE_SCHEMA.md            # Database Schema - Tabel & relasi
 ├── 10_CALCULATION_FORMULAS.md       # Formula Perhitungan - Referensi lengkap
 ├── 11_LEMBUR_CALCULATION.md         # Lembur Calculator - Perhitungan lembur detail
+├── 12_SQL_QUERIES_REFERENCE.md      # SQL Queries Reference - Kumpulan query lengkap
 └── diagrams/                        # Diagram alur perhitungan
 ```
 
@@ -242,6 +243,20 @@ Service khusus untuk perhitungan lembur (overtime):
 - Task code breakdown
 
 📄 **Lihat**: [`11_LEMBUR_CALCULATION.md`](./11_LEMBUR_CALCULATION.md)
+
+### 10. **SQL Queries Reference** (`12_SQL_QUERIES_REFERENCE.md`)
+Kumpulan lengkap semua query SQL yang digunakan di seluruh sistem:
+- Employee & Payroll Data queries
+- Attendance & Leave queries
+- Overtime (Lembur) queries
+- Premi & Tunjangan queries
+- BPJS & Caruman queries
+- Wages Comparison queries
+- THR & Other Incomes queries
+- History & Aggregation queries
+- Complex join queries
+
+📄 **Lihat**: [`12_SQL_QUERIES_REFERENCE.md`](./12_SQL_QUERIES_REFERENCE.md)
 
 ## Database yang Digunakan
 
