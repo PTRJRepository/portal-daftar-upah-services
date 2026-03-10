@@ -253,5 +253,34 @@ export const otherIncomesService = {
             console.error('Error exporting bank list excel:', error);
             throw error;
         }
+    },
+
+    exportTHRExcel: async (year, month, divisionCode, gangCode) => {
+        try {
+            const params = new URLSearchParams({
+                year: year.toString(),
+                month: month.toString()
+            });
+
+            if (divisionCode) params.append('divisionCode', divisionCode);
+            if (gangCode) params.append('gangCode', gangCode);
+
+            const response = await api.get(`/other-incomes/export-thr?${params.toString()}`, {
+                responseType: 'blob'
+            });
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Laporan_THR_${month}_${year}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            return true;
+        } catch (error) {
+            console.error('Error exporting THR excel:', error);
+            throw error;
+        }
     }
 };

@@ -584,6 +584,14 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         }
     };
 
+    const handleExportTHR = async () => {
+        try {
+            await otherIncomesService.exportTHRExcel(year, month, division, gang);
+        } catch (e) {
+            alert('Gagal mengeksport Excel.');
+        }
+    };
+
     const handleDownloadPDF = () => {
         const element = document.createElement('div');
         element.innerHTML = previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData);
@@ -649,6 +657,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             {isPreviewModalOpen && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', padding: '2rem' }}><div style={{ background: 'white', flex: 1, display: 'flex', flexDirection: 'column', borderRadius: '8px', overflow: 'hidden' }}><div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2>Preview {previewType === 'MAIN' ? 'Laporan Utama' : 'Bank List'}</h2><div style={{ display: 'flex', gap: '1rem' }}>{previewType === 'MAIN' && <select value={printOrientation} onChange={e => setPrintOrientation(e.target.value)}><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select>}<button onClick={() => { const win = window.open('', '_blank'); win.document.write(`<html><body>${previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData)}<script>window.onload=function(){window.print();}</script></body></html>`); win.document.close(); }} style={{ background: '#6366f1', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Print PDF</button>
                 <button onClick={handleDownloadPDF} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}><FileDown size={16} /> Save to PDF</button>
                 {previewType === 'BANK' && <button onClick={handleExportBankList} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Export Excel</button>}
+                {previewType === 'MAIN' && <button onClick={handleExportTHR} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Export Excel</button>}
                 <button onClick={() => setIsPreviewModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={24} /></button></div></div><div style={{ flex: 1, overflow: 'auto', padding: '2rem', background: '#f3f4f6' }} dangerouslySetInnerHTML={{ __html: previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData) }} /></div></div>}
 
             {isBlacklistModalOpen && (
