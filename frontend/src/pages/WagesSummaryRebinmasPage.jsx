@@ -38,6 +38,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     // THR Mode State - Rekap Semua Divisi (tanpa thumbprint)
     const [thrMode, setThrMode] = useState(searchParams.get('mode') === 'thr');
     const [thrData, setThrData] = useState(null);
+    const [thrIjlFilter, setThrIjlFilter] = useState('non-ijl'); // 'non-ijl' or 'ijl-only'
 
     // Sync modes if URL search params change
     useEffect(() => {
@@ -102,7 +103,10 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 }
             } else if (thrMode) {
                 // THR Mode - Rekap Semua Divisi (tanpa thumbprint)
-                const result = await otherIncomesService.getThrRecapAll(year, month);
+                // thrIjlFilter: 'non-ijl' = exclude IJL, 'ijl-only' = only IJL
+                const excludeIjl = thrIjlFilter === 'non-ijl';
+                const ijlOnly = thrIjlFilter === 'ijl-only';
+                const result = await otherIncomesService.getThrRecapAll(year, month, excludeIjl, ijlOnly);
                 if (result.success !== false) {
                     setThrData(result);
                 } else {
@@ -123,7 +127,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         } finally {
             setLoading(false);
         }
-    }, [token, month, year, comparisonMode, thrMode, useHistory]);
+    }, [token, month, year, comparisonMode, thrMode, thrIjlFilter, useHistory]);
 
     // Handle Thumbprint Change
     const handleThumbprintChange = (divisionKey, value) => {
@@ -342,7 +346,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     // Helper function to check if division is IJL
     const isIJLDivision = (d) => {
         return d.division_code === 'IJL' ||
-            (d.description || '').toLowerCase().includes('impian jaya lestari');
+            d.division === 'IJL' ||
+            (d.description || d.gang_description || '').toLowerCase().includes('impian jaya lestari');
     };
 
     // Calculate KPI totals - excluding IJL
@@ -753,6 +758,26 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         link.click();
     };
 
+    // Handle THR Excel Export - Detailed Employee List
+    const handleThrExport = async () => {
+        try {
+            // Get divisionCode based on filter
+            let divisionCode;
+            if (thrIjlFilter === 'ijl-only') {
+                divisionCode = 'IJL';
+            } else if (thrIjlFilter === 'non-ijl') {
+                // For non-IJL, we need to export all non-IJL divisions
+                // Use the existing export endpoint with incomeType=THR
+            }
+
+            // Use the existing exportExcel function which generates detailed THR list
+            await otherIncomesService.exportExcel(year, month, divisionCode, undefined, 'THR');
+        } catch (error) {
+            console.error('Error exporting THR Excel:', error);
+            alert('Failed to export THR Excel. Please try again.');
+        }
+    };
+
     // Render estate group
     const renderEstateGroup = (groupKey, group) => {
         if (group.divisions.length === 0) return null;
@@ -922,6 +947,24 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <span className="report-filter-badge" style={{ backgroundColor: thrMode ? '#8b5cf6' : (comparisonMode ? '#10b981' : '#64748b') }}>
                             {thrMode ? 'Mode THR' : (comparisonMode ? 'Mode Perbandingan' : 'Mode Standar')}
                         </span>
+                        {thrMode && (
+                            <div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
+                                <button
+                                    onClick={() => setThrIjlFilter('non-ijl')}
+                                    className={`report-filter-badge ${thrIjlFilter === 'non-ijl' ? 'wsp-btn-primary' : ''}`}
+                                    style={{ backgroundColor: thrIjlFilter === 'non-ijl' ? '#3b82f6' : '#64748b', border: 'none', cursor: 'pointer', padding: '4px 12px', borderRadius: '4px', color: '#fff' }}
+                                >
+                                    Non-IJL
+                                </button>
+                                <button
+                                    onClick={() => setThrIjlFilter('ijl-only')}
+                                    className={`report-filter-badge ${thrIjlFilter === 'ijl-only' ? 'wsp-btn-primary' : ''}`}
+                                    style={{ backgroundColor: thrIjlFilter === 'ijl-only' ? '#ef4444' : '#64748b', border: 'none', cursor: 'pointer', padding: '4px 12px', borderRadius: '4px', color: '#fff' }}
+                                >
+                                    IJL Only
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -945,6 +988,17 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     >
                         <RefreshCw size={18} /> Refresh
                     </button>
+                    {thrMode && (
+                        <button
+                            onClick={handleThrExport}
+                            className="wsp-btn-secondary"
+                            disabled={!thrData?.divisions?.length}
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '0.5rem' }}
+                            title="Export THR Summary to Excel"
+                        >
+                            Export Excel
+                        </button>
+                    )}
                     <button
                         onClick={() => setThrMode(!thrMode)}
                         className={`wsp-btn ${thrMode ? 'wsp-btn-primary' : ''}`}
@@ -1017,11 +1071,19 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             {/* Letterhead */}
                             <div className="wsp-letterhead">
                                 <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />
-                                <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
+                                <h1 className="wsp-company-name">
+                                    {/* If THR mode and IJL Only filter, show PT IMPIAN JAYA LESTARI */}
+                                    {thrMode && thrIjlFilter === 'ijl-only'
+                                        ? 'PT. IMPIAN JAYA LESTARI'
+                                        : 'PT. REBINMAS JAYA'}
+                                </h1>
                                 <div className="wsp-report-title">
-                                    {thrMode ? 'Rekap Semua Divisi (THR Mode)' : (comparisonMode ? 'Monthly Wages Comparison Report' : 'Monthly Wages Summary Report')}
+                                    {thrMode ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : (comparisonMode ? 'Monthly Wages Comparison Report' : 'Monthly Wages Summary Report')}
                                 </div>
-                                <div className="wsp-report-period">Periode: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong></div>
+                                <div className="wsp-report-period">
+                                    {thrMode && <span style={{ marginRight: '1rem' }}>Division: <strong style={{ color: '#0f172a' }}>ALL</strong> | </span>}
+                                    Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
+                                </div>
                             </div>
 
                             {/* KPI Cards */}
@@ -1070,38 +1132,53 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 <div className="wsp-table-wrapper">
                                     <table className="wsp-table">
                                         <thead>
-                                            <tr className="wsp-header-master" style={{ backgroundColor: '#000', color: '#fff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                                                <th style={{ minWidth: '300px', width: '300px', textAlign: 'left', border: '1.5pt solid #000', fontWeight: 800 }}>ESTATE / DIVISI</th>
-                                                <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>WORKERS</th>
-                                                <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>FULL</th>
-                                                <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>PROPORSI</th>
-                                                <th style={{ width: '140px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>TUNJ. BERAS</th>
-                                                <th style={{ width: '140px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>MASA KERJA</th>
-                                                <th style={{ width: '160px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>TOTAL THR</th>
+                                            {/* Master Header Level */}
+                                            <tr className="wsp-header-master">
+                                                <th rowSpan="2" className="th-sticky-col" style={{ minWidth: '300px', width: '300px' }}>ESTATE / DIVISI</th>
+                                                <th colSpan="3" className="th-group-manpower">MANPOWER</th>
+                                                <th colSpan="2" className="th-group-income">RINCIAN THR</th>
+                                                <th rowSpan="2" className="th-group-income">TOTAL THR</th>
+                                            </tr>
+                                            {/* Sub Header Level */}
+                                            <tr className="wsp-header-sub">
+                                                <th className="th-group-manpower" style={{ minWidth: '80px' }}>WORKERS</th>
+                                                <th className="th-group-manpower" style={{ minWidth: '80px' }}>FULL</th>
+                                                <th className="th-group-manpower border-right-section" style={{ minWidth: '80px' }}>PROPORSI</th>
+
+                                                <th className="th-group-income" style={{ minWidth: '140px' }}>TUNJ. BERAS</th>
+                                                <th className="th-group-income border-right-section" style={{ minWidth: '140px' }}>MASA KERJA</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {thrData?.divisions?.map((div, idx) => (
-                                                <tr key={idx} style={{ borderBottom: '1pt solid #000', backgroundColor: idx % 2 === 0 ? '#fff' : '#f2f2f2', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                                                    <td className="text-left" style={{ border: '0.5pt solid #000', fontWeight: 600 }}>{div.division} {div.division !== div.gang_description ? `(${div.gang_description})` : ''}</td>
-                                                    <td className={`text-right ${!Number(div.karyawan_count) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.karyawan_count)}</td>
-                                                    <td className={`text-right ${!Number(div.full_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.full_workers)}</td>
-                                                    <td className={`text-right ${!Number(div.prop_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.prop_workers)}</td>
-                                                    <td className={`text-right ${!Number(div.total_tunjangan_beras) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.total_tunjangan_beras)}</td>
-                                                    <td className={`text-right ${!Number(div.total_masa_kerja) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(div.total_masa_kerja)}</td>
-                                                    <td className={`text-right ${!Number(div.total_thr) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 700, border: '0.5pt solid #000' }}>
+                                                <tr key={idx}>
+                                                    <td className="text-left">{div.division} {div.division !== div.gang_description ? `(${div.gang_description})` : ''}</td>
+                                                    <td className={`text-right ${!Number(div.karyawan_count) && 'val-zero'}`}>{formatNumber(div.karyawan_count)}</td>
+                                                    <td className={`text-right ${!Number(div.full_workers) && 'val-zero'}`}>{formatNumber(div.full_workers)}</td>
+                                                    <td className={`text-right border-right-section ${!Number(div.prop_workers) && 'val-zero'}`}>{formatNumber(div.prop_workers)}</td>
+                                                    <td className={`text-right ${!Number(div.total_tunjangan_beras) && 'val-zero'}`}>
+                                                        {formatNumber(div.total_tunjangan_beras)}
+                                                    </td>
+                                                    <td className={`text-right border-right-section ${!Number(div.total_masa_kerja) && 'val-zero'}`}>
+                                                        {formatNumber(div.total_masa_kerja)}
+                                                    </td>
+                                                    <td className={`text-right ${!Number(div.total_thr) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 600 }}>
                                                         {formatNumber(div.total_thr)}
                                                     </td>
                                                 </tr>
                                             ))}
-                                            <tr className="wsp-grand-total" style={{ backgroundColor: '#e2e8f0', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact', border: '1.5pt solid #000' }}>
-                                                <td style={{ border: '1.5pt solid #000', fontWeight: 800 }}>GRAND TOTAL</td>
-                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.total_employees || 0)}</td>
-                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.full_workers || 0)}</td>
-                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.prop_workers || 0)}</td>
-                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.total_tunjangan_beras || 0)}</td>
-                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 800 }}>{formatNumber(thrData?.grand_total?.total_masa_kerja || 0)}</td>
-                                                <td className="text-right" style={{ border: '1.5pt solid #000', fontWeight: 900, color: '#16a34a' }}>
+                                            <tr className="wsp-grand-total">
+                                                <td>GRAND TOTAL</td>
+                                                <td className="text-right">{formatNumber(thrData?.grand_total?.total_employees || 0)}</td>
+                                                <td className="text-right">{formatNumber(thrData?.grand_total?.full_workers || 0)}</td>
+                                                <td className="text-right border-right-section">{formatNumber(thrData?.grand_total?.prop_workers || 0)}</td>
+                                                <td className="text-right">
+                                                    {formatNumber(thrData?.grand_total?.total_tunjangan_beras || 0)}
+                                                </td>
+                                                <td className="text-right border-right-section">
+                                                    {formatNumber(thrData?.grand_total?.total_masa_kerja || 0)}
+                                                </td>
+                                                <td className="text-right" style={{ fontWeight: 700, color: '#16a34a' }}>
                                                     {formatNumber(thrData?.grand_total?.total_thr || 0)}
                                                 </td>
                                             </tr>

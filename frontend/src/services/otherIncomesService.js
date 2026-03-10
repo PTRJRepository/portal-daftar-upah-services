@@ -38,12 +38,18 @@ export const otherIncomesService = {
         }
     },
 
-    getThrRecapAll: async (year, month) => {
+    getThrRecapAll: async (year, month, excludeIjl = false, ijlOnly = false) => {
         try {
             const params = new URLSearchParams({
                 year: year.toString(),
                 month: month.toString()
             });
+            if (excludeIjl) {
+                params.append('exclude_ijl', 'true');
+            }
+            if (ijlOnly) {
+                params.append('ijl_only', 'true');
+            }
             const response = await api.get(`/other-incomes/recap-all?${params.toString()}`);
             return response.data;
         } catch (error) {
