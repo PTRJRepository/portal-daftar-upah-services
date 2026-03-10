@@ -19,6 +19,7 @@ daftar_upah_services/
 ├── 08_API_ROUTES_WAGES.md           # API Routes - Endpoint wages comparison
 ├── 09_DATABASE_SCHEMA.md            # Database Schema - Tabel & relasi
 ├── 10_CALCULATION_FORMULAS.md       # Formula Perhitungan - Referensi lengkap
+├── 11_LEMBUR_CALCULATION.md         # Lembur Calculator - Perhitungan lembur detail
 └── diagrams/                        # Diagram alur perhitungan
 ```
 
@@ -231,6 +232,16 @@ Endpoint API untuk wages comparison:
 - GET verification summary
 
 📄 **Lihat**: [`08_API_ROUTES_WAGES.md`](./08_API_ROUTES_WAGES.md)
+
+### 9. **LemburCalculator** (`lemburCalculator.ts`)
+Service khusus untuk perhitungan lembur (overtime):
+- Perhitungan berdasarkan jenis hari (hari kerja, Minggu, libur)
+- Sistem tier multiplier (1.5x, 2x, 3x, 4x)
+- UPJ (Upah per Jam) calculation
+- Batch calculation untuk multiple employees
+- Task code breakdown
+
+📄 **Lihat**: [`11_LEMBUR_CALCULATION.md`](./11_LEMBUR_CALCULATION.md)
 
 ## Database yang Digunakan
 
