@@ -21,6 +21,7 @@ daftar_upah_services/
 ├── 10_CALCULATION_FORMULAS.md       # Formula Perhitungan - Referensi lengkap
 ├── 11_LEMBUR_CALCULATION.md         # Lembur Calculator - Perhitungan lembur detail
 ├── 12_SQL_QUERIES_REFERENCE.md      # SQL Queries Reference - Kumpulan query lengkap
+├── 13_PDF_EXPORT_GENERATION.md      # PDF Export - Report generation dengan html2pdf.js
 └── diagrams/                        # Diagram alur perhitungan
 ```
 
@@ -257,6 +258,18 @@ Kumpulan lengkap semua query SQL yang digunakan di seluruh sistem:
 - Complex join queries
 
 📄 **Lihat**: [`12_SQL_QUERIES_REFERENCE.md`](./12_SQL_QUERIES_REFERENCE.md)
+
+### 11. **PDF Export & Generation** (`13_PDF_EXPORT_GENERATION.md`)
+Dokumentasi lengkap tentang export PDF dan report generation:
+- Library: **html2pdf.js** v0.14.0
+- Cara kerja: HTML → Canvas → PDF
+- Utility function: `generatePDF()`
+- 6+ pages yang menggunakan export PDF
+- CSS styling untuk print
+- Configuration options (html2canvas, jsPDF)
+- Best practices & troubleshooting
+
+📄 **Lihat**: [`13_PDF_EXPORT_GENERATION.md`](./13_PDF_EXPORT_GENERATION.md)
 
 ## Database yang Digunakan
 
