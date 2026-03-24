@@ -15,6 +15,18 @@ dokumentasi/
 ├── Security_Authentication.md   # Keamanan dan otentikasi
 ├── FrontendStructure.md         # Struktur frontend dan integrasi
 ├── TestingMode.md              # Mode testing dan debug
+├── KALKULATOR_PPH21_TER.md     # 📘 Panduan lengkap Kalkulator PPh21 TER
+├── DAFTAR_DIVISI_LENGKAP.md    # Daftar divisi dan mapping
+├── DETAIL_PROSES_LAYANAN.md    # Detail proses layanan
+├── DETAIL_TEKNIS_CODEBASE.md   # Detail teknis codebase
+├── DivisionConfigService.md    # Konfigurasi divisi
+├── DOCDESC_MAPPING_GUIDE.md    # Panduan mapping deskripsi
+├── division_to_gang_mechanism.md # Mekanisme division to gang
+├── Employee_Gang_Query.md      # Query employee gang
+├── kehadrian_kembur_absen.md   # Kehadiran dan absensi
+├── INCONSISTENCIES_OOP_RECOMMENDATIONS.md # Analisis OOP
+├── PREMI_INCONSISTENCY_ANALYSIS.md # Analisis premi
+├── REFACTORING_IMPLEMENTATION_PLAN.md # Plan refactoring
 └── diagrams/                    # Diagram arsitektur sistem
 ```
 
@@ -54,6 +66,7 @@ refactor_production/
 - **BPJS Calculation**: Perhitungan komponen BPJS Kesehatan dan Pensiun
 - **Absensi Integration**: Integrasi dengan data absensi karyawan
 - **Multi-Gang Support**: Dukungan untuk berbagai kelompok kerja (gang)
+- **PPh21 TER Calculation**: Perhitungan pajak PPh21 dengan metode TER (PP 58/2023)
 
 ### 3. Optimisasi Performa
 - **Threading**: Pemrosesan paralel untuk header dan data
@@ -126,6 +139,7 @@ refactor_production/
 3. Lihat `Database_Configuration.md` untuk konfigurasi database
 4. Lihat `Performance_Optimization.md` untuk optimisasi
 5. Lihat `Security_Authentication.md` untuk keamanan
+6. Lihat **`KALKULATOR_PPH21_TER.md`** untuk implementasi perhitungan pajak PPh21 TER
 
 ### Untuk Administrator Sistem
 1. Konfigurasi `config.json` sesuai lingkungan

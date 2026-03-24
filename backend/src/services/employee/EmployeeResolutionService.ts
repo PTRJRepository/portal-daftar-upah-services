@@ -11,8 +11,8 @@
  * and ensure consistent resolution logic across all services.
  */
 
-import { employeeGangHistoryService } from './employeeGangHistoryService';
-import { Database } from "../db/client";
+import { employeeGangHistoryService } from '../employeeGangHistoryService';
+import { Database } from "../../db/client";
 
 /**
  * Input for employee resolution

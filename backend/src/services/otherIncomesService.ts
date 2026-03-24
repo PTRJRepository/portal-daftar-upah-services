@@ -260,6 +260,19 @@ export class OtherIncomesService {
         return this.enrichWithHrData(raw, gangCode);
     }
 
+    /**
+     * Normalize employee name for matching.
+     * Removes text in parentheses, extra spaces, and converts to uppercase.
+     */
+    private static normalizeName(name: string | null | undefined): string {
+        if (!name) return '';
+        // Remove text inside parentheses: "ARLITA ( HASNA )" -> "ARLITA "
+        let n = name.replace(/\([^)]*\)/g, '');
+        // Remove extra spaces and trim
+        n = n.replace(/\s+/g, ' ').trim().toUpperCase();
+        return n;
+    }
+
     private static async enrichWithHrData(incomes: OtherIncome[], gangCode?: string): Promise<OtherIncome[]> {
         if (incomes.length === 0) return incomes;
         try {
@@ -351,8 +364,19 @@ export class OtherIncomesService {
                         sex: (r.Gender || '').trim().toUpperCase() === 'FEMALE' ? 'P' : 'L',
                         upah_dasar: r.PayRate || 0, beras_rate: r.RiceRation || 0, emp_name: r.EmpName
                     };
-                    const empKeyUpper = r.EmpCode.trim().toUpperCase(); const nikKey = r.NewICNo?.trim().toUpperCase();
+                    const empKeyUpper = r.EmpCode.trim().toUpperCase();
+                    const nikKey = r.NewICNo?.trim().toUpperCase();
+                    const nameKey = this.normalizeName(r.EmpName);
+                    
                     if (!hrMap.has(empKeyUpper)) hrMap.set(empKeyUpper, data);
+                    
+                    // Composite key for NIK + Name lookup (most specific)
+                    if (nikKey && nameKey) {
+                        const compositeKey = `${nikKey}|||${nameKey}`;
+                        if (!hrMap.has(compositeKey)) hrMap.set(compositeKey, data);
+                    }
+                    
+                    // Fallback to NIK only if not already set (legacy support)
                     if (nikKey && !hrMap.has(nikKey)) hrMap.set(nikKey, data);
                 });
             }
@@ -544,18 +568,31 @@ export class OtherIncomesService {
                     `, nameArray);
 
                     for (const row of payrollByNameRows) {
-                        const empName = row.EmpName?.trim().toUpperCase();
                         const empCode = row.EmpCode?.trim().toUpperCase();
+                        const empName = row.EmpName?.trim().toUpperCase();
                         const bankAccNo = row.BankAccNo?.trim() || '';
 
-                        // Store ALL entries (valid or '0') - prefer valid ones later
-                        if (empName && bankAccNo) {
-                            const existing = payrollBankByNameMap.get(empName);
+                        // CRITICAL: Store by emp_code as primary key (most reliable)
+                        // This avoids collision when two employees have the same name
+                        if (empCode && bankAccNo) {
+                            const existing = payrollBankMap.get(empCode);
                             if (!existing) {
-                                payrollBankByNameMap.set(empName, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
+                                payrollBankMap.set(empCode, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
                             } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existing.bank_acc_no)) {
                                 // Replace '0' with valid if we find one
-                                payrollBankByNameMap.set(empName, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
+                                payrollBankMap.set(empCode, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                            }
+                        }
+
+                        // Also store by emp_name + emp_code combo to avoid duplicate name collisions
+                        // This is used as fallback when emp_code lookup fails
+                        if (empName && empCode && bankAccNo) {
+                            const nameCodeKey = `${empName}|||${empCode}`;
+                            const existingByName = payrollBankByNameMap.get(nameCodeKey);
+                            if (!existingByName) {
+                                payrollBankByNameMap.set(nameCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
+                            } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existingByName.bank_acc_no)) {
+                                payrollBankByNameMap.set(nameCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
                             }
                         }
                     }
@@ -565,9 +602,14 @@ export class OtherIncomesService {
             }
 
             // Override bank info with FALLBACK mechanism: try each empcode until we find one with bank account
+            // DEBUG: Log what we're looking for
+            console.log(`[DEBUG BANK] Starting bank resolution for ${hrMap.size} employees...`);
             hrMap.forEach((hrData, key) => {
                 // Get all empcodes for this key (newest first)
                 const empCodesToTry = allEmpCodesByKey.get(key) || (hrData.emp_code ? [hrData.emp_code.toUpperCase()] : []);
+
+                // DEBUG: Log the lookup
+                console.log(`[DEBUG BANK] Resolving bank for key=${key}, name=${hrData.emp_name}, emp_codes=${empCodesToTry.join(',')}`);
 
                 // Try each empcode in order (newest first) until we find bank account
                 for (const empCode of empCodesToTry) {
@@ -579,6 +621,7 @@ export class OtherIncomesService {
                         if (this.isValidBankAccNo(hrDataEntry?.bank_acc_no)) {
                             hrData.bank_acc_no = hrDataEntry.bank_acc_no;
                             hrData.bank_code = hrDataEntry.bank_code;
+                            console.log(`[DEBUG BANK] Found in hrDataMap: empCode=${empCode}, bank=${hrData.bank_acc_no}`);
                             break; // Found valid bank account, stop trying
                         }
                     }
@@ -589,19 +632,28 @@ export class OtherIncomesService {
                         if (this.isValidBankAccNo(payrollEntry?.bank_acc_no)) {
                             hrData.bank_acc_no = payrollEntry.bank_acc_no;
                             hrData.bank_code = payrollEntry.bank_code;
+                            console.log(`[DEBUG BANK] Found in payrollBankMap: empCode=${empCode}, bank=${hrData.bank_acc_no}`);
                             break; // Found valid bank account, stop trying
                         }
                     }
                 }
 
-                // Last fallback: try by emp_name in HR_PAYROLL
-                if (!this.isValidBankAccNo(hrData.bank_acc_no) && hrData.emp_name && payrollBankByNameMap.has(hrData.emp_name.toUpperCase())) {
-                    const byNameEntry = payrollBankByNameMap.get(hrData.emp_name.toUpperCase());
-                    if (this.isValidBankAccNo(byNameEntry?.bank_acc_no)) {
-                        hrData.bank_acc_no = byNameEntry.bank_acc_no;
-                        hrData.bank_code = byNameEntry.bank_code;
+                // Last fallback: try by emp_name + emp_code combo in HR_PAYROLL
+                // This avoids collision when two employees have the same name
+                if (!this.isValidBankAccNo(hrData.bank_acc_no) && hrData.emp_name && hrData.emp_code) {
+                    const nameCodeKey = `${hrData.emp_name.trim().toUpperCase()}|||${hrData.emp_code.trim().toUpperCase()}`;
+                    if (payrollBankByNameMap.has(nameCodeKey)) {
+                        const byNameEntry = payrollBankByNameMap.get(nameCodeKey);
+                        if (this.isValidBankAccNo(byNameEntry?.bank_acc_no)) {
+                            hrData.bank_acc_no = byNameEntry.bank_acc_no;
+                            hrData.bank_code = byNameEntry.bank_code;
+                            console.log(`[DEBUG BANK] Found in payrollBankByNameMap: key=${nameCodeKey}, bank=${hrData.bank_acc_no}`);
+                        }
                     }
                 }
+
+                // DEBUG: Log final result
+                console.log(`[DEBUG BANK] Final: key=${key}, name=${hrData.emp_name}, emp_code=${hrData.emp_code}, bank=${hrData.bank_acc_no}`);
             });
 
             // Only fetch blacklist if we have data to filter
@@ -615,8 +667,16 @@ export class OtherIncomesService {
                 return !blacklistedNIKs.has(nik);
             });
 
+            // DEBUG: Log bank account assignments for verification
+            const bankAccountLog: string[] = [];
             filteredIncomes.forEach(inc => {
-                const hr = hrMap.get(inc.nik?.trim().toUpperCase());
+                const nikKey = (inc.nik || '').trim().toUpperCase();
+                const nameKey = this.normalizeName(inc.emp_name);
+                const compositeKey = `${nikKey}|||${nameKey}`;
+                
+                // Try composite key first (most specific), then fall back to NIK only
+                const hr = hrMap.get(compositeKey) || hrMap.get(nikKey);
+                
                 if (hr) {
                     inc.religion = hr.religion;
                     inc.original_religion = hr.original_religion; // Pass original religion to frontend
@@ -624,6 +684,13 @@ export class OtherIncomesService {
                     if (!inc.join_date) inc.join_date = hr.join_date;
                     if (!inc.emp_name || inc.emp_name === inc.nik) inc.emp_name = hr.emp_name;
                     (inc as any).upah_dasar = hr.upah_dasar; (inc as any).beras_rate = hr.beras_rate; (inc as any).sex = hr.sex;
+
+                    // DEBUG: Track bank account assignments
+                    const logKey = `${inc.nik}|||${inc.emp_name || inc.nik}`;
+                    if (!bankAccountLog.includes(logKey)) {
+                        bankAccountLog.push(logKey);
+                        console.log(`[DEBUG BANK] NIK=${inc.nik}, Name=${inc.emp_name || inc.nik}, EmpCode=${hr.emp_code}, BankAcc=${hr.bank_acc_no}, BankCode=${hr.bank_code}`);
+                    }
                 }
 
                 // PERSISTENCE RULE: Auto-recalculate THR proportion for saved data if needed

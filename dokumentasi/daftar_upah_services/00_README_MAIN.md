@@ -22,6 +22,8 @@ daftar_upah_services/
 ├── 11_LEMBUR_CALCULATION.md         # Lembur Calculator - Perhitungan lembur detail
 ├── 12_SQL_QUERIES_REFERENCE.md      # SQL Queries Reference - Kumpulan query lengkap
 ├── 13_PDF_EXPORT_GENERATION.md      # PDF Export - Report generation dengan html2pdf.js
+├── 14_PPH21_TER_QUICK_REFERENCE.md  # 🧮 PPh21 TER - Quick Reference Guide
+├── 15_DETAIL_PERHITUNGAN_LEMBUR_DAN_GAJI_BERSIH.md  # 📊 Detail lembur & gaji bersih (BARU)
 └── diagrams/                        # Diagram alur perhitungan
 ```
 
@@ -47,7 +49,7 @@ daftar_upah_services/
 | **BPJS Pensiun Pekerja** | Iuran pensiun pekerja | 1% dari base |
 | **ASTEK Pekerja** | JHT Pekerja | 2% dari base |
 | **SPSI** | Iuran serikat pekerja | Fixed amount |
-| **PPh 21** | Pajak penghasilan | Progressif berdasarkan PTKP |
+| **PPh 21** | Pajak penghasilan (PP 58/2023) | Progressif berdasarkan PTKP & TER |
 | **Koreksi** | Penyesuaian/potongan khusus | Variable |
 
 ### 3. **Formula Perhitungan Upah Bersih**
@@ -73,7 +75,9 @@ daftar_upah_services/
    ├─ BPJS Pekerja = (1% Kes + 1% Pensiun + 2% JHT) × Base
    ├─ Base = (Upah Dasar × 30) + Masa Kerja
    ├─ SPSI = Fixed amount
-   └─ PPh 21 = Tarif progresif × (Penghasilan Bruto - PTKP)
+   ├─ PPh 21 = Tarif TER × Penghasilan Bruto
+   │          (Tarif berdasarkan PTKP & layer penghasilan)
+   └─ Koreksi = Variable
 
 6. UPAH BERSIH = Jumlah Upah Kotor - Total Potongan
 ```
@@ -245,7 +249,18 @@ Service khusus untuk perhitungan lembur (overtime):
 
 📄 **Lihat**: [`11_LEMBUR_CALCULATION.md`](./11_LEMBUR_CALCULATION.md)
 
-### 10. **SQL Queries Reference** (`12_SQL_QUERIES_REFERENCE.md`)
+### 10. **PPh21 TER Calculator** (`pph21TerService.ts`)
+Service untuk perhitungan pajak penghasilan PPh21 dengan metode TER (Tarif Efektif Rata-rata):
+- Berdasarkan **PP 58 Tahun 2023**
+- Mapping PTKP ke kategori TER (A, B, C)
+- 44 layer tarif progresif
+- Integrasi dengan payroll calculation
+- GUI calculator untuk testing
+
+📄 **Quick Reference**: [`14_PPH21_TER_QUICK_REFERENCE.md`](./14_PPH21_TER_QUICK_REFERENCE.md)  
+📚 **Dokumentasi Lengkap**: [`../KALKULATOR_PPH21_TER.md`](../KALKULATOR_PPH21_TER.md)
+
+### 11. **SQL Queries Reference** (`12_SQL_QUERIES_REFERENCE.md`)
 Kumpulan lengkap semua query SQL yang digunakan di seluruh sistem:
 - Employee & Payroll Data queries
 - Attendance & Leave queries
@@ -259,7 +274,7 @@ Kumpulan lengkap semua query SQL yang digunakan di seluruh sistem:
 
 📄 **Lihat**: [`12_SQL_QUERIES_REFERENCE.md`](./12_SQL_QUERIES_REFERENCE.md)
 
-### 11. **PDF Export & Generation** (`13_PDF_EXPORT_GENERATION.md`)
+### 12. **PDF Export & Generation** (`13_PDF_EXPORT_GENERATION.md`)
 Dokumentasi lengkap tentang export PDF dan report generation:
 - Library: **html2pdf.js** v0.14.0
 - Cara kerja: HTML → Canvas → PDF
@@ -270,6 +285,19 @@ Dokumentasi lengkap tentang export PDF dan report generation:
 - Best practices & troubleshooting
 
 📄 **Lihat**: [`13_PDF_EXPORT_GENERATION.md`](./13_PDF_EXPORT_GENERATION.md)
+
+### 13. **Detail Perhitungan Lembur dan Gaji Bersih** (`15_DETAIL_PERHITUNGAN_LEMBUR_DAN_GAJI_BERSIH.md`)
+Dokumentasi lengkap tentang bagaimana gaji bersih dihitung dari database `extend_db_ptrj`:
+- Query SQL lengkap untuk data lembur dari `PR_TASKREGLN` dan `PR_TASKREGLN_ARC`
+- Formula UPJ (Upah per Jam): `(PayRate × 30) / 173`
+- Sistem tier multiplier (1.5x, 2x, 3x, 4x) berdasarkan jenis hari
+- Klasifikasi hari: WORKDAY_LONG, WORKDAY_SHORT, SUNDAY, HOLIDAY_REGULAR, HOLIDAY_RELIGIOUS
+- Step-by-step perhitungan lembur dengan contoh lengkap
+- Formula lengkap gaji bersih dari semua komponen
+- Query template untuk berbagai use case
+- Studi kasus perhitungan E0001 - John Doe
+
+📄 **Lihat**: [`15_DETAIL_PERHITUNGAN_LEMBUR_DAN_GAJI_BERSIH.md`](./15_DETAIL_PERHITUNGAN_LEMBUR_DAN_GAJI_BERSIH.md)
 
 ## Database yang Digunakan
 
@@ -302,18 +330,24 @@ Dokumentasi lengkap tentang export PDF dan report generation:
 2. Lanjut ke **10_CALCULATION_FORMULAS.md** untuk memahami formula
 3. Baca **01_PAYROLL_SERVICE.md** untuk logika kalkulasi inti
 4. Pelajari **09_DATABASE_SCHEMA.md** untuk struktur data
+5. **BARU**: Pelajari **14_PPH21_TER_QUICK_REFERENCE.md** untuk PPh21 TER
+6. **BARU**: Baca **15_DETAIL_PERHITUNGAN_LEMBUR_DAN_GAJI_BERSIH.md** untuk detail lembur & query
 
 ### Untuk Maintenance/Debugging
 1. Gunakan **10_CALCULATION_FORMULAS.md** sebagai referensi cepat
 2. Cek **05_CARUMAN_DEFINITIONS.md** untuk rate BPJS terkini
 3. Lihat **09_DATABASE_SCHEMA.md** untuk query dan tabel
 4. Refer ke **08_API_ROUTES_WAGES.md** untuk endpoint API
+5. **BARU**: Cek **14_PPH21_TER_QUICK_REFERENCE.md** untuk troubleshooting pajak
+6. **BARU**: Gunakan **15_DETAIL_PERHITUNGAN_LEMBUR_DAN_GAJI_BERSIH.md** untuk query lembur lengkap
 
 ### Untuk Penambahan Fitur Baru
 1. Pahami arsitektur dari **01_PAYROLL_SERVICE.md**
 2. Ikuti pola yang ada di service terkait
 3. Update **09_DATABASE_SCHEMA.md** jika ada perubahan schema
 4. Tambahkan endpoint di **08_API_ROUTES_WAGES.md** jika perlu
+5. **BARU**: Implementasi PPh21 TER mengikuti `pph21TerService.ts`
+6. **BARU**: Query lembur dari `PR_TASKREGLN` mengikuti template di **15_DETAIL_PERHITUNGAN_LEMBUR_DAN_GAJI_BERSIH.md**
 
 ## Konvensi Penamaan
 

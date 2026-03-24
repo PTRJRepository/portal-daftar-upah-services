@@ -19,6 +19,7 @@ import { logsRoutes } from "./api/logsRoutes";
 import { taxReportRoutes } from "./api/taxReportRoutes";
 import { employeeHrDataRoutes } from "./api/employeeHrDataRoutes";
 import { employeeGangHistoryRoutes } from "./api/employeeGangHistoryRoutes";
+import { employeeComparisonRoutes } from "./api/employeeComparisonRoutes";
 import { Database } from "./db/client";
 import { employeeHrDataService } from "./services/employeeHrDataService";
 import { otherIncomesRoutes } from "./api/otherIncomesRoutes";
@@ -221,6 +222,7 @@ const app = new Elysia()
     // Employee HR Data (NIK override, etc)
     .use(employeeHrDataRoutes)
     .use(employeeGangHistoryRoutes)
+    .use(employeeComparisonRoutes)
     // Other Incomes (THR, Bonus, Custom)
     .use(otherIncomesRoutes)
     // Mill Production Report
@@ -249,10 +251,15 @@ const app = new Elysia()
         .use(taxReportRoutes)
         .use(employeeHrDataRoutes)
         .use(employeeGangHistoryRoutes)
+        .use(employeeComparisonRoutes)
         .use(otherIncomesRoutes)
         .group("/api/mill-production", nestedApp => nestedApp.use(millProductionRoutes))
     )
 
+    // Test route - must be before wildcard
+    .get("/api/employee-compare/test", () => ({
+        test: "working"
+    }))
     // SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)
     .get("*", async ({ request, set }) => {
         const url = new URL(request.url);
