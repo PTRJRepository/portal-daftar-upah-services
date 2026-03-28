@@ -192,6 +192,8 @@ interface PayrollRow {
     pot_astek: number;
     pot_astek_maj: number;
     pot_bpjs_pekerja_total: number;
+    // Other Incomes (THR, Bonus, Custom) - for display and calculation
+    other_incomes?: { type: string; name: string; amount: number }[];
     [key: string]: any;
 }
 
@@ -467,10 +469,19 @@ export class DataExtractorService {
         // Destructure potongan result - uses TaskDesc as title
         const { amounts: potongan, titleMap: potonganTitleMap } = potonganResult;
 
-        // Fetch db other incomes mapping for THP and Tax
-        const dbOtherIncomes = await OtherIncomesService.getIncomes(year, month, divisionCode, gangCode);
+        // [THR TAX LOGIC] For months 3+ (March onwards), THR was paid in February (month 2)
+        // So we need to fetch other incomes from month 2 for tax calculation, not the current month
+        // This ensures PPh21 calculation includes THR from Feb when processing Mar+
+        const otherIncomeMonth = (month >= 3) ? 2 : month;
+        console.log(`[THR Logic] Processing month ${month}/${year}, fetching other incomes from month ${otherIncomeMonth} (THR paid in Feb)`);
+        const dbOtherIncomes = await OtherIncomesService.getIncomes(year, otherIncomeMonth, divisionCode, gangCode);
+        if (dbOtherIncomes.length > 0) {
+            const totalThr = dbOtherIncomes.filter(i => i.income_type === 'THR').reduce((sum, i) => sum + Number(i.amount), 0);
+            console.log(`[THR Logic] Found ${dbOtherIncomes.length} records, total THR: Rp ${totalThr.toLocaleString()}`);
+        }
         const dbThpIncomesMap = new Map<string, number>();
         const dbTaxableIncomesMap = new Map<string, number>();
+        const dbOtherIncomesByNik = new Map<string, { type: string; name: string; amount: number }[]>();
 
         for (const inc of dbOtherIncomes) {
             const nik = String(inc.nik || '').trim().toUpperCase();
@@ -480,6 +491,15 @@ export class DataExtractorService {
             if (inc.is_taxable) {
                 dbTaxableIncomesMap.set(nik, (dbTaxableIncomesMap.get(nik) || 0) + Number(inc.amount));
             }
+            // Build array of other incomes for display
+            if (!dbOtherIncomesByNik.has(nik)) {
+                dbOtherIncomesByNik.set(nik, []);
+            }
+            dbOtherIncomesByNik.get(nik)!.push({
+                type: inc.income_type,
+                name: inc.income_name || inc.income_type,
+                amount: Number(inc.amount)
+            });
         }
 
         // Fetch Master PTKP records for the current year
@@ -734,20 +754,22 @@ export class DataExtractorService {
             const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
                 pot_spsi + pot_pph21 + other_potongan;
 
-            // [FIXED] KOREKSI is deducted from jumlah_upah_kotor (Potongan Upah Kotor section)
-            // Use gaji_pokok_aktual (calculated earlier) for gross wage calculation
-            const jumlah_upah_kotor = (gaji_pokok_aktual + total_tunjangan + total_premi) - pot_koreksi;
-
             const rawEmpNik = String(emp.actual_nik || emp.emp_code || '').trim().toUpperCase();
             const pendapatan_tidak_tetap_thp = dbThpIncomesMap.get(rawEmpNik) || 0;
             const pendapatan_tidak_tetap_taxable = dbTaxableIncomesMap.get(rawEmpNik) || 0;
+
+            // [FIXED] KOREKSI is deducted from jumlah_upah_kotor (Potongan Upah Kotor section)
+            // Use gaji_pokok_aktual (calculated earlier) for gross wage calculation
+            // [OTHER INCOMES] Add pendapatan_tidak_tetap_thp to jumlah_upah_kotor so it's included in tax calculation
+            const jumlah_upah_kotor = (gaji_pokok_aktual + total_tunjangan + total_premi + pendapatan_tidak_tetap_thp) - pot_koreksi;
 
             // [NEW] Upah Kotor Pajak = Jumlah Upah Kotor + Astek + BPJS Kesehatan + Other Taxable Incomes (untuk header/pajak)
             const upah_kotor_pajak = jumlah_upah_kotor + pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pendapatan_tidak_tetap_taxable;
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
-            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph + pendapatan_tidak_tetap_thp
-            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph + pendapatan_tidak_tetap_thp;
+            // [OTHER INCOMES] Subtract pendapatan_tidak_tetap_thp because it's already paid in THP (not in regular payroll)
+            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph - pendapatan_tidak_tetap_thp
+            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph - pendapatan_tidak_tetap_thp;
 
             // formula handled inside OOP logic
             const koreksi_hk = gpResult?.koreksi_hk?.value || 0;
@@ -903,6 +925,8 @@ export class DataExtractorService {
                 pendapatan_tidak_tetap_thp,
                 pendapatan_tidak_tetap_taxable,
                 upah_bersih,
+                // Other Incomes for display (THR, Bonus, Custom, etc.)
+                other_incomes: dbOtherIncomesByNik.get(rawEmpNik) || [],
                 // REMOVED: premi: empPremi - causes double-counting in frontend
                 // Individual premi fields are already added via ...empPremi below
                 pot_astek: pot_astek_pekerja,

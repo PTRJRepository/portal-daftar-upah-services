@@ -263,6 +263,17 @@ export class HeaderService {
                     { field: "total_tunjangan", headerName: "Total" }
                 ]
             },
+            // [NEW] Pendapatan Lainnya (THR, Bonus) - untuk header daftar upah
+            {
+                field: "pendapatan_lainnya",
+                headerName: "PENDAPATAN LAINNYA",
+                children: [
+                    { field: "pendapatan_thr", headerName: "THR" },
+                    { field: "pendapatan_bonus", headerName: "Bonus" },
+                    { field: "pendapatan_custom", headerName: "Custom" },
+                    { field: "pendapatan_lainnya", headerName: "Total" }
+                ]
+            },
             {
                 field: "premi_group",
                 headerName: "PREMI",
@@ -313,6 +324,10 @@ export class HeaderService {
             { field: "jumlah_hk", headerName: "JML HK" },
             { field: "gaji_pokok", headerName: "Gaji Pokok" },
             { field: "total_tunjangan", headerName: "Total Tunjangan" },
+            // [NEW] Pendapatan Lainnya
+            { field: "pendapatan_thr", headerName: "THR" },
+            { field: "pendapatan_bonus", headerName: "Bonus" },
+            { field: "pendapatan_lainnya", headerName: "Total Pendapatan Lain" },
             { field: "total_premi", headerName: "Total Premi" },
             { field: "jumlah_upah_kotor", headerName: "Jml Upah Kotor" },
             { field: "total_potongan", headerName: "Total Potongan" },

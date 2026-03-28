@@ -2,6 +2,7 @@ import { Database } from "../db/client";
 import { HistoryDatabaseService } from "./historyDatabaseService";
 import { divisionDefinition } from "./divisionDefinition";
 import { employeeHrDataService } from "./employeeHrDataService";
+import { gangService } from "./gangService";
 
 export interface OtherIncome {
     id?: number;
@@ -25,6 +26,7 @@ export interface OtherIncome {
     emp_code?: string;
     bank_acc_no?: string;
     bank_code?: string;
+    sex?: string; // 'L' or 'P'
 }
 
 export class OtherIncomesService {
@@ -115,6 +117,32 @@ export class OtherIncomesService {
                 BEGIN
                     ALTER TABLE employee_other_incomes ADD details_json NVARCHAR(MAX) NULL;
                 END
+
+                -- Add EmpCode basis columns (2026-03 refactor)
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'emp_code')
+                BEGIN
+                    ALTER TABLE employee_other_incomes ADD emp_code VARCHAR(50) NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'religion')
+                BEGIN
+                    ALTER TABLE employee_other_incomes ADD religion VARCHAR(100) NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'join_date')
+                BEGIN
+                    ALTER TABLE employee_other_incomes ADD join_date DATE NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'bank_acc_no')
+                BEGIN
+                    ALTER TABLE employee_other_incomes ADD bank_acc_no VARCHAR(100) NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'bank_code')
+                BEGIN
+                    ALTER TABLE employee_other_incomes ADD bank_code VARCHAR(50) NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'sex')
+                BEGIN
+                    ALTER TABLE employee_other_incomes ADD sex VARCHAR(1) NULL;
+                END
                 
                 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'employee_other_incomes_formulas' AND TABLE_SCHEMA = 'dbo')
                 BEGIN
@@ -198,10 +226,55 @@ export class OtherIncomesService {
 
     static async getRawIncomes(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
         const db = Database.getExtendedInstance();
+        const mainDb = Database.getInstance(); // For HR_PAYROLL bank account lookup
+        
         try {
             let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
             const params: any[] = [year, month];
-            if (divisionCode && divisionCode !== 'ALL') {
+
+            console.log(`[getRawIncomes] Fetching for ${month}/${year}, divisionCode: ${divisionCode || 'ALL'}, gangCode: ${gangCode || 'ALL'}`);
+
+            // STRATEGY: When gangCode is specified, first get gang members from history_gang_member
+            // then filter employee_other_incomes by emp_code
+            if (gangCode && gangCode !== 'ALL') {
+                console.log(`[getRawIncomes] Gang-specific query: Getting members from history_gang_member for gang ${gangCode}`);
+
+                // Get gang members from history
+                const gangMembers = await db.query<any>(`
+                    SELECT DISTINCT emp_code
+                    FROM history_gang_member
+                    WHERE gang_code = ? AND period_month = ? AND period_year = ?
+                `, [gangCode, month, year]);
+
+                console.log(`[getRawIncomes] Found ${gangMembers.length} gang members in history`);
+
+                if (gangMembers.length === 0) {
+                    // Fallback: try to get from current HR_GANGLN
+                    const currentMembers = await mainDb.query<any>(`
+                        SELECT RTRIM(GangMember) as emp_code
+                        FROM HR_GANGLN
+                        WHERE RTRIM(GangCode) = ?
+                    `, [gangCode]);
+                    console.log(`[getRawIncomes] History empty, found ${currentMembers.length} members from current HR_GANGLN`);
+
+                    if (currentMembers.length > 0) {
+                        const empCodes = currentMembers.map((r: any) => r.emp_code);
+                        const placeholders = empCodes.map(() => '?').join(',');
+                        sql += ` AND emp_code IN (${placeholders})`;
+                        params.push(...empCodes);
+                    } else {
+                        // No members found at all - return empty
+                        console.log(`[getRawIncomes] No gang members found for ${gangCode}`);
+                        return [];
+                    }
+                } else {
+                    // Use emp_codes from history
+                    const empCodes = gangMembers.map((r: any) => r.emp_code);
+                    const placeholders = empCodes.map(() => '?').join(',');
+                    sql += ` AND emp_code IN (${placeholders})`;
+                    params.push(...empCodes);
+                }
+            } else if (divisionCode && divisionCode !== 'ALL') {
                 // Use unified mapping for consistent division handling
                 const allPossibleDivs = new Set<string>();
                 let virtualGangs: string[] = [];
@@ -211,8 +284,10 @@ export class OtherIncomesService {
 
                     // Check if this is a virtual division - handle separately
                     if (gangService.isVirtualDivision(divisionCode)) {
+                        console.log(`[getRawIncomes] Virtual division detected: ${divisionCode}`);
                         // For virtual divisions, filter by gang_code instead
                         virtualGangs = await gangService.getVirtualDivisionGangs(divisionCode);
+                        console.log(`[getRawIncomes] Virtual division gangs: ${virtualGangs.join(', ')}`);
                         if (virtualGangs.length > 0) {
                             sql += ` AND gang_code IN (${virtualGangs.map(() => '?').join(',')})`;
                             params.push(...virtualGangs);
@@ -220,6 +295,7 @@ export class OtherIncomesService {
                     } else {
                         // Regular division - use unified mapping
                         const aliases = gangService.getAllDivisionAliases(divisionCode);
+                        console.log(`[getRawIncomes] Division aliases for ${divisionCode}: ${aliases.join(', ')}`);
                         aliases.forEach(a => allPossibleDivs.add(a));
                         // Also get from source divisions
                         const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
@@ -229,27 +305,102 @@ export class OtherIncomesService {
                             srcAliases.forEach(a => allPossibleDivs.add(a));
                         }
                         const divList = Array.from(allPossibleDivs);
+                        console.log(`[getRawIncomes] Final division codes: ${divList.join(', ')}`);
                         sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
                         params.push(...divList);
                     }
-                } catch { /* gangService not available */ }
+                } catch (e) {
+                    console.error(`[getRawIncomes] Error getting division mapping:`, e);
+                    /* gangService not available */
+                }
             }
-            if (gangCode && gangCode !== 'ALL') { sql += ` AND gang_code = ?`; params.push(gangCode); }
+
+            console.log(`[getRawIncomes] SQL: ${sql}`);
+            console.log(`[getRawIncomes] Params: ${params.join(', ')}`);
 
             const rows = (await db.query(sql, params)) as any[];
+            console.log(`[getRawIncomes] Database returned ${rows.length} rows`);
 
-            // AGGRESSIVE DEDUPLICATION: Ensure one record per NIK
+            // If we have rows but they don't have bank_acc_no, we need to fetch from HR_PAYROLL using emp_code
+            if (rows.length > 0) {
+                // Collect all emp_codes from the rows
+                const empCodesFromRows = [...new Set(rows.map(r => r.emp_code?.trim()).filter(Boolean))];
+                
+                if (empCodesFromRows.length > 0) {
+                    console.log(`[getRawIncomes] Fetching bank accounts for ${empCodesFromRows.length} emp_codes from HR_PAYROLL`);
+                    
+                    // Batch fetch bank accounts from HR_PAYROLL by emp_code
+                    const CHUNK = 500;
+                    const bankAccMap = new Map<string, { bank_acc_no: string; bank_code: string }>();
+                    
+                    for (let i = 0; i < empCodesFromRows.length; i += CHUNK) {
+                        const chunk = empCodesFromRows.slice(i, i + CHUNK);
+                        const placeholders = chunk.map(() => '?').join(',');
+                        
+                        const bankRows = await mainDb.query<any>(`
+                            SELECT RTRIM(EmpCode) as EmpCode,
+                                   RTRIM(ISNULL(BankAccNo, '')) as BankAccNo,
+                                   RTRIM(ISNULL(BankCode, '')) as BankCode
+                            FROM HR_PAYROLL
+                            WHERE RTRIM(EmpCode) IN (${placeholders})
+                        `, chunk);
+                        
+                        for (const r of bankRows) {
+                            const ec = (r.EmpCode || '').trim().toUpperCase();
+                            if (ec) {
+                                bankAccMap.set(ec, {
+                                    bank_acc_no: (r.BankAccNo || '').trim(),
+                                    bank_code: (r.BankCode || '').trim()
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Update rows with bank account data from HR_PAYROLL
+                    let updatedCount = 0;
+                    rows.forEach(r => {
+                        const empCodeKey = (r.emp_code || '').trim().toUpperCase();
+                        if (empCodeKey && bankAccMap.has(empCodeKey)) {
+                            const bankData = bankAccMap.get(empCodeKey)!;
+                            // Only update if current row doesn't have bank_acc_no or it's invalid
+                            if (!r.bank_acc_no || !this.isValidBankAccNo(r.bank_acc_no)) {
+                                r.bank_acc_no = bankData.bank_acc_no;
+                                r.bank_code = bankData.bank_code;
+                                updatedCount++;
+                            }
+                        }
+                    });
+                    
+                    console.log(`[getRawIncomes] Updated ${updatedCount} rows with bank account data from HR_PAYROLL`);
+                }
+            }
+
+            // AGGRESSIVE DEDUPLICATION: Ensure one record per emp_code (primary) or NIK (fallback)
             const uniqueMap = new Map<string, OtherIncome>();
             rows.forEach(r => {
-                const key = (r.nik || '').trim().toUpperCase();
                 // Parse details_json back into details object
                 if (r.details_json) {
                     try { r.details = JSON.parse(r.details_json); } catch { r.details = null; }
                 }
-                if (key && !uniqueMap.has(key)) uniqueMap.set(key, r);
+                
+                // Priority: emp_code > nik
+                const empCodeKey = (r.emp_code || '').trim().toUpperCase();
+                const nikKey = (r.nik || '').trim().toUpperCase();
+                
+                // Try emp_code first, then nik
+                const key = empCodeKey || nikKey;
+                
+                if (key && !uniqueMap.has(key)) {
+                    uniqueMap.set(key, r);
+                }
             });
+
+            console.log(`[getRawIncomes] After deduplication: ${uniqueMap.size} unique records`);
             return Array.from(uniqueMap.values());
-        } catch (e) { return []; }
+        } catch (e) {
+            console.error(`[getRawIncomes] Error:`, e);
+            return [];
+        }
     }
 
     static async getIncomes(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
@@ -730,15 +881,32 @@ export class OtherIncomesService {
         if (filtered.length === 0) return [];
 
         // Only fetch heavy HistoryDB data when we specifically need details
+        // EMP-CODE BASIS: Key by EmpCode (authoritative), fallback to NIK
         const historyDict: Record<string, any> = {};
+        const historyNikDict: Record<string, any> = {}; // Fallback by NIK
         try {
             const historyService = HistoryDatabaseService.getInstance();
             const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', divisionCode || undefined);
-            if (historyData?.data_rows) historyData.data_rows.forEach((row: any) => { const nik = String(row.nik || '').trim().toUpperCase(); if (nik) historyDict[nik] = row; });
+            if (historyData?.data_rows) {
+                historyData.data_rows.forEach((row: any) => {
+                    const empCode = String(row.emp_code || '').trim().toUpperCase();
+                    const nik = String(row.nik || '').trim().toUpperCase();
+                    if (empCode) historyDict[empCode] = row;
+                    if (nik) historyNikDict[nik] = row;
+                });
+            }
         } catch (e) { console.error("History fetch error:", e); }
         const thrFormula = await this.getFormula('THR');
         return filtered.map(inc => {
-            const nikKey = inc.nik?.trim().toUpperCase(); const h = historyDict[nikKey];
+            // EMP-CODE BASIS: Try EmpCode first, then fall back to NIK
+            const empCodeKey = inc.emp_code?.trim().toUpperCase();
+            const nikKey = inc.nik?.trim().toUpperCase();
+            // Priority: emp_code > nik
+            const h = (empCodeKey && historyDict[empCodeKey])
+                ? historyDict[empCodeKey]
+                : (nikKey && historyNikDict[nikKey])
+                    ? historyNikDict[nikKey]
+                    : null;
             const upahDasar = h?.upah_dasar || (inc as any).upah_dasar || 0;
             const recalcVars: any = {
                 UPAH_DASAR: upahDasar,
@@ -767,55 +935,468 @@ export class OtherIncomesService {
         });
     }
 
+    /**
+     * REFACTORED: THR calculation using EmpCode basis + history_gang_member as member source.
+     *
+     * Data Flow:
+     * 1. Query history_gang_member (extend_db_ptrj) for member list by gang/month/year
+     * 2. Resolve NIK from HR_EMPLOYEE by EmpCode (batch)
+     * 3. Resolve bank account from HR_PAYROLL by EmpCode (batch)
+     * 4. Fetch payroll data (upah_dasar, beras_rate, dll) from payroll_history_detail by EmpCode
+     * 5. Calculate THR using formula
+     * 6. Apply blacklist (by NIK or EmpCode)
+     * 7. Enrich with HR data
+     *
+     * FOR NON-CURRENT PERIODS with saved data:
+     *   - Get gang member list from saved employee_other_incomes by emp_code
+     *   - Get bank accounts from HR_PAYROLL by emp_code (fresh lookup)
+     *   - Return saved THR amounts directly
+     */
     static async calculateTHRData(year: number, month: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
-        const historyService = HistoryDatabaseService.getInstance();
+        const extDb = Database.getExtendedInstance(); // extend_db_ptrj
+        const mainDb = Database.getInstance();        // db_ptrj (HR_EMPLOYEE, HR_PAYROLL)
 
-        // NOTE: Do NOT resolve virtual division to source!
-        // The history service already handles virtual division filtering correctly.
-        // If we resolve WKS_AR -> AB2 here, the history service will treat it as a real division
-        // and won't apply the virtual gang filtering.
-        // Instead, pass the virtual division code as-is to let history service handle it.
+        // ── Determine if this is a non-current period ───────────────────────────
+        // Get current payroll period
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1;
+        const currentYear = now.getFullYear();
+        const isCurrentPeriod = (year === currentYear && month === currentMonth);
 
-        const historyData = await historyService.getHistoricalPayrollDataAsExtractorFormat(month, year, gangCode || 'ALL', divisionCode || undefined);
-        if (!historyData?.data_rows?.length) {
-            console.log(`[OtherIncomes] No history data for ${divisionCode}, gang: ${gangCode}, period: ${month}/${year}`);
+        // ── NON-CURRENT PERIOD: Load from saved employee_other_incomes ────────────
+        if (!isCurrentPeriod) {
+            console.log(`[calculateTHRData] Non-current period ${month}/${year} — loading from saved employee_other_incomes by emp_code`);
+
+            // Build WHERE clause for saved data
+            let whereClauses = ['income_type = ?', 'period_year = ?', 'period_month = ?'];
+            const whereParams: any[] = ['THR', year, month];
+
+            if (gangCode && gangCode !== 'ALL') {
+                whereClauses.push('RTRIM(gang_code) = ?');
+                whereParams.push(gangCode.toUpperCase().trim());
+            } else if (divisionCode && divisionCode !== 'ALL') {
+                whereClauses.push('RTRIM(division_code) = ?');
+                whereParams.push(divisionCode.trim());
+            }
+
+            const whereSql = whereClauses.join(' AND ');
+
+            // Step 1: Get saved THR records
+            let savedRows: any[] = [];
+            try {
+                savedRows = await extDb.query<any>(`
+                    SELECT
+                        RTRIM(ISNULL(emp_code, '')) as emp_code,
+                        RTRIM(ISNULL(nik, '')) as nik,
+                        RTRIM(ISNULL(emp_name, '')) as emp_name,
+                        RTRIM(ISNULL(gang_code, '')) as gang_code,
+                        RTRIM(ISNULL(division_code, '')) as division_code,
+                        RTRIM(ISNULL(religion, '')) as religion,
+                        RTRIM(ISNULL(bank_acc_no, '')) as bank_acc_no_saved,
+                        RTRIM(ISNULL(bank_code, '')) as bank_code_saved,
+                        RTRIM(ISNULL(sex, '')) as sex,
+                        income_name, amount, details_json,
+                        join_date
+                    FROM dbo.employee_other_incomes
+                    WHERE ${whereSql}
+                    ORDER BY gang_code, emp_name
+                `, whereParams);
+            } catch (e) {
+                console.error('[calculateTHRData] Error fetching saved THR from employee_other_incomes:', e);
+                // Fallback: try recalculate approach
+            }
+
+            if (savedRows.length > 0) {
+                console.log(`[calculateTHRData] Found ${savedRows.length} saved THR records for period ${month}/${year}`);
+
+                const empCodes = [...new Set(
+                    savedRows.map(r => r.emp_code.trim().toUpperCase()).filter(Boolean)
+                )];
+
+                // Step 2: Get fresh bank accounts from HR_PAYROLL by emp_code
+                const bankMap = new Map<string, { bank_acc_no: string; bank_code: string }>();
+                if (empCodes.length > 0) {
+                    try {
+                        const CHUNK = 500;
+                        for (let i = 0; i < empCodes.length; i += CHUNK) {
+                            const chunk = empCodes.slice(i, i + CHUNK);
+                            const placeholders = chunk.map(() => '?').join(',');
+                            const rows = await mainDb.query<any>(`
+                                SELECT RTRIM(EmpCode) as EmpCode,
+                                       RTRIM(ISNULL(BankAccNo, '')) as BankAccNo,
+                                       RTRIM(ISNULL(BankCode, '')) as BankCode
+                                FROM HR_PAYROLL
+                                WHERE RTRIM(EmpCode) IN (${placeholders})
+                            `, chunk);
+                            for (const r of rows) {
+                                const ec = (r.EmpCode || '').trim().toUpperCase();
+                                if (ec) {
+                                    bankMap.set(ec, {
+                                        bank_acc_no: (r.BankAccNo || '').trim(),
+                                        bank_code: (r.BankCode || '').trim()
+                                    });
+                                }
+                            }
+                        }
+                        console.log(`[calculateTHRData] Fresh bank lookup: ${bankMap.size} emp_codes resolved from HR_PAYROLL`);
+                    } catch (e) {
+                        console.error('[calculateTHRData] Error fetching fresh bank from HR_PAYROLL:', e);
+                    }
+                }
+
+                // Step 3: Build results from saved data + fresh bank
+                const religionMap: Record<string, string> = {
+                    '01': '01 Islam', '02': '02 Katolik', '03': '03 Protestan',
+                    '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu',
+                    'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
+                    'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
+                    'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
+                };
+
+                const results: OtherIncome[] = savedRows.map(r => {
+                    const empCode = r.emp_code.trim().toUpperCase();
+                    const freshBank = bankMap.get(empCode);
+                    const rawRel = (r.religion || '').trim().toUpperCase();
+                    const mappedRel = religionMap[rawRel] || rawRel || '01 Islam';
+
+                    let details: any = {};
+                    try {
+                        if (r.details_json) {
+                            details = JSON.parse(r.details_json);
+                        }
+                    } catch { }
+
+                    // Use fresh bank if valid, otherwise fall back to saved
+                    const freshBankAcc = freshBank?.bank_acc_no || '';
+                    const bankAccNo = this.isValidBankAccNo(freshBankAcc) ? freshBankAcc : (this.isValidBankAccNo(r.bank_acc_no_saved) ? r.bank_acc_no_saved : '');
+                    const bankCode = freshBank?.bank_code || r.bank_code_saved || '';
+
+                    return {
+                        nik: r.nik,
+                        emp_code: r.emp_code,
+                        emp_name: r.emp_name,
+                        division_code: r.division_code,
+                        gang_code: r.gang_code,
+                        period_year: year,
+                        period_month: month,
+                        income_type: 'THR',
+                        income_name: r.income_name || 'Tunjangan Hari Raya',
+                        amount: Number(r.amount) || 0,
+                        is_paid_in_thp: true,
+                        is_taxable: true,
+                        original_religion: rawRel,
+                        religion: mappedRel,
+                        join_date: r.join_date || null,
+                        bank_acc_no: bankAccNo,
+                        bank_code: bankCode,
+                        sex: r.sex || 'L',
+                        details
+                    };
+                });
+
+                // Log summary
+                const divDistribution: Record<string, number> = {};
+                results.forEach(r => {
+                    const dc = r.division_code || 'UNKNOWN';
+                    divDistribution[dc] = (divDistribution[dc] || 0) + 1;
+                });
+                console.log(`[calculateTHRData] Non-current period THR: ${results.length} employees from saved data, division distribution:`, divDistribution);
+                return results;
+            }
+
+            // No saved data found — fall through to recalculate below
+            console.log(`[calculateTHRData] No saved THR data for period ${month}/${year}, falling back to recalculate from history_gang_member`);
+        }
+
+        // ── CURRENT PERIOD or FALLBACK: Recalculate from history_gang_member ────
+        // ── Step 1: Resolve gang codes ──────────────────────────────────────────
+        let targetGangCodes: string[] = [];
+
+        if (gangCode && gangCode !== 'ALL') {
+            // Specific gang - normalize it
+            targetGangCodes = [gangCode.toUpperCase()];
+        } else if (divisionCode && divisionCode !== 'ALL') {
+            // Division-wide: resolve to all gangs in that division
+            const isVirtual = await gangService.isVirtualDivision(divisionCode);
+            if (isVirtual) {
+                targetGangCodes = await gangService.getVirtualDivisionGangs(divisionCode);
+            } else {
+                const { divisionConfigService } = await import('./config/DivisionConfigService');
+                const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
+                targetGangCodes = gangs.map((g: any) => g.gang_code);
+            }
+        } else {
+            // ALL: get all gangs from history_gang_member for this period
+            // We'll query without gang filter and let DB handle it
+            targetGangCodes = [];
+        }
+
+        // ── Step 2: Get gang members from history_gang_member ──────────────────
+        let gangMemberRows: any[] = [];
+        try {
+            if (targetGangCodes.length > 0) {
+                const placeholders = targetGangCodes.map(() => '?').join(',');
+                gangMemberRows = await extDb.query<any>(`
+                    SELECT DISTINCT
+                        RTRIM(emp_code) as emp_code,
+                        RTRIM(ISNULL(emp_name, '')) as emp_name,
+                        RTRIM(gang_code) as gang_code,
+                        RTRIM(ISNULL(division_code, '')) as division_code
+                    FROM dbo.history_gang_member
+                    WHERE gang_code IN (${placeholders})
+                      AND period_month = ?
+                      AND period_year = ?
+                      AND is_active = 1
+                    ORDER BY gang_code, emp_name
+                `, [...targetGangCodes, month, year]);
+            } else {
+                // ALL gangs - no gang filter
+                if (divisionCode && divisionCode !== 'ALL') {
+                    const isVirtual = await gangService.isVirtualDivision(divisionCode);
+                    if (isVirtual) {
+                        const vGangs = await gangService.getVirtualDivisionGangs(divisionCode);
+                        if (vGangs.length > 0) {
+                            const vPlaceholders = vGangs.map(() => '?').join(',');
+                            gangMemberRows = await extDb.query<any>(`
+                                SELECT DISTINCT
+                                    RTRIM(emp_code) as emp_code,
+                                    RTRIM(ISNULL(emp_name, '')) as emp_name,
+                                    RTRIM(gang_code) as gang_code,
+                                    RTRIM(ISNULL(division_code, '')) as division_code
+                                FROM dbo.history_gang_member
+                                WHERE gang_code IN (${vPlaceholders})
+                                  AND period_month = ?
+                                  AND period_year = ?
+                                  AND is_active = 1
+                                ORDER BY gang_code, emp_name
+                            `, [...vGangs, month, year]);
+                        }
+                    } else {
+                        // Real division - get all gangs in that division
+                        const { divisionConfigService } = await import('./config/DivisionConfigService');
+                        const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
+                        const gcList = gangs.map((g: any) => g.gang_code);
+                        if (gcList.length > 0) {
+                            const gPlaceholders = gcList.map(() => '?').join(',');
+                            gangMemberRows = await extDb.query<any>(`
+                                SELECT DISTINCT
+                                    RTRIM(emp_code) as emp_code,
+                                    RTRIM(ISNULL(emp_name, '')) as emp_name,
+                                    RTRIM(gang_code) as gang_code,
+                                    RTRIM(ISNULL(division_code, '')) as division_code
+                                FROM dbo.history_gang_member
+                                WHERE gang_code IN (${gPlaceholders})
+                                  AND period_month = ?
+                                  AND period_year = ?
+                                  AND is_active = 1
+                                ORDER BY gang_code, emp_name
+                            `, [...gcList, month, year]);
+                        }
+                    }
+                } else {
+                    // Completely ALL - get all gang members for period
+                    gangMemberRows = await extDb.query<any>(`
+                        SELECT DISTINCT
+                            RTRIM(emp_code) as emp_code,
+                            RTRIM(ISNULL(emp_name, '')) as emp_name,
+                            RTRIM(gang_code) as gang_code,
+                            RTRIM(ISNULL(division_code, '')) as division_code
+                        FROM dbo.history_gang_member
+                        WHERE period_month = ?
+                          AND period_year = ?
+                          AND is_active = 1
+                        ORDER BY gang_code, emp_name
+                    `, [month, year]);
+                }
+            }
+        } catch (e) {
+            console.error('[calculateTHRData] Error fetching gang members from history_gang_member:', e);
             return [];
         }
 
-        // The history service already filtered by virtual division gangs (if applicable)
-        // No additional filtering needed here
-        const filteredDataRows = historyData.data_rows;
-        const formulaConfig = await this.getFormula('THR');
+        if (gangMemberRows.length === 0) {
+            console.log(`[calculateTHRData] No gang members found for period ${month}/${year}, gang: ${gangCode}, division: ${divisionCode}`);
+            return [];
+        }
 
-        // Fetch blacklist for this period
-        const blacklist = await this.getBlacklist(year, month, 'THR');
-        const blacklistedNIKs = new Set(blacklist.map(b => String(b.nik || '').trim().toUpperCase()));
+        console.log(`[calculateTHRData] Found ${gangMemberRows.length} gang members from history_gang_member`);
 
-        // AGGRESSIVE DEDUPLICATION: Ensure unique NIK before calculation
-        const uniqueHistoryMap = new Map<string, any>();
-        filteredDataRows.forEach(row => {
-            const nik = String(row.nik || '').trim().toUpperCase();
-            if (nik && !uniqueHistoryMap.has(nik) && !blacklistedNIKs.has(nik)) {
-                uniqueHistoryMap.set(nik, row);
-            }
+        // ── Step 3: Collect emp_codes and build emp_code → member info map ────
+        const empCodes = [...new Set(gangMemberRows.map(r => r.emp_code.trim().toUpperCase()).filter(Boolean))];
+        const empCodeToMember = new Map<string, any>();
+        gangMemberRows.forEach(r => {
+            const ec = r.emp_code.trim().toUpperCase();
+            if (ec) empCodeToMember.set(ec, r);
         });
 
-        // Summary counters
-        let fullWorkers = 0; // 12/12
-        let proportionalWorkers = 0;
+        // ── Step 4: Batch resolve NIK from HR_EMPLOYEE by EmpCode ─────────────
+        const nikMap = new Map<string, string>(); // emp_code → nik
+        try {
+            const CHUNK = 500;
+            for (let i = 0; i < empCodes.length; i += CHUNK) {
+                const chunk = empCodes.slice(i, i + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+                const rows = await mainDb.query<any>(`
+                    SELECT RTRIM(EmpCode) as EmpCode,
+                           RTRIM(ISNULL(NewICNo, '')) as NewICNo
+                    FROM HR_EMPLOYEE
+                    WHERE RTRIM(EmpCode) IN (${placeholders})
+                `, chunk);
+                for (const r of rows) {
+                    const ec = (r.EmpCode || '').trim().toUpperCase();
+                    if (ec && r.NewICNo) {
+                        nikMap.set(ec, (r.NewICNo || '').trim().toUpperCase());
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[calculateTHRData] Error resolving NIK by EmpCode:', e);
+        }
 
+        // ── Step 5: Batch resolve bank from HR_PAYROLL by EmpCode ──────────────
+        const bankMap = new Map<string, { bank_acc_no: string; bank_code: string }>();
+        try {
+            const CHUNK = 500;
+            for (let i = 0; i < empCodes.length; i += CHUNK) {
+                const chunk = empCodes.slice(i, i + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+                const rows = await mainDb.query<any>(`
+                    SELECT RTRIM(EmpCode) as EmpCode,
+                           RTRIM(ISNULL(BankAccNo, '')) as BankAccNo,
+                           RTRIM(ISNULL(BankCode, '')) as BankCode
+                    FROM HR_PAYROLL
+                    WHERE RTRIM(EmpCode) IN (${placeholders})
+                `, chunk);
+                for (const r of rows) {
+                    const ec = (r.EmpCode || '').trim().toUpperCase();
+                    if (ec) {
+                        bankMap.set(ec, {
+                            bank_acc_no: (r.BankAccNo || '').trim(),
+                            bank_code: (r.BankCode || '').trim()
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[calculateTHRData] Error resolving bank by EmpCode:', e);
+        }
+
+        // ── Step 6: Batch resolve religion from HR_EMPLOYEE by EmpCode ────────
+        const religionMap: Record<string, string> = {
+            '01': '01 Islam', '02': '02 Katolik', '03': '03 Protestan',
+            '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu',
+            'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
+            'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
+            'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
+        };
+        const empCodeToHrData = new Map<string, any>(); // emp_code → { religion, join_date, gender }
+        try {
+            const CHUNK = 500;
+            for (let i = 0; i < empCodes.length; i += CHUNK) {
+                const chunk = empCodes.slice(i, i + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+                const rows = await mainDb.query<any>(`
+                    SELECT RTRIM(e.EmpCode) as EmpCode,
+                           e.Religion, e.Gender,
+                           e.CreateDate,
+                           em.AppJoinDate, em.AppJoinGrpDate
+                    FROM HR_EMPLOYEE e
+                    LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                    WHERE RTRIM(e.EmpCode) IN (${placeholders})
+                `, chunk);
+                for (const r of rows) {
+                    const ec = (r.EmpCode || '').trim().toUpperCase();
+                    if (ec) {
+                        const rawJD = this.getLatestValidDate(r.AppJoinDate, r.AppJoinGrpDate) || r.CreateDate;
+                        let joinDateStr: string | null = null;
+                        if (rawJD) {
+                            try {
+                                const d = new Date(rawJD);
+                                if (!isNaN(d.getTime())) joinDateStr = d.toISOString();
+                            } catch { }
+                        }
+                        empCodeToHrData.set(ec, {
+                            religion: r.Religion || '',
+                            join_date: joinDateStr,
+                            gender: r.Gender || ''
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[calculateTHRData] Error resolving HR data by EmpCode:', e);
+        }
+
+        // ── Step 7: Fetch payroll data from payroll_history_detail by EmpCode ──
+        const payrollMap = new Map<string, any>(); // emp_code → payroll row
+        try {
+            const CHUNK = 500;
+            for (let i = 0; i < empCodes.length; i += CHUNK) {
+                const chunk = empCodes.slice(i, i + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+
+                // Query payroll_history_detail joined with header for period filter
+                const rows = await extDb.query<any>(`
+                    SELECT d.emp_code, d.upah_dasar, d.beras_rate, d.jabatan_rate,
+                           d.jabatan_jumlah, d.masa_kerja_jumlah, d.masa_kerja_tahun,
+                           d.join_date, d.religion, d.jenis_kelamin, d.nik,
+                           d.nama, d.gang_code, d.loc_code, d.division_code
+                    FROM dbo.payroll_history_detail d
+                    INNER JOIN dbo.payroll_history_header h ON d.master_id = h.id
+                    WHERE h.period_month = ? AND h.period_year = ?
+                      AND RTRIM(d.emp_code) IN (${placeholders})
+                `, [month, year, ...chunk]);
+
+                for (const r of rows) {
+                    const ec = (r.emp_code || '').trim().toUpperCase();
+                    if (ec && !payrollMap.has(ec)) {
+                        payrollMap.set(ec, r);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[calculateTHRData] Error fetching payroll history detail:', e);
+        }
+
+        // ── Step 8: Fetch blacklist for this period ─────────────────────────────
+        const blacklist = await this.getBlacklist(year, month, 'THR');
+        const blacklistedNIKs = new Set(blacklist.map(b => String(b.nik || '').trim().toUpperCase()));
+        const blacklistedEmpCodes = new Set(empCodes.filter(ec => {
+            const nik = nikMap.get(ec) || '';
+            return blacklistedNIKs.has(nik.trim().toUpperCase());
+        }));
+
+        // ── Step 9: Get THR formula ─────────────────────────────────────────────
+        const formulaConfig = await this.getFormula('THR');
+
+        // ── Step 10: Calculate THR for each gang member ─────────────────────────
         const results: OtherIncome[] = [];
-        for (const row of uniqueHistoryMap.values()) {
-            const nik = String(row.nik || '').trim().toUpperCase();
-            const upahDasar = row.upah_dasar || 0;
-            const berasRate = row.beras_rate || 0;
-            const jabatanRate = row.jabatan_rate || 0;
-            const masaKerjaJumlah = row.masa_kerja_jumlah || 0;
+
+        for (const empCode of empCodes) {
+            // Skip blacklisted
+            if (blacklistedEmpCodes.has(empCode)) continue;
+
+            const member = empCodeToMember.get(empCode);
+            const payroll = payrollMap.get(empCode);
+            const hrData = empCodeToHrData.get(empCode);
+            const bank = bankMap.get(empCode);
+            const nik = nikMap.get(empCode) || '';
+
+            // Get payroll components (from payroll_history_detail OR fallback to HR data)
+            const upahDasar = payroll?.upah_dasar || 0;
+            const berasRate = payroll?.beras_rate || hrData?.beras_rate || 0;
+            const jabatanRate = payroll?.jabatan_rate || 0;
+            const masaKerjaJumlah = payroll?.masa_kerja_jumlah || 0;
+            const masaKerjaTahun = payroll?.masa_kerja_tahun || 0;
+            const jabatanJumlah = payroll?.jabatan_jumlah || (jabatanRate * 30);
+
+            // Get join_date (priority: payroll_history_detail > HR_EMPLOYEE)
+            const joinDate = payroll?.join_date || hrData?.join_date || null;
+            const jd = this.parseDate(joinDate);
 
             // Calculate component values
             const gajiPokok = upahDasar * 30;
             const tunjanganBeras = berasRate * 30;
-            const tunjanganJabatan = row.jabatan_jumlah || (jabatanRate * 30);
             const tunjanganMasaKerja = masaKerjaJumlah;
 
             const mathVars = {
@@ -824,9 +1405,9 @@ export class OtherIncomesService {
                 BERAS_RATE: berasRate,
                 BERAS_JUMLAH: tunjanganBeras,
                 JABATAN_RATE: jabatanRate,
-                JABATAN_JUMLAH: tunjanganJabatan,
+                JABATAN_JUMLAH: jabatanJumlah,
                 MASA_KERJA_JUMLAH: tunjanganMasaKerja,
-                MASA_KERJA_TAHUN: row.masa_kerja_tahun || 0,
+                MASA_KERJA_TAHUN: masaKerjaTahun,
                 HK: 30
             };
             let fullThr = 0;
@@ -835,11 +1416,11 @@ export class OtherIncomesService {
                 fullThr = evalFn(...Object.values(mathVars));
             } catch { fullThr = gajiPokok + tunjanganBeras + tunjanganMasaKerja; }
 
+            // Proportional THR calculation
             let thrAmt = fullThr;
             let propDesc = '';
             let workingMonths = 12;
             let propFactor = "12/12";
-            const jd = this.parseDate(row.join_date);
             if (jd) {
                 const periodDate = new Date(year, month - 1, 1);
                 let diff = (periodDate.getFullYear() - jd.getFullYear()) * 12 + (periodDate.getMonth() - jd.getMonth());
@@ -849,35 +1430,29 @@ export class OtherIncomesService {
                         propFactor = `${workingMonths}/12`;
                         thrAmt = Math.round((fullThr * workingMonths) / 12);
                         propDesc = ` (Proporsi ${workingMonths}/12)`;
-                        proportionalWorkers++;
-                    } else {
-                        fullWorkers++;
                     }
-                } else {
-                    fullWorkers++;
                 }
-            } else {
-                fullWorkers++;
             }
 
-            let relRow = row.religion || '';
-            const rawRowRel = relRow.trim().toUpperCase();
-            const religionMap: Record<string, string> = {
-                '01': '01 Islam', '02': '02 Katolik', '03': '03 Protestan',
-                '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu',
-                'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
-                'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
-                'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
-            };
-            const mappedRel = religionMap[rawRowRel] || relRow || '01 Islam';
+            // Map religion
+            const rawRel = (payroll?.religion || hrData?.religion || '').trim().toUpperCase();
+            const mappedRel = religionMap[rawRel] || rawRel || '01 Islam';
+            const gender = payroll?.jenis_kelamin === 'FEMALE' ? 'P' : (hrData?.gender === 'FEMALE' ? 'P' : 'L');
+
+            // Determine gang and division from history_gang_member (authoritative source)
+            const memberGangCode = member?.gang_code || payroll?.gang_code || gangCode || '';
+            const memberDivisionCode = member?.division_code || payroll?.division_code || payroll?.loc_code || divisionCode || '';
+
+            // Bank account from HR_PAYROLL (resolved by EmpCode)
+            const bankAccNo = bank?.bank_acc_no || '';
+            const bankCode = bank?.bank_code || '';
 
             results.push({
                 nik,
-                emp_name: row.nama || row.emp_name || '',
-                // Use the employee's ACTUAL division from history data, not the query filter
-                // This prevents cross-division contamination (e.g., saving AB2 data over ARC records)
-                division_code: row.loc_code || row.division_code || divisionCode,
-                gang_code: row.gang_code,
+                emp_code: empCode,
+                emp_name: payroll?.nama || payroll?.emp_name || member?.emp_name || '',
+                division_code: memberDivisionCode,
+                gang_code: memberGangCode,
                 period_year: year,
                 period_month: month,
                 income_type: 'THR',
@@ -885,21 +1460,25 @@ export class OtherIncomesService {
                 amount: thrAmt,
                 is_paid_in_thp: true,
                 is_taxable: true,
-                original_religion: row.religion || '',
+                original_religion: rawRel,
+                religion: mappedRel,
+                join_date: joinDate,
+                bank_acc_no: this.isValidBankAccNo(bankAccNo) ? bankAccNo : '',
+                bank_code: bankCode,
+                sex: gender,
                 details: {
                     formula: formulaConfig.formula,
                     variables: {
                         ...mathVars,
-                        JOIN_DATE: row.join_date,
+                        JOIN_DATE: joinDate,
                         WORKING_MONTHS: workingMonths,
                         PROPORTION_FACTOR: propFactor,
                         RELIGION: mappedRel,
-                        SEX: row.jenis_kelamin === 'FEMALE' ? 'P' : 'L',
-                        EMP_CODE: row.emp_code,
-                        // Summary values
+                        SEX: gender,
+                        EMP_CODE: empCode,
                         TOTAL_GAJI_POKOK: gajiPokok,
                         TOTAL_TUNJANGAN_BERAS: tunjanganBeras,
-                        TOTAL_TUNJANGAN_JABATAN: tunjanganJabatan,
+                        TOTAL_TUNJANGAN_JABATAN: jabatanJumlah,
                         TOTAL_TUNJANGAN_MASA_KERJA: tunjanganMasaKerja,
                         IS_FULL: workingMonths === 12
                     }
@@ -907,16 +1486,18 @@ export class OtherIncomesService {
             });
         }
 
-        // Log division distribution for debugging
+        // Log summary
         const divDistribution: Record<string, number> = {};
         results.forEach(r => {
             const dc = r.division_code || 'UNKNOWN';
             divDistribution[dc] = (divDistribution[dc] || 0) + 1;
         });
-        console.log(`[calculateTHRData] Division distribution (${results.length} total):`, divDistribution);
+        console.log(`[calculateTHRData] EmpCode-based THR: ${results.length} employees, division distribution:`, divDistribution);
 
-        // enrichWithHrData already handles filtering by blacklist
-        return this.enrichWithHrData(results, gangCode);
+        // Note: enrichWithHrData is no longer called here because we already
+        // resolved NIK, religion, join_date, bank, and gender in Steps 4-6.
+        // If additional enrichment is needed, it can be added separately.
+        return results;
     }
 
     static async bulkSaveIncomes(incomes: OtherIncome[]): Promise<{ success: boolean; count: number }> {
@@ -928,31 +1509,62 @@ export class OtherIncomesService {
             for (let i = 0; i < incomes.length; i += batchSize) {
                 const batch = incomes.slice(i, i + batchSize);
                 for (const inc of batch) {
-                    // 1. Delete existing record for this NIK + Period + Type
-                    // This ensures absolute uniqueness regardless of gang/division changes
-                    await db.query(`
-                        DELETE FROM employee_other_incomes 
-                        WHERE period_year = ? 
-                          AND period_month = ? 
-                          AND RTRIM(nik) = ? 
-                          AND income_type = ?
-                    `, [inc.period_year, inc.period_month, inc.nik.trim(), inc.income_type]);
+                    // 1. Delete existing record for this EmpCode + Period + Type
+                    // EMP-CODE BASIS: Use emp_code for primary uniqueness.
+                    // Try emp_code first, fall back to nik for legacy records without emp_code.
+                    const empCodeForDelete = (inc.emp_code || '').trim().toUpperCase();
+                    if (empCodeForDelete) {
+                        // Primary: delete by emp_code (new records)
+                        await db.query(`
+                            DELETE FROM employee_other_incomes
+                            WHERE period_year = ?
+                              AND period_month = ?
+                              AND RTRIM(emp_code) = ?
+                              AND income_type = ?
+                        `, [inc.period_year, inc.period_month, empCodeForDelete, inc.income_type]);
+                    } else {
+                        // Legacy fallback: delete by nik (old records without emp_code)
+                        await db.query(`
+                            DELETE FROM employee_other_incomes
+                            WHERE period_year = ?
+                              AND period_month = ?
+                              AND RTRIM(nik) = ?
+                              AND income_type = ?
+                        `, [inc.period_year, inc.period_month, (inc.nik || '').trim(), inc.income_type]);
+                    }
 
-                    // 2. Insert new calculated record (including details_json)
+                    // 2. Insert new calculated record (including new EmpCode-basis columns)
                     const detailsJson = inc.details ? JSON.stringify(inc.details) : null;
+                    // Convert join_date string to SQL date format
+                    let joinDateSql: string | null = null;
+                    if (inc.join_date) {
+                        try {
+                            const d = new Date(inc.join_date);
+                            if (!isNaN(d.getTime())) {
+                                joinDateSql = d.toISOString().split('T')[0]; // 'YYYY-MM-DD'
+                            }
+                        } catch { }
+                    }
                     await db.query(`
                         INSERT INTO employee_other_incomes (
-                            nik, emp_name, division_code, gang_code, 
-                            period_year, period_month, income_type, 
-                            income_name, amount, is_paid_in_thp, is_taxable, 
-                            details_json, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
+                            nik, emp_name, division_code, gang_code,
+                            period_year, period_month, income_type,
+                            income_name, amount, is_paid_in_thp, is_taxable,
+                            details_json, created_at, updated_at,
+                            emp_code, religion, join_date, bank_acc_no, bank_code, sex
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, ?, ?, ?, ?, ?)
                     `, [
                         inc.nik, inc.emp_name, inc.division_code, inc.gang_code,
                         inc.period_year, inc.period_month, inc.income_type,
                         inc.income_name, inc.amount,
                         inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0,
-                        detailsJson
+                        detailsJson,
+                        inc.emp_code || null,
+                        inc.religion || null,
+                        joinDateSql,
+                        (inc as any).bank_acc_no || null,
+                        (inc as any).bank_code || null,
+                        (inc as any).sex || null
                     ]);
                     count++;
                 }
@@ -1178,6 +1790,351 @@ export class OtherIncomesService {
 
     // Alias for frontend compatibility if needed
     static async bulkSave(incomes: OtherIncome[]) { return this.bulkSaveIncomes(incomes); }
+
+    /**
+     * Get gang members for a specific period.
+     * EMP-CODE BASIS endpoint for THR member listing.
+     *
+     * FOR NON-CURRENT PERIODS:
+     *   - Load gang members from saved employee_other_incomes by emp_code
+     *   - Get fresh bank accounts from HR_PAYROLL by emp_code
+     *
+     * FOR CURRENT PERIOD or NO SAVED DATA:
+     *   - Query history_gang_member (extend_db_ptrj) by month/year/gang
+     *   - Map emp_code to employee info (name, religion, join_date) via HR_EMPLOYEE
+     *   - Map emp_code to bank account via HR_PAYROLL
+     *   - Return structured member list grouped by gang
+     */
+    static async getGangMembersFromHistory(
+        month: number,
+        year: number,
+        gangCode?: string,
+        divisionCode?: string
+    ): Promise<{
+        gangs: Array<{
+            gang_code: string;
+            division_code: string;
+            gang_description: string;
+            members: Array<{
+                emp_code: string;
+                nik: string;
+                emp_name: string;
+                religion: string;
+                join_date: string;
+                bank_acc_no: string;
+                bank_code: string;
+                sex: string;
+                is_active: boolean;
+            }>;
+            member_count: number;
+        }>;
+        summary: {
+            total_gangs: number;
+            total_members: number;
+        };
+    }> {
+        const extDb = Database.getExtendedInstance(); // extend_db_ptrj
+        const mainDb = Database.getInstance();          // db_ptrj (HR_EMPLOYEE, HR_PAYROLL)
+
+        try {
+            // ── Determine if this is a non-current period ─────────────────────────
+            const now = new Date();
+            const currentMonth = now.getMonth() + 1;
+            const currentYear = now.getFullYear();
+            const isCurrentPeriod = (year === currentYear && month === currentMonth);
+
+            // ── NON-CURRENT PERIOD: Load from saved employee_other_incomes ─────────
+            if (!isCurrentPeriod) {
+                console.log(`[getGangMembersFromHistory] Non-current period ${month}/${year} — loading from saved employee_other_incomes by emp_code`);
+
+                // Build WHERE clause
+                let whereClauses = ['income_type = ?', 'period_year = ?', 'period_month = ?'];
+                const whereParams: any[] = ['THR', year, month];
+
+                if (gangCode && gangCode !== 'ALL') {
+                    whereClauses.push('RTRIM(gang_code) = ?');
+                    whereParams.push(gangCode.toUpperCase().trim());
+                } else if (divisionCode && divisionCode !== 'ALL') {
+                    whereClauses.push('RTRIM(division_code) = ?');
+                    whereParams.push(divisionCode.trim());
+                }
+
+                // Get saved THR records
+                const savedRows = await extDb.query<any>(`
+                    SELECT
+                        RTRIM(ISNULL(emp_code, '')) as emp_code,
+                        RTRIM(ISNULL(nik, '')) as nik,
+                        RTRIM(ISNULL(emp_name, '')) as emp_name,
+                        RTRIM(ISNULL(gang_code, '')) as gang_code,
+                        RTRIM(ISNULL(division_code, '')) as division_code,
+                        RTRIM(ISNULL(religion, '')) as religion,
+                        RTRIM(ISNULL(bank_acc_no, '')) as bank_acc_no_saved,
+                        RTRIM(ISNULL(bank_code, '')) as bank_code_saved,
+                        RTRIM(ISNULL(sex, '')) as sex,
+                        join_date
+                    FROM dbo.employee_other_incomes
+                    WHERE ${whereClauses.join(' AND ')}
+                    ORDER BY gang_code, emp_name
+                `, whereParams);
+
+                if (savedRows.length > 0) {
+                    console.log(`[getGangMembersFromHistory] Found ${savedRows.length} saved THR records for period ${month}/${year}`);
+
+                    const empCodes = [...new Set(
+                        savedRows.map(r => r.emp_code.trim().toUpperCase()).filter(Boolean)
+                    )];
+
+                    // Fresh bank lookup by emp_code
+                    const bankMap = new Map<string, { bank_acc_no: string; bank_code: string }>();
+                    if (empCodes.length > 0) {
+                        const CHUNK = 500;
+                        for (let i = 0; i < empCodes.length; i += CHUNK) {
+                            const chunk = empCodes.slice(i, i + CHUNK);
+                            const placeholders = chunk.map(() => '?').join(',');
+                            const rows = await mainDb.query<any>(`
+                                SELECT RTRIM(EmpCode) as EmpCode,
+                                       RTRIM(ISNULL(BankAccNo, '')) as BankAccNo,
+                                       RTRIM(ISNULL(BankCode, '')) as BankCode
+                                FROM HR_PAYROLL
+                                WHERE RTRIM(EmpCode) IN (${placeholders})
+                            `, chunk);
+                            for (const r of rows) {
+                                const ec = (r.EmpCode || '').trim().toUpperCase();
+                                if (ec) {
+                                    bankMap.set(ec, {
+                                        bank_acc_no: (r.BankAccNo || '').trim(),
+                                        bank_code: (r.BankCode || '').trim()
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // Group by gang_code
+                    const religionMap: Record<string, string> = {
+                        '01': '01 Islam', '02': '02 Katolik', '03': '03 Protestan',
+                        '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu',
+                        'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
+                        'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
+                        'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
+                    };
+
+                    const gangGroups = new Map<string, any[]>();
+                    savedRows.forEach(r => {
+                        const gc = (r.gang_code || '').trim();
+                        if (!gc) return;
+                        if (!gangGroups.has(gc)) gangGroups.set(gc, []);
+
+                        const ec = r.emp_code.trim().toUpperCase();
+                        const freshBank = bankMap.get(ec);
+                        const freshBankAcc = freshBank?.bank_acc_no || '';
+                        const bankAccNo = this.isValidBankAccNo(freshBankAcc) ? freshBankAcc : (this.isValidBankAccNo(r.bank_acc_no_saved) ? r.bank_acc_no_saved : '');
+                        const bankCode = freshBank?.bank_code || r.bank_code_saved || '';
+                        const rawRel = (r.religion || '').trim().toUpperCase();
+
+                        gangGroups.get(gc)!.push({
+                            emp_code: ec,
+                            nik: r.nik || '',
+                            emp_name: r.emp_name || '',
+                            religion: religionMap[rawRel] || rawRel || '01 Islam',
+                            join_date: r.join_date ? String(r.join_date).split('T')[0] : '',
+                            bank_acc_no: bankAccNo,
+                            bank_code: bankCode,
+                            sex: r.sex === 'P' ? 'P' : 'L',
+                            is_active: true
+                        });
+                    });
+
+                    const gangs = Array.from(gangGroups.entries())
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([gc, members]) => ({
+                            gang_code: gc,
+                            division_code: savedRows.find(r => r.gang_code.trim() === gc)?.division_code || '',
+                            gang_description: '',
+                            members,
+                            member_count: members.length
+                        }));
+
+                    const totalMembers = gangs.reduce((sum, g) => sum + g.member_count, 0);
+                    console.log(`[getGangMembersFromHistory] Non-current period: ${gangs.length} gangs, ${totalMembers} members from saved data`);
+                    return { gangs, summary: { total_gangs: gangs.length, total_members: totalMembers } };
+                }
+
+                console.log(`[getGangMembersFromHistory] No saved THR data for period ${month}/${year}, falling back to history_gang_member`);
+            }
+
+            // ── CURRENT PERIOD or FALLBACK: Query history_gang_member ──────────────
+            // Step 1: Build gang filter
+            let gangFilter = '';
+            const params: any[] = [month, year];
+
+            if (gangCode && gangCode !== 'ALL') {
+                gangFilter = 'AND gang_code = ?';
+                params.push(gangCode);
+            } else if (divisionCode && divisionCode !== 'ALL') {
+                // Get all gangs for this division
+                const { divisionConfigService } = await import('./config/DivisionConfigService');
+                const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
+                const gcList = gangs.map((g: any) => g.gang_code);
+                if (gcList.length > 0) {
+                    const placeholders = gcList.map(() => '?').join(',');
+                    gangFilter = `AND gang_code IN (${placeholders})`;
+                    params.push(...gcList);
+                }
+            }
+
+            // Step 2: Query gang members from history_gang_member
+            const gangMemberRows = await extDb.query<any>(`
+                SELECT DISTINCT
+                    RTRIM(emp_code) as emp_code,
+                    RTRIM(ISNULL(emp_name, '')) as emp_name,
+                    RTRIM(gang_code) as gang_code,
+                    RTRIM(ISNULL(gang_description, '')) as gang_description,
+                    RTRIM(ISNULL(division_code, '')) as division_code,
+                    join_date,
+                    is_active
+                FROM dbo.history_gang_member
+                WHERE period_month = ?
+                  AND period_year = ?
+                  AND is_active = 1
+                  ${gangFilter}
+                ORDER BY gang_code, emp_name
+            `, params);
+
+            if (gangMemberRows.length === 0) {
+                console.log(`[getGangMembersFromHistory] No members found for ${month}/${year}, gang: ${gangCode}, division: ${divisionCode}`);
+                return { gangs: [], summary: { total_gangs: 0, total_members: 0 } };
+            }
+
+            // Step 3: Collect all emp_codes
+            const empCodes = [...new Set(gangMemberRows.map(r => { const ec = r.emp_code ? r.emp_code.trim().toUpperCase() : ''; return ec; }).filter((v: string) => Boolean(v)))];
+            console.log(`[getGangMembersFromHistory] Found ${gangMemberRows.length} rows, ${empCodes.length} unique emp_codes`);
+
+            // Step 4: Batch resolve NIK, religion, join_date, gender from HR_EMPLOYEE by EmpCode
+            const nikMap = new Map<string, string>();
+            const religionMap: Record<string, string> = {};
+            const genderMap: Record<string, string> = {};
+            const joinDateMap: Record<string, string> = {};
+            const empNameMap: Record<string, string> = {};
+
+            const CHUNK = 500;
+            for (let i = 0; i < empCodes.length; i += CHUNK) {
+                const chunk = empCodes.slice(i, i + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+
+                const hrRows = await mainDb.query<any>(`
+                    SELECT RTRIM(e.EmpCode) as EmpCode,
+                           RTRIM(ISNULL(e.NewICNo, '')) as NewICNo,
+                           RTRIM(e.EmpName) as EmpName,
+                           e.Religion, e.Gender,
+                           em.AppJoinDate, em.AppJoinGrpDate
+                    FROM HR_EMPLOYEE e
+                    LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                    WHERE RTRIM(e.EmpCode) IN (${placeholders})
+                `, chunk);
+
+                for (const r of hrRows) {
+                    const ec = (r.EmpCode || '').trim().toUpperCase();
+                    if (!ec) continue;
+
+                    if (r.NewICNo) nikMap.set(ec, (r.NewICNo || '').trim().toUpperCase());
+                    if (r.EmpName) empNameMap[ec] = r.EmpName.trim();
+                    if (r.Religion) {
+                        const rawRel = r.Religion.trim().toUpperCase();
+                        const religionLookup: Record<string, string> = {
+                            '01': '01 Islam', '02': '02 Katolik', '03': '03 Protestan',
+                            '04': '04 Hindu', '05': '05 Budha', '06': '06 Konghucu',
+                            'ISLAM': '01 Islam', 'KATHOLIK': '02 Katolik', 'KATOLIK': '02 Katolik',
+                            'KRISTEN': '03 Protestan', 'PROTESTAN': '03 Protestan', 'HINDU': '04 Hindu',
+                            'BUDHA': '05 Budha', 'BUDDHA': '05 Budha', 'KONGHUCU': '06 Konghucu'
+                        };
+                        religionMap[ec] = religionLookup[rawRel] || rawRel || '01 Islam';
+                    }
+                    if (r.Gender) genderMap[ec] = r.Gender.trim();
+
+                    // Join date: prefer AppJoinGrpDate > AppJoinDate > CreateDate
+                    const rawJD = this.getLatestValidDate(r.AppJoinDate, r.AppJoinGrpDate) || r.CreateDate;
+                    if (rawJD) {
+                        try {
+                            const d = new Date(rawJD);
+                            if (!isNaN(d.getTime())) joinDateMap[ec] = d.toISOString().split('T')[0];
+                        } catch {}
+                    }
+                }
+            }
+
+            // Step 5: Batch resolve bank from HR_PAYROLL by EmpCode
+            const bankMap = new Map<string, { bank_acc_no: string; bank_code: string }>();
+            for (let i = 0; i < empCodes.length; i += CHUNK) {
+                const chunk = empCodes.slice(i, i + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+                const bankRows = await mainDb.query<any>(`
+                    SELECT RTRIM(EmpCode) as EmpCode,
+                           RTRIM(ISNULL(BankAccNo, '')) as BankAccNo,
+                           RTRIM(ISNULL(BankCode, '')) as BankCode
+                    FROM HR_PAYROLL
+                    WHERE RTRIM(EmpCode) IN (${placeholders})
+                `, chunk);
+                for (const r of bankRows) {
+                    const ec = (r.EmpCode || '').trim().toUpperCase();
+                    if (ec) {
+                        bankMap.set(ec, {
+                            bank_acc_no: (r.BankAccNo || '').trim(),
+                            bank_code: (r.BankCode || '').trim()
+                        });
+                    }
+                }
+            }
+
+            // Step 6: Group by gang_code
+            const gangGroups = new Map<string, any[]>();
+            gangMemberRows.forEach(r => {
+                const gc = (r.gang_code || '').trim();
+                if (!gangGroups.has(gc)) {
+                    gangGroups.set(gc, []);
+                }
+                const ec = r.emp_code.trim().toUpperCase();
+                gangGroups.get(gc)!.push({
+                    emp_code: ec,
+                    nik: nikMap.get(ec) || '',
+                    emp_name: empNameMap[ec] || r.emp_name || '',
+                    religion: religionMap[ec] || '01 Islam',
+                    join_date: joinDateMap[ec] || '',
+                    bank_acc_no: bankMap.get(ec)?.bank_acc_no || '',
+                    bank_code: bankMap.get(ec)?.bank_code || '',
+                    sex: genderMap[ec] === 'FEMALE' ? 'P' : 'L',
+                    is_active: r.is_active
+                });
+            });
+
+            // Step 7: Build result
+            const gangs = Array.from(gangGroups.entries())
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([gc, members]) => {
+                    const firstRow = gangMemberRows.find(r => r.gang_code.trim() === gc) || {};
+                    return {
+                        gang_code: gc,
+                        division_code: firstRow.division_code || '',
+                        gang_description: firstRow.gang_description || '',
+                        members,
+                        member_count: members.length
+                    };
+                });
+
+            const totalMembers = gangs.reduce((sum, g) => sum + g.member_count, 0);
+
+            return {
+                gangs,
+                summary: {
+                    total_gangs: gangs.length,
+                    total_members: totalMembers
+                }
+            };
+        } catch (e: any) {
+            console.error('[getGangMembersFromHistory] Error:', e);
+            throw e;
+        }
+    }
     static async previewTHR(year: number, month: number, division?: string, gang?: string) {
         try { const data = await this.calculateTHRData(year, month, division, gang); return { success: true, data }; }
         catch (e: any) { return { success: false, error: e.message }; }
@@ -1189,12 +2146,19 @@ export class OtherIncomesService {
      */
     static async getThrSummary(year: number, month: number, divisionCode?: string) {
         try {
+            console.log(`[getThrSummary] Fetching THR data for ${month}/${year}, divisionCode: ${divisionCode || 'ALL'}`);
+            
             // Use getRawIncomes directly - avoid heavy full recalculation
             const raw = await this.getRawIncomes(year, month, divisionCode);
+            console.log(`[getThrSummary] Raw records fetched: ${raw.length}`);
+            
             // Filter to THR only
             const incomes = raw.filter(r => r.income_type === 'THR');
+            console.log(`[getThrSummary] THR records after filtering: ${incomes.length}`);
 
             if (!incomes || incomes.length === 0) {
+                console.log(`[getThrSummary] No THR data found for ${month}/${year}, division: ${divisionCode || 'ALL'}`);
+                console.log(`[getThrSummary] HINT: Run THR calculation first from Other Incomes page`);
                 return { data: [], grand_total: null };
             }
 

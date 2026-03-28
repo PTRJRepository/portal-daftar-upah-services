@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import HierHeaderGroup from '../components/common/HierHeaderGroup'
 import 'ag-grid-community/styles/ag-grid.css'
@@ -20,6 +20,7 @@ import GangFilter from '../components/common/GangFilter'
 import { GangFilterProvider } from '../context/GangFilterContext'
 import { useGangFilter } from '../context/GangFilterContext'
 import { exportReportToExcelPro } from '../utils/exportReportToExcelPro'
+import GangAttendanceMatrix from '../components/GangAttendanceMatrix'
 
 // Check if running in development mode
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true' || import.meta.env.DEV_MODE === 'true'
@@ -97,6 +98,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [initialRowsPreview, setInitialRowsPreview] = useState([])
   const [gangInfo, setGangInfo] = useState(null)
   const [selectionStats, setSelectionStats] = useState({ count: 0, sum: 0, average: 0 })
+  const [viewMode, setViewMode] = useState('table') // 'table' | 'matrix'
 
   // --- JOB TITLE FEATURE STATE ---
   const [jobTitles, setJobTitles] = useState({})
@@ -342,12 +344,29 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         flatRows.push(...filteredRows)
 
         const agg = (field) => Math.round(filteredRows.reduce((a, b) => a + Number(b[field] || 0), 0))
+
+        // Helper function to aggregate nested other_incomes array
+        const aggOtherIncomes = (type) => {
+          return filteredRows.reduce((sum, row) => {
+            if (row.other_incomes && Array.isArray(row.other_incomes)) {
+              const found = row.other_incomes.find(oi => oi.type === type);
+              if (found) sum += Number(found.amount || 0);
+            }
+            return sum;
+          }, 0);
+        };
+
         const totalRow = {
           isTotal: true,
           no: '', jenis_kelamin: '', nik: '', nama: `TOTAL ${gang}`,
           upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
           cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
           gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
+          // [NEW] Pendapatan Lainnya (THR, Bonus) - untuk ditampilkan di header
+          pendapatan_thr: Math.round(aggOtherIncomes('THR')),
+          pendapatan_bonus: Math.round(aggOtherIncomes('BONUS')),
+          pendapatan_custom: Math.round(aggOtherIncomes('CUSTOM')),
+          pendapatan_lainnya: Math.round(aggOtherIncomes('THR') + aggOtherIncomes('BONUS') + aggOtherIncomes('CUSTOM')),
           premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
           pot_koreksi: agg('pot_koreksi'),
           total_premi: agg('total_premi'),
@@ -742,12 +761,28 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             return a + val
           }, 0))
 
+          // Helper function to aggregate nested other_incomes array for Grand Total
+          const aggOtherIncomesGrand = (type) => {
+            return safe.reduce((sum, row) => {
+              if (row.other_incomes && Array.isArray(row.other_incomes)) {
+                const found = row.other_incomes.find(oi => oi.type === type);
+                if (found) sum += Number(found.amount || 0);
+              }
+              return sum;
+            }, 0);
+          };
+
           if (safe.length > 0) {
             const grand = {
               no: '', jenis_kelamin: '', nik: '', nama: 'GRAND TOTAL',
               upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
               cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
               gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
+              // [NEW] Pendapatan Lainnya (THR, Bonus) - untuk ditampilkan di header
+              pendapatan_thr: Math.round(aggOtherIncomesGrand('THR')),
+              pendapatan_bonus: Math.round(aggOtherIncomesGrand('BONUS')),
+              pendapatan_custom: Math.round(aggOtherIncomesGrand('CUSTOM')),
+              pendapatan_lainnya: Math.round(aggOtherIncomesGrand('THR') + aggOtherIncomesGrand('BONUS') + aggOtherIncomesGrand('CUSTOM')),
               premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
               pot_koreksi: agg('pot_koreksi'),
               total_premi: agg('total_premi'),
@@ -895,7 +930,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   // Enhanced column definitions with proper formatting
   const formatLeaf = useCallback((col) => {
     const cfg = { ...col, ...baseCol }
-    const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi']
+    const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya']
     const intFields = ['no', 'hari_kerja', 'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari', 'tidak_hadir_cth', 'tidak_hadir_alpa', 'jumlah_hk', 'masa_kerja_tahun', 'bunches_total', 'bunches_ripe', 'bunches_unripe', 'bunches_round', 'bunches_transactions']
     // lembur_jam removed from intFields - should preserve decimal values (e.g., 1.5 hours)
     const decimalFields = ['lembur_jam']
@@ -1149,7 +1184,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     try {
       const neverHide = new Set([
         'no', 'nik', 'nama', 'jenis_kelamin', 'upah_bersih', 'jumlah_upah_kotor', 'total_tunjangan', 'total_premi', 'gaji_pokok', 'upah_pokok', 'hari_kerja', 'jumlah_hk',
-        'total_potongan'
+        'total_potongan', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'
       ])
 
       // Add dynamic potongan fields to neverHide if they have data
@@ -1278,7 +1313,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
               Mode History
             </label>
           </div>
-          {/* Server-side Excel export with dynamic premi + formulas */}
+          {/* View mode toggle is now handled by ReportToolbar */}
           <button
             id="btn-download-daftar-upah-excel"
             onClick={handleDownloadDaftarUpahExcel}
@@ -1297,6 +1332,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             {isDownloadingExcel ? '⏳ Mengunduh...' : '⬇️ Excel (Formula)'}
           </button>
           <ReportToolbar
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
             month={activeMonth}
             year={activeYear}
             division={finalDivision}
@@ -1399,103 +1436,131 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         />
       )}
 
-      <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
-        <AgGridReact
-          ref={gridRef}
-          context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory }}
-          columnDefs={columnDefs}
-          rowData={rows}
-          columnTypes={columnTypes}
-          rowModelType={String(finalGangCode).toUpperCase() === 'ALL' ? 'clientSide' : 'infinite'}
-          cacheBlockSize={INFINITE_BATCH_SIZE}
-          maxBlocksInCache={5}
-          blockLoadDebounceMillis={200}
-          getRowId={params => params.data?.id || params.data?.nik || params.data?.NIK || params.data?.no}
-          defaultColDef={baseCol}
-          rowClassRules={rowClassRules}
-          pinnedBottomRowData={pinnedBottom}
-          rowSelection={'multiple'}
-          rowBuffer={20}
-          suppressRowClickSelection={true}
-          onRangeSelectionChanged={onRangeSelectionChanged}
-          onCellClicked={onCellClicked}
-          animateRows={true}
-          rowHeight={32}
-          autoGroupHeaderHeight={true}
-          isFullWidthRow={(params) => params.rowNode.data && params.rowNode.data.isHeader}
-          fullWidthCellRenderer={GangHeaderRenderer}
-          onGridReady={params => {
-            if (String(finalGangCode).toUpperCase() !== 'ALL') {
-              const datasource = {
-                getRows: async rq => {
-                  const start = rq.startRow
-                  const end = rq.endRow
-                  const monthValue = typeof finalMonth === 'string' && finalMonth.includes('-') ? parseInt(finalMonth.split('-')[1], 10) : finalMonth
-                  const yearValue = typeof finalMonth === 'string' && finalMonth.includes('-') ? parseInt(finalMonth.split('-')[0], 10) : finalYear
+      {viewMode === 'table' ? (
+        <React.Fragment>
+          {(!loading && rows.length === 0 && finalGangCode && !error) ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-card)', border: '2px dashed var(--neutral-300)', borderRadius: '12px', margin: '20px', padding: '40px' }}>
+              <div style={{ fontSize: '4.5rem', marginBottom: '1rem', color: 'var(--neutral-400)' }}>📭</div>
+              <h3 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', fontWeight: '600', fontSize: '1.25rem' }}>Data Belum Tersedia</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.5' }}>
+                Data daftar upah untuk <strong>{(String(finalGangCode).toUpperCase() === 'ALL') ? 'Semua Group' : `Group ${finalGangCode}`}</strong> pada periode <strong>Bulan {activeMonth} Tahun {activeYear}</strong> belum bisa ditampilkan atau belum digenerate.
+              </p>
+            </div>
+          ) : (
+          <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
+            <AgGridReact
+              ref={gridRef}
+              context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory }}
+              columnDefs={columnDefs}
+              rowData={rows}
+              columnTypes={columnTypes}
+              rowModelType={String(finalGangCode).toUpperCase() === 'ALL' ? 'clientSide' : 'infinite'}
+              cacheBlockSize={INFINITE_BATCH_SIZE}
+              maxBlocksInCache={5}
+              blockLoadDebounceMillis={200}
+              getRowId={params => params.data?.id || params.data?.nik || params.data?.NIK || params.data?.no}
+              defaultColDef={baseCol}
+              rowClassRules={rowClassRules}
+              pinnedBottomRowData={pinnedBottom}
+              rowSelection={'multiple'}
+              rowBuffer={20}
+              suppressRowClickSelection={true}
+              onRangeSelectionChanged={onRangeSelectionChanged}
+              onCellClicked={onCellClicked}
+              animateRows={true}
+              rowHeight={32}
+              autoGroupHeaderHeight={true}
+              isFullWidthRow={(params) => params.rowNode.data && params.rowNode.data.isHeader}
+              fullWidthCellRenderer={GangHeaderRenderer}
+              onGridReady={params => {
+                if (String(finalGangCode).toUpperCase() !== 'ALL') {
+                  const datasource = {
+                    getRows: async rq => {
+                      const start = rq.startRow
+                      const end = rq.endRow
+                      const monthValue = typeof finalMonth === 'string' && finalMonth.includes('-') ? parseInt(finalMonth.split('-')[1], 10) : finalMonth
+                      const yearValue = typeof finalMonth === 'string' && finalMonth.includes('-') ? parseInt(finalMonth.split('-')[0], 10) : finalYear
 
-                  let batch = []
-                  if (start === 0 && initialRowsPreview && initialRowsPreview.length > 0) {
-                    batch = initialRowsPreview.slice(0, end - start)
-                  } else {
-                    const leafFields = []
-                    const walk = (c) => { if (c.children) c.children.forEach(walk); else if (c.field) leafFields.push(c.field) }
-                    columnDefs.forEach(walk)
+                      let batch = []
+                      if (start === 0 && initialRowsPreview && initialRowsPreview.length > 0) {
+                        batch = initialRowsPreview.slice(0, end - start)
+                      } else {
+                        const leafFields = []
+                        const walk = (c) => { if (c.children) c.children.forEach(walk); else if (c.field) leafFields.push(c.field) }
+                        columnDefs.forEach(walk)
 
-                    batch = await fetchReportRowsBatched(authToken, {
-                      month: (overrideMonth || monthValue),
-                      year: (overrideYear || yearValue),
-                      gang_code: finalGangCode,
-                      division: finalDivision,
-                      fields: leafFields,
-                      skip: start,
-                      limit: end - start
-                    })
+                        batch = await fetchReportRowsBatched(authToken, {
+                          month: (overrideMonth || monthValue),
+                          year: (overrideYear || yearValue),
+                          gang_code: finalGangCode,
+                          division: finalDivision,
+                          fields: leafFields,
+                          skip: start,
+                          limit: end - start
+                        })
+                      }
+
+                      if (batch && batch.length > 0) {
+                        const computed = applyComputeToRows(batch, computeRulesRef.current)
+                        const filtered = computed.filter(row => (row.jumlah_hk || 0) > 0)
+                        recomputeAutoHideMap(filtered)
+                        rq.successCallback(filtered, -1)
+                      } else {
+                        rq.successCallback([], 0)
+                      }
+                    }
                   }
-
-                  if (batch && batch.length > 0) {
-                    const computed = applyComputeToRows(batch, computeRulesRef.current)
-                    const filtered = computed.filter(row => (row.jumlah_hk || 0) > 0)
-                    recomputeAutoHideMap(filtered)
-                    rq.successCallback(filtered, -1)
-                  } else {
-                    rq.successCallback([], 0)
-                  }
+                  params.api.setDatasource(datasource)
                 }
-              }
-              params.api.setDatasource(datasource)
-            }
-          }}
-        />
-      </div>
+              }}
+            />
+          </div>
+          )}
 
-      {/* Save Button for NIK Edits */}
-      {Object.keys(pendingNikEdits).length > 0 && (
-        <div className="report-save-bar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '18px' }}>⚠️</span>
-            <span style={{ color: '#854d0e', fontWeight: '600' }}>
-              Pending: {Object.keys(pendingNikEdits).length} NIK telah diubah (Versioned Edit Mode)
-            </span>
-          </div>
-          <div className="report-save-bar-actions">
-            <button
-              className="btn btn-secondary"
-              onClick={() => { setPendingNikEdits({}); loadColumnDefinitions(); }}
-              disabled={isSavingNik}
-              style={{ backgroundColor: 'white' }}
-            >
-              Batal
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleSaveNikEdits}
-              disabled={isSavingNik}
-              style={{ backgroundColor: '#eab308', color: '#854d0e', borderColor: '#ca8a04' }}
-            >
-              {isSavingNik ? 'Menyimpan...' : '💾 SIMPAN PERUBAHAN NIK'}
-            </button>
-          </div>
-        </div>
+          {/* Save Button for NIK Edits */}
+          {Object.keys(pendingNikEdits).length > 0 && (
+            <div className="report-save-bar">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '18px' }}>⚠️</span>
+                <span style={{ color: '#854d0e', fontWeight: '600' }}>
+                  Pending: {Object.keys(pendingNikEdits).length} NIK telah diubah (Versioned Edit Mode)
+                </span>
+              </div>
+              <div className="report-save-bar-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => { setPendingNikEdits({}); loadColumnDefinitions(); }}
+                  disabled={isSavingNik}
+                  style={{ backgroundColor: 'white' }}
+                >
+                  Batal
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSaveNikEdits}
+                  disabled={isSavingNik}
+                  style={{ backgroundColor: '#eab308', color: '#854d0e', borderColor: '#ca8a04' }}
+                >
+                  {isSavingNik ? 'Menyimpan...' : '💾 SIMPAN PERUBAHAN NIK'}
+                </button>
+              </div>
+            </div>
+          )}
+        </React.Fragment>
+      ) : (
+        <GangAttendanceMatrix
+          token={authToken}
+          gangCodes={
+            String(finalGangCode).toUpperCase() === 'ALL'
+              ? (rows.length > 0
+                  ? [...new Set(rows.filter(r => r.gang_code && !r.isHeader && !r.isTotal).map(r => r.gang_code))]
+                  : (allGangs || []).map(g => g.gang_code))
+              : [finalGangCode]
+          }
+          month={activeMonth}
+          year={activeYear}
+          division={finalDivision}
+        />
       )}
 
       {/* History Modal for NIK */}

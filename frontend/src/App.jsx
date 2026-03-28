@@ -18,7 +18,7 @@ import PayslipPrintPage from './pages/PayslipPrintPage'
 
 // Report Pages
 import CustomPayrollTable from './components/CustomPayrollTable'
-import EmployeeDirectoryPage from './pages/EmployeeDirectoryPage'
+import EmployeeDirectoryPage from './pages/EmployeeDirectoryAnalytics'
 import SummaryReportPage from './pages/SummaryReportPage'
 import WagesSummaryRebinmasPage from './pages/WagesSummaryRebinmasPage'
 import WagesSummaryIJLPage from './pages/WagesSummaryIJLPage'

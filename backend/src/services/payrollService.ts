@@ -2,6 +2,7 @@ import { Database } from "../db/client";
 import { cacheService } from "./cacheService";
 import { Config } from "../config";
 import { calculateAllCaruman } from './carumanDefinitions';
+import { duplicateNikMitigationService } from './DuplicateNikMitigationService';
 
 export interface BPJSComponents {
     kesehatan_pekerja: number;
@@ -373,6 +374,53 @@ export class PayrollService {
             chunks.push(arr.slice(i, i + size));
         }
         return chunks;
+    }
+
+    // ============================================================================
+    // DUPLICATE NIK HANDLING (New Integration)
+    // ============================================================================
+
+    /**
+     * Resolve employee identity from NIK, handling duplicate NIK cases
+     * Returns the correct EmpCode and resolution info
+     */
+    public async resolveEmployeeFromNik(
+        nik: string,
+        options?: {
+            preferredGang?: string;
+            preferredDivision?: string;
+        }
+    ) {
+        return await duplicateNikMitigationService.resolveEmpCode(nik, options);
+    }
+
+    /**
+     * Get all EmpCodes associated with a NIK for comprehensive history queries
+     */
+    public async getAllEmpCodesForNik(nik: string) {
+        return await duplicateNikMitigationService.getAllEmpCodesForNik(nik);
+    }
+
+    /**
+     * Check if a NIK has duplicate entries
+     */
+    public async hasDuplicateNik(nik: string): Promise<boolean> {
+        return await duplicateNikMitigationService.hasDuplicate(nik);
+    }
+
+    /**
+     * Build payroll query that handles duplicate NIKs
+     * Returns { where: string, params: any[] } for SQL query
+     */
+    public async buildPayrollQueryFilter(nik: string) {
+        return await duplicateNikMitigationService.buildHistoryQueryFilter(nik);
+    }
+
+    /**
+     * Get duplicate NIK report specifically for payroll employees
+     */
+    public async getPayrollDuplicateReport() {
+        return await duplicateNikMitigationService.generateDuplicateReport();
     }
 }
 

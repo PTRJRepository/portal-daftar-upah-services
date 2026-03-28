@@ -102,7 +102,10 @@
       "Read(//d d:/Gawean Rebinmas/Monitoring Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/**)",
       "Read(//c/Users/nbgmf/AppData/Local/Temp/claude/d--Gawean-Rebinmas-Monitoring-Database-Plantware-Auto-Report-Daftar-Upahbaru-payroll-daftar-upah-refactor-production/tasks/**)",
       "Read(//c/Users/nbgmf/AppData/Local/Temp/claude/d--Gawean-Rebinmas-Monitoring-Database-Plantware-Auto-Report-Daftar-Upah baru-payroll-daftar-upah-refactor-production/tasks/**)",
-      "Read(//c/Users/nbgmf/AppData/Local/Temp/claude/**)"
+      "Read(//c/Users/nbgmf/AppData/Local/Temp/claude/**)",
+      "Bash(find 'D:\\\\Gawean Rebinmas\\\\PORTAL_ESTATE\\\\Plantware_Auto_Report\\\\Daftar_Upah_baru\\\\payroll_daftar_upah\\\\refactor_production/backend' -maxdepth 3 -type f \\\\\\(-name *.py -o -name *.json -o -name *.yaml -o -name *.yml \\\\\\))",
+      "Bash(find 'D:\\\\Gawean Rebinmas\\\\PORTAL_ESTATE\\\\Plantware_Auto_Report\\\\Daftar_Upah_baru\\\\payroll_daftar_upah\\\\refactor_production/frontend/src' -maxdepth 4 -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
+      "Bash(bun --bun tsc --noEmit)"
     ],
     "deny": [],
     "ask": [],

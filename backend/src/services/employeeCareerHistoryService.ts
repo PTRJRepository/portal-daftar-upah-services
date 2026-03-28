@@ -104,7 +104,7 @@ export class EmployeeCareerHistoryService {
                 return {
                     nik,
                     emp_name: liveRows[0].EmpName?.trim() || '',
-                    emp_codes,
+                    emp_codes: empCodes,
                     is_current_active: true
                 };
             }
@@ -143,7 +143,7 @@ export class EmployeeCareerHistoryService {
             return {
                 nik,
                 emp_name: historyRows[0].emp_name?.trim() || '',
-                emp_codes,
+                emp_codes: empCodes,
                 is_current_active: false
             };
         }

@@ -86,10 +86,43 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             limit: t.Optional(t.String())
         })
     })
+    // --- Get All Employees for Analytics (bypasses 500 limit) ---
+    .get("/list-all", async ({ query, currentUser }) => {
+        let division = query.division || undefined;
+        let gangCode = query.gang_code || undefined;
+        const religion = query.religion || undefined;
+        const status = query.status || undefined;
+
+        if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+            division = currentUser.divisions[0];
+        }
+
+        const employees = await employeeRepository.list({
+            gangCode: gangCode,
+            division: division,
+            religion: religion,
+            status: status,
+            skip: 0,
+            limit: 10000  // Large limit for analytics
+        });
+        return { count: employees.length, data: employees };
+    }, {
+        query: t.Object({
+            gang_code: t.Optional(t.String()),
+            division: t.Optional(t.String()),
+            religion: t.Optional(t.String()),
+            status: t.Optional(t.String())
+        })
+    })
+
     // --- Get Available Gangs ---
-    .get("/available-gangs", async () => {
-        const gangs = await employeeRepository.getAvailableGangs();
+    .get("/available-gangs", async ({ query }) => {
+        const gangs = await employeeRepository.getAvailableGangs(query.division);
         return { count: gangs.length, gangs };
+    }, {
+        query: t.Object({
+            division: t.Optional(t.String())
+        })
     })
     // --- Get Available Religions ---
     .get("/available-religions", async () => {
@@ -785,6 +818,98 @@ employeeRoutes
         }
     }, {
         params: t.Object({
+            month: t.String(),
+            year: t.String()
+        })
+    })
+    // ========================
+    // GANG ATTENDANCE MATRIX (uses extend_db_ptrj history data)
+    // ========================
+    .get("/gang-attendance-matrix", async ({ query, set }) => {
+        try {
+            const { gangAttendanceService } = await import("../services/gangAttendanceService");
+
+            const gangCodesRaw = query.gang_codes || "";
+            const gangCodes = gangCodesRaw.split(",").map((g: string) => g.trim()).filter(Boolean);
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+
+            if (gangCodes.length === 0) {
+                set.status = 400;
+                return { error: "No gang codes provided. Use gang_codes=A1H1,A1H2" };
+            }
+
+            if (isNaN(month) || isNaN(year) || month < 1 || month > 12) {
+                set.status = 400;
+                return { error: "Invalid month or year" };
+            }
+
+            const startTime = Date.now();
+            const results = await gangAttendanceService.getGangAttendanceMatrix(gangCodes, month, year);
+
+            return {
+                success: true,
+                data: results,
+                meta: {
+                    gang_count: results.length,
+                    total_employees: results.reduce((sum, r) => sum + r.employees.length, 0),
+                    execution_time_ms: Date.now() - startTime
+                }
+            };
+        } catch (e: any) {
+            console.error("[GangAttendanceMatrix] Error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            gang_codes: t.String(),
+            month: t.String(),
+            year: t.String()
+        })
+    })
+    // ========================
+    // GANG OVERTIME MATRIX (lembur per day per employee)
+    // ========================
+    .get("/gang-overtime-matrix", async ({ query, set }) => {
+        try {
+            const { gangAttendanceService } = await import("../services/gangAttendanceService");
+
+            const gangCodesRaw = query.gang_codes || "";
+            const gangCodes = gangCodesRaw.split(",").map((g: string) => g.trim()).filter(Boolean);
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+
+            if (gangCodes.length === 0) {
+                set.status = 400;
+                return { error: "No gang codes provided. Use gang_codes=A1H1,A1H2" };
+            }
+
+            if (isNaN(month) || isNaN(year) || month < 1 || month > 12) {
+                set.status = 400;
+                return { error: "Invalid month or year" };
+            }
+
+            const startTime = Date.now();
+            const results = await gangAttendanceService.getGangOvertimeMatrix(gangCodes, month, year);
+
+            return {
+                success: true,
+                data: results,
+                meta: {
+                    gang_count: results.length,
+                    total_employees: results.reduce((sum, r) => sum + r.employees.length, 0),
+                    execution_time_ms: Date.now() - startTime
+                }
+            };
+        } catch (e: any) {
+            console.error("[GangOvertimeMatrix] Error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            gang_codes: t.String(),
             month: t.String(),
             year: t.String()
         })

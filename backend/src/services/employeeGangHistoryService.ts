@@ -1,4 +1,5 @@
 import { Database } from "../db/client";
+import { duplicateNikMitigationService, NikResolutionResult, NikEmpCodeMap } from "./DuplicateNikMitigationService";
 
 export interface EmployeeHistoryEntry {
     emp_code: string;
@@ -9,6 +10,11 @@ export interface EmployeeHistoryEntry {
     period_month: number;
     period_year: number;
     join_date?: string;
+}
+
+export interface EmployeeGangHistoryWithResolution extends EmployeeHistoryEntry {
+    resolution_info?: NikResolutionResult;
+    is_duplicate_nik: boolean;
 }
 
 export class EmployeeGangHistoryService {
@@ -29,20 +35,24 @@ export class EmployeeGangHistoryService {
     }
 
     /**
+     * Get the DuplicateNikMitigationService instance
+     * Used for advanced duplicate NIK handling
+     */
+    public getMitigationService() {
+        return duplicateNikMitigationService;
+    }
+
+    /**
      * Finds the latest EmpCode for a given NIK (NewICNo) from the live HR system.
      * This is the most reliable way to get the current active code.
+     * 
+     * Now uses DuplicateNikMitigationService for better handling of duplicate NIKs
      */
     public async getLatestEmpCodeByNik(nik: string): Promise<string | null> {
         try {
-            const rows = await this.db.query<{ EmpCode: string }>(`
-                SELECT TOP 1 RTRIM(e.EmpCode) as EmpCode
-                FROM HR_EMPLOYEE e
-                LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
-                WHERE RTRIM(e.NewICNo) = ? OR RTRIM(e.EmpCode) = ?
-                ORDER BY em.AppJoinDate DESC, e.EmpCode DESC
-            `, [nik.trim(), nik.trim()]);
-
-            return rows[0]?.EmpCode || null;
+            // Use mitigation service for better duplicate handling
+            const resolution = await duplicateNikMitigationService.resolveEmpCode(nik);
+            return resolution.resolved_emp_code;
         } catch (e) {
             console.error(`[EmployeeGangHistoryService] Error getting latest emp code for ${nik}:`, e);
             return null;
@@ -106,19 +116,25 @@ export class EmployeeGangHistoryService {
     }
 
     /**
-     * Gets the gang history for a specific person (by NIK or EmpCode) 
+     * Gets the gang history for a specific person (by NIK or EmpCode)
      * from the historical tables.
+     * 
+     * Enhanced with duplicate NIK handling - will find all records for all EmpCodes
+     * associated with the same NIK
      */
     public async getGangHistory(identifier: string): Promise<EmployeeHistoryEntry[]> {
         try {
+            // Use mitigation service to handle duplicate NIKs
+            const filter = await duplicateNikMitigationService.buildHistoryQueryFilter(identifier);
+            
             const rows = await this.extendDb.query<EmployeeHistoryEntry>(`
-                SELECT 
-                    emp_code, nik, emp_name, gang_code, division_code, 
+                SELECT DISTINCT
+                    emp_code, nik, emp_name, gang_code, division_code,
                     period_month, period_year, join_date
                 FROM dbo.history_gang_member
-                WHERE RTRIM(nik) = ? OR RTRIM(emp_code) = ?
+                WHERE ${filter.where}
                 ORDER BY period_year DESC, period_month DESC
-            `, [identifier.trim(), identifier.trim()]);
+            `, filter.params);
 
             return rows;
         } catch (e) {
@@ -136,16 +152,15 @@ export class EmployeeGangHistoryService {
     }
     /**
      * Finds all EmpCodes ever used by a person, identified by their NIK (NewICNo).
+     * 
+     * Enhanced with duplicate NIK mitigation - returns all EmpCodes for all employees
+     * sharing the same NIK
      */
     public async getAllEmpCodesByNik(nik: string): Promise<string[]> {
         try {
-            const rows = await this.db.query<{ EmpCode: string }>(`
-                SELECT DISTINCT RTRIM(EmpCode) as EmpCode
-                FROM HR_EMPLOYEE
-                WHERE RTRIM(NewICNo) = ? OR RTRIM(EmpCode) = ?
-            `, [nik.trim(), nik.trim()]);
-
-            return rows.map(r => r.EmpCode);
+            // Use mitigation service for comprehensive EmpCode list
+            const empCodeMap = await duplicateNikMitigationService.getAllEmpCodesForNik(nik);
+            return empCodeMap.emp_codes;
         } catch (e) {
             console.error(`[EmployeeGangHistoryService] Error getting all emp codes for ${nik}:`, e);
             return [];
@@ -155,20 +170,29 @@ export class EmployeeGangHistoryService {
     /**
      * Gets the current "Official" EmpCode and Gang for a person.
      * Checks HR_EMPLOYMENT for the latest active record.
+     * 
+     * Enhanced with duplicate NIK handling and resolution info
      */
     public async getCurrentOfficialInfo(nik: string): Promise<{ emp_code: string; gang_code: string; division_code: string } | null> {
         try {
+            // Use mitigation service for better resolution
+            const resolution = await duplicateNikMitigationService.resolveEmpCode(nik);
+            
+            if (!resolution.resolved_emp_code) {
+                return null;
+            }
+
             const rows = await this.db.query<any>(`
-                SELECT TOP 1 
-                    RTRIM(e.EmpCode) as emp_code, 
+                SELECT TOP 1
+                    RTRIM(e.EmpCode) as emp_code,
                     RTRIM(gl.GangCode) as gang_code,
                     RTRIM(e.LocCode) as division_code
                 FROM HR_EMPLOYEE e
-                LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
-                LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
-                WHERE RTRIM(e.NewICNo) = ? OR RTRIM(e.EmpCode) = ?
-                ORDER BY em.AppJoinDate DESC, e.EmpCode DESC
-            `, [nik.trim(), nik.trim()]);
+                LEFT JOIN HR_EMPLOYMENT em ON RTRIM(e.EmpCode) = RTRIM(em.EmpCode)
+                LEFT JOIN HR_GANGLN gl ON RTRIM(e.EmpCode) = RTRIM(gl.GangMember)
+                WHERE RTRIM(e.EmpCode) = ?
+                ORDER BY em.AppJoinDate DESC
+            `, [resolution.resolved_emp_code]);
 
             if (rows.length === 0) return null;
             return {
@@ -179,6 +203,45 @@ export class EmployeeGangHistoryService {
         } catch (e) {
             return null;
         }
+    }
+
+    /**
+     * NEW: Get gang history with resolution info for duplicate NIK handling
+     * 
+     * Returns history entries with metadata about how the NIK was resolved
+     */
+    public async getGangHistoryWithResolution(identifier: string): Promise<EmployeeGangHistoryWithResolution[]> {
+        try {
+            // First, resolve the NIK
+            const resolution = await duplicateNikMitigationService.resolveEmpCode(identifier);
+            
+            // Get all history entries
+            const history = await this.getGangHistory(identifier);
+            
+            // Add resolution info to each entry
+            return history.map(entry => ({
+                ...entry,
+                resolution_info: resolution,
+                is_duplicate_nik: resolution.all_emp_codes.length > 1
+            }));
+        } catch (e) {
+            console.error(`[EmployeeGangHistoryService] Error getting gang history with resolution for ${identifier}:`, e);
+            return [];
+        }
+    }
+
+    /**
+     * NEW: Check if an identifier has duplicate NIK issues
+     */
+    public async hasDuplicateNik(identifier: string): Promise<boolean> {
+        return await duplicateNikMitigationService.hasDuplicate(identifier);
+    }
+
+    /**
+     * NEW: Get duplicate NIK report
+     */
+    public async getDuplicateNikReport() {
+        return await duplicateNikMitigationService.generateDuplicateReport();
     }
 }
 

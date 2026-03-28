@@ -21,6 +21,9 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const [filterReligion, setFilterReligion] = useState('ALL');
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
     const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
+    const [gangMembers, setGangMembers] = useState([]);
+    const [gangMembersLoading, setGangMembersLoading] = useState(false);
+    const [gangMembersSummary, setGangMembersSummary] = useState(null);
     const [blacklistData, setBlacklistData] = useState([]);
     const [printOrientation, setPrintOrientation] = useState('portrait');
     const [previewType, setPreviewType] = useState('MAIN');
@@ -55,6 +58,46 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             }
         } catch (e) { alert('Gagal memulihkan.'); }
     };
+
+    // EMP-CODE BASIS: Fetch gang members from history_gang_member for the selected period
+    // Auto-fetches whenever period/division/gang changes
+    const fetchGangMembers = useCallback(async () => {
+        if (!division || !month || !year) return;
+        setGangMembersLoading(true);
+        try {
+            const result = await otherIncomesService.getGangMembers(month, year, gang, division);
+            if (result && Array.isArray(result.gangs)) {
+                setGangMembers(result.gangs);
+                setGangMembersSummary(result.summary);
+            } else {
+                // Fallback: try without division
+                try {
+                    const fallback = await otherIncomesService.getGangMembers(month, year, gang, null);
+                    if (fallback && Array.isArray(fallback.gangs)) {
+                        setGangMembers(fallback.gangs);
+                        setGangMembersSummary(fallback.summary);
+                    } else {
+                        setGangMembers([]);
+                        setGangMembersSummary(null);
+                    }
+                } catch {
+                    setGangMembers([]);
+                    setGangMembersSummary(null);
+                }
+            }
+        } catch (e) {
+            console.error('[OtherIncomes] Error fetching gang members:', e);
+            setGangMembers([]);
+            setGangMembersSummary(null);
+        } finally {
+            setGangMembersLoading(false);
+        }
+    }, [month, year, division, gang]);
+
+    // Auto-fetch gang members whenever period/division/gang changes
+    useEffect(() => {
+        fetchGangMembers();
+    }, [fetchGangMembers]);
 
     const getAsistensi = useCallback((gangCode) => {
         if (!gangCode) return "1";
@@ -642,7 +685,94 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                         <button onClick={() => openPreview('BANK')} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}><Printer size={16} /> Bank List</button>
                     </div>
                 </div>
-                <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+                <div style={{ flex: 1, position: 'relative', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                    {/* EMP-CODE BASIS: Gang Member Panel from history_gang_member - always visible */}
+                    <div style={{ maxHeight: gangMembers.length === 0 ? '80px' : '320px', overflowY: 'auto', borderBottom: '2px solid #7c3aed', background: '#faf5ff', flexShrink: 0 }}>
+                        <div style={{ padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: gangMembers.length > 0 ? '1px solid #ede9fe' : 'none', background: '#f5f3ff', position: gangMembers.length > 0 ? 'sticky' : 'static', top: 0, zIndex: 5 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <span style={{ fontWeight: '700', fontSize: '0.8rem', color: '#6d28d9' }}>👥 Member Gang</span>
+                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                    ({getMonthName(month)} {year})
+                                    {gangMembersSummary ? ` · ${gangMembersSummary.total_members} karyawan · ${gangMembersSummary.total_gangs} gang` : ''}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <button onClick={fetchGangMembers} disabled={gangMembersLoading}
+                                    style={{ background: 'none', border: '1px solid #c4b5fd', cursor: gangMembersLoading ? 'wait' : 'pointer', color: '#7c3aed', fontSize: '0.75rem', fontWeight: '600', padding: '3px 10px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <RefreshCw size={11} className={gangMembersLoading ? 'spin' : ''} />
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        {gangMembersLoading ? (
+                            <div style={{ padding: '0.75rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem' }}>Memuat member gang...</div>
+                        ) : gangMembers.length === 0 ? (
+                            <div style={{ padding: '0.5rem 0.75rem', color: '#94a3b8', fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>⚠️ Tidak ada data gang history. Pastikan data aggregation sudah di-seed untuk periode ini.</span>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', padding: '0.5rem' }}>
+                                {gangMembers.map(gangGroup => (
+                                    <div key={gangGroup.gang_code} style={{
+                                        background: gang === gangGroup.gang_code ? '#ede9fe' : 'white',
+                                        border: `1px solid ${gang === gangGroup.gang_code ? '#7c3aed' : '#e2e8f0'}`,
+                                        borderRadius: '8px', padding: '0.5rem', minWidth: '210px', maxWidth: '250px', flexShrink: 0,
+                                        cursor: gang === gangGroup.gang_code ? 'default' : 'pointer',
+                                        boxShadow: gang === gangGroup.gang_code ? '0 2px 8px rgba(124,58,237,0.15)' : 'none',
+                                        transition: 'all 0.15s'
+                                    }}
+                                        onClick={() => setGang(gangGroup.gang_code)}
+                                        onMouseOver={e => { if (gang !== gangGroup.gang_code) { e.currentTarget.style.borderColor = '#a78bfa'; e.currentTarget.style.background = '#f5f3ff'; } }}
+                                        onMouseOut={e => { if (gang !== gangGroup.gang_code) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = 'white'; } }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                                            <span style={{ fontWeight: '700', fontSize: '0.85rem', color: '#6d28d9' }}>{gangGroup.gang_code}</span>
+                                            <span style={{
+                                                background: gang === gangGroup.gang_code ? '#7c3aed' : '#f1f5f9',
+                                                color: gang === gangGroup.gang_code ? 'white' : '#64748b',
+                                                fontWeight: '700', fontSize: '0.7rem', padding: '1px 8px', borderRadius: '10px'
+                                            }}>
+                                                {gangGroup.member_count}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: gangMembers.length > 5 ? '200px' : '240px', overflowY: 'auto' }}>
+                                            {gangGroup.members.map((m, idx) => (
+                                                <div key={`${m.emp_code}-${idx}`} style={{
+                                                    padding: '3px 5px', borderRadius: '4px', fontSize: '0.68rem',
+                                                    background: '#f8fafc', border: '1px solid #f1f5f9',
+                                                    display: 'flex', flexDirection: 'column', gap: '1px'
+                                                }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span style={{ fontWeight: '600', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, maxWidth: '140px' }} title={m.emp_name}>{m.emp_name}</span>
+                                                        <span style={{
+                                                            background: m.sex === 'P' ? '#fce7f3' : '#dbeafe',
+                                                            color: m.sex === 'P' ? '#9d174d' : '#1e40af',
+                                                            fontWeight: '700', fontSize: '0.6rem', padding: '0px 4px', borderRadius: '4px', flexShrink: 0, marginLeft: '2px'
+                                                        }}>{m.sex}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#94a3b8', fontSize: '0.62rem' }}>
+                                                        <span style={{ fontFamily: 'monospace', color: '#1e40af', fontWeight: '600', fontSize: '0.6rem' }}>{m.emp_code}</span>
+                                                        <span style={{ fontSize: '0.6rem' }}>{(m.religion || '').replace(/^\d+\s+/, '')}</span>
+                                                    </div>
+                                                    {m.bank_acc_no && m.bank_acc_no !== '0' && (
+                                                        <div style={{ fontSize: '0.6rem', color: '#16a34a', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`Bank: ${m.bank_code || 'BRI'} | ${m.bank_acc_no}`}>
+                                                            💳 {m.bank_acc_no}
+                                                        </div>
+                                                    )}
+                                                    {m.join_date && (
+                                                        <div style={{ fontSize: '0.6rem', color: '#f59e0b' }}>📅 {m.join_date}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     {(loading || isCalculating || isSaving) && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.7)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.5rem' }}><RefreshCw className="spin" size={32} /><span style={{ fontSize: '0.85rem', color: '#555' }}>{isCalculating ? 'Sedang kalkulasi THR...' : isSaving ? 'Menyimpan...' : 'Memuat data...'}</span></div>}
                     {!loading && !isCalculating && displayData.length === 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px', color: '#888' }}>

@@ -255,6 +255,24 @@ export const otherIncomesService = {
         }
     },
 
+    // EMP-CODE BASIS: Get gang members from history_gang_member for THR display
+    getGangMembers: async (month, year, gangCode, divisionCode) => {
+        try {
+            const params = new URLSearchParams({
+                month: month.toString(),
+                year: year.toString()
+            });
+            if (gangCode && gangCode !== 'ALL') params.append('gang_code', gangCode);
+            if (divisionCode && divisionCode !== 'ALL') params.append('division_code', divisionCode);
+
+            const response = await api.get(`/other-incomes/gang-members?${params.toString()}`);
+            return response.data || [];
+        } catch (error) {
+            console.error('Error fetching gang members:', error);
+            throw error;
+        }
+    },
+
     exportTHRExcel: async (year, month, divisionCode, gangCode) => {
         try {
             const params = new URLSearchParams({

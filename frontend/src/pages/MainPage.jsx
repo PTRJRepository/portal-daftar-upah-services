@@ -13,11 +13,16 @@ import WagesSummaryIJLPage from './WagesSummaryIJLPage'
 import AnalysisReportPage from './AnalysisReportPage'
 import AggregationSeederPage from './AggregationSeederPage'
 import PayrollAnalysisPage from './PayrollAnalysisPage'
+import GangAttendanceMatrix from '../components/GangAttendanceMatrix'
+import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
 
 // Check if running in dev/test mode (admin mode)
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
+
+const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
 export default function MainPage({ lockedDiv = null }) {
   const { user, token, logout, lockedDivision } = useAuth()
@@ -96,6 +101,9 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Period Slider Mode State (enabled by default)
   const [usePeriodSlider, setUsePeriodSlider] = useState(true)
+
+  // Matrix View State
+  const [activeMatrixView, setActiveMatrixView] = useState(null) // null | 'attendance' | 'overtime'
 
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
@@ -299,7 +307,15 @@ export default function MainPage({ lockedDiv = null }) {
     setGang('ALL') // Default to ALL for operational
     setGangPrefix('') // Reset Asistensi filter
     setGangs([]) // Clear gangs list
+    setActiveMatrixView(null) // Reset matrix view when division changes
   }
+
+  // Reset matrix view when gang changes
+  useEffect(() => {
+    if (gang) {
+      setActiveMatrixView(null)
+    }
+  }, [gang])
 
   // Filter gang list by current asistensi prefix
   const filteredGangs = useMemo(() => {
@@ -707,7 +723,16 @@ export default function MainPage({ lockedDiv = null }) {
                         boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                       }}
                       value={gang}
-                      onChange={e => setGang(e.target.value)}
+                      onChange={e => {
+                        const selectedGang = e.target.value;
+                        setGang(selectedGang);
+
+                        // If selecting a specific gang (not ALL), auto-update gangPrefix to match
+                        if (selectedGang !== 'ALL') {
+                          const groupOfGang = getAsistensi(selectedGang);
+                          setGangPrefix(groupOfGang || '');
+                        }
+                      }}
                       disabled={gangLoading}
                       onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
                       onBlur={(e) => { e.target.style.borderColor = gang === 'ALL' ? '#86efac' : '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
@@ -789,6 +814,154 @@ export default function MainPage({ lockedDiv = null }) {
                   {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DATA UPAH'}
                 </button>
               </div>
+
+              {/* Matrix Cards Section - Appears after filter when division+gang selected */}
+              {division && gang && !gangLoading && gangs.length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gap: '1.5rem',
+                  marginBottom: '2.5rem'
+                }}>
+                  {/* Attendance Matrix Card */}
+                  <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    padding: '1.75rem',
+                    border: '1px solid #cbd5e1',
+                    borderTop: '5px solid #10b981',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.07)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    transition: 'all 0.3s ease',
+                    cursor: 'pointer'
+                  }}
+                    onClick={() => setActiveMatrixView(activeMatrixView === 'attendance' ? null : 'attendance')}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 20px -4px rgba(16, 185, 129, 0.2)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.07)' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{
+                        width: '48px', height: '48px',
+                        background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
+                        borderRadius: '10px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '1.5rem'
+                      }}>
+                        📅
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+                          Matrix Absensi
+                        </h3>
+                        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '2px 0 0' }}>
+                          {gang === 'ALL' ? `${gangs.length} gang` : gang} • {MONTHS[month - 1]} {year}
+                        </p>
+                      </div>
+                      <div style={{ marginLeft: 'auto' }}>
+                        <span style={{
+                          fontSize: '0.65rem',
+                          fontWeight: '700',
+                          background: activeMatrixView === 'attendance' ? '#059669' : '#10b981',
+                          color: 'white',
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em'
+                        }}>
+                          {activeMatrixView === 'attendance' ? '● AKTIF' : 'LIHAT'}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {['H Hadir', 'C Cuti', 'S Sakit', 'M Minggu', 'N Libur', 'A Alpa'].map(s => (
+                        <span key={s} style={{
+                          fontSize: '0.7rem', fontWeight: '600',
+                          background: '#f8fafc', color: '#475569',
+                          padding: '2px 8px', borderRadius: '6px',
+                          border: '1px solid #e2e8f0'
+                        }}>{s}</span>
+                      ))}
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem', color: '#64748b',
+                      borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem'
+                    }}>
+                      Klik untuk melihat matrix kehadiran harian per karyawan
+                    </div>
+                  </div>
+
+                  {/* Overtime Matrix Card */}
+                  <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    padding: '1.75rem',
+                    border: '1px solid #cbd5e1',
+                    borderTop: '5px solid #f59e0b',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.07)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    transition: 'all 0.3s ease',
+                    cursor: 'pointer'
+                  }}
+                    onClick={() => setActiveMatrixView(activeMatrixView === 'overtime' ? null : 'overtime')}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 20px -4px rgba(245, 158, 11, 0.2)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.07)' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{
+                        width: '48px', height: '48px',
+                        background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+                        borderRadius: '10px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '1.5rem'
+                      }}>
+                        ⏰
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+                          Matrix Lembur
+                        </h3>
+                        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '2px 0 0' }}>
+                          {gang === 'ALL' ? `${gangs.length} gang` : gang} • {MONTHS[month - 1]} {year}
+                        </p>
+                      </div>
+                      <div style={{ marginLeft: 'auto' }}>
+                        <span style={{
+                          fontSize: '0.65rem',
+                          fontWeight: '700',
+                          background: activeMatrixView === 'overtime' ? '#d97706' : '#f59e0b',
+                          color: 'white',
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em'
+                        }}>
+                          {activeMatrixView === 'overtime' ? '● AKTIF' : 'LIHAT'}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {['OT=1', 'Hari Kerja', 'Minggu', 'Libur'].map(s => (
+                        <span key={s} style={{
+                          fontSize: '0.7rem', fontWeight: '600',
+                          background: '#fffbeb', color: '#92400e',
+                          padding: '2px 8px', borderRadius: '6px',
+                          border: '1px solid #fde68a'
+                        }}>{s}</span>
+                      ))}
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem', color: '#64748b',
+                      borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem'
+                    }}>
+                      Klik untuk melihat matrix jam lembur harian per karyawan
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Secondary Reports Card */}
               {canAccessReports && (
@@ -1255,23 +1428,47 @@ export default function MainPage({ lockedDiv = null }) {
       <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'auto' }}>
         {division && gang ? (
           <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CustomPayrollTable
-              token={token}
-              month={month}
-              year={year}
-              division={division}
-              gangCode={gang}
-              gangPrefix={gangPrefix}
-              onViewEmployeeDetail={handleViewEmployeeDetail}
-              fontSize={fontSize}
-              onExportReady={(handler) => setExportHandler(() => handler)}
-              refreshTrigger={refreshTrigger}
-              selectedEmployees={selectedEmployees}
-              onToggleEmployeeSelection={handleToggleEmployeeSelection}
-              onSelectAllEmployees={handleSelectAllEmployees}
-              isEditMode={isEditMode}
-              useHistoryDb={isHistorical}
-            />
+            {/* Show matrix views when active */}
+            {activeMatrixView === 'attendance' && (
+              <div style={{ width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', display: 'flex', flexDirection: 'column' }}>
+                <GangAttendanceMatrix
+                  token={token}
+                  gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
+                  month={month}
+                  year={year}
+                />
+              </div>
+            )}
+            {activeMatrixView === 'overtime' && (
+              <div style={{ width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', display: 'flex', flexDirection: 'column' }}>
+                <GangOvertimeMatrix
+                  token={token}
+                  gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
+                  month={month}
+                  year={year}
+                />
+              </div>
+            )}
+            {/* Show payroll table when no matrix is active */}
+            {activeMatrixView === null && (
+              <CustomPayrollTable
+                token={token}
+                month={month}
+                year={year}
+                division={division}
+                gangCode={gang}
+                gangPrefix={gangPrefix}
+                onViewEmployeeDetail={handleViewEmployeeDetail}
+                fontSize={fontSize}
+                onExportReady={(handler) => setExportHandler(() => handler)}
+                refreshTrigger={refreshTrigger}
+                selectedEmployees={selectedEmployees}
+                onToggleEmployeeSelection={handleToggleEmployeeSelection}
+                onSelectAllEmployees={handleSelectAllEmployees}
+                isEditMode={isEditMode}
+                useHistoryDb={isHistorical}
+              />
+            )}
           </div>
         ) : (
           <div className="flex-center h-full flex-col text-neutral-400">

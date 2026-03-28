@@ -25,6 +25,8 @@ export interface Employee {
     religion?: string;
     status?: string;
     employee_type?: string;
+    birth_date?: string; // DOB from HR_EMPLOYEE
+    join_date?: string;  // AppJoinGrpDate from HR_EMPLOYEE
 }
 
 // Division to GangCode prefix mapping
@@ -90,10 +92,10 @@ export class EmployeeRepository {
                     params = prefixes.map(p => p + "%");
                 }
 
-                const placeholders = params.map((_, i) => `?`).join(", ");
                 const sql = `
                     SELECT DISTINCT
                         e.EmpCode AS nik,
+                        e.NewICNo AS actual_nik,
                         e.EmpName AS nama,
                         e.Gender AS jenis_kelamin,
                         e.LocCode AS loc_code,
@@ -101,7 +103,9 @@ export class EmployeeRepository {
                         p.PayRate as upah_dasar,
                         e.Religion AS religion,
                         e.Status AS status,
-                        e.HREmpType AS employee_type
+                        e.HREmpType AS employee_type,
+                        CONVERT(VARCHAR, e.DOB, 23) AS birth_date,
+                        CONVERT(VARCHAR, e.AppJoinGrpDate, 23) AS join_date
                     FROM HR_EMPLOYEE e
                     JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                     LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
@@ -112,6 +116,7 @@ export class EmployeeRepository {
                 const rows = await this.db.query<any>(sql, params);
                 employees = rows.map((r: any) => ({
                     nik: r.nik?.trim() || "",
+                    actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
                     nama: r.nama?.trim() || "",
                     jenis_kelamin: mapGender(r.jenis_kelamin),
                     loc_code: r.loc_code?.trim() || "",
@@ -119,13 +124,16 @@ export class EmployeeRepository {
                     upah_dasar: r.upah_dasar || 0,
                     religion: r.religion?.trim() || "",
                     status: r.status?.trim() || "",
-                    employee_type: r.employee_type?.trim() || ""
+                    employee_type: r.employee_type?.trim() || "",
+                    birth_date: r.birth_date || undefined,
+                    join_date: r.join_date || undefined
                 }));
             } else {
                 // Specific gang
                 const rows = await this.db.query<any>(`
                     SELECT DISTINCT
                         e.EmpCode AS nik,
+                        e.NewICNo AS actual_nik,
                         e.EmpName AS nama,
                         e.Gender AS jenis_kelamin,
                         e.LocCode AS loc_code,
@@ -133,7 +141,9 @@ export class EmployeeRepository {
                         p.PayRate as upah_dasar,
                         e.Religion AS religion,
                         e.Status AS status,
-                        e.HREmpType AS employee_type
+                        e.HREmpType AS employee_type,
+                        CONVERT(VARCHAR, e.DOB, 23) AS birth_date,
+                        CONVERT(VARCHAR, e.AppJoinGrpDate, 23) AS join_date
                     FROM HR_EMPLOYEE e
                     JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                     LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
@@ -143,6 +153,7 @@ export class EmployeeRepository {
 
                 employees = rows.map((r: any) => ({
                     nik: r.nik?.trim() || "",
+                    actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
                     nama: r.nama?.trim() || "",
                     jenis_kelamin: mapGender(r.jenis_kelamin),
                     loc_code: r.loc_code?.trim() || "",
@@ -150,7 +161,9 @@ export class EmployeeRepository {
                     upah_dasar: r.upah_dasar || 0,
                     religion: r.religion?.trim() || "",
                     status: r.status?.trim() || "",
-                    employee_type: r.employee_type?.trim() || ""
+                    employee_type: r.employee_type?.trim() || "",
+                    birth_date: r.birth_date || undefined,
+                    join_date: r.join_date || undefined
                 }));
             }
 
@@ -213,19 +226,31 @@ export class EmployeeRepository {
     }
 
     /**
-     * Get available gang codes
+     * Get available gang codes, optionally filtered by division prefix
      */
-    public async getAvailableGangs(): Promise<string[]> {
-        const cacheKey = "available_gangs";
+    public async getAvailableGangs(division?: string): Promise<string[]> {
+        const cacheKey = division ? `available_gangs_${division}` : "available_gangs_all";
         const cached = cacheService.get<string[]>(cacheKey);
         if (cached) return cached;
 
         try {
-            const rows = await this.db.query<{ GangCode: string }>(`
-                SELECT DISTINCT GangCode FROM HR_GANGLN
-                WHERE GangCode IS NOT NULL AND GangCode != ''
-                ORDER BY GangCode
-            `);
+            let sql = `
+                SELECT DISTINCT g.GangCode FROM HR_GANGLN g
+                JOIN HR_EMPLOYEE e ON e.EmpCode = g.GangMember
+                WHERE g.GangCode IS NOT NULL AND g.GangCode != ''
+            `;
+            const params: any[] = [];
+
+            if (division && DIVISION_PREFIX_MAP[division]) {
+                const prefixes = DIVISION_PREFIX_MAP[division];
+                const conditions = prefixes.map((p) => `UPPER(g.GangCode) LIKE ?`);
+                sql += ` AND (${conditions.join(" OR ")})`;
+                params.push(...prefixes.map(p => p + "%"));
+            }
+
+            sql += ` ORDER BY g.GangCode`;
+
+            const rows = await this.db.query<{ GangCode: string }>(sql, params);
             const gangs = rows.map(r => r.GangCode?.trim()).filter(Boolean) as string[];
             cacheService.set(cacheKey, gangs, 300);
             return gangs;
@@ -277,9 +302,13 @@ export class EmployeeRepository {
                     g.GangCode AS gang_code,
                     e.Religion AS religion,
                     e.Status AS status,
-                    e.HREmpType AS employee_type
+                    e.HREmpType AS employee_type,
+                    p.PayRate as upah_dasar,
+                    CONVERT(VARCHAR, e.DOB, 23) AS birth_date,
+                    CONVERT(VARCHAR, e.AppJoinGrpDate, 23) AS join_date
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+                LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
                 WHERE ${whereClause}
                 ORDER BY e.EmpName
             `;
@@ -294,7 +323,10 @@ export class EmployeeRepository {
                 gang_code: r.gang_code?.trim() || "",
                 religion: r.religion?.trim() || "",
                 status: r.status?.trim() || "",
-                employee_type: r.employee_type?.trim() || ""
+                employee_type: r.employee_type?.trim() || "",
+                upah_dasar: r.upah_dasar || 0,
+                birth_date: r.birth_date || undefined,
+                join_date: r.join_date || undefined
             }));
         } catch (e) {
             console.error("[EmployeeRepository] search failed:", e);

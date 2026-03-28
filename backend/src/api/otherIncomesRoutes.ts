@@ -213,6 +213,34 @@ export const otherIncomesRoutes = new Elysia({ prefix: "/other-incomes" })
         }
     })
 
+    // --- Get gang members from history_gang_member (for display in THR page) ---
+    .get("/gang-members", async ({ query }) => {
+        try {
+            const { gang_code, month, year, division_code } = query as any;
+            if (!month || !year) {
+                return { success: false, error: "Month and year are required" };
+            }
+
+            const members = await OtherIncomesService.getGangMembersFromHistory(
+                parseInt(month),
+                parseInt(year),
+                gang_code,
+                division_code
+            );
+            return { success: true, data: members };
+        } catch (error: any) {
+            logError("OtherIncomesAPI", "Failed to fetch gang members", error);
+            return { success: false, error: error.message };
+        }
+    }, {
+        query: t.Object({
+            gang_code: t.Optional(t.String()),
+            division_code: t.Optional(t.String()),
+            month: t.String(),
+            year: t.String()
+        })
+    })
+
     .get("/export", async ({ query, set }) => {
         try {
             const { year, month, divisionCode, gangCode, incomeType } = query as any;

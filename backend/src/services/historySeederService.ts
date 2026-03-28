@@ -16,6 +16,7 @@ import { gangService } from "./gangService";
 import { PayrollDataService } from "./payrollDataService";
 import { employeeHrDataService } from "./employeeHrDataService";
 import { employeeGangHistoryService } from "./employeeGangHistoryService";
+import { duplicateNikMitigationService } from "./DuplicateNikMitigationService";
 
 export interface SeederResult {
     success: boolean;
@@ -280,14 +281,11 @@ export class HistorySeederService {
         const masterId = await historyDatabaseService.savePayrollHistoryMaster(masterData);
         result.records_inserted.master++;
 
-        // Create detail records
+        // Create detail records - with duplicate NIK handling
         for (const emp of employees) {
-            const detailData = this.mapEmployeeToDetail(historyId, masterId, emp);
-            await historyDatabaseService.savePayrollHistoryDetail(detailData);
-            result.records_inserted.detail++;
+            // Use new method that handles duplicate NIKs
+            await this.handleDuplicateNikSeeding(historyId, masterId, emp, options, result);
         }
-
-        result.total_employees += employees.length;
     }
 
     /**
@@ -443,6 +441,51 @@ export class HistorySeederService {
             }
         }
         return Object.keys(potonganData).length > 0 ? JSON.stringify(potonganData) : undefined;
+    }
+
+    /**
+     * NEW: Handle duplicate NIK when seeding history
+     * Ensures all EmpCodes for a duplicate NIK are included in history
+     */
+    private async handleDuplicateNikSeeding(
+        historyId: string,
+        masterId: number,
+        emp: any,
+        options: SeederOptions,
+        result: SeederResult
+    ): Promise<void> {
+        const nik = emp.nik;
+        
+        // Check if this NIK has duplicates
+        const hasDuplicate = await duplicateNikMitigationService.hasDuplicate(nik);
+        
+        if (hasDuplicate) {
+            // Get all EmpCodes for this NIK
+            const empCodeMap = await duplicateNikMitigationService.getAllEmpCodesForNik(nik);
+            
+            // Log for audit
+            console.log(`[HistorySeeder] Duplicate NIK detected: ${nik} has ${empCodeMap.emp_codes.length} EmpCodes: ${empCodeMap.emp_codes.join(', ')}`);
+            
+            // Create detail records for ALL EmpCodes associated with this NIK
+            // This ensures complete history coverage
+            for (const empCode of empCodeMap.emp_codes) {
+                const detailData = this.mapEmployeeToDetail(historyId, masterId, {
+                    ...emp,
+                    emp_code: empCode // Override with each EmpCode
+                });
+                
+                await historyDatabaseService.savePayrollHistoryDetail(detailData);
+                result.records_inserted.detail++;
+            }
+            
+            result.total_employees += empCodeMap.emp_codes.length;
+        } else {
+            // Normal flow - single employee
+            const detailData = this.mapEmployeeToDetail(historyId, masterId, emp);
+            await historyDatabaseService.savePayrollHistoryDetail(detailData);
+            result.records_inserted.detail++;
+            result.total_employees += 1;
+        }
     }
 
     /**

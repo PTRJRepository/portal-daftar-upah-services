@@ -162,3 +162,64 @@ export async function getEmployeeHistoricalData(token, empCode) {
         throw error
     }
 }
+
+/**
+ * Get gang attendance matrix for one or more gangs
+ * Data comes from extend_db_ptrj (history_gang_member + history_taskreg)
+ * EmpCode is the primary key — NIK and bank account derived from it
+ * @param {string} token - JWT token
+ * @param {string[]} gangCodes - Array of gang codes
+ * @param {number} month - Month (1-12)
+ * @param {number} year - Year
+ * @returns {Promise<Object>} Gang attendance matrix data
+ */
+export async function getGangAttendanceMatrix(token, gangCodes, month, year) {
+    try {
+        const baseUrl = getBaseUrl()
+        const params = {
+            gang_codes: gangCodes.join(','),
+            month: month.toString(),
+            year: year.toString()
+        }
+
+        const response = await axios.get(`${baseUrl}/gang-attendance-matrix`, {
+            headers: { Authorization: `Bearer ${token}` },
+            params,
+            timeout: 60000 // 60s timeout for large gangs
+        })
+        return response.data
+    } catch (error) {
+        console.error('[EmployeeDetailService] Failed to get gang attendance matrix:', error)
+        throw error
+    }
+}
+
+/**
+ * Get gang overtime (lembur) matrix for one or more gangs
+ * Shows overtime hours per employee per day from PR_TASKREGLN where OT = 1
+ * @param {string} token - JWT token
+ * @param {string[]} gangCodes - Array of gang codes
+ * @param {number} month - Month (1-12)
+ * @param {number} year - Year
+ * @returns {Promise<Object>} Gang overtime matrix data
+ */
+export async function getGangOvertimeMatrix(token, gangCodes, month, year) {
+    try {
+        const baseUrl = getBaseUrl()
+        const params = {
+            gang_codes: gangCodes.join(','),
+            month: month.toString(),
+            year: year.toString()
+        }
+
+        const response = await axios.get(`${baseUrl}/gang-overtime-matrix`, {
+            headers: { Authorization: `Bearer ${token}` },
+            params,
+            timeout: 60000
+        })
+        return response.data
+    } catch (error) {
+        console.error('[EmployeeDetailService] Failed to get gang overtime matrix:', error)
+        throw error
+    }
+}

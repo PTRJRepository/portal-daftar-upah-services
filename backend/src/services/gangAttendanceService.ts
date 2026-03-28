@@ -1,0 +1,635 @@
+/**
+ * Gang Attendance Matrix Service
+ * 
+ * Generates attendance matrix for ALL employees in a gang or set of gangs.
+ * Each employee gets a row with 1-31 day columns showing attendance status.
+ * 
+ * PRIMARY DATA SOURCE: extend_db_ptrj (historical snapshot database)
+ * - Member list: dbo.history_gang_member (joined by emp_code)
+ * - Attendance: dbo.history_taskreg (joined by emp_code)
+ * - Bank account: HR_PAYROLL.BankAccNo (joined by EmpCode)
+ * - NIK: HR_EMPLOYEE.NewICNo (derived from EmpCode)
+ * 
+ * EmpCode is the PRIMARY KEY for all joins and lookups.
+ */
+
+import { Database } from "../db/client";
+
+// Status codes for the matrix cells
+export type AttendanceStatus = 'H' | 'C' | 'S' | 'M' | 'N' | 'A' | '-' | 'L';
+
+export interface GangMember {
+    emp_code: string;
+    emp_name: string;
+    nik: string;
+    gang_code: string;
+    division_code: string;
+    bank_acc_no: string;
+    bank_code: string;
+}
+
+export interface GangAttendanceRow {
+    emp_code: string;
+    emp_name: string;
+    nik: string;
+    gang_code: string;
+    bank_acc_no: string;
+    daily: Record<number, AttendanceStatus>;  // 1-31 => status
+    summary: {
+        hadir: number;
+        cuti_tahunan: number;
+        cuti_sakit: number;
+        cuti_minggu: number;
+        libur_nasional: number;
+        alpa: number;
+        total_hk: number;
+    };
+}
+
+export interface GangAttendanceResult {
+    gang_code: string;
+    gang_description: string;
+    month: number;
+    year: number;
+    days_in_month: number;
+    employees: GangAttendanceRow[];
+    holidays: Record<number, string>; // day => description
+    sundays: number[];
+}
+
+class GangAttendanceService {
+    private static instance: GangAttendanceService;
+    private db: Database;         // Main plantware DB (HR_EMPLOYEE, HR_PAYROLL, HR_GPH)
+    private extDb: Database;      // extend_db_ptrj (history_gang_member, history_taskreg)
+
+    private constructor() {
+        this.db = Database.getInstance();
+        this.extDb = Database.getExtendedInstance();
+    }
+
+    public static getInstance(): GangAttendanceService {
+        if (!GangAttendanceService.instance) {
+            GangAttendanceService.instance = new GangAttendanceService();
+        }
+        return GangAttendanceService.instance;
+    }
+
+    /**
+     * Get gang members from history_gang_member (extend_db_ptrj)
+     * This is the PRIMARY source for gang membership based on a specific period.
+     * EmpCode is the key — NIK and bank account are resolved afterwards.
+     */
+    private async getGangMembersFromHistory(gangCodes: string[], month: number, year: number): Promise<GangMember[]> {
+        if (gangCodes.length === 0) return [];
+
+        const placeholders = gangCodes.map(() => '?').join(',');
+        try {
+            const rows = await this.extDb.query<{
+                emp_code: string;
+                emp_name: string;
+                gang_code: string;
+                division_code: string;
+            }>(`
+                SELECT DISTINCT
+                    RTRIM(emp_code) as emp_code,
+                    RTRIM(emp_name) as emp_name,
+                    RTRIM(gang_code) as gang_code,
+                    RTRIM(ISNULL(division_code, '')) as division_code
+                FROM dbo.history_gang_member
+                WHERE RTRIM(gang_code) IN (${placeholders})
+                  AND period_month = ?
+                  AND period_year = ?
+                  AND is_active = 1
+                ORDER BY gang_code, emp_name
+            `, [...gangCodes, month, year]);
+
+            return rows.map(r => ({
+                emp_code: r.emp_code,
+                emp_name: r.emp_name,
+                nik: '',          // Will be resolved from HR_EMPLOYEE by EmpCode
+                gang_code: r.gang_code,
+                division_code: r.division_code,
+                bank_acc_no: '',  // Will be resolved from HR_PAYROLL by EmpCode
+                bank_code: ''
+            }));
+        } catch (e) {
+            console.error("[GangAttendanceService] Error fetching from history_gang_member:", e);
+            return [];
+        }
+    }
+
+    /**
+     * Resolve NIK (NewICNo) from HR_EMPLOYEE by EmpCode (batch)
+     */
+    private async resolveNikByEmpCodes(empCodes: string[]): Promise<Map<string, string>> {
+        const result = new Map<string, string>();
+        if (empCodes.length === 0) return result;
+
+        const CHUNK = 500;
+        for (let i = 0; i < empCodes.length; i += CHUNK) {
+            const chunk = empCodes.slice(i, i + CHUNK);
+            const placeholders = chunk.map(() => '?').join(',');
+            try {
+                const rows = await this.db.query<{ EmpCode: string; NewICNo: string }>(`
+                    SELECT RTRIM(EmpCode) as EmpCode, RTRIM(ISNULL(NewICNo, '')) as NewICNo
+                    FROM HR_EMPLOYEE
+                    WHERE RTRIM(EmpCode) IN (${placeholders})
+                `, chunk);
+                for (const r of rows) {
+                    result.set(r.EmpCode.trim().toUpperCase(), r.NewICNo?.trim() || '');
+                }
+            } catch (e) {
+                console.error("[GangAttendanceService] Error resolving NIK:", e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Resolve bank account (BankAccNo) from HR_PAYROLL by EmpCode (batch)
+     */
+    private async resolveBankByEmpCodes(empCodes: string[]): Promise<Map<string, { bank_acc_no: string; bank_code: string }>> {
+        const result = new Map<string, { bank_acc_no: string; bank_code: string }>();
+        if (empCodes.length === 0) return result;
+
+        const CHUNK = 500;
+        for (let i = 0; i < empCodes.length; i += CHUNK) {
+            const chunk = empCodes.slice(i, i + CHUNK);
+            const placeholders = chunk.map(() => '?').join(',');
+            try {
+                const rows = await this.db.query<{ EmpCode: string; BankAccNo: string; BankCode: string }>(`
+                    SELECT RTRIM(EmpCode) as EmpCode,
+                           RTRIM(ISNULL(BankAccNo, '')) as BankAccNo,
+                           RTRIM(ISNULL(BankCode, '')) as BankCode
+                    FROM HR_PAYROLL
+                    WHERE RTRIM(EmpCode) IN (${placeholders})
+                `, chunk);
+                for (const r of rows) {
+                    result.set(r.EmpCode.trim().toUpperCase(), {
+                        bank_acc_no: r.BankAccNo?.trim() || '',
+                        bank_code: r.BankCode?.trim() || ''
+                    });
+                }
+            } catch (e) {
+                console.error("[GangAttendanceService] Error resolving bank accounts:", e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Bulk fetch attendance data from history_taskreg (extend_db_ptrj)
+     * Uses the pre-computed attendance flags (is_cuti_tahunan, etc.)
+     */
+    private async getBulkAttendanceFromHistory(empCodes: string[], month: number, year: number): Promise<Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>> {
+        const result = new Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>();
+        if (empCodes.length === 0) return result;
+
+        const CHUNK = 500;
+        for (let i = 0; i < empCodes.length; i += CHUNK) {
+            const chunk = empCodes.slice(i, i + CHUNK);
+            const placeholders = chunk.map(() => '?').join(',');
+
+            try {
+                const rows = await this.extDb.query<{
+                    emp_code: string;
+                    day_of_month: number;
+                    task_code: string;
+                    hours: number;
+                    is_cuti_tahunan: boolean;
+                    is_cuti_sakit: boolean;
+                    is_cuti_minggu: boolean;
+                    is_cuti_nasional: boolean;
+                    is_hari_kerja: boolean;
+                }>(`
+                    SELECT 
+                        RTRIM(emp_code) as emp_code,
+                        DAY(trx_date) as day_of_month,
+                        RTRIM(ISNULL(task_code, '')) as task_code,
+                        ISNULL(hours, 0) as hours,
+                        ISNULL(is_cuti_tahunan, 0) as is_cuti_tahunan,
+                        ISNULL(is_cuti_sakit, 0) as is_cuti_sakit,
+                        ISNULL(is_cuti_minggu, 0) as is_cuti_minggu,
+                        ISNULL(is_cuti_nasional, 0) as is_cuti_nasional,
+                        ISNULL(is_hari_kerja, 0) as is_hari_kerja
+                    FROM dbo.history_taskreg
+                    WHERE RTRIM(emp_code) IN (${placeholders})
+                      AND period_month = ?
+                      AND period_year = ?
+                      AND ISNULL(ot, 0) = 0
+                    ORDER BY emp_code, day_of_month
+                `, [...chunk, month, year]);
+
+                for (const row of rows) {
+                    const empKey = row.emp_code.trim().toUpperCase();
+                    if (!result.has(empKey)) {
+                        result.set(empKey, []);
+                    }
+                    result.get(empKey)!.push({
+                        day: row.day_of_month,
+                        taskCode: row.task_code,
+                        isCutiTahunan: !!row.is_cuti_tahunan,
+                        isCutiSakit: !!row.is_cuti_sakit,
+                        isCutiMinggu: !!row.is_cuti_minggu,
+                        isCutiNasional: !!row.is_cuti_nasional,
+                        isHariKerja: !!row.is_hari_kerja,
+                        hours: row.hours
+                    });
+                }
+            } catch (e) {
+                console.error(`[GangAttendanceService] Error fetching history_taskreg chunk ${i}:`, e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get holidays from HR_GPH for Sunday/holiday identification
+     */
+    private async getHolidays(month: number, year: number): Promise<Record<number, string>> {
+        const holidayMap: Record<number, string> = {};
+        try {
+            const { employeeDetailService } = await import("./employeeDetailService");
+            const holidays = await employeeDetailService.getHolidaysFromHrGph(month, year);
+            for (const [day, info] of Object.entries(holidays)) {
+                holidayMap[Number(day)] = (info as any).description || 'Libur';
+            }
+        } catch (e) {
+            console.error("[GangAttendanceService] Error fetching holidays:", e);
+        }
+        return holidayMap;
+    }
+
+    /**
+     * Resolve attendance status from history_taskreg flags
+     * Uses the pre-computed boolean flags instead of parsing TaskCode strings
+     */
+    private resolveStatusFromFlags(rec: { isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean }, isSunday: boolean, isHoliday: boolean): AttendanceStatus {
+        if (rec.isCutiTahunan) return 'C';
+        if (rec.isCutiSakit) return 'S';
+        if (rec.isCutiMinggu) return 'M';
+        if (rec.isCutiNasional) return 'N';
+        if (rec.isHariKerja) return 'H';
+        if (isSunday) return 'M';
+        if (isHoliday) return 'N';
+        return 'H';
+    }
+
+    /**
+     * Generate attendance matrix for one or more gangs
+     * All data comes from extend_db_ptrj. EmpCode is the primary key.
+     */
+    public async getGangAttendanceMatrix(
+        gangCodes: string[],
+        month: number,
+        year: number
+    ): Promise<GangAttendanceResult[]> {
+        const startTime = Date.now();
+        const daysInMonth = new Date(year, month, 0).getDate();
+
+        // 1. Get holidays + Sundays
+        const holidayMap = await this.getHolidays(month, year);
+        const sundays: number[] = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            if (new Date(year, month - 1, d).getDay() === 0) sundays.push(d);
+        }
+        const sundaySet = new Set(sundays);
+        const holidayDaySet = new Set(Object.keys(holidayMap).map(Number));
+
+        // 2. Get gang members from history_gang_member (extend_db_ptrj) — PRIMARY SOURCE
+        const members = await this.getGangMembersFromHistory(gangCodes, month, year);
+
+        if (members.length === 0) {
+            console.warn(`[GangAttendanceService] No members found for gangs [${gangCodes.join(',')}] in period ${month}/${year}`);
+            return gangCodes.map(gc => ({
+                gang_code: gc,
+                gang_description: '',
+                month,
+                year,
+                days_in_month: daysInMonth,
+                employees: [],
+                holidays: holidayMap,
+                sundays
+            }));
+        }
+
+        // 3. Collect all EmpCodes for batch lookups
+        const allEmpCodes = members.map(m => m.emp_code);
+
+        // 4. Parallel batch lookups: attendance, NIK, bank account
+        const [attendanceData, nikMap, bankMap] = await Promise.all([
+            this.getBulkAttendanceFromHistory(allEmpCodes, month, year),
+            this.resolveNikByEmpCodes(allEmpCodes),
+            this.resolveBankByEmpCodes(allEmpCodes)
+        ]);
+
+        // 5. Enrich members with NIK and bank account data
+        for (const member of members) {
+            const key = member.emp_code.toUpperCase();
+            member.nik = nikMap.get(key) || '';
+            const bank = bankMap.get(key);
+            if (bank) {
+                member.bank_acc_no = bank.bank_acc_no;
+                member.bank_code = bank.bank_code;
+            }
+        }
+
+        // 6. Get gang descriptions from history_gang_member (already in data)
+        const gangDescMap = new Map<string, string>();
+        for (const m of members) {
+            if (!gangDescMap.has(m.gang_code)) {
+                gangDescMap.set(m.gang_code, '');
+            }
+        }
+        // Try to get descriptions from HR_GANG (main DB)
+        try {
+            const gcPlaceholders = gangCodes.map(() => '?').join(',');
+            const gangRows = await this.db.query<{ GangCode: string; Description: string }>(
+                `SELECT RTRIM(GangCode) as GangCode, Description FROM HR_GANG WHERE RTRIM(GangCode) IN (${gcPlaceholders})`,
+                gangCodes
+            );
+            for (const r of gangRows) {
+                gangDescMap.set(r.GangCode.trim(), r.Description?.trim() || '');
+            }
+        } catch (e) {
+            console.warn("[GangAttendanceService] Could not fetch gang descriptions from HR_GANG:", e);
+        }
+
+        // 7. Build result per gang
+        const results: GangAttendanceResult[] = [];
+
+        for (const gangCode of gangCodes) {
+            const gangMembers = members.filter(m => m.gang_code.toUpperCase() === gangCode.toUpperCase());
+
+            const employees: GangAttendanceRow[] = gangMembers.map(member => {
+                const empKey = member.emp_code.toUpperCase();
+                const records = attendanceData.get(empKey) || [];
+
+                // Initialize daily matrix
+                const daily: Record<number, AttendanceStatus> = {};
+                const summary = {
+                    hadir: 0,
+                    cuti_tahunan: 0,
+                    cuti_sakit: 0,
+                    cuti_minggu: 0,
+                    libur_nasional: 0,
+                    alpa: 0,
+                    total_hk: 0
+                };
+
+                // Days with data
+                const daysWithData = new Set<number>();
+                let maxDataDay = 0;
+
+                for (const rec of records) {
+                    daysWithData.add(rec.day);
+                    if (rec.day > maxDataDay) maxDataDay = rec.day;
+
+                    const isSunday = sundaySet.has(rec.day);
+                    const isHoliday = holidayDaySet.has(rec.day);
+                    const status = this.resolveStatusFromFlags(rec, isSunday, isHoliday);
+
+                    daily[rec.day] = status;
+
+                    switch (status) {
+                        case 'H': summary.hadir++; break;
+                        case 'C': summary.cuti_tahunan++; break;
+                        case 'S': summary.cuti_sakit++; break;
+                        case 'M': summary.cuti_minggu++; break;
+                        case 'N': summary.libur_nasional++; break;
+                    }
+                }
+
+                // Fill missing days
+                for (let d = 1; d <= daysInMonth; d++) {
+                    if (!daysWithData.has(d)) {
+                        const isSunday = sundaySet.has(d);
+                        const isHoliday = holidayDaySet.has(d);
+
+                        if (isSunday) {
+                            daily[d] = 'M';
+                            summary.cuti_minggu++;
+                        } else if (isHoliday) {
+                            daily[d] = 'N';
+                            summary.libur_nasional++;
+                        } else if (maxDataDay > 0 && d < maxDataDay) {
+                            daily[d] = 'A';
+                            summary.alpa++;
+                        } else {
+                            daily[d] = '-';
+                        }
+                    }
+                }
+
+                summary.total_hk = summary.hadir + summary.cuti_tahunan + summary.cuti_sakit;
+
+                return {
+                    emp_code: member.emp_code,
+                    emp_name: member.emp_name,
+                    nik: member.nik,
+                    gang_code: member.gang_code,
+                    bank_acc_no: member.bank_acc_no,
+                    daily,
+                    summary
+                };
+            });
+
+            results.push({
+                gang_code: gangCode,
+                gang_description: gangDescMap.get(gangCode) || '',
+                month,
+                year,
+                days_in_month: daysInMonth,
+                employees,
+                holidays: holidayMap,
+                sundays
+            });
+        }
+
+        console.log(`[GangAttendanceService] Generated matrix from extend_db_ptrj for ${gangCodes.length} gang(s), ${members.length} employees in ${Date.now() - startTime}ms`);
+        return results;
+    }
+
+    /**
+     * Generate overtime (lembur) matrix for one or more gangs
+     * Shows overtime hours per employee per day in a calendar-style grid.
+     * Data comes from PR_TASKREGLN / PR_TASKREGLN_ARC where OT = 1
+     */
+    public async getGangOvertimeMatrix(
+        gangCodes: string[],
+        month: number,
+        year: number
+    ): Promise<GangOvertimeResult[]> {
+        const startTime = Date.now();
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
+        const endDate = `${year}-${month.toString().padStart(2, "0")}-${daysInMonth}`;
+
+        // Get holidays + Sundays
+        const holidayMap = await this.getHolidays(month, year);
+        const sundays: number[] = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            if (new Date(year, month - 1, d).getDay() === 0) sundays.push(d);
+        }
+
+        // Get gang members (use extend_db_ptrj for historical accuracy)
+        const members = await this.getGangMembersFromHistory(gangCodes, month, year);
+        if (members.length === 0) return [];
+
+        const empCodes = members.map(m => m.emp_code);
+
+        // Get overtime data from PR_TASKREGLN + ARC where OT = 1
+        const overtimeRows = await this.extDb.query<{
+            EmpCode: string;
+            TrxDate: string;
+            Hours: number;
+            TaskDesc: string;
+            DayType: string;
+            Amount: number;
+        }>(`
+            SELECT
+                trl.EmpCode,
+                trl.TrxDate,
+                trl.Hours,
+                tc.TaskDesc,
+                CASE
+                    WHEN DATENAME(WEEKDAY, trl.TrxDate) = 'Friday' THEN 'Jumat'
+                    WHEN DATEPART(WEEKDAY, trl.TrxDate) = 1 THEN 'Minggu'
+                    WHEN hm.HolidayDate IS NOT NULL THEN 'Libur'
+                    ELSE 'Hari Kerja'
+                END AS DayType,
+                trl.Amount
+            FROM (
+                -- Active Table
+                SELECT l.EmpCode, l.TrxDate, l.Hours, l.TaskCode, l.Amount
+                FROM PR_TASKREGLN l
+                JOIN PR_TASKREG m ON l.MasterID = m.ID
+                WHERE l.OT = 1 AND l.TrxDate >= ? AND l.TrxDate <= ?
+
+                UNION ALL
+
+                -- Archive Table
+                SELECT l.EmpCode, l.TrxDate, l.Hours, l.TaskCode, l.Amount
+                FROM PR_TASKREGLN_ARC l
+                JOIN PR_TASKREG_ARC m ON l.MasterID = m.ID
+                WHERE l.OT = 1 AND l.TrxDate >= ? AND l.TrxDate <= ?
+            ) trl
+            LEFT JOIN PR_TASKCODE tc ON tc.TaskCode = trl.TaskCode
+            LEFT JOIN (
+                SELECT HolidayDate FROM HR_HOLIDAY
+                WHERE MONTH(HolidayDate) = ? AND YEAR(HolidayDate) = ?
+            ) hm ON CAST(hm.HolidayDate AS DATE) = CAST(trl.TrxDate AS DATE)
+            WHERE trl.EmpCode IN (${empCodes.map((_, i) => `?`).join(',')})
+            ORDER BY trl.EmpCode, trl.TrxDate
+        `, [
+            startDate, endDate,
+            startDate, endDate,
+            month.toString(), year.toString(),
+            ...empCodes
+        ]);
+
+        // Group by employee
+        const empOvertimeMap = new Map<string, {
+            daily: Record<number, { hours: number; amount: number; taskDesc: string; dayType: string }[]>;
+            totalHours: number;
+            totalAmount: number;
+            totalRecords: number;
+        }>();
+
+        for (const row of overtimeRows) {
+            const day = new Date(row.TrxDate).getDate();
+            if (!empOvertimeMap.has(row.EmpCode)) {
+                empOvertimeMap.set(row.EmpCode, {
+                    daily: {},
+                    totalHours: 0,
+                    totalAmount: 0,
+                    totalRecords: 0
+                });
+            }
+            const empData = empOvertimeMap.get(row.EmpCode)!;
+            if (!empData.daily[day]) empData.daily[day] = [];
+            empData.daily[day].push({
+                hours: row.Hours,
+                amount: row.Amount,
+                taskDesc: row.TaskDesc || '-',
+                dayType: row.DayType
+            });
+            empData.totalHours += row.Hours;
+            empData.totalAmount += row.Amount;
+            empData.totalRecords++;
+        }
+
+        // Build results per gang
+        const results: GangOvertimeResult[] = [];
+        const membersByGang = new Map<string, typeof members>();
+        for (const member of members) {
+            if (!membersByGang.has(member.gang_code)) {
+                membersByGang.set(member.gang_code, []);
+            }
+            membersByGang.get(member.gang_code)!.push(member);
+        }
+
+        for (const [gangCode, gangMembers] of membersByGang) {
+            const employees: GangOvertimeRow[] = gangMembers.map(member => {
+                const otData = empOvertimeMap.get(member.emp_code);
+                if (!otData) {
+                    return {
+                        emp_code: member.emp_code,
+                        emp_name: member.emp_name,
+                        nik: member.nik,
+                        daily: {},
+                        total_hours: 0,
+                        total_amount: 0,
+                        total_records: 0
+                    };
+                }
+                return {
+                    emp_code: member.emp_code,
+                    emp_name: member.emp_name,
+                    nik: member.nik,
+                    daily: otData.daily,
+                    total_hours: otData.totalHours,
+                    total_amount: otData.totalAmount,
+                    total_records: otData.totalRecords
+                };
+            });
+
+            results.push({
+                gang_code: gangCode,
+                gang_description: '',
+                month,
+                year,
+                days_in_month: daysInMonth,
+                employees,
+                holidays: holidayMap,
+                sundays
+            });
+        }
+
+        console.log(`[GangAttendanceService] Generated overtime matrix for ${gangCodes.length} gang(s), ${members.length} employees in ${Date.now() - startTime}ms`);
+        return results;
+    }
+}
+
+export interface GangOvertimeRow {
+    emp_code: string;
+    emp_name: string;
+    nik: string;
+    daily: Record<number, { hours: number; amount: number; taskDesc: string; dayType: string }[]>;
+    total_hours: number;
+    total_amount: number;
+    total_records: number;
+}
+
+export interface GangOvertimeResult {
+    gang_code: string;
+    gang_description: string;
+    month: number;
+    year: number;
+    days_in_month: number;
+    employees: GangOvertimeRow[];
+    holidays: Record<number, string>;
+    sundays: number[];
+}
+
+export const gangAttendanceService = GangAttendanceService.getInstance();

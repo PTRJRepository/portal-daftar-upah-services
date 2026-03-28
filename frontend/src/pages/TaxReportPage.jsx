@@ -190,6 +190,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                 <th title="Upah Dasar × 30">Gj Std</th>
                                 <th title="GP Aktual">GP Akt</th>
                                 <th title="GP Aktual - GP Ideal">Kor HK</th>
+                                <th title="Pendapatan Lainnya (THR, Bonus, dll)">Pend. Lainnya</th>
                                 <th title="Upah Kotor">U. Kotor</th>
                                 <th title="Penghasilan Bruto">Bruto</th>
                                 <th>Tarif (%)</th>
@@ -224,6 +225,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                             <td className="text-right">{formatNumber((emp.upah_dasar || 0) * 30)}</td>
                                             <td className="text-right">{formatNumber(emp.gaji_pokok_aktual)}</td>
                                             <td className="text-right" style={{ color: (emp.koreksi_hk || 0) < 0 ? '#dc2626' : undefined }}>{formatNumber(emp.koreksi_hk)}</td>
+                                            <td className="text-right" style={{ color: '#059669', fontWeight: '600' }}>{formatNumber(emp.pendapatan_tidak_tetap_thp || 0)}</td>
                                             <td className="text-right">{formatNumber(emp.upah_kotor)}</td>
                                             <td className="text-right">{formatNumber(emp.penghasilan_bruto)}</td>
                                             <td className="text-center">{formatPercent(emp.tarif_pajak_ter)}</td>
@@ -276,6 +278,14 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                                                     )}
                                                                     <tr><td style={{ padding: '4px 0', fontWeight: 'bold' }}>Total Premi</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold' }}>{formatNumber(emp.total_premi)}</td></tr>
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
+
+                                                                    {/* Pendapatan Lainnya (THR, Bonus, Custom) - ADDED to Upah Kotor */}
+                                                                    {emp.pendapatan_tidak_tetap_thp > 0 && (
+                                                                        <>
+                                                                            <tr><td style={{ paddingTop: '8px', fontWeight: '600', color: '#059669' }}>Pendapatan Lainnya (THR/Bonus)</td><td className="text-right" style={{ paddingTop: '8px', color: '#059669' }}>{formatNumber(emp.pendapatan_tidak_tetap_thp)}</td></tr>
+                                                                            <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
+                                                                        </>
+                                                                    )}
 
                                                                     <tr><td style={{ paddingTop: '8px', color: '#dc2626' }}>Potongan Koreksi</td><td className="text-right" style={{ paddingTop: '8px', color: '#dc2626' }}>-{formatNumber(emp.pot_koreksi)}</td></tr>
                                                                     <tr><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>Total Potongan (Kotor)</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>-{formatNumber(emp.total_potongan_kotor)}</td></tr>
