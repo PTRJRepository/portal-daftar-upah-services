@@ -9,6 +9,60 @@ import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
 import { getTablePreferences, DEFAULT_CELL_COLORS } from '../services/tablePreferencesService';
 
+/**
+ * DAFTAR UPAH (Payroll Register)
+ *
+ * Daftar Upah adalah tabel yang berisi uraian lengkap tentang gaji karyawan,
+ * yang mencakup:
+ *
+ * 1. IDENTITAS - Data karyawan (NIK, Nama, Jabatan, Gang)
+ *
+ * 2. ABSENSI - Kehadiran kerja
+ *    - Jumlah HK (Hari Kerja)
+ *    - Cuti (Tahunan, Sakit/Haid, Minggu, Nasional)
+ *
+ * 3. PENGGAJIAN - Upah pokok dan dasar
+ *    - Upah Dasar, Gaji Pokok
+ *
+ * 4. TUNJANGAN - Tunjangan karyawan
+ *    - Tunjangan Beras, Jabatan, Masa Kerja
+ *    - Lembur (jika ada)
+ *
+ * 5. PENDAPATAN LAINNYA - Income tambahan (THR, Bonus, dll)
+ *    - THR (Tunjangan Hari Raya) - dihitung untuk pajak, dipotong dari upah bersih
+ *
+ * 6. PREMI - Premi kerja
+ *    - Premi Brondol, Pruning, dll
+ *
+ * 7. POTONGAN UPAH KOTOR - Potongan yang mengurangi upah kotor
+ *    - Koreksi (jika ada)
+ *
+ * 8. UPAH KOTOR (Gross) - Total sebelum pajak
+ *    = Gaji Pokok + Tunjangan + Premi + Pendapatan Lain - Koreksi
+ *    ** Sudah termasuk THR untuk perhitungan PPh21 **
+ *
+ * 9. POTONGAN UPAH BERSIH - Potongan untuk menghitung upah bersih
+ *    - ASTEK (BPJS Ketenagakerjaan)
+ *    - BPJS Kesehatan
+ *    - SPSI
+ *    - PPh21
+ *    - dll
+ *
+ * 10. UPAH BERSIH (Net) - Take-home pay
+ *     = Upah Kotor - Total Potongan
+ *     ** Sudah dikurangkan THR karena dibayarkan terpisah di bulan Februari **
+ *
+ * 11. PAJAK - Informasi PPh21
+ *     - TER Category, PTKP Status
+ *
+ * Data diambil dari berbagai tabel database:
+ * - HR_EMPLOYEE, HR_GANG (Identitas)
+ * - PR_TASKREGLN (Absensi, Lembur)
+ * - PR_ADTRANS (Premi, Potongan)
+ * - employee_other_incomes (THR, Bonus)
+ * - HR_PAYROLL (Konfigurasi Gaji)
+ */
+
 const formatNumber = (value) => {
     if (value === null || value === undefined) return '-';
     const n = Number(value);
@@ -45,6 +99,7 @@ const getHeaderGroup = (label) => {
     if (upper === 'PANEN') return 'PANEN';
     if (upper === 'PENGGAJIAN') return 'PENGGAJIAN';
     if (upper === 'TUNJANGAN') return 'TUNJANGAN';
+    if (upper === 'PENDAPATAN LAINNYA') return 'PENDAPATAN LAINNYA';
     if (upper === 'PREMI') return 'PREMI';
     if (upper.includes('POTONGAN UPAH KOTOR')) return 'POTONGAN UPAH KOTOR';
     if (upper === 'UPAH KOTOR') return 'UPAH KOTOR';
@@ -92,6 +147,7 @@ export default function CustomPayrollTable({
     const [isHarvestExpanded, setHarvestExpanded] = useState(false);
     const [isAttendanceExpanded, setAttendanceExpanded] = useState(false);
     const [isAllowanceExpanded, setAllowanceExpanded] = useState(false);
+    const [isOtherIncomeExpanded, setOtherIncomeExpanded] = useState(false);
     const [isDeductionExpanded, setDeductionExpanded] = useState(false);
 
     // Table Preferences (Body Cell Colors - applied to body cells, NOT headers)
@@ -104,6 +160,7 @@ export default function CustomPayrollTable({
         if (group === 'PANEN') setHarvestExpanded(prev => !prev);
         if (group === 'ABSENSI') setAttendanceExpanded(prev => !prev);
         if (group === 'TUNJANGAN') setAllowanceExpanded(prev => !prev);
+        if (group === 'PENDAPATAN LAINNYA') setOtherIncomeExpanded(prev => !prev);
         if (group === 'POTONGAN_BERSIH') setDeductionExpanded(prev => !prev); // Special key for convenience
         if (group === 'PAJAK') setIsTaxExpanded(prev => !prev);
     }, []);
@@ -1126,6 +1183,63 @@ export default function CustomPayrollTable({
 
         // TUNJANGAN > TOTAL
         // Tunjangan columns are added dynamically above
+
+        // PENDAPATAN LAINNYA - THR, Bonus, Custom dari employee_other_incomes
+        // Pre-computed fields dari backend: pendapatan_thr, pendapatan_bonus, pendapatan_custom, pendapatan_lainnya
+        // Backend menghitung dari array other_incomes dan menyimpannya sebagai field numerik untuk agregasi gang_total
+
+        // THR (Tunjangan Hari Raya)
+        cols.push({
+            field: 'pendapatan_thr',
+            headers: ['PENDAPATAN LAINNYA', 'THR', null, null],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_thr || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        // Bonus
+        cols.push({
+            field: 'pendapatan_bonus',
+            headers: ['PENDAPATAN LAINNYA', 'BONUS', null, null],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_bonus || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        // Custom (income type lain)
+        cols.push({
+            field: 'pendapatan_custom',
+            headers: ['PENDAPATAN LAINNYA', 'CUSTOM', null, null],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_custom || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        // Total Pendapatan Lainnya
+        cols.push({
+            field: 'pendapatan_lainnya',
+            headers: ['PENDAPATAN LAINNYA', 'TOTAL', null, null],
+            w: 95,
+            className: 'text-right font-bold',
+            render: (row) => {
+                const val = Number(row.pendapatan_lainnya || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
         // PREMI - Static BRONDOL column (from separate query, always show if has values)
         // BRONDOL is not in dynamic_premi_headers because it comes from brondol_data query
         cols.push({ field: 'premi_brondol', headers: ['PREMI', null, null, 'BRONDOL'], w: 80, className: 'text-right' });
@@ -1414,8 +1528,16 @@ export default function CustomPayrollTable({
             c.group = getHeaderGroup(c.headers[0]);
         });
 
+        // DEBUG: Log PENDAPATAN LAINNYA columns
+        const otherIncomeCols = cols.filter(c => c.headers && c.headers[0] === 'PENDAPATAN LAINNYA');
+        if (otherIncomeCols.length > 0) {
+            console.log('[DEBUG] PENDAPATAN LAINNYA columns found:', otherIncomeCols.map(c => c.headers));
+        } else {
+            console.warn('[DEBUG] PENDAPATAN LAINNYA columns NOT found in columnDefs!');
+        }
+
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan]);
 
     // === EXPORT TO EXCEL HANDLER ===
     const handleExportToExcel = useCallback(async () => {
@@ -1677,6 +1799,42 @@ export default function CustomPayrollTable({
     );
     if (error) return <div style={{ padding: 20, color: 'red' }}>Error: {error}</div>;
 
+    // Empty state when no data is loaded
+    if (!loading && rows.length === 0) {
+        const MONTHS_LABEL = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return (
+            <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                height: '100%', minHeight: '400px', padding: '40px',
+                background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)'
+            }}>
+                <div style={{
+                    background: 'white', borderRadius: '16px', padding: '48px', textAlign: 'center',
+                    border: '2px dashed #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                    maxWidth: '500px', width: '100%'
+                }}>
+                    <div style={{ fontSize: '4rem', marginBottom: '16px' }}>📭</div>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>
+                        Data Belum Tersedia
+                    </h3>
+                    <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6', margin: '0 0 20px' }}>
+                        Data daftar upah untuk <strong>{gangCode === 'ALL' ? 'Semua Gang' : gangCode}</strong>
+                        {division && <span> di divisi <strong>{division}</strong></span>}
+                        {' '}pada periode <strong>{MONTHS_LABEL[(month || 1) - 1]} {year}</strong> belum tersedia atau belum digenerate.
+                    </p>
+                    <div style={{
+                        background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '8px',
+                        padding: '12px 16px', fontSize: '0.85rem', color: '#92400e',
+                        display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center'
+                    }}>
+                        <span>💡</span>
+                        <span>Pastikan data payroll sudah di-seed untuk periode ini. Coba gunakan tombol <strong>Refresh</strong> atau pilih periode/divisi lain.</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     const scale = fontSize / 100;
     const rowHeight = 28;
 
@@ -1770,7 +1928,7 @@ export default function CustomPayrollTable({
                                                 💾
                                             </button>
                                         </div>
-                                    ) : ['PAJAK', 'PANEN', 'ABSENSI', 'TUNJANGAN', 'POTONGAN UPAH BERSIH'].includes(cell.label) ? (
+                                    ) : ['PAJAK', 'PANEN', 'ABSENSI', 'TUNJANGAN', 'PENDAPATAN LAINNYA', 'POTONGAN UPAH BERSIH'].includes(cell.label) ? (
                                         <div className="flex items-center justify-center gap-1 cursor-pointer hover:bg-white/10 transition-colors h-full w-full select-none"
                                             onClick={(e) => {
                                                 e.stopPropagation();
@@ -1786,7 +1944,8 @@ export default function CustomPayrollTable({
                                                         cell.label === 'PANEN' ? isHarvestExpanded :
                                                             cell.label === 'ABSENSI' ? isAttendanceExpanded :
                                                                 cell.label === 'TUNJANGAN' ? isAllowanceExpanded :
-                                                                    cell.label === 'POTONGAN UPAH BERSIH' ? isDeductionExpanded : false
+                                                                    cell.label === 'PENDAPATAN LAINNYA' ? isOtherIncomeExpanded :
+                                                                        cell.label === 'POTONGAN UPAH BERSIH' ? isDeductionExpanded : false
                                                 ) ? '▼' : '▶'}
                                             </span>
                                             {isEditMode && cell.label === 'POTONGAN UPAH BERSIH' && (

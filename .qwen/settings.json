@@ -8,7 +8,8 @@
       "Bash(npx *)",
       "Bash(bun *)",
       "Bash(netstat *)",
-      "Bash(findstr *)"
+      "Bash(findstr *)",
+      "Bash(do *)"
     ]
   },
   "$version": 3

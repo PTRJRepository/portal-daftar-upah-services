@@ -34,7 +34,7 @@ const getOvertimeColor = (hours) => {
     return { bg: '#b45309', color: '#ffffff', text: `${hours}h` }
 }
 
-export default function GangOvertimeMatrix({ token, gangCodes, month, year, compact = false }) {
+export default function GangOvertimeMatrix({ token, gangCodes, month, year, compact = false, division }) {
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
@@ -68,6 +68,25 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
             else next.add(gangCode)
             return next
         })
+    }
+
+    const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+
+    if (!gangCodes || gangCodes.length === 0) {
+        return (
+            <div className="gom-container">
+                <div className="gom-header">
+                    <h2>⏰ Matrix Lembur Gang</h2>
+                    <span className="gom-period">{MONTHS[month - 1]} {year}</span>
+                    {division && <span className="gom-division-badge">{division}</span>}
+                </div>
+                <div className="gom-empty-state">
+                    <div className="gom-empty-icon">📊</div>
+                    <h3>Matrix Lembur Belum Tersedia</h3>
+                    <p>Data daftar upah sedang dimuat atau belum tersedia untuk periode ini.</p>
+                </div>
+            </div>
+        )
     }
 
     if (loading) {
@@ -584,6 +603,42 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                     text-align: center;
                     color: #9ca3af;
                     font-style: italic;
+                }
+                .gom-empty-state {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 60px 40px;
+                    text-align: center;
+                }
+                .gom-empty-icon {
+                    font-size: 64px;
+                    margin-bottom: 16px;
+                    opacity: 0.5;
+                }
+                .gom-empty-state h3 {
+                    margin: 0 0 8px;
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: #374151;
+                }
+                .gom-empty-state p {
+                    margin: 0;
+                    color: #6b7280;
+                    font-size: 14px;
+                    max-width: 450px;
+                    line-height: 1.6;
+                }
+                .gom-division-badge {
+                    background: #fef3c7;
+                    color: #92400e;
+                    padding: 3px 10px;
+                    border-radius: 12px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    border: 1px solid #fcd34d;
+                    margin-left: 8px;
                 }
                 tbody tr:nth-child(even) .gom-td-no,
                 tbody tr:nth-child(even) .gom-td-name {

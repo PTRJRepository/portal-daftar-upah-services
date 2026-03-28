@@ -1436,6 +1436,7 @@ export default function MainPage({ lockedDiv = null }) {
                   gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
                   month={month}
                   year={year}
+                  division={division}
                 />
               </div>
             )}
@@ -1446,6 +1447,7 @@ export default function MainPage({ lockedDiv = null }) {
                   gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
                   month={month}
                   year={year}
+                  division={division}
                 />
               </div>
             )}

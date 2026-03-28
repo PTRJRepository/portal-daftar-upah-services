@@ -927,6 +927,23 @@ export class DataExtractorService {
                 upah_bersih,
                 // Other Incomes for display (THR, Bonus, Custom, etc.)
                 other_incomes: dbOtherIncomesByNik.get(rawEmpNik) || [],
+                // [NEW] Pre-computed income fields for gang_total aggregation
+                // These are used by CustomPayrollTable and Report.jsx for column display
+                ...(() => {
+                    const ois = dbOtherIncomesByNik.get(rawEmpNik) || [];
+                    const getByType = (type) => ois
+                        .filter(oi => (oi.type || '').toUpperCase() === type.toUpperCase())
+                        .reduce((sum, oi) => sum + Number(oi.amount || 0), 0);
+                    const thr = getByType('THR');
+                    const bonus = getByType('BONUS');
+                    const custom = getByType('CUSTOM');
+                    return {
+                        pendapatan_thr: thr,
+                        pendapatan_bonus: bonus,
+                        pendapatan_custom: custom,
+                        pendapatan_lainnya: thr + bonus + custom
+                    };
+                })(),
                 // REMOVED: premi: empPremi - causes double-counting in frontend
                 // Individual premi fields are already added via ...empPremi below
                 pot_astek: pot_astek_pekerja,
