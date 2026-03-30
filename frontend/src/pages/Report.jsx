@@ -1297,41 +1297,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       title="Daftar Upah Karyawan"
       subtitle={`${(overrideMonth || finalMonth) ? new Date(2000, (overrideMonth || finalMonth) - 1).toLocaleString('id-ID', { month: 'long' }) : '-'} ${(overrideYear || finalYear) || '-'} • Gang ${finalGangCode || '-'}`}
       actions={
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-card)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0, fontWeight: 500, fontSize: '0.875rem' }} title="Ambil data dari database riwayat terpisah (history seed)">
-              <input
-                type="checkbox"
-                checked={useHistory}
-                onChange={(e) => {
-                  setUseHistory(e.target.checked);
-                  setRows([]);
-                  setPinnedBottom([]);
-                  dataInitRef.current = false;
-                }}
-                style={{ width: '16px', height: '16px', accentColor: 'var(--primary-600)' }}
-              />
-              Mode History
-            </label>
-          </div>
-          {/* View mode toggle is now handled by ReportToolbar */}
-          <button
-            id="btn-download-daftar-upah-excel"
-            onClick={handleDownloadDaftarUpahExcel}
-            disabled={isDownloadingExcel || loading}
-            title="Unduh Daftar Upah Excel (server-side, dengan formula dan kolom premi dinamis)"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '6px',
-              backgroundColor: '#0ea5e9', color: 'white',
-              border: 'none', padding: '8px 14px', borderRadius: '6px',
-              fontWeight: '600', fontSize: '0.875rem',
-              cursor: (isDownloadingExcel || loading) ? 'not-allowed' : 'pointer',
-              opacity: (isDownloadingExcel || loading) ? 0.7 : 1,
-              transition: 'background-color 0.2s'
-            }}
-          >
-            {isDownloadingExcel ? '⏳ Mengunduh...' : '⬇️ Excel (Formula)'}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <ReportToolbar
             viewMode={viewMode}
             onViewModeChange={setViewMode}
@@ -1371,6 +1337,15 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             disableControls={loading || isExporting}
             editMode={editModeNik}
             onEditModeToggle={() => setEditModeNik(p => !p)}
+            useHistory={useHistory}
+            onHistoryChange={(val) => {
+              setUseHistory(val);
+              setRows([]);
+              setPinnedBottom([]);
+              dataInitRef.current = false;
+            }}
+            isDownloadingExcel={isDownloadingExcel}
+            onDownloadExcel={handleDownloadDaftarUpahExcel}
           />
         </div>
       }

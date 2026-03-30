@@ -2,6 +2,19 @@ import { useEffect, useState, useRef } from 'react'
 import { getBasePath } from '../../utils/prodModeUtils'
 import './LoadingScreen.css'
 
+const TIPS = [
+  "Kelapa sawit adalah tanaman penghasil minyak nabati paling efisien di dunia.",
+  "Satu hektar kelapa sawit dapat menghasilkan hingga 4 ton minyak per tahun.",
+  "Minyak sawit mengandung Vitamin E (Tokotrienol) yang tinggi, baik untuk kesehatan jantung.",
+  "Indonesia adalah produsen minyak kelapa sawit terbesar di dunia.",
+  "Penggunaan sistem digital membantu akurasi perhitungan upah dan transparansi data.",
+  "Produktivitas yang tinggi dimulai dari kesejahteraan karyawan yang terjaga.",
+  "Kelapa sawit menyerap lebih banyak CO2 per hektar dibandingkan hutan tanaman industri lainnya.",
+  "Sistem ini dirancang untuk memproses ribuan data karyawan dalam hitungan detik.",
+  "Akurasi NIK sangat penting untuk integrasi data BPJS dan pajak yang valid.",
+  "Memastikan data absensi lengkap akan mempercepat proses verifikasi payroll."
+]
+
 export default function LoadingScreen({
   isLoading,
   message = 'Loading...',
@@ -12,7 +25,17 @@ export default function LoadingScreen({
 }) {
   const [logs, setLogs] = useState([])
   const [progress, setProgress] = useState(0)
+  const [currentTip, setCurrentTip] = useState(0)
   const prevStepsRef = useRef("[]")
+
+  // Cycle through tips
+  useEffect(() => {
+    if (!isLoading) return
+    const interval = setInterval(() => {
+      setCurrentTip(prev => (prev + 1) % TIPS.length)
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [isLoading])
 
   // Handle Log History
   useEffect(() => {
@@ -20,7 +43,7 @@ export default function LoadingScreen({
       setLogs(prev => {
         if (prev[prev.length - 1] === message) return prev
         const newLogs = [...prev, message]
-        return newLogs.slice(-4) // Keep last 4 messages visible
+        return newLogs.slice(-3) // Keep last 3 messages visible
       })
     }
   }, [message, isLoading])
@@ -42,7 +65,6 @@ export default function LoadingScreen({
       return
     }
 
-    // Capture initial steps state safely
     const stepsString = JSON.stringify(steps || [])
     if (prevStepsRef.current === "[]" && stepsString !== "[]") {
       prevStepsRef.current = stepsString
@@ -55,15 +77,15 @@ export default function LoadingScreen({
 
     const totalDuration = parsedSteps.length > 0
       ? parsedSteps.reduce((sum, step) => sum + (step.duration || 1000), 0)
-      : 10000 // Default 10 seconds if no steps
+      : 8000 // Faster default for better feel
 
-    let elapsed = (progress / 100) * totalDuration // Start from current progress roughly
+    let elapsed = (progress / 100) * totalDuration
     const interval = 50
 
     const timer = setInterval(() => {
       elapsed += interval
-      const newProgress = Math.min((elapsed / totalDuration) * 100, 98)
-      setProgress(prev => Math.max(prev, newProgress)) // Never move backwards!
+      const newProgress = Math.min((elapsed / totalDuration) * 100, 99)
+      setProgress(prev => Math.max(prev, newProgress))
     }, interval)
 
     return () => clearInterval(timer)
@@ -91,60 +113,61 @@ export default function LoadingScreen({
             }}
           />
           <div className="loading-company-name">PT REBINMAS JAYA</div>
-          <div className="loading-app-name">Sistem Daftar Upah</div>
+          <div className="loading-app-name">Payroll Intelligence System</div>
         </div>
 
         {/* Progress Section */}
         <div className="loading-progress-section">
-          {/* Progress Bar */}
+          <div className="loading-progress-text">{Math.round(progress)}%</div>
+          
           <div className="loading-progress-bar-container">
             <div
               className="loading-progress-bar-fill"
               style={{ width: `${progress}%` }}
             >
-              <div className="loading-progress-shine"></div>
             </div>
           </div>
-
-          <div className="loading-progress-text">{Math.round(progress)}%</div>
 
           {/* Report Info */}
           {(gangCode || month || year) && (
             <div className="loading-report-info">
-              {gangCode && <span>Gang: {gangCode}</span>}
+              {gangCode && <span>📍 Gang: {gangCode}</span>}
               {month && year && (
-                <span>Periode: {`${String(month).padStart(2, '0')}/${year}`}</span>
+                <span>📅 {`${String(month).padStart(2, '0')}/${year}`}</span>
               )}
             </div>
           )}
         </div>
 
-        {/* Action Logs (Replaces Quotes) */}
+        {/* Dynamic Tips Carousel */}
+        <div className="loading-tips-container">
+          <div className="loading-tip-label">Tahukah Anda?</div>
+          <div key={currentTip} className="loading-tip-text">
+            "{TIPS[currentTip]}"
+          </div>
+        </div>
+
+        {/* Action Logs */}
         <div className="loading-logs-container">
           {logs.map((logMsg, index) => (
             <div key={`${logMsg}-${index}`} className="loading-log-item">
-              <span className="logger-icon">{index === logs.length - 1 ? '🔄' : '✅'}</span>
+              <span className="logger-icon">{index === logs.length - 1 ? '⌛' : '✅'}</span>
               <span>{logMsg}</span>
             </div>
           ))}
         </div>
 
-        {/* Responsive Palm Tree Animation (Replaces Spinner) */}
+        {/* Background Animation Element */}
         <div className="loading-palm-container">
           <svg className="palm-tree-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Trunk */}
-            <path d="M45 100 Q 50 50 50 20 Q 55 50 55 100 Z" fill="#8B4513" />
-            <path d="M45 90 Q 50 85 55 90" stroke="#654321" strokeWidth="2" fill="none" />
-            <path d="M46 70 Q 50 65 54 70" stroke="#654321" strokeWidth="2" fill="none" />
-            <path d="M48 50 Q 50 45 52 50" stroke="#654321" strokeWidth="2" fill="none" />
-            {/* Leaves Group */}
-            <g className="palm-leaves">
-              <path d="M50 25 Q 20 0 10 30 Q 30 20 50 25" fill="#22c55e" />
-              <path d="M50 25 Q 30 -10 40 10 Q 45 5 50 25" fill="#16a34a" />
-              <path d="M50 25 Q 70 -10 60 10 Q 55 5 50 25" fill="#15803d" />
-              <path d="M50 25 Q 80 0 90 30 Q 70 20 50 25" fill="#16a34a" />
-              <path d="M50 25 Q 20 20 15 50 Q 35 30 50 25" fill="#15803d" />
-              <path d="M50 25 Q 80 20 85 50 Q 65 30 50 25" fill="#22c55e" />
+            <path d="M45 100 Q 50 50 50 20 Q 55 50 55 100 Z" fill="white" />
+            <g opacity="0.8">
+              <path d="M50 25 Q 20 0 10 30 Q 30 20 50 25" fill="white" />
+              <path d="M50 25 Q 30 -10 40 10 Q 45 5 50 25" fill="white" />
+              <path d="M50 25 Q 70 -10 60 10 Q 55 5 50 25" fill="white" />
+              <path d="M50 25 Q 80 0 90 30 Q 70 20 50 25" fill="white" />
+              <path d="M50 25 Q 20 20 15 50 Q 35 30 50 25" fill="white" />
+              <path d="M50 25 Q 80 20 85 50 Q 65 30 50 25" fill="white" />
             </g>
           </svg>
         </div>

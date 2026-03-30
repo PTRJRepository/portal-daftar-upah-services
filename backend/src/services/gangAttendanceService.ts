@@ -494,7 +494,6 @@ class GangAttendanceService {
             TrxDate: string;
             Hours: number;
             TaskDesc: string;
-            DayType: string;
             Amount: number;
         }>(`
             SELECT
@@ -502,12 +501,6 @@ class GangAttendanceService {
                 trl.TrxDate,
                 trl.Hours,
                 tc.TaskDesc,
-                CASE
-                    WHEN DATENAME(WEEKDAY, trl.TrxDate) = 'Friday' THEN 'Jumat'
-                    WHEN DATEPART(WEEKDAY, trl.TrxDate) = 1 THEN 'Minggu'
-                    WHEN hm.HolidayDate IS NOT NULL THEN 'Libur'
-                    ELSE 'Hari Kerja'
-                END AS DayType,
                 trl.Amount
             FROM (
                 -- Active Table
@@ -525,18 +518,18 @@ class GangAttendanceService {
                 WHERE l.OT = 1 AND l.TrxDate >= ? AND l.TrxDate <= ?
             ) trl
             LEFT JOIN PR_TASKCODE tc ON tc.TaskCode = trl.TaskCode
-            LEFT JOIN (
-                SELECT HolidayDate FROM HR_HOLIDAY
-                WHERE MONTH(HolidayDate) = ? AND YEAR(HolidayDate) = ?
-            ) hm ON CAST(hm.HolidayDate AS DATE) = CAST(trl.TrxDate AS DATE)
             WHERE trl.EmpCode IN (${empCodes.map((_, i) => `?`).join(',')})
             ORDER BY trl.EmpCode, trl.TrxDate
         `, [
             startDate, endDate,
             startDate, endDate,
-            month.toString(), year.toString(),
             ...empCodes
         ]);
+
+        // Compute DayType in JavaScript using holidayMap (no HR_HOLIDAY table needed)
+        const holidayDays = new Set<number>(Object.keys(holidayMap).map(Number));
+
+        // Group by employee
 
         // Group by employee
         const empOvertimeMap = new Map<string, {
@@ -547,7 +540,22 @@ class GangAttendanceService {
         }>();
 
         for (const row of overtimeRows) {
-            const day = new Date(row.TrxDate).getDate();
+            const trxDate = new Date(row.TrxDate);
+            const day = trxDate.getDate();
+            const dayOfWeek = trxDate.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+
+            // Compute DayType in JavaScript (no HR_HOLIDAY table)
+            let dayType: string;
+            if (holidayDays.has(day)) {
+                dayType = 'Libur';
+            } else if (dayOfWeek === 0) {
+                dayType = 'Minggu';
+            } else if (dayOfWeek === 5) {
+                dayType = 'Jumat';
+            } else {
+                dayType = 'Hari Kerja';
+            }
+
             if (!empOvertimeMap.has(row.EmpCode)) {
                 empOvertimeMap.set(row.EmpCode, {
                     daily: {},
@@ -562,7 +570,7 @@ class GangAttendanceService {
                 hours: row.Hours,
                 amount: row.Amount,
                 taskDesc: row.TaskDesc || '-',
-                dayType: row.DayType
+                dayType
             });
             empData.totalHours += row.Hours;
             empData.totalAmount += row.Amount;

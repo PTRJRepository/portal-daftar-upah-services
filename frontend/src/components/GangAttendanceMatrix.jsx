@@ -340,23 +340,28 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 .gam-content {
                     overflow-y: auto;
                     flex: 1;
-                    padding: 12px 20px 20px;
+                    padding: 12px 20px 80px; /* Added bottom padding for scroll space */
                 }
                 .gam-gang-section {
-                    margin-bottom: 12px;
+                    margin-bottom: 24px; /* Increased spacing */
                     border: 1px solid #e5e7eb;
                     border-radius: 10px;
                     overflow: hidden;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
                 }
                 .gam-gang-header {
                     display: flex;
                     align-items: center;
                     gap: 10px;
-                    padding: 10px 14px;
+                    padding: 12px 16px;
                     background: linear-gradient(135deg, #f9fafb, #f3f4f6);
                     cursor: pointer;
                     user-select: none;
                     transition: background 0.15s;
+                    position: sticky;
+                    top: 0;
+                    z-index: 10;
+                    border-bottom: 1px solid #e5e7eb;
                 }
                 .gam-gang-header:hover {
                     background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
@@ -381,8 +386,8 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 }
                 .gam-table-wrapper {
                     overflow-x: auto;
-                    max-height: 60vh;
-                    overflow-y: auto;
+                    /* Removed max-height and overflow-y to allow natural vertical expansion */
+                    width: 100%;
                 }
                 .gam-table {
                     width: 100%;

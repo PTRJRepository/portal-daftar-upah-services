@@ -1184,61 +1184,7 @@ export default function CustomPayrollTable({
         // TUNJANGAN > TOTAL
         // Tunjangan columns are added dynamically above
 
-        // PENDAPATAN LAINNYA - THR, Bonus, Custom dari employee_other_incomes
-        // Pre-computed fields dari backend: pendapatan_thr, pendapatan_bonus, pendapatan_custom, pendapatan_lainnya
-        // Backend menghitung dari array other_incomes dan menyimpannya sebagai field numerik untuk agregasi gang_total
-
-        // THR (Tunjangan Hari Raya)
-        cols.push({
-            field: 'pendapatan_thr',
-            headers: ['PENDAPATAN LAINNYA', 'THR', null, null],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_thr || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
-        // Bonus
-        cols.push({
-            field: 'pendapatan_bonus',
-            headers: ['PENDAPATAN LAINNYA', 'BONUS', null, null],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_bonus || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
-        // Custom (income type lain)
-        cols.push({
-            field: 'pendapatan_custom',
-            headers: ['PENDAPATAN LAINNYA', 'CUSTOM', null, null],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_custom || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
-        // Total Pendapatan Lainnya
-        cols.push({
-            field: 'pendapatan_lainnya',
-            headers: ['PENDAPATAN LAINNYA', 'TOTAL', null, null],
-            w: 95,
-            className: 'text-right font-bold',
-            render: (row) => {
-                const val = Number(row.pendapatan_lainnya || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
+        // PENDAPATAN LAINNYA - THR, Bonus, Custom (Dipindahkan ke section POTONGAN UPAH BERSIH)
 
         // PREMI - Static BRONDOL column (from separate query, always show if has values)
         // BRONDOL is not in dynamic_premi_headers because it comes from brondol_data query
@@ -1517,6 +1463,60 @@ export default function CustomPayrollTable({
                 });
             }
         }
+
+        // PENDAPATAN LAINNYA - THR, Bonus, Custom (Tampil sebagai Potongan Upah Bersih)
+        // THR (Tunjangan Hari Raya)
+        cols.push({
+            field: 'pendapatan_thr',
+            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'THR (-)'],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_thr || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        // Bonus
+        cols.push({
+            field: 'pendapatan_bonus',
+            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'BONUS (-)'],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_bonus || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        // Custom (income type lain)
+        cols.push({
+            field: 'pendapatan_custom',
+            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'CUSTOM (-)'],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_custom || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        // Total Pendapatan Lainnya
+        cols.push({
+            field: 'pendapatan_lainnya',
+            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'TOTAL LAINNYA (-)'],
+            w: 95,
+            className: 'text-right font-bold',
+            render: (row) => {
+                const val = Number(row.pendapatan_lainnya || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
         // Total Potongan Bersih (Always Shown)
         cols.push({ field: 'total_potongan_bersih', headers: ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'], w: 100, className: 'text-right font-bold cell-deduction' });
 

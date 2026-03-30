@@ -247,9 +247,14 @@ export class AggregationService {
                     const totalTunjangan = this.calculateRowTotalTunjangan(row);
                     const totalPremi = this.calculateRowTotalPremi(row);
                     const potKoreksi = this.getNumericValue(row, 'koreksi');
-                    // jumlah_upah_kotor = (gaji_pokok + total_tunjangan + total_premi) - pot_koreksi
-                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi) - potKoreksi;
-                    calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph;
+                    const pendapatanTidakTetapThp = this.getNumericValue(row, 'pendapatan_tidak_tetap_thp');
+                    const pendapatanLainya = this.getNumericValue(row, 'pot_pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_thr');
+                    
+                    // jumlah_upah_kotor = (gaji_pokok + total_tunjangan + total_premi + pendapatan_tidak_tetap_thp + pendapatan_lainnya) - pot_koreksi
+                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanTidakTetapThp + pendapatanLainya) - potKoreksi;
+                    
+                    // upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph - pendapatan_tidak_tetap_thp
+                    calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph - pendapatanTidakTetapThp;
                 }
 
                 row['upah_bersih'] = calculatedUpahBersih;

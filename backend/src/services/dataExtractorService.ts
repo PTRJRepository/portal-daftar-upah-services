@@ -772,12 +772,6 @@ export class DataExtractorService {
             const pot_bpjs_pensiun_majikan = caruman.bpjs_pensiun_majikan;
             const pot_bpjs_pensiun_jumlah = pot_bpjs_pensiun_pekerja + pot_bpjs_pensiun_majikan;
 
-            // [FIXED] PREMI_PPH is an ADDITION (penambah), NOT a deduction
-            // [FIXED] pot_koreksi is ONLY in Potongan Upah Kotor, NOT in total_potongan
-            // total_potongan = astek + bpjs_pekerja + spsi + pph21 + other (no koreksi)
-            const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
-                pot_spsi + pot_pph21 + other_potongan;
-
             const rawEmpNik = String(emp.actual_nik || emp.emp_code || '').trim().toUpperCase();
             const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
             const pendapatan_tidak_tetap_thp = dbThpIncomesMap.get(rawEmpNik) || dbThpIncomesMap.get(empCodeKey) || 0;
@@ -791,19 +785,26 @@ export class DataExtractorService {
                 .reduce((sum, oi) => sum + Number(oi.amount || 0), 0);
             const pendapatan_lainnya_amount = getOiByType('THR') + getOiByType('BONUS') + getOiByType('CUSTOM');
 
+            // [FIXED] PREMI_PPH is an ADDITION (penambah), NOT a deduction
+            // [FIXED] pot_koreksi is ONLY in Potongan Upah Kotor, NOT in total_potongan
+            // total_potongan = astek + bpjs_pekerja + spsi + pph21 + other (no koreksi) + pendapatan_lainnya_amount
+            const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
+                pot_spsi + pot_pph21 + other_potongan + pendapatan_lainnya_amount;
+
             // [FIXED] KOREKSI is deducted from jumlah_upah_kotor (Potongan Upah Kotor section)
             // Use gaji_pokok_aktual (calculated earlier) for gross wage calculation
             // [OTHER INCOMES] Add pendapatan_tidak_tetap_thp to jumlah_upah_kotor so it's included in tax calculation
-            const jumlah_upah_kotor = (gaji_pokok_aktual + total_tunjangan + total_premi + pendapatan_tidak_tetap_thp) - pot_koreksi;
+            // [PENDAPATAN LAINNYA] Add pendapatan_lainnya_amount to jumlah_upah_kotor so it is visibly deducted in total_potongan
+            const jumlah_upah_kotor = (gaji_pokok_aktual + total_tunjangan + total_premi + pendapatan_tidak_tetap_thp + pendapatan_lainnya_amount) - pot_koreksi;
 
-            // [NEW] Upah Kotor Pajak = Jumlah Upah Kotor + Astek + BPJS Kesehatan + Other Taxable Incomes (untuk header/pajak)
-            const upah_kotor_pajak = jumlah_upah_kotor + pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pendapatan_tidak_tetap_taxable;
+            // [NEW] Upah Kotor Pajak = (Jumlah Upah Kotor - Pendapatan Lainnya) + Astek + BPJS Kesehatan + Other Taxable Incomes (untuk header/pajak)
+            const upah_kotor_pajak = (jumlah_upah_kotor - pendapatan_lainnya_amount) + pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pendapatan_tidak_tetap_taxable;
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
             // [OTHER INCOMES] Subtract pendapatan_tidak_tetap_thp because it's already paid in THP (not in regular payroll)
-            // [PENDAPATAN LAINNYA] Also subtract pendapatan_lainnya (THR+Bonus+Custom) because it's paid separately
-            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph - pendapatan_tidak_tetap_thp - pendapatan_lainnya
-            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph - pendapatan_tidak_tetap_thp - pendapatan_lainnya_amount;
+            // [PENDAPATAN LAINNYA] Already deducted mathematically via total_potongan
+            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph - pendapatan_tidak_tetap_thp
+            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph - pendapatan_tidak_tetap_thp;
 
             // formula handled inside OOP logic
             const koreksi_hk = gpResult?.koreksi_hk?.value || 0;
