@@ -254,7 +254,6 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                         })
                     )}
                 </div>
-            </div>
 
             <style>{`
                 .gam-inline-container {

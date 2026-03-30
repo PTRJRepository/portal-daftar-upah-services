@@ -21,6 +21,7 @@ import { GangFilterProvider } from '../context/GangFilterContext'
 import { useGangFilter } from '../context/GangFilterContext'
 import { exportReportToExcelPro } from '../utils/exportReportToExcelPro'
 import GangAttendanceMatrix from '../components/GangAttendanceMatrix'
+import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
 
 // Check if running in development mode
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true' || import.meta.env.DEV_MODE === 'true'
@@ -1547,8 +1548,22 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             </div>
           )}
         </React.Fragment>
-      ) : (
+      ) : viewMode === 'attendance' ? (
         <GangAttendanceMatrix
+          token={authToken}
+          gangCodes={
+            String(finalGangCode).toUpperCase() === 'ALL'
+              ? (rows.length > 0
+                  ? [...new Set(rows.filter(r => r.gang_code && !r.isHeader && !r.isTotal).map(r => r.gang_code))]
+                  : (allGangs || []).map(g => g.gang_code))
+              : [finalGangCode]
+          }
+          month={activeMonth}
+          year={activeYear}
+          division={finalDivision}
+        />
+      ) : (
+        <GangOvertimeMatrix
           token={authToken}
           gangCodes={
             String(finalGangCode).toUpperCase() === 'ALL'

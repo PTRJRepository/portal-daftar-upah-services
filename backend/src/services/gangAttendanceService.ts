@@ -75,45 +75,45 @@ class GangAttendanceService {
     }
 
     /**
-     * Get gang members from history_gang_member (extend_db_ptrj)
-     * This is the PRIMARY source for gang membership based on a specific period.
+     * Get gang members from HR_GANGLN + HR_EMPLOYEE (main db_ptrj)
+     * Uses the current gang membership to get employees.
      * EmpCode is the key — NIK and bank account are resolved afterwards.
      */
-    private async getGangMembersFromHistory(gangCodes: string[], month: number, year: number): Promise<GangMember[]> {
+    private async getGangMembersFromMainDb(gangCodes: string[]): Promise<GangMember[]> {
         if (gangCodes.length === 0) return [];
 
         const placeholders = gangCodes.map(() => '?').join(',');
         try {
-            const rows = await this.extDb.query<{
+            const rows = await this.db.query<{
                 emp_code: string;
                 emp_name: string;
                 gang_code: string;
                 division_code: string;
             }>(`
                 SELECT DISTINCT
-                    RTRIM(emp_code) as emp_code,
-                    RTRIM(emp_name) as emp_name,
-                    RTRIM(gang_code) as gang_code,
-                    RTRIM(ISNULL(division_code, '')) as division_code
-                FROM dbo.history_gang_member
-                WHERE RTRIM(gang_code) IN (${placeholders})
-                  AND period_month = ?
-                  AND period_year = ?
-                  AND is_active = 1
+                    RTRIM(gl.GangMember) as emp_code,
+                    RTRIM(e.EmpName) as emp_name,
+                    RTRIM(gl.GangCode) as gang_code,
+                    RTRIM(ISNULL(SUBSTRING(gl.GangCode, 1, 2), '')) as division_code
+                FROM HR_GANGLN gl
+                JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(gl.GangMember)
+                WHERE RTRIM(gl.GangCode) IN (${placeholders})
                 ORDER BY gang_code, emp_name
-            `, [...gangCodes, month, year]);
+            `, [...gangCodes]);
+
+            console.log(`[GangAttendanceService] Got ${rows.length} members from HR_GANGLN for gangs [${gangCodes.join(',')}]`);
 
             return rows.map(r => ({
                 emp_code: r.emp_code,
                 emp_name: r.emp_name,
-                nik: '',          // Will be resolved from HR_EMPLOYEE by EmpCode
+                nik: '',
                 gang_code: r.gang_code,
                 division_code: r.division_code,
-                bank_acc_no: '',  // Will be resolved from HR_PAYROLL by EmpCode
+                bank_acc_no: '',
                 bank_code: ''
             }));
         } catch (e) {
-            console.error("[GangAttendanceService] Error fetching from history_gang_member:", e);
+            console.error("[GangAttendanceService] Error fetching from HR_GANGLN:", e);
             return [];
         }
     }
@@ -178,12 +178,16 @@ class GangAttendanceService {
     }
 
     /**
-     * Bulk fetch attendance data from history_taskreg (extend_db_ptrj)
-     * Uses the pre-computed attendance flags (is_cuti_tahunan, etc.)
+     * Bulk fetch attendance data from PR_TASKREGLN + PR_TASKREGLN_ARC (main db_ptrj)
+     * Uses TaskCode to determine attendance status (same pattern as employeeDetailService)
      */
-    private async getBulkAttendanceFromHistory(empCodes: string[], month: number, year: number): Promise<Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>> {
+    private async getBulkAttendanceFromMainDb(empCodes: string[], month: number, year: number): Promise<Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>> {
         const result = new Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>();
         if (empCodes.length === 0) return result;
+
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
+        const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth}`;
 
         const CHUNK = 500;
         for (let i = 0; i < empCodes.length; i += CHUNK) {
@@ -191,53 +195,59 @@ class GangAttendanceService {
             const placeholders = chunk.map(() => '?').join(',');
 
             try {
-                const rows = await this.extDb.query<{
-                    emp_code: string;
+                // UNION ALL between PR_TASKREGLN and PR_TASKREGLN_ARC (same as employeeDetailService)
+                const rows = await this.db.query<{
+                    EmpCode: string;
                     day_of_month: number;
-                    task_code: string;
-                    hours: number;
-                    is_cuti_tahunan: boolean;
-                    is_cuti_sakit: boolean;
-                    is_cuti_minggu: boolean;
-                    is_cuti_nasional: boolean;
-                    is_hari_kerja: boolean;
+                    TaskCode: string;
+                    Hours: number;
                 }>(`
-                    SELECT 
-                        RTRIM(emp_code) as emp_code,
-                        DAY(trx_date) as day_of_month,
-                        RTRIM(ISNULL(task_code, '')) as task_code,
-                        ISNULL(hours, 0) as hours,
-                        ISNULL(is_cuti_tahunan, 0) as is_cuti_tahunan,
-                        ISNULL(is_cuti_sakit, 0) as is_cuti_sakit,
-                        ISNULL(is_cuti_minggu, 0) as is_cuti_minggu,
-                        ISNULL(is_cuti_nasional, 0) as is_cuti_nasional,
-                        ISNULL(is_hari_kerja, 0) as is_hari_kerja
-                    FROM dbo.history_taskreg
-                    WHERE RTRIM(emp_code) IN (${placeholders})
-                      AND period_month = ?
-                      AND period_year = ?
-                      AND ISNULL(ot, 0) = 0
-                    ORDER BY emp_code, day_of_month
-                `, [...chunk, month, year]);
+                    SELECT EmpCode, day_of_month, TaskCode, Hours FROM (
+                        SELECT RTRIM(trl.EmpCode) as EmpCode,
+                               DAY(trl.TrxDate) as day_of_month,
+                               RTRIM(ISNULL(trl.TaskCode, '')) as TaskCode,
+                               ISNULL(trl.Hours, 0) as Hours
+                        FROM PR_TASKREGLN trl
+                        JOIN PR_TASKREG trh ON trl.MasterID = trh.ID
+                        WHERE RTRIM(trl.EmpCode) IN (${placeholders})
+                          AND trl.TrxDate >= ? AND trl.TrxDate <= ?
+                          AND trl.OT = 0
+
+                        UNION ALL
+
+                        SELECT RTRIM(trl.EmpCode) as EmpCode,
+                               DAY(trl.TrxDate) as day_of_month,
+                               RTRIM(ISNULL(trl.TaskCode, '')) as TaskCode,
+                               ISNULL(trl.Hours, 0) as Hours
+                        FROM PR_TASKREGLN_ARC trl
+                        JOIN PR_TASKREG_ARC trh ON trl.MasterID = trh.ID
+                        WHERE RTRIM(trl.EmpCode) IN (${placeholders})
+                          AND trl.TrxDate >= ? AND trl.TrxDate <= ?
+                          AND trl.OT = 0
+                    ) combined
+                    ORDER BY EmpCode, day_of_month
+                `, [...chunk, startDate, endDate, ...chunk, startDate, endDate]);
 
                 for (const row of rows) {
-                    const empKey = row.emp_code.trim().toUpperCase();
+                    const empKey = row.EmpCode.trim().toUpperCase();
                     if (!result.has(empKey)) {
                         result.set(empKey, []);
                     }
+                    // Determine attendance flags from TaskCode (matching employeeDetailService logic)
+                    const tc = row.TaskCode || '';
                     result.get(empKey)!.push({
                         day: row.day_of_month,
-                        taskCode: row.task_code,
-                        isCutiTahunan: !!row.is_cuti_tahunan,
-                        isCutiSakit: !!row.is_cuti_sakit,
-                        isCutiMinggu: !!row.is_cuti_minggu,
-                        isCutiNasional: !!row.is_cuti_nasional,
-                        isHariKerja: !!row.is_hari_kerja,
-                        hours: row.hours
+                        taskCode: tc,
+                        isCutiTahunan: tc.startsWith('GA9129'),
+                        isCutiSakit: tc.startsWith('GA9126'),
+                        isCutiMinggu: tc.startsWith('GA9127'),
+                        isCutiNasional: tc.startsWith('GA9128'),
+                        isHariKerja: !tc.startsWith('GA912'),
+                        hours: row.Hours
                     });
                 }
             } catch (e) {
-                console.error(`[GangAttendanceService] Error fetching history_taskreg chunk ${i}:`, e);
+                console.error(`[GangAttendanceService] Error fetching PR_TASKREGLN chunk ${i}:`, e);
             }
         }
         return result;
@@ -296,11 +306,11 @@ class GangAttendanceService {
         const sundaySet = new Set(sundays);
         const holidayDaySet = new Set(Object.keys(holidayMap).map(Number));
 
-        // 2. Get gang members from history_gang_member (extend_db_ptrj) — PRIMARY SOURCE
-        const members = await this.getGangMembersFromHistory(gangCodes, month, year);
+        // 2. Get gang members from HR_GANGLN + HR_EMPLOYEE (main db_ptrj)
+        const members = await this.getGangMembersFromMainDb(gangCodes);
 
         if (members.length === 0) {
-            console.warn(`[GangAttendanceService] No members found for gangs [${gangCodes.join(',')}] in period ${month}/${year}`);
+            console.warn(`[GangAttendanceService] No members found for gangs [${gangCodes.join(',')}]`);
             return gangCodes.map(gc => ({
                 gang_code: gc,
                 gang_description: '',
@@ -316,9 +326,9 @@ class GangAttendanceService {
         // 3. Collect all EmpCodes for batch lookups
         const allEmpCodes = members.map(m => m.emp_code);
 
-        // 4. Parallel batch lookups: attendance, NIK, bank account
+        // 4. Parallel batch lookups: attendance from PR_TASKREGLN, NIK, bank account
         const [attendanceData, nikMap, bankMap] = await Promise.all([
-            this.getBulkAttendanceFromHistory(allEmpCodes, month, year),
+            this.getBulkAttendanceFromMainDb(allEmpCodes, month, year),
             this.resolveNikByEmpCodes(allEmpCodes),
             this.resolveBankByEmpCodes(allEmpCodes)
         ]);
@@ -472,14 +482,14 @@ class GangAttendanceService {
             if (new Date(year, month - 1, d).getDay() === 0) sundays.push(d);
         }
 
-        // Get gang members (use extend_db_ptrj for historical accuracy)
-        const members = await this.getGangMembersFromHistory(gangCodes, month, year);
+        // Get gang members from main DB
+        const members = await this.getGangMembersFromMainDb(gangCodes);
         if (members.length === 0) return [];
 
         const empCodes = members.map(m => m.emp_code);
 
-        // Get overtime data from PR_TASKREGLN + ARC where OT = 1
-        const overtimeRows = await this.extDb.query<{
+        // Get overtime data from PR_TASKREGLN + ARC where OT = 1 (main db_ptrj)
+        const overtimeRows = await this.db.query<{
             EmpCode: string;
             TrxDate: string;
             Hours: number;

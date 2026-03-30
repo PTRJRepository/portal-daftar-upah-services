@@ -1212,6 +1212,12 @@ export default function MainPage({ lockedDiv = null }) {
             divisionLocked={isLockedMode}
             onRefresh={handleRefresh}
             usePeriodSlider={usePeriodSlider}
+            viewMode={activeMatrixView || 'table'}
+            onViewModeChange={(mode) => {
+              if (mode === 'table') setActiveMatrixView(null);
+              else if (mode === 'attendance') setActiveMatrixView('attendance');
+              else if (mode === 'overtime') setActiveMatrixView('overtime');
+            }}
             onTogglePeriodSlider={setUsePeriodSlider}
             currentProductionMonth={currentProductionMonth}
             currentProductionYear={currentProductionYear}
@@ -1428,31 +1434,27 @@ export default function MainPage({ lockedDiv = null }) {
       <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'auto' }}>
         {division && gang ? (
           <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-            {/* Show matrix views when active */}
-            {activeMatrixView === 'attendance' && (
-              <div style={{ width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', display: 'flex', flexDirection: 'column' }}>
-                <GangAttendanceMatrix
-                  token={token}
-                  gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
-                  month={month}
-                  year={year}
-                  division={division}
-                />
-              </div>
-            )}
-            {activeMatrixView === 'overtime' && (
-              <div style={{ width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', display: 'flex', flexDirection: 'column' }}>
-                <GangOvertimeMatrix
-                  token={token}
-                  gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
-                  month={month}
-                  year={year}
-                  division={division}
-                />
-              </div>
-            )}
-            {/* Show payroll table when no matrix is active */}
-            {activeMatrixView === null && (
+            {/* Show matrix views - use display toggling to avoid unmount/remount */}
+            <div style={{ display: activeMatrixView === 'attendance' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', flexDirection: 'column' }}>
+              <GangAttendanceMatrix
+                token={token}
+                gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
+                month={month}
+                year={year}
+                division={division}
+              />
+            </div>
+            <div style={{ display: activeMatrixView === 'overtime' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', flexDirection: 'column' }}>
+              <GangOvertimeMatrix
+                token={token}
+                gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
+                month={month}
+                year={year}
+                division={division}
+              />
+            </div>
+            {/* Payroll table - always mounted, hidden with display:none when matrix active */}
+            <div style={{ display: activeMatrixView === null ? 'block' : 'none', width: '100%', height: '100%' }}>
               <CustomPayrollTable
                 token={token}
                 month={month}
@@ -1470,7 +1472,7 @@ export default function MainPage({ lockedDiv = null }) {
                 isEditMode={isEditMode}
                 useHistoryDb={isHistorical}
               />
-            )}
+            </div>
           </div>
         ) : (
           <div className="flex-center h-full flex-col text-neutral-400">

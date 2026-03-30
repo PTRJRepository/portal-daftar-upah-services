@@ -441,23 +441,42 @@ export default function ReportToolbar({
                             💰 Daftar Upah
                         </button>
                         <button
-                            onClick={() => onViewModeChange('matrix')}
-                            disabled={disableControls || viewMode === 'matrix'}
+                            onClick={() => onViewModeChange('attendance')}
+                            disabled={disableControls || viewMode === 'attendance'}
                             style={{
                                 flex: 1,
                                 border: 'none',
-                                background: viewMode === 'matrix' ? 'white' : 'transparent',
-                                color: viewMode === 'matrix' ? '#8b5cf6' : 'var(--neutral-600)',
-                                fontWeight: viewMode === 'matrix' ? '600' : '500',
+                                background: viewMode === 'attendance' ? 'white' : 'transparent',
+                                color: viewMode === 'attendance' ? '#059669' : 'var(--neutral-600)',
+                                fontWeight: viewMode === 'attendance' ? '600' : '500',
                                 padding: '0 12px',
                                 fontSize: '12px',
                                 cursor: 'pointer',
                                 transition: 'all 0.2s',
-                                boxShadow: viewMode === 'matrix' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                boxShadow: viewMode === 'attendance' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                                 whiteSpace: 'nowrap'
                             }}
                         >
-                            📋 Matrix Absensi
+                            📅 Absensi
+                        </button>
+                        <button
+                            onClick={() => onViewModeChange('overtime')}
+                            disabled={disableControls || viewMode === 'overtime'}
+                            style={{
+                                flex: 1,
+                                border: 'none',
+                                background: viewMode === 'overtime' ? 'white' : 'transparent',
+                                color: viewMode === 'overtime' ? '#d97706' : 'var(--neutral-600)',
+                                fontWeight: viewMode === 'overtime' ? '600' : '500',
+                                padding: '0 12px',
+                                fontSize: '12px',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                boxShadow: viewMode === 'overtime' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                whiteSpace: 'nowrap'
+                            }}
+                        >
+                            ⏰ Lembur
                         </button>
                     </div>
                 </div>

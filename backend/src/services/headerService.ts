@@ -292,6 +292,7 @@ export class HeaderService {
                 children: [
                     { field: "pot_spsi", headerName: "SPSI" },
                     { field: "pot_pph21", headerName: "PPH21" },
+                    { field: "pot_pendapatan_lainnya", headerName: "Pend. Lainnya" },
                     { field: "pot_koreksi", headerName: "Koreksi" },
                     ...dynPotongan.map((h, i) => ({
                         field: this.mapPotonganField(h) || `pot_dynamic_${i + 1}`,

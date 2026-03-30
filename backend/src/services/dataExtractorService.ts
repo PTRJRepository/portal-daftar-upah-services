@@ -469,15 +469,17 @@ export class DataExtractorService {
         // Destructure potongan result - uses TaskDesc as title
         const { amounts: potongan, titleMap: potonganTitleMap } = potonganResult;
 
-        // [THR TAX LOGIC] For months 3+ (March onwards), THR was paid in February (month 2)
-        // So we need to fetch other incomes from month 2 for tax calculation, not the current month
-        // This ensures PPh21 calculation includes THR from Feb when processing Mar+
-        const otherIncomeMonth = (month >= 3) ? 2 : month;
-        console.log(`[THR Logic] Processing month ${month}/${year}, fetching other incomes from month ${otherIncomeMonth} (THR paid in Feb)`);
+        // [THR TAX LOGIC] For months 3+ (March onwards), THR data was migrated from month 2 → month 3
+        // So we fetch other incomes from the current month (data is now in same month after migration)
+        // Jan/Feb still use their respective months (no migration needed)
+        const otherIncomeMonth = month;
+        console.log(`[THR Logic] Processing month ${month}/${year}, fetching other incomes from month ${otherIncomeMonth} (migrated data in same month)`);
         const dbOtherIncomes = await OtherIncomesService.getIncomes(year, otherIncomeMonth, divisionCode, gangCode);
         if (dbOtherIncomes.length > 0) {
             const totalThr = dbOtherIncomes.filter(i => i.income_type === 'THR').reduce((sum, i) => sum + Number(i.amount), 0);
             console.log(`[THR Logic] Found ${dbOtherIncomes.length} records, total THR: Rp ${totalThr.toLocaleString()}`);
+        } else {
+            console.log(`[THR Logic] ⚠️ NO other income records found for ${otherIncomeMonth}/${year}, div=${divisionCode}, gang=${gangCode}`);
         }
         const dbThpIncomesMap = new Map<string, number>();
         const dbTaxableIncomesMap = new Map<string, number>();
@@ -485,22 +487,44 @@ export class DataExtractorService {
 
         for (const inc of dbOtherIncomes) {
             const nik = String(inc.nik || '').trim().toUpperCase();
-            if (inc.is_paid_in_thp) {
-                dbThpIncomesMap.set(nik, (dbThpIncomesMap.get(nik) || 0) + Number(inc.amount));
-            }
-            if (inc.is_taxable) {
-                dbTaxableIncomesMap.set(nik, (dbTaxableIncomesMap.get(nik) || 0) + Number(inc.amount));
-            }
-            // Build array of other incomes for display
-            if (!dbOtherIncomesByNik.has(nik)) {
-                dbOtherIncomesByNik.set(nik, []);
-            }
-            dbOtherIncomesByNik.get(nik)!.push({
+            const empCode = String(inc.emp_code || '').trim().toUpperCase();
+            // Use nik if available, otherwise fall back to emp_code
+            const lookupKey = nik || empCode;
+            const incomeEntry = {
                 type: inc.income_type,
                 name: inc.income_name || inc.income_type,
                 amount: Number(inc.amount)
-            });
+            };
+            if (inc.is_paid_in_thp) {
+                dbThpIncomesMap.set(lookupKey, (dbThpIncomesMap.get(lookupKey) || 0) + Number(inc.amount));
+                // Also store under emp_code if different from lookupKey
+                if (empCode && empCode !== lookupKey) {
+                    dbThpIncomesMap.set(empCode, (dbThpIncomesMap.get(empCode) || 0) + Number(inc.amount));
+                }
+            }
+            if (inc.is_taxable) {
+                dbTaxableIncomesMap.set(lookupKey, (dbTaxableIncomesMap.get(lookupKey) || 0) + Number(inc.amount));
+                if (empCode && empCode !== lookupKey) {
+                    dbTaxableIncomesMap.set(empCode, (dbTaxableIncomesMap.get(empCode) || 0) + Number(inc.amount));
+                }
+            }
+            // Build array of other incomes for display - store under BOTH nik AND emp_code keys
+            // This ensures lookup works regardless of whether rawEmpNik matches nik or emp_code
+            if (lookupKey) {
+                if (!dbOtherIncomesByNik.has(lookupKey)) {
+                    dbOtherIncomesByNik.set(lookupKey, []);
+                }
+                dbOtherIncomesByNik.get(lookupKey)!.push(incomeEntry);
+            }
+            // Also store under emp_code if different from lookupKey (nik)
+            if (empCode && empCode !== lookupKey) {
+                if (!dbOtherIncomesByNik.has(empCode)) {
+                    dbOtherIncomesByNik.set(empCode, []);
+                }
+                dbOtherIncomesByNik.get(empCode)!.push(incomeEntry);
+            }
         }
+        console.log(`[THR Logic] dbOtherIncomesByNik map size: ${dbOtherIncomesByNik.size} keys`);
 
         // Fetch Master PTKP records for the current year
         const { ptkpTaxService } = await import('./ptkpTaxService');
@@ -755,8 +779,17 @@ export class DataExtractorService {
                 pot_spsi + pot_pph21 + other_potongan;
 
             const rawEmpNik = String(emp.actual_nik || emp.emp_code || '').trim().toUpperCase();
-            const pendapatan_tidak_tetap_thp = dbThpIncomesMap.get(rawEmpNik) || 0;
-            const pendapatan_tidak_tetap_taxable = dbTaxableIncomesMap.get(rawEmpNik) || 0;
+            const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
+            const pendapatan_tidak_tetap_thp = dbThpIncomesMap.get(rawEmpNik) || dbThpIncomesMap.get(empCodeKey) || 0;
+            const pendapatan_tidak_tetap_taxable = dbTaxableIncomesMap.get(rawEmpNik) || dbTaxableIncomesMap.get(empCodeKey) || 0;
+
+            // [PRE-COMPUTE] Pendapatan Lainnya (THR + Bonus + Custom) for upah_bersih deduction
+            // This is computed early because it must be subtracted from upah_bersih
+            const empOtherIncomes = dbOtherIncomesByNik.get(rawEmpNik) || dbOtherIncomesByNik.get(empCodeKey) || [];
+            const getOiByType = (type: string) => empOtherIncomes
+                .filter(oi => (oi.type || '').toUpperCase() === type.toUpperCase())
+                .reduce((sum, oi) => sum + Number(oi.amount || 0), 0);
+            const pendapatan_lainnya_amount = getOiByType('THR') + getOiByType('BONUS') + getOiByType('CUSTOM');
 
             // [FIXED] KOREKSI is deducted from jumlah_upah_kotor (Potongan Upah Kotor section)
             // Use gaji_pokok_aktual (calculated earlier) for gross wage calculation
@@ -768,8 +801,9 @@ export class DataExtractorService {
 
             // [FIXED] PREMI_PPH is ADDED (+) to upah_bersih, not subtracted
             // [OTHER INCOMES] Subtract pendapatan_tidak_tetap_thp because it's already paid in THP (not in regular payroll)
-            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph - pendapatan_tidak_tetap_thp
-            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph - pendapatan_tidak_tetap_thp;
+            // [PENDAPATAN LAINNYA] Also subtract pendapatan_lainnya (THR+Bonus+Custom) because it's paid separately
+            // Formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph - pendapatan_tidak_tetap_thp - pendapatan_lainnya
+            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph - pendapatan_tidak_tetap_thp - pendapatan_lainnya_amount;
 
             // formula handled inside OOP logic
             const koreksi_hk = gpResult?.koreksi_hk?.value || 0;
@@ -926,24 +960,14 @@ export class DataExtractorService {
                 pendapatan_tidak_tetap_taxable,
                 upah_bersih,
                 // Other Incomes for display (THR, Bonus, Custom, etc.)
-                other_incomes: dbOtherIncomesByNik.get(rawEmpNik) || [],
+                other_incomes: empOtherIncomes,
                 // [NEW] Pre-computed income fields for gang_total aggregation
-                // These are used by CustomPayrollTable and Report.jsx for column display
-                ...(() => {
-                    const ois = dbOtherIncomesByNik.get(rawEmpNik) || [];
-                    const getByType = (type) => ois
-                        .filter(oi => (oi.type || '').toUpperCase() === type.toUpperCase())
-                        .reduce((sum, oi) => sum + Number(oi.amount || 0), 0);
-                    const thr = getByType('THR');
-                    const bonus = getByType('BONUS');
-                    const custom = getByType('CUSTOM');
-                    return {
-                        pendapatan_thr: thr,
-                        pendapatan_bonus: bonus,
-                        pendapatan_custom: custom,
-                        pendapatan_lainnya: thr + bonus + custom
-                    };
-                })(),
+                pendapatan_thr: getOiByType('THR'),
+                pendapatan_bonus: getOiByType('BONUS'),
+                pendapatan_custom: getOiByType('CUSTOM'),
+                pendapatan_lainnya: pendapatan_lainnya_amount,
+                // [NEW] Pendapatan Lainnya shown as a deduction in Potongan Upah Bersih section
+                pot_pendapatan_lainnya: pendapatan_lainnya_amount,
                 // REMOVED: premi: empPremi - causes double-counting in frontend
                 // Individual premi fields are already added via ...empPremi below
                 pot_astek: pot_astek_pekerja,

@@ -18,6 +18,8 @@ import PayslipPrintPage from './pages/PayslipPrintPage'
 
 // Report Pages
 import CustomPayrollTable from './components/CustomPayrollTable'
+import GangAttendanceMatrix from './components/GangAttendanceMatrix'
+import GangOvertimeMatrix from './components/GangOvertimeMatrix'
 import EmployeeDirectoryPage from './pages/EmployeeDirectoryAnalytics'
 import SummaryReportPage from './pages/SummaryReportPage'
 import WagesSummaryRebinmasPage from './pages/WagesSummaryRebinmasPage'
@@ -60,6 +62,7 @@ const OperationalReportWrapper = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [useHistoryDb, setUseHistoryDb] = useState(false);
   const [gangPrefix, setGangPrefix] = useState('');
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'attendance' | 'overtime'
 
   // Using location.pathname as key FORCES remount when navigating, solving 'stuck' UI
   // Note: We return the actual content here, or wrap it.
@@ -387,6 +390,72 @@ const OperationalReportWrapper = () => {
           </div>
         </div>
 
+        {/* View Mode Toggle - Matrix Absensi & Lembur */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{
+            display: 'flex',
+            background: '#f1f5f9',
+            border: '1px solid #e2e8f0',
+            borderRadius: '8px',
+            overflow: 'hidden'
+          }}>
+            <button
+              onClick={() => setViewMode('table')}
+              style={{
+                padding: '0 12px',
+                height: '32px',
+                border: 'none',
+                background: viewMode === 'table' ? 'white' : 'transparent',
+                color: viewMode === 'table' ? '#1e40af' : '#64748b',
+                fontWeight: viewMode === 'table' ? '600' : '500',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              💰 Daftar Upah
+            </button>
+            <button
+              onClick={() => setViewMode('attendance')}
+              style={{
+                padding: '0 12px',
+                height: '32px',
+                border: 'none',
+                background: viewMode === 'attendance' ? 'white' : 'transparent',
+                color: viewMode === 'attendance' ? '#059669' : '#64748b',
+                fontWeight: viewMode === 'attendance' ? '600' : '500',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                boxShadow: viewMode === 'attendance' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              📅 Absensi
+            </button>
+            <button
+              onClick={() => setViewMode('overtime')}
+              style={{
+                padding: '0 12px',
+                height: '32px',
+                border: 'none',
+                background: viewMode === 'overtime' ? 'white' : 'transparent',
+                color: viewMode === 'overtime' ? '#d97706' : '#64748b',
+                fontWeight: viewMode === 'overtime' ? '600' : '500',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                boxShadow: viewMode === 'overtime' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              ⏰ Lembur
+            </button>
+          </div>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           {/* Font Controls */}
           <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
@@ -494,22 +563,40 @@ const OperationalReportWrapper = () => {
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        <CustomPayrollTable
-          token={token}
-          division={division}
-          gangCode={gang}
-          month={month}
-          year={year}
-          fontSize={fontSize}
-          onExportReady={setExportHandler}
-          onViewEmployeeDetail={handleViewEmployeeDetail}
-          selectedEmployees={selectedEmployees}
-          onToggleEmployeeSelection={handleToggleEmployeeSelection}
-          onSelectAllEmployees={handleSelectAllEmployees}
-          isEditMode={isEditMode}
-          useHistoryDb={useHistoryDb}
-          gangPrefix={gangPrefix || null}
-        />
+        {viewMode === 'table' ? (
+          <CustomPayrollTable
+            token={token}
+            division={division}
+            gangCode={gang}
+            month={month}
+            year={year}
+            fontSize={fontSize}
+            onExportReady={setExportHandler}
+            onViewEmployeeDetail={handleViewEmployeeDetail}
+            selectedEmployees={selectedEmployees}
+            onToggleEmployeeSelection={handleToggleEmployeeSelection}
+            onSelectAllEmployees={handleSelectAllEmployees}
+            isEditMode={isEditMode}
+            useHistoryDb={useHistoryDb}
+            gangPrefix={gangPrefix || null}
+          />
+        ) : viewMode === 'attendance' ? (
+          <GangAttendanceMatrix
+            token={token}
+            gangCodes={gang === 'ALL' ? ( gangs.map(g => g.gang_code)) : [gang]}
+            month={month}
+            year={year}
+            division={division}
+          />
+        ) : (
+          <GangOvertimeMatrix
+            token={token}
+            gangCodes={gang === 'ALL' ? ( gangs.map(g => g.gang_code)) : [gang]}
+            month={month}
+            year={year}
+            division={division}
+          />
+        )}
       </div>
     </div>
   );
