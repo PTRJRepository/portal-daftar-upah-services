@@ -5,7 +5,7 @@
  *
  * Data sourced from PR_TASKREGLN / PR_TASKREGLN_ARC where OT = 1
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getGangOvertimeMatrix } from '../services/employeeDetailService'
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -34,19 +34,28 @@ const getOvertimeColor = (hours) => {
     return { bg: '#b45309', color: '#ffffff', text: `${hours}h` }
 }
 
-export default function GangOvertimeMatrix({ token, gangCodes, month, year, compact = false, division }) {
-    const [data, setData] = useState(null)
-    const [loading, setLoading] = useState(false)
+export default function GangOvertimeMatrix({ token, gangCodes, month, year, compact = false, division, initialData = null, onDataLoaded = null }) {
+    const [data, setData] = useState(initialData)
+    const [loading, setLoading] = useState(!initialData)
     const [error, setError] = useState(null)
     const [expandedGangs, setExpandedGangs] = useState(new Set())
+    // Track what params we already have cached data for
+    const cachedParamsRef = useRef(null)
 
     const fetchData = useCallback(async () => {
         if (!gangCodes || gangCodes.length === 0 || !month || !year) return
+
+        // Skip fetch if we already have data for these exact params
+        const cacheKey = gangCodes.join(',') + '_' + month + '_' + year
+        if (cachedParamsRef.current === cacheKey && data) return
+
         setLoading(true)
         setError(null)
         try {
             const result = await getGangOvertimeMatrix(token, gangCodes, month, year)
             setData(result)
+            cachedParamsRef.current = cacheKey
+            if (onDataLoaded) onDataLoaded(result)
             if (result?.data) {
                 setExpandedGangs(new Set(result.data.map(g => g.gang_code)))
             }
@@ -55,7 +64,7 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
         } finally {
             setLoading(false)
         }
-    }, [token, gangCodes, month, year])
+    }, [token, gangCodes, month, year, onDataLoaded, data])
 
     useEffect(() => {
         fetchData()

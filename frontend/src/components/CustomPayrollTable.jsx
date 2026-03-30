@@ -115,10 +115,15 @@ export default function CustomPayrollTable({
     onSelectAllEmployees = () => { },
     isEditMode = false,
     useHistoryDb = false,
-    gangPrefix = null
+    gangPrefix = null,
+    initialData = null,   // Cached raw API response from parent
+    onDataLoaded = null    // Callback to notify parent of loaded data
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
+    // Track params for which we have cached data (skip refetch when switching views)
+    const cachedParamsRef = useRef(null);
+    const cachedRawDataRef = useRef(null);
     const [error, setError] = useState('');
     const [dynamicHeaders, setDynamicHeaders] = useState({ premi: {}, potongan: {} });
     const [grandTotal, setGrandTotal] = useState(null);
@@ -503,6 +508,59 @@ export default function CustomPayrollTable({
     };
 
     const loadData = async () => {
+        // Build cache key from current params (includes refreshTrigger for cache busting)
+        const cacheKey = `${division}_${month}_${year}_${useHistoryDb}_${gangPrefix || ''}_${refreshTrigger}`;
+
+        // Skip fetch if we already have cached data for these exact params
+        if (cachedParamsRef.current === cacheKey && cachedRawDataRef.current) {
+            // Re-process cached raw data (same logic as fresh fetch)
+            try {
+                const data = cachedRawDataRef.current;
+                const dynPot = data.dynamic_potongan_headers || [];
+                const dynPrem = data.dynamic_premi_headers || [];
+                const potTitleMap = data.potongan_title_map || {};
+                const premTitleMap = data.premi_title_map || {};
+
+                const premWithTitles = {};
+                dynPrem.forEach(field => {
+                    const title = premTitleMap[field] || field;
+                    premWithTitles[title] = field;
+                });
+
+                const potWithTitles = {};
+                dynPot.forEach(field => {
+                    const title = potTitleMap[field] || field;
+                    potWithTitles[title] = field;
+                });
+
+                setDynamicHeaders({ premi: premWithTitles, potongan: potWithTitles });
+
+                let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
+
+                const filteredFlat = (gangCode && gangCode !== 'ALL' && !gangPrefix)
+                    ? flatRows.filter(r => r.gang_code === gangCode)
+                    : flatRows;
+                const frontendGt = PayrollAggregator.calculateGrandTotal(filteredFlat);
+                frontendGt.emp_code = `${filteredFlat.length} Karyawan`;
+
+                const backendGrandTotal = data.grand_total;
+                if (backendGrandTotal && (!gangCode || gangCode === 'ALL' || gangPrefix)) {
+                    setGrandTotal({ ...frontendGt, ...backendGrandTotal });
+                } else {
+                    setGrandTotal(frontendGt);
+                }
+
+                setRows(filteredFlat);
+                setAllEmployeeNiks(filteredFlat.map(r => r.nik).filter(Boolean));
+                setSelection([]);
+                setLoading(false);
+            } catch (err) {
+                setError(err.message);
+                setLoading(false);
+            }
+            return;
+        }
+
         setLoading(true);
         setError('');
         try {
@@ -515,6 +573,11 @@ export default function CustomPayrollTable({
                 if (!response.ok) throw new Error(await response.text());
                 data = await response.json();
             }
+
+            // Cache the raw response for view-switching
+            cachedParamsRef.current = cacheKey;
+            cachedRawDataRef.current = data;
+            if (onDataLoaded) onDataLoaded(data);
 
             // dynamic_premi_headers and dynamic_potongan_headers are ARRAYS of field names
             const dynPot = data.dynamic_potongan_headers || [];
@@ -688,6 +751,19 @@ export default function CustomPayrollTable({
             setLoading(false);
         }
     };
+
+    // Pre-populate cache from parent when initialData is provided
+    useEffect(() => {
+        if (initialData && division && month && year) {
+            const cacheKey = `${division}_${month}_${year}_${useHistoryDb}_${gangPrefix || ''}`;
+            if (cachedParamsRef.current !== cacheKey) {
+                cachedParamsRef.current = cacheKey;
+                cachedRawDataRef.current = initialData;
+                // Trigger loadData to process cached data
+                loadData();
+            }
+        }
+    }, [initialData, division, month, year, gangPrefix, useHistoryDb]); // eslint-disable-line
 
     useEffect(() => {
         if (month && year && division) loadData();

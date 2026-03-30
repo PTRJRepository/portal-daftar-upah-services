@@ -6,7 +6,7 @@
  * Data sourced from extend_db_ptrj (history_gang_member + history_taskreg)
  * EmpCode is the primary key — NIK and bank account derived from it
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getGangAttendanceMatrix } from '../services/employeeDetailService'
 
 // Status config: label, color, background
@@ -24,19 +24,28 @@ const STATUS_CONFIG = {
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
-export default function GangAttendanceMatrix({ token, gangCodes, month, year, division }) {
-    const [data, setData] = useState(null)
-    const [loading, setLoading] = useState(false)
+export default function GangAttendanceMatrix({ token, gangCodes, month, year, division, initialData = null, onDataLoaded = null }) {
+    const [data, setData] = useState(initialData)
+    const [loading, setLoading] = useState(!initialData)
     const [error, setError] = useState(null)
     const [expandedGangs, setExpandedGangs] = useState(new Set())
+    // Track what params we already have cached data for
+    const cachedParamsRef = useRef(null)
 
     const fetchData = useCallback(async () => {
         if (!gangCodes || gangCodes.length === 0 || !month || !year) return
+
+        // Skip fetch if we already have data for these exact params
+        const cacheKey = gangCodes.join(',') + '_' + month + '_' + year
+        if (cachedParamsRef.current === cacheKey && data) return
+
         setLoading(true)
         setError(null)
         try {
             const result = await getGangAttendanceMatrix(token, gangCodes, month, year)
             setData(result)
+            cachedParamsRef.current = cacheKey
+            if (onDataLoaded) onDataLoaded(result)
             // Auto-expand all gangs
             if (result?.data) {
                 setExpandedGangs(new Set(result.data.map(g => g.gang_code)))
@@ -46,7 +55,7 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
         } finally {
             setLoading(false)
         }
-    }, [token, gangCodes, month, year])
+    }, [token, gangCodes, month, year, onDataLoaded, data])
 
     useEffect(() => {
         fetchData()
