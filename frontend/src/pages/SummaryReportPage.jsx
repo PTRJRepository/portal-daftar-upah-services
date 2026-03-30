@@ -64,12 +64,16 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     // State
     const [loading, setLoading] = useState(false);
 
-    // Helper to extract Asistensi
+    // Helper to extract Asistensi (Group)
+    // Rule: K2 gangs belong to Group 1 (special estate classification).
+    // For all other gangs, extract the first digit found in the gang code.
     const getAsistensi = useCallback((gc, div) => {
         if (!gc) return null;
         const g = gc.trim().toUpperCase();
-        if (g.startsWith('K2')) return "1";
-        const match = g.match(/\d+/);
+        // K2 gangs belong to Group 1 (special classification)
+        if (g.startsWith('K2')) return '1';
+        // Find the first digit in the string for other patterns (e.g., A1H → '1', K1H → '1')
+        const match = g.match(/\d/);
         return match ? match[0] : null;
     }, []);
 

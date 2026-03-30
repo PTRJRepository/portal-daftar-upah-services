@@ -194,6 +194,11 @@ interface PayrollRow {
     pot_bpjs_pekerja_total: number;
     // Other Incomes (THR, Bonus, Custom) - for display and calculation
     other_incomes?: { type: string; name: string; amount: number }[];
+    // Taxable breakdown of other incomes (for PAJAK section)
+    taxable_pendapatan_thr: number;
+    taxable_pendapatan_bonus: number;
+    taxable_pendapatan_custom: number;
+    taxable_pendapatan_lainnya: number;
     [key: string]: any;
 }
 
@@ -380,8 +385,10 @@ export class DataExtractorService {
             // Already fetched `allGangs` above for mapping, reuse it for condition
             if (allGangs.length > 0) {
                 // Use UPPER for case-insensitive comparison and RTRIM for trailing spaces
-                // Use description (from HR_GANG) to match with PR_GANG.Description (Plantware)
-                const conditions = allGangs.map((gang: { description: string }) => `UPPER(RTRIM(g.Description)) = UPPER('${gang.description.trim()}')`).join(' OR ');
+                // Match by BOTH GangCode AND Description for maximum reliability across Plantware tables
+                const conditions = allGangs.map((gang: { gang_code: string, description: string }) => 
+                    `(UPPER(RTRIM(g.GangCode)) = UPPER('${gang.gang_code.trim()}') OR UPPER(RTRIM(g.Description)) = UPPER('${gang.description.trim()}'))`
+                ).join(' OR ');
                 gangCondition = `(${conditions})`;
             } else {
                 gangCondition = "1=0";
@@ -481,43 +488,116 @@ export class DataExtractorService {
         } else {
             console.log(`[THR Logic] ⚠️ NO other income records found for ${otherIncomeMonth}/${year}, div=${divisionCode}, gang=${gangCode}`);
         }
+        // ==============================================================================
+        // [THR FIX] Pendapatan Lainnya (THR, Bonus, Custom) Storage & Lookup Strategy
+        // ==============================================================================
+        // PROBLEM: Karyawan yang pindah division mendapat emp_code baru, tapi THR tetap
+        // tersimpan dengan emp_code lama di employee_other_incomes.
+        //
+        // SOLUTION: NIK adalah identifier STABIL yang tidak berubah saat karyawan pindah.
+        // emp_code bisa berubah, jadi kita PRIORITASKAN lookup via NIK.
+        //
+        // DUPLICATE NIK HANDLING: Jika ada NIK duplikat di data THR (karyawan berbeda
+        // tapi NIK sama di DB), gunakan komposit key "NIK + NAMA" untuk disambiguate.
+        // Nama diambil dari gang member (emp.emp_name dari HR_PAYROLL) untuk matching.
+        //
+        // LOOKUP PRIORITY:
+        //   1. By NIK (primary, stabil)
+        //   2. By NIK + emp_name (fallback untuk duplicate NIK)
+        //   3. By emp_code (last resort, hanya jika NIK kosong)
+        // ==============================================================================
+
         const dbThpIncomesMap = new Map<string, number>();
         const dbTaxableIncomesMap = new Map<string, number>();
-        const dbOtherIncomesByNik = new Map<string, { type: string; name: string; amount: number }[]>();
+        // Primary storage: key by NIK
+        const dbOtherIncomesByNik = new Map<string, { type: string; name: string; amount: number; emp_name?: string }[]>();
+        // Fallback storage: key by "NIK + EMP_NAME" for duplicate NIK disambiguation
+        const dbOtherIncomesByNikName = new Map<string, { type: string; name: string; amount: number; emp_name?: string }[]>();
+        // [NEW] Separate taxable breakdown by income type for PAJAK section display
+        const dbTaxableOtherIncomesByNik = new Map<string, { type: string; name: string; amount: number }[]>();
+        const dbTaxableOtherIncomesByNikName = new Map<string, { type: string; name: string; amount: number }[]>();
+
+        // First pass: count how many records per NIK to detect duplicates
+        const nikCount = new Map<string, number>();
+        for (const inc of dbOtherIncomes) {
+            const nik = String(inc.nik || '').trim().toUpperCase();
+            if (nik) {
+                nikCount.set(nik, (nikCount.get(nik) || 0) + 1);
+            }
+        }
 
         for (const inc of dbOtherIncomes) {
             const nik = String(inc.nik || '').trim().toUpperCase();
             const empCode = String(inc.emp_code || '').trim().toUpperCase();
-            // Use nik if available, otherwise fall back to emp_code
-            const lookupKey = nik || empCode;
+            // Nama dari DB record (ini adalah nama yang tersimpan di employee_other_incomes)
+            const dbEmpName = String(inc.emp_name || '').trim().toUpperCase();
             const incomeEntry = {
                 type: inc.income_type,
                 name: inc.income_name || inc.income_type,
-                amount: Number(inc.amount)
+                amount: Number(inc.amount),
+                emp_name: dbEmpName
             };
+            const nikNameKey = nik ? `${nik}||${dbEmpName}` : '';
+
             if (inc.is_paid_in_thp) {
-                dbThpIncomesMap.set(lookupKey, (dbThpIncomesMap.get(lookupKey) || 0) + Number(inc.amount));
-                // Also store under emp_code if different from lookupKey
-                if (empCode && empCode !== lookupKey) {
+                // Store by NIK (primary)
+                if (nik) {
+                    dbThpIncomesMap.set(nik, (dbThpIncomesMap.get(nik) || 0) + Number(inc.amount));
+                }
+                // Also store by NIK+NAME if duplicate NIK (for disambiguation)
+                if (nik && nikCount.get(nik)! > 1 && nikNameKey) {
+                    const existing = dbThpIncomesMap.get(nikNameKey) || 0;
+                    dbThpIncomesMap.set(nikNameKey, existing + Number(inc.amount));
+                }
+                // Also store by emp_code as last resort fallback (only if nik is empty)
+                if (!nik && empCode) {
                     dbThpIncomesMap.set(empCode, (dbThpIncomesMap.get(empCode) || 0) + Number(inc.amount));
                 }
             }
             if (inc.is_taxable) {
-                dbTaxableIncomesMap.set(lookupKey, (dbTaxableIncomesMap.get(lookupKey) || 0) + Number(inc.amount));
-                if (empCode && empCode !== lookupKey) {
+                // Store by NIK (primary)
+                if (nik) {
+                    dbTaxableIncomesMap.set(nik, (dbTaxableIncomesMap.get(nik) || 0) + Number(inc.amount));
+                    // Also store in taxable breakdown maps
+                    if (!dbTaxableOtherIncomesByNik.has(nik)) {
+                        dbTaxableOtherIncomesByNik.set(nik, []);
+                    }
+                    dbTaxableOtherIncomesByNik.get(nik)!.push(incomeEntry);
+                }
+                // Also store by NIK+NAME if duplicate NIK
+                if (nik && nikCount.get(nik)! > 1 && nikNameKey) {
+                    const existing = dbTaxableIncomesMap.get(nikNameKey) || 0;
+                    dbTaxableIncomesMap.set(nikNameKey, existing + Number(inc.amount));
+                    if (!dbTaxableOtherIncomesByNikName.has(nikNameKey)) {
+                        dbTaxableOtherIncomesByNikName.set(nikNameKey, []);
+                    }
+                    dbTaxableOtherIncomesByNikName.get(nikNameKey)!.push(incomeEntry);
+                }
+                // Also store by emp_code as last resort fallback (only if nik is empty)
+                if (!nik && empCode) {
                     dbTaxableIncomesMap.set(empCode, (dbTaxableIncomesMap.get(empCode) || 0) + Number(inc.amount));
+                    if (!dbTaxableOtherIncomesByNik.has(empCode)) {
+                        dbTaxableOtherIncomesByNik.set(empCode, []);
+                    }
+                    dbTaxableOtherIncomesByNik.get(empCode)!.push(incomeEntry);
                 }
             }
-            // Build array of other incomes for display - store under BOTH nik AND emp_code keys
-            // This ensures lookup works regardless of whether rawEmpNik matches nik or emp_code
-            if (lookupKey) {
-                if (!dbOtherIncomesByNik.has(lookupKey)) {
-                    dbOtherIncomesByNik.set(lookupKey, []);
+            // Build primary array: store under NIK (not emp_code)
+            // emp_code berubah saat karyawan pindah, tapi NIK tetap stabil
+            if (nik) {
+                if (!dbOtherIncomesByNik.has(nik)) {
+                    dbOtherIncomesByNik.set(nik, []);
                 }
-                dbOtherIncomesByNik.get(lookupKey)!.push(incomeEntry);
-            }
-            // Also store under emp_code if different from lookupKey (nik)
-            if (empCode && empCode !== lookupKey) {
+                dbOtherIncomesByNik.get(nik)!.push(incomeEntry);
+                // Also store by NIK+NAME for duplicate NIK disambiguation
+                if (nikCount.get(nik)! > 1 && nikNameKey) {
+                    if (!dbOtherIncomesByNikName.has(nikNameKey)) {
+                        dbOtherIncomesByNikName.set(nikNameKey, []);
+                    }
+                    dbOtherIncomesByNikName.get(nikNameKey)!.push(incomeEntry);
+                }
+            } else if (empCode) {
+                // Only use emp_code as fallback when NIK is completely empty
                 if (!dbOtherIncomesByNik.has(empCode)) {
                     dbOtherIncomesByNik.set(empCode, []);
                 }
@@ -525,6 +605,9 @@ export class DataExtractorService {
             }
         }
         console.log(`[THR Logic] dbOtherIncomesByNik map size: ${dbOtherIncomesByNik.size} keys`);
+        console.log(`[THR Logic] dbOtherIncomesByNikName map size: ${dbOtherIncomesByNikName.size} keys (duplicate NIK disambiguation)`);
+        console.log(`[THR Logic] dbTaxableOtherIncomesByNik map size: ${dbTaxableOtherIncomesByNik.size} keys`);
+        console.log(`[THR Logic] dbTaxableOtherIncomesByNikName map size: ${dbTaxableOtherIncomesByNikName.size} keys`);
 
         // Fetch Master PTKP records for the current year
         const { ptkpTaxService } = await import('./ptkpTaxService');
@@ -630,8 +713,8 @@ export class DataExtractorService {
             const additionalBeras = isF2H ? empBerasDocDesc : 0;
             const berasJumlah = berasJumlahBase + additionalBeras;
 
-            const jabatanRate = hari_kerja > 0 && empJabatan > 0 ? empJabatan / hari_kerja : 0;
-            const masaKerjaRate = hk > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hk : 0;
+            const jabatanRate = hari_kerja > 0 ? empJabatan / hari_kerja : 0;
+            const masaKerjaRate = hari_kerja > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hari_kerja : 0;
 
             const empLemburJumlahPure = empLemburDetails.jumlah || 0;
             const empLemburJamPure = empLemburDetails.jam || 0;
@@ -772,17 +855,81 @@ export class DataExtractorService {
             const pot_bpjs_pensiun_majikan = caruman.bpjs_pensiun_majikan;
             const pot_bpjs_pensiun_jumlah = pot_bpjs_pensiun_pekerja + pot_bpjs_pensiun_majikan;
 
-            const rawEmpNik = String(emp.actual_nik || emp.emp_code || '').trim().toUpperCase();
+            // ==============================================================================
+            // [THR FIX] NIK-based lookup with NIK+NAME fallback for duplicate NIK
+            // ==============================================================================
+            // PRIORITY:
+            //   1. NIK (emp.actual_nik) - primary stable identifier
+            //   2. NIK + EMP_NAME (emp.emp_name from gang member) - for duplicate NIK
+            //   3. emp_code - last resort fallback
+            // ==============================================================================
+            const empNik = String(emp.actual_nik || '').trim().toUpperCase();
             const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
-            const pendapatan_tidak_tetap_thp = dbThpIncomesMap.get(rawEmpNik) || dbThpIncomesMap.get(empCodeKey) || 0;
-            const pendapatan_tidak_tetap_taxable = dbTaxableIncomesMap.get(rawEmpNik) || dbTaxableIncomesMap.get(empCodeKey) || 0;
+            // Nama dari gang member (HR_PAYROLL) - digunakan untuk NIK+NAME composite key
+            const empNameForKey = String(emp.emp_name || '').trim().toUpperCase();
+            // Composite key: NIK + EMP_NAME (digunakan jika ada duplicate NIK)
+            const nikNameKey = empNik && empNameForKey ? `${empNik}||${empNameForKey}` : '';
+
+            // Helper: lookup dengan 3-level fallback
+            // Level 1: By NIK (stabil, tidak berubah saat pindah division)
+            // Level 2: By NIK + EMP_NAME (untuk disambiguate duplicate NIK)
+            // Level 3: By emp_code (last resort)
+            const lookupByNik = (map: Map<string, number>) => {
+                let val = 0;
+                if (empNik) {
+                    val = map.get(empNik) || 0;
+                }
+                if (val === 0 && nikNameKey) {
+                    // Fallback: coba NIK + NAMA (untuk duplicate NIK)
+                    val = map.get(nikNameKey) || 0;
+                }
+                if (val === 0 && empCodeKey) {
+                    // Last resort: coba emp_code
+                    val = map.get(empCodeKey) || 0;
+                }
+                return val;
+            };
+
+            const lookupOtherIncomes = (map: Map<string, { type: string; name: string; amount: number; emp_name?: string }[]>) => {
+                let entries: { type: string; name: string; amount: number }[] = [];
+                if (empNik) {
+                    entries = map.get(empNik) || [];
+                }
+                if (entries.length === 0 && nikNameKey) {
+                    // Fallback: coba NIK + NAMA (untuk duplicate NIK)
+                    entries = map.get(nikNameKey) || [];
+                }
+                if (entries.length === 0 && empCodeKey) {
+                    // Last resort: coba emp_code
+                    entries = map.get(empCodeKey) || [];
+                }
+                return entries;
+            };
+
+            const pendapatan_tidak_tetap_thp = lookupByNik(dbThpIncomesMap);
+            const pendapatan_tidak_tetap_taxable = lookupByNik(dbTaxableIncomesMap);
 
             // [PRE-COMPUTE] Pendapatan Lainnya (THR + Bonus + Custom) for upah_bersih deduction
-            // This is computed early because it must be subtracted from upah_bersih
-            const empOtherIncomes = dbOtherIncomesByNik.get(rawEmpNik) || dbOtherIncomesByNik.get(empCodeKey) || [];
+            const empOtherIncomes = lookupOtherIncomes(dbOtherIncomesByNik);
+            const empTaxableOtherIncomes = lookupOtherIncomes(dbTaxableOtherIncomesByNik);
+            // Also check nik+name specific maps for taxable breakdown
+            const empTaxableOtherIncomesNikName = nikNameKey ? (dbTaxableOtherIncomesByNikName.get(nikNameKey) || []) : [];
+            const empTaxableOtherIncomesAll = [...empTaxableOtherIncomes, ...empTaxableOtherIncomesNikName.filter(
+                ni => !empTaxableOtherIncomes.some(existing => existing.type === ni.type && existing.name === ni.name)
+            )];
+
             const getOiByType = (type: string) => empOtherIncomes
                 .filter(oi => (oi.type || '').toUpperCase() === type.toUpperCase())
                 .reduce((sum, oi) => sum + Number(oi.amount || 0), 0);
+            const getTaxableOiByType = (type: string, incomeList: { type: string; name: string; amount: number }[]) =>
+                incomeList
+                    .filter(oi => (oi.type || '').toUpperCase() === type.toUpperCase())
+                    .reduce((sum, oi) => sum + Number(oi.amount || 0), 0);
+
+            const taxable_pendapatan_thr = getTaxableOiByType('THR', empTaxableOtherIncomesAll);
+            const taxable_pendapatan_bonus = getTaxableOiByType('BONUS', empTaxableOtherIncomesAll);
+            const taxable_pendapatan_custom = getTaxableOiByType('CUSTOM', empTaxableOtherIncomesAll);
+            const taxable_pendapatan_lainnya = taxable_pendapatan_thr + taxable_pendapatan_bonus + taxable_pendapatan_custom;
             const pendapatan_lainnya_amount = getOiByType('THR') + getOiByType('BONUS') + getOiByType('CUSTOM');
 
             // [FIXED] PREMI_PPH is an ADDITION (penambah), NOT a deduction
@@ -969,6 +1116,12 @@ export class DataExtractorService {
                 pendapatan_lainnya: pendapatan_lainnya_amount,
                 // [NEW] Pendapatan Lainnya shown as a deduction in Potongan Upah Bersih section
                 pot_pendapatan_lainnya: pendapatan_lainnya_amount,
+                // [NEW] Taxable breakdown of other incomes for PAJAK section display
+                // These show how THR/Bonus/Custom are included in penghasilan_bruto
+                taxable_pendapatan_thr,
+                taxable_pendapatan_bonus,
+                taxable_pendapatan_custom,
+                taxable_pendapatan_lainnya,
                 // REMOVED: premi: empPremi - causes double-counting in frontend
                 // Individual premi fields are already added via ...empPremi below
                 pot_astek: pot_astek_pekerja,
@@ -1030,6 +1183,8 @@ export class DataExtractorService {
             let historicalCondition = gangCondition;
             if (gangCodeInput) {
                 historicalCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
+            } else {
+                historicalCondition = gangCondition.replace(/g\.GangCode/ig, 'g.GangID');
             }
 
             // PR_GANGLN_ARC uses EmpCode column and MasterID to join with PR_GANG

@@ -1501,16 +1501,16 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
         if (initialDivision !== undefined && initialDivision !== division) setDivision(initialDivision);
     }, [initialMonth, initialYear, initialDivision]);
 
+    // Helper to extract Asistensi (Group)
+    // Rule: K2 gangs belong to Group 1 (special estate classification).
+    // For all other gangs, extract the first digit found in the gang code.
     const getAsistensi = useCallback((gangCode, divCode) => {
         if (!gangCode) return null;
         const gc = gangCode.trim().toUpperCase();
-
-        // Rule: Any gang starting with K2 belongs to Group 1
-        if (gc.startsWith('K2')) {
-            return "1";
-        }
-
-        const match = gangCode.match(/\d+/);
+        // K2 gangs belong to Group 1 (special classification)
+        if (gc.startsWith('K2')) return '1';
+        // Find the first digit in the string for other patterns (e.g., A1H → '1', K1H → '1')
+        const match = gc.match(/\d/);
         return match ? match[0] : null;
     }, []);
 

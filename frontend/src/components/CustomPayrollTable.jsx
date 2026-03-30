@@ -849,7 +849,7 @@ export default function CustomPayrollTable({
             ...(isTaxExpanded ? [
                 {
                     field: 'status_ptkp',
-                    headers: ['PAJAK', null, null, 'PTKP'],
+                    headers: ['PAJAK', '', null, 'PTKP'],
                     w: 80,
                     className: 'text-center',
                     render: (row) => {
@@ -875,22 +875,22 @@ export default function CustomPayrollTable({
                         return row.status_ptkp || '-';
                     }
                 },
-                { field: 'kategori_ter', headers: ['PAJAK', null, null, 'TER'], w: 55, className: 'text-center' },
-                { field: 'gaji_pokok_ideal', headers: ['PAJAK', null, null, 'GP IDEAL'], w: 85, className: 'text-right' },
-                { field: 'gaji_pokok_dibayarkan', headers: ['PAJAK', null, null, 'GP BAYAR'], w: 85, className: 'text-right' },
-                { field: 'koreksi_hk', headers: ['PAJAK', null, null, 'KOREKSI HK'], w: 85, className: 'text-right' },
+                { field: 'kategori_ter', headers: ['PAJAK', '', null, 'TER'], w: 55, className: 'text-center' },
+                { field: 'gaji_pokok_ideal', headers: ['PAJAK', '', null, 'GP IDEAL'], w: 85, className: 'text-right' },
+                { field: 'gaji_pokok_dibayarkan', headers: ['PAJAK', '', null, 'GP BAYAR'], w: 85, className: 'text-right' },
+                { field: 'koreksi_hk', headers: ['PAJAK', '', null, 'KOREKSI HK'], w: 85, className: 'text-right' },
                 // Additional Tax Group Columns
-                { field: 'astek_084', headers: ['PAJAK', null, null, 'ASTEK 0.84%'], w: 85, className: 'text-right' },
-                { field: 'pot_bpjs_kesehatan_majikan', colId: 'pajak_bpjs_kes_maj', headers: ['PAJAK', null, null, 'BPJS KES 4%'], w: 85, className: 'text-right' },
-                { field: 'beras_jumlah', colId: 'pajak_beras_jumlah', headers: ['PAJAK', null, null, 'TUNJ BERAS'], w: 85, className: 'text-right' },
-                { field: 'jabatan_jumlah', colId: 'pajak_jabatan_jumlah', headers: ['PAJAK', null, null, 'TUNJ JABATAN'], w: 85, className: 'text-right' },
-                { field: 'masa_kerja_jumlah', colId: 'pajak_masa_kerja', headers: ['PAJAK', null, null, 'MASA KERJA'], w: 85, className: 'text-right' },
-                { field: 'lembur_jumlah', colId: 'pajak_lembur_jumlah', headers: ['PAJAK', null, null, 'LEMBUR'], w: 85, className: 'text-right' },
-                { field: 'total_premi', colId: 'pajak_total_premi', headers: ['PAJAK', null, null, 'TOTAL PREMI'], w: 85, className: 'text-right' },
+                { field: 'astek_084', headers: ['PAJAK', '', null, 'ASTEK 0.84%'], w: 85, className: 'text-right' },
+                { field: 'pot_bpjs_kesehatan_majikan', colId: 'pajak_bpjs_kes_maj', headers: ['PAJAK', '', null, 'BPJS KES 4%'], w: 85, className: 'text-right' },
+                { field: 'beras_jumlah', colId: 'pajak_beras_jumlah', headers: ['PAJAK', '', null, 'TUNJ BERAS'], w: 85, className: 'text-right' },
+                { field: 'jabatan_jumlah', colId: 'pajak_jabatan_jumlah', headers: ['PAJAK', '', null, 'TUNJ JABATAN'], w: 85, className: 'text-right' },
+                { field: 'masa_kerja_jumlah', colId: 'pajak_masa_kerja', headers: ['PAJAK', '', null, 'MASA KERJA'], w: 85, className: 'text-right' },
+                { field: 'lembur_jumlah', colId: 'pajak_lembur_jumlah', headers: ['PAJAK', '', null, 'LEMBUR'], w: 85, className: 'text-right' },
+                { field: 'total_premi', colId: 'pajak_total_premi', headers: ['PAJAK', '', null, 'TOTAL PREMI'], w: 85, className: 'text-right' },
                 {
                     field: 'pot_koreksi',
                     colId: 'pajak_pot_koreksi',
-                    headers: ['PAJAK', null, null, 'KOREKSI'],
+                    headers: ['PAJAK', '', null, 'KOREKSI'],
                     w: 85,
                     className: 'text-right',
                     render: (row) => {
@@ -904,10 +904,32 @@ export default function CustomPayrollTable({
                         );
                     }
                 },
-                { field: 'penghasilan_bruto', headers: ['PAJAK', null, null, 'PENGHASILAN BRUTO'], w: 110, className: 'text-right font-bold' },
+                // PENDAPATAN LAINNYA TAXABLE - THR, Bonus, Custom that are taxable (included in penghasilan_bruto)
+                // These show how other incomes are factored into tax calculation
+                { field: 'taxable_pendapatan_thr', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'THR'], w: 85, className: 'text-right', render: (row) => {
+                    const val = Number(row.taxable_pendapatan_thr || row.pendapatan_thr || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }},
+                { field: 'taxable_pendapatan_bonus', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'BONUS'], w: 85, className: 'text-right', render: (row) => {
+                    const val = Number(row.taxable_pendapatan_bonus || row.pendapatan_bonus || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }},
+                { field: 'taxable_pendapatan_custom', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'CUSTOM'], w: 85, className: 'text-right', render: (row) => {
+                    const val = Number(row.taxable_pendapatan_custom || row.pendapatan_custom || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }},
+                { field: 'taxable_pendapatan_lainnya', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'TOTAL'], w: 85, className: 'text-right font-bold', render: (row) => {
+                    const val = Number(row.taxable_pendapatan_lainnya || row.pendapatan_lainnya || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }},
+                { field: 'penghasilan_bruto', headers: ['PAJAK', '', null, 'PENGHASILAN BRUTO'], w: 110, className: 'text-right font-bold' },
                 {
                     field: 'tarif_pajak_ter',
-                    headers: ['PAJAK', null, null, 'TARIF TER (%)'],
+                    headers: ['PAJAK', '', null, 'TARIF TER (%)'],
                     w: 80,
                     className: 'text-center',
                     render: (row) => {
@@ -919,7 +941,7 @@ export default function CustomPayrollTable({
             ] : []),
 
             // PPH21 TER (Always Visible Summary)
-            { field: 'pph21_ter', headers: ['PAJAK', null, null, 'PPH21 TER'], w: 95, className: 'text-right' },
+            { field: 'pph21_ter', headers: isTaxExpanded ? ['PAJAK', '', null, 'PPH21 TER'] : ['PAJAK', null, null, 'PPH21 TER'], w: 95, className: 'text-right' },
 
             // Continue with other columns...
             // ABSENSI > KEHADIRAN
@@ -1299,6 +1321,56 @@ export default function CustomPayrollTable({
             });
         cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold' });
 
+        // PENDAPATAN LAINNYA - THR, Bonus, Custom (Tampil sebagai PENAMBAHAN di UPAH KOTOR)
+        // This section shows other incomes as ADDITIONS to gross wage (before subtraction as deduction)
+        cols.push({
+            field: 'pendapatan_thr',
+            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'THR (+)'],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_thr || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        cols.push({
+            field: 'pendapatan_bonus',
+            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'BONUS (+)'],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_bonus || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        cols.push({
+            field: 'pendapatan_custom',
+            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'CUSTOM (+)'],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.pendapatan_custom || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
+        cols.push({
+            field: 'pendapatan_lainnya',
+            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'TOTAL LAINNYA (+)'],
+            w: 95,
+            className: 'text-right font-bold',
+            render: (row) => {
+                const val = Number(row.pendapatan_lainnya || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
+
         // POTONGAN UPAH KOTOR - KOREKSI columns (all variations)
         // Display each KOREKSI variation as a separate column
         const koreksiFields = Object.entries(dynamicHeaders.potongan)
@@ -1350,7 +1422,7 @@ export default function CustomPayrollTable({
         cols.push({ field: 'potongan_upah_kotor_total', headers: ['POTONGAN UPAH KOTOR', null, null, 'TOTAL KOREKSI'], w: 95, className: 'text-right font-bold' });
 
         // UPAH KOTOR (separate group, not child of POTONGAN UPAH KOTOR)
-        cols.push({ field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', null, null, 'JUMLAH'], w: 110, className: 'text-right font-bold' });
+        cols.push({ field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', '', null, 'JUMLAH'], w: 110, className: 'text-right font-bold' });
 
         // POTONGAN UPAH BERSIH - Collapsible
         // Default: Show ONLY Total Potongan
@@ -1458,15 +1530,15 @@ export default function CustomPayrollTable({
             });
             // POTONGAN UPAH BERSIH > POTONGAN BPJS > JUMLAH
             cols.push({ field: 'pot_bpjs_pekerja_total', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', null, 'JUMLAH'], w: 80, className: 'text-right font-bold' });
-            // Other deductions
-            cols.push({ field: 'pot_spsi', headers: ['POTONGAN UPAH BERSIH', null, null, 'IURAN SPSI'], w: 80, className: 'text-right' });
-            cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', null, null, 'POTONGAN PPH21 (-)'], w: 80, className: 'text-right' });
+            // Other deductions (Dipindahkan ke POTONGAN LAINNYA)
+            cols.push({ field: 'pot_spsi', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'IURAN SPSI'], w: 80, className: 'text-right' });
+            cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'POTONGAN PPH21 (-)'], w: 80, className: 'text-right' });
 
             // [NEW] PREMI PPH - This is an ADDITION (+), not a deduction
             // Display with + sign to indicate it's added to upah_bersih
             cols.push({
                 field: 'premi_pph',
-                headers: ['POTONGAN UPAH BERSIH', null, null, 'PREMI PPH (+)'],
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'PREMI PPH (+)'],
                 w: 90,
                 className: 'text-right cell-premi-pph',
                 render: (row) => {
@@ -1514,7 +1586,7 @@ export default function CustomPayrollTable({
                 const displayLabel = label.replace(/^(POTONGAN\s*|POT\s*)/i, '') || label;
                 cols.push({
                     field,
-                    headers: ['POTONGAN UPAH BERSIH', null, null, displayLabel],
+                    headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, displayLabel],
                     w: 90,
                     className: 'text-right',
                     render: (row) => {
@@ -1538,63 +1610,69 @@ export default function CustomPayrollTable({
                     }
                 });
             }
+
+            // PENDAPATAN LAINNYA - THR, Bonus, Custom (Digabung ke dalam POTONGAN LAINNYA)
+            // THR (Tunjangan Hari Raya)
+            cols.push({
+                field: 'pendapatan_thr',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'THR (-)'],
+                w: 85,
+                className: 'text-right',
+                render: (row) => {
+                    const val = Number(row.pendapatan_thr || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            });
+
+            // Bonus
+            cols.push({
+                field: 'pendapatan_bonus',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'BONUS (-)'],
+                w: 85,
+                className: 'text-right',
+                render: (row) => {
+                    const val = Number(row.pendapatan_bonus || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            });
+
+            // Custom (income type lain)
+            cols.push({
+                field: 'pendapatan_custom',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'CUSTOM (-)'],
+                w: 85,
+                className: 'text-right',
+                render: (row) => {
+                    const val = Number(row.pendapatan_custom || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            });
+
+            // Total Pendapatan Lainnya
+            cols.push({
+                field: 'pendapatan_lainnya',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'TOTAL LAINNYA (-)'],
+                w: 95,
+                className: 'text-right font-bold',
+                render: (row) => {
+                    const val = Number(row.pendapatan_lainnya || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            });
         }
 
-        // PENDAPATAN LAINNYA - THR, Bonus, Custom (Tampil sebagai Potongan Upah Bersih)
-        // THR (Tunjangan Hari Raya)
-        cols.push({
-            field: 'pendapatan_thr',
-            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'THR (-)'],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_thr || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
-        // Bonus
-        cols.push({
-            field: 'pendapatan_bonus',
-            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'BONUS (-)'],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_bonus || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
-        // Custom (income type lain)
-        cols.push({
-            field: 'pendapatan_custom',
-            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'CUSTOM (-)'],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_custom || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
-        // Total Pendapatan Lainnya
-        cols.push({
-            field: 'pendapatan_lainnya',
-            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'TOTAL LAINNYA (-)'],
-            w: 95,
-            className: 'text-right font-bold',
-            render: (row) => {
-                const val = Number(row.pendapatan_lainnya || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
         // Total Potongan Bersih (Always Shown)
-        cols.push({ field: 'total_potongan_bersih', headers: ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'], w: 100, className: 'text-right font-bold cell-deduction' });
+        // Adjust Level 1 header to preserve colspan merging (use empty string when expanded)
+        cols.push({ 
+            field: 'total_potongan_bersih', 
+            headers: showDeductionDetails ? ['POTONGAN UPAH BERSIH', '', null, 'TOTAL POTONGAN'] : ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'], 
+            w: 100, 
+            className: 'text-right font-bold cell-deduction' 
+        });
 
         // TOTAL UPAH (Summary group) - only Upah Bersih since Upah Kotor is now separate
         cols.push({ field: 'upah_bersih', headers: ['UPAH BERSIH', null, null, 'JUMLAH'], w: 115, className: 'text-right font-bold cell-net-salary' });

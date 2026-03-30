@@ -732,8 +732,11 @@ export default function MainPage({ lockedDiv = null }) {
                         const selectedGang = e.target.value;
                         setGang(selectedGang);
 
-                        // If selecting a specific gang (not ALL), auto-update gangPrefix to match
-                        if (selectedGang !== 'ALL') {
+                        // If selecting "SEMUA GANG", reset group filter too (show ALL gangs in division)
+                        if (selectedGang === 'ALL') {
+                          setGangPrefix('');  // Clear group filter
+                        } else {
+                          // If selecting a specific gang, auto-update gangPrefix to match
                           const groupOfGang = getAsistensi(selectedGang);
                           setGangPrefix(groupOfGang || '');
                         }
@@ -748,13 +751,23 @@ export default function MainPage({ lockedDiv = null }) {
                         <option>Menunggu pemilihan divisi...</option>
                       ) : (
                         <>
-                          <option value="ALL">🌐 SEMUA GANG – Seluruh Divisi{gangPrefix ? ` (Group ${gangPrefix})` : ''}</option>
+                          {/* "SEMUA GANG" option — only show when NO group filter is active */}
+                          {!gangPrefix && (
+                            <option value="ALL">🌐 SEMUA GANG – Seluruh Divisi</option>
+                          )}
+                          {/* When group filter IS active, show "SEMUA GANG DALAM GROUP X" option */}
+                          {gangPrefix && (
+                            <option value="ALL">
+                              🌐 SEMUA GANG – Group {gangPrefix} ({filteredGangs.length} gang)
+                            </option>
+                          )}
+                          {/* Individual gang options — always filtered by gangPrefix */}
                           {filteredGangs.map(g => (
                             <option key={g.gang_code} value={g.gang_code}>
                               {g.gang_code} - {g.description || '-'}
                             </option>
                           ))}
-                        </>
+</>
                       )}
                     </select>
                     {division && gang === 'ALL' && (

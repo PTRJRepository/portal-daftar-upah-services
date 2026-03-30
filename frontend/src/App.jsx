@@ -74,23 +74,32 @@ const OperationalReportWrapper = () => {
 
   // Sync state with global context if props were passed (usually via SummaryReportWrapper style logic)
   // but here it's a direct route component.
-  
+
+  // Helper to extract Group number from gang code
+  const getAsistensi = useCallback((gangCode) => {
+    if (!gangCode) return null;
+    const gc = gangCode.trim().toUpperCase();
+    if (gc.startsWith('K2')) return '1';
+    const match = gc.match(/\d/);
+    return match ? match[0] : null;
+  }, []);
+
+  // Filter gangs by group prefix
+  const filteredGangs = useMemo(() => {
+    if (!gangPrefix) return gangs;
+    return gangs.filter(g => getAsistensi(g.gang_code) === gangPrefix);
+  }, [gangs, gangPrefix, getAsistensi]);
+
   // Available asistensi prefixes from loaded gangs
   const availablePrefixes = useMemo(() => {
     if (!gangs || gangs.length === 0) return [];
     const prefixes = new Set();
     gangs.forEach(g => {
-      const a = (gangCode => {
-        if (!gangCode) return null;
-        const gc = gangCode.trim().toUpperCase();
-        if (gc.startsWith('K2')) return '1';
-        const match = gc.match(/\d+/);
-        return match ? match[0] : null;
-      })(g.gang_code);
+      const a = getAsistensi(g.gang_code);
       if (a) prefixes.add(a);
     });
     return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
-  }, [gangs]);
+  }, [gangs, getAsistensi]);
 
   // Reset gangPrefix when division changes
   useEffect(() => {
@@ -204,23 +213,26 @@ const OperationalReportWrapper = () => {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Toolbar */}
-      {/* Toolbar - Compact Single Line */}
+      {/* Toolbar - Professional Header */}
       <div style={{
-        height: '56px', // Fixed height for consistency
-        padding: '0 1rem',
+        padding: '0 1.25rem',
         borderBottom: '1px solid #e2e8f0',
-        backgroundColor: '#ffffff',
+        background: 'linear-gradient(to bottom, #ffffff, #f8fafc)',
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '1rem',
+        flexDirection: 'column',
+        gap: '0',
         flexShrink: 0
       }}>
-        {/* Left Side: Navigation & Filters */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
-          {/* Back & Title */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+        {/* Top Row: Title & Right Actions */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '10px 0',
+          borderBottom: gang ? '1px solid #f1f5f9' : 'none'
+        }}>
+          {/* Left: Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               onClick={() => navigate('/')}
               style={{
@@ -230,72 +242,275 @@ const OperationalReportWrapper = () => {
                 color: '#64748b',
                 display: 'flex',
                 alignItems: 'center',
-                padding: '4px',
-                borderRadius: '4px'
+                padding: '6px',
+                borderRadius: '6px',
+                transition: 'all 0.15s'
               }}
-              title="Dashboard"
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              title="Kembali ke Dashboard"
+              onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#334155'; }}
+              onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#64748b'; }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
             </button>
-            <span style={{ fontWeight: '600', fontSize: '0.95rem', color: '#1e293b', whiteSpace: 'nowrap' }}>
-              Operational
-            </span>
-            <div style={{ width: '1px', height: '20px', backgroundColor: '#cbd5e1', margin: '0 0.25rem' }}></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: '700',
+                boxShadow: '0 2px 4px rgba(30,64,175,0.25)'
+              }}>
+                📋
+              </div>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.95rem', color: '#0f172a', lineHeight: '1.2' }}>
+                  Daftar Upah
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>
+                  {division || '-'} {gang && gang !== 'ALL' ? `› ${gang}` : ''}
+                </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{ width: '1px', height: '28px', backgroundColor: '#e2e8f0', margin: '0 4px' }}></div>
+
+            {/* View Mode Toggle */}
+            <div style={{
+              display: 'flex',
+              background: '#f1f5f9',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              overflow: 'hidden'
+            }}>
+              <button
+                onClick={() => setViewMode('table')}
+                style={{
+                  padding: '0 12px',
+                  height: '30px',
+                  border: 'none',
+                  background: viewMode === 'table' ? 'white' : 'transparent',
+                  color: viewMode === 'table' ? '#1e40af' : '#64748b',
+                  fontWeight: viewMode === 'table' ? '600' : '500',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                💰 Daftar Upah
+              </button>
+              <button
+                onClick={() => setViewMode('attendance')}
+                style={{
+                  padding: '0 12px',
+                  height: '30px',
+                  border: 'none',
+                  background: viewMode === 'attendance' ? 'white' : 'transparent',
+                  color: viewMode === 'attendance' ? '#059669' : '#64748b',
+                  fontWeight: viewMode === 'attendance' ? '600' : '500',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  boxShadow: viewMode === 'attendance' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                📅 Absensi
+              </button>
+              <button
+                onClick={() => setViewMode('overtime')}
+                style={{
+                  padding: '0 12px',
+                  height: '30px',
+                  border: 'none',
+                  background: viewMode === 'overtime' ? 'white' : 'transparent',
+                  color: viewMode === 'overtime' ? '#d97706' : '#64748b',
+                  fontWeight: viewMode === 'overtime' ? '600' : '500',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  boxShadow: viewMode === 'overtime' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                ⏰ Lembur
+              </button>
+            </div>
           </div>
 
-          {/* Selectors Group */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {/* Division */}
+          {/* Right: Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Font Controls */}
+            <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
+              <button onClick={handleFontDecrease} style={{ padding: '0.4rem 0.6rem', background: 'white', border: 'none', borderRight: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.85rem', color: '#64748b' }}>A-</button>
+              <button onClick={handleFontReset} style={{ padding: '0.4rem 0.6rem', background: 'white', border: 'none', borderRight: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.85rem', color: '#64748b' }}>Reset</button>
+              <button onClick={handleFontIncrease} style={{ padding: '0.4rem 0.6rem', background: 'white', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#64748b' }}>A+</button>
+            </div>
+
+            {/* DB Mode Toggle */}
+            <button
+              onClick={() => setUseHistoryDb(!useHistoryDb)}
+              style={{
+                background: useHistoryDb ? 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)' : '#f8fafc',
+                color: useHistoryDb ? '#ffffff' : '#64748b',
+                border: `1px solid ${useHistoryDb ? '#7c3aed' : '#e2e8f0'}`,
+                padding: '0.35rem 0.75rem',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.15s'
+              }}
+              title={useHistoryDb ? "Kembali ke Database Origin" : "Gunakan Database History"}
+            >
+              <span>{useHistoryDb ? '📚' : '⚡'}</span>
+              {useHistoryDb ? 'History DB' : 'Origin DB'}
+            </button>
+
+            {/* Edit Mode Toggle */}
+            <button
+              onClick={() => setIsEditMode(!isEditMode)}
+              style={{
+                background: isEditMode ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : '#f8fafc',
+                color: isEditMode ? '#ffffff' : '#64748b',
+                border: `1px solid ${isEditMode ? '#d97706' : '#e2e8f0'}`,
+                padding: '0.35rem 0.75rem',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.15s'
+              }}
+              title={isEditMode ? "Matikan Edit Mode" : "Aktifkan Edit Mode"}
+            >
+              <span>{isEditMode ? '🔓' : '🔒'}</span>
+              {isEditMode ? 'Edit Aktif' : 'Edit Mode'}
+            </button>
+
+            {/* Payslip Print */}
+            <button
+              onClick={handlePrintPayslips}
+              disabled={selectedEmployees.length === 0}
+              style={{
+                padding: '0.4rem 0.85rem',
+                backgroundColor: selectedEmployees.length > 0 ? '#3b82f6' : '#f1f5f9',
+                color: selectedEmployees.length > 0 ? 'white' : '#94a3b8',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '0.78rem',
+                cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s'
+              }}
+              title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu'}
+            >
+              🖨️ Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}
+            </button>
+
+            {/* Export */}
+            <button
+              onClick={handleExportExcel}
+              disabled={!exportHandler || exportLoading}
+              style={{
+                padding: '0.4rem 0.85rem',
+                backgroundColor: exportHandler && !exportLoading ? '#10b981' : '#f1f5f9',
+                color: exportHandler && !exportLoading ? 'white' : '#94a3b8',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '0.78rem',
+                cursor: exportHandler && !exportLoading ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s'
+              }}
+            >
+              {exportLoading ? '...' : '⬇️ Export'}
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom Row: Filters */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '8px 0',
+          flexWrap: 'wrap'
+        }}>
+          {/* Division */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Divisi</label>
             <select
               value={division}
               onChange={(e) => canChangeDivision && setDivision(e.target.value)}
               disabled={!canChangeDivision}
-              title={!canChangeDivision ? "Locked" : "Division"}
               style={{
-                height: '32px',
-                padding: '0 2rem 0 0.75rem',
-                border: '1px solid #cbd5e1',
+                height: '30px',
+                padding: '0 1.75rem 0 0.6rem',
+                border: '1px solid #e2e8f0',
                 borderRadius: '6px',
-                fontSize: '0.85rem',
+                fontSize: '0.82rem',
                 color: '#334155',
                 backgroundColor: !canChangeDivision ? '#f8fafc' : 'white',
                 cursor: !canChangeDivision ? 'not-allowed' : 'pointer',
                 fontWeight: '500',
                 appearance: 'none',
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: 'right 0.5rem center',
+                backgroundPosition: 'right 0.4rem center',
                 backgroundRepeat: 'no-repeat',
-                backgroundSize: '1em 1em',
+                backgroundSize: '0.9em',
                 minWidth: '80px'
               }}
             >
               {allDivisions.map(d => (<option key={d} value={d}>{d}</option>))}
             </select>
+          </div>
 
-            {/* Group / Asistensi Filter */}
-            {availablePrefixes.length > 0 && (
+          {/* Group */}
+          {availablePrefixes.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Group</label>
               <select
                 value={gangPrefix}
-                onChange={(e) => { setGangPrefix(e.target.value); setGang('ALL'); }}
-                title="Filter berdasarkan Group/Asistensi"
+                onChange={(e) => {
+                  setGangPrefix(e.target.value);
+                  setGang('ALL');
+                }}
                 style={{
-                  height: '32px',
-                  padding: '0 2rem 0 0.75rem',
-                  border: `1px solid ${gangPrefix ? '#93c5fd' : '#cbd5e1'}`,
+                  height: '30px',
+                  padding: '0 1.75rem 0 0.6rem',
+                  border: `1px solid ${gangPrefix ? '#3b82f6' : '#e2e8f0'}`,
                   borderRadius: '6px',
-                  fontSize: '0.85rem',
+                  fontSize: '0.82rem',
                   color: '#334155',
                   backgroundColor: gangPrefix ? '#eff6ff' : 'white',
                   cursor: 'pointer',
                   fontWeight: '500',
                   appearance: 'none',
                   backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                  backgroundPosition: 'right 0.5rem center',
+                  backgroundPosition: 'right 0.4rem center',
                   backgroundRepeat: 'no-repeat',
-                  backgroundSize: '1em 1em',
-                  minWidth: '90px'
+                  backgroundSize: '0.9em',
+                  minWidth: '100px'
                 }}
               >
                 <option value="">Semua Group</option>
@@ -303,262 +518,156 @@ const OperationalReportWrapper = () => {
                   <option key={prefix} value={prefix}>Group {prefix}</option>
                 ))}
               </select>
-            )}
+            </div>
+          )}
 
-            {/* Gang */}
+          {/* Gang */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Kemandoran
+              {gang && gang !== 'ALL' && filteredGangs.find(g => g.gang_code === gang) && (
+                <span style={{ color: '#3b82f6', marginLeft: '4px', fontWeight: '600' }}>
+                  [{filteredGangs.find(g => g.gang_code === gang)?.description || gang}]
+                </span>
+              )}
+            </label>
             <select
               value={gang || ""}
-              onChange={(e) => setGang(e.target.value)}
+              onChange={(e) => {
+                const selectedGang = e.target.value;
+                setGang(selectedGang);
+                // Auto-update group when selecting specific gang
+                if (selectedGang !== 'ALL') {
+                  setGangPrefix(getAsistensi(selectedGang) || '');
+                }
+              }}
               disabled={gangLoading}
               style={{
-                height: '32px',
-                padding: '0 2rem 0 0.75rem',
-                border: '1px solid #cbd5e1',
+                height: '30px',
+                padding: '0 1.75rem 0 0.6rem',
+                border: `1px solid ${gang && gang !== 'ALL' ? '#10b981' : '#e2e8f0'}`,
                 borderRadius: '6px',
-                fontSize: '0.85rem',
+                fontSize: '0.82rem',
                 color: '#334155',
                 backgroundColor: gangLoading ? '#f8fafc' : 'white',
                 cursor: gangLoading ? 'wait' : 'pointer',
                 fontWeight: '500',
                 appearance: 'none',
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: 'right 0.5rem center',
+                backgroundPosition: 'right 0.4rem center',
                 backgroundRepeat: 'no-repeat',
-                backgroundSize: '1em 1em',
-                maxWidth: '160px',
-                textOverflow: 'ellipsis'
+                backgroundSize: '0.9em',
+                minWidth: '140px',
+                maxWidth: '200px'
               }}
             >
-              {gangLoading ? <option>Loading...</option> : (
+              {gangLoading ? <option>Memuat...</option> : (
                 <>
-                  <option value="ALL">All Gangs</option>
-                  {gangs.map(g => (
-                    <option key={g.gang_code} value={g.gang_code}>{g.gang_code} - {g.description || ''}</option>
+                  <option value="ALL">🌐 Semua Gang</option>
+                  {filteredGangs.map(g => (
+                    <option key={g.gang_code} value={g.gang_code}>{g.gang_code} — {g.description || '-'}</option>
                   ))}
                 </>
               )}
             </select>
+          </div>
 
-            {/* Current Period Badge */}
-            <div style={{
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '0 0.75rem',
-              background: '#eff6ff',
-              border: '1px solid #bfdbfe',
-              borderRadius: '6px',
-              color: '#1d4ed8',
-              fontWeight: '600',
-              fontSize: '0.85rem',
-              whiteSpace: 'nowrap'
-            }}>
-              {month}-{year}
-            </div>
+          {/* Divider */}
+          <div style={{ width: '1px', height: '30px', backgroundColor: '#e2e8f0', margin: '0 4px' }}></div>
 
-            {/* Quick Period Buttons */}
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {previousPeriods.slice(0, 3).map((p) => (
-                <button
-                  key={`${p.month}-${p.year}`}
-                  onClick={() => { setMonth(p.month); setYear(p.year); }}
-                  style={{
-                    height: '32px',
-                    padding: '0 0.75rem',
-                    fontSize: '0.75rem',
-                    color: '#475569',
-                    background: 'white',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s'
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.borderColor = '#94a3b8';
-                    e.currentTarget.style.color = '#0f172a';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.borderColor = '#e2e8f0';
-                    e.currentTarget.style.color = '#475569';
-                  }}
-                >
-                  {p.label}
-                </button>
+          {/* Period: Month */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bulan</label>
+            <select
+              value={month}
+              onChange={(e) => setMonth(parseInt(e.target.value))}
+              style={{
+                height: '30px',
+                padding: '0 1.75rem 0 0.6rem',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                fontSize: '0.82rem',
+                color: '#334155',
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                fontWeight: '500',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                backgroundPosition: 'right 0.4rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '0.9em',
+                minWidth: '110px'
+              }}
+            >
+              {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'].map((name, i) => (
+                <option key={i+1} value={i+1}>{name}</option>
               ))}
+            </select>
+          </div>
+
+          {/* Period: Year */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tahun</label>
+            <select
+              value={year}
+              onChange={(e) => setYear(parseInt(e.target.value))}
+              style={{
+                height: '30px',
+                padding: '0 1.75rem 0 0.6rem',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                fontSize: '0.82rem',
+                color: '#334155',
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                fontWeight: '500',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                backgroundPosition: 'right 0.4rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '0.9em',
+                minWidth: '80px'
+              }}
+            >
+              {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Active filter indicator */}
+          {gang && gang !== 'ALL' && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '0.25rem 0.6rem',
+              background: '#ecfdf5',
+              border: '1px solid #6ee7b7',
+              borderRadius: '6px',
+              fontSize: '0.75rem',
+              color: '#065f46',
+              fontWeight: '600'
+            }}>
+              ✅ {gang} {gangPrefix ? `(Group ${gangPrefix})` : ''}
             </div>
-          </div>
-        </div>
-
-        {/* View Mode Toggle - Matrix Absensi & Lembur */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <div style={{
-            display: 'flex',
-            background: '#f1f5f9',
-            border: '1px solid #e2e8f0',
-            borderRadius: '8px',
-            overflow: 'hidden'
-          }}>
-            <button
-              onClick={() => setViewMode('table')}
-              style={{
-                padding: '0 12px',
-                height: '32px',
-                border: 'none',
-                background: viewMode === 'table' ? 'white' : 'transparent',
-                color: viewMode === 'table' ? '#1e40af' : '#64748b',
-                fontWeight: viewMode === 'table' ? '600' : '500',
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              💰 Daftar Upah
-            </button>
-            <button
-              onClick={() => setViewMode('attendance')}
-              style={{
-                padding: '0 12px',
-                height: '32px',
-                border: 'none',
-                background: viewMode === 'attendance' ? 'white' : 'transparent',
-                color: viewMode === 'attendance' ? '#059669' : '#64748b',
-                fontWeight: viewMode === 'attendance' ? '600' : '500',
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                boxShadow: viewMode === 'attendance' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              📅 Absensi
-            </button>
-            <button
-              onClick={() => setViewMode('overtime')}
-              style={{
-                padding: '0 12px',
-                height: '32px',
-                border: 'none',
-                background: viewMode === 'overtime' ? 'white' : 'transparent',
-                color: viewMode === 'overtime' ? '#d97706' : '#64748b',
-                fontWeight: viewMode === 'overtime' ? '600' : '500',
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                boxShadow: viewMode === 'overtime' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              ⏰ Lembur
-            </button>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {/* Font Controls */}
-          <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
-            <button onClick={handleFontDecrease} style={{ padding: '0.4rem 0.8rem', background: 'white', border: 'none', borderRight: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.9rem' }}>A-</button>
-            <button onClick={handleFontReset} style={{ padding: '0.4rem 0.8rem', background: 'white', border: 'none', borderRight: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.9rem' }}>Reset</button>
-            <button onClick={handleFontIncrease} style={{ padding: '0.4rem 0.8rem', background: 'white', border: 'none', cursor: 'pointer', fontSize: '0.9rem' }}>A+</button>
-          </div>
-
-          {/* Payslip Print Button */}
-          <button
-            onClick={handlePrintPayslips}
-            disabled={selectedEmployees.length === 0}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: selectedEmployees.length > 0 ? '#3b82f6' : '#9ca3af',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: '600',
-              fontSize: '0.9rem',
-              cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed',
+          )}
+          {gang === 'ALL' && gangPrefix && (
+            <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem'
-            }}
-            title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu'}
-          >
-            🖨️ Print Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}
-          </button>
-
-          {/* DB Mode Toggle */}
-          <button
-            onClick={() => setUseHistoryDb(!useHistoryDb)}
-            style={{
-              background: useHistoryDb ? 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)' : 'white',
-              color: useHistoryDb ? '#ffffff' : '#334155',
-              border: '1px solid #cbd5e1',
-              padding: '0.4rem 0.8rem',
+              gap: '4px',
+              padding: '0.25rem 0.6rem',
+              background: '#eff6ff',
+              border: '1px solid #93c5fd',
               borderRadius: '6px',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              height: '36px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap'
-            }}
-            title={useHistoryDb ? "Kembali ke Database Origin" : "Gunakan Database History"}
-          >
-            <span>{useHistoryDb ? '📚' : '⚡'}</span>
-            <span>{useHistoryDb ? 'History DB' : 'Origin DB'}</span>
-          </button>
-
-          {/* Edit Mode Toggle Button */}
-          <button
-            onClick={() => setIsEditMode(!isEditMode)}
-            style={{
-              background: isEditMode ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'white',
-              color: isEditMode ? '#ffffff' : '#334155',
-              border: '1px solid #cbd5e1',
-              padding: '0.4rem 0.8rem',
-              borderRadius: '6px',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              height: '36px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap'
-            }}
-            title={isEditMode ? "Matikan Edit Mode" : "Aktifkan Edit Mode"}
-          >
-            <span>{isEditMode ? '🔓' : '🔒'}</span>
-            <span>{isEditMode ? 'Edit Aktif' : 'Edit Mode'}</span>
-          </button>
-
-          {/* Export Button */}
-          <button
-            onClick={handleExportExcel}
-            disabled={!exportHandler || exportLoading}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: '600',
-              fontSize: '0.9rem',
-              cursor: (!exportHandler || exportLoading) ? 'not-allowed' : 'pointer',
-              opacity: (!exportHandler || exportLoading) ? 0.7 : 1,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}
-          >
-            {exportLoading ? 'Exporting...' : 'Export Excel'}
-          </button>
+              fontSize: '0.75rem',
+              color: '#1e40af',
+              fontWeight: '600'
+            }}>
+              📂 Group {gangPrefix}
+            </div>
+          )}
         </div>
       </div>
 

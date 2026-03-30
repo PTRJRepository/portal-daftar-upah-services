@@ -42,31 +42,75 @@ export default function DashboardHome() {
 
   return (
     <>
-      {/* Header / Hero Section */}
+      {/* Page Header */}
       <div style={{
-        height: '160px',
-        width: '100%',
-        backgroundImage: 'url("/images/wallpaper_loading_screen.webp")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        position: 'relative',
+        backgroundColor: '#1e293b',
+        borderBottom: '3px solid #2563eb',
+        padding: '1.5rem 2rem',
+        flexShrink: 0,
         display: 'flex',
-        alignItems: 'flex-end',
-        flexShrink: 0
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '1rem',
       }}>
-        {/* Dark Overlay for Text Readability */}
-        <div style={{
-          position: 'absolute',
-          top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.6)' // Darker overlay for formality
-        }} />
-        <div style={{ position: 'relative', padding: '2rem', width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: '600', margin: 0, color: '#ffffff', letterSpacing: '-0.025em' }}>
-            Selamat Datang, {user?.username}
+        {/* Left: Page Title */}
+        <div>
+          <h1 style={{
+            fontSize: '1.25rem',
+            fontWeight: '700',
+            margin: 0,
+            color: '#ffffff',
+            letterSpacing: '-0.01em',
+            lineHeight: 1.2,
+          }}>
+            Dashboard
           </h1>
-          <p style={{ margin: '0.5rem 0 0', color: '#e2e8f0', fontSize: '0.95rem', fontWeight: '400' }}>
+          <p style={{
+            margin: '0.25rem 0 0',
+            color: '#94a3b8',
+            fontSize: '0.8rem',
+            fontWeight: '400',
+          }}>
             Sistem Manajemen Data Upah dan Laporan Operasional
           </p>
+        </div>
+
+        {/* Right: Quick Stats Chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+          {/* Division chip */}
+          <div style={{
+            backgroundColor: 'rgba(37, 99, 235, 0.15)',
+            border: '1px solid rgba(37, 99, 235, 0.3)',
+            borderRadius: '6px',
+            padding: '0.4rem 0.875rem',
+            fontSize: '0.75rem',
+            color: '#93c5fd',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.375rem',
+          }}>
+            <span style={{ opacity: 0.7 }}>Divisi:</span>
+            <span style={{ color: '#bfdbfe', fontWeight: '700' }}>{division || '—'}</span>
+          </div>
+          {/* Period chip */}
+          <div style={{
+            backgroundColor: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            borderRadius: '6px',
+            padding: '0.4rem 0.875rem',
+            fontSize: '0.75rem',
+            color: '#6ee7b7',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.375rem',
+          }}>
+            <span style={{ opacity: 0.7 }}>Periode:</span>
+            <span style={{ color: '#a7f3d0', fontWeight: '700' }}>
+              {new Date(year, month - 1).toLocaleString('id-ID', { month: 'short', year: 'numeric' }).toUpperCase()}
+            </span>
+          </div>
         </div>
       </div>
 

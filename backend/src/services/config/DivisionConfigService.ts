@@ -414,7 +414,7 @@ export class DivisionConfigService {
      * Get gangs for a division (handles both real and virtual)
      */
     public async getGangsForDivision(divisionCode: string): Promise<GangInfo[]> {
-        const db = Database.getInstance(undefined, 'SERVER_PROFILE_2');
+        const db = Database.getInstance();
         const division = this.getDivision(divisionCode);
 
         if (!division) {

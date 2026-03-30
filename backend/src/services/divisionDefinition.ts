@@ -102,13 +102,12 @@ export class DivisionDefinition {
     /**
      * Mendapatkan nomor asistensi dari kode gang.
      * Aturan:
-     * - Gang yang dimulai dengan K2 -> Asistensi 1
-     * - Angka dalam gang code menjadi nomor asistensi
+     * - Angka pertama dalam gang code menjadi nomor asistensi (Grup)
      *
      * Usage:
      *   const asistensi = divDef.getAsistensiFromGang('D2'); // returns '2'
      *   const asistensi = divDef.getAsistensiFromGang('P1A'); // returns '1'
-     *   const asistensi = divDef.getAsistensiFromGang('K2A'); // returns '1' (K2 rule)
+     *   const asistensi = divDef.getAsistensiFromGang('K2A'); // returns '2' (follows first digit rule)
      *
      * @param gangCode - Kode gang (misal: 'D2', 'P1A', 'K2A')
      * @param locCode - Optional, kode divisi
@@ -117,13 +116,9 @@ export class DivisionDefinition {
         if (!gangCode) return null;
         const gc = gangCode.trim().toUpperCase();
 
-        // Rule: Any gang starting with K2 belongs to Group 1 (Asistensi 1)
-        if (gc.startsWith('K2')) {
-            return "1";
-        }
-
-        // Extract all digits from gang code. e.g. "D2" -> "2", "P1A" -> "1"
-        const match = gangCode.match(/\d+/);
+        // Extract only the FIRST digit found in the gang code.
+        // This corresponds to the "middle number" in patterns like A1H, G2M, etc.
+        const match = gc.match(/\d/);
         return match ? match[0] : null;
     }
 
@@ -353,12 +348,16 @@ export class DivisionDefinition {
         let rows: { GangCode: string, Description: string, LocCode: string }[];
 
         if (config.source_division) {
+            // Use aliases for the source division to ensure we find all gangs
+            const aliases = divisionConfigService.getAliases(config.source_division);
+            const placeholders = aliases.map(() => '?').join(',');
+            
             rows = await db.query(`
                 SELECT [GangCode], [Description], [LocCode]
                 FROM [dbo].[HR_GANG]
-                WHERE RTRIM(LTRIM(UPPER(LocCode))) = ?
+                WHERE RTRIM(LTRIM(UPPER(LocCode))) IN (${placeholders})
                 ORDER BY [GangCode]
-            `, [config.source_division]);
+            `, aliases);
         } else {
             rows = await db.query(`
                 SELECT [GangCode], [Description], [LocCode]

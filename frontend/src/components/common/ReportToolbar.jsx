@@ -1,6 +1,189 @@
-import React, { useRef, useCallback, useState, useEffect } from 'react'
+import React, { useCallback } from 'react'
 import CompactPeriodScroll from './CompactPeriodScroll'
 
+// ─── SVG Icons (inline, no emoji) ───────────────────────────────────────────
+const IconBack = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="15 18 9 12 15 6" />
+    </svg>
+)
+
+const IconRefresh = ({ spinning }) => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        style={{ transition: 'transform 0.3s', transform: spinning ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+        <polyline points="23 4 23 10 17 10" />
+        <polyline points="1 20 1 14 7 14" />
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+)
+
+const IconDownload = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+)
+
+const IconExport = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6" />
+        <line x1="8" y1="12" x2="21" y2="12" />
+        <line x1="8" y1="18" x2="21" y2="18" />
+        <line x1="3" y1="6" x2="3.01" y2="6" />
+        <line x1="3" y1="12" x2="3.01" y2="12" />
+        <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+)
+
+const IconEdit = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+)
+
+// ─── Shared Select Styles ────────────────────────────────────────────────────
+const SELECT_STYLE = {
+    height: '34px',
+    padding: '0 10px',
+    background: '#ffffff',
+    border: '1px solid #cbd5e1',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#1e293b',
+    cursor: 'pointer',
+    outline: 'none',
+    transition: 'border-color 0.15s, box-shadow 0.15s',
+    fontFamily: "inherit",
+}
+
+// ─── Toolbar Button Styles ───────────────────────────────────────────────────
+const TBtn = ({ onClick, disabled, title, children, variant = 'default', active = false }) => {
+    const base = {
+        height: '34px',
+        padding: '0 10px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '6px',
+        borderRadius: '6px',
+        fontSize: '12px',
+        fontWeight: '600',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'all 0.15s',
+        whiteSpace: 'nowrap',
+        fontFamily: "inherit",
+        opacity: disabled ? 0.5 : 1,
+    }
+
+    let styles = { ...base }
+
+    if (variant === 'primary') {
+        styles = {
+            ...styles,
+            backgroundColor: '#1d4ed8',
+            border: '1px solid #1d4ed8',
+            color: '#ffffff',
+        }
+    } else if (variant === 'success') {
+        styles = {
+            ...styles,
+            backgroundColor: active ? '#dcfce7' : '#f0fdf4',
+            border: `1px solid ${active ? '#16a34a' : '#86efac'}`,
+            color: active ? '#15803d' : '#16a34a',
+        }
+    } else if (variant === 'warning') {
+        styles = {
+            ...styles,
+            backgroundColor: active ? '#fef3c7' : '#fffbeb',
+            border: `1px solid ${active ? '#d97706' : '#fcd34d'}`,
+            color: active ? '#b45309' : '#d97706',
+        }
+    } else {
+        styles = {
+            ...styles,
+            backgroundColor: active ? '#eff6ff' : '#ffffff',
+            border: `1px solid ${active ? '#3b82f6' : '#cbd5e1'}`,
+            color: active ? '#1d4ed8' : '#475569',
+        }
+    }
+
+    return (
+        <button
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            title={title}
+            style={styles}
+            onMouseOver={(e) => {
+                if (!disabled && !active) {
+                    if (variant === 'primary') e.currentTarget.style.backgroundColor = '#1e40af'
+                    else if (variant === 'success') { e.currentTarget.style.backgroundColor = '#dcfce7'; e.currentTarget.style.borderColor = '#16a34a' }
+                    else if (variant === 'warning') { e.currentTarget.style.backgroundColor = '#fef3c7'; e.currentTarget.style.borderColor = '#d97706' }
+                    else { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.borderColor = '#94a3b8' }
+                }
+            }}
+            onMouseOut={(e) => {
+                if (!active) {
+                    if (variant === 'primary') e.currentTarget.style.backgroundColor = '#1d4ed8'
+                    else if (variant === 'success') { e.currentTarget.style.backgroundColor = '#f0fdf4'; e.currentTarget.style.borderColor = '#86efac' }
+                    else if (variant === 'warning') { e.currentTarget.style.backgroundColor = '#fffbeb'; e.currentTarget.style.borderColor = '#fcd34d' }
+                    else { e.currentTarget.style.backgroundColor = '#ffffff'; e.currentTarget.style.borderColor = '#cbd5e1' }
+                }
+            }}
+        >
+            {children}
+        </button>
+    )
+}
+
+// ─── View Mode Toggle ────────────────────────────────────────────────────────
+function ViewModeToggle({ viewMode, onChange, disabled }) {
+    const modes = [
+        { key: 'table', label: 'Daftar Upah' },
+        { key: 'attendance', label: 'Absensi' },
+        { key: 'overtime', label: 'Lembur' },
+    ]
+
+    return (
+        <div style={{
+            display: 'flex',
+            background: '#f1f5f9',
+            padding: '2px',
+            borderRadius: '8px',
+            border: '1px solid #e2e8f0',
+            gap: '2px',
+        }}>
+            {modes.map(mode => (
+                <button
+                    key={mode.key}
+                    onClick={() => onChange(mode.key)}
+                    disabled={disabled}
+                    style={{
+                        border: 'none',
+                        padding: '5px 12px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s',
+                        backgroundColor: viewMode === mode.key ? '#ffffff' : 'transparent',
+                        color: viewMode === mode.key ? '#1d4ed8' : '#64748b',
+                        boxShadow: viewMode === mode.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        opacity: disabled ? 0.5 : 1,
+                        fontFamily: "inherit",
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    {mode.label}
+                </button>
+            ))}
+        </div>
+    )
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
 export default function ReportToolbar({
     division,
     divisions,
@@ -26,12 +209,16 @@ export default function ReportToolbar({
     isDownloadingExcel = false,
     onDownloadExcel = null
 }) {
-    // Helper to extract Asistensi
+    // Helper to extract Asistensi (Group)
+    // Rule: K2 gangs belong to Group 1 (special estate classification).
+    // For all other gangs, extract the first digit found in the gang code.
     const getAsistensi = useCallback((gc, div) => {
         if (!gc) return null;
         const g = gc.trim().toUpperCase();
-        if (g.startsWith('K2')) return "1";
-        const match = g.match(/\d+/);
+        // K2 gangs belong to Group 1 (special classification)
+        if (g.startsWith('K2')) return '1';
+        // Find the first digit in the string for other patterns (e.g., A1H → '1', K1H → '1')
+        const match = g.match(/\d/);
         return match ? match[0] : null;
     }, []);
 
@@ -46,113 +233,122 @@ export default function ReportToolbar({
     }, [gangs, division, getAsistensi]);
 
     return (
-        <div className="report-toolbar-v2" style={{
+        <div style={{
             display: 'flex',
-            gap: '16px',
+            gap: '12px',
             alignItems: 'center',
             flexWrap: 'wrap',
             width: '100%',
-            padding: '8px 0',
-            backgroundColor: 'transparent'
+            padding: '6px 0',
+            backgroundColor: 'transparent',
         }}>
-            {/* Group 1: Navigation & Period */}
-            <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px',
-                paddingRight: '16px',
-                borderRight: '1px solid #e2e8f0'
-            }}>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                    {onBack && (
-                        <button
-                            className="toolbar-btn"
-                            onClick={onBack}
-                            disabled={disableControls}
-                            title="Kembali"
-                        >
-                            ⬅️
-                        </button>
-                    )}
-                    {onRefresh && (
-                        <button
-                            className="toolbar-btn"
-                            onClick={onRefresh}
-                            disabled={disableControls}
-                            title="Refresh Data"
-                        >
-                            🔄
-                        </button>
-                    )}
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <label className="toolbar-label">Periode Laporan</label>
-                    <CompactPeriodScroll 
-                        month={month}
-                        year={year}
-                        onChange={onMonthYearChange}
-                        disableControls={disableControls}
-                    />
-                </div>
+            {/* ── Nav Buttons ──────────────────────────────────────────── */}
+            <div style={{ display: 'flex', gap: '4px' }}>
+                {onBack && (
+                    <TBtn onClick={onBack} disabled={disableControls} title="Kembali">
+                        <IconBack /> Kembali
+                    </TBtn>
+                )}
+                {onRefresh && (
+                    <TBtn onClick={onRefresh} disabled={disableControls} title="Refresh Data">
+                        <IconRefresh />
+                    </TBtn>
+                )}
             </div>
 
-            {/* Group 2: Filters */}
-            <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '12px',
-                paddingRight: '16px',
-                borderRight: '1px solid #e2e8f0'
-            }}>
+            {/* Divider */}
+            <div style={{ width: '1px', height: '28px', backgroundColor: '#e2e8f0' }} />
+
+            {/* ── Period ─────────────────────────────────────────────── */}
+            <CompactPeriodScroll
+                month={month}
+                year={year}
+                onChange={onMonthYearChange}
+                disableControls={disableControls}
+            />
+
+            {/* Divider */}
+            <div style={{ width: '1px', height: '28px', backgroundColor: '#e2e8f0' }} />
+
+            {/* ── Filters ────────────────────────────────────────────── */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {divisions && divisions.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <label className="toolbar-label">Divisi</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                        <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Divisi</label>
                         <select
-                            className="toolbar-select"
-                            style={{ minWidth: '100px' }}
+                            style={SELECT_STYLE}
                             value={division || ''}
                             onChange={(e) => onDivisionChange && onDivisionChange(e.target.value)}
                             disabled={disableControls}
+                            onFocus={(e) => { e.target.style.borderColor = '#3b82f6'; e.target.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.1)' }}
+                            onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.boxShadow = 'none' }}
                         >
                             {divisions.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
                     </div>
                 )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <label className="toolbar-label">Group</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                    <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Group</label>
                     <select
-                        className="toolbar-select"
-                        style={{ 
-                            minWidth: '120px',
-                            backgroundColor: gangPrefix ? '#eff6ff' : 'white', 
-                            borderColor: gangPrefix ? '#3b82f6' : '#e2e8f0' 
+                        style={{
+                            ...SELECT_STYLE,
+                            minWidth: '110px',
+                            backgroundColor: gangPrefix ? '#eff6ff' : '#ffffff',
+                            borderColor: gangPrefix ? '#3b82f6' : '#cbd5e1',
                         }}
                         value={gangPrefix || ''}
                         onChange={(e) => {
-                            onGangPrefixChange && onGangPrefixChange(e.target.value);
-                            if (e.target.value) onGangChange && onGangChange('ALL');
+                            const newPrefix = e.target.value;
+                            onGangPrefixChange && onGangPrefixChange(newPrefix);
+                            // When group changes (regardless of selecting SEMUA GROUP or a specific group), reset gang to ALL
+                            onGangChange && onGangChange('ALL');
                         }}
                         disabled={disableControls || !division}
+                        onFocus={(e) => { e.target.style.borderColor = '#3b82f6'; e.target.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.1)' }}
+                        onBlur={(e) => { e.target.style.borderColor = gangPrefix ? '#3b82f6' : '#cbd5e1'; e.target.style.boxShadow = 'none' }}
                     >
-                        <option value="">SEMUA GROUP</option>
+                        <option value="">SEMUA</option>
                         {availablePrefixes.map(p => (
                             <option key={p} value={p}>Group {p}</option>
                         ))}
                     </select>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <label className="toolbar-label">Kemandoran</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                    <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Kemandoran</label>
                     <select
-                        className="toolbar-select"
-                        style={{ minWidth: '200px', maxWidth: '280px' }}
+                        style={{
+                            ...SELECT_STYLE,
+                            minWidth: '180px',
+                            maxWidth: '260px',
+                            backgroundColor: gangCode === 'ALL' ? '#f0fdf4' : '#ffffff',
+                            borderColor: gangCode === 'ALL' ? '#86efac' : '#cbd5e1',
+                        }}
                         value={gangCode || ''}
-                        onChange={(e) => onGangChange(e.target.value)}
+                        onChange={(e) => {
+                            const selectedGang = e.target.value;
+                            if (selectedGang === 'ALL') {
+                                // Reset group filter too when selecting ALL gangs
+                                onGangPrefixChange && onGangPrefixChange('');
+                                onGangChange('ALL');
+                            } else {
+                                // Auto-update group prefix when selecting specific gang
+                                onGangChange(selectedGang);
+                            }
+                        }}
                         disabled={disableControls}
+                        onFocus={(e) => { e.target.style.borderColor = '#3b82f6'; e.target.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.1)' }}
+                        onBlur={(e) => { e.target.style.borderColor = gangCode === 'ALL' ? '#86efac' : '#cbd5e1'; e.target.style.boxShadow = 'none' }}
                     >
-                        <option value="ALL">🌐 SEMUA GANG</option>
+                        {/* When group filter is active, show contextual ALL option */}
+                        {gangPrefix ? (
+                            <option value="ALL">
+                                SEMUA GANG – Group {gangPrefix} ({gangs.filter(g => getAsistensi(g.gang_code, division) === gangPrefix).length} gang)
+                            </option>
+                        ) : (
+                            <option value="ALL">SEMUA GANG</option>
+                        )}
                         {gangs && gangs.length > 0 ? (
                             gangs
                                 .filter(g => !gangPrefix || getAsistensi(g.gang_code, division) === gangPrefix)
@@ -168,212 +364,64 @@ export default function ReportToolbar({
                 </div>
             </div>
 
-            {/* Group 3: View & Modes */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
-                {onViewModeChange && (
-                    <div className="view-mode-toggle">
-                        <button
-                            onClick={() => onViewModeChange('table')}
-                            className={`toggle-item ${viewMode === 'table' ? 'active' : ''}`}
-                            disabled={disableControls}
-                        >
-                            💰 Daftar Upah
-                        </button>
-                        <button
-                            onClick={() => onViewModeChange('attendance')}
-                            className={`toggle-item ${viewMode === 'attendance' ? 'active' : ''}`}
-                            disabled={disableControls}
-                        >
-                            📅 Absensi
-                        </button>
-                        <button
-                            onClick={() => onViewModeChange('overtime')}
-                            className={`toggle-item ${viewMode === 'overtime' ? 'active' : ''}`}
-                            disabled={disableControls}
-                        >
-                            ⏰ Lembur
-                        </button>
-                    </div>
+            {/* Spacer */}
+            <div style={{ flex: 1 }} />
+
+            {/* ── View Mode Toggle ─────────────────────────────────── */}
+            {onViewModeChange && (
+                <ViewModeToggle viewMode={viewMode} onChange={onViewModeChange} disabled={disableControls} />
+            )}
+
+            {/* ── Action Buttons ─────────────────────────────────────── */}
+            <div style={{ display: 'flex', gap: '6px' }}>
+                {onDownloadExcel && (
+                    <TBtn
+                        onClick={onDownloadExcel}
+                        disabled={disableControls || isDownloadingExcel}
+                        title="Download Excel"
+                        variant="success"
+                    >
+                        <IconDownload />
+                        {isDownloadingExcel ? '...' : 'Excel'}
+                    </TBtn>
                 )}
 
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    {onDownloadExcel && (
-                        <button
-                            className="action-btn excel-formula-btn"
-                            onClick={onDownloadExcel}
-                            disabled={disableControls || isDownloadingExcel}
-                            title="Download Excel dengan Formula"
-                        >
-                            {isDownloadingExcel ? '⏳ ...' : '⬇️ Excel'}
-                        </button>
-                    )}
+                {onExport && (
+                    <TBtn
+                        onClick={onExport}
+                        disabled={disableControls}
+                        title="Export Data"
+                    >
+                        <IconExport /> Export
+                    </TBtn>
+                )}
 
-                    {onExport && (
-                        <button
-                            className="action-btn export-btn"
-                            onClick={onExport}
+                {onEditModeToggle && (
+                    <TBtn
+                        onClick={onEditModeToggle}
+                        disabled={disableControls}
+                        title={editMode ? "Matikan Edit Mode" : "Aktifkan Edit Mode"}
+                        variant={editMode ? 'warning' : 'default'}
+                        active={editMode}
+                    >
+                        <IconEdit />
+                        {editMode ? 'Lock NIK' : 'Edit NIK'}
+                    </TBtn>
+                )}
+
+                {onHistoryChange && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <input
+                            type="checkbox"
+                            checked={useHistory}
+                            onChange={(e) => onHistoryChange(e.target.checked)}
                             disabled={disableControls}
-                            title="Export Data"
-                        >
-                            <span>📊</span> Export
-                        </button>
-                    )}
-
-                    {onEditModeToggle && (
-                        <button
-                            className={`action-btn ${editMode ? 'edit-active' : 'edit-inactive'}`}
-                            onClick={onEditModeToggle}
-                            disabled={disableControls}
-                            title={editMode ? "Matikan Edit Mode" : "Aktifkan Edit Mode"}
-                        >
-                            <span>{editMode ? '🔒' : '✏️'}</span>
-                            {editMode ? 'Lock NIK' : 'Edit NIK'}
-                        </button>
-                    )}
-
-                    {onHistoryChange && (
-                        <label className="history-toggle" title="Mode Database History">
-                            <input 
-                                type="checkbox" 
-                                checked={useHistory} 
-                                onChange={(e) => onHistoryChange(e.target.checked)}
-                                disabled={disableControls}
-                            />
-                            <span>History</span>
-                        </label>
-                    )}
-                </div>
+                            style={{ width: '14px', height: '14px', cursor: disableControls ? 'not-allowed' : 'pointer' }}
+                        />
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>History</span>
+                    </div>
+                )}
             </div>
-
-            <style>{`
-                .toolbar-label {
-                    font-size: 10px;
-                    font-weight: 700;
-                    color: #64748b;
-                    text-transform: uppercase;
-                    letter-spacing: 0.025em;
-                }
-                .toolbar-btn {
-                    height: 36px;
-                    width: 36px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: white;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                }
-                .toolbar-btn:hover:not(:disabled) {
-                    background: #f8fafc;
-                    border-color: #cbd5e1;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-                }
-                .toolbar-select {
-                    height: 36px;
-                    padding: 0 12px;
-                    background: white;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: #1e293b;
-                    cursor: pointer;
-                    outline: none;
-                    transition: all 0.2s;
-                }
-                .toolbar-select:focus {
-                    border-color: #3b82f6;
-                    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-                }
-                .view-mode-toggle {
-                    display: flex;
-                    background: #f1f5f9;
-                    padding: 3px;
-                    border-radius: 10px;
-                    border: 1px solid #e2e8f0;
-                }
-                .toggle-item {
-                    border: none;
-                    background: transparent;
-                    padding: 6px 14px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    color: #64748b;
-                    border-radius: 7px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    white-space: nowrap;
-                }
-                .toggle-item.active {
-                    background: white;
-                    color: #2563eb;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-                .action-btn {
-                    height: 36px;
-                    padding: 0 14px;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    white-space: nowrap;
-                }
-                .export-btn {
-                    background: #ecfdf5;
-                    border: 1px solid #10b981;
-                    color: #047857;
-                }
-                .export-btn:hover:not(:disabled) {
-                    background: #d1fae5;
-                }
-                .excel-formula-btn {
-                    background: #f0f9ff;
-                    border: 1px solid #0ea5e9;
-                    color: #0369a1;
-                }
-                .excel-formula-btn:hover:not(:disabled) {
-                    background: #e0f2fe;
-                }
-                .history-toggle {
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    padding: 0 10px;
-                    background: #f8fafc;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    color: #64748b;
-                    cursor: pointer;
-                    height: 36px;
-                }
-                .history-toggle input {
-                    width: 14px;
-                    height: 14px;
-                    accent-color: #2563eb;
-                }
-                .edit-inactive {
-                    background: #f8fafc;
-                    border: 1px solid #e2e8f0;
-                    color: #475569;
-                }
-                .edit-active {
-                    background: #fef2f2;
-                    border: 1px solid #ef4444;
-                    color: #b91c1c;
-                }
-                .action-btn:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-            `}</style>
         </div>
     )
 }

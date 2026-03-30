@@ -99,18 +99,23 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         fetchGangMembers();
     }, [fetchGangMembers]);
 
+    // Helper to extract Asistensi (Group)
+    // Rule: K2 gangs belong to Group 1 (special estate classification).
+    // For all other gangs, extract the first digit found in the gang code.
     const getAsistensi = useCallback((gangCode) => {
-        if (!gangCode) return "1";
+        if (!gangCode) return null;
         const gc = gangCode.trim().toUpperCase();
-        if (gc.startsWith('K2')) return "1";
-        const match = gc.match(/\d+/);
-        return match ? match[0] : "1";
+        // K2 gangs belong to Group 1 (special classification)
+        if (gc.startsWith('K2')) return '1';
+        // Find the first digit in the string for other patterns (e.g., A1H → '1', K1H → '1')
+        const match = gc.match(/\d/);
+        return match ? match[0] : null;
     }, []);
 
     const availablePrefixes = useMemo(() => {
         const prefixes = new Set();
         gangs.forEach(g => { prefixes.add(getAsistensi(g.gang_code)); });
-        return [...prefixes].sort();
+        return [...prefixes].sort((a, b) => Number(a) - Number(b));
     }, [gangs, getAsistensi]);
 
     const filteredGangs = useMemo(() => (!gangPrefix ? gangs : gangs.filter(g => getAsistensi(g.gang_code) === gangPrefix)), [gangs, gangPrefix, getAsistensi]);

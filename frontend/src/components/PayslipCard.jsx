@@ -126,21 +126,31 @@ export default function PayslipCard({ data, month, year }) {
         potBersihList.push({ label: 'Premi PPh (+)', value: premiPph, isCredit: true })
     }
 
+    // Total Kotor includes Gross regular + THR/Bonus
     const totalPotongan = getNum('total_potongan_bersih') || getNum('total_potongan') || (totalPotKotor + potBersihList.reduce((acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value), 0) + premiPph);
     const jumlahUpahKotor = getNum('jumlah_upah_kotor') || getNum('penghasilan_bruto')
     // upahBersih should be Gross - Total Potongan Bersih
     const upahBersih = getNum('upah_bersih') || (jumlahUpahKotor - totalPotongan)
 
+    // --- THR & OTHER INCOMES ---
+    const otherIncomes = payroll.other_incomes || []
+    const thrList = otherIncomes.filter(inc => inc.type === 'THR' || inc.name?.toUpperCase().includes('THR'))
+    const bonusList = otherIncomes.filter(inc => inc.type === 'BONUS' || inc.name?.toUpperCase().includes('BONUS'))
+    const customList = otherIncomes.filter(inc => inc.type === 'CUSTOM' || (!thrList.includes(inc) && !bonusList.includes(inc)))
+
     return (
         <div className="payslip-card">
+            {/* Watermark */}
+            <div className="payslip-watermark">PT REBINMAS JAYA</div>
+
             {/* Header */}
             <div className="payslip-card-header">
                 <div className="payslip-card-company">
                     <strong>PT REBINMAS JAYA</strong>
                 </div>
-                <div className="payslip-card-title">SLIP GAJI</div>
+                <div className="payslip-card-title">SLIP GAJI KARYAWAN</div>
                 <div className="payslip-card-period">
-                    {getMonthName(month)} {year}
+                    Periode: {getMonthName(month)} {year}
                 </div>
             </div>
 
@@ -166,31 +176,27 @@ export default function PayslipCard({ data, month, year }) {
                     <span className="payslip-info-label">HK/Rate</span>
                     <span className="payslip-info-value">: {hk} / {formatCurrency(rate)}</span>
                 </div>
-                {hkKoreksi !== 0 && (
-                    <div className="payslip-info-row">
-                        <span className="payslip-info-label">Koreksi</span>
-                        <span className="payslip-info-value" style={{ color: '#000', fontWeight: 'bold' }}>
-                            : {hkKoreksi > 0 ? '+' : ''}{hkKoreksi} HK
-                        </span>
-                    </div>
-                )}
+                <div className="payslip-info-row">
+                    <span className="payslip-info-label">PTKP</span>
+                    <span className="payslip-info-value">: {payroll.status_ptkp || '-'} ({payroll.kategori_ter || '-'})</span>
+                </div>
             </div>
 
             {/* Content - Two Columns */}
             <div className="payslip-card-content">
                 {/* Left: Penerimaan */}
                 <div className="payslip-card-column">
-                    <div className="payslip-column-header">PENERIMAAN</div>
+                    <div className="payslip-column-header">PENERIMAAN (Income)</div>
 
-                    <div className="payslip-subheader">Gaji Pokok (Rate: {formatCurrency(rate)}):</div>
+                    <div className="payslip-subheader">Gaji Pokok:</div>
                     {gpBreakdown.map((item, idx) => (
                         <div key={`gp-${idx}`} className="payslip-item payslip-item-indent">
                             <span className="payslip-item-label">- {item.label} ({item.days} hr)</span>
                             <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
                         </div>
                     ))}
-                    <div className="payslip-item" style={{ borderTop: '1px solid #000', marginTop: '2px', paddingTop: '2px' }}>
-                        <span className="payslip-item-label" style={{ fontWeight: 'bold' }}>Total Gaji Pokok</span>
+                    <div className="payslip-item" style={{ borderTop: '0.5px solid #ccc', marginTop: '1px' }}>
+                        <span className="payslip-item-label" style={{ fontWeight: 'bold', paddingLeft: '2mm' }}>Subtotal Gaji Pokok</span>
                         <span className="payslip-item-value" style={{ fontWeight: 'bold' }}>{formatCurrency(gajiPokok)}</span>
                     </div>
 
@@ -220,24 +226,50 @@ export default function PayslipCard({ data, month, year }) {
 
                     {lemburJumlah > 0 && (
                         <div className="payslip-item">
-                            <span className="payslip-item-label">Lembur ({lemburJam}j)</span>
+                            <span className="payslip-item-label" style={{ fontWeight: 'bold' }}>Lembur ({lemburJam}j)</span>
                             <span className="payslip-item-value">{formatCurrency(lemburJumlah)}</span>
                         </div>
                     )}
 
-                    <div className="payslip-total-line">
-                        <span className="payslip-item-label">Total Kotor</span>
-                        <span className="payslip-item-value">{formatCurrency(jumlahUpahKotor)}</span>
+                    {(thrList.length > 0 || bonusList.length > 0 || customList.length > 0) && (
+                        <>
+                            <div className="payslip-subheader">Pendapatan Lainnya:</div>
+                            {thrList.map((item, idx) => (
+                                <div key={`thr-${idx}`} className="payslip-item payslip-item-indent">
+                                    <span className="payslip-item-label" style={{ fontWeight: 'bold' }}>- {item.name || 'THR'}</span>
+                                    <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
+                                </div>
+                            ))}
+                            {bonusList.map((item, idx) => (
+                                <div key={`bonus-${idx}`} className="payslip-item payslip-item-indent">
+                                    <span className="payslip-item-label">- {item.name || 'Bonus'}</span>
+                                    <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
+                                </div>
+                            ))}
+                            {customList.map((item, idx) => (
+                                <div key={`cust-${idx}`} className="payslip-item payslip-item-indent">
+                                    <span className="payslip-item-label">- {item.name}</span>
+                                    <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+
+                    <div className="total-line-wrapper">
+                        <div className="payslip-total-line">
+                            <span className="payslip-item-label">TOTAL PENDAPATAN KOTOR</span>
+                            <span className="payslip-item-value">{formatCurrency(jumlahUpahKotor)}</span>
+                        </div>
                     </div>
                 </div>
 
                 {/* Right: Potongan */}
                 <div className="payslip-card-column">
-                    <div className="payslip-column-header">POTONGAN</div>
+                    <div className="payslip-column-header">POTONGAN (Deduction)</div>
 
                     {potKotorList.length > 0 && (
                         <>
-                            <div className="payslip-subheader">Pot. Upah Kotor:</div>
+                            <div className="payslip-subheader">Pot. Upah Kotor (Sebelum Pajak):</div>
                             {potKotorList.map((item, idx) => (
                                 <div key={`potk-${idx}`} className="payslip-item payslip-item-indent">
                                     <span className="payslip-item-label">- {item.label}</span>
@@ -264,11 +296,12 @@ export default function PayslipCard({ data, month, year }) {
                                             </span>
                                         </div>
                                         {/* Display Tax Calculation Breakdown below the PPh21 row */}
-                                        {isTax && (payroll.status_ptkp || payroll.tarif_pajak_ter > 0) && (
-                                            <div className="payslip-item payslip-item-indent payslip-tax-breakdown">
-                                                <span className="payslip-item-label">
-                                                    (Bruto: Rp{formatCurrency(payroll.penghasilan_bruto)} • PTKP: {payroll.status_ptkp || '-'} • TER: {payroll.tarif_pajak_ter || 0}%)
-                                                </span>
+                                        {isTax && (payroll.tarif_pajak_ter > 0 || payroll.pph21_ter > 0) && (
+                                            <div className="payslip-tax-breakdown">
+                                                Dasar Pengenaan Pajak (Bruto):<br />
+                                                Rp{formatCurrency(payroll.penghasilan_bruto)}<br />
+                                                Tarif TER ({payroll.status_ptkp}): {payroll.tarif_pajak_ter}%<br />
+                                                Pajak = Bruto x Tarif
                                             </div>
                                         )}
                                     </React.Fragment>
@@ -277,16 +310,29 @@ export default function PayslipCard({ data, month, year }) {
                         </>
                     )}
 
-                    <div className="payslip-total-line">
-                        <span className="payslip-item-label">Total Potongan</span>
-                        <span className="payslip-item-value payslip-negative">{formatCurrency(totalPotongan)}</span>
+                    <div className="total-line-wrapper">
+                        <div className="payslip-total-line">
+                            <span className="payslip-item-label">TOTAL POTONGAN</span>
+                            <span className="payslip-item-value payslip-negative">{formatCurrency(totalPotongan)}</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
+            {/* THR Note Section - Only show if there is THR or in March */}
+            {(thrList.length > 0 || month === 3) && (
+                <div className="payslip-note-section">
+                    <div className="payslip-note-text">
+                        <strong>Keterangan:</strong> THR yang dibayarkan bulan lalu belum dipotong pajak. 
+                        Sesuai peraturan perpajakan, pemotongan pajak atas THR dilakukan pada penggajian bulan berjalan ini 
+                        (digabungkan dengan penghasilan rutin).
+                    </div>
+                </div>
+            )}
+
             {/* Footer - Take Home Pay */}
             <div className="payslip-card-footer">
-                <div className="payslip-thp-label">PENERIMAAN BERSIH</div>
+                <div className="payslip-thp-label">PENERIMAAN BERSIH (Take Home Pay)</div>
                 <div className="payslip-thp-value">Rp {formatCurrency(upahBersih)}</div>
             </div>
 

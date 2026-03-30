@@ -223,6 +223,10 @@ export class VirtualDivisionRegistry {
     public matchGang(gangCode: string, description: string, sourceLocCode: string): string | null {
         const gc = gangCode.trim().toUpperCase();
         const desc = description.trim().toUpperCase();
+        
+        // Import dynamic to avoid circular dependency if needed, but since we are in the same package
+        // we should use a shared normalization if possible.
+        // For now, let's normalize manually or use a simple mapping.
         const source = sourceLocCode.trim().toUpperCase();
 
         for (const plugin of this.plugins.values()) {
@@ -231,9 +235,22 @@ export class VirtualDivisionRegistry {
                 return plugin.code;
             }
 
-            // Check source division match
-            if (plugin.sourceDivision && plugin.sourceDivision.toUpperCase() !== source) {
-                continue;
+            // Check source division match with normalization
+            if (plugin.sourceDivision) {
+                const pluginSource = plugin.sourceDivision.toUpperCase();
+                // Match if direct match OR if normalized codes match
+                // We'll consider a match if source starts with pluginSource (e.g. P1A matches PG1A in some contexts)
+                // or if they are both aliases of the same canonical.
+                // Since DivisionConfigService is the source of truth, we should ideally use it.
+                if (pluginSource !== source) {
+                    // Simple normalization for common cases
+                    const normSource = source.replace(/^PG/, 'P'); // PG1A -> P1A
+                    const normPluginSource = pluginSource.replace(/^PG/, 'P');
+                    
+                    if (normSource !== normPluginSource) {
+                        continue;
+                    }
+                }
             }
 
             // Check gang pattern

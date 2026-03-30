@@ -107,10 +107,10 @@ export const PayrollAggregator = {
     emp.pot_bpjs_jumlah = emp.pot_bpjs_pekerja_total + bpjsMajTotal;
 
     // pot_total_4 (Potongan Lainnya)
-    // Formula: pph21 + kontan + thr + pinjam + kl + tiket + alat + spsi + koreksi + bpjs_pekerja_total + astek
+    // Formula: pph21 + kontan + pendapatan_lainnya + pinjam + kl + tiket + alat + spsi + koreksi + bpjs_pekerja_total + astek
     emp.pot_total_4 = val(emp.pot_pph21) +
       val(emp.pot_kontan) +
-      val(emp.pot_thr) +
+      val(emp.pot_pendapatan_lainnya) +
       val(emp.pot_pinjam) +
       val(emp.pot_kl) +
       val(emp.pot_tiket) +
@@ -249,7 +249,13 @@ export const PayrollAggregator = {
       'total_potongan',
       // Total & Upah
       'jumlah_upah_kotor', 'upah_kotor_pajak', 'penghasilan_bruto', 'pph21_ter',
-      'upah_bersih'
+      'upah_bersih',
+      // Pendapatan Lainnya (THR, Bonus, Custom) - Upah Kotor addition
+      'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya',
+      // Pendapatan Lainnya - Potongan Upah Bersih deduction
+      'pot_pendapatan_lainnya',
+      // Taxable breakdown for PAJAK section
+      'taxable_pendapatan_thr', 'taxable_pendapatan_bonus', 'taxable_pendapatan_custom', 'taxable_pendapatan_lainnya',
     ];
 
     // Initialize all known fields to 0
