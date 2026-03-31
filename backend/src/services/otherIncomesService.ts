@@ -234,86 +234,20 @@ export class OtherIncomesService {
 
             console.log(`[getRawIncomes] Fetching for ${month}/${year}, divisionCode: ${divisionCode || 'ALL'}, gangCode: ${gangCode || 'ALL'}`);
 
-            // STRATEGY: When gangCode is specified, first get gang members from history_gang_member
-            // then filter employee_other_incomes by emp_code
-            if (gangCode && gangCode !== 'ALL') {
-                console.log(`[getRawIncomes] Gang-specific query: Getting members from history_gang_member for gang ${gangCode}`);
-
-                // Get gang members from history
-                const gangMembers = await db.query<any>(`
-                    SELECT DISTINCT emp_code
-                    FROM history_gang_member
-                    WHERE gang_code = ? AND period_month = ? AND period_year = ?
-                `, [gangCode, month, year]);
-
-                console.log(`[getRawIncomes] Found ${gangMembers.length} gang members in history`);
-
-                if (gangMembers.length === 0) {
-                    // Fallback: try to get from current HR_GANGLN
-                    const currentMembers = await mainDb.query<any>(`
-                        SELECT RTRIM(GangMember) as emp_code
-                        FROM HR_GANGLN
-                        WHERE RTRIM(GangCode) = ?
-                    `, [gangCode]);
-                    console.log(`[getRawIncomes] History empty, found ${currentMembers.length} members from current HR_GANGLN`);
-
-                    if (currentMembers.length > 0) {
-                        const empCodes = currentMembers.map((r: any) => r.emp_code);
-                        const placeholders = empCodes.map(() => '?').join(',');
-                        sql += ` AND emp_code IN (${placeholders})`;
-                        params.push(...empCodes);
-                    } else {
-                        // No members found at all - return empty
-                        console.log(`[getRawIncomes] No gang members found for ${gangCode}`);
-                        return [];
-                    }
-                } else {
-                    // Use emp_codes from history
-                    const empCodes = gangMembers.map((r: any) => r.emp_code);
-                    const placeholders = empCodes.map(() => '?').join(',');
-                    sql += ` AND emp_code IN (${placeholders})`;
-                    params.push(...empCodes);
-                }
-            } else if (divisionCode && divisionCode !== 'ALL') {
-                // Use unified mapping for consistent division handling
-                const allPossibleDivs = new Set<string>();
-                let virtualGangs: string[] = [];
-
-                try {
-                    const { gangService } = await import('./gangService');
-
-                    // Check if this is a virtual division - handle separately
-                    if (gangService.isVirtualDivision(divisionCode)) {
-                        console.log(`[getRawIncomes] Virtual division detected: ${divisionCode}`);
-                        // For virtual divisions, filter by gang_code instead
-                        virtualGangs = await gangService.getVirtualDivisionGangs(divisionCode);
-                        console.log(`[getRawIncomes] Virtual division gangs: ${virtualGangs.join(', ')}`);
-                        if (virtualGangs.length > 0) {
-                            sql += ` AND gang_code IN (${virtualGangs.map(() => '?').join(',')})`;
-                            params.push(...virtualGangs);
-                        }
-                    } else {
-                        // Regular division - use unified mapping
-                        const aliases = gangService.getAllDivisionAliases(divisionCode);
-                        console.log(`[getRawIncomes] Division aliases for ${divisionCode}: ${aliases.join(', ')}`);
-                        aliases.forEach(a => allPossibleDivs.add(a));
-                        // Also get from source divisions
-                        const sourceDivs = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-                        for (const sd of sourceDivs) {
-                            allPossibleDivs.add(sd);
-                            const srcAliases = gangService.getAllDivisionAliases(sd);
-                            srcAliases.forEach(a => allPossibleDivs.add(a));
-                        }
-                        const divList = Array.from(allPossibleDivs);
-                        console.log(`[getRawIncomes] Final division codes: ${divList.join(', ')}`);
-                        sql += ` AND division_code IN (${divList.map(() => '?').join(',')})`;
-                        params.push(...divList);
-                    }
-                } catch (e) {
-                    console.error(`[getRawIncomes] Error getting division mapping:`, e);
-                    /* gangService not available */
-                }
-            }
+            // STRATEGY: Fetch ALL other incomes for the period
+            // WITHOUT filtering by emp_code, nik, gang_code, or division_code.
+            //
+            // WHY: Transferred employees (karyawan pindahan) often have:
+            //   - Different emp_code (new division assignment)
+            //   - Different NIK in HR_EMPLOYEE vs what's stored in employee_other_incomes
+            //   - Different gang_code/division_code
+            // Filtering by division here would miss employees who transferred across divisions.
+            //
+            // The dataset is small (~1600 THR records for entire estate per period),
+            // so performance is not a concern. The actual per-employee matching is
+            // handled downstream by dataExtractorService using multilevel fallback.
+            
+            console.log(`[getRawIncomes] Fetching ALL records for period ${month}/${year} (no gang/division filter to support transferred employees)`);
 
             console.log(`[getRawIncomes] SQL: ${sql}`);
             console.log(`[getRawIncomes] Params: ${params.join(', ')}`);
@@ -1215,8 +1149,51 @@ export class OtherIncomesService {
         }
 
         if (gangMemberRows.length === 0) {
-            console.log(`[calculateTHRData] No gang members found for period ${month}/${year}, gang: ${gangCode}, division: ${divisionCode}`);
-            return [];
+            console.log(`[calculateTHRData] No gang members in history_gang_member for ${month}/${year}, falling back to HR_GANGLN`);
+            
+            // FALLBACK: Use current HR_GANGLN from main database
+            try {
+                let fallbackQuery = '';
+                let fallbackParams: any[] = [];
+                
+                if (targetGangCodes.length > 0) {
+                    const ph = targetGangCodes.map(() => '?').join(',');
+                    fallbackQuery = `
+                        SELECT DISTINCT
+                            RTRIM(gl.GangMember) as emp_code,
+                            RTRIM(ISNULL(e.EmpName, '')) as emp_name,
+                            RTRIM(gl.GangCode) as gang_code,
+                            '' as division_code
+                        FROM HR_GANGLN gl
+                        JOIN HR_EMPLOYEE e ON gl.GangMember = e.EmpCode
+                        WHERE RTRIM(gl.GangCode) IN (${ph})
+                        ORDER BY gl.GangCode, e.EmpName
+                    `;
+                    fallbackParams = targetGangCodes;
+                } else {
+                    // ALL gangs
+                    fallbackQuery = `
+                        SELECT DISTINCT
+                            RTRIM(gl.GangMember) as emp_code,
+                            RTRIM(ISNULL(e.EmpName, '')) as emp_name,
+                            RTRIM(gl.GangCode) as gang_code,
+                            '' as division_code
+                        FROM HR_GANGLN gl
+                        JOIN HR_EMPLOYEE e ON gl.GangMember = e.EmpCode
+                        ORDER BY gl.GangCode, e.EmpName
+                    `;
+                }
+                
+                gangMemberRows = await mainDb.query<any>(fallbackQuery, fallbackParams);
+                console.log(`[calculateTHRData] HR_GANGLN fallback: ${gangMemberRows.length} current gang members found`);
+            } catch (fallbackErr) {
+                console.error('[calculateTHRData] Error in HR_GANGLN fallback:', fallbackErr);
+            }
+
+            if (gangMemberRows.length === 0) {
+                console.log(`[calculateTHRData] Still no gang members after fallback`);
+                return [];
+            }
         }
 
         console.log(`[calculateTHRData] Found ${gangMemberRows.length} gang members from history_gang_member`);

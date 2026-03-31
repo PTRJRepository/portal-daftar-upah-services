@@ -3,21 +3,32 @@ import { getBasePath } from '../../utils/prodModeUtils'
 import './LoadingScreen.css'
 
 const TIPS = [
-  "Kelapa sawit adalah tanaman penghasil minyak nabati paling efisien di dunia.",
-  "Satu hektar kelapa sawit dapat menghasilkan hingga 4 ton minyak per tahun.",
-  "Minyak sawit mengandung Vitamin E (Tokotrienol) yang tinggi, baik untuk kesehatan jantung.",
-  "Indonesia adalah produsen minyak kelapa sawit terbesar di dunia.",
-  "Penggunaan sistem digital membantu akurasi perhitungan upah dan transparansi data.",
-  "Produktivitas yang tinggi dimulai dari kesejahteraan karyawan yang terjaga.",
-  "Kelapa sawit menyerap lebih banyak CO2 per hektar dibandingkan hutan tanaman industri lainnya.",
-  "Sistem ini dirancang untuk memproses ribuan data karyawan dalam hitungan detik.",
-  "Akurasi NIK sangat penting untuk integrasi data BPJS dan pajak yang valid.",
-  "Memastikan data absensi lengkap akan mempercepat proses verifikasi payroll."
+  "Menghitung ribuan data karyawan dalam hitungan detik dengan akurasi tinggi.",
+  "Integrasi data absensi, lembur, dan bonus dalam satu sistem terpadu.",
+  "THR 2026 dihitung otomatis berdasarkan masa kerja dan gaji pokok.",
+  "PPh 21 menggunakan metode TER sesuai peraturan perpajakan terbaru.",
+  "Dashboard real-time menampilkan produktivitas per gang dan afdeling.",
+  "Sistem payroll modern mengurangi kesalahan hitung secara signifikan.",
+  "Data karyawan tersinkronisasi dengan database HR secara langsung.",
+  "Laporan daftar upah bisa diekspor ke Excel dalam format resmi.",
+  "Keamanan data karyawan terjamin dengan sistem autentikasi berlapis.",
+  "Analisis komprehensif menampilkan breakdown setiap komponen upah."
+]
+
+const PROCESS_LABELS = [
+  'Memuat data karyawan',
+  'Mengambil data absensi',
+  'Menghitung lembur',
+  'Menghitung premi',
+  'Menghitung potongan',
+  'Menghitung PPh 21',
+  'Menyusun laporan',
+  'Menyimpan hasil'
 ]
 
 export default function LoadingScreen({
   isLoading,
-  message = 'Loading...',
+  message = 'Memuat data...',
   steps = [],
   gangCode,
   month,
@@ -26,14 +37,16 @@ export default function LoadingScreen({
   const [logs, setLogs] = useState([])
   const [progress, setProgress] = useState(0)
   const [currentTip, setCurrentTip] = useState(0)
+  const [isActive, setIsActive] = useState(false)
   const prevStepsRef = useRef("[]")
+  const startTimeRef = useRef(null)
 
   // Cycle through tips
   useEffect(() => {
     if (!isLoading) return
     const interval = setInterval(() => {
       setCurrentTip(prev => (prev + 1) % TIPS.length)
-    }, 4000)
+    }, 4500)
     return () => clearInterval(interval)
   }, [isLoading])
 
@@ -43,18 +56,26 @@ export default function LoadingScreen({
       setLogs(prev => {
         if (prev[prev.length - 1] === message) return prev
         const newLogs = [...prev, message]
-        return newLogs.slice(-3) // Keep last 3 messages visible
+        return newLogs.slice(-5)
       })
     }
   }, [message, isLoading])
+
+  // Track active state
+  useEffect(() => {
+    setIsActive(isLoading)
+  }, [isLoading])
 
   // Reset state on initial load
   useEffect(() => {
     if (isLoading && logs.length === 0 && message) {
       setLogs([message])
+      startTimeRef.current = Date.now()
     }
     if (!isLoading) {
       setLogs([])
+      setProgress(0)
+      startTimeRef.current = null
     }
   }, [isLoading])
 
@@ -76,32 +97,47 @@ export default function LoadingScreen({
     } catch (e) { }
 
     const totalDuration = parsedSteps.length > 0
-      ? parsedSteps.reduce((sum, step) => sum + (step.duration || 1000), 0)
-      : 8000 // Faster default for better feel
+      ? parsedSteps.reduce((sum, step) => sum + (step.duration || 1200), 0)
+      : 10000
 
     let elapsed = (progress / 100) * totalDuration
     const interval = 50
 
     const timer = setInterval(() => {
       elapsed += interval
-      const newProgress = Math.min((elapsed / totalDuration) * 100, 99)
+      const newProgress = Math.min((elapsed / totalDuration) * 100, 98)
       setProgress(prev => Math.max(prev, newProgress))
     }, interval)
 
     return () => clearInterval(timer)
   }, [isLoading])
 
+  // Calculate elapsed time
+  const elapsedSeconds = startTimeRef.current
+    ? Math.floor((Date.now() - startTimeRef.current) / 1000)
+    : 0
+
   if (!isLoading) return null
 
   const basePath = getBasePath()
 
+  const hasReportInfo = gangCode || month || year
+
   return (
     <div className="loading-screen-overlay">
-      <div className="loading-screen-wallpaper" style={{
-        backgroundImage: `url('${basePath}/images/wallpaper_loading_screen.webp')`
-      }}></div>
+      {/* Animated background */}
+      <div className="loading-screen-bg" />
 
+      {/* Decorative ring */}
+      <div className="loading-ring-container">
+        <svg viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="45" fill="none" stroke="#f59e0b" strokeWidth="0.5" />
+        </svg>
+      </div>
+
+      {/* Main content card */}
       <div className="loading-screen-content">
+
         {/* Logo Section */}
         <div className="loading-logo-container">
           <img
@@ -112,36 +148,59 @@ export default function LoadingScreen({
               e.target.style.display = 'none'
             }}
           />
-          <div className="loading-company-name">PT REBINMAS JAYA</div>
+          <div className="loading-company-name">PT Rebinmas Jaya</div>
           <div className="loading-app-name">Payroll Intelligence System</div>
         </div>
 
         {/* Progress Section */}
         <div className="loading-progress-section">
-          <div className="loading-progress-text">{Math.round(progress)}%</div>
-          
+          {/* Large percentage */}
+          <div className="loading-progress-text">
+            {isActive && <span className="loading-active-dot" />}
+            {Math.round(progress)}%
+          </div>
+
+          {/* Progress bar */}
           <div className="loading-progress-bar-container">
             <div
               className="loading-progress-bar-fill"
               style={{ width: `${progress}%` }}
-            >
-            </div>
+            />
           </div>
 
-          {/* Report Info */}
-          {(gangCode || month || year) && (
+          {/* Report Info Pills */}
+          {hasReportInfo && (
             <div className="loading-report-info">
-              {gangCode && <span>📍 Gang: {gangCode}</span>}
+              {gangCode && (
+                <span className="info-pill">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  {gangCode}
+                </span>
+              )}
               {month && year && (
-                <span>📅 {`${String(month).padStart(2, '0')}/${year}`}</span>
+                <span className="info-pill">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/>
+                    <line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="3" y1="10" x2="21" y2="10"/>
+                  </svg>
+                  {String(month).padStart(2, '0')}/{year}
+                </span>
               )}
             </div>
           )}
         </div>
 
-        {/* Dynamic Tips Carousel */}
+        {/* Divider */}
+        <div className="loading-divider" />
+
+        {/* Tips / Fun Facts Section */}
         <div className="loading-tips-container">
-          <div className="loading-tip-label">Tahukah Anda?</div>
+          <div className="loading-tip-label">Tahukah Anda</div>
           <div key={currentTip} className="loading-tip-text">
             "{TIPS[currentTip]}"
           </div>
@@ -149,28 +208,36 @@ export default function LoadingScreen({
 
         {/* Action Logs */}
         <div className="loading-logs-container">
-          {logs.map((logMsg, index) => (
-            <div key={`${logMsg}-${index}`} className="loading-log-item">
-              <span className="logger-icon">{index === logs.length - 1 ? '⌛' : '✅'}</span>
-              <span>{logMsg}</span>
-            </div>
-          ))}
+          {logs.map((logMsg, index) => {
+            const isLast = index === logs.length - 1
+            return (
+              <div key={`${logMsg}-${index}`} className="loading-log-item">
+                <span className={`log-icon ${isLast ? 'processing' : 'completed'}`}>
+                  {isLast ? '●' : '✓'}
+                </span>
+                <span>{logMsg}</span>
+              </div>
+            )
+          })}
         </div>
 
-        {/* Background Animation Element */}
-        <div className="loading-palm-container">
-          <svg className="palm-tree-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M45 100 Q 50 50 50 20 Q 55 50 55 100 Z" fill="white" />
-            <g opacity="0.8">
-              <path d="M50 25 Q 20 0 10 30 Q 30 20 50 25" fill="white" />
-              <path d="M50 25 Q 30 -10 40 10 Q 45 5 50 25" fill="white" />
-              <path d="M50 25 Q 70 -10 60 10 Q 55 5 50 25" fill="white" />
-              <path d="M50 25 Q 80 0 90 30 Q 70 20 50 25" fill="white" />
-              <path d="M50 25 Q 20 20 15 50 Q 35 30 50 25" fill="white" />
-              <path d="M50 25 Q 80 20 85 50 Q 65 30 50 25" fill="white" />
-            </g>
-          </svg>
-        </div>
+        {/* Bottom stats row */}
+        {isActive && (
+          <div className="loading-stats-row">
+            <div className="loading-stat-item">
+              <div className="loading-stat-value">{elapsedSeconds}s</div>
+              <div className="loading-stat-label">Waktu</div>
+            </div>
+            <div className="loading-stat-item">
+              <div className="loading-stat-value">{logs.length}</div>
+              <div className="loading-stat-label">Langkah</div>
+            </div>
+            <div className="loading-stat-item">
+              <div className="loading-stat-value">v2.0</div>
+              <div className="loading-stat-label">System</div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

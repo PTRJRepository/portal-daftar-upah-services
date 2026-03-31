@@ -112,6 +112,11 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [isSavingNik, setIsSavingNik] = useState(false)
   const [historyModalNik, setHistoryModalNik] = useState({ isOpen: false, data: null, empCode: null, loading: false })
 
+  // --- KONTANAN EDIT MODE STATE ---
+  const [editModeKontanan, setEditModeKontanan] = useState(false)
+  const [pendingKontananEdits, setPendingKontananEdits] = useState({})
+  const [isSavingKontanan, setIsSavingKontanan] = useState(false)
+
   const handleNikChange = useCallback((empcode, newVal, oldVal, rowData) => {
     if (newVal === oldVal) return;
     setPendingNikEdits(prev => ({
@@ -175,6 +180,65 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       gridRef.current.api.redrawRows()
     }
   }, [editModeNik])
+
+  // Kontanan edit handler
+  const handleKontananChange = useCallback((nik, empName, gangCode, newVal) => {
+    const amount = parseFloat(newVal) || 0;
+    setPendingKontananEdits(prev => ({
+      ...prev,
+      [nik]: { nik, emp_name: empName, gang_code: gangCode, amount }
+    }))
+  }, [])
+
+  const handleSaveKontananEdits = async () => {
+    if (Object.keys(pendingKontananEdits).length === 0) return
+    setIsSavingKontanan(true)
+    try {
+      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+      const promises = Object.values(pendingKontananEdits).map(edit =>
+        fetch(`${backendUrl}/payroll/locked/kontanan-edit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authToken ? `Bearer ${authToken}` : ''
+          },
+          body: JSON.stringify({
+            nik: edit.nik,
+            emp_name: edit.emp_name,
+            period_month: parseInt(activeMonth),
+            period_year: parseInt(activeYear),
+            amount: edit.amount,
+            gang_code: edit.gang_code,
+            division_code: finalDivision || ''
+          })
+        }).then(res => res.json())
+      )
+
+      const results = await Promise.all(promises)
+      const failed = results.filter(r => !r.success)
+      if (failed.length > 0) {
+        alert(`Gagal menyimpan ${failed.length} record kontanan.`)
+      } else {
+        setPendingKontananEdits({})
+        alert('Kontanan berhasil disimpan! Refresh data untuk melihat perubahan.')
+        // Force data refresh
+        setRows([])
+        setPinnedBottom([])
+        dataInitRef.current = false
+      }
+    } catch (e) {
+      alert('Error menyimpan kontanan: ' + e.message)
+    } finally {
+      setIsSavingKontanan(false)
+    }
+  }
+
+  // Refresh grid cells when kontanan edit mode toggles
+  useEffect(() => {
+    if (gridRef.current && gridRef.current.api) {
+      gridRef.current.api.redrawRows()
+    }
+  }, [editModeKontanan])
 
   // Fetch job titles
   useEffect(() => {
@@ -367,7 +431,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           pendapatan_thr: Math.round(aggOtherIncomes('THR')),
           pendapatan_bonus: Math.round(aggOtherIncomes('BONUS')),
           pendapatan_custom: Math.round(aggOtherIncomes('CUSTOM')),
-          pendapatan_lainnya: Math.round(aggOtherIncomes('THR') + aggOtherIncomes('BONUS') + aggOtherIncomes('CUSTOM')),
+          pendapatan_kontanan: agg('pendapatan_kontanan'),
+          pendapatan_lainnya: Math.round(aggOtherIncomes('THR') + aggOtherIncomes('BONUS') + aggOtherIncomes('CUSTOM')) + agg('pendapatan_kontanan'),
           premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
           pot_koreksi: agg('pot_koreksi'),
           total_premi: agg('total_premi'),
@@ -783,7 +848,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
               pendapatan_thr: Math.round(aggOtherIncomesGrand('THR')),
               pendapatan_bonus: Math.round(aggOtherIncomesGrand('BONUS')),
               pendapatan_custom: Math.round(aggOtherIncomesGrand('CUSTOM')),
-              pendapatan_lainnya: Math.round(aggOtherIncomesGrand('THR') + aggOtherIncomesGrand('BONUS') + aggOtherIncomesGrand('CUSTOM')),
+              pendapatan_kontanan: agg('pendapatan_kontanan'),
+              pendapatan_lainnya: Math.round(aggOtherIncomesGrand('THR') + aggOtherIncomesGrand('BONUS') + aggOtherIncomesGrand('CUSTOM')) + agg('pendapatan_kontanan'),
               premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
               pot_koreksi: agg('pot_koreksi'),
               total_premi: agg('total_premi'),
@@ -931,7 +997,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   // Enhanced column definitions with proper formatting
   const formatLeaf = useCallback((col) => {
     const cfg = { ...col, ...baseCol }
-    const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya']
+    const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan', 'pendapatan_lainnya']
     const intFields = ['no', 'hari_kerja', 'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari', 'tidak_hadir_cth', 'tidak_hadir_alpa', 'jumlah_hk', 'masa_kerja_tahun', 'bunches_total', 'bunches_ripe', 'bunches_unripe', 'bunches_round', 'bunches_transactions']
     // lembur_jam removed from intFields - should preserve decimal values (e.g., 1.5 hours)
     const decimalFields = ['lembur_jam']
@@ -1109,6 +1175,65 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       cfg.cellClass = (cfg.cellClass || '') + ' cell-net-salary cell-accounting'
     }
 
+    // 7. Kontanan Edit Mode - make pendapatan_kontanan editable
+    if (f === 'pendapatan_kontanan') {
+      cfg.editable = (params) => params.context.editModeKontanan && !params.data?.isHeader && !params.data?.isTotal;
+      cfg.cellStyle = (params) => {
+        if (params.context.editModeKontanan && !params.data?.isHeader && !params.data?.isTotal) {
+          return {
+            backgroundColor: '#ecfdf5',
+            border: '1px solid #10b981',
+            cursor: 'text',
+            textAlign: 'right'
+          };
+        }
+        return { textAlign: 'right' };
+      };
+      cfg.valueSetter = (params) => {
+        const newVal = parseFloat(params.newValue) || 0;
+        const oldVal = parseFloat(params.oldValue) || 0;
+        if (newVal !== oldVal) {
+          params.data.pendapatan_kontanan = newVal;
+          if (params.context.onKontananChange) {
+            params.context.onKontananChange(
+              params.data.nik,
+              params.data.nama,
+              params.data.gang_code,
+              newVal
+            );
+          }
+          return true;
+        }
+        return false;
+      };
+      cfg.cellRenderer = (params) => {
+        if (params.data?.isHeader || params.data?.isTotal) {
+          return params.value ? new Intl.NumberFormat('id-ID').format(Math.round(params.value)) : '';
+        }
+        const val = Number(params.value) || 0;
+        return (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', height: '100%' }}>
+            <span style={{ flex: 1, textAlign: 'right' }}>{val ? new Intl.NumberFormat('id-ID').format(Math.round(val)) : '0'}</span>
+            {params.context.editModeKontanan && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  params.api.startEditingCell({
+                    rowIndex: params.node.rowIndex,
+                    colKey: params.column.getId()
+                  });
+                }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '11px', marginLeft: '4px' }}
+                title="Edit Kontanan"
+              >
+                ✏️
+              </button>
+            )}
+          </div>
+        );
+      };
+    }
+
     // Apply universal value getter for all fields that need it
     if (cfg.field && (moneyFields.includes(cfg.field) || intFields.includes(cfg.field) ||
       cfg.field.startsWith('premi_') || cfg.field.includes('potongan_upah_kotor.dynamic') ||
@@ -1185,7 +1310,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     try {
       const neverHide = new Set([
         'no', 'nik', 'nama', 'jenis_kelamin', 'upah_bersih', 'jumlah_upah_kotor', 'total_tunjangan', 'total_premi', 'gaji_pokok', 'upah_pokok', 'hari_kerja', 'jumlah_hk',
-        'total_potongan', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'
+        'total_potongan', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan', 'pendapatan_lainnya'
       ])
 
       // Add dynamic potongan fields to neverHide if they have data
@@ -1347,6 +1472,28 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             isDownloadingExcel={isDownloadingExcel}
             onDownloadExcel={handleDownloadDaftarUpahExcel}
           />
+          {/* Kontanan Edit Mode Toggle */}
+          <button
+            onClick={() => setEditModeKontanan(p => !p)}
+            style={{
+              marginLeft: '8px',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              border: editModeKontanan ? '2px solid #10b981' : '1px solid #d1d5db',
+              backgroundColor: editModeKontanan ? '#ecfdf5' : '#fff',
+              color: editModeKontanan ? '#065f46' : '#374151',
+              cursor: 'pointer',
+              fontWeight: editModeKontanan ? '700' : '500',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.2s'
+            }}
+            title={editModeKontanan ? 'Nonaktifkan edit kontanan' : 'Aktifkan edit kontanan'}
+          >
+            💰 {editModeKontanan ? 'Kontanan ON' : 'Kontanan'}
+          </button>
         </div>
       }
     >
@@ -1426,7 +1573,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
             <AgGridReact
               ref={gridRef}
-              context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory }}
+              context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory, editModeKontanan, onKontananChange: handleKontananChange }}
               columnDefs={columnDefs}
               rowData={rows}
               columnTypes={columnTypes}
@@ -1518,6 +1665,36 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                   style={{ backgroundColor: '#eab308', color: '#854d0e', borderColor: '#ca8a04' }}
                 >
                   {isSavingNik ? 'Menyimpan...' : '💾 SIMPAN PERUBAHAN NIK'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Save Button for Kontanan Edits */}
+          {Object.keys(pendingKontananEdits).length > 0 && (
+            <div className="report-save-bar" style={{ borderColor: '#10b981', backgroundColor: '#ecfdf5' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '18px' }}>💰</span>
+                <span style={{ color: '#065f46', fontWeight: '600' }}>
+                  Pending: {Object.keys(pendingKontananEdits).length} Kontanan telah diubah
+                </span>
+              </div>
+              <div className="report-save-bar-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setPendingKontananEdits({})}
+                  disabled={isSavingKontanan}
+                  style={{ backgroundColor: 'white' }}
+                >
+                  Batal
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSaveKontananEdits}
+                  disabled={isSavingKontanan}
+                  style={{ backgroundColor: '#10b981', color: '#fff', borderColor: '#059669' }}
+                >
+                  {isSavingKontanan ? 'Menyimpan...' : '💾 SIMPAN KONTANAN'}
                 </button>
               </div>
             </div>

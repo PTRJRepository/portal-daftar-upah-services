@@ -248,6 +248,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                     'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
                     'upah_bersih', 'koreksi_hk',
+                    // Pendapatan Lainnya
+                    'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan',
+                    'pendapatan_lainnya', 'pot_pendapatan_lainnya',
                     // Harvest items
                     'bunches_total', 'bunches_ripe', 'bunches_unripe',
                     'bunches_underripe', 'bunches_overripe', 'bunches_rotten', 'bunches_abnormal',
@@ -459,7 +462,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
                     'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                     'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
-                    'upah_bersih', 'koreksi_hk'
+                    'upah_bersih', 'koreksi_hk',
+                    // Pendapatan Lainnya
+                    'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan',
+                    'pendapatan_lainnya', 'pot_pendapatan_lainnya'
                 ];
 
                 // Initialize totals
@@ -595,6 +601,71 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             adjustment_name: t.String(),
             amount: t.Number(),
             remarks: t.Optional(t.String())
+        })
+    })
+    // --- Locked Kontanan Edit ---
+    .post("/locked/kontanan-edit", async ({ body, set, currentUser }) => {
+        try {
+            // PERMISSION CHECK
+            if (!currentUser) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            const { OtherIncomesService } = await import("../services/otherIncomesService");
+            const { Database } = await import("../db/client");
+            const data = body as any;
+
+            const db = Database.getExtendedInstance();
+            const parsedAmount = parseFloat(data.amount?.toString()) || 0;
+
+            // Look for existing KONTANAN record for this NIK in this period
+            const existing = await db.query(`
+                SELECT id FROM employee_other_incomes 
+                WHERE nik = ? AND period_year = ? AND period_month = ? AND income_type = 'KONTANAN'
+            `, [data.nik, data.period_year, data.period_month]);
+
+            if (existing && existing.length > 0) {
+                if (parsedAmount === 0) {
+                    // Delete if amount is 0
+                    await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [existing[0].id]);
+                    return { success: true, action: 'deleted', message: "Kontanan removed." };
+                } else {
+                    // Update existing
+                    await db.query(`
+                        UPDATE employee_other_incomes 
+                        SET amount = ?, emp_name = ?, gang_code = ?, division_code = ?, updated_at = GETDATE()
+                        WHERE id = ?
+                    `, [parsedAmount, data.emp_name, data.gang_code, data.division_code || null, existing[0].id]);
+                    return { success: true, action: 'updated', id: existing[0].id, message: "Kontanan updated." };
+                }
+            } else {
+                if (parsedAmount === 0) {
+                    return { success: true, action: 'skipped', message: "Zero amount, nothing saved." };
+                }
+                // Insert new
+                const result = await db.query(`
+                    INSERT INTO employee_other_incomes (
+                        nik, emp_name, division_code, gang_code, period_year, period_month,
+                        income_type, income_name, amount, is_paid_in_thp, is_taxable
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'KONTANAN', 'Kontanan', ?, 1, 0)
+                `, [data.nik, data.emp_name, data.division_code || null, data.gang_code, data.period_year, data.period_month, parsedAmount]);
+                return { success: true, action: 'inserted', message: "Kontanan saved." };
+            }
+        } catch (e: any) {
+            console.error("[PayrollRoutes] locked/kontanan-edit error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            nik: t.String(),
+            emp_name: t.String(),
+            period_month: t.Number(),
+            period_year: t.Number(),
+            amount: t.Number(),
+            gang_code: t.String(),
+            division_code: t.Optional(t.String())
         })
     })
     // --- Locked Gangs List ---

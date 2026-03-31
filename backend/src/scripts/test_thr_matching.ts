@@ -1,166 +1,135 @@
 import { Database } from "../db/client";
-import { gangService } from "../services/gangService";
 
-const db = Database.getExtendedInstance();
+const dbExt = Database.getExtendedInstance(); // extend_db_ptrj — for employee_other_incomes
+const db = Database.getInstance();           // db_ptrj — for HR_EMPLOYEE, HR_GANGLN
 
-function cleanName(name: string): string {
+function cleanNameFormat(name: string): string {
     if (!name) return '';
-    // Remove everything inside parentheses
-    let cleaned = name.replace(/\([^)]*\)/g, '');
-    // Remove non-alphanumeric except spaces, and squish spaces
-    cleaned = cleaned.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
-    return cleaned;
-}
-
-// Simple Levenshtein distance for fuzzy matching
-function getLevenshteinDistance(a: string, b: string): number {
-    if (a.length === 0) return b.length;
-    if (b.length === 0) return a.length;
-
-    const matrix = [];
-    for (let i = 0; i <= b.length; i++) {
-        matrix[i] = [i];
-    }
-    for (let j = 0; j <= a.length; j++) {
-        matrix[0][j] = j;
-    }
-
-    for (let i = 1; i <= b.length; i++) {
-        for (let j = 1; j <= a.length; j++) {
-            if (b.charAt(i - 1) === a.charAt(j - 1)) {
-                matrix[i][j] = matrix[i - 1][j - 1];
-            } else {
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j - 1] + 1, // substitution
-                    Math.min(
-                        matrix[i][j - 1] + 1, // insertion
-                        matrix[i - 1][j] + 1  // deletion
-                    )
-                );
-            }
-        }
-    }
-    return matrix[b.length][a.length];
+    return name.replace(/\([^)]*\)/g, '').replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
 }
 
 async function runTest() {
-    console.log("=== Testing THR Mapping Fallbacks ===");
-    
-    // Get all gangs
-    const rowGangs = await db.query(`SELECT DISTINCT GangCode FROM HR_GANGLN WHERE Inactive = 0`);
-    const gangs = rowGangs.map((g: any) => g.GangCode);
-    console.log(`Found ${gangs.length} active gangs`);
+    console.log("=== Testing THR Mapping (EMP_CODE → NIK → NIK+NAME) ===");
 
-    // Fetch all THR data for month 3, year 2026 (or what is applicable)
-    // Wait, the user said "month 3 year 2026", let's check which month THR was imported.
     const month = 3;
     const year = 2026;
-    
-    // User says "di history atau other incomes"
-    const dbOtherIncomes = await db.query(`
-        SELECT nik, emp_code, emp_name, amount, income_type 
-        FROM employee_other_incomes 
-        WHERE period_year = @year AND period_month = @month AND income_type = 'THR'
-    `, { year, month });
 
-    console.log(`Found ${dbOtherIncomes.length} THR records in DB for ${month}/${year}`);
+    // Step 1: Fetch THR from employee_other_incomes
+    const dbOtherIncomes = await dbExt.query(`
+        SELECT nik, emp_code, emp_name, amount, income_type, is_paid_in_thp, is_taxable
+        FROM employee_other_incomes
+        WHERE period_year = ? AND period_month = ? AND income_type = 'THR'
+    `, [year, month]);
 
-    // Create maps
-    const thrByEmpCode = new Map();
-    const thrByNikName = new Map();
+    console.log(`Found ${dbOtherIncomes.length} THR records for ${month}/${year}`);
+
+    if (dbOtherIncomes.length === 0) {
+        console.log("No THR data found. Exiting.");
+        return;
+    }
+
+    // Debug: check emp_code population
+    const empCodeSample = dbOtherIncomes.slice(0, 5).map((r: any) => ({
+        nik: r.nik, emp_code: r.emp_code, emp_name: r.emp_name
+    }));
+    console.log(`THR sample (nik, emp_code, emp_name):`, JSON.stringify(empCodeSample, null, 2));
+
+    // Build maps using new priority: EMP_CODE → NIK → NIK+NAME
+    const thrByEmpCode = new Map<string, any>();
+    const thrByNik = new Map<string, any>();
+    const thrByNikName = new Map<string, any>();
+
+    // Count NIK duplicates first
+    const nikCount = new Map<string, number>();
+    for (const inc of dbOtherIncomes) {
+        const nik = String(inc.nik || '').trim().toUpperCase();
+        if (nik) nikCount.set(nik, (nikCount.get(nik) || 0) + 1);
+    }
 
     for (const inc of dbOtherIncomes) {
-        const empCode = String(inc.emp_code || '').trim().toUpperCase();
         const nik = String(inc.nik || '').trim().toUpperCase();
-        const dbName = String(inc.emp_name || '').trim().toUpperCase();
-        
+        const empCode = String(inc.emp_code || '').trim().toUpperCase();
+        const dbEmpName = String(inc.emp_name || '').trim().toUpperCase();
+        const cleanName = cleanNameFormat(dbEmpName);
+        const nikNameKey = nik ? `${nik}||${cleanName}` : '';
+
+        // Level 1: by emp_code
         if (empCode) thrByEmpCode.set(empCode, inc);
-        if (nik) {
-            thrByNikName.set(nik, inc); // Primary by Nik
+
+        // Level 2: by NIK
+        if (nik) thrByNik.set(nik, inc);
+
+        // Level 3: by NIK+NAME for duplicates
+        if (nik && nikCount.get(nik)! > 1 && nikNameKey) {
+            thrByNikName.set(nikNameKey, inc);
         }
     }
 
-    let totalMuslims = 0;
-    let totalMappedExact = 0;
-    let totalMappedFuzzy = 0;
-    let totalUnmapped = 0;
+    console.log(`Map sizes — byEmpCode: ${thrByEmpCode.size}, byNik: ${thrByNik.size}, byNikName: ${thrByNikName.size}`);
 
-    // Get all active employees with religion Muslim
+    // Step 2: Get active Muslim employees from db_ptrj
+    // Religion '01' = Islam in HR_EMPLOYEE.Religion
     const employeesData = await db.query(`
-        SELECT pm.EmpCode, pm.ActualNIK, pm.EmpName, pm.Religion, gl.GangCode, he.IsInactive
-        FROM HR_PAYROLL pm
-        JOIN HR_EMPHST he ON pm.EmpCode = he.EmpCode AND he.IsInactive = 0
-        LEFT JOIN HR_GANGLN gl ON pm.EmpCode = gl.EmpCode
-        WHERE pm.Religion = 'ISLAM' OR pm.Religion = '1'
+        SELECT DISTINCT TOP 1000
+            e.EmpCode,
+            e.NewICNo as ActualNIK,
+            e.EmpName,
+            e.Religion,
+            gl.GangCode
+        FROM HR_EMPLOYEE e
+        INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+        INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
+        WHERE RTRIM(e.Religion) = '01'
     `);
-    
-    console.log(`Found ${employeesData.length} active muslim employees`);
+
+    console.log(`Found ${employeesData.length} active Muslim employees in db_ptrj`);
+
+    let level1Matched = 0;  // by emp_code
+    let level2Matched = 0;  // by NIK
+    let level3Matched = 0;  // by NIK+NAME
+    let unmatched = 0;
 
     for (const emp of employeesData) {
-        totalMuslims++;
         const empCode = String(emp.EmpCode || '').trim().toUpperCase();
         const nik = String(emp.ActualNIK || '').trim().toUpperCase();
         const empName = String(emp.EmpName || '').trim().toUpperCase();
-        const group = emp.GangCode || 'UNKNOWN';
+        const gang = emp.GangCode || 'UNKNOWN';
 
-        let mapped = thrByEmpCode.has(empCode);
-        let mappedType = mapped ? 'EMP_CODE' : 'UNMAPPED';
-        
-        if (!mapped && nik) {
-            // Priority 2: Try NIK
-            if (thrByNikName.has(nik)) {
-                mapped = true;
-                mappedType = 'NIK';
-                totalMappedExact++;
-            } else {
-                // Priority 3: Fuzzy check
-                // Is there any THR record that doesn't map perfectly but has clean name matching?
-                const cleanEmp = cleanName(empName);
-                
-                let bestMatch = null;
-                let bestScore = 999;
-                
-                for (const inc of dbOtherIncomes) {
-                    const cleanDb = cleanName(inc.emp_name);
-                    const incNik = String(inc.nik || '').trim().toUpperCase();
-                    
-                    if (incNik === nik || (nik && incNik.includes(nik)) || cleanEmp === cleanDb) {
-                        bestMatch = inc;
-                        bestScore = 0;
-                        break;
-                    }
-                    
-                    // Or if they sound similar
-                    const dist = getLevenshteinDistance(cleanEmp, cleanDb);
-                    if (dist < 4 && dist < bestScore) {
-                        bestScore = dist;
-                        bestMatch = inc;
-                    }
-                }
+        let matched = false;
 
-                if (bestMatch && bestScore < 4) {
-                    mapped = true;
-                    mappedType = \`FUZZY (dist \${bestScore}, DB: \${bestMatch.emp_name})\`;
-                    totalMappedFuzzy++;
-                }
+        // Level 1: emp_code
+        if (empCode && thrByEmpCode.has(empCode)) {
+            matched = true;
+            level1Matched++;
+        }
+        // Level 2: NIK
+        else if (nik && thrByNik.has(nik)) {
+            matched = true;
+            level2Matched++;
+        }
+        // Level 3: NIK + NAME (duplicate NIK)
+        else if (nik) {
+            const cleanName = cleanNameFormat(empName);
+            const nikNameKey = `${nik}||${cleanName}`;
+            if (thrByNikName.has(nikNameKey)) {
+                matched = true;
+                level3Matched++;
             }
-        } else if (mapped) {
-            totalMappedExact++;
         }
 
-        if (!mapped) {
-            console.log(\`UNMAPPED: gang=\${group}, empCode=\${empCode}, NIK=\${nik}, Name=\${empName}\`);
-            totalUnmapped++;
-        } else if (mappedType.startsWith('FUZZY') || mappedType === 'NIK') {
-            console.log(\`RECOVERED (\${mappedType}): gang=\${group}, empCode=\${empCode}, NIK=\${nik}, Name=\${empName}\`);
+        if (!matched) {
+            unmatched++;
+            console.log(`UNMATCHED: gang=${gang}, empCode=${empCode}, NIK=${nik}, Name=${empName}`);
         }
     }
 
-    console.log("\\n=== SUMMARY ===");
-    console.log(\`Total Muslim Employees: \${totalMuslims}\`);
-    console.log(\`Exact Matches: \${totalMappedExact}\`);
-    console.log(\`Fuzzy Recovered: \${totalMappedFuzzy}\`);
-    console.log(\`Unmapped: \${totalUnmapped}\`);
+    console.log("\n=== SUMMARY ===");
+    console.log(`Total Muslim Employees: ${employeesData.length}`);
+    console.log(`Matched by EMP_CODE: ${level1Matched}`);
+    console.log(`Matched by NIK (fallback): ${level2Matched}`);
+    console.log(`Matched by NIK+NAME (duplicate): ${level3Matched}`);
+    console.log(`Unmatched: ${unmatched}`);
+    console.log(`Total Matched: ${level1Matched + level2Matched + level3Matched}`);
 }
 
 runTest().catch(console.error).finally(() => process.exit());

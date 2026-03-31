@@ -271,6 +271,7 @@ export class HeaderService {
                     { field: "pendapatan_thr", headerName: "THR" },
                     { field: "pendapatan_bonus", headerName: "Bonus" },
                     { field: "pendapatan_custom", headerName: "Custom" },
+                    { field: "pendapatan_kontanan", headerName: "Kontanan" },
                     { field: "pendapatan_lainnya", headerName: "Total" }
                 ]
             },
@@ -328,6 +329,7 @@ export class HeaderService {
             // [NEW] Pendapatan Lainnya
             { field: "pendapatan_thr", headerName: "THR" },
             { field: "pendapatan_bonus", headerName: "Bonus" },
+            { field: "pendapatan_kontanan", headerName: "Kontanan" },
             { field: "pendapatan_lainnya", headerName: "Total Pendapatan Lain" },
             { field: "total_premi", headerName: "Total Premi" },
             { field: "jumlah_upah_kotor", headerName: "Jml Upah Kotor" },

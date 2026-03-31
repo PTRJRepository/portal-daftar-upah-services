@@ -250,8 +250,8 @@ export const PayrollAggregator = {
       // Total & Upah
       'jumlah_upah_kotor', 'upah_kotor_pajak', 'penghasilan_bruto', 'pph21_ter',
       'upah_bersih',
-      // Pendapatan Lainnya (THR, Bonus, Custom) - Upah Kotor addition
-      'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya',
+      // Pendapatan Lainnya (THR, Bonus, Custom, Kontanan) - Upah Kotor addition
+      'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan', 'pendapatan_lainnya',
       // Pendapatan Lainnya - Potongan Upah Bersih deduction
       'pot_pendapatan_lainnya',
       // Taxable breakdown for PAJAK section
