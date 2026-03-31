@@ -5,7 +5,8 @@ export interface ManualAdjustment {
     id?: number;
     period_month: number;
     period_year: number;
-    emp_code: string;
+    nik?: string;       // Real NIK (KTP) - primary identifier
+    emp_code: string;   // Emp code (B0065, etc.) - for lookup
     gang_code: string;
     division_code?: string;
     adjustment_type: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH' | 'PENDAPATAN_LAINNYA';
@@ -65,61 +66,82 @@ export class ManualAdjustmentService {
 
     /**
      * Save PENDAPATAN_LAINNYA (e.g. KONTAN) to employee_other_incomes table.
-     * Uses upsert logic: update if exists (same nik + period + income_name), insert if not.
+     * Uses upsert logic: update if exists (same nik/emp_code + period + income_name), insert if not.
+     *
+     * STORAGE STRATEGY:
+     * - nik: Real NIK (KTP) - primary stable identifier for data extractor lookup
+     * - emp_code: Employee code (B0065, etc.) - for emp_code-based lookup fallback
+     * - Both fields stored so data extractor can find by either
+     *
+     * The frontend sends both `nik` (real NIK) and `emp_code` (B0065, etc.)
+     * to ensure the data extractor can find the record.
      */
     private async saveOtherIncome(db: Database, data: ManualAdjustment, parsedAmount: number, user?: string): Promise<number> {
         const incomeType = data.adjustment_name; // e.g. 'KONTAN'
         const incomeName = data.adjustment_name; // e.g. 'KONTAN'
+        // Use real NIK for nik field, emp_code for emp_code field
+        const realNik = (data.nik || '').trim().toUpperCase() || (data.emp_code || '').trim().toUpperCase();
+        const empCodeVal = (data.emp_code || '').trim().toUpperCase();
 
-        // Check if existing record exists
-        const existing = await db.queryOne<{ id: number }>(`
-            SELECT id FROM dbo.employee_other_incomes
+        console.log(`[saveOtherIncome] Saving: nik=${realNik}, emp_code=${empCodeVal}, income=${incomeName}, amount=${parsedAmount}`);
+
+        // Check for existing record: try by nik, then by emp_code
+        let existing = await db.queryOne<{ id: number; nik: string; emp_code: string }>(`
+            SELECT id, nik, emp_code FROM dbo.employee_other_incomes
             WHERE nik = ? AND period_month = ? AND period_year = ? AND income_name = ?
-        `, [data.emp_code, data.period_month, data.period_year, incomeName]);
+        `, [realNik, data.period_month, data.period_year, incomeName]);
+
+        // Fallback: check by emp_code if not found by nik
+        if (!existing) {
+            existing = await db.queryOne<{ id: number; nik: string; emp_code: string }>(`
+                SELECT id, nik, emp_code FROM dbo.employee_other_incomes
+                WHERE emp_code = ? AND period_month = ? AND period_year = ? AND income_name = ?
+            `, [empCodeVal, data.period_month, data.period_year, incomeName]);
+        }
 
         if (existing) {
             if (parsedAmount === 0) {
-                // Delete if amount is 0
                 await db.query(`DELETE FROM dbo.employee_other_incomes WHERE id = ?`, [existing.id]);
-                console.log(`[saveOtherIncome] Deleted ${incomeName} for ${data.emp_code} (amount=0)`);
+                console.log(`[saveOtherIncome] Deleted ${incomeName} for nik=${realNik}, emp_code=${empCodeVal}`);
                 return existing.id;
             }
-            // Update existing
+            // Update existing: store BOTH nik and emp_code for consistent lookups
             await db.query(`
                 UPDATE dbo.employee_other_incomes
-                SET amount = ?, updated_at = GETDATE()
+                SET nik = ?, emp_code = ?, amount = ?, updated_at = GETDATE()
                 WHERE id = ?
-            `, [parsedAmount, existing.id]);
-            console.log(`[saveOtherIncome] Updated ${incomeName} for ${data.emp_code}: Rp${parsedAmount}`);
+            `, [realNik, empCodeVal, parsedAmount, existing.id]);
+            console.log(`[saveOtherIncome] Updated ${incomeName}: nik=${realNik}, emp_code=${empCodeVal}: Rp${parsedAmount}`);
             return existing.id;
         } else {
             if (parsedAmount === 0) return 0; // Don't insert zero
 
-            // Insert new record
+            // Insert new record with BOTH nik and emp_code
             const result = await db.query(`
                 INSERT INTO dbo.employee_other_incomes (
-                    nik, emp_name, division_code, gang_code,
+                    nik, emp_code, emp_name, division_code, gang_code,
                     period_year, period_month, income_type, income_name,
                     amount, is_paid_in_thp, is_taxable,
                     created_at, updated_at
                 ) OUTPUT INSERTED.id VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE()
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE()
                 )
             `, [
-                data.emp_code,
-                null, // emp_name - let it be null, will be enriched by data extractor
+                realNik,            // nik = real NIK (KTP) - primary lookup key
+                empCodeVal,         // emp_code = emp_code - secondary lookup key
+                null,               // emp_name - null, enriched by data extractor
                 data.division_code || null,
                 data.gang_code,
                 data.period_year,
                 data.period_month,
-                incomeType,        // income_type = 'KONTAN'
-                incomeName,        // income_name = 'KONTAN'
+                incomeType,         // income_type = 'KONTAN'
+                incomeName,         // income_name = 'KONTAN'
                 parsedAmount,
-                0,                 // is_paid_in_thp = false (added to gross wage, not THP)
-                0,                 // is_taxable = false (not taxable)
+                0,                  // is_paid_in_thp = false (added to gross wage, not THP)
+                0,                  // is_taxable = false (not taxable income)
             ]);
             const id = result[0]?.id;
-            console.log(`[saveOtherIncome] Inserted ${incomeName} for ${data.emp_code}: Rp${parsedAmount}, ID=${id}`);
+            console.log(`[saveOtherIncome] Inserted ${incomeName}: nik=${realNik}, emp_code=${empCodeVal}: Rp${parsedAmount}, ID=${id}`);
             return id;
         }
     }
@@ -140,6 +162,7 @@ export class ManualAdjustmentService {
 
         // --- PENDAPATAN_LAINNYA: Save to employee_other_incomes ---
         if (data.adjustment_type === 'PENDAPATAN_LAINNYA') {
+            console.log(`[saveAdjustment] PENDAPATAN_LAINNYA: emp_code=${data.emp_code}, gang=${data.gang_code}, name=${data.adjustment_name}, amount=${parsedAmount}`);
             return await this.saveOtherIncome(db, data, parsedAmount, user);
         }
 

@@ -1,8 +1,14 @@
 import { useEffect, useState, useRef } from 'react'
 import { getBasePath } from '../../utils/prodModeUtils'
+import {
+  initializeLocationData,
+  fetchProvinces,
+  fetchRegencies
+} from '../../utils/locationData'
 import './LoadingScreen.css'
 
-const TIPS = [
+// Base system tips (always shown)
+const SYSTEM_TIPS = [
   "Menghitung ribuan data karyawan dalam hitungan detik dengan akurasi tinggi.",
   "Integrasi data absensi, lembur, dan bonus dalam satu sistem terpadu.",
   "THR 2026 dihitung otomatis berdasarkan masa kerja dan gaji pokok.",
@@ -13,6 +19,18 @@ const TIPS = [
   "Laporan daftar upah bisa diekspor ke Excel dalam format resmi.",
   "Keamanan data karyawan terjamin dengan sistem autentikasi berlapis.",
   "Analisis komprehensif menampilkan breakdown setiap komponen upah."
+]
+
+// Location-based tips (from ibnux Indonesian location API)
+const LOCATION_TIPS = [
+  "Data wilayah Indonesia bersumber dari Ibnux - 38 provinsi tersedia.",
+  "Memuat referensi 514 kabupaten/kota dari database wilayah Indonesia.",
+  "Indonesia memiliki 7.000+ kecamatan dan 80.000+ desa/kelurahan.",
+  "Provinsi Sumatera Selatan merupakan salah satu sentra kelapa sawit utama Indonesia.",
+  "Wilayah Sumatera Selatan mencakup 17 kabupaten/kota dengan keanekaragaman tinggi.",
+  "Integrasi data lokasi mendukung pelaporan payroll berbasis wilayah.",
+  "Sistem dapat menghasilkan laporan berdasarkan divisi dan lokasi gang karyawan.",
+  "Database wilayah Indonesia diperbarui secara berkala melalui API Ibnux."
 ]
 
 const PROCESS_LABELS = [
@@ -38,14 +56,46 @@ export default function LoadingScreen({
   const [progress, setProgress] = useState(0)
   const [currentTip, setCurrentTip] = useState(0)
   const [isActive, setIsActive] = useState(false)
+  const [locationInfo, setLocationInfo] = useState(null)
+  const [locationLoaded, setLocationLoaded] = useState(false)
   const prevStepsRef = useRef("[]")
   const startTimeRef = useRef(null)
 
-  // Cycle through tips
+  // Combined tips: system tips + location tips
+  const ALL_TIPS = [...SYSTEM_TIPS, ...LOCATION_TIPS]
+
+  // Initialize location data (fetch Indonesian regions from ibnux API)
+  useEffect(() => {
+    if (isLoading && !locationLoaded) {
+      initializeLocationData().then(() => {
+        setLocationLoaded(true)
+        // After location data loads, fetch provinces for dynamic location display
+        fetchProvinces().then(provinces => {
+          if (provinces && provinces.length > 0) {
+            const validProvs = provinces.filter(p => p?.id && p?.name)
+            if (validProvs.length === 0) return
+            const randomProv = validProvs[Math.floor(Math.random() * validProvs.length)]
+            setLocationInfo({ type: 'province', data: randomProv })
+            // Then fetch regencies
+            fetchRegencies(randomProv.id).then(regencies => {
+              if (regencies && regencies.length > 0) {
+                const validRegs = regencies.filter(r => r?.id && r?.name)
+                if (validRegs.length === 0) return
+                const randomReg = validRegs[Math.floor(Math.random() * validRegs.length)]
+                setLocationInfo({ type: 'regency', data: randomReg, province: randomProv })
+              }
+            })
+          }
+        })
+      })
+    }
+  }, [isLoading, locationLoaded])
+
+  // Cycle through tips (including location tips)
   useEffect(() => {
     if (!isLoading) return
     const interval = setInterval(() => {
-      setCurrentTip(prev => (prev + 1) % TIPS.length)
+      setCurrentTip(prev => (prev + 1) % ALL_TIPS.length)
     }, 4500)
     return () => clearInterval(interval)
   }, [isLoading])
@@ -202,8 +252,32 @@ export default function LoadingScreen({
         <div className="loading-tips-container">
           <div className="loading-tip-label">Tahukah Anda</div>
           <div key={currentTip} className="loading-tip-text">
-            "{TIPS[currentTip]}"
+            "{ALL_TIPS[currentTip]}"
           </div>
+          {/* Location Info from ibnux API */}
+          {isActive && (
+            <div className="loading-location-info">
+              {locationInfo ? (
+                <div className="location-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  {locationInfo.type === 'regency' && locationInfo.province
+                    ? `${locationInfo.data.name}, ${locationInfo.province.name}`
+                    : locationInfo.data.name}
+                </div>
+              ) : (
+                <div className="location-badge location-loading">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  Memuat data wilayah Indonesia...
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Action Logs */}

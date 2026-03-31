@@ -309,7 +309,8 @@ export class OtherIncomesService {
                 }
             }
 
-            // AGGRESSIVE DEDUPLICATION: Ensure one record per emp_code (primary) or NIK (fallback)
+            // DEDUPLICATION: Ensure one record per emp_code/nik + income_type combination
+            // Previously keyed only by emp_code/nik which dropped KONTAN when THR already existed
             const uniqueMap = new Map<string, OtherIncome>();
             rows.forEach(r => {
                 // Parse details_json back into details object
@@ -320,11 +321,14 @@ export class OtherIncomesService {
                 // Priority: emp_code > nik
                 const empCodeKey = (r.emp_code || '').trim().toUpperCase();
                 const nikKey = (r.nik || '').trim().toUpperCase();
+                const incomeType = (r.income_type || '').trim().toUpperCase();
                 
-                // Try emp_code first, then nik
-                const key = empCodeKey || nikKey;
+                // Composite key: employee identifier + income_type
+                // This ensures THR, KONTAN, BONUS etc. for the same employee are all preserved
+                const employeeKey = empCodeKey || nikKey;
+                const key = `${employeeKey}|${incomeType}`;
                 
-                if (key && !uniqueMap.has(key)) {
+                if (key && employeeKey && !uniqueMap.has(key)) {
                     uniqueMap.set(key, r);
                 }
             });

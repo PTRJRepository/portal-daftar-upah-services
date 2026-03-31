@@ -65,6 +65,14 @@ export class CacheService {
     public clear(): void {
         this.cache.clear();
     }
+
+    public clearByPattern(pattern: string): void {
+        const keysToDelete: string[] = [];
+        this.cache.forEach((_, key) => {
+            if (key.includes(pattern)) keysToDelete.push(key);
+        });
+        keysToDelete.forEach(k => this.cache.delete(k));
+    }
 }
 
 export const cacheService = CacheService.getInstance();

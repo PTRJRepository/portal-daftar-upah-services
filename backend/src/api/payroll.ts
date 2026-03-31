@@ -44,7 +44,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     })
     .get("/subdivisions", async ({ set }) => {
         try {
-            const subDivisions = await gangService.getSubDivisions();
+            const subDivisions: any[] = [];
             return subDivisions;
         } catch (e) {
             set.status = 500;
@@ -174,10 +174,27 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     .post("/manual-edit", async ({ body, currentUser, set }) => {
         try {
             const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
             const data = body as any;
+            console.log(`[manual-edit] Incoming payload:`, JSON.stringify({
+                period_month: data.period_month,
+                period_year: data.period_year,
+                nik: data.nik,
+                emp_code: data.emp_code,
+                gang_code: data.gang_code,
+                adjustment_type: data.adjustment_type,
+                adjustment_name: data.adjustment_name,
+                amount: data.amount
+            }));
 
             const username = currentUser?.username || 'system';
             const resultId = await manualAdjustmentService.saveAdjustment(data, username);
+
+            // Always clear cache after save to ensure fresh data on next load
+            // Use suffix matching because keys format is payroll_data:{gangCode}:{month}:{year}
+            const pattern = `:${data.period_month}:${data.period_year}`;
+            cacheService.clearByPattern(pattern);
+            console.log(`[PayrollRoutes] Cleared cache for pattern: ${pattern} after manual edit`);
 
             return { success: true, id: resultId, message: "Manual adjustment saved successfully." };
         } catch (e: any) {
@@ -189,10 +206,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         body: t.Object({
             period_month: t.Number(),
             period_year: t.Number(),
+            nik: t.Optional(t.String()),  // Real NIK (KTP) - for PENDAPATAN_LAINNYA
             emp_code: t.String(),
             gang_code: t.String(),
             division_code: t.Optional(t.String()),
-            adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH
+            adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH, PENDAPATAN_LAINNYA
             adjustment_name: t.String(),
             amount: t.Number(),
             remarks: t.Optional(t.String())
@@ -560,10 +578,17 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
 
             const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
             const data = body as any;
 
             const username = currentUser?.username || 'system';
             const resultId = await manualAdjustmentService.saveAdjustment(data, username);
+
+            // Always clear cache after save to ensure fresh data on next load
+            // Use suffix matching because keys format is payroll_data:{gangCode}:{month}:{year}
+            const pattern = `:${data.period_month}:${data.period_year}`;
+            cacheService.clearByPattern(pattern);
+            console.log(`[PayrollRoutes] Cleared cache for pattern: ${pattern} after locked manual edit`);
 
             return { success: true, id: resultId, message: "Manual adjustment saved successfully." };
         } catch (e: any) {
@@ -575,10 +600,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         body: t.Object({
             period_month: t.Number(),
             period_year: t.Number(),
+            nik: t.Optional(t.String()),  // Real NIK (KTP) - for PENDAPATAN_LAINNYA
             emp_code: t.String(),
             gang_code: t.String(),
             division_code: t.Optional(t.String()),
-            adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH
+            adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH, PENDAPATAN_LAINNYA
             adjustment_name: t.String(),
             amount: t.Number(),
             remarks: t.Optional(t.String())
@@ -593,6 +619,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
 
             const { Database } = await import("../db/client");
+            const { cacheService } = await import("../services/cacheService");
             const data = body as any;
 
             const db = Database.getExtendedInstance();
@@ -611,9 +638,16 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 WHERE nik = ? AND period_year = ? AND period_month = ? AND income_type = ?
             `, [data.nik, data.period_year, data.period_month, incomeType]);
 
+            const clearPeriodCache = () => {
+                const pattern = `payroll_data:${data.period_month}:${data.period_year}`;
+                cacheService.clearByPattern(pattern);
+                console.log(`[PayrollRoutes] Cleared cache for pattern: ${pattern} after saving ${incomeType}`);
+            };
+
             if (existing && existing.length > 0) {
                 if (parsedAmount === 0) {
                     await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [existing[0].id]);
+                    clearPeriodCache();
                     return { success: true, action: 'deleted', message: `${incomeName} removed.` };
                 } else {
                     await db.query(`
@@ -621,6 +655,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         SET amount = ?, emp_name = ?, gang_code = ?, division_code = ?, income_name = ?, updated_at = GETDATE()
                         WHERE id = ?
                     `, [parsedAmount, data.emp_name, data.gang_code, data.division_code || null, incomeName, existing[0].id]);
+                    clearPeriodCache();
                     return { success: true, action: 'updated', id: existing[0].id, message: `${incomeName} updated.` };
                 }
             } else {
@@ -633,6 +668,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         income_type, income_name, amount, is_paid_in_thp, is_taxable
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
                 `, [data.nik, data.emp_name, data.division_code || null, data.gang_code, data.period_year, data.period_month, incomeType, incomeName, parsedAmount]);
+                clearPeriodCache();
                 return { success: true, action: 'inserted', message: `${incomeName} saved.` };
             }
         } catch (e: any) {

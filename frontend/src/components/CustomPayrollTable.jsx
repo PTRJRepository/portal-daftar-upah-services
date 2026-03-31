@@ -465,7 +465,8 @@ export default function CustomPayrollTable({
                 const payload = {
                     period_month: month,
                     period_year: year,
-                    emp_code: k.nik,
+                    nik: k.nik,                    // Real NIK (KTP)
+                    emp_code: k.emp_code,          // Emp code (B0065, etc.)
                     gang_code: k.gang_code,
                     division_code: division,
                     adjustment_type: 'PENDAPATAN_LAINNYA',
@@ -473,6 +474,7 @@ export default function CustomPayrollTable({
                     amount: k.value,
                     remarks: `KONTAN edited via UI on ${new Date().toLocaleString()}`
                 };
+                console.log(`[handleSaveKontan] Saving: nik=${k.nik}, emp_code=${k.emp_code}, gang=${k.gang_code}, amount=${k.value}, period=${month}/${year}`);
 
                 let resOk = false;
                 let resJson = null;
@@ -506,6 +508,7 @@ export default function CustomPayrollTable({
             }
 
             if (successCount > 0) {
+                console.log(`[handleSaveKontan] SUCCESS: ${successCount} KONTAN values saved, triggering refresh`);
                 alert(`Berhasil menyimpan ${successCount} nilai KONTAN.`);
                 setEditedKontanCells({});
                 onRefresh?.();
@@ -1387,14 +1390,17 @@ export default function CustomPayrollTable({
 
         // KONTAN - Other income column (always visible, editable only in edit mode)
         cols.push({
-            field: 'kontan',
+            field: 'pendapatan_kontan',
             headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'KONTAN (+)'],
             w: 90,
             className: 'text-right',
             render: (row) => {
-                const val = Number(row.kontan || 0);
+                const val = Number(row.pendapatan_kontan || 0);
+                // Prefer real NIK (13+ digit KTP) over emp_code for storage
+                const isRealNik = (row.nik || '').length >= 13;
+                const realNik = isRealNik ? row.nik : null;
                 const empCode = row.emp_code || row.nik;
-                const editKey = `${empCode}-kontan`;
+                const editKey = `${empCode}-pendapatan_kontan`;
                 const cellEdit = editedKontanCells[editKey];
                 const displayVal = cellEdit ? cellEdit.value : val;
                 const isEdited = !!cellEdit;
@@ -1412,7 +1418,8 @@ export default function CustomPayrollTable({
                                 setEditedKontanCells(prev => ({
                                     ...prev,
                                     [editKey]: {
-                                        nik: empCode,
+                                        nik: realNik || row.emp_code,  // Real NIK (KTP) or emp_code fallback
+                                        emp_code: row.emp_code,         // Emp code (B0065, etc.)
                                         value: numVal,
                                         originalValue: val,
                                         gang_code: row.gang_code
@@ -1421,7 +1428,7 @@ export default function CustomPayrollTable({
                                 // Optimistically update UI
                                 setRows(prevRows => prevRows.map(r => {
                                     if ((r.emp_code || r.nik) === empCode) {
-                                        return { ...r, kontan: numVal };
+                                        return { ...r, pendapatan_kontan: numVal };
                                     }
                                     return r;
                                 }));
@@ -1444,8 +1451,8 @@ export default function CustomPayrollTable({
             className: 'text-right font-bold',
             render: (row) => {
                 const empCode = row.emp_code || row.nik;
-                const kontanEdit = editedKontanCells[`${empCode}-kontan`];
-                const kontanVal = kontanEdit ? kontanEdit.value : (Number(row.kontan || 0));
+                const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
+                const kontanVal = kontanEdit ? kontanEdit.value : (Number(row.pendapatan_kontan || 0));
                 const val = Number(row.pendapatan_lainnya || 0) + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
@@ -1456,7 +1463,7 @@ export default function CustomPayrollTable({
         // Display each KOREKSI variation as a separate column
         const koreksiFields = Object.entries(dynamicHeaders.potongan)
             .filter(([label, field]) => field.toUpperCase().startsWith('KOREKSI') && (activePotFields.includes(field) || isEditMode)) // Show in edit mode
-            .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
+            .sort(([a], [b]) => (a || '').localeCompare(b || '')); // Sort alphabetically
 
         // If no KOREKSI variations found but koreksi data exists, show main column
         if (koreksiFields.length === 0 && !isEditMode) {
@@ -1510,8 +1517,8 @@ export default function CustomPayrollTable({
             className: 'text-right font-bold',
             render: (row) => {
                 const empCode = row.emp_code || row.nik;
-                const kontanEdit = editedKontanCells[`${empCode}-kontan`];
-                const kontanVal = kontanEdit ? kontanEdit.value : Number(row.kontan || 0);
+                const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
+                const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
                 const val = Number(row.jumlah_upah_kotor || 0) + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
@@ -1651,7 +1658,7 @@ export default function CustomPayrollTable({
             const potonganBersihFields = Object.entries(dynamicHeaders.potongan)
                 .filter(([label, field]) => {
                     const upperLabel = label.toUpperCase();
-                    const upperField = field.toUpperCase();
+                    const upperField = (field || '').toUpperCase();
 
                     // Exclude KOREKSI (shown in POTONGAN UPAH KOTOR)
                     if (upperLabel.startsWith('KOREKSI') || upperField.startsWith('KOREKSI')) return false;
@@ -1669,7 +1676,7 @@ export default function CustomPayrollTable({
                     return true;
                 })
                 .filter(([label, field]) => activePotFields.includes(field) || isEditMode) // Show all in edit mode
-                .sort(([a], [b]) => a.localeCompare(b)); // Sort alphabetically
+                .sort(([a], [b]) => (a || '').localeCompare(b || '')); // Sort alphabetically
 
             console.log("[DEBUG] potonganBersihFields:", potonganBersihFields);
             console.log("[DEBUG] dynamicHeaders.potongan:", dynamicHeaders.potongan);
@@ -1677,7 +1684,7 @@ export default function CustomPayrollTable({
 
             for (const [label, field] of potonganBersihFields) {
                 // Clean up the label for display
-                const displayLabel = label.replace(/^(POTONGAN\s*|POT\s*)/i, '') || label;
+                const displayLabel = (label || '').replace(/^(POTONGAN\s*|POT\s*)/i, '') || label;
                 cols.push({
                     field,
                     headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, displayLabel],
@@ -1753,13 +1760,13 @@ export default function CustomPayrollTable({
                 className: 'text-right',
                 render: (row) => {
                     if (row.type !== 'employee') {
-                        const val = Number(row.kontan || 0);
+                        const val = Number(row.pendapatan_kontan || 0);
                         if (val === 0) return '-';
                         return formatNumber(val);
                     }
                     const empCode = row.emp_code || row.nik;
-                    const kontanEdit = editedKontanCells[`${empCode}-kontan`];
-                    const kontanVal = kontanEdit ? kontanEdit.value : Number(row.kontan || 0);
+                    const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
+                    const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
                     if (kontanVal === 0) return '-';
                     return formatNumber(kontanVal);
                 }
@@ -1773,8 +1780,8 @@ export default function CustomPayrollTable({
                 className: 'text-right font-bold',
                 render: (row) => {
                     const empCode = row.emp_code || row.nik;
-                    const kontanEdit = editedKontanCells[`${empCode}-kontan`];
-                    const kontanVal = kontanEdit ? kontanEdit.value : Number(row.kontan || 0);
+                    const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
+                    const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
                     const val = Number(row.pendapatan_lainnya || 0) + (kontanVal || 0);
                     if (val === 0) return '-';
                     return formatNumber(val);
@@ -1791,8 +1798,8 @@ export default function CustomPayrollTable({
             className: 'text-right font-bold cell-deduction',
             render: (row) => {
                 const empCode = row.emp_code || row.nik;
-                const kontanEdit = editedKontanCells[`${empCode}-kontan`];
-                const kontanVal = kontanEdit ? kontanEdit.value : Number(row.kontan || 0);
+                const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
+                const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
                 const baseVal = Number(row.total_potongan_bersih || 0);
                 const val = baseVal + (kontanVal || 0);
                 if (val === 0) return '-';
@@ -1819,14 +1826,6 @@ export default function CustomPayrollTable({
         cols.forEach(c => {
             c.group = getHeaderGroup(c.headers[0]);
         });
-
-        // DEBUG: Log PENDAPATAN LAINNYA columns
-        const otherIncomeCols = cols.filter(c => c.headers && c.headers[0] === 'PENDAPATAN LAINNYA');
-        if (otherIncomeCols.length > 0) {
-            console.log('[DEBUG] PENDAPATAN LAINNYA columns found:', otherIncomeCols.map(c => c.headers));
-        } else {
-            console.warn('[DEBUG] PENDAPATAN LAINNYA columns NOT found in columnDefs!');
-        }
 
         return cols;
     }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells]);

@@ -590,7 +590,7 @@ export class DataExtractorService {
                     dbThpIncomesMap.set(empCode, (dbThpIncomesMap.get(empCode) || 0) + Number(inc.amount));
                 }
                 // Level 2: Also store by NIK (fallback — karyawan yang ganti emp_code)
-                if (nik) {
+                if (nik && nik !== empCode) {
                     dbThpIncomesMap.set(nik, (dbThpIncomesMap.get(nik) || 0) + Number(inc.amount));
                 }
                 // Level 3: Also store by NIK+NAME if duplicate NIK (for disambiguation)
@@ -609,7 +609,7 @@ export class DataExtractorService {
                     dbTaxableOtherIncomesByNik.get(empCode)!.push(incomeEntry);
                 }
                 // Level 2: Also store by NIK (fallback — karyawan yang ganti emp_code)
-                if (nik) {
+                if (nik && nik !== empCode) {
                     dbTaxableIncomesMap.set(nik, (dbTaxableIncomesMap.get(nik) || 0) + Number(inc.amount));
                     if (!dbTaxableOtherIncomesByNik.has(nik)) {
                         dbTaxableOtherIncomesByNik.set(nik, []);
@@ -636,7 +636,7 @@ export class DataExtractorService {
                 dbOtherIncomesByNik.get(empCode)!.push(incomeEntry);
             }
             // Also store by NIK as fallback (untuk karyawan yang ganti emp_code)
-            if (nik) {
+            if (nik && nik !== empCode) {
                 if (!dbOtherIncomesByNik.has(nik)) {
                     dbOtherIncomesByNik.set(nik, []);
                 }
@@ -953,24 +953,33 @@ export class DataExtractorService {
             };
 
             const lookupOtherIncomes = (map: Map<string, { type: string; name: string; amount: number; emp_name?: string }[]>, nameMap?: Map<string, { type: string; name: string; amount: number; emp_name?: string }[]>) => {
-                let entries: { type: string; name: string; amount: number }[] = [];
+                const results = new Map<string, { type: string; name: string; amount: number; emp_name?: string }>();
+                
+                const addEntries = (entries: { type: string; name: string; amount: number; emp_name?: string }[]) => {
+                    for (const e of entries) {
+                        const key = `${e.type}|${e.name}`;
+                        // Keep the first found (prioritize lookup order)
+                        if (!results.has(key)) results.set(key, e);
+                    }
+                };
+
+                // Merging approach instead of fallback.
+                // An employee might have THR recorded under their NIK, but a manual custom income mapped under their empCode.
+                // We shouldn't stop checking level 3 if level 1 matches.
+
                 // Level 1: NIK (prioritas utama — semua THR disimpan by NIK)
-                if (empNik) {
-                    entries = map.get(empNik) || [];
-                }
+                if (empNik) addEntries(map.get(empNik) || []);
+                
                 // Level 2: NIK + NAMA (duplicate NIK disambiguation)
-                if (entries.length === 0 && nikNameKey) {
-                    entries = map.get(nikNameKey) || [];
-                }
-                // Level 3: emp_code (fallback — untuk case emp_code terisi)
-                if (entries.length === 0 && empCodeKey) {
-                    entries = map.get(empCodeKey) || [];
-                }
+                if (nikNameKey) addEntries(map.get(nikNameKey) || []);
+                
+                // Level 3: emp_code (fallback — untuk case emp_code terisi manual UI)
+                if (empCodeKey) addEntries(map.get(empCodeKey) || []);
+                
                 // Level 4: CLEANED NAME (karyawan pindahan — NIK berbeda total)
-                if (entries.length === 0 && empNameForKey && nameMap) {
-                    entries = nameMap.get(empNameForKey) || [];
-                }
-                return entries;
+                if (empNameForKey && nameMap) addEntries(nameMap.get(empNameForKey) || []);
+
+                return Array.from(results.values());
             };
 
             const pendapatan_tidak_tetap_thp = lookupByNik(dbThpIncomesMap, dbThpByCleanName);
@@ -1006,7 +1015,11 @@ export class DataExtractorService {
                     customTypeAmounts[oiType] = (customTypeAmounts[oiType] || 0) + Number(oi.amount || 0);
                 }
             }
+            // [DEBUG KONTAN] Log custom type amounts for this employee
             const customTypesTotal = Object.values(customTypeAmounts).reduce((sum, v) => sum + v, 0);
+            if (customTypesTotal > 0) {
+                console.log(`[DEBUG KONTAN] empNik=${empNik}, empCodeKey=${empCodeKey}, customTypeAmounts=`, JSON.stringify(customTypeAmounts), `, empOtherIncomes count=${empOtherIncomes.length}`);
+            }
 
             // Taxable for custom types
             let taxable_custom_types_total = 0;

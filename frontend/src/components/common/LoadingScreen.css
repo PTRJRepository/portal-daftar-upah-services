@@ -328,6 +328,39 @@
   z-index: 1;
 }
 
+/* Location Info Badge */
+.loading-location-info {
+  margin-top: 0.6rem;
+  position: relative;
+  z-index: 1;
+}
+
+.location-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 20px;
+  font-size: 0.68rem;
+  color: #06b6d4;
+  font-weight: 500;
+  animation: fadeInTip 0.4s ease-out;
+}
+
+.location-badge.location-loading {
+  color: #475569;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+  animation: locationPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes locationPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+
 @keyframes fadeInTip {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }

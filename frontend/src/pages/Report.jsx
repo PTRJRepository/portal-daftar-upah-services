@@ -1253,8 +1253,13 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         return { textAlign: 'right' };
       };
       cfg.valueSetter = (params) => {
-        const newVal = parseFloat(params.newValue) || 0;
-        const oldVal = parseFloat(params.oldValue) || 0;
+        const parseSafely = (v) => {
+          if (!v) return 0;
+          if (typeof v === 'number') return v;
+          return parseFloat(String(v).replace(/\./g, '').replace(/,/g, '.')) || 0;
+        };
+        const newVal = parseSafely(params.newValue);
+        const oldVal = parseSafely(params.oldValue);
         if (newVal !== oldVal) {
           params.data[f] = newVal;
           const ti = typeInfo(params);
