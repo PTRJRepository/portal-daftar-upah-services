@@ -4,6 +4,17 @@ import { Config } from "../config";
 import { gangService } from "./gangService";
 import { divisionDefinition } from "./divisionDefinition";
 
+/**
+ * IMPORTANT: Data Append-Only Pattern (Immutable History)
+ *
+ * Semua query ke daftar_upah_aggregation_history HARUS menggunakan subquery
+ * untuk mendapatkan data VERSI TERBARU saja (version_index tertinggi).
+ *
+ * Pattern: WHERE h.version_index = (SELECT MAX(h2.version_index) FROM ... h2 WHERE h2.gang_code = h.gang_code ...)
+ *
+ * Lihat helper method `getLatestVersionCte()` untuk penggunaan yang lebih bersih.
+ */
+
 export class DashboardService {
     private static instance: DashboardService;
     private db: Database;
@@ -22,6 +33,56 @@ export class DashboardService {
     }
 
     /**
+     * Helper: Returns a CTE prefix for selecting only LATEST version records
+     * from daftar_upah_aggregation_history.
+     *
+     * IMPORTANT: Always use this to get the latest seeding data.
+     * Without this, queries will SUM/COUNT all versions, producing incorrect results.
+     *
+     * Usage: Append this CTE before your FROM clause.
+     * The alias for the main table should be `h`.
+     *
+     * Example:
+     *   WITH latest AS (${this.getLatestVersionCte()})
+     *   SELECT ... FROM latest l JOIN dbo.daftar_upah_aggregation_history h ON ...
+     *   WHERE l.gang_code = h.gang_code AND l.period_month = h.period_month ...
+     */
+    private getLatestVersionCte(): string {
+        return `
+            SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+            FROM dbo.daftar_upah_aggregation_history
+            GROUP BY gang_code, period_month, period_year
+        `;
+    }
+
+    /**
+     * Helper: Returns the WHERE clause fragment for LATEST VERSION filtering.
+     * Use this when you can't use a CTE (e.g., simple queries).
+     *
+     * Usage in WHERE:
+     *   AND h.version_index = (
+     *       SELECT MAX(h2.version_index)
+     *       FROM dbo.daftar_upah_aggregation_history h2
+     *       WHERE h2.gang_code = h.gang_code
+     *         AND h2.period_month = h.period_month
+     *         AND h2.period_year = h.period_year
+     *   )
+     *
+     * Prerequisite: The table alias must be `h`.
+     */
+    private getLatestVersionWhere(): string {
+        return `
+            AND h.version_index = (
+                SELECT MAX(h2.version_index)
+                FROM dbo.daftar_upah_aggregation_history h2
+                WHERE h2.gang_code = h.gang_code
+                  AND h2.period_month = h.period_month
+                  AND h2.period_year = h.period_year
+            )
+        `;
+    }
+
+    /**
      * Get 12-month trend for Wages, OT, Premi
      */
     public async getPayrollTrend(endMonth: number, endYear: number): Promise<any[]> {
@@ -33,22 +94,32 @@ export class DashboardService {
             startYear = endYear;
         }
 
+        // Use CTE to get latest version per gang-period, then aggregate
         const query = `
-            SELECT 
-                period_year, 
-                period_month,
-                SUM(ISNULL(total_upah_bersih, 0)) as total_wage,
-                SUM(ISNULL(total_lembur, 0)) as total_ot,
-                SUM(ISNULL(total_premi, 0)) as total_premi,
-                SUM(ISNULL(total_employees, 0)) as total_headcount,
-                SUM(ISNULL(total_hk, 0)) as total_hk
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE 
-                (period_year > ? OR (period_year = ? AND period_month >= ?))
-                AND (period_year < ? OR (period_year = ? AND period_month <= ?))
-                -- AND division_code NOT IN ('MILL', 'PKS') -- Removed to include ALL divisions in Payroll Trend (Mill, IJL, etc.)
-            GROUP BY period_year, period_month
-            ORDER BY period_year, period_month
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                h.period_year,
+                h.period_month,
+                SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
+                SUM(ISNULL(h.total_lembur, 0)) as total_ot,
+                SUM(ISNULL(h.total_premi, 0)) as total_premi,
+                SUM(ISNULL(h.total_employees, 0)) as total_headcount,
+                SUM(ISNULL(h.total_hk, 0)) as total_hk
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE
+                (h.period_year > ? OR (h.period_year = ? AND h.period_month >= ?))
+                AND (h.period_year < ? OR (h.period_year = ? AND h.period_month <= ?))
+            GROUP BY h.period_year, h.period_month
+            ORDER BY h.period_year, h.period_month
         `;
 
         // Logic check:
@@ -82,19 +153,29 @@ export class DashboardService {
      * Get current month division breakdown
      */
     public async getDivisionBreakdown(month: number, year: number): Promise<any[]> {
+        // LATEST VERSION ONLY via CTE
         const query = `
-            SELECT 
-                division_code,
-                SUM(ISNULL(total_upah_bersih, 0)) as total_wage,
-                SUM(ISNULL(total_lembur, 0)) as total_ot,
-                SUM(ISNULL(total_premi, 0)) as total_premi,
-                SUM(ISNULL(total_employees, 0)) as headcount
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
-            GROUP BY division_code
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                h.division_code,
+                SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
+                SUM(ISNULL(h.total_lembur, 0)) as total_ot,
+                SUM(ISNULL(h.total_premi, 0)) as total_premi,
+                SUM(ISNULL(h.total_employees, 0)) as headcount
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            GROUP BY h.division_code
             ORDER BY total_wage DESC
         `;
-
         const rows = await this.extendDb.query<any>(query, [month, year]);
         return rows;
     }
@@ -103,15 +184,26 @@ export class DashboardService {
      * Get Top Gangs by Cost
      */
     public async getGangBreakdown(month: number, year: number, limit: number = 15): Promise<any[]> {
+        // LATEST VERSION ONLY via CTE
         const query = `
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
             SELECT TOP ${limit}
-                gang_code,
-                SUM(ISNULL(total_upah_bersih, 0)) as total_wage,
-                SUM(ISNULL(total_lembur, 0)) as total_ot,
-                SUM(ISNULL(total_employees, 0)) as headcount
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
-            GROUP BY gang_code
+                h.gang_code,
+                SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
+                SUM(ISNULL(h.total_lembur, 0)) as total_ot,
+                SUM(ISNULL(h.total_employees, 0)) as headcount
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            GROUP BY h.gang_code
             ORDER BY total_wage DESC
         `;
         return await this.extendDb.query<any>(query, [month, year]);
@@ -121,16 +213,27 @@ export class DashboardService {
      * Get Division Efficiency (Cost vs Headcount/WorkDays)
      */
     public async getDivisionEfficiency(month: number, year: number): Promise<any[]> {
+        // LATEST VERSION ONLY via CTE
         const query = `
-            SELECT 
-                division_code,
-                SUM(ISNULL(total_upah_bersih, 0)) as total_cost,
-                SUM(ISNULL(total_employees, 0)) as headcount,
-                SUM(ISNULL(total_hk, 0)) as total_man_days
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
-            GROUP BY division_code
-            HAVING SUM(ISNULL(total_employees, 0)) > 0
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                h.division_code,
+                SUM(ISNULL(h.total_upah_bersih, 0)) as total_cost,
+                SUM(ISNULL(h.total_employees, 0)) as headcount,
+                SUM(ISNULL(h.total_hk, 0)) as total_man_days
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            GROUP BY h.division_code
+            HAVING SUM(ISNULL(h.total_employees, 0)) > 0
             ORDER BY total_cost DESC
         `;
         return await this.extendDb.query<any>(query, [month, year]);
@@ -141,18 +244,29 @@ export class DashboardService {
      */
     public async getProductivityTrend(endMonth: number, endYear: number): Promise<any[]> {
         const { startMonth, startYear } = this.getStartPeriod(endMonth, endYear);
+        // LATEST VERSION ONLY via CTE
         const query = `
-            SELECT 
-                period_month, 
-                period_year,
-                SUM(ISNULL(total_upah_bersih, 0)) as total_wage,
-                SUM(ISNULL(total_hk, 0)) as total_hk
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE 
-                (period_year > ? OR (period_year = ? AND period_month >= ?))
-                AND (period_year < ? OR (period_year = ? AND period_month <= ?))
-            GROUP BY period_year, period_month
-            ORDER BY period_year, period_month
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                h.period_month,
+                h.period_year,
+                SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
+                SUM(ISNULL(h.total_hk, 0)) as total_hk
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE
+                (h.period_year > ? OR (h.period_year = ? AND h.period_month >= ?))
+                AND (h.period_year < ? OR (h.period_year = ? AND h.period_month <= ?))
+            GROUP BY h.period_year, h.period_month
+            ORDER BY h.period_year, h.period_month
         `;
 
         const rows = await this.extendDb.query<any>(query, [startYear, startYear, startMonth, endYear, endYear, endMonth]);
@@ -165,22 +279,29 @@ export class DashboardService {
     }
 
     /**
-     * Get Wage Spikes (Anomaly Detection)
-     * Compares Current Month vs Previous Month for Top 5 Spikes > 20%
-     */
-    /**
      * Get Gang Wage Spikes (Anomaly Detection)
      * Compares Current Month vs Previous Month for Top 5 Gangs with highest Cost/HK increase
      */
     public async getWageSpikes(month: number, year: number): Promise<any[]> {
+        // LATEST VERSION ONLY via CTE
         const query = `
-            SELECT 
-                gang_code,
-                SUM(ISNULL(total_upah_bersih, 0)) as total_wage,
-                SUM(ISNULL(total_hk, 0)) as total_hk
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
-            GROUP BY gang_code
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                h.gang_code,
+                SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
+                SUM(ISNULL(h.total_hk, 0)) as total_hk
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            GROUP BY h.gang_code
         `;
 
         let prevMonth = month - 1;
@@ -326,7 +447,13 @@ export class DashboardService {
             const whereClause = whereConditions.join(' AND ');
 
             // Query for gang-level data with description from HR_GANG
+            // LATEST VERSION ONLY: Join with CTE to get only the latest version per gang-period
             const query = `
+                WITH latest AS (
+                    SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                    FROM dbo.daftar_upah_aggregation_history
+                    GROUP BY gang_code, period_month, period_year
+                )
                 SELECT
                     agg.gang_code,
                     agg.division_code,
@@ -334,7 +461,12 @@ export class DashboardService {
                     SUM(ISNULL(agg.total_upah_bersih, 0)) as total_cost,
                     SUM(ISNULL(agg.total_hk, 0)) as total_hk,
                     SUM(ISNULL(agg.total_employees, 0)) as headcount
-                FROM dbo.daftar_upah_aggregation_history agg
+                FROM latest l
+                JOIN dbo.daftar_upah_aggregation_history agg
+                    ON l.gang_code = agg.gang_code
+                    AND l.period_month = agg.period_month
+                    AND l.period_year = agg.period_year
+                    AND l.max_ver = agg.version_index
                 LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
                 WHERE ${whereClause}
                 GROUP BY agg.gang_code, agg.division_code, g.Description
@@ -418,12 +550,23 @@ export class DashboardService {
      */
     public async getAvailableGangs(month: number, year: number): Promise<any[]> {
         try {
+            // LATEST VERSION ONLY: Only show gangs from the latest seeding version
             const query = `
+                WITH latest AS (
+                    SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                    FROM dbo.daftar_upah_aggregation_history
+                    GROUP BY gang_code, period_month, period_year
+                )
                 SELECT DISTINCT
                     agg.gang_code,
                     agg.division_code,
                     g.Description as gang_description
-                FROM dbo.daftar_upah_aggregation_history agg
+                FROM latest l
+                JOIN dbo.daftar_upah_aggregation_history agg
+                    ON l.gang_code = agg.gang_code
+                    AND l.period_month = agg.period_month
+                    AND l.period_year = agg.period_year
+                    AND l.max_ver = agg.version_index
                 LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
                 WHERE agg.period_month = ? AND agg.period_year = ?
                 AND agg.gang_code IS NOT NULL
@@ -479,18 +622,39 @@ export class DashboardService {
      * Get Filter Options (Divisions and Gangs)
      */
     public async getFilterOptions(month: number, year: number): Promise<{ divisions: string[], gangs: string[] }> {
+        // LATEST VERSION ONLY
         const divQuery = `
-            SELECT DISTINCT division_code 
-            FROM dbo.daftar_upah_aggregation_history 
-            WHERE period_month = ? AND period_year = ?
-            ORDER BY division_code
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT DISTINCT h.division_code
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            ORDER BY h.division_code
         `;
 
         const gangQuery = `
-            SELECT DISTINCT gang_code 
-            FROM dbo.daftar_upah_aggregation_history 
-            WHERE period_month = ? AND period_year = ?
-            ORDER BY gang_code
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT DISTINCT h.gang_code
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            ORDER BY h.gang_code
         `;
 
         const [divs, gangs] = await Promise.all([
@@ -515,18 +679,29 @@ export class DashboardService {
         // Dynamic IN clause placeholder using ?
         const placeholders = codes.map(() => '?').join(',');
 
+        // LATEST VERSION ONLY
         const query = `
-            SELECT 
-                ${column} as name,
-                SUM(ISNULL(total_upah_bersih, 0)) as total_wage,
-                SUM(ISNULL(total_lembur, 0)) as total_ot,
-                SUM(ISNULL(total_hk, 0)) as total_hk,
-                SUM(ISNULL(total_employees, 0)) as headcount
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? 
-              AND period_year = ?
-              AND ${column} IN (${placeholders})
-            GROUP BY ${column}
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                h.${column} as name,
+                SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
+                SUM(ISNULL(h.total_lembur, 0)) as total_ot,
+                SUM(ISNULL(h.total_hk, 0)) as total_hk,
+                SUM(ISNULL(h.total_employees, 0)) as headcount
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ?
+              AND h.period_year = ?
+              AND h.${column} IN (${placeholders})
+            GROUP BY h.${column}
         `;
 
         const params = [month, year, ...codes];
@@ -547,8 +722,14 @@ export class DashboardService {
      * Used for KPI cards to ensure consistency with Executive Dashboard
      */
     public async getAggregatedGangData(divisionCode: string, month: number, year: number): Promise<any[]> {
+        // LATEST VERSION ONLY
         const query = `
-            SELECT 
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
                 agg.gang_code,
                 RTRIM(g.Description) as gang_description,
                 SUM(ISNULL(agg.total_upah_bersih, 0)) as total_wage,
@@ -556,7 +737,12 @@ export class DashboardService {
                 SUM(ISNULL(agg.total_premi, 0)) as total_premi,
                 SUM(ISNULL(agg.total_hk, 0)) as total_hk,
                 SUM(ISNULL(agg.total_employees, 0)) as headcount
-            FROM dbo.daftar_upah_aggregation_history agg
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history agg
+                ON l.gang_code = agg.gang_code
+                AND l.period_month = agg.period_month
+                AND l.period_year = agg.period_year
+                AND l.max_ver = agg.version_index
             LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
             WHERE agg.period_month = ? AND agg.period_year = ?
             ${divisionCode && divisionCode !== 'ALL' ? `AND agg.division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
@@ -572,7 +758,7 @@ export class DashboardService {
         const rows = await this.extendDb.query<any>(query, params);
         return rows.map(r => ({
             gang_code: r.gang_code,
-            description: r.gang_description || r.gang_code, // Fallback to code if no description
+            description: r.gang_description || r.gang_code,
             total_wage: r.total_wage,
             total_ot: r.total_ot,
             total_premi: r.total_premi,
@@ -580,23 +766,34 @@ export class DashboardService {
             total_employees: r.headcount
         }));
     }
+
     /**
      * Get Premi Analysis (Breakdown by Type) - Including Dynamic Premi from JSON
      */
     public async getPremiAnalysis(month: number, year: number, divisionCode?: string): Promise<any[]> {
-        // Query to get static premi columns and dynamic_premi_data JSON
+        // LATEST VERSION ONLY
         const query = `
-            SELECT 
-                SUM(ISNULL(total_premi_brondol, 0)) as brondol,
-                SUM(ISNULL(total_premi_prunning, 0)) as pruning,
-                SUM(ISNULL(total_premi_insentif, 0)) as insentif,
-                SUM(ISNULL(total_premi_kinerja, 0)) as kinerja,
-                SUM(ISNULL(total_premi, 0)) as total,
-                dynamic_premi_data
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
-            ${divisionCode && divisionCode !== 'ALL' ? `AND division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
-            GROUP BY dynamic_premi_data
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                SUM(ISNULL(h.total_premi_brondol, 0)) as brondol,
+                SUM(ISNULL(h.total_premi_prunning, 0)) as pruning,
+                SUM(ISNULL(h.total_premi_insentif, 0)) as insentif,
+                SUM(ISNULL(h.total_premi_kinerja, 0)) as kinerja,
+                SUM(ISNULL(h.total_premi, 0)) as total,
+                h.dynamic_premi_data
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            ${divisionCode && divisionCode !== 'ALL' ? `AND h.division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
+            GROUP BY h.dynamic_premi_data
         `;
 
         const params: (string | number)[] = [month, year];
@@ -681,17 +878,28 @@ export class DashboardService {
      * Get Premi Comparison by Division
      */
     public async getPremiByDivision(month: number, year: number): Promise<any[]> {
+        // LATEST VERSION ONLY
         const query = `
-            SELECT 
-                division_code,
-                SUM(ISNULL(total_premi_brondol, 0)) as brondol,
-                SUM(ISNULL(total_premi_prunning, 0)) as pruning,
-                SUM(ISNULL(total_premi_insentif, 0)) as insentif,
-                SUM(ISNULL(total_premi_kinerja, 0)) as kinerja,
-                SUM(ISNULL(total_premi, 0)) as total
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
-            GROUP BY division_code
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                h.division_code,
+                SUM(ISNULL(h.total_premi_brondol, 0)) as brondol,
+                SUM(ISNULL(h.total_premi_prunning, 0)) as pruning,
+                SUM(ISNULL(h.total_premi_insentif, 0)) as insentif,
+                SUM(ISNULL(h.total_premi_kinerja, 0)) as kinerja,
+                SUM(ISNULL(h.total_premi, 0)) as total
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            GROUP BY h.division_code
             ORDER BY total DESC
         `;
 
@@ -711,16 +919,25 @@ export class DashboardService {
      * Get Overtime Analysis (Breakdown by Task Type)
      */
     public async getOvertimeAnalysis(month: number, year: number, divisionCode?: string): Promise<any[]> {
-        // Query aggregation table to get lembur breakdown
-        // The total_lembur is stored in aggregation, but we need task breakdown from raw data
+        // LATEST VERSION ONLY
         const query = `
-            SELECT 
-                division_code,
-                SUM(ISNULL(total_lembur, 0)) as total_lembur
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
-            ${divisionCode && divisionCode !== 'ALL' ? `AND division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
-            GROUP BY division_code
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
+                h.division_code,
+                SUM(ISNULL(h.total_lembur, 0)) as total_lembur
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
+            ${divisionCode && divisionCode !== 'ALL' ? `AND h.division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
+            GROUP BY h.division_code
             ORDER BY total_lembur DESC
         `;
 
@@ -839,9 +1056,14 @@ export class DashboardService {
         year: number,
         divisionCode?: string
     ) {
-        // 1. Fetch Aggregation Data (Cost & Headcount)
+        // 1. Fetch Aggregation Data (Cost & Headcount) - LATEST VERSION ONLY
         let sql = `
-            SELECT 
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT
                 agg.gang_code,
                 RTRIM(g.Description) as gang_description,
                 SUM(ISNULL(agg.total_upah_bersih, 0)) as total_wage,
@@ -850,7 +1072,12 @@ export class DashboardService {
                 SUM(ISNULL(agg.total_lembur, 0)) as total_ot,
                 SUM(ISNULL(agg.total_premi, 0)) as total_premi,
                 SUM(ISNULL(agg.total_ffb_weight, 0)) as total_production_db
-            FROM dbo.daftar_upah_aggregation_history agg
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history agg
+                ON l.gang_code = agg.gang_code
+                AND l.period_month = agg.period_month
+                AND l.period_year = agg.period_year
+                AND l.max_ver = agg.version_index
             LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
             WHERE agg.period_month = ? AND agg.period_year = ?
         `;

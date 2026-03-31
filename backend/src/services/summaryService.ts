@@ -209,27 +209,37 @@ export class SummaryService {
             this.getAllGangDescriptions()
         ]);
 
-        // Fetch per-gang rows
+        // Fetch per-gang rows - LATEST VERSION ONLY via CTE
         const query = `
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
             SELECT
-                gang_code,
-                division_code,
-                ISNULL(total_premi, 0) as total_premi,
-                ISNULL(total_employees, 0) as total_employees,
-                ISNULL(total_hk, 0) as total_hk,
-                ISNULL(total_upah_bersih, 0) as total_upah_bersih,
-                ISNULL(total_pph21, 0) as total_pph21,
-                ISNULL(total_spsi, 0) as total_spsi,
-                ISNULL(total_lembur, 0) as total_lembur,
-                ISNULL(total_premi_brondol, 0) as total_premi_brondol,
-                ISNULL(total_premi_prunning, 0) as total_premi_prunning,
-                ISNULL(total_premi_insentif, 0) as total_premi_insentif,
-                ISNULL(total_premi_kinerja, 0) as total_premi_kinerja,
-                ISNULL(total_koreksi, 0) as total_koreksi,
-                ISNULL(total_ffb_weight, 0) as total_ffb_weight,
-                ISNULL(total_weight_tbs, 0) as total_weight_tbs
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
+                h.gang_code,
+                h.division_code,
+                ISNULL(h.total_premi, 0) as total_premi,
+                ISNULL(h.total_employees, 0) as total_employees,
+                ISNULL(h.total_hk, 0) as total_hk,
+                ISNULL(h.total_upah_bersih, 0) as total_upah_bersih,
+                ISNULL(h.total_pph21, 0) as total_pph21,
+                ISNULL(h.total_spsi, 0) as total_spsi,
+                ISNULL(h.total_lembur, 0) as total_lembur,
+                ISNULL(h.total_premi_brondol, 0) as total_premi_brondol,
+                ISNULL(h.total_premi_prunning, 0) as total_premi_prunning,
+                ISNULL(h.total_premi_insentif, 0) as total_premi_insentif,
+                ISNULL(h.total_premi_kinerja, 0) as total_premi_kinerja,
+                ISNULL(h.total_koreksi, 0) as total_koreksi,
+                ISNULL(h.total_ffb_weight, 0) as total_ffb_weight,
+                ISNULL(h.total_weight_tbs, 0) as total_weight_tbs
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
         `;
 
         // Parallelize independent data fetches (DB query + thumbprint + backfill + tonase)
@@ -529,10 +539,21 @@ export class SummaryService {
     private async getBackfillData(month: number, year: number): Promise<Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }>> {
         const gangDivMap = await this.getGangToDivisionMap();
         const allGangDescs = await this.getAllGangDescriptions();
+        // LATEST VERSION ONLY
         const query = `
-            SELECT gang_code, division_code, dynamic_premi_data, informasi_tambahan
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT h.gang_code, h.division_code, h.dynamic_premi_data, h.informasi_tambahan
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
     `;
         const rows = await this.extendDb.query<any>(query, [month, year]);
         const result: Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }> = {};
@@ -778,10 +799,21 @@ export class SummaryService {
     private async getDynamicPremiInsentifPanen(month: number, year: number): Promise<Record<string, { insentif_panen: number }>> {
         const gangDivMap = await this.getGangToDivisionMap();
         const allGangDescs = await this.getAllGangDescriptions();
+        // LATEST VERSION ONLY
         const rows = await this.extendDb.query<any>(`
-            SELECT gang_code, division_code, dynamic_premi_data, informasi_tambahan
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE period_month = ? AND period_year = ?
+            WITH latest AS (
+                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
+                FROM dbo.daftar_upah_aggregation_history
+                GROUP BY gang_code, period_month, period_year
+            )
+            SELECT h.gang_code, h.division_code, h.dynamic_premi_data, h.informasi_tambahan
+            FROM latest l
+            JOIN dbo.daftar_upah_aggregation_history h
+                ON l.gang_code = h.gang_code
+                AND l.period_month = h.period_month
+                AND l.period_year = h.period_year
+                AND l.max_ver = h.version_index
+            WHERE h.period_month = ? AND h.period_year = ?
     `, [month, year]);
 
         const result: Record<string, any> = {};

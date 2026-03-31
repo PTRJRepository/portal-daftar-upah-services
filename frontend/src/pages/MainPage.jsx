@@ -1556,6 +1556,7 @@ export default function MainPage({ lockedDiv = null }) {
                       useHistoryDb={isHistorical}
                       initialData={payrollDataCache[payCacheKey] || null}
                       onDataLoaded={(data) => setPayrollDataCache(prev => ({ ...prev, [payCacheKey]: data }))}
+                      onRefresh={() => setRefreshTrigger(prev => prev + 1)}
                     />
                   </div>
                 </>

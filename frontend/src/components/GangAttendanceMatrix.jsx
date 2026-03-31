@@ -696,7 +696,11 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 @media print {
                     @page {
                         size: landscape;
-                        margin: 10mm;
+                        margin: 5mm;
+                    }
+                    body, html {
+                       -webkit-print-color-adjust: exact !important;
+                       print-color-adjust: exact !important;
                     }
                     .gam-inline-container {
                         width: 100%;
@@ -704,6 +708,7 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                         border: none;
                         box-shadow: none;
                         margin: 0;
+                        font-family: inherit;
                     }
                     .gam-content {
                         overflow: visible !important;
@@ -714,19 +719,40 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                         overflow: visible !important;
                         max-height: none !important;
                     }
+                    /* FIT TABLE TO A4 LANDSCAPE */
+                    .gam-table {
+                        width: 100% !important;
+                        font-size: 8px !important;
+                        table-layout: auto !important;
+                    }
                     .gam-table thead th {
                         position: static !important;
+                        padding: 2px 1px !important;
+                        font-size: 8px !important;
                     }
                     .gam-td-no, .gam-td-empcode, .gam-td-name, .gam-td-nik {
                         position: static !important;
                         background-color: transparent !important;
                     }
+                    /* HIDE NIK ON PRINT TO SAVE SPACE */
+                    .gam-th-nik, .gam-td-nik {
+                        display: none !important;
+                    }
+                    /* MINIMIZE COLUMN WIDTHS AND PADDINGS */
+                    .gam-th-no, .gam-td-no { min-width: 15px !important; width: 15px !important; font-size: 7px !important; }
+                    .gam-th-empcode, .gam-td-empcode { min-width: 45px !important; max-width: 55px !important; font-size: 7px !important; padding: 1px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                    .gam-th-name, .gam-td-name { min-width: 80px !important; max-width: 110px !important; padding: 1px 2px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 8px !important; }
+                    .gam-th-day, .gam-td-cell { min-width: 14px !important; width: 14px !important; padding: 1px 0 !important; font-size: 8px !important; }
+                    .gam-th-sum, .gam-td-sum { min-width: 16px !important; font-size: 8px !important; padding: 1px !important; }
+
                     .gam-print-btn, .gam-toggle-icon {
                         display: none !important;
                     }
                     .gam-gang-header {
                         position: static !important;
                         page-break-after: avoid;
+                        padding: 4px 8px !important;
+                        font-size: 10px !important;
                     }
                     .gam-gang-section {
                         page-break-inside: avoid;
@@ -735,6 +761,10 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     }
                     .gam-td-total-label {
                         position: static !important;
+                        font-size: 9px !important;
+                    }
+                    .gam-td-total {
+                        font-size: 8px !important;
                     }
                 }
             `}</style>

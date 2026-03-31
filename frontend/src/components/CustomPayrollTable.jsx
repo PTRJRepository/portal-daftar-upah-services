@@ -117,7 +117,8 @@ export default function CustomPayrollTable({
     useHistoryDb = false,
     gangPrefix = null,
     initialData = null,   // Cached raw API response from parent
-    onDataLoaded = null    // Callback to notify parent of loaded data
+    onDataLoaded = null,   // Callback to notify parent of loaded data
+    onRefresh = null      // Callback to trigger parent refresh (for saving)
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -141,9 +142,9 @@ export default function CustomPayrollTable({
     const [addedColumns, setAddedColumns] = useState([]); // Track new columns added in edit mode
     const [isSavingEdits, setIsSavingEdits] = useState(false);
 
-    // Kontan (Other Income) Toggle State - Edit mode is always ON when this is enabled
-    const [kontanEnabled, setKontanEnabled] = useState(false);
+    // Kontan (Other Income) State - Always editable column
     const [editedKontanCells, setEditedKontanCells] = useState({}); // { 'nik-kontan': { value, originalValue, gang_code } }
+    const [isSavingKontan, setIsSavingKontan] = useState(false);
 
     // Tunjangan Mode & Rates
     const [tunjanganMode, setTunjanganMode] = useState('DB'); // 'DB' or 'CALC'
@@ -181,14 +182,6 @@ export default function CustomPayrollTable({
             setCellColors(prefs.preferences.cellColors);
         }
     }, []);
-
-    // Reset kontan state when edit mode is turned off
-    useEffect(() => {
-        if (!isEditMode) {
-            setKontanEnabled(false);
-            setEditedKontanCells({});
-        }
-    }, [isEditMode]);
 
     // Sync employee codes when rows change (for select-all checkbox state only)
     useEffect(() => {
@@ -343,22 +336,9 @@ export default function CustomPayrollTable({
         }));
     };
 
-    // Save Manual Edits
+    // Save Manual Edits (excludes kontan - kontan has its own save)
     const handleSaveEdits = async () => {
         const editsArray = Object.values(editedCells);
-
-        // Include kontan cell edits as PENDAPATAN_LAINNYA type
-        const kontanEdits = Object.values(editedKontanCells);
-        for (const k of kontanEdits) {
-            editsArray.push({
-                nik: k.nik,
-                gang_code: k.gang_code,
-                type: 'PENDAPATAN_LAINNYA',
-                name: 'KONTAN',
-                value: k.value,
-                originalValue: k.originalValue
-            });
-        }
 
         // Include new columns that act as empty placeholders
         const pendingColumns = addedColumns.filter(newCol =>
@@ -375,8 +355,7 @@ export default function CustomPayrollTable({
 
         if (editsArray.length === 0) {
             setAddedColumns([]);
-            setEditedKontanCells({});
-            loadData();
+            onRefresh?.();
             return;
         }
 
@@ -461,10 +440,8 @@ export default function CustomPayrollTable({
             if (successCount > 0) {
                 alert(`Berhasil menyimpan ${successCount} penyesuaian (kolom/nilai).`);
                 setEditedCells({}); // Clear edits after successful save
-                setEditedKontanCells({});
                 setAddedColumns([]);
-                setKontanEnabled(false); // Reset kontan toggle after save
-                loadData(); // Reload to get fresh data with recalculated totals
+                onRefresh?.(); // Reload to get fresh data with recalculated totals
             } else {
                 alert('Gagal menyimpan perubahan. Silakan coba lagi.');
             }
@@ -473,6 +450,73 @@ export default function CustomPayrollTable({
             alert('Terjadi kesalahan saat menyimpan perubahan: ' + error.message);
         } finally {
             setIsSavingEdits(false);
+        }
+    };
+
+    // Save Kontan (Other Income) - separate from main edits
+    const handleSaveKontan = async () => {
+        const kontanEdits = Object.values(editedKontanCells);
+        if (kontanEdits.length === 0) return;
+
+        setIsSavingKontan(true);
+        try {
+            let successCount = 0;
+            for (const k of kontanEdits) {
+                const payload = {
+                    period_month: month,
+                    period_year: year,
+                    emp_code: k.nik,
+                    gang_code: k.gang_code,
+                    division_code: division,
+                    adjustment_type: 'PENDAPATAN_LAINNYA',
+                    adjustment_name: 'KONTAN',
+                    amount: k.value,
+                    remarks: `KONTAN edited via UI on ${new Date().toLocaleString()}`
+                };
+
+                let resOk = false;
+                let resJson = null;
+
+                if (isProdMode()) {
+                    try {
+                        const { saveLockedManualEdit } = await import('../services/lockedDivisionService');
+                        resJson = await saveLockedManualEdit(token, payload);
+                        resOk = true;
+                    } catch (err) {
+                        console.error("Prod Mode kontan save failed:", err);
+                    }
+                } else {
+                    const res = await fetch('/payroll/manual-edit', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) {
+                        resOk = true;
+                        resJson = await res.json();
+                    }
+                }
+
+                if (resOk && resJson?.success) {
+                    successCount++;
+                }
+            }
+
+            if (successCount > 0) {
+                alert(`Berhasil menyimpan ${successCount} nilai KONTAN.`);
+                setEditedKontanCells({});
+                onRefresh?.();
+            } else {
+                alert('Gagal menyimpan KONTAN. Silakan coba lagi.');
+            }
+        } catch (error) {
+            console.error('Error saving kontan:', error);
+            alert('Terjadi kesalahan saat menyimpan KONTAN: ' + error.message);
+        } finally {
+            setIsSavingKontan(false);
         }
     };
 
@@ -1341,52 +1385,57 @@ export default function CustomPayrollTable({
             }
         });
 
-        // KONTAN - Other income column (only shown and editable when kontanEnabled is true)
-        if (kontanEnabled) {
+        // KONTAN - Other income column (always visible, editable only in edit mode)
         cols.push({
             field: 'kontan',
             headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'KONTAN (+)'],
-            w: 85,
+            w: 90,
             className: 'text-right',
             render: (row) => {
                 const val = Number(row.kontan || 0);
-                // Always editable when shown (kontanEnabled is true)
                 const empCode = row.emp_code || row.nik;
                 const editKey = `${empCode}-kontan`;
                 const cellEdit = editedKontanCells[editKey];
                 const displayVal = cellEdit ? cellEdit.value : val;
-                return (
-                    <input
-                        type="number"
-                        className={`edit-input ${cellEdit ? 'cell-edited' : ''}`}
-                        value={displayVal === 0 ? '' : displayVal}
-                        onChange={(e) => {
-                            const numVal = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                            if (isNaN(numVal)) return;
-                            setEditedKontanCells(prev => ({
-                                ...prev,
-                                [editKey]: {
-                                    nik: empCode,
-                                    value: numVal,
-                                    originalValue: val,
-                                    gang_code: row.gang_code
-                                }
-                            }));
-                            // Optimistically update UI
-                            setRows(prevRows => prevRows.map(r => {
-                                if ((r.emp_code || r.nik) === empCode) {
-                                    return { ...r, kontan: numVal };
-                                }
-                                return r;
-                            }));
-                        }}
-                        placeholder="0"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                );
+                const isEdited = !!cellEdit;
+
+                // Only editable when edit mode is ON
+                if (isEditMode && row.type === 'employee') {
+                    return (
+                        <input
+                            type="number"
+                            className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                            value={displayVal === 0 ? '' : displayVal}
+                            onChange={(e) => {
+                                const numVal = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                if (isNaN(numVal)) return;
+                                setEditedKontanCells(prev => ({
+                                    ...prev,
+                                    [editKey]: {
+                                        nik: empCode,
+                                        value: numVal,
+                                        originalValue: val,
+                                        gang_code: row.gang_code
+                                    }
+                                }));
+                                // Optimistically update UI
+                                setRows(prevRows => prevRows.map(r => {
+                                    if ((r.emp_code || r.nik) === empCode) {
+                                        return { ...r, kontan: numVal };
+                                    }
+                                    return r;
+                                }));
+                            }}
+                            placeholder="0"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    );
+                }
+                // Read-only display
+                if (val === 0) return '-';
+                return formatNumber(val);
             }
         });
-        } // end kontanEnabled
 
         cols.push({
             field: 'pendapatan_lainnya',
@@ -1453,8 +1502,21 @@ export default function CustomPayrollTable({
         // Total Koreksi
         cols.push({ field: 'potongan_upah_kotor_total', headers: ['POTONGAN UPAH KOTOR', null, null, 'TOTAL KOREKSI'], w: 95, className: 'text-right font-bold' });
 
-        // UPAH KOTOR (separate group, not child of POTONGAN UPAH KOTOR)
-        cols.push({ field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', '', null, 'JUMLAH'], w: 110, className: 'text-right font-bold' });
+        // UPAH KOTOR (separate group, not child of POTONGAN UPAH KOTOR) - sync with kontan
+        cols.push({
+            field: 'jumlah_upah_kotor',
+            headers: ['UPAH KOTOR', '', null, 'JUMLAH'],
+            w: 110,
+            className: 'text-right font-bold',
+            render: (row) => {
+                const empCode = row.emp_code || row.nik;
+                const kontanEdit = editedKontanCells[`${empCode}-kontan`];
+                const kontanVal = kontanEdit ? kontanEdit.value : Number(row.kontan || 0);
+                const val = Number(row.jumlah_upah_kotor || 0) + (kontanVal || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
 
         // POTONGAN UPAH BERSIH - Collapsible
         // Default: Show ONLY Total Potongan
@@ -1683,31 +1745,75 @@ export default function CustomPayrollTable({
                 }
             });
 
-            // Total Pendapatan Lainnya
+            // KONTAN (sync from UPAH KOTOR - same value as deduction)
+            cols.push({
+                field: 'pot_kontan',
+                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'KONTAN (-)'],
+                w: 85,
+                className: 'text-right',
+                render: (row) => {
+                    if (row.type !== 'employee') {
+                        const val = Number(row.kontan || 0);
+                        if (val === 0) return '-';
+                        return formatNumber(val);
+                    }
+                    const empCode = row.emp_code || row.nik;
+                    const kontanEdit = editedKontanCells[`${empCode}-kontan`];
+                    const kontanVal = kontanEdit ? kontanEdit.value : Number(row.kontan || 0);
+                    if (kontanVal === 0) return '-';
+                    return formatNumber(kontanVal);
+                }
+            });
+
+            // Total Pendapatan Lainnya (include kontan)
             cols.push({
                 field: 'pendapatan_lainnya',
                 headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'TOTAL LAINNYA (-)'],
                 w: 95,
                 className: 'text-right font-bold',
                 render: (row) => {
-                    const val = Number(row.pendapatan_lainnya || 0);
+                    const empCode = row.emp_code || row.nik;
+                    const kontanEdit = editedKontanCells[`${empCode}-kontan`];
+                    const kontanVal = kontanEdit ? kontanEdit.value : Number(row.kontan || 0);
+                    const val = Number(row.pendapatan_lainnya || 0) + (kontanVal || 0);
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             });
         }
 
-        // Total Potongan Bersih (Always Shown)
+        // Total Potongan Bersih (Always Shown) - sync with kontan edits
         // Adjust Level 1 header to preserve colspan merging (use empty string when expanded)
-        cols.push({ 
-            field: 'total_potongan_bersih', 
-            headers: showDeductionDetails ? ['POTONGAN UPAH BERSIH', '', null, 'TOTAL POTONGAN'] : ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'], 
-            w: 100, 
-            className: 'text-right font-bold cell-deduction' 
+        cols.push({
+            field: 'total_potongan_bersih',
+            headers: showDeductionDetails ? ['POTONGAN UPAH BERSIH', '', null, 'TOTAL POTONGAN'] : ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'],
+            w: 100,
+            className: 'text-right font-bold cell-deduction',
+            render: (row) => {
+                const empCode = row.emp_code || row.nik;
+                const kontanEdit = editedKontanCells[`${empCode}-kontan`];
+                const kontanVal = kontanEdit ? kontanEdit.value : Number(row.kontan || 0);
+                const baseVal = Number(row.total_potongan_bersih || 0);
+                const val = baseVal + (kontanVal || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
         });
 
-        // TOTAL UPAH (Summary group) - only Upah Bersih since Upah Kotor is now separate
-        cols.push({ field: 'upah_bersih', headers: ['UPAH BERSIH', null, null, 'JUMLAH'], w: 115, className: 'text-right font-bold cell-net-salary' });
+        // TOTAL UPAH (Summary group) - Upah Bersih
+        // Note: Kontan adds to both UPAH KOTOR (+) and POTONGAN BERSIH (+) equally,
+        // so upah_bersih stays the same. Use base value from backend.
+        cols.push({
+            field: 'upah_bersih',
+            headers: ['UPAH BERSIH', null, null, 'JUMLAH'],
+            w: 115,
+            className: 'text-right font-bold cell-net-salary',
+            render: (row) => {
+                const val = Number(row.upah_bersih || 0);
+                if (val === 0) return '-';
+                return formatNumber(val);
+            }
+        });
 
         // Attach group to each column for body cell coloring
         cols.forEach(c => {
@@ -1723,7 +1829,7 @@ export default function CustomPayrollTable({
         }
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells]);
 
     // === EXPORT TO EXCEL HANDLER ===
     const handleExportToExcel = useCallback(async () => {
@@ -2027,7 +2133,7 @@ export default function CustomPayrollTable({
     return (
         <div className="payroll-table-container" style={{ fontSize: `${11 * scale}px` }} onMouseUp={handleMouseUp}>
             {/* Edit Mode Save Banner */}
-            {isEditMode && (Object.keys(editedCells).length > 0 || addedColumns.length > 0) && (
+            {isEditMode && (
                 <div style={{
                     position: 'sticky',
                     top: 0,
@@ -2045,44 +2151,78 @@ export default function CustomPayrollTable({
                     boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
                     color: '#b45309',
                     fontWeight: 600,
-                    fontSize: '13px'
+                    fontSize: '13px',
+                    flexWrap: 'wrap'
                 }}>
-                    <span>⚠️ Terdapat {Object.keys(editedCells).length + addedColumns.length} penyesuaian (kolom/nilai) belum disimpan</span>
+                    {/* Kontan Save Button - Always visible in edit mode */}
                     <button
-                        onClick={handleSaveEdits}
-                        disabled={isSavingEdits}
+                        onClick={handleSaveKontan}
+                        disabled={isSavingKontan || Object.keys(editedKontanCells).length === 0}
                         style={{
-                            backgroundColor: '#f59e0b',
+                            backgroundColor: Object.keys(editedKontanCells).length > 0 ? '#10b981' : '#94a3b8',
                             color: 'white',
                             border: 'none',
                             padding: '4px 12px',
                             borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontWeight: 'bold'
+                            cursor: Object.keys(editedKontanCells).length > 0 ? 'pointer' : 'not-allowed',
+                            fontWeight: 'bold',
+                            fontSize: '12px'
                         }}
+                        title="Simpan semua nilai KONTAN"
                     >
-                        {isSavingEdits ? 'Menyimpan...' : 'Simpan Perubahan'}
+                        {isSavingKontan ? '💾 Menyimpan...' : `💾 SIMPAN KONTAN${Object.keys(editedKontanCells).length > 0 ? ` (${Object.keys(editedKontanCells).length})` : ''}`}
                     </button>
-                    <button
-                        onClick={() => {
-                            if (confirm('Batal semua perubahan dan penambahan kolom?')) {
-                                setEditedCells({});
-                                setAddedColumns([]);
-                                loadData();
-                            }
-                        }}
-                        disabled={isSavingEdits}
-                        style={{
-                            backgroundColor: 'transparent',
-                            color: '#b45309',
-                            border: '1px solid #f59e0b',
-                            padding: '4px 12px',
-                            borderRadius: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Batal
-                    </button>
+
+                    {/* Separator */}
+                    <div style={{ width: '1px', height: '24px', backgroundColor: '#f59e0b', opacity: 0.5 }} />
+
+                    {/* Other edits save */}
+                    {(Object.keys(editedCells).length > 0 || addedColumns.length > 0) && (
+                        <>
+                            <span>⚠️ {Object.keys(editedCells).length + addedColumns.length} penyesuaian (kolom/nilai) belum disimpan</span>
+                            <button
+                                onClick={handleSaveEdits}
+                                disabled={isSavingEdits}
+                                style={{
+                                    backgroundColor: '#f59e0b',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '4px 12px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold'
+                                }}
+                            >
+                                {isSavingEdits ? 'Menyimpan...' : 'Simpan Perubahan'}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (confirm('Batal semua perubahan dan penambahan kolom?')) {
+                                        setEditedCells({});
+                                        setAddedColumns([]);
+                                        setEditedKontanCells({});
+                                        onRefresh?.();
+                                    }
+                                }}
+                                disabled={isSavingEdits}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    color: '#b45309',
+                                    border: '1px solid #f59e0b',
+                                    padding: '4px 12px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Batal Semua
+                            </button>
+                        </>
+                    )}
+
+                    {/* When nothing to save */}
+                    {Object.keys(editedCells).length === 0 && addedColumns.length === 0 && Object.keys(editedKontanCells).length === 0 && (
+                        <span style={{ color: '#10b981' }}>✓ Mode Edit Aktif - Edit nilai di kolom atau klik 💾 SIMPAN KONTAN</span>
+                    )}
                 </div>
             )}
 
@@ -2144,25 +2284,20 @@ export default function CustomPayrollTable({
                                                 </button>
                                             )}
                                             {cell.label === 'PENDAPATAN LAINNYA' && (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); setKontanEnabled(prev => !prev); }}
-                                                    style={{
-                                                        marginLeft: 6,
-                                                        opacity: 0.9,
-                                                        background: kontanEnabled ? '#f59e0b' : '#94a3b8',
-                                                        color: 'white',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '2px 6px',
-                                                        fontSize: '9px',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        lineHeight: 1
-                                                    }}
-                                                    title={kontanEnabled ? 'Sembunyikan & nonaktifkan edit Kontan' : 'Aktifkan edit kolom Kontan'}
-                                                >
-                                                    {kontanEnabled ? 'KONTAN ✏️' : 'KONTAN'}
-                                                </button>
+                                                <span style={{
+                                                    marginLeft: 6,
+                                                    opacity: 0.9,
+                                                    background: '#10b981',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    padding: '2px 6px',
+                                                    fontSize: '9px',
+                                                    fontWeight: 700,
+                                                    lineHeight: 1
+                                                }}>
+                                                    KONTAN
+                                                </span>
                                             )}
                                         </div>
                                     ) : cell.label === '%TOGGLE_JUMLAH%' ? (

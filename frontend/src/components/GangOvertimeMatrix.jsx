@@ -691,7 +691,11 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                 @media print {
                     @page {
                         size: landscape;
-                        margin: 10mm;
+                        margin: 5mm;
+                    }
+                    body, html {
+                       -webkit-print-color-adjust: exact !important;
+                       print-color-adjust: exact !important;
                     }
                     .gom-container {
                         width: 100%;
@@ -699,6 +703,7 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                         border: none;
                         box-shadow: none;
                         margin: 0;
+                        font-family: inherit;
                     }
                     .gom-content {
                         overflow: visible !important;
@@ -709,19 +714,41 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                         overflow: visible !important;
                         max-height: none !important;
                     }
+
+                    /* FIT TABLE TO A4 LANDSCAPE */
+                    .gom-table {
+                        width: 100% !important;
+                        font-size: 8px !important;
+                        table-layout: auto !important;
+                    }
                     .gom-table thead th {
                         position: static !important;
+                        padding: 2px 1px !important;
+                        font-size: 8px !important;
                     }
                     .gom-td-no, .gom-td-name {
                         position: static !important;
                         background-color: transparent !important;
                     }
+                    /* MINIMIZE COLUMN WIDTHS AND PADDINGS */
+                    .gom-th-no, .gom-td-no { min-width: 15px !important; width: 15px !important; font-size: 7px !important; }
+                    .gom-th-name, .gom-td-name { min-width: 80px !important; max-width: 110px !important; padding: 1px 2px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                    .gom-emp-name { font-size: 8px !important; }
+                    .gom-emp-code { font-size: 7px !important; }
+                    
+                    .gom-th-day, .gom-td-cell { min-width: 14px !important; width: 14px !important; padding: 1px 0 !important; font-size: 8px !important; }
+                    
+                    .gom-th-sum, .gom-td-sum { min-width: 20px !important; font-size: 8px !important; padding: 1px !important; }
+                    .gom-th-rupiah, .gom-sum-rupiah { min-width: 40px !important; font-size: 8px !important; }
+
                     .gom-print-btn, .gom-toggle-icon {
                         display: none !important;
                     }
                     .gom-gang-header {
                         position: static !important;
                         page-break-after: avoid;
+                        padding: 4px 8px !important;
+                        font-size: 10px !important;
                     }
                     .gom-gang-section {
                         page-break-inside: avoid;
@@ -730,6 +757,10 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                     }
                     .gom-td-total-label {
                         position: static !important;
+                        font-size: 9px !important;
+                    }
+                    .gom-td-total {
+                        font-size: 8px !important;
                     }
                 }
             `}</style>

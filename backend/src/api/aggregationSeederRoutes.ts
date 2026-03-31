@@ -216,7 +216,7 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                     total_premi, dynamic_premi_data, informasi_tambahan, total_koreksi,
                     total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
                     total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
-                    created_at, updated_at, source_endpoint
+                    created_at, updated_at, source_endpoint, version_index
                 FROM dbo.daftar_upah_aggregation_history
                 WHERE 1=1
             `;
@@ -236,7 +236,7 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 params.push(division);
             }
 
-            sql += " ORDER BY division_code, gang_code";
+            sql += " ORDER BY division_code, gang_code, version_index DESC";
 
             const records = await db.query<any>(sql, params.length > 0 ? params : undefined);
 
@@ -283,23 +283,31 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 total_spsi: number;
             }>(`
                 SELECT
-                    division_code,
+                    h.division_code,
                     COUNT(*) as gang_count,
-                    SUM(total_employees) as total_emp,
-                    SUM(total_hk) as total_hk,
-                    SUM(total_upah_bersih) as total_upah,
-                    SUM(total_premi) as total_premi,
-                    SUM(total_lembur) as total_lembur,
-                    SUM(total_ffb_weight) as total_ffb,
-                    SUM(total_potongan) as total_potongan,
-                    SUM(total_pph21) as total_pph21,
-                    SUM(total_bpjs_pekerja) as total_bpjs_pekerja,
-                    SUM(total_bpjs_majikan) as total_bpjs_majikan,
-                    SUM(total_spsi) as total_spsi
-                FROM dbo.daftar_upah_aggregation_history
-                WHERE period_month = ? AND period_year = ?
-                GROUP BY division_code
-                ORDER BY division_code
+                    SUM(h.total_employees) as total_emp,
+                    SUM(h.total_hk) as total_hk,
+                    SUM(h.total_upah_bersih) as total_upah,
+                    SUM(h.total_premi) as total_premi,
+                    SUM(h.total_lembur) as total_lembur,
+                    SUM(h.total_ffb_weight) as total_ffb,
+                    SUM(h.total_potongan) as total_potongan,
+                    SUM(h.total_pph21) as total_pph21,
+                    SUM(h.total_bpjs_pekerja) as total_bpjs_pekerja,
+                    SUM(h.total_bpjs_majikan) as total_bpjs_majikan,
+                    SUM(h.total_spsi) as total_spsi
+                FROM dbo.daftar_upah_aggregation_history h
+                WHERE h.period_month = ? AND h.period_year = ?
+                  -- LATEST VERSION ONLY: Only get the most recent seeding per gang
+                  AND h.version_index = (
+                      SELECT MAX(h2.version_index)
+                      FROM dbo.daftar_upah_aggregation_history h2
+                      WHERE h2.gang_code = h.gang_code
+                        AND h2.period_month = h.period_month
+                        AND h2.period_year = h.period_year
+                  )
+                GROUP BY h.division_code
+                ORDER BY h.division_code
             `, [month, year]);
 
             const grandTotal = summary.reduce((acc, row) => ({
@@ -425,11 +433,19 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 division_code: string;
                 gang_count: number;
             }>(`
-                SELECT division_code, COUNT(*) as gang_count
-                FROM dbo.daftar_upah_aggregation_history
-                WHERE period_month = ? AND period_year = ?
-                GROUP BY division_code
-                ORDER BY division_code
+                SELECT h.division_code, COUNT(*) as gang_count
+                FROM dbo.daftar_upah_aggregation_history h
+                WHERE h.period_month = ? AND h.period_year = ?
+                  -- LATEST VERSION ONLY: Only count most recent seeding per gang
+                  AND h.version_index = (
+                      SELECT MAX(h2.version_index)
+                      FROM dbo.daftar_upah_aggregation_history h2
+                      WHERE h2.gang_code = h.gang_code
+                        AND h2.period_month = h.period_month
+                        AND h2.period_year = h.period_year
+                  )
+                GROUP BY h.division_code
+                ORDER BY h.division_code
             `, [month, year]);
 
             return {
@@ -848,6 +864,18 @@ async function checkDivisionHasData(division: string, month: number, year: numbe
     }
 }
 
+/**
+ * APPEND-ONLY: Insert aggregation data as a new version record.
+ *
+ * IMPORTANT: Data Append-Only Pattern (Immutable History)
+ * - NEUKAR data existing. Selalu INSERT record baru.
+ * - version_index = MAX(version_index) + 1 untuk (gang_code, period_month, period_year) yang sama.
+ * - Untuk mengambil data terbaru: SELECT ... WHERE ... ORDER BY version_index DESC
+ * - Setiap seeding menghasilkan record baru. Data lama tetap tersimpan.
+ *
+ * Kenapa: Agar history seeding lengkap dan bisa di-tracking, dan tidak ada
+ * data yang ter-overwrite tanpa jejak.
+ */
 async function insertOrUpdateAggregation(
     division: string,
     month: number,
@@ -861,152 +889,76 @@ async function insertOrUpdateAggregation(
     const dbDivisionCode = DIVISION_CODE_MAP[division] || division;
 
     try {
-        // Check if record exists
-        const existing = await db.queryOne<{ id: number }>(`
-            SELECT id FROM dbo.daftar_upah_aggregation_history
+        // Calculate next version_index = MAX(existing) + 1
+        // Using COALESCE to handle case where no records exist yet (returns 1)
+        const versionResult = await db.queryOne<{ next_ver: number }>(`
+            SELECT COALESCE(MAX(version_index), 0) + 1 AS next_ver
+            FROM dbo.daftar_upah_aggregation_history
             WHERE gang_code = ? AND period_month = ? AND period_year = ?
         `, [aggregation.gang_code, month, year]);
 
-        if (existing) {
-            // Update existing record
-            await db.query(`
-                UPDATE dbo.daftar_upah_aggregation_history SET
-                    division_code = ?,
-                    gang_description = ?,
-                    total_employees = ?,
-                    total_hk = ?,
-                    total_hari_kerja = ?,
-                    total_cuti_tahunan = ?,
-                    total_cuti_sakit = ?,
-                    total_cuti_minggu = ?,
-                    total_cuti_nasional = ?,
-                    total_upah_dasar = ?,
-                    total_upah_pokok = ?,
-                    total_gaji_pokok = ?,
-                    total_beras = ?,
-                    total_jabatan = ?,
-                    total_masa_kerja = ?,
-                    total_lembur = ?,
-                    total_tunjangan = ?,
-                    total_premi_brondol = ?,
-                    total_premi_prunning = ?,
-                    total_premi_insentif = ?,
-                    total_premi_kinerja = ?,
-                    total_premi = ?,
-                    total_potongan = ?,
-                    total_pph21 = ?,
-                    total_bpjs_pekerja = ?,
-                    total_bpjs_majikan = ?,
-                    total_spsi = ?,
-                    total_upah_kotor = ?,
-                    total_upah_bersih = ?,
-                    total_ffb_weight = ?,
-                    total_weight_tbs = ?,
-                    dynamic_premi_data = ?,
-                    informasi_tambahan = ?,
-                    total_koreksi = ?,
-                    updated_at = GETDATE(),
-                    source_endpoint = ?
-                WHERE id = ?
-            `, [
-                dbDivisionCode, // Use mapped code
-                aggregation.gang_description,
-                aggregation.total_employees,
-                aggregation.total_hk,
-                aggregation.total_hari_kerja,
-                aggregation.total_cuti_tahunan,
-                aggregation.total_cuti_sakit,
-                aggregation.total_cuti_minggu,
-                aggregation.total_cuti_nasional,
-                aggregation.total_upah_dasar,
-                aggregation.total_upah_pokok,
-                aggregation.total_gaji_pokok,
-                aggregation.total_beras,
-                aggregation.total_jabatan,
-                aggregation.total_masa_kerja,
-                aggregation.total_lembur,
-                aggregation.total_tunjangan,
-                aggregation.total_premi_brondol,
-                aggregation.total_premi_prunning,
-                aggregation.total_premi_insentif,
-                aggregation.total_premi_kinerja,
-                aggregation.total_premi,
-                aggregation.total_potongan,
-                aggregation.total_pph21,
-                aggregation.total_bpjs_pekerja,
-                aggregation.total_bpjs_majikan,
-                aggregation.total_spsi,
-                aggregation.total_upah_kotor,
-                aggregation.total_upah_bersih,
-                aggregation.total_ffb_weight,
-                aggregation.total_weight_tbs,
-                aggregation.dynamic_premi_data,
-                aggregation.informasi_tambahan,
-                aggregation.total_koreksi,
-                sourceEndpoint,
-                existing.id
-            ]);
-        } else {
-            // Insert new record - using ? placeholders for consistency
-            // GETDATE() is used directly in SQL for timestamp fields
-            await db.query(`
-                INSERT INTO dbo.daftar_upah_aggregation_history (
-                    period_month, period_year, division_code, gang_code, gang_description,
-                    total_employees, total_hk, total_hari_kerja,
-                    total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu, total_cuti_nasional,
-                    total_upah_dasar, total_upah_pokok, total_gaji_pokok,
-                    total_beras, total_jabatan, total_masa_kerja, total_lembur, total_tunjangan,
-                    total_premi_brondol, total_premi_prunning, total_premi_insentif, total_premi_kinerja, total_premi,
-                    total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
-                    total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
-                    dynamic_premi_data, informasi_tambahan, total_koreksi,
-                    created_at, updated_at, source_endpoint
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?
-                )
-            `, [
-                month,
-                year,
-                dbDivisionCode, // Use mapped code
-                aggregation.gang_code,
-                aggregation.gang_description,
-                aggregation.total_employees,
-                aggregation.total_hk,
-                aggregation.total_hari_kerja,
-                aggregation.total_cuti_tahunan,
-                aggregation.total_cuti_sakit,
-                aggregation.total_cuti_minggu,
-                aggregation.total_cuti_nasional,
-                aggregation.total_upah_dasar,
-                aggregation.total_upah_pokok,
-                aggregation.total_gaji_pokok,
-                aggregation.total_beras,
-                aggregation.total_jabatan,
-                aggregation.total_masa_kerja,
-                aggregation.total_lembur,
-                aggregation.total_tunjangan,
-                aggregation.total_premi_brondol,
-                aggregation.total_premi_prunning,
-                aggregation.total_premi_insentif,
-                aggregation.total_premi_kinerja,
-                aggregation.total_premi,
-                aggregation.total_potongan,
-                aggregation.total_pph21,
-                aggregation.total_bpjs_pekerja,
-                aggregation.total_bpjs_majikan,
-                aggregation.total_spsi,
-                aggregation.total_upah_kotor,
-                aggregation.total_upah_bersih,
-                aggregation.total_ffb_weight,
-                aggregation.total_weight_tbs,
-                aggregation.dynamic_premi_data,
-                aggregation.informasi_tambahan,
-                aggregation.total_koreksi,
-                sourceEndpoint
-            ]);
-        }
+        const nextVersion = versionResult?.next_ver ?? 1;
+
+        // APPEND-ONLY: Always INSERT a new record (never UPDATE existing)
+        // GETDATE() is used directly in SQL for timestamp fields
+        await db.query(`
+            INSERT INTO dbo.daftar_upah_aggregation_history (
+                period_month, period_year, division_code, gang_code, gang_description,
+                total_employees, total_hk, total_hari_kerja,
+                total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu, total_cuti_nasional,
+                total_upah_dasar, total_upah_pokok, total_gaji_pokok,
+                total_beras, total_jabatan, total_masa_kerja, total_lembur, total_tunjangan,
+                total_premi_brondol, total_premi_prunning, total_premi_insentif, total_premi_kinerja, total_premi,
+                total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
+                total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
+                dynamic_premi_data, informasi_tambahan, total_koreksi,
+                created_at, updated_at, source_endpoint, version_index
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, ?
+            )
+        `, [
+            month,
+            year,
+            dbDivisionCode, // Use mapped code
+            aggregation.gang_code,
+            aggregation.gang_description,
+            aggregation.total_employees,
+            aggregation.total_hk,
+            aggregation.total_hari_kerja,
+            aggregation.total_cuti_tahunan,
+            aggregation.total_cuti_sakit,
+            aggregation.total_cuti_minggu,
+            aggregation.total_cuti_nasional,
+            aggregation.total_upah_dasar,
+            aggregation.total_upah_pokok,
+            aggregation.total_gaji_pokok,
+            aggregation.total_beras,
+            aggregation.total_jabatan,
+            aggregation.total_masa_kerja,
+            aggregation.total_lembur,
+            aggregation.total_tunjangan,
+            aggregation.total_premi_brondol,
+            aggregation.total_premi_prunning,
+            aggregation.total_premi_insentif,
+            aggregation.total_premi_kinerja,
+            aggregation.total_premi,
+            aggregation.total_potongan,
+            aggregation.total_pph21,
+            aggregation.total_bpjs_pekerja,
+            aggregation.total_bpjs_majikan,
+            aggregation.total_spsi,
+            aggregation.total_upah_kotor,
+            aggregation.total_upah_bersih,
+            aggregation.total_ffb_weight,
+            aggregation.total_weight_tbs,
+            aggregation.dynamic_premi_data,
+            aggregation.informasi_tambahan,
+            aggregation.total_koreksi,
+            sourceEndpoint,
+            nextVersion  // version_index: auto-increment per gang-period
+        ]);
     } catch (error) {
         console.error("[InsertAggregation] Error:", error);
         throw error;
