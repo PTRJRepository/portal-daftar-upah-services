@@ -79,6 +79,15 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
         })
     }
 
+    const handlePrint = () => {
+        if (data?.data) {
+            setExpandedGangs(new Set(data.data.map(g => g.gang_code)))
+            setTimeout(() => {
+                window.print()
+            }, 500)
+        }
+    }
+
     const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
     if (!gangCodes || gangCodes.length === 0) {
@@ -133,6 +142,9 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                     <span className="gom-source-badge">Data overtime (OT=1)</span>
                 </div>
                 <div className="gom-header-right">
+                    <button onClick={handlePrint} className="gom-print-btn" title="Cetak Matrix Lembur">
+                        🖨️ Print
+                    </button>
                     {meta.execution_time_ms && (
                         <span className="gom-meta">
                             {meta.total_employees} karyawan • {meta.execution_time_ms}ms
@@ -656,6 +668,75 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                 tbody tr:hover .gom-td-no,
                 tbody tr:hover .gom-td-name {
                     background: #fffbeb !important;
+                }
+                .gom-print-btn {
+                    padding: 6px 12px;
+                    background: #fff;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #92400e;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                    transition: all 0.2s;
+                }
+                .gom-print-btn:hover {
+                    background: #fef3c7;
+                    border-color: #fcd34d;
+                }
+                @media print {
+                    @page {
+                        size: landscape;
+                        margin: 10mm;
+                    }
+                    body * {
+                        visibility: hidden;
+                    }
+                    .gom-container, .gom-container * {
+                        visibility: visible;
+                    }
+                    .gom-container {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                        background: white;
+                        border: none;
+                        box-shadow: none;
+                    }
+                    .gom-content {
+                        overflow: visible !important;
+                        max-height: none !important;
+                        padding: 0;
+                    }
+                    .gom-table-wrapper {
+                        overflow: visible !important;
+                        max-height: none !important;
+                    }
+                    .gom-table thead th {
+                        position: static !important;
+                    }
+                    .gom-td-no, .gom-td-name {
+                        position: static !important;
+                    }
+                    .gom-print-btn {
+                        display: none !important;
+                    }
+                    .gom-gang-header {
+                        position: static !important;
+                        page-break-after: avoid;
+                    }
+                    .gom-gang-section {
+                        page-break-inside: avoid;
+                        margin-bottom: 20px;
+                    }
+                    .gom-td-total-label {
+                        position: static !important;
+                    }
                 }
             `}</style>
         </div>

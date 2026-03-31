@@ -9,7 +9,15 @@
       "Bash(bun *)",
       "Bash(netstat *)",
       "Bash(findstr *)",
-      "Bash(do *)"
+      "Bash(do *)",
+      "Bash(+)",
+      "Bash(\" otomatis termasuk nilai kontan\ntombol toggle kontan di header \"pendapatan *)",
+      "Bash(tambah *)",
+      "Bash(untuk *)",
+      "Bash(warna *)",
+      "Bash(klik *)",
+      "Bash(saat *)",
+      "Bash(integrasi *)"
     ]
   },
   "$version": 3

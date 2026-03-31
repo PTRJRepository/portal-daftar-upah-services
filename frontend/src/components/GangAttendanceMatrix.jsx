@@ -70,6 +70,15 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
         })
     }
 
+    const handlePrint = () => {
+        if (data?.data) {
+            setExpandedGangs(new Set(data.data.map(g => g.gang_code)))
+            setTimeout(() => {
+                window.print()
+            }, 500)
+        }
+    }
+
     if (!gangCodes || gangCodes.length === 0) {
         return (
             <div className="gam-inline-container">
@@ -143,6 +152,9 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     <span className="gam-source-badge">📂 Data Historis (extend_db)</span>
                 </div>
                 <div className="gam-header-right">
+                    <button onClick={handlePrint} className="gam-print-btn" title="Cetak Matrix Absensi">
+                        🖨️ Print
+                    </button>
                     {meta.execution_time_ms && (
                         <span className="gam-meta">{meta.total_employees} karyawan • {meta.execution_time_ms}ms</span>
                     )}
@@ -661,6 +673,74 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 tbody tr:hover .gam-td-name,
                 tbody tr:hover .gam-td-nik {
                     background: #f0fdf4 !important;
+                }
+                .gam-print-btn {
+                    padding: 6px 12px;
+                    background: #fff;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #374151;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                    transition: all 0.2s;
+                }
+                .gam-print-btn:hover {
+                    background: #f9fafb;
+                    border-color: #9ca3af;
+                }
+                @media print {
+                    @page {
+                        size: landscape;
+                        margin: 10mm;
+                    }
+                    body * {
+                        visibility: hidden;
+                    }
+                    .gam-inline-container, .gam-inline-container * {
+                        visibility: visible;
+                    }
+                    .gam-inline-container {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                        background: white;
+                        border: none;
+                        box-shadow: none;
+                    }
+                    .gam-content {
+                        overflow: visible !important;
+                        max-height: none !important;
+                        padding: 0;
+                    }
+                    .gam-table-wrapper {
+                        overflow: visible !important;
+                        max-height: none !important;
+                    }
+                    .gam-table thead th {
+                        position: static !important;
+                    }
+                    .gam-td-no, .gam-td-empcode, .gam-td-name, .gam-td-nik {
+                        position: static !important;
+                    }
+                    .gam-print-btn {
+                        display: none !important;
+                    }
+                    .gam-gang-header {
+                        position: static !important;
+                        page-break-after: avoid;
+                    }
+                    .gam-gang-section {
+                        page-break-inside: avoid;
+                    }
+                    .gam-td-total-label {
+                        position: static !important;
+                    }
                 }
             `}</style>
         </div>

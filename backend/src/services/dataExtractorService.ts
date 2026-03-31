@@ -18,6 +18,7 @@ import { divisionDefinition } from "./divisionDefinition";
 import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { OtherIncomesService } from "./otherIncomesService";
 import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
+import { cacheService } from './cacheService';
 
 interface EmployeeRow {
     emp_code: string;
@@ -303,8 +304,26 @@ export class DataExtractorService {
         // Calculate days in the selected month for ideal salary calculation
         const daysInMonth = new Date(year, month, 0).getDate();
 
-        // Get current period to determine if we need historical data
-        const currentPeriod = await currentPeriodService.getCurrentPeriod();
+        // ============================================================
+        // [OPTIMIZATION] Cache key based on all parameters
+        // Cache is only active in production mode (see cacheService.ts)
+        // Historical data (before current period) cached longer (1hr)
+        // Current period data cached shorter (2min) for fresher reads
+        // ============================================================
+        const cacheKey = `payroll_data:${month}:${year}:${gangCode || 'ALL'}:${divisionCode || ''}:${specificEmpCode || ''}:${gangPrefix || ''}:${skipHarvest}`;
+        const cached = cacheService.get<any>(cacheKey);
+        if (cached) {
+            console.log(`[DataExtractor] Cache HIT for ${cacheKey} (${cached.data_rows?.length || 0} rows)`);
+            return { ...cached, meta: { ...cached.meta, _cache_hit: true } };
+        }
+
+        // ============================================================
+        // [OPTIMIZATION] Parallelize: currentPeriod + gangService fetch together
+        // ============================================================
+        const [currentPeriod, allGangs] = await Promise.all([
+            currentPeriodService.getCurrentPeriod(),
+            gangService.fetchGangs(divisionCode || undefined, undefined, includeVirtualGangs)
+        ]);
         const currentMonth = currentPeriod.month;
         const currentYear = currentPeriod.year;
 
@@ -356,11 +375,7 @@ export class DataExtractorService {
         }
         // ------------------------------------
 
-        // [GANG MAPPING] Fetch all gangs to build mapping maps
-        // We need this because Frontend sends "Code" (e.g. AB1) but Database uses "Description" (e.g. Divisi AB1)
-        // And Frontend expects "Code" back in the response.
-        const allGangs = await gangService.fetchGangs(divisionCode || undefined, undefined, includeVirtualGangs);
-
+        // [GANG MAPPING] Build mapping maps from fetched gangs
         const codeToDesc: Record<string, string> = {};
         const descToCode: Record<string, string> = {};
 
@@ -391,7 +406,7 @@ export class DataExtractorService {
             if (allGangs.length > 0) {
                 // Use UPPER for case-insensitive comparison and RTRIM for trailing spaces
                 // Match by BOTH GangCode AND Description for maximum reliability across Plantware tables
-                const conditions = allGangs.map((gang: { gang_code: string, description: string }) => 
+                const conditions = allGangs.map((gang: { gang_code: string, description: string }) =>
                     `(UPPER(RTRIM(g.GangCode)) = UPPER('${gang.gang_code.trim()}') OR UPPER(RTRIM(g.Description)) = UPPER('${gang.description.trim()}'))`
                 ).join(' OR ');
                 gangCondition = `(${conditions})`;
@@ -1213,7 +1228,7 @@ export class DataExtractorService {
             dataRows.push(row);
         }
 
-        return {
+        const result = {
             data_rows: dataRows,
             dynamic_premi_headers: Array.from(dynamicPremiSet),
             dynamic_potongan_headers: Array.from(dynamicPotonganSet),
@@ -1224,6 +1239,17 @@ export class DataExtractorService {
                 row_count: dataRows.length
             }
         };
+
+        // ============================================================
+        // [OPTIMIZATION] Cache the result
+        // Historical periods (before current): cache 1 hour
+        // Current period: cache 2 minutes (fresher data)
+        // ============================================================
+        const cacheTtl = isHistorical ? 3600 : 120;
+        cacheService.set(cacheKey, result, cacheTtl);
+        console.log(`[DataExtractor] Cached result for ${cacheKey} (${dataRows.length} rows, TTL=${cacheTtl}s, computed in ${result.meta.execution_time_ms}ms)`);
+
+        return result;
     }
 
     public async getEmployees(gangCondition: string, month: number, year: number, serverProfile?: string, isHistorical: boolean = false, gangCodeInput: string | null = null): Promise<EmployeeRow[]> {
@@ -1382,6 +1408,11 @@ export class DataExtractorService {
         });
     }
 
+    // ============================================================
+    // [OPTIMIZATION] Consolidated: 3 queries → 1 query
+    // Combines: attendance summary + shortage details + excess details
+    // All in a single UNION ALL, processed in-memory
+    // ============================================================
     private async getAttendance(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, {
         hk: number;
         total_hours: number;
@@ -1396,97 +1427,157 @@ export class DataExtractorService {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // SQL to calculate shortage with more accurate Friday detection using DATENAME
-        // Friday requires >= 5 hours, Other days require >= 7 hours
-        // Only count if Hours > 0
-        const shortageSql = `
-            SUM(CASE
-                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN
-                    CASE WHEN trl.Hours < 5 AND trl.Hours > 0 THEN 1 ELSE 0 END
-                ELSE
-                    CASE WHEN trl.Hours < 7 AND trl.Hours > 0 THEN 1 ELSE 0 END
-            END) as shortage_count
-        `;
-
-        let rows = await db.query<{ emp_code: string; hk: number; total_hours: number; shortage_count: number; total_amount_rp: number }>(`
-            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(DISTINCT trl.TrxDate) as hk, SUM(trl.Hours) as total_hours,
-                   ${shortageSql},
-                   SUM(trl.Amount) as total_amount_rp
-            FROM PR_TASKREGLN trl
-            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-            WHERE RTRIM(trl.EmpCode) IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-            GROUP BY RTRIM(trl.EmpCode)
-
-            UNION ALL
-
-            SELECT RTRIM(trl.EmpCode) as emp_code, COUNT(DISTINCT trl.TrxDate) as hk, SUM(trl.Hours) as total_hours,
-                   ${shortageSql},
-                   SUM(trl.Amount) as total_amount_rp
-            FROM PR_TASKREGLN_ARC trl
-            JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-            WHERE RTRIM(trl.EmpCode) IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-            GROUP BY RTRIM(trl.EmpCode)
-        `, [startDate, endDate, startDate, endDate]);
-
-        // Query to get detailed shortage records (individual days with shortage)
-        const shortageDetailsQuery = `
-            SELECT
-                RTRIM(trl.EmpCode) as emp_code,
-                CONVERT(varchar, trl.TrxDate, 23) as date,
-                DATENAME(weekday, trl.TrxDate) as day_name,
-                SUM(trl.Hours) as actual_hours,
-                CASE
-                    WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
-                    ELSE 7
-                END as target_hours
-            FROM PR_TASKREGLN trl
-            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-            WHERE RTRIM(trl.EmpCode) IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-            GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
-            HAVING SUM(trl.Hours) < CASE
-                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
-                ELSE 7
-            END
-            AND SUM(trl.Hours) > 0
-
-            UNION ALL
-
-            SELECT
-                RTRIM(trl.EmpCode) as emp_code,
-                CONVERT(varchar, trl.TrxDate, 23) as date,
-                DATENAME(weekday, trl.TrxDate) as day_name,
-                SUM(trl.Hours) as actual_hours,
-                CASE
-                    WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
-                    ELSE 7
-                END as target_hours
-            FROM PR_TASKREGLN_ARC trl
-            JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-            WHERE RTRIM(trl.EmpCode) IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-            GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
-            HAVING SUM(trl.Hours) < CASE
-                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
-                ELSE 7
-            END
-            AND SUM(trl.Hours) > 0
-        `;
-
-        const shortageRows = await db.query<{
+        // [OPTIMIZATION] Single query: summary + shortage details + excess details
+        // Uses a derived table with row_type to distinguish aggregation vs detail rows
+        // Row_type: 'A' = summary aggregation, 'S' = shortage detail, 'E' = excess detail
+        const rows = await db.query<{
             emp_code: string;
-            date: string;
-            day_name: string;
-            actual_hours: number;
-            target_hours: number;
-        }>(shortageDetailsQuery, [startDate, endDate, startDate, endDate]);
+            row_type: string;
+            hk: number;
+            total_hours: number;
+            shortage_count: number;
+            total_amount_rp: number;
+            detail_date: string | null;
+            detail_day_name: string | null;
+            detail_hours: number;
+            detail_target: number;
+        }>(`
+            SELECT
+                emp_code,
+                row_type,
+                MAX(hk) as hk,
+                MAX(total_hours) as total_hours,
+                MAX(shortage_count) as shortage_count,
+                MAX(total_amount_rp) as total_amount_rp,
+                MAX(detail_date) as detail_date,
+                MAX(detail_day_name) as detail_day_name,
+                MAX(detail_hours) as detail_hours,
+                MAX(detail_target) as detail_target
+            FROM (
+                -- LIVE: Summary aggregation
+                SELECT
+                    RTRIM(trl.EmpCode) as emp_code,
+                    'A' as row_type,
+                    COUNT(DISTINCT trl.TrxDate) as hk,
+                    SUM(trl.Hours) as total_hours,
+                    SUM(CASE
+                        WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat')
+                            THEN CASE WHEN trl.Hours < 5 AND trl.Hours > 0 THEN 1 ELSE 0 END
+                        ELSE CASE WHEN trl.Hours < 7 AND trl.Hours > 0 THEN 1 ELSE 0 END
+                    END) as shortage_count,
+                    SUM(trl.Amount) as total_amount_rp,
+                    NULL as detail_date, NULL as detail_day_name, NULL as detail_hours, NULL as detail_target
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                GROUP BY RTRIM(trl.EmpCode)
 
+                UNION ALL
+
+                -- ARC: Summary aggregation
+                SELECT
+                    RTRIM(trl.EmpCode) as emp_code,
+                    'A' as row_type,
+                    COUNT(DISTINCT trl.TrxDate) as hk,
+                    SUM(trl.Hours) as total_hours,
+                    SUM(CASE
+                        WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat')
+                            THEN CASE WHEN trl.Hours < 5 AND trl.Hours > 0 THEN 1 ELSE 0 END
+                        ELSE CASE WHEN trl.Hours < 7 AND trl.Hours > 0 THEN 1 ELSE 0 END
+                    END) as shortage_count,
+                    SUM(trl.Amount) as total_amount_rp,
+                    NULL as detail_date, NULL as detail_day_name, NULL as detail_hours, NULL as detail_target
+                FROM PR_TASKREGLN_ARC trl
+                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                GROUP BY RTRIM(trl.EmpCode)
+
+                UNION ALL
+
+                -- LIVE: Shortage detail rows
+                SELECT
+                    RTRIM(trl.EmpCode) as emp_code,
+                    'S' as row_type,
+                    0 as hk, 0 as total_hours, 0 as shortage_count, 0 as total_amount_rp,
+                    CONVERT(varchar, trl.TrxDate, 23) as detail_date,
+                    DATENAME(weekday, trl.TrxDate) as detail_day_name,
+                    SUM(trl.Hours) as detail_hours,
+                    CASE WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5 ELSE 7 END as detail_target
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
+                HAVING SUM(trl.Hours) < CASE WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5 ELSE 7 END
+                   AND SUM(trl.Hours) > 0
+
+                UNION ALL
+
+                -- ARC: Shortage detail rows
+                SELECT
+                    RTRIM(trl.EmpCode) as emp_code,
+                    'S' as row_type,
+                    0 as hk, 0 as total_hours, 0 as shortage_count, 0 as total_amount_rp,
+                    CONVERT(varchar, trl.TrxDate, 23) as detail_date,
+                    DATENAME(weekday, trl.TrxDate) as detail_day_name,
+                    SUM(trl.Hours) as detail_hours,
+                    CASE WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5 ELSE 7 END as detail_target
+                FROM PR_TASKREGLN_ARC trl
+                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
+                HAVING SUM(trl.Hours) < CASE WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5 ELSE 7 END
+                   AND SUM(trl.Hours) > 0
+
+                UNION ALL
+
+                -- LIVE: Excess detail rows
+                SELECT
+                    RTRIM(trl.EmpCode) as emp_code,
+                    'E' as row_type,
+                    0 as hk, 0 as total_hours, 0 as shortage_count, 0 as total_amount_rp,
+                    CONVERT(varchar, trl.TrxDate, 23) as detail_date,
+                    DATENAME(weekday, trl.TrxDate) as detail_day_name,
+                    SUM(trl.Hours) as detail_hours,
+                    CASE WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5 ELSE 7 END as detail_target
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
+                HAVING SUM(trl.Hours) > CASE WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5 ELSE 7 END
+
+                UNION ALL
+
+                -- ARC: Excess detail rows
+                SELECT
+                    RTRIM(trl.EmpCode) as emp_code,
+                    'E' as row_type,
+                    0 as hk, 0 as total_hours, 0 as shortage_count, 0 as total_amount_rp,
+                    CONVERT(varchar, trl.TrxDate, 23) as detail_date,
+                    DATENAME(weekday, trl.TrxDate) as detail_day_name,
+                    SUM(trl.Hours) as detail_hours,
+                    CASE WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5 ELSE 7 END as detail_target
+                FROM PR_TASKREGLN_ARC trl
+                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
+                HAVING SUM(trl.Hours) > CASE WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5 ELSE 7 END
+            ) combined
+            GROUP BY emp_code, row_type
+        `, [startDate, endDate, startDate, endDate, startDate, endDate, startDate, endDate, startDate, endDate, startDate, endDate]);
+
+        // Build result map
         const result: Record<string, {
             hk: number;
             total_hours: number;
@@ -1498,109 +1589,45 @@ export class DataExtractorService {
             excess_total_hours: number;
         }> = {};
 
-        // Initialize result with aggregated data
         for (const r of rows) {
             const empCode = r.emp_code?.trim() || "";
             if (!result[empCode]) {
                 result[empCode] = {
-                    hk: 0,
-                    total_hours: 0,
-                    shortage_count: 0,
-                    total_amount_rp: 0,
-                    shortage_details: [],
-                    shortage_total_hours: 0,
-                    excess_details: [],
-                    excess_total_hours: 0
+                    hk: 0, total_hours: 0, shortage_count: 0, total_amount_rp: 0,
+                    shortage_details: [], shortage_total_hours: 0,
+                    excess_details: [], excess_total_hours: 0
                 };
             }
-            result[empCode].hk += r.hk || 0;
-            result[empCode].total_hours += r.total_hours || 0;
-            result[empCode].shortage_count += r.shortage_count || 0;
-            result[empCode].total_amount_rp += r.total_amount_rp || 0;
-        }
 
-        // Add shortage details
-        for (const r of shortageRows) {
-            const empCode = r.emp_code?.trim() || "";
-            if (result[empCode]) {
-                const shortage_hours = r.target_hours - r.actual_hours;
-                result[empCode].shortage_details.push({
-                    date: r.date,
-                    day_name: r.day_name,
-                    actual_hours: r.actual_hours,
-                    target_hours: r.target_hours,
-                    shortage_hours: shortage_hours
-                });
-                result[empCode].shortage_total_hours += shortage_hours;
-            }
-        }
-
-        // [NEW] Query to get excess hours records (individual days where hours EXCEED target - "Salah Scan")
-        const excessDetailsQuery = `
-            SELECT
-                RTRIM(trl.EmpCode) as emp_code,
-                CONVERT(varchar, trl.TrxDate, 23) as date,
-                DATENAME(weekday, trl.TrxDate) as day_name,
-                SUM(trl.Hours) as actual_hours,
-                CASE
-                    WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
-                    ELSE 7
-                END as target_hours
-            FROM PR_TASKREGLN trl
-            JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-            WHERE RTRIM(trl.EmpCode) IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-            GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
-            HAVING SUM(trl.Hours) > CASE
-                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
-                ELSE 7
-            END
-
-            UNION ALL
-
-            SELECT
-                RTRIM(trl.EmpCode) as emp_code,
-                CONVERT(varchar, trl.TrxDate, 23) as date,
-                DATENAME(weekday, trl.TrxDate) as day_name,
-                SUM(trl.Hours) as actual_hours,
-                CASE
-                    WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
-                    ELSE 7
-                END as target_hours
-            FROM PR_TASKREGLN_ARC trl
-            JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-            WHERE RTRIM(trl.EmpCode) IN (${empList})
-              AND trl.TrxDate >= ? AND trl.TrxDate < ?
-              AND trl.OT = 0
-            GROUP BY RTRIM(trl.EmpCode), trl.TrxDate
-            HAVING SUM(trl.Hours) > CASE
-                WHEN DATENAME(weekday, trl.TrxDate) IN ('Friday', 'Jumat') THEN 5
-                ELSE 7
-            END
-        `;
-
-        const excessRows = await db.query<{
-            emp_code: string;
-            date: string;
-            day_name: string;
-            actual_hours: number;
-            target_hours: number;
-        }>(excessDetailsQuery, [startDate, endDate, startDate, endDate]);
-
-        // Add excess details ("Salah Scan")
-        for (const r of excessRows) {
-            const empCode = r.emp_code?.trim() || "";
-            if (result[empCode]) {
-                const excess_hours = r.actual_hours - r.target_hours;
-                result[empCode].excess_details.push({
-                    date: r.date,
-                    day_name: r.day_name,
-                    actual_hours: r.actual_hours,
-                    target_hours: r.target_hours,
-                    excess_hours: excess_hours
-                });
-                result[empCode].excess_total_hours += excess_hours;
+            if (r.row_type === 'A') {
+                result[empCode].hk += r.hk || 0;
+                result[empCode].total_hours += r.total_hours || 0;
+                result[empCode].shortage_count += r.shortage_count || 0;
+                result[empCode].total_amount_rp += r.total_amount_rp || 0;
+            } else if (r.row_type === 'S') {
+                if (r.detail_date && result[empCode]) {
+                    const shortage_hours = (r.detail_target || 0) - (r.detail_hours || 0);
+                    result[empCode].shortage_details.push({
+                        date: r.detail_date,
+                        day_name: r.detail_day_name || "",
+                        actual_hours: r.detail_hours || 0,
+                        target_hours: r.detail_target || 0,
+                        shortage_hours
+                    });
+                    result[empCode].shortage_total_hours += shortage_hours;
+                }
+            } else if (r.row_type === 'E') {
+                if (r.detail_date && result[empCode]) {
+                    const excess_hours = (r.detail_hours || 0) - (r.detail_target || 0);
+                    result[empCode].excess_details.push({
+                        date: r.detail_date,
+                        day_name: r.detail_day_name || "",
+                        actual_hours: r.detail_hours || 0,
+                        target_hours: r.detail_target || 0,
+                        excess_hours
+                    });
+                    result[empCode].excess_total_hours += excess_hours;
+                }
             }
         }
 
@@ -1612,117 +1639,69 @@ export class DataExtractorService {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // Initialize result
+        // ============================================================
+        // [OPTIMIZATION] Consolidated: 3 queries → 1 query
+        // All cuti types (task-based, minggu, nasional) in single round-trip
+        // ============================================================
+        const rows = await db.query<{ emp_code: string; cuti_tahunan: number; cuti_sakit_haid: number; cuti_minggu: number; cuti_nasional: number }>(`
+            SELECT
+                RTRIM(EmpCode) as emp_code,
+                SUM(cuti_tahunan) as cuti_tahunan,
+                SUM(cuti_sakit_haid) as cuti_sakit_haid,
+                SUM(cuti_minggu) as cuti_minggu,
+                SUM(cuti_nasional) as cuti_nasional
+            FROM (
+                -- LIVE table: all cuti types via conditional aggregation
+                SELECT
+                    trl.EmpCode,
+                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
+                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid,
+                    CASE WHEN DATEPART(weekday, trl.TrxDate) = 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate) THEN 1 ELSE 0 END as cuti_minggu,
+                    CASE WHEN EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate) THEN 1 ELSE 0 END as cuti_nasional
+                FROM PR_TASKREGLN trl
+                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                  AND (
+                      trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%'
+                      OR DATEPART(weekday, trl.TrxDate) = 1
+                  )
+
+                UNION ALL
+
+                -- ARCHIVE table: same conditional aggregation
+                SELECT
+                    trl.EmpCode,
+                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
+                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid,
+                    CASE WHEN DATEPART(weekday, trl.TrxDate) = 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate) THEN 1 ELSE 0 END as cuti_minggu,
+                    CASE WHEN EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate) THEN 1 ELSE 0 END as cuti_nasional
+                FROM PR_TASKREGLN_ARC trl
+                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE RTRIM(trl.EmpCode) IN (${empList})
+                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
+                  AND trl.OT = 0
+                  AND (
+                      trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%'
+                      OR DATEPART(weekday, trl.TrxDate) = 1
+                  )
+            ) combined
+            GROUP BY RTRIM(EmpCode)
+        `, [startDate, endDate, startDate, endDate]);
+
+        // Initialize result with all employees (0 values for those with no cuti)
         const result: Record<string, CutiData> = {};
         for (const emp of empCodes) {
             result[emp] = { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
         }
-
-        // Query cuti tahunan and sakit (by TaskCode)
-        // Use UNION ALL for Cuti
-        let cutiTaskRows = await db.query<{ emp_code: string; cuti_tahunan: number; cuti_sakit_haid: number }>(`
-            SELECT
-                RTRIM(EmpCode) as emp_code,
-                SUM(cuti_tahunan) as cuti_tahunan,
-                SUM(cuti_sakit_haid) as cuti_sakit_haid
-            FROM (
-                SELECT
-                    trl.EmpCode,
-                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
-                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid
-                FROM PR_TASKREGLN trl
-                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-                WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
-                  AND trl.OT = 0
-                  AND (trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%')
-                
-                UNION ALL
-
-                SELECT
-                    trl.EmpCode,
-                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
-                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-                WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
-                  AND trl.OT = 0
-                  AND (trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%')
-            ) combined
-            GROUP BY RTRIM(EmpCode)
-        `, [startDate, endDate, startDate, endDate]);
-
-        for (const r of cutiTaskRows) {
+        // Fill in actual values from query
+        for (const r of rows) {
             const emp = r.emp_code?.trim() || "";
             if (result[emp]) {
                 result[emp].cuti_tahunan = r.cuti_tahunan || 0;
                 result[emp].cuti_sakit_haid = r.cuti_sakit_haid || 0;
-            }
-        }
-
-        // Query cuti minggu (Sundays - DATEPART weekday = 1) - UNION ALL
-        let cutiMingguRows = await db.query<{ emp_code: string; cuti_minggu: number }>(`
-            SELECT RTRIM(EmpCode) as emp_code, COUNT(DISTINCT TrxDate) as cuti_minggu
-            FROM (
-                SELECT trl.EmpCode, trl.TrxDate
-                FROM PR_TASKREGLN trl
-                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-                WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
-                  AND trl.OT = 0
-                  AND DATEPART(weekday, trl.TrxDate) = 1
-                  AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate)
-                
-                UNION ALL
-
-                SELECT trl.EmpCode, trl.TrxDate
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-                WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
-                  AND trl.OT = 0
-                  AND DATEPART(weekday, trl.TrxDate) = 1
-                  AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate)
-            ) combined
-            GROUP BY RTRIM(EmpCode)
-        `, [startDate, endDate, startDate, endDate]);
-
-        for (const r of cutiMingguRows) {
-            const emp = r.emp_code?.trim() || "";
-            if (result[emp]) {
                 result[emp].cuti_minggu = r.cuti_minggu || 0;
-            }
-        }
-
-        // Query cuti nasional (National holidays - join HR_GPH) - UNION ALL
-        let cutiNasionalRows = await db.query<{ emp_code: string; cuti_nasional: number }>(`
-            SELECT RTRIM(EmpCode) as emp_code, COUNT(DISTINCT TrxDate) as cuti_nasional
-            FROM (
-                SELECT trl.EmpCode, trl.TrxDate
-                FROM PR_TASKREGLN trl
-                JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-                JOIN HR_GPH h ON h.HolidayDate = trl.TrxDate
-                WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
-                  AND trl.OT = 0
-                
-                UNION ALL
-
-                SELECT trl.EmpCode, trl.TrxDate
-                FROM PR_TASKREGLN_ARC trl
-                JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-                JOIN HR_GPH h ON h.HolidayDate = trl.TrxDate
-                WHERE RTRIM(trl.EmpCode) IN (${empList})
-                  AND trl.TrxDate >= ? AND trl.TrxDate < ?
-                  AND trl.OT = 0
-            ) combined
-            GROUP BY RTRIM(EmpCode)
-        `, [startDate, endDate, startDate, endDate]);
-
-        for (const r of cutiNasionalRows) {
-            const emp = r.emp_code?.trim() || "";
-            if (result[emp]) {
                 result[emp].cuti_nasional = r.cuti_nasional || 0;
             }
         }
@@ -2170,14 +2149,11 @@ export class DataExtractorService {
         return result;
     }
 
-    private async getUpahPokok(empCodes: string[], year: number, serverProfile?: string): Promise<Record<string, number>> {
+    // [OPTIMIZATION] Added currentYear param to avoid redundant getCurrentPeriod() call
+    private async getUpahPokok(empCodes: string[], year: number, currentYear: number, serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
-
-        // Get current period to determine if we should use historical rates
-        const currentPeriod = await currentPeriodService.getCurrentPeriod();
-        const currentYear = currentPeriod.year;
 
         // For historical years (before current year), we still query HR_CPTRX
         // to get the employee-specific rate, but if the queried rate is <= 134500 (current standard),
