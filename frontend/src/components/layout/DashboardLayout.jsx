@@ -6,7 +6,36 @@ export default function DashboardLayout({ children, title, subtitle, actions }) 
   const { user, logout } = useAuth()
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div className="dashboard-layout-root" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <style>
+        {`
+          @media print {
+            body, html, #root {
+              height: auto !important;
+              overflow: visible !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            .dashboard-layout-root {
+              height: auto !important;
+              overflow: visible !important;
+              display: block !important;
+            }
+            .dashboard-layout-root > header {
+              display: none !important;
+            }
+            .dashboard-layout-root > main {
+              height: auto !important;
+              overflow: visible !important;
+              display: block !important;
+            }
+            /* Sembunyikan kompoen GangFilter dan Loading state saat diprint jika ada */
+            .gang-filter-wrapper, .loading-screen-overlay, .gam-legend, .gom-legend {
+                display: none !important;
+            }
+          }
+        `}
+      </style>
       {/* Top Header */}
       <header style={{
         height: '64px',

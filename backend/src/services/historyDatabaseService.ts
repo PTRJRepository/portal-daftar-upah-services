@@ -1,14 +1,51 @@
 /**
  * History Database Service
- * 
+ *
  * Service ini menangani routing database berdasarkan RUN_MODE dan
  * menyediakan method untuk operasi CRUD pada tabel history.
- * 
+ *
  * Database Configuration:
  * - RUN_MODE=prod (history mode):
  *   - Payroll/Daftar Upah: extend_db_ptrj
  *   - Detail Transaksi (Taskreg, ADTrans): extend_db_ptrj_transaksi
  * - RUN_MODE=dev: Menggunakan db_ptrj (real-time)
+ *
+ * ============================================================================
+ * IMPORTANT: DATA APPEND-ONLY PATTERN (Immutable History)
+ * ============================================================================
+ *
+ * PRINSIP: Sistem TIDAK menimpa atau mengedit data existing.
+ *          Selalu tambahkan record baru. Data lama tetap tersimpan.
+ *
+ * PENERAPAN:
+ * 1. NIK tidak bisa di-update - Jika NIK sudah ada, JANGAN update meskipun
+ *    nilainya berubah di Plantware/db_ptrj. Gunakan data existing.
+ * 2. Di aggregation/history: Hindari UPDATE. Selalu INSERT record baru.
+ *    Gunakan version_index atau mekanisme serupa untuk mendapatkan data terkini.
+ * 3. Untuk mengambil data terbaru: ORDER BY version_index DESC LIMIT 1
+ *
+ * CONTOH PENERAPAN:
+ * ```sql
+ * -- ❌ SALAH: Update jika data sudah ada
+ * UPDATE table SET nik = ? WHERE emp_code = ?;
+ *
+ * -- ✅ BENAR: Cek existing dulu, jika belum ada baru insert
+ * IF NOT EXISTS (SELECT 1 FROM table WHERE emp_code = ?)
+ *     INSERT INTO table (...) VALUES (...);
+ *
+ * -- ✅ BENAR: Append-only dengan version_index
+ * INSERT INTO aggregation_history (..., version_index)
+ * SELECT ..., MAX(version_index) + 1
+ * FROM aggregation_history
+ * WHERE nik = ? AND period_month = ? AND period_year = ?;
+ * ```
+ *
+ * Kenapa penting:
+ * - Tracking history lengkap seorang karyawan dari waktu ke waktu
+ * - Audit trail untuk semua perubahan
+ * - Data lama tidak hilang (untuk keperluan referensi/histori)
+ * - Konsistensi data antar periode payroll
+ * ============================================================================
  */
 
 import { Database } from "../db/client";
@@ -552,7 +589,18 @@ export class HistoryDatabaseService {
     // ============================================================================
 
     /**
-     * Insert payroll history detail
+     * Insert payroll history detail.
+     *
+     * NOTE (Data Append-Only Pattern):
+     * - Jika master_id + emp_code SUDAH ADA → update existing record
+     * - Jika belum ada → insert new record
+     * - NIK tidak pernah di-update jika sudah ada di database
+     * - Untuk tracking history, gunakan payroll_history_detail_history table
+     *
+     * Jika ingin改为 pure append-only (append-only tanpa UPDATE sama sekali):
+     * - Hapus blok UPDATE, hanya biarkan INSERT
+     * - Gunakan unique constraint pada (master_id, emp_code, period_month, period_year)
+     * - Untuk get latest: SELECT dengan ORDER BY version DESC
      */
     public async savePayrollHistoryDetail(data: PayrollHistoryDetail): Promise<number> {
         const db = this.getPayrollDatabase();

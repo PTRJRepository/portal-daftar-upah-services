@@ -698,20 +698,12 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                         size: landscape;
                         margin: 10mm;
                     }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .gam-inline-container, .gam-inline-container * {
-                        visibility: visible;
-                    }
                     .gam-inline-container {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
                         width: 100%;
                         background: white;
                         border: none;
                         box-shadow: none;
+                        margin: 0;
                     }
                     .gam-content {
                         overflow: visible !important;
@@ -727,8 +719,9 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     }
                     .gam-td-no, .gam-td-empcode, .gam-td-name, .gam-td-nik {
                         position: static !important;
+                        background-color: transparent !important;
                     }
-                    .gam-print-btn {
+                    .gam-print-btn, .gam-toggle-icon {
                         display: none !important;
                     }
                     .gam-gang-header {
@@ -737,6 +730,8 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     }
                     .gam-gang-section {
                         page-break-inside: avoid;
+                        margin-bottom: 20px;
+                        border: 1px solid #e5e7eb;
                     }
                     .gam-td-total-label {
                         position: static !important;

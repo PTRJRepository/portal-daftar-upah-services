@@ -693,20 +693,12 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                         size: landscape;
                         margin: 10mm;
                     }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .gom-container, .gom-container * {
-                        visibility: visible;
-                    }
                     .gom-container {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
                         width: 100%;
                         background: white;
                         border: none;
                         box-shadow: none;
+                        margin: 0;
                     }
                     .gom-content {
                         overflow: visible !important;
@@ -722,8 +714,9 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                     }
                     .gom-td-no, .gom-td-name {
                         position: static !important;
+                        background-color: transparent !important;
                     }
-                    .gom-print-btn {
+                    .gom-print-btn, .gom-toggle-icon {
                         display: none !important;
                     }
                     .gom-gang-header {
@@ -733,6 +726,7 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                     .gom-gang-section {
                         page-break-inside: avoid;
                         margin-bottom: 20px;
+                        border: 1px solid #e5e7eb;
                     }
                     .gom-td-total-label {
                         position: static !important;

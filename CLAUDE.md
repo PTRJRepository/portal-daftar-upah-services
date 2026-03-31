@@ -630,6 +630,58 @@ The following fields are currently **NULL** - not yet implemented:
 
 ## Important Business Rules
 
+### Data Append-Only Pattern (Immutable History)
+
+**CRITICAL:** Sistem TIDAK menimpa atau mengedit data existing. Selalu tambahkan record baru. Data lama tetap tersimpan untuk history tracking karyawan.
+
+#### Rules:
+
+1. **NIK tidak bisa di-update** - Jika NIK sudah ada di database, **JANGAN update** meskipun nilainya berubah di Plantware/db_ptrj. Gunakan data yang sudah ada.
+2. **Jika NIK belum ada** → baru ambil/insert dari db_ptrj.
+3. **Di aggregation/history** - Kecuali untuk NIK, hindari UPDATE. Selalu INSERT record baru.
+4. **Mengambil data terbaru** - Gunakan `version_index` atau `ORDER BY ... DESC LIMIT 1` untuk mendapatkan record terkini.
+
+#### Contoh Kode:
+
+```typescript
+// ❌ SALAH - Jangan update jika NIK/empcode sudah ada
+if (existingEmployee) {
+    await db.query(`UPDATE table SET nik = ? WHERE emp_code = ?`, [nik, empCode]);
+}
+
+// ✅ BENAR - Cek existing dulu, jika belum ada baru insert
+const existing = await db.queryOne(`SELECT * FROM table WHERE nik = ?`, [nik]);
+if (!existing) {
+    await db.query(`INSERT INTO table (...) VALUES (...)`, [...]);
+}
+// Jika existing ada → skip, jangan update
+
+// ✅ BENAR - Untuk aggregation, append-only dengan version_index
+await db.query(`
+    INSERT INTO aggregation_history (month, year, nik, ..., version_index)
+    SELECT ?, ?, ?, ..., ISNULL(MAX(version_index), 0) + 1
+    FROM aggregation_history
+    WHERE nik = ?
+`, [month, year, nik, ..., nik]);
+```
+
+#### Files yang Perlu Diperhatikan:
+
+| File | Method | Pattern |
+|------|--------|---------|
+| `historyDatabaseService.ts` | `savePayrollHistoryDetail()` | UPDATE-or-INSERT (perlu改为 append-only) |
+| `historyDatabaseService.ts` | `savePayrollHistoryHeader()` | UPDATE-or-INSERT |
+| `employeeHrDataService.ts` | `updateField()` | UPSERT with history tracking |
+| `employeeEstateService.ts` | `upsert()` | UPSERT by empcode |
+
+#### Kenapa Penting:
+
+- Tracking history lengkap seorang karyawan dari waktu ke waktu
+- Audit trail untuk semua perubahan data
+- Data lama tidak hilang (untuk keperluan referensi/histori)
+- Konsistensi data antar periode payroll
+- NIK adalah identifier utama yang TIDAK boleh berubah
+
 ### PTKP Status Mapping (Tax Classification)
 
 PTKP (Penghasilan Tidak Kena Pajak) status is derived from `beras_rate` (RiceRation) in HR_PAYROLL:

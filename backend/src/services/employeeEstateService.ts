@@ -1,6 +1,24 @@
 
 import { Database } from "../db/client";
 
+/**
+ * IMPORTANT: DATA APPEND-ONLY PATTERN RULES (Immutable History)
+ *
+ * PRINSIP: Sistem TIDAK menimpa atau mengedit data existing. Selalu tambahkan record baru.
+ *
+ * PENERAPAN:
+ * 1. NIK (empcode) TIDAK BISA di-update - Jika empcode sudah ada di database,
+ *    JANGAN update meskipun nilainya berubah di Plantware/db_ptrj.
+ *    Data lama tetap disimpan untuk histori.
+ * 2. Hanya INSERT data baru jika empcode belum ada.
+ * 3. Untuk tracking perubahan, pertimbangkan menambahkan version_index atau history table.
+ *
+ * Kenapa penting:
+ * - NIK adalah identifier utama karyawan - tidak boleh berubah
+ * - History data karyawan tetap utuh
+ * - Audit trail lengkap untuk semua perubahan data
+ */
+
 export interface EmployeeJobData {
     empcode: string;
     employee_name: string;

@@ -8,7 +8,7 @@ export interface ManualAdjustment {
     emp_code: string;
     gang_code: string;
     division_code?: string;
-    adjustment_type: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
+    adjustment_type: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH' | 'PENDAPATAN_LAINNYA';
     adjustment_name: string;
     amount: number;
     remarks?: string;
@@ -64,13 +64,86 @@ export class ManualAdjustmentService {
     }
 
     /**
+     * Save PENDAPATAN_LAINNYA (e.g. KONTAN) to employee_other_incomes table.
+     * Uses upsert logic: update if exists (same nik + period + income_name), insert if not.
+     */
+    private async saveOtherIncome(db: Database, data: ManualAdjustment, parsedAmount: number, user?: string): Promise<number> {
+        const incomeType = data.adjustment_name; // e.g. 'KONTAN'
+        const incomeName = data.adjustment_name; // e.g. 'KONTAN'
+
+        // Check if existing record exists
+        const existing = await db.queryOne<{ id: number }>(`
+            SELECT id FROM dbo.employee_other_incomes
+            WHERE nik = ? AND period_month = ? AND period_year = ? AND income_name = ?
+        `, [data.emp_code, data.period_month, data.period_year, incomeName]);
+
+        if (existing) {
+            if (parsedAmount === 0) {
+                // Delete if amount is 0
+                await db.query(`DELETE FROM dbo.employee_other_incomes WHERE id = ?`, [existing.id]);
+                console.log(`[saveOtherIncome] Deleted ${incomeName} for ${data.emp_code} (amount=0)`);
+                return existing.id;
+            }
+            // Update existing
+            await db.query(`
+                UPDATE dbo.employee_other_incomes
+                SET amount = ?, updated_at = GETDATE()
+                WHERE id = ?
+            `, [parsedAmount, existing.id]);
+            console.log(`[saveOtherIncome] Updated ${incomeName} for ${data.emp_code}: Rp${parsedAmount}`);
+            return existing.id;
+        } else {
+            if (parsedAmount === 0) return 0; // Don't insert zero
+
+            // Insert new record
+            const result = await db.query(`
+                INSERT INTO dbo.employee_other_incomes (
+                    nik, emp_name, division_code, gang_code,
+                    period_year, period_month, income_type, income_name,
+                    amount, is_paid_in_thp, is_taxable,
+                    created_at, updated_at
+                ) OUTPUT INSERTED.id VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE()
+                )
+            `, [
+                data.emp_code,
+                null, // emp_name - let it be null, will be enriched by data extractor
+                data.division_code || null,
+                data.gang_code,
+                data.period_year,
+                data.period_month,
+                incomeType,        // income_type = 'KONTAN'
+                incomeName,        // income_name = 'KONTAN'
+                parsedAmount,
+                0,                 // is_paid_in_thp = false (added to gross wage, not THP)
+                0,                 // is_taxable = false (not taxable)
+            ]);
+            const id = result[0]?.id;
+            console.log(`[saveOtherIncome] Inserted ${incomeName} for ${data.emp_code}: Rp${parsedAmount}, ID=${id}`);
+            return id;
+        }
+    }
+
+    /**
      * Save a manual adjustment (Insert or Update)
+     *
+     * Special handling for PENDAPATAN_LAINNYA:
+     * - Saves to employee_other_incomes table (like THR, Bonus, Custom)
+     * - is_paid_in_thp = false (added to gross wage, not THP)
+     * - is_taxable = false (not taxable income)
      */
     public async saveAdjustment(data: ManualAdjustment, user?: string): Promise<number> {
         const db = this.getDatabase();
 
         // Ensure amount is a valid float
         const parsedAmount = parseFloat(data.amount.toString()) || 0;
+
+        // --- PENDAPATAN_LAINNYA: Save to employee_other_incomes ---
+        if (data.adjustment_type === 'PENDAPATAN_LAINNYA') {
+            return await this.saveOtherIncome(db, data, parsedAmount, user);
+        }
+
+        // --- Standard adjustments: Save to payroll_manual_adjustments ---
 
         // Check if an exact match exists
         const existing = await db.queryOne<{ id: number }>(`

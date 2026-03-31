@@ -23,6 +23,17 @@ export interface EmployeeHrDataHistory {
     version: number;
 }
 
+/**
+ * IMPORTANT: DATA APPEND-ONLY PATTERN RULES (Immutable History)
+ *
+ * 1. NIK TIDAK BISA di-update - Jika NIK sudah ada, JANGAN update meskipun
+ *    nilainya berubah di Plantware atau db_ptrj. Data lama tetap disimpan.
+ * 2. Untuk mengambil data terbaru, gunakan version/index terbaru.
+ * 3. Semua perubahan dicatat di history table untuk audit trail.
+ *
+ * Kenapa: Agar history karyawan tetap utuh dan bisa di-tracking dari waktu ke waktu.
+ * Jika NIK berubah di db_ptrj, sistem tetap gunakan NIK lama yang sudah tersimpan.
+ */
 export class EmployeeHrDataService {
     private db: Database;
 

@@ -417,6 +417,7 @@ export class DataExtractorService {
 
         const startTotal = performance.now();
         let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
+        console.log(`[DataExtractor] Phase 0 - getEmployees: ${(performance.now() - startTotal).toFixed(0)}ms, found ${employees.length} employees`);
 
         // Apply gangPrefix (Group/Asistensi) filter for LIVE path
         if (gangPrefix && employees.length > 0) {
@@ -462,7 +463,7 @@ export class DataExtractorService {
             this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile), // RESTORED
             this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
             this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
-            this.getUpahPokok(empCodes, year, serverProfile),
+            this.getUpahPokok(empCodes, year, currentYear, serverProfile),
             this.getBrondol(empCodes, startDate, endDate, serverProfile),
 
             EmployeeEstateService.getEmployeeJobs(),
@@ -472,6 +473,12 @@ export class DataExtractorService {
             manualAdjustmentService.getAdjustments(month, year, gangCode || undefined),
             this.getPositionHistory(empCodes, month, year)
         ]);
+        console.log(`[DataExtractor] Phase 1 (16 parallel queries): ${(performance.now() - startParallel).toFixed(0)}ms for ${empCodes.length} employees`);
+
+        // ============================================================
+        // [OPTIMIZATION] Phase 2: 4 parallel calls
+        // ============================================================
+        const startPhase2 = performance.now();
 
         // [NEW] Use GajiPokokService for basic salary calculations in batch
         const gajiPokokInputs = empCodes.map(code => ({
@@ -486,8 +493,6 @@ export class DataExtractorService {
             upah_dasar: (upahPokok[code] && upahPokok[code] > 0) ? upahPokok[code] : undefined
         }));
 
-        const gajiPokokBatchResult = await gajiPokokService.calculateBatch(gajiPokokInputs);
-
         // Cast manual adjustments to expected type
         const manualAdjustments = (manualAdjustmentsRaw || []) as any[];
 
@@ -496,11 +501,28 @@ export class DataExtractorService {
         // Destructure potongan result - uses TaskDesc as title
         const { amounts: potongan, titleMap: potonganTitleMap } = potonganResult;
 
-        // [THR TAX LOGIC] For months 3+ (March onwards), THR data was migrated from month 2 → month 3
-        // So we fetch other incomes from the current month (data is now in same month after migration)
-        // Jan/Feb still use their respective months (no migration needed)
-        const otherIncomeMonth = month;
-        const dbOtherIncomes = await OtherIncomesService.getIncomes(year, otherIncomeMonth, divisionCode, gangCode);
+        // ============================================================
+        // [OPTIMIZATION] Parallelize: all independent after Promise.all
+        // Run concurrently: gajiPokokBatch + OtherIncomes + PTKP + empCode resolution
+        // ============================================================
+        const [gajiPokokBatchResult, dbOtherIncomes, ptkpMasterRecords, latestEmpCodeMap] = await Promise.all([
+            gajiPokokService.calculateBatch(gajiPokokInputs),
+            OtherIncomesService.getIncomes(year, month, divisionCode, gangCode),
+            (async () => {
+                const { ptkpTaxService } = await import('./ptkpTaxService');
+                return await ptkpTaxService.getPtkpByYear(year);
+            })(),
+            (async () => {
+                const niksToResolve = employees.map(e => e.actual_nik).filter(Boolean) as string[];
+                const prefGangMap = new Map<string, string>();
+                if (gangCode && gangCode !== 'ALL') {
+                    niksToResolve.forEach(nik => prefGangMap.set(nik.toUpperCase(), gangCode));
+                }
+                return await employeeGangHistoryService.resolveLatestEmpCodes(niksToResolve, prefGangMap);
+            })()
+        ]);
+        console.log(`[DataExtractor] Phase 2 (4 parallel calls): ${(performance.now() - startPhase2).toFixed(0)}ms`);
+
         // [DEBUG] Check if THR records are fetched
         const thrCount = dbOtherIncomes.filter((i: any) => i.income_type === 'THR').length;
         console.log(`[THR FIX] dbOtherIncomes total=${dbOtherIncomes.length}, THR=${thrCount}, gang=${gangCode}`);
@@ -648,9 +670,7 @@ export class DataExtractorService {
         }
 
 
-        // Fetch Master PTKP records for the current year
-        const { ptkpTaxService } = await import('./ptkpTaxService');
-        const ptkpMasterRecords = await ptkpTaxService.getPtkpByYear(year);
+        // Build PTKP map from parallel-fetched records
         const dbPtkpMap = new Map<string, string>();
         for (const record of ptkpMasterRecords) {
             if (record.emp_code) {
@@ -658,17 +678,10 @@ export class DataExtractorService {
             }
         }
 
-        // [NEW] Resolve latest EmpCodes with gang preference
-        const niksToResolve = employees.map(e => e.actual_nik).filter(Boolean) as string[];
-        const prefGangMap = new Map<string, string>();
-        if (gangCode && gangCode !== 'ALL') {
-            niksToResolve.forEach(nik => prefGangMap.set(nik.toUpperCase(), gangCode));
-        }
-        const latestEmpCodeMap = await employeeGangHistoryService.resolveLatestEmpCodes(niksToResolve, prefGangMap);
-
         const dataRows: PayrollRow[] = [];
         const dynamicPremiSet = new Set<string>();
         const dynamicPotonganSet = new Set<string>();
+        const startRowProcessing = performance.now();
 
         for (const emp of employees) {
             const nikClean = emp.actual_nik?.trim().toUpperCase() || "";
@@ -1227,7 +1240,9 @@ export class DataExtractorService {
 
             dataRows.push(row);
         }
+        console.log(`[DataExtractor] Phase 3 - Row processing (${employees.length} employees): ${(performance.now() - startRowProcessing).toFixed(0)}ms`);
 
+        const totalMs = Date.now() - startTime;
         const result = {
             data_rows: dataRows,
             dynamic_premi_headers: Array.from(dynamicPremiSet),
@@ -1235,7 +1250,7 @@ export class DataExtractorService {
             premi_title_map: premiTitleMap,
             potongan_title_map: potonganTitleMap,
             meta: {
-                execution_time_ms: Date.now() - startTime,
+                execution_time_ms: totalMs,
                 row_count: dataRows.length
             }
         };
@@ -1247,7 +1262,7 @@ export class DataExtractorService {
         // ============================================================
         const cacheTtl = isHistorical ? 3600 : 120;
         cacheService.set(cacheKey, result, cacheTtl);
-        console.log(`[DataExtractor] Cached result for ${cacheKey} (${dataRows.length} rows, TTL=${cacheTtl}s, computed in ${result.meta.execution_time_ms}ms)`);
+        console.log(`[DataExtractor] TOTAL: ${totalMs}ms for ${gangCode}/${month}/${year} (${dataRows.length} rows, cache TTL=${cacheTtl}s)`);
 
         return result;
     }
@@ -1805,27 +1820,25 @@ export class DataExtractorService {
         return { amounts, titleMap, details };
     }
 
+    // ============================================================
+    // [OPTIMIZATION] Consolidated: 2 queries → 1 UNION ALL query
+    // Combines: main potongan rows + PREMI_PPH (ACCRUALS-CHECKROLL) rows
+    // ============================================================
     private async getPotongan(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<{ amounts: Record<string, Record<string, number>>; titleMap: Record<string, string> }> {
         if (!empCodes.length) return { amounts: {}, titleMap: {} };
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // [PYTHON COMPATIBILITY] Query using DocDesc directly from PR_ADTRANS/PR_ADTRANS_ARC
-        //
-        // 1. PPH21 (dipotong/minus) - DocDesc mengandung "PPH" TAPI BUKAN "PREMI PPH"
-        // 2. KOREKSI (potongan upah kotor) - DocDesc mengandung "KOREKSI"
-        // 3. POTONGAN lainnya (potongan upah bersih) - DocDesc mengandung "POT", dll
-        //
-        // NOTE: Premi PPH (ditambah/plus) diambil dari query terpisah menggunakan TaskDesc
-
-        // [UPDATED] Add LEFT JOIN for TaskDesc to filter PPH items where TaskDesc contains PREMI
-        let rows = await db.query<{ emp_code: string; doc_desc: string; task_code: string | null; task_desc: string | null; amount: number }>(`
+        // [OPTIMIZATION] Single query: main potongan + PREMI_PPH (ACCRUALS-CHECKROLL) combined
+        // row_type: 'P' = regular potongan, 'X' = PREMI_PPH
+        let rows = await db.query<{ emp_code: string; doc_desc: string; task_code: string | null; task_desc: string | null; amount: number; row_type: string }>(`
             SELECT
                 RTRIM(t.EmpCode) as emp_code,
                 t.DocDesc as doc_desc,
                 ln.TaskCode as task_code,
                 mt.TaskDesc as task_desc,
-                SUM(COALESCE(ln.Amount, 0)) as amount
+                SUM(COALESCE(ln.Amount, 0)) as amount,
+                CASE WHEN mt.TaskDesc = 'ACCRUALS-CHECKROLL' THEN 'X' ELSE 'P' END as row_type
             FROM (
                 SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
                 FROM PR_ADTRANS t
@@ -1846,23 +1859,27 @@ export class DataExtractorService {
             ) ln ON t.ID = ln.MasterID
             LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
             WHERE (
-                -- PPH21: DocDesc mengandung PPH TAPI bukan PREMI PPH (baik di DocDesc maupun TaskDesc)
-                (UPPER(t.DocDesc) LIKE '%PPH%' AND UPPER(t.DocDesc) NOT LIKE '%PREMI%')
-                OR UPPER(t.DocDesc) LIKE '%POT%'
-                OR UPPER(t.DocDesc) LIKE '%BPJS%'
-                OR UPPER(t.DocDesc) LIKE '%PINJAM%'
-                OR UPPER(t.DocDesc) LIKE '%KL%'
-                OR UPPER(t.DocDesc) LIKE '%SPSI%'
-                OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
-                OR UPPER(t.DocDesc) LIKE '%TOTAL%'
-                OR UPPER(t.DocDesc) LIKE '%KONTAN%'
-                OR UPPER(t.DocDesc) LIKE '%ALAT%'
-                OR UPPER(t.DocDesc) LIKE '%THR%'
-                -- POTONGAN PPH21 Specific (from TaskCode DEPH21AB1 or TaskDesc (DE) POTONGAN PPH21)
-                OR UPPER(ln.TaskCode) LIKE '%DEPH21%'
-                OR UPPER(mt.TaskDesc) LIKE '%POTONGAN PPH21%'
+                -- Main potongan conditions
+                (
+                    (UPPER(t.DocDesc) LIKE '%PPH%' AND UPPER(t.DocDesc) NOT LIKE '%PREMI%')
+                    OR UPPER(t.DocDesc) LIKE '%POT%'
+                    OR UPPER(t.DocDesc) LIKE '%BPJS%'
+                    OR UPPER(t.DocDesc) LIKE '%PINJAM%'
+                    OR UPPER(t.DocDesc) LIKE '%KL%'
+                    OR UPPER(t.DocDesc) LIKE '%SPSI%'
+                    OR UPPER(t.DocDesc) LIKE '%KOREKSI%'
+                    OR UPPER(t.DocDesc) LIKE '%TOTAL%'
+                    OR UPPER(t.DocDesc) LIKE '%KONTAN%'
+                    OR UPPER(t.DocDesc) LIKE '%ALAT%'
+                    OR UPPER(t.DocDesc) LIKE '%THR%'
+                    OR UPPER(ln.TaskCode) LIKE '%DEPH21%'
+                    OR UPPER(mt.TaskDesc) LIKE '%POTONGAN PPH21%'
+                )
+                -- PREMI_PPH (ACCRUALS-CHECKROLL) - also included
+                OR mt.TaskDesc = 'ACCRUALS-CHECKROLL'
             )
-            GROUP BY RTRIM(t.EmpCode), t.DocDesc, ln.TaskCode, mt.TaskDesc
+            GROUP BY RTRIM(t.EmpCode), t.DocDesc, ln.TaskCode, mt.TaskDesc,
+                CASE WHEN mt.TaskDesc = 'ACCRUALS-CHECKROLL' THEN 'X' ELSE 'P' END
         `, [startDate, endDate, startDate, endDate]);
 
         const amounts: Record<string, Record<string, number>> = {};
@@ -1872,73 +1889,30 @@ export class DataExtractorService {
             const emp = r.emp_code?.trim() || "";
             if (!amounts[emp]) amounts[emp] = {};
 
-            // [REMOVED] The check for PREMI in TaskDesc was incorrect
-            // Real PREMI_PPH items (TaskDesc='ACCRUALS-CHECKROLL') are handled by separate query below
-            // Items with TaskDesc like '(DE) POTONGAN PREMI' should be processed normally based on DocDesc
-
-            const { key, title } = this.normalizePotonganName(r.doc_desc || "", r.task_desc, r.task_code);
+            let key: string;
+            // Handle PREMI_PPH separately
+            if (r.row_type === 'X') {
+                key = "PREMI_PPH";
+                if (!titleMap[key]) titleMap[key] = "PREMI PPH";
+            } else {
+                const { key: k, title } = this.normalizePotonganName(r.doc_desc || "", r.task_desc, r.task_code);
+                key = k;
+                if (!titleMap[key]) {
+                    if (key.startsWith('KOREKSI')) {
+                        titleMap[key] = title;
+                    } else {
+                        const taskCode = r.task_code?.trim();
+                        titleMap[key] = taskCode || title;
+                    }
+                }
+            }
 
             // [DEBUG] Log PPH items
-            if (r.doc_desc?.toUpperCase().includes("PPH")) {
+            if (r.doc_desc?.toUpperCase().includes("PPH") && r.row_type !== 'X') {
                 console.log(`[DEBUG_PPH] Emp: ${emp} | Doc: "${r.doc_desc}" | Task: "${r.task_desc}" | Key: "${key}" | Amt: ${r.amount}`);
             }
 
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);
-
-            // [MODIFIED] Use ONLY TaskCode as title (shorter, cleaner headers) for normal potongan.
-            // But for KOREKSI (Potongan Upah Kotor), user requested to use DocDesc.
-            if (!titleMap[key]) {
-                if (key.startsWith('KOREKSI')) {
-                    titleMap[key] = title; // title is already the clean DocDesc
-                } else {
-                    // Priority: TaskCode > Title (fallback) > key (last resort)
-                    const taskCode = r.task_code?.trim();
-                    titleMap[key] = taskCode || title;
-                }
-            }
-        }
-
-        // [NEW] Query for Premi PPH from TaskDesc = 'ACCRUALS-CHECKROLL'
-        // Ini masuk ke kategori POTONGAN UPAH BERSIH (ditambah lalu dipotong)
-        // Bukan bagian dari premi, meskipun namanya "PREMI PPH"
-        const premiPphRows = await db.query<{ emp_code: string; doc_desc: string; amount: number }>(`
-            SELECT
-                RTRIM(t.EmpCode) as emp_code,
-                t.DocDesc as doc_desc,
-                SUM(ln.Amount) as amount
-            FROM (
-                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
-                FROM PR_ADTRANS t
-                WHERE RTRIM(t.EmpCode) IN (${empList})
-                  AND t.DocDate >= ? AND t.DocDate < ?
-
-                UNION ALL
-
-                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
-                FROM PR_ADTRANS_ARC t
-                WHERE RTRIM(t.EmpCode) IN (${empList})
-                  AND t.DocDate >= ? AND t.DocDate < ?
-            ) t
-            JOIN (
-                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN
-                UNION ALL
-                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
-            ) ln ON t.ID = ln.MasterID
-            JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
-            WHERE mt.TaskDesc = 'ACCRUALS-CHECKROLL'
-            GROUP BY RTRIM(t.EmpCode), t.DocDesc
-        `, [startDate, endDate, startDate, endDate]);
-
-        // Add Premi PPH to amounts with key "PREMI_PPH"
-        // Ini akan muncul sebagai kolom di POTONGAN UPAH BERSIH
-        for (const r of premiPphRows) {
-            const emp = r.emp_code?.trim() || "";
-            if (!amounts[emp]) amounts[emp] = {};
-            amounts[emp]["PREMI_PPH"] = (amounts[emp]["PREMI_PPH"] || 0) + Math.abs(r.amount || 0);
-            // Store title mapping
-            if (!titleMap["PREMI_PPH"]) {
-                titleMap["PREMI_PPH"] = "PREMI PPH";
-            }
         }
 
         return { amounts, titleMap };
