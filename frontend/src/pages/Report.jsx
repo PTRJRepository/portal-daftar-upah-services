@@ -112,10 +112,13 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [isSavingNik, setIsSavingNik] = useState(false)
   const [historyModalNik, setHistoryModalNik] = useState({ isOpen: false, data: null, empCode: null, loading: false })
 
-  // --- KONTANAN EDIT MODE STATE ---
-  const [editModeKontanan, setEditModeKontanan] = useState(false)
-  const [pendingKontananEdits, setPendingKontananEdits] = useState({})
-  const [isSavingKontanan, setIsSavingKontanan] = useState(false)
+  // --- DYNAMIC PENDAPATAN LAINNYA EDIT MODE ---
+  const [editModePendapatan, setEditModePendapatan] = useState(false)
+  const [customPendapatanTypes, setCustomPendapatanTypes] = useState([]) // [{type: 'KONTANAN', name: 'Kontanan'}, ...]
+  const [pendingPendapatanEdits, setPendingPendapatanEdits] = useState({}) // { 'NIK::TYPE': { nik, emp_name, gang_code, amount, income_type, income_name } }
+  const [isSavingPendapatan, setIsSavingPendapatan] = useState(false)
+  const [showAddPendapatanPopup, setShowAddPendapatanPopup] = useState(false)
+  const [newPendapatanName, setNewPendapatanName] = useState('')
 
   const handleNikChange = useCallback((empcode, newVal, oldVal, rowData) => {
     if (newVal === oldVal) return;
@@ -181,22 +184,49 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
   }, [editModeNik])
 
-  // Kontanan edit handler
-  const handleKontananChange = useCallback((nik, empName, gangCode, newVal) => {
+  // Generic pendapatan lainnya edit handler
+  const handlePendapatanChange = useCallback((nik, empName, gangCode, incomeType, incomeName, newVal) => {
     const amount = parseFloat(newVal) || 0;
-    setPendingKontananEdits(prev => ({
+    const key = `${nik}::${incomeType}`;
+    setPendingPendapatanEdits(prev => ({
       ...prev,
-      [nik]: { nik, emp_name: empName, gang_code: gangCode, amount }
+      [key]: { nik, emp_name: empName, gang_code: gangCode, amount, income_type: incomeType, income_name: incomeName }
     }))
   }, [])
 
-  const handleSaveKontananEdits = async () => {
-    if (Object.keys(pendingKontananEdits).length === 0) return
-    setIsSavingKontanan(true)
+  const handleAddPendapatanType = (name) => {
+    if (!name || !name.trim()) return;
+    const type = name.trim().toUpperCase().replace(/\s+/g, '_');
+    const displayName = name.trim();
+    // Don't add duplicate
+    if (customPendapatanTypes.some(t => t.type === type)) {
+      alert(`Tipe "${displayName}" sudah ada.`);
+      return;
+    }
+    setCustomPendapatanTypes(prev => [...prev, { type, name: displayName }]);
+    setNewPendapatanName('');
+    setShowAddPendapatanPopup(false);
+  }
+
+  const handleRemovePendapatanType = (type) => {
+    setCustomPendapatanTypes(prev => prev.filter(t => t.type !== type));
+    // Remove pending edits for this type
+    setPendingPendapatanEdits(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(key => {
+        if (key.endsWith(`::${type}`)) delete next[key];
+      });
+      return next;
+    });
+  }
+
+  const handleSavePendapatanEdits = async () => {
+    if (Object.keys(pendingPendapatanEdits).length === 0) return
+    setIsSavingPendapatan(true)
     try {
       const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
-      const promises = Object.values(pendingKontananEdits).map(edit =>
-        fetch(`${backendUrl}/payroll/locked/kontanan-edit`, {
+      const promises = Object.values(pendingPendapatanEdits).map(edit =>
+        fetch(`${backendUrl}/payroll/locked/pendapatan-lainnya-edit`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -209,7 +239,9 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             period_year: parseInt(activeYear),
             amount: edit.amount,
             gang_code: edit.gang_code,
-            division_code: finalDivision || ''
+            division_code: finalDivision || '',
+            income_type: edit.income_type,
+            income_name: edit.income_name
           })
         }).then(res => res.json())
       )
@@ -217,28 +249,47 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       const results = await Promise.all(promises)
       const failed = results.filter(r => !r.success)
       if (failed.length > 0) {
-        alert(`Gagal menyimpan ${failed.length} record kontanan.`)
+        alert(`Gagal menyimpan ${failed.length} record.`)
       } else {
-        setPendingKontananEdits({})
-        alert('Kontanan berhasil disimpan! Refresh data untuk melihat perubahan.')
-        // Force data refresh
+        setPendingPendapatanEdits({})
+        alert('Pendapatan Lainnya berhasil disimpan! Data akan di-refresh.')
         setRows([])
         setPinnedBottom([])
         dataInitRef.current = false
       }
     } catch (e) {
-      alert('Error menyimpan kontanan: ' + e.message)
+      alert('Error menyimpan: ' + e.message)
     } finally {
-      setIsSavingKontanan(false)
+      setIsSavingPendapatan(false)
     }
   }
 
-  // Refresh grid cells when kontanan edit mode toggles
+  // Fetch existing custom income types when period changes
+  useEffect(() => {
+    if (!authToken || !activeMonth || !activeYear) return;
+    (async () => {
+      try {
+        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
+        const res = await fetch(
+          `${backendUrl}/payroll/locked/pendapatan-lainnya-types?month=${activeMonth}&year=${activeYear}`,
+          { headers: { 'Authorization': authToken ? `Bearer ${authToken}` : '' } }
+        );
+        const json = await res.json();
+        if (json.success && json.types) {
+          setCustomPendapatanTypes(json.types);
+        }
+      } catch (e) {
+        console.error('[Report] Failed to fetch custom pendapatan types:', e);
+      }
+    })();
+  }, [authToken, activeMonth, activeYear])
+
+  // Refresh grid cells when pendapatan edit mode toggles
   useEffect(() => {
     if (gridRef.current && gridRef.current.api) {
       gridRef.current.api.redrawRows()
     }
-  }, [editModeKontanan])
+  }, [editModePendapatan, customPendapatanTypes])
 
   // Fetch job titles
   useEffect(() => {
@@ -427,12 +478,15 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
           cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
           gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
-          // [NEW] Pendapatan Lainnya (THR, Bonus) - untuk ditampilkan di header
+          // [DYNAMIC] Pendapatan Lainnya
           pendapatan_thr: Math.round(aggOtherIncomes('THR')),
           pendapatan_bonus: Math.round(aggOtherIncomes('BONUS')),
           pendapatan_custom: Math.round(aggOtherIncomes('CUSTOM')),
-          pendapatan_kontanan: agg('pendapatan_kontanan'),
-          pendapatan_lainnya: Math.round(aggOtherIncomes('THR') + aggOtherIncomes('BONUS') + aggOtherIncomes('CUSTOM')) + agg('pendapatan_kontanan'),
+          // Dynamic custom types aggregation
+          ...Object.fromEntries(
+            customPendapatanTypes.map(t => [`pendapatan_${t.type.toLowerCase()}`, agg(`pendapatan_${t.type.toLowerCase()}`)])
+          ),
+          pendapatan_lainnya: agg('pendapatan_lainnya'),
           premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
           pot_koreksi: agg('pot_koreksi'),
           total_premi: agg('total_premi'),
@@ -844,12 +898,15 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
               upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
               cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
               gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
-              // [NEW] Pendapatan Lainnya (THR, Bonus) - untuk ditampilkan di header
+              // [DYNAMIC] Pendapatan Lainnya
               pendapatan_thr: Math.round(aggOtherIncomesGrand('THR')),
               pendapatan_bonus: Math.round(aggOtherIncomesGrand('BONUS')),
               pendapatan_custom: Math.round(aggOtherIncomesGrand('CUSTOM')),
-              pendapatan_kontanan: agg('pendapatan_kontanan'),
-              pendapatan_lainnya: Math.round(aggOtherIncomesGrand('THR') + aggOtherIncomesGrand('BONUS') + aggOtherIncomesGrand('CUSTOM')) + agg('pendapatan_kontanan'),
+              // Dynamic custom types aggregation
+              ...Object.fromEntries(
+                customPendapatanTypes.map(t => [`pendapatan_${t.type.toLowerCase()}`, agg(`pendapatan_${t.type.toLowerCase()}`)])
+              ),
+              pendapatan_lainnya: agg('pendapatan_lainnya'),
               premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
               pot_koreksi: agg('pot_koreksi'),
               total_premi: agg('total_premi'),
@@ -997,7 +1054,10 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   // Enhanced column definitions with proper formatting
   const formatLeaf = useCallback((col) => {
     const cfg = { ...col, ...baseCol }
-    const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan', 'pendapatan_lainnya']
+    const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya',
+      // Dynamic custom pendapatan types
+      ...customPendapatanTypes.map(t => `pendapatan_${t.type.toLowerCase()}`)
+    ]
     const intFields = ['no', 'hari_kerja', 'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari', 'tidak_hadir_cth', 'tidak_hadir_alpa', 'jumlah_hk', 'masa_kerja_tahun', 'bunches_total', 'bunches_ripe', 'bunches_unripe', 'bunches_round', 'bunches_transactions']
     // lembur_jam removed from intFields - should preserve decimal values (e.g., 1.5 hours)
     const decimalFields = ['lembur_jam']
@@ -1175,11 +1235,14 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       cfg.cellClass = (cfg.cellClass || '') + ' cell-net-salary cell-accounting'
     }
 
-    // 7. Kontanan Edit Mode - make pendapatan_kontanan editable
-    if (f === 'pendapatan_kontanan') {
-      cfg.editable = (params) => params.context.editModeKontanan && !params.data?.isHeader && !params.data?.isTotal;
+    // 7. Dynamic Pendapatan Lainnya Edit Mode - make custom pendapatan columns editable
+    const customPendapatanField = f.startsWith('pendapatan_') && !['pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'].includes(f);
+    if (customPendapatanField) {
+      const fieldType = f.replace('pendapatan_', '').toUpperCase();
+      const typeInfo = (params) => (params.context.customPendapatanTypes || []).find(t => t.type === fieldType);
+      cfg.editable = (params) => params.context.editModePendapatan && !!typeInfo(params) && !params.data?.isHeader && !params.data?.isTotal;
       cfg.cellStyle = (params) => {
-        if (params.context.editModeKontanan && !params.data?.isHeader && !params.data?.isTotal) {
+        if (params.context.editModePendapatan && !!typeInfo(params) && !params.data?.isHeader && !params.data?.isTotal) {
           return {
             backgroundColor: '#ecfdf5',
             border: '1px solid #10b981',
@@ -1193,12 +1256,15 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         const newVal = parseFloat(params.newValue) || 0;
         const oldVal = parseFloat(params.oldValue) || 0;
         if (newVal !== oldVal) {
-          params.data.pendapatan_kontanan = newVal;
-          if (params.context.onKontananChange) {
-            params.context.onKontananChange(
+          params.data[f] = newVal;
+          const ti = typeInfo(params);
+          if (params.context.onPendapatanChange && ti) {
+            params.context.onPendapatanChange(
               params.data.nik,
               params.data.nama,
               params.data.gang_code,
+              ti.type,
+              ti.name,
               newVal
             );
           }
@@ -1211,10 +1277,11 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           return params.value ? new Intl.NumberFormat('id-ID').format(Math.round(params.value)) : '';
         }
         const val = Number(params.value) || 0;
+        const isEditable = params.context.editModePendapatan && !!typeInfo(params);
         return (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', height: '100%' }}>
             <span style={{ flex: 1, textAlign: 'right' }}>{val ? new Intl.NumberFormat('id-ID').format(Math.round(val)) : '0'}</span>
-            {params.context.editModeKontanan && (
+            {isEditable && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1224,7 +1291,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                   });
                 }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '11px', marginLeft: '4px' }}
-                title="Edit Kontanan"
+                title={`Edit ${(typeInfo(params) || {}).name || fieldType}`}
               >
                 ✏️
               </button>
@@ -1310,7 +1377,9 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     try {
       const neverHide = new Set([
         'no', 'nik', 'nama', 'jenis_kelamin', 'upah_bersih', 'jumlah_upah_kotor', 'total_tunjangan', 'total_premi', 'gaji_pokok', 'upah_pokok', 'hari_kerja', 'jumlah_hk',
-        'total_potongan', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan', 'pendapatan_lainnya'
+        'total_potongan', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya',
+        // Dynamic custom pendapatan types
+        ...customPendapatanTypes.map(t => `pendapatan_${t.type.toLowerCase()}`)
       ])
 
       // Add dynamic potongan fields to neverHide if they have data
@@ -1472,28 +1541,130 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             isDownloadingExcel={isDownloadingExcel}
             onDownloadExcel={handleDownloadDaftarUpahExcel}
           />
-          {/* Kontanan Edit Mode Toggle */}
-          <button
-            onClick={() => setEditModeKontanan(p => !p)}
-            style={{
-              marginLeft: '8px',
-              padding: '6px 14px',
-              borderRadius: '6px',
-              border: editModeKontanan ? '2px solid #10b981' : '1px solid #d1d5db',
-              backgroundColor: editModeKontanan ? '#ecfdf5' : '#fff',
-              color: editModeKontanan ? '#065f46' : '#374151',
-              cursor: 'pointer',
-              fontWeight: editModeKontanan ? '700' : '500',
-              fontSize: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.2s'
-            }}
-            title={editModeKontanan ? 'Nonaktifkan edit kontanan' : 'Aktifkan edit kontanan'}
-          >
-            💰 {editModeKontanan ? 'Kontanan ON' : 'Kontanan'}
-          </button>
+          {/* Pendapatan Lainnya Edit Mode Toggle + Add */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px', position: 'relative' }}>
+            <button
+              onClick={() => setEditModePendapatan(p => !p)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '6px',
+                border: editModePendapatan ? '2px solid #10b981' : '1px solid #d1d5db',
+                backgroundColor: editModePendapatan ? '#ecfdf5' : '#fff',
+                color: editModePendapatan ? '#065f46' : '#374151',
+                cursor: 'pointer',
+                fontWeight: editModePendapatan ? '700' : '500',
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s'
+              }}
+              title={editModePendapatan ? 'Nonaktifkan edit Pendapatan Lainnya' : 'Aktifkan edit Pendapatan Lainnya'}
+            >
+              💰 {editModePendapatan ? 'Pend. Lainnya ON' : 'Pend. Lainnya'}
+            </button>
+            {editModePendapatan && (
+              <button
+                onClick={() => setShowAddPendapatanPopup(p => !p)}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #10b981',
+                  backgroundColor: '#d1fae5',
+                  color: '#065f46',
+                  cursor: 'pointer',
+                  fontWeight: '700',
+                  fontSize: '14px',
+                  lineHeight: '1'
+                }}
+                title="Tambah kolom Pendapatan Lainnya baru"
+              >
+                +
+              </button>
+            )}
+            {/* Active custom types pills */}
+            {editModePendapatan && customPendapatanTypes.length > 0 && (
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {customPendapatanTypes.map(t => (
+                  <span key={t.type} style={{
+                    padding: '3px 8px',
+                    borderRadius: '12px',
+                    backgroundColor: '#d1fae5',
+                    color: '#065f46',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    {t.name}
+                    <button
+                      onClick={() => handleRemovePendapatanType(t.type)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991b1b', fontSize: '12px', padding: '0', lineHeight: '1' }}
+                      title={`Hapus kolom ${t.name}`}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Add Popup */}
+            {showAddPendapatanPopup && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: '6px',
+                backgroundColor: '#fff',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                padding: '12px',
+                zIndex: 1000,
+                minWidth: '220px'
+              }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '8px' }}>Tambah Pendapatan Lainnya</div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    value={newPendapatanName}
+                    onChange={e => setNewPendapatanName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddPendapatanType(newPendapatanName); }}
+                    placeholder="Nama kolom (misal: Kontanan)"
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '12px',
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    onClick={() => handleAddPendapatanType(newPendapatanName)}
+                    disabled={!newPendapatanName.trim()}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      backgroundColor: '#10b981',
+                      color: '#fff',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: newPendapatanName.trim() ? 'pointer' : 'not-allowed',
+                      opacity: newPendapatanName.trim() ? 1 : 0.5
+                    }}
+                  >
+                    Tambah
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowAddPendapatanPopup(false)}
+                  style={{ marginTop: '6px', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '11px' }}
+                >Tutup</button>
+              </div>
+            )}
+          </div>
         </div>
       }
     >
@@ -1573,7 +1744,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
             <AgGridReact
               ref={gridRef}
-              context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory, editModeKontanan, onKontananChange: handleKontananChange }}
+              context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory, editModePendapatan, customPendapatanTypes, onPendapatanChange: handlePendapatanChange }}
               columnDefs={columnDefs}
               rowData={rows}
               columnTypes={columnTypes}
@@ -1670,31 +1841,31 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             </div>
           )}
 
-          {/* Save Button for Kontanan Edits */}
-          {Object.keys(pendingKontananEdits).length > 0 && (
+          {/* Save Button for Pendapatan Lainnya Edits */}
+          {Object.keys(pendingPendapatanEdits).length > 0 && (
             <div className="report-save-bar" style={{ borderColor: '#10b981', backgroundColor: '#ecfdf5' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ fontSize: '18px' }}>💰</span>
                 <span style={{ color: '#065f46', fontWeight: '600' }}>
-                  Pending: {Object.keys(pendingKontananEdits).length} Kontanan telah diubah
+                  Pending: {Object.keys(pendingPendapatanEdits).length} Pendapatan Lainnya telah diubah
                 </span>
               </div>
               <div className="report-save-bar-actions">
                 <button
                   className="btn btn-secondary"
-                  onClick={() => setPendingKontananEdits({})}
-                  disabled={isSavingKontanan}
+                  onClick={() => setPendingPendapatanEdits({})}
+                  disabled={isSavingPendapatan}
                   style={{ backgroundColor: 'white' }}
                 >
                   Batal
                 </button>
                 <button
                   className="btn btn-primary"
-                  onClick={handleSaveKontananEdits}
-                  disabled={isSavingKontanan}
+                  onClick={handleSavePendapatanEdits}
+                  disabled={isSavingPendapatan}
                   style={{ backgroundColor: '#10b981', color: '#fff', borderColor: '#059669' }}
                 >
-                  {isSavingKontanan ? 'Menyimpan...' : '💾 SIMPAN KONTANAN'}
+                  {isSavingPendapatan ? 'Menyimpan...' : '💾 SIMPAN PENDAPATAN'}
                 </button>
               </div>
             </div>

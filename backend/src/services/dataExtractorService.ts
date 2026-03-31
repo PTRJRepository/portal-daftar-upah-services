@@ -311,7 +311,7 @@ export class DataExtractorService {
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
 
-        console.log(`[DataExtractor] Current period: ${currentMonth}/${currentYear}, Selected: ${month}/${year}, IsHistorical: ${isHistorical}, useHistoryDb: ${useHistoryDb}, gangPrefix: ${gangPrefix}`);
+
 
         // --- DEEP HISTORY INTERCEPTOR ---
         // For development/debugging as requested, bypass the interceptor to allow getPremi logic to run for History
@@ -485,14 +485,10 @@ export class DataExtractorService {
         // So we fetch other incomes from the current month (data is now in same month after migration)
         // Jan/Feb still use their respective months (no migration needed)
         const otherIncomeMonth = month;
-        console.log(`[THR Logic] Processing month ${month}/${year}, fetching other incomes from month ${otherIncomeMonth} (migrated data in same month)`);
         const dbOtherIncomes = await OtherIncomesService.getIncomes(year, otherIncomeMonth, divisionCode, gangCode);
-        if (dbOtherIncomes.length > 0) {
-            const totalThr = dbOtherIncomes.filter(i => i.income_type === 'THR').reduce((sum, i) => sum + Number(i.amount), 0);
-            console.log(`[THR Logic] Found ${dbOtherIncomes.length} records, total THR: Rp ${totalThr.toLocaleString()}`);
-        } else {
-            console.log(`[THR Logic] ⚠️ NO other income records found for ${otherIncomeMonth}/${year}, div=${divisionCode}, gang=${gangCode}`);
-        }
+        // [DEBUG] Check if THR records are fetched
+        const thrCount = dbOtherIncomes.filter((i: any) => i.income_type === 'THR').length;
+        console.log(`[THR FIX] dbOtherIncomes total=${dbOtherIncomes.length}, THR=${thrCount}, gang=${gangCode}`);
         // ==============================================================================
         // [THR FIX] Pendapatan Lainnya (THR, Bonus, Custom) Storage & Lookup Strategy
         // ==============================================================================
@@ -635,11 +631,7 @@ export class DataExtractorService {
                 dbOtherIncomesByCleanName.get(dbCleanName)!.push(incomeEntry);
             }
         }
-        console.log(`[THR Logic] dbOtherIncomesByNik map size: ${dbOtherIncomesByNik.size} keys`);
-        console.log(`[THR Logic] dbOtherIncomesByNikName map size: ${dbOtherIncomesByNikName.size} keys (duplicate NIK disambiguation)`);
-        console.log(`[THR Logic] dbTaxableOtherIncomesByNik map size: ${dbTaxableOtherIncomesByNik.size} keys`);
-        console.log(`[THR Logic] dbTaxableOtherIncomesByNikName map size: ${dbTaxableOtherIncomesByNikName.size} keys`);
-        console.log(`[THR Logic] dbOtherIncomesByCleanName map size: ${dbOtherIncomesByCleanName.size} keys (Level 4 name fallback)`);
+
 
         // Fetch Master PTKP records for the current year
         const { ptkpTaxService } = await import('./ptkpTaxService');
@@ -688,16 +680,7 @@ export class DataExtractorService {
             const total_premi_temp = Object.values(empPremi).reduce((a, b) => a + b, 0);
             const total_earnings = (attData.total_amount_rp || 0) + total_premi_temp + empLemburDetails.jumlah + empJabatan + empMasaKerjaJumlah;
 
-            if (emp.emp_code.includes('474')) {
-                console.log(`[DEBUG] F0474 Filter Check:
-                    HK: ${hk}
-                    Cuti Minggu: ${empCuti.cuti_minggu}
-                    Cuti Nasional: ${empCuti.cuti_nasional}
-                    Effective HK: ${effective_hk}
-                    Total Earnings: ${total_earnings} (Amount: ${attData.total_amount_rp}, Premi: ${total_premi_temp}, Lembur: ${empLemburDetails.jumlah})
-                    Action: ${effective_hk <= 0 && total_earnings <= 0 ? 'SKIP' : 'KEEP'}
-                `);
-            }
+
 
             // Filter: Skip if Effective HK is 0 or less AND Total Earnings is 0 or less
             if (effective_hk <= 0 && total_earnings <= 0) continue;
@@ -919,6 +902,9 @@ export class DataExtractorService {
             //   4. CLEANED NAME — last resort (karyawan pindahan, NIK berbeda total)
             const lookupByNik = (map: Map<string, number>, nameMap?: Map<string, number>) => {
                 let val = 0;
+                if (empCodeKey === 'B0065') {
+                    console.log(`[THR FIX DEBUG] lookupByNik: empNik=${empNik}, map.size=${map.size}, map.has(empNik)=${map.has(empNik)}, map.get(empNik)=${map.get(empNik)}`);
+                }
                 // Level 1: NIK (prioritas utama — semua THR disimpan by NIK)
                 if (empNik) {
                     val = map.get(empNik) || 0;
@@ -982,9 +968,28 @@ export class DataExtractorService {
             const taxable_pendapatan_thr = getTaxableOiByType('THR', empTaxableOtherIncomesAll);
             const taxable_pendapatan_bonus = getTaxableOiByType('BONUS', empTaxableOtherIncomesAll);
             const taxable_pendapatan_custom = getTaxableOiByType('CUSTOM', empTaxableOtherIncomesAll);
-            const taxable_pendapatan_kontanan = getTaxableOiByType('KONTANAN', empTaxableOtherIncomesAll);
-            const taxable_pendapatan_lainnya = taxable_pendapatan_thr + taxable_pendapatan_bonus + taxable_pendapatan_custom + taxable_pendapatan_kontanan;
-            const pendapatan_lainnya_amount = getOiByType('THR') + getOiByType('BONUS') + getOiByType('CUSTOM') + getOiByType('KONTANAN');
+
+            // [DYNAMIC] Discover all non-standard income types and sum them
+            const standardTypes = new Set(['THR', 'BONUS', 'CUSTOM']);
+            const customTypeAmounts: Record<string, number> = {};
+            for (const oi of empOtherIncomes) {
+                const oiType = (oi.type || '').toUpperCase();
+                if (oiType && !standardTypes.has(oiType)) {
+                    customTypeAmounts[oiType] = (customTypeAmounts[oiType] || 0) + Number(oi.amount || 0);
+                }
+            }
+            const customTypesTotal = Object.values(customTypeAmounts).reduce((sum, v) => sum + v, 0);
+
+            // Taxable for custom types
+            let taxable_custom_types_total = 0;
+            for (const oi of empTaxableOtherIncomesAll) {
+                const oiType = (oi.type || '').toUpperCase();
+                if (oiType && !standardTypes.has(oiType)) {
+                    taxable_custom_types_total += Number(oi.amount || 0);
+                }
+            }
+            const taxable_pendapatan_lainnya = taxable_pendapatan_thr + taxable_pendapatan_bonus + taxable_pendapatan_custom + taxable_custom_types_total;
+            const pendapatan_lainnya_amount = getOiByType('THR') + getOiByType('BONUS') + getOiByType('CUSTOM') + customTypesTotal;
 
             // [FIXED] PREMI_PPH is an ADDITION (penambah), NOT a deduction
             // [FIXED] pot_koreksi is ONLY in Potongan Upah Kotor, NOT in total_potongan
@@ -1167,7 +1172,12 @@ export class DataExtractorService {
                 pendapatan_thr: getOiByType('THR'),
                 pendapatan_bonus: getOiByType('BONUS'),
                 pendapatan_custom: getOiByType('CUSTOM'),
-                pendapatan_kontanan: getOiByType('KONTANAN'),
+                // [DYNAMIC] Add pendapatan_{type} for each custom income type
+                ...Object.fromEntries(
+                    Object.entries(customTypeAmounts).map(([type, amount]) => [
+                        `pendapatan_${type.toLowerCase()}`, amount
+                    ])
+                ),
                 pendapatan_lainnya: pendapatan_lainnya_amount,
                 // [NEW] Pendapatan Lainnya shown as a deduction in Potongan Upah Bersih section
                 pot_pendapatan_lainnya: pendapatan_lainnya_amount,
@@ -1218,7 +1228,7 @@ export class DataExtractorService {
 
     public async getEmployees(gangCondition: string, month: number, year: number, serverProfile?: string, isHistorical: boolean = false, gangCodeInput: string | null = null): Promise<EmployeeRow[]> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
-        console.log(`[DataExtractor] getEmployees: serverProfile=${serverProfile || 'undefined (using this.db)'}, month=${month}, year=${year}, isHistorical=${isHistorical}`);
+
 
         let rows: any[];
 
@@ -1231,7 +1241,7 @@ export class DataExtractorService {
             accMonth = calculatedAccMonth;
             accYear = calculatedAccYear;
 
-            console.log(`[DataExtractor] Historical query: calendar ${month}/${year} -> AccMonth ${accMonth}/AccYear ${accYear}`);
+
 
             // For historical path: g = PR_GANG (has GangID, Description, no GangCode)
             // Override gangCondition if gangCodeInput is provided
@@ -1269,7 +1279,7 @@ export class DataExtractorService {
             `, [accMonth, accYear]);
         } else {
             // For current/future data, use HR_GANGLN (current active data)
-            console.log(`[DataExtractor] Current query: using HR_GANGLN for ${month}/${year}`);
+
 
             rows = await db.query<any>(`
                 SELECT DISTINCT
@@ -1297,12 +1307,7 @@ export class DataExtractorService {
             // [FALLBACK] If no data in base table (HR_GANGLN) for current period,
             // try ARC table (PR_GANGLN_ARC) as fallback - data may have been archived
             if (rows.length === 0) {
-                console.log(`[DataExtractor] No data in HR_GANGLN for current period ${month}/${year}, falling back to PR_GANGLN_ARC...`);
-
-
-
                 const { accMonth: fallbackAccMonth, accYear: fallbackAccYear } = currentPeriodService.calendarToAccMonth(month, year);
-                console.log(`[DataExtractor] ARC Fallback: calendar ${month}/${year} -> AccMonth ${fallbackAccMonth}/AccYear ${fallbackAccYear}`);
 
                 // Build ARC-compatible gang condition (PR_GANG uses GangID/Description, not GangCode)
                 let arcCondition = gangCondition;
@@ -1335,10 +1340,8 @@ export class DataExtractorService {
                     ORDER BY emp_code
                 `, [fallbackAccMonth, fallbackAccYear]);
 
-                if (rows.length > 0) {
-                    console.log(`[DataExtractor] ARC Fallback successful: found ${rows.length} employees from PR_GANGLN_ARC`);
-                } else {
-                    console.log(`[DataExtractor] ARC Fallback: still no data found in PR_GANGLN_ARC`);
+                if (rows.length === 0) {
+                    console.log(`[DataExtractor] ARC Fallback: no data found for ${month}/${year}`);
                 }
             }
         }

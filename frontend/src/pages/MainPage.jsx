@@ -24,6 +24,34 @@ const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
+// LocalStorage keys for persisting MainPage filter selections
+const STORAGE_KEYS = {
+    DIVISION: 'payroll_mainpage_division',
+    GANG: 'payroll_mainpage_gang',
+    GANG_PREFIX: 'payroll_mainpage_gang_prefix'
+}
+
+// Load persisted value from localStorage, returns null if not found
+const loadFromStorage = (key) => {
+    try {
+        const val = localStorage.getItem(key)
+        return val !== null ? val : null
+    } catch {
+        return null
+    }
+}
+
+// Save value to localStorage
+const saveToStorage = (key, value) => {
+    try {
+        if (value) {
+            localStorage.setItem(key, value)
+        } else {
+            localStorage.removeItem(key)
+        }
+    } catch { /* ignore */ }
+}
+
 export default function MainPage({ lockedDiv = null }) {
   const { user, token, logout, lockedDivision } = useAuth()
 
@@ -52,9 +80,9 @@ export default function MainPage({ lockedDiv = null }) {
   const currentProductionMonth = currentPeriodData?.month
   const currentProductionYear = currentPeriodData?.year
 
-  const [division, setDivision] = useState('')
-  const [gang, setGang] = useState('')
-  const [gangPrefix, setGangPrefix] = useState('')
+  const [division, setDivision] = useState(() => loadFromStorage(STORAGE_KEYS.DIVISION) || '')
+  const [gang, setGang] = useState(() => loadFromStorage(STORAGE_KEYS.GANG) || '')
+  const [gangPrefix, setGangPrefix] = useState(() => loadFromStorage(STORAGE_KEYS.GANG_PREFIX) || '1') // Default to Group 1
 
   const [gangs, setGangs] = useState([])
   const [gangLoading, setGangLoading] = useState(false)
@@ -178,7 +206,7 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Handler for viewing employee detail (called from PayrollGrid context menu)
   const handleViewEmployeeDetail = (employeeData) => {
-    console.log('[MainPage] Opening detail tab for employee:', employeeData)
+
 
     // Prefer emp_code (Plantware code like B0075) over NIK (KTP number)
     const empCode = employeeData.emp_code || employeeData.EmpCode || employeeData.nik || employeeData.NIK
@@ -207,7 +235,7 @@ export default function MainPage({ lockedDiv = null }) {
       try {
         const divisions = await fetchDivisions(token)
         setAllDivisions(divisions || [])
-        console.log('[MainPage] Loaded divisions from API:', divisions)
+
       } catch (e) {
         console.error('[MainPage] Failed to load divisions from API:', e)
         setAllDivisions([])
@@ -231,34 +259,36 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Initialize Division from User or first available
   useEffect(() => {
+    // For LOCKED users (non-admin with locked division), always use the locked value
+    // For ADMIN users, try localStorage first, then fallback
+
     let initialDivision = ''
 
-    // Priority 1: External locked division (from prop or auth context)
+    // Locked divisions always take priority (cannot be overridden by localStorage)
     if (externalLockedDiv) {
-      console.log(`[MainPage] Using external locked division = ${externalLockedDiv}`)
       initialDivision = externalLockedDiv
-    }
-    // Priority 2: PRODUCTION MODE - Division is LOCKED from localStorage
-    else if (inProdMode && prodDivision) {
-      console.log(`[MainPage] Prod mode: Using locked division = ${prodDivision}`)
+    } else if (inProdMode && prodDivision) {
       initialDivision = prodDivision
-    }
-    // Priority 3: Non-Admin User - Auto-select from Token/Profile (New Rule)
-    else if (!isAdminUser && (user?.divisions?.length > 0 || user?.divisi)) {
-      const userDiv = user?.divisions?.[0] || user?.divisi
-      console.log(`[MainPage] Non-Admin: Auto-selecting user division = ${userDiv}`)
-      initialDivision = userDiv
-    }
-    // Priority 4: Try first division from API list (Fallback for Admins)
-    else if (allDivisions.length > 0) {
-      initialDivision = allDivisions[0]
-    }
-    // Priority 5: General Fallback
-    else if (user?.divisions?.length > 0) {
-      initialDivision = user.divisions[0]
-    }
-    else if (user?.divisi) {
-      initialDivision = user.divisi
+    } else if (!isAdminUser && (user?.divisions?.length > 0 || user?.divisi)) {
+      // Non-admin user with assigned divisions
+      initialDivision = user?.divisions?.[0] || user?.divisi
+    } else {
+      // Admin users: try persisted value from localStorage first
+      const persistedDivision = loadFromStorage(STORAGE_KEYS.DIVISION)
+      if (persistedDivision) {
+        initialDivision = persistedDivision
+      }
+      // Fallback to first division from API
+      else if (allDivisions.length > 0) {
+        initialDivision = allDivisions[0]
+      }
+      // General fallback
+      else if (user?.divisions?.length > 0) {
+        initialDivision = user.divisions[0]
+      }
+      else if (user?.divisi) {
+        initialDivision = user.divisi
+      }
     }
 
     // Only set if we have a value and it's different (or initial load)
@@ -273,7 +303,8 @@ export default function MainPage({ lockedDiv = null }) {
       if (!division || !token) {
         setGangs([])
         setGang('')
-        setGangPrefix('')
+        // Only reset gangPrefix to default '1' if it's empty
+        setGangPrefix(prev => prev || '1')
         return
       }
       setGangLoading(true)
@@ -281,7 +312,7 @@ export default function MainPage({ lockedDiv = null }) {
         // Use locked service endpoint when in locked mode
         let list
         if (isLockedMode) {
-          console.log('[MainPage] Loading gangs using locked service for division:', division)
+
           list = await getLockedGangs(token, division)
         } else {
           list = await fetchGangs(token, division, null, true)
@@ -289,8 +320,23 @@ export default function MainPage({ lockedDiv = null }) {
 
         if (list && list.length > 0) {
           setGangs(list)
-          // Default to "ALL" when division changes, or first gang if needed
-          if (!gang) setGang('ALL')
+          // Validate persisted gang exists in new list; if not, default to "ALL"
+          // gangPrefix stays at persisted value (default '1')
+          if (!gang || !list.find(g => g.gang_code === gang)) {
+            setGang('ALL')
+          }
+          // Validate gangPrefix exists in new division; if not, reset to first available prefix
+          const availableGroupPrefixes = [...new Set(
+            list.map(g => {
+              const gc = g.gang_code.trim().toUpperCase()
+              if (gc.startsWith('K2')) return '1'
+              const match = gc.match(/\d+/)
+              return match ? match[0] : null
+            }).filter(Boolean)
+          )]
+          if (gangPrefix && !availableGroupPrefixes.includes(gangPrefix)) {
+            setGangPrefix(availableGroupPrefixes[0] || '')
+          }
         } else {
           setGangs([])
           setGang('ALL')
@@ -310,7 +356,8 @@ export default function MainPage({ lockedDiv = null }) {
   const handleDivisionChange = (newDivision) => {
     setDivision(newDivision)
     setGang('ALL') // Default to ALL for operational
-    setGangPrefix('') // Reset Asistensi filter
+    // Keep gangPrefix at '1' (default) instead of clearing to all
+    setGangPrefix('1')
     setGangs([]) // Clear gangs list
     setActiveMatrixView(null) // Reset matrix view when division changes
   }
@@ -321,6 +368,19 @@ export default function MainPage({ lockedDiv = null }) {
       setActiveMatrixView(null)
     }
   }, [gang])
+
+  // Persist filter selections to localStorage
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.DIVISION, division)
+  }, [division])
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.GANG, gang)
+  }, [gang])
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.GANG_PREFIX, gangPrefix)
+  }, [gangPrefix])
 
   // Filter gang list by current asistensi prefix
   const filteredGangs = useMemo(() => {
@@ -732,14 +792,16 @@ export default function MainPage({ lockedDiv = null }) {
                         const selectedGang = e.target.value;
                         setGang(selectedGang);
 
-                        // If selecting "SEMUA GANG", reset group filter too (show ALL gangs in division)
-                        if (selectedGang === 'ALL') {
-                          setGangPrefix('');  // Clear group filter
-                        } else {
-                          // If selecting a specific gang, auto-update gangPrefix to match
+                        // When selecting a specific gang, auto-update gangPrefix to match that gang's group
+                        // When selecting "SEMUA GANG", keep gangPrefix at '1' (default Group 1)
+                        if (selectedGang !== 'ALL') {
                           const groupOfGang = getAsistensi(selectedGang);
-                          setGangPrefix(groupOfGang || '');
+                          if (groupOfGang) {
+                            setGangPrefix(groupOfGang);
+                          }
                         }
+                        // Do NOT reset gangPrefix to '' when selecting SEMUA GANG
+                        // Keep it at '1' (Group 1) as the default view
                       }}
                       disabled={gangLoading}
                       onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
@@ -1204,16 +1266,7 @@ export default function MainPage({ lockedDiv = null }) {
 
         {/* Center Controls */}
         <div className="flex-center gap-4" style={{ flex: 1, justifyContent: 'center', maxWidth: '1000px', padding: '0 16px' }}>
-          {/* DEBUG: Log props for ReportToolbar */}
-          {console.log('[MainPage] ReportToolbar props:', {
-            usePeriodSlider,
-            currentProductionMonth,
-            currentProductionYear,
-            isHistorical,
-            month,
-            year,
-            currentPeriodData
-          })}
+
           <ReportToolbar
             month={month}
             year={year}

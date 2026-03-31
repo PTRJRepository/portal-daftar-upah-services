@@ -110,7 +110,9 @@ export default function HrInfoPage({
                 setCheckrollData(data)
             } catch (e) {
                 console.error('Failed to load checkroll data:', e)
-                setError('Gagal memuat data profil: ' + (e.message || e))
+                // Show specific error message from backend (e.g., kerani division restriction)
+                const backendError = e?.response?.data?.error || e?.message || String(e);
+                setError('Gagal memuat data profil: ' + backendError)
             } finally {
                 setLoading(false)
             }

@@ -26,7 +26,7 @@ export interface Employee {
     status?: string;
     employee_type?: string;
     birth_date?: string; // DOB from HR_EMPLOYEE
-    join_date?: string;  // AppJoinGrpDate from HR_EMPLOYEE
+    join_date?: string;
 }
 
 // Division to GangCode prefix mapping
@@ -76,9 +76,12 @@ export class EmployeeRepository {
         const { skip = 0, limit = 100, gangCode, locCode, division, religion, status } = options;
 
         try {
+            console.log(`[EmployeeRepository] list() called with:`, { gangCode, division, religion, status, skip, limit });
             const gc = gangCode?.trim().toUpperCase() || null;
 
             let employees: Employee[] = [];
+
+            console.log(`[EmployeeRepository] gc=${gc}, going to ${gc === "ALL" || !gc ? "ALL" : "SPECIFIC"} branch`);
 
             if (gc === "ALL" || !gc) {
                 // Fetch all or by division
@@ -104,8 +107,7 @@ export class EmployeeRepository {
                         e.Religion AS religion,
                         e.Status AS status,
                         e.HREmpType AS employee_type,
-                        CONVERT(VARCHAR, e.DOB, 23) AS birth_date,
-                        CONVERT(VARCHAR, e.AppJoinGrpDate, 23) AS join_date
+                        CONVERT(VARCHAR, e.DOB, 23) AS birth_date
                     FROM HR_EMPLOYEE e
                     JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                     LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
@@ -125,8 +127,7 @@ export class EmployeeRepository {
                     religion: r.religion?.trim() || "",
                     status: r.status?.trim() || "",
                     employee_type: r.employee_type?.trim() || "",
-                    birth_date: r.birth_date || undefined,
-                    join_date: r.join_date || undefined
+                    birth_date: r.birth_date || undefined
                 }));
             } else {
                 // Specific gang
@@ -142,8 +143,7 @@ export class EmployeeRepository {
                         e.Religion AS religion,
                         e.Status AS status,
                         e.HREmpType AS employee_type,
-                        CONVERT(VARCHAR, e.DOB, 23) AS birth_date,
-                        CONVERT(VARCHAR, e.AppJoinGrpDate, 23) AS join_date
+                        CONVERT(VARCHAR, e.DOB, 23) AS birth_date
                     FROM HR_EMPLOYEE e
                     JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                     LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
@@ -162,8 +162,7 @@ export class EmployeeRepository {
                     religion: r.religion?.trim() || "",
                     status: r.status?.trim() || "",
                     employee_type: r.employee_type?.trim() || "",
-                    birth_date: r.birth_date || undefined,
-                    join_date: r.join_date || undefined
+                    birth_date: r.birth_date || undefined
                 }));
             }
 
@@ -185,8 +184,11 @@ export class EmployeeRepository {
                 employees = employees.filter(e => (e.status || '').toUpperCase() === statClean);
             }
 
+            console.log(`[EmployeeRepository] Query returned ${rows.length} raw rows`);
             // Apply pagination
-            return employees.slice(skip, skip + limit);
+            const result = employees.slice(skip, skip + limit);
+            console.log(`[EmployeeRepository] Returning ${result.length} employees`);
+            return result;
         } catch (e) {
             console.error("[EmployeeRepository] list failed:", e);
             return [];
@@ -304,8 +306,7 @@ export class EmployeeRepository {
                     e.Status AS status,
                     e.HREmpType AS employee_type,
                     p.PayRate as upah_dasar,
-                    CONVERT(VARCHAR, e.DOB, 23) AS birth_date,
-                    CONVERT(VARCHAR, e.AppJoinGrpDate, 23) AS join_date
+                    CONVERT(VARCHAR, e.DOB, 23) AS birth_date
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                 LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
@@ -325,8 +326,7 @@ export class EmployeeRepository {
                 status: r.status?.trim() || "",
                 employee_type: r.employee_type?.trim() || "",
                 upah_dasar: r.upah_dasar || 0,
-                birth_date: r.birth_date || undefined,
-                join_date: r.join_date || undefined
+                birth_date: r.birth_date || undefined
             }));
         } catch (e) {
             console.error("[EmployeeRepository] search failed:", e);

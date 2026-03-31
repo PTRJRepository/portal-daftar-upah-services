@@ -248,8 +248,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                     'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
                     'upah_bersih', 'koreksi_hk',
-                    // Pendapatan Lainnya
-                    'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan',
+                    // Pendapatan Lainnya (standard types)
+                    'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
                     'pendapatan_lainnya', 'pot_pendapatan_lainnya',
                     // Harvest items
                     'bunches_total', 'bunches_ripe', 'bunches_unripe',
@@ -316,20 +316,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // Calculate grand total for the entire division
             const grandTotal = calculateTotals(result.data_rows);
 
-            // DEBUG: Log response data
-            console.log("[DEBUG] dynamic_potongan_headers:", result.dynamic_potongan_headers);
-            console.log("[DEBUG] potongan_title_map:", result.potongan_title_map);
-            console.log("[DEBUG] First row keys:", result.data_rows.length > 0 ? Object.keys(result.data_rows[0]).slice(0, 50) : []);
-            // Check if any row has PREMI_PPH
-            const hasPremiPph = result.data_rows.some((row: any) => row.PREMI_PPH !== undefined && row.PREMI_PPH !== 0);
-            console.log("[DEBUG] Has PREMI_PPH in rows:", hasPremiPph);
-            if (hasPremiPph) {
-                const premiPphRows = result.data_rows.filter((r: any) => r.PREMI_PPH && r.PREMI_PPH > 0);
-                console.log("[DEBUG] Rows with PREMI_PPH:", premiPphRows.length);
-                if (premiPphRows.length > 0) {
-                    console.log("[DEBUG] Sample PREMI_PPH row:", premiPphRows[0].nama, premiPphRows[0].PREMI_PPH);
-                }
-            }
+
 
             return {
                 division: divisionCode,
@@ -390,15 +377,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 const { divisionDefinition } = await import("../services/divisionDefinition");
                 const requestedDiv = divisionDefinition.resolveDivisionCode(String(divisionCode).trim().toUpperCase());
 
-                console.log(`[PayrollRoutes] KERANI permission check: user=${currentUser.username}, raw divisions=${JSON.stringify(currentUser.divisions)}, requestedDiv=${requestedDiv} (from ${divisionCode})`);
+
 
                 const hasPermission = currentUser.divisions.some(d => {
                     // Also normalize user's division using resolveDivisionCode
                     const div = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
                     const match = div === requestedDiv;
-                    if (match) {
-                        console.log(`[PayrollRoutes] Permission GRANTED: ${d} -> ${div} matches ${requestedDiv}`);
-                    }
+
                     return match;
                 });
 
@@ -440,7 +425,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const gangPrefix = query.gang_prefix;
 
             // Use Config.DB_PROFILE for payroll data (main payroll database)
-            console.log(`[PayrollRoutes] locked/report/raw-tree calling extractPayrollData with ${Config.DB_PROFILE}, includeVirtual=${includeVirtual}, useHistoryDb=${useHistoryDb}, gangPrefix=${gangPrefix}`);
+
             const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix);
 
             // Helper function to calculate totals for a list of employees
@@ -463,8 +448,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                     'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
                     'upah_bersih', 'koreksi_hk',
-                    // Pendapatan Lainnya
-                    'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontanan',
+                    // Pendapatan Lainnya (standard types)
+                    'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
                     'pendapatan_lainnya', 'pot_pendapatan_lainnya'
                 ];
 
@@ -501,6 +486,15 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                                 totals[key] += val;
                             }
                         }
+
+                        // Sum dynamic pendapatan_* fields (custom income types like pendapatan_kontanan, pendapatan_insentif)
+                        if (key.startsWith('pendapatan_') && !numericFields.includes(key)) {
+                            const val = emp[key];
+                            if (val !== null && val !== undefined && typeof val === 'number') {
+                                if (!totals[key]) totals[key] = 0;
+                                totals[key] += val;
+                            }
+                        }
                     }
                 }
 
@@ -527,20 +521,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // Calculate grand total for the entire division
             const grandTotal = calculateTotals(result.data_rows);
 
-            // DEBUG: Log response data
-            console.log("[DEBUG] dynamic_potongan_headers:", result.dynamic_potongan_headers);
-            console.log("[DEBUG] potongan_title_map:", result.potongan_title_map);
-            console.log("[DEBUG] First row keys:", result.data_rows.length > 0 ? Object.keys(result.data_rows[0]).slice(0, 50) : []);
-            // Check if any row has PREMI_PPH
-            const hasPremiPph = result.data_rows.some((row: any) => row.PREMI_PPH !== undefined && row.PREMI_PPH !== 0);
-            console.log("[DEBUG] Has PREMI_PPH in rows:", hasPremiPph);
-            if (hasPremiPph) {
-                const premiPphRows = result.data_rows.filter((r: any) => r.PREMI_PPH && r.PREMI_PPH > 0);
-                console.log("[DEBUG] Rows with PREMI_PPH:", premiPphRows.length);
-                if (premiPphRows.length > 0) {
-                    console.log("[DEBUG] Sample PREMI_PPH row:", premiPphRows[0].nama, premiPphRows[0].PREMI_PPH);
-                }
-            }
+
 
             return {
                 division: divisionCode,
@@ -603,57 +584,59 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             remarks: t.Optional(t.String())
         })
     })
-    // --- Locked Kontanan Edit ---
-    .post("/locked/kontanan-edit", async ({ body, set, currentUser }) => {
+    // --- Locked Pendapatan Lainnya Edit (Generic: Kontanan, Insentif, etc.) ---
+    .post("/locked/pendapatan-lainnya-edit", async ({ body, set, currentUser }) => {
         try {
-            // PERMISSION CHECK
             if (!currentUser) {
                 set.status = 401;
                 return { error: "Unauthorized" };
             }
 
-            const { OtherIncomesService } = await import("../services/otherIncomesService");
             const { Database } = await import("../db/client");
             const data = body as any;
 
             const db = Database.getExtendedInstance();
             const parsedAmount = parseFloat(data.amount?.toString()) || 0;
+            const incomeType = String(data.income_type || '').toUpperCase().trim().replace(/\s+/g, '_');
+            const incomeName = String(data.income_name || data.income_type || '').trim();
 
-            // Look for existing KONTANAN record for this NIK in this period
+            if (!incomeType) {
+                set.status = 400;
+                return { error: "income_type is required" };
+            }
+
+            // Look for existing record for this NIK + income_type in this period
             const existing = await db.query(`
                 SELECT id FROM employee_other_incomes 
-                WHERE nik = ? AND period_year = ? AND period_month = ? AND income_type = 'KONTANAN'
-            `, [data.nik, data.period_year, data.period_month]);
+                WHERE nik = ? AND period_year = ? AND period_month = ? AND income_type = ?
+            `, [data.nik, data.period_year, data.period_month, incomeType]);
 
             if (existing && existing.length > 0) {
                 if (parsedAmount === 0) {
-                    // Delete if amount is 0
                     await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [existing[0].id]);
-                    return { success: true, action: 'deleted', message: "Kontanan removed." };
+                    return { success: true, action: 'deleted', message: `${incomeName} removed.` };
                 } else {
-                    // Update existing
                     await db.query(`
                         UPDATE employee_other_incomes 
-                        SET amount = ?, emp_name = ?, gang_code = ?, division_code = ?, updated_at = GETDATE()
+                        SET amount = ?, emp_name = ?, gang_code = ?, division_code = ?, income_name = ?, updated_at = GETDATE()
                         WHERE id = ?
-                    `, [parsedAmount, data.emp_name, data.gang_code, data.division_code || null, existing[0].id]);
-                    return { success: true, action: 'updated', id: existing[0].id, message: "Kontanan updated." };
+                    `, [parsedAmount, data.emp_name, data.gang_code, data.division_code || null, incomeName, existing[0].id]);
+                    return { success: true, action: 'updated', id: existing[0].id, message: `${incomeName} updated.` };
                 }
             } else {
                 if (parsedAmount === 0) {
                     return { success: true, action: 'skipped', message: "Zero amount, nothing saved." };
                 }
-                // Insert new
-                const result = await db.query(`
+                await db.query(`
                     INSERT INTO employee_other_incomes (
                         nik, emp_name, division_code, gang_code, period_year, period_month,
                         income_type, income_name, amount, is_paid_in_thp, is_taxable
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'KONTANAN', 'Kontanan', ?, 1, 0)
-                `, [data.nik, data.emp_name, data.division_code || null, data.gang_code, data.period_year, data.period_month, parsedAmount]);
-                return { success: true, action: 'inserted', message: "Kontanan saved." };
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+                `, [data.nik, data.emp_name, data.division_code || null, data.gang_code, data.period_year, data.period_month, incomeType, incomeName, parsedAmount]);
+                return { success: true, action: 'inserted', message: `${incomeName} saved.` };
             }
         } catch (e: any) {
-            console.error("[PayrollRoutes] locked/kontanan-edit error:", e);
+            console.error("[PayrollRoutes] locked/pendapatan-lainnya-edit error:", e);
             set.status = 500;
             return { success: false, error: e.message };
         }
@@ -665,8 +648,45 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             period_year: t.Number(),
             amount: t.Number(),
             gang_code: t.String(),
-            division_code: t.Optional(t.String())
+            division_code: t.Optional(t.String()),
+            income_type: t.String(),
+            income_name: t.Optional(t.String())
         })
+    })
+    // --- Locked Pendapatan Lainnya Custom Types ---
+    .get("/locked/pendapatan-lainnya-types", async ({ query, set, currentUser }): Promise<any> => {
+        try {
+            if (!currentUser) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            const { Database } = await import("../db/client");
+            const db = Database.getExtendedInstance();
+            const month = parseInt(query.month as string) || new Date().getMonth() + 1;
+            const year = parseInt(query.year as string) || new Date().getFullYear();
+
+            // Fetch distinct custom income types for this period
+            // Exclude standard types (THR, BONUS, CUSTOM) that come from the OtherIncomes bulk system
+            const rows = await db.query<{ income_type: string; income_name: string }>(`
+                SELECT DISTINCT income_type, income_name 
+                FROM employee_other_incomes
+                WHERE period_year = ? AND period_month = ?
+                  AND income_type NOT IN ('THR', 'BONUS', 'CUSTOM')
+                ORDER BY income_type
+            `, [year, month]);
+
+            const types = rows.map(r => ({
+                type: r.income_type,
+                name: r.income_name || r.income_type
+            }));
+
+            return { success: true, types };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] pendapatan-lainnya-types error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
     })
     // --- Locked Gangs List ---
     .get("/locked/gangs", async ({ query, set, currentUser }): Promise<any> => {
@@ -696,15 +716,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 const { divisionDefinition } = await import("../services/divisionDefinition");
                 const requestedDiv = divisionDefinition.resolveDivisionCode(String(divisionCode).trim().toUpperCase());
 
-                console.log(`[PayrollRoutes] KERANI permission check: user=${currentUser.username}, raw divisions=${JSON.stringify(currentUser.divisions)}, requestedDiv=${requestedDiv} (from ${divisionCode})`);
+
 
                 const hasPermission = currentUser.divisions.some(d => {
                     // Also normalize user's division using resolveDivisionCode
                     const div = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
                     const match = div === requestedDiv;
-                    if (match) {
-                        console.log(`[PayrollRoutes] Permission GRANTED: ${d} -> ${div} matches ${requestedDiv}`);
-                    }
+
                     return match;
                 });
 

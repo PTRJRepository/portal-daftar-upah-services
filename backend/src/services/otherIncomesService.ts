@@ -485,32 +485,44 @@ export class OtherIncomesService {
                     // Get all empcodes ordered by CreateDate DESC (newest first) - by empcode/NIK
                     let empRows: any[] = [];
                     if (keysArray.length > 0) {
-                        const placeholders = keysArray.map(() => '?').join(',');
-                        empRows = await mainDb.query<any>(`
-                            SELECT
-                                RTRIM(e.EmpCode) as EmpCode,
-                                RTRIM(e.NewICNo) as NewICNo,
-                                RTRIM(e.EmpName) as EmpName,
-                                e.CreateDate
-                            FROM HR_EMPLOYEE e
-                            WHERE RTRIM(e.EmpCode) IN (${placeholders}) OR RTRIM(e.NewICNo) IN (${placeholders})
-                            ORDER BY e.CreateDate DESC
-                        `, [...keysArray, ...keysArray]);
+                        // CHUNK to avoid SQL 2100 limit (we use 2 params per key)
+                        const CHUNK_SIZE = 500;
+                        for (let i = 0; i < keysArray.length; i += CHUNK_SIZE) {
+                            const chunk = keysArray.slice(i, i + CHUNK_SIZE);
+                            const placeholders = chunk.map(() => '?').join(',');
+                            const chunkRows = await mainDb.query<any>(`
+                                SELECT 
+                                    RTRIM(e.EmpCode) as EmpCode,
+                                    RTRIM(e.NewICNo) as NewICNo,
+                                    RTRIM(e.EmpName) as EmpName,
+                                    e.CreateDate
+                                FROM HR_EMPLOYEE e
+                                WHERE RTRIM(e.EmpCode) IN (${placeholders}) OR RTRIM(e.NewICNo) IN (${placeholders})
+                                ORDER BY e.CreateDate DESC
+                            `, [...chunk, ...chunk]);
+                            empRows.push(...chunkRows);
+                        }
                     }
-
                     // Also query by emp_name to find related empcodes
                     const namesArray = Array.from(empNamesForBankLookup);
                     if (namesArray.length > 0) {
-                        const namePlaceholders = namesArray.map(() => '?').join(',');
-                        const nameRows = await mainDb.query<any>(`
-                            SELECT
-                                RTRIM(e.EmpCode) as EmpCode,
-                                RTRIM(e.EmpName) as EmpName,
-                                e.CreateDate
-                            FROM HR_EMPLOYEE e
-                            WHERE RTRIM(e.EmpName) IN (${namePlaceholders})
-                            ORDER BY e.CreateDate DESC
-                        `, namesArray);
+                        // CHUNK to avoid SQL 2100 limit
+                        const NAME_CHUNK_SIZE = 1000;
+                        const nameRows: any[] = [];
+                        for (let i = 0; i < namesArray.length; i += NAME_CHUNK_SIZE) {
+                            const chunk = namesArray.slice(i, i + NAME_CHUNK_SIZE);
+                            const namePlaceholders = chunk.map(() => '?').join(',');
+                            const chunkRows = await mainDb.query<any>(`
+                                SELECT
+                                    RTRIM(e.EmpCode) as EmpCode,
+                                    RTRIM(e.EmpName) as EmpName,
+                                    e.CreateDate
+                                FROM HR_EMPLOYEE e
+                                WHERE RTRIM(e.EmpName) IN (${namePlaceholders})
+                                ORDER BY e.CreateDate DESC
+                            `, chunk);
+                            nameRows.push(...chunkRows);
+                        }
 
                         // Combine both results
                         empRows = [...empRows, ...nameRows];

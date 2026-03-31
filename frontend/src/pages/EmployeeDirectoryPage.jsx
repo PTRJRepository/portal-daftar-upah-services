@@ -82,15 +82,18 @@ const DIVISIONS = [
 
 export default function EmployeeDirectoryPage() {
     const navigate = useNavigate();
-    const { token } = useAuth();
+    const { token, user, isKeraniUser } = useAuth();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [results, setResults] = useState([]);
     const [hasSearched, setHasSearched] = useState(false);
 
-    // Filter states
-    const [filterDivision, setFilterDivision] = useState('ALL');
+    // Kerani locked division
+    const keraniDivision = isKeraniUser ? (user?.divisions?.[0] || user?.divisi || null) : null;
+
+    // Filter states - kerani users are locked to their division
+    const [filterDivision, setFilterDivision] = useState(keraniDivision || 'ALL');
     const [filterReligion, setFilterReligion] = useState('');
     const [filterGender, setFilterGender] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
@@ -116,12 +119,13 @@ export default function EmployeeDirectoryPage() {
             let data;
 
             if (searchTerm && searchTerm.trim().length >= 2) {
-                // Text search mode
+                // Text search mode - kerani restriction is handled server-side
                 data = await searchEmployees(token, searchTerm);
             } else {
                 // Filter-only mode — use list endpoint
+                // Kerani users are locked to their division server-side
                 data = await listEmployees(token, {
-                    division: filterDivision !== 'ALL' ? filterDivision : undefined,
+                    division: keraniDivision || (filterDivision !== 'ALL' ? filterDivision : undefined),
                     religion: filterReligion || undefined,
                     status: filterStatus || undefined,
                 });
@@ -161,13 +165,41 @@ export default function EmployeeDirectoryPage() {
         }
     };
 
-    const handleViewProfile = (nik) => {
+    // Helper: derive division from gang code (same logic as EmployeeDirectoryAnalytics)
+    const getDivisionFromGang = (gangCode) => {
+        if (!gangCode) return 'OTHER';
+        const gc = gangCode.toUpperCase();
+        if (gc.startsWith('A')) return 'PG1A';
+        if (gc.startsWith('B')) return 'PG1B';
+        if (gc.startsWith('C')) return 'PG2A';
+        if (gc.startsWith('D')) return 'PG2B';
+        if (gc.startsWith('E')) return 'DME';
+        if (gc.startsWith('F')) return 'ARA';
+        if (gc.startsWith('G')) return 'AB1';
+        if (gc.startsWith('H')) return 'AB2';
+        if (gc.startsWith('I')) return 'INF';
+        if (gc.startsWith('J')) return 'ARC';
+        if (gc.startsWith('L')) return 'IJL';
+        if (gc.startsWith('M') || gc.startsWith('ML')) return 'MILL';
+        if (gc.startsWith('O')) return 'OFFICE';
+        if (gc.startsWith('SEC')) return 'SEC';
+        return 'OTHER';
+    };
+
+    const handleViewProfile = (nik, empData) => {
         if (!nik) return;
 
-        const params = new URLSearchParams({
-            nik: nik
-        });
+        // Kerani division check: prevent opening HR info for employees outside their division
+        if (isKeraniUser && keraniDivision) {
+            const empGang = empData?.gang_code || '';
+            const empDivision = getDivisionFromGang(empGang);
+            if (empDivision !== keraniDivision) {
+                alert(`Akses ditolak: Anda hanya dapat melihat profil karyawan dari divisi ${keraniDivision}.`);
+                return;
+            }
+        }
 
+        const params = new URLSearchParams({ nik });
         const detailPath = buildAppPath(`/hr-info?${params.toString()}`);
         window.open(detailPath, '_blank', 'noopener,noreferrer');
     };
@@ -215,7 +247,7 @@ export default function EmployeeDirectoryPage() {
                 const nikTarget = params.data.actual_nik || params.data.nik;
                 return (
                     <button
-                        onClick={() => handleViewProfile(nikTarget)}
+                        onClick={() => handleViewProfile(nikTarget, params.data)}
                         style={{
                             background: '#3b82f6',
                             color: 'white',
@@ -310,16 +342,31 @@ export default function EmployeeDirectoryPage() {
                         Filter:
                     </span>
 
-                    {/* Division Filter */}
-                    <select
-                        value={filterDivision}
-                        onChange={(e) => setFilterDivision(e.target.value)}
-                        style={selectStyle}
-                    >
-                        {DIVISIONS.map(d => (
-                            <option key={d} value={d}>{d === 'ALL' ? 'Semua Divisi' : d}</option>
-                        ))}
-                    </select>
+                    {/* Division Filter - Hidden for kerani users (locked to their division) */}
+                    {!isKeraniUser && (
+                        <select
+                            value={filterDivision}
+                            onChange={(e) => setFilterDivision(e.target.value)}
+                            style={selectStyle}
+                        >
+                            {DIVISIONS.map(d => (
+                                <option key={d} value={d}>{d === 'ALL' ? 'Semua Divisi' : d}</option>
+                            ))}
+                        </select>
+                    )}
+                    {isKeraniUser && keraniDivision && (
+                        <span style={{
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e',
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            border: '1px solid #fcd34d'
+                        }}>
+                            Divisi: {keraniDivision}
+                        </span>
+                    )}
 
                     {/* Religion Filter */}
                     <select

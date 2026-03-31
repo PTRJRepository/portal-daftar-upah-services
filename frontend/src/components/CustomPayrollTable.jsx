@@ -141,6 +141,10 @@ export default function CustomPayrollTable({
     const [addedColumns, setAddedColumns] = useState([]); // Track new columns added in edit mode
     const [isSavingEdits, setIsSavingEdits] = useState(false);
 
+    // Kontan (Other Income) Toggle State - Edit mode is always ON when this is enabled
+    const [kontanEnabled, setKontanEnabled] = useState(false);
+    const [editedKontanCells, setEditedKontanCells] = useState({}); // { 'nik-kontan': { value, originalValue, gang_code } }
+
     // Tunjangan Mode & Rates
     const [tunjanganMode, setTunjanganMode] = useState('DB'); // 'DB' or 'CALC'
     const [tunjanganRates, setTunjanganRates] = useState({});
@@ -177,6 +181,14 @@ export default function CustomPayrollTable({
             setCellColors(prefs.preferences.cellColors);
         }
     }, []);
+
+    // Reset kontan state when edit mode is turned off
+    useEffect(() => {
+        if (!isEditMode) {
+            setKontanEnabled(false);
+            setEditedKontanCells({});
+        }
+    }, [isEditMode]);
 
     // Sync employee codes when rows change (for select-all checkbox state only)
     useEffect(() => {
@@ -335,6 +347,19 @@ export default function CustomPayrollTable({
     const handleSaveEdits = async () => {
         const editsArray = Object.values(editedCells);
 
+        // Include kontan cell edits as PENDAPATAN_LAINNYA type
+        const kontanEdits = Object.values(editedKontanCells);
+        for (const k of kontanEdits) {
+            editsArray.push({
+                nik: k.nik,
+                gang_code: k.gang_code,
+                type: 'PENDAPATAN_LAINNYA',
+                name: 'KONTAN',
+                value: k.value,
+                originalValue: k.originalValue
+            });
+        }
+
         // Include new columns that act as empty placeholders
         const pendingColumns = addedColumns.filter(newCol =>
             !editsArray.some(e => e.name === newCol.name && e.type === newCol.type)
@@ -350,6 +375,7 @@ export default function CustomPayrollTable({
 
         if (editsArray.length === 0) {
             setAddedColumns([]);
+            setEditedKontanCells({});
             loadData();
             return;
         }
@@ -435,7 +461,9 @@ export default function CustomPayrollTable({
             if (successCount > 0) {
                 alert(`Berhasil menyimpan ${successCount} penyesuaian (kolom/nilai).`);
                 setEditedCells({}); // Clear edits after successful save
+                setEditedKontanCells({});
                 setAddedColumns([]);
+                setKontanEnabled(false); // Reset kontan toggle after save
                 loadData(); // Reload to get fresh data with recalculated totals
             } else {
                 alert('Gagal menyimpan perubahan. Silakan coba lagi.');
@@ -507,129 +535,71 @@ export default function CustomPayrollTable({
         }
     };
 
-    const loadData = async () => {
-        // Build cache key from current params (includes refreshTrigger for cache busting)
-        const cacheKey = `${division}_${month}_${year}_${useHistoryDb}_${gangPrefix || ''}_${refreshTrigger}`;
+    // Helper to extract Asistensi (group number) from gang code (same logic as MainPage)
+    const getAsistensiLocal = useCallback((gangCode) => {
+        if (!gangCode) return null;
+        const gc = gangCode.trim().toUpperCase();
+        if (gc.startsWith('K2')) return '1';
+        const match = gc.match(/\d+/);
+        return match ? match[0] : null;
+    }, []);
 
-        // Skip fetch if we already have cached data for these exact params
-        if (cachedParamsRef.current === cacheKey && cachedRawDataRef.current) {
-            // Re-process cached raw data (same logic as fresh fetch)
-            try {
-                const data = cachedRawDataRef.current;
-                const dynPot = data.dynamic_potongan_headers || [];
-                const dynPrem = data.dynamic_premi_headers || [];
-                const potTitleMap = data.potongan_title_map || {};
-                const premTitleMap = data.premi_title_map || {};
+    /**
+     * processRawData: Takes cached raw API data and applies gangCode/gangPrefix filters client-side.
+     * This is the single source of truth for transforming raw data → display rows.
+     */
+    const processRawData = useCallback((data, currentGangCode, currentGangPrefix) => {
+        if (!data) return;
 
-                const premWithTitles = {};
-                dynPrem.forEach(field => {
-                    const title = premTitleMap[field] || field;
-                    premWithTitles[title] = field;
-                });
-
-                const potWithTitles = {};
-                dynPot.forEach(field => {
-                    const title = potTitleMap[field] || field;
-                    potWithTitles[title] = field;
-                });
-
-                setDynamicHeaders({ premi: premWithTitles, potongan: potWithTitles });
-
-                let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
-
-                const filteredFlat = (gangCode && gangCode !== 'ALL' && !gangPrefix)
-                    ? flatRows.filter(r => r.gang_code === gangCode)
-                    : flatRows;
-                const frontendGt = PayrollAggregator.calculateGrandTotal(filteredFlat);
-                frontendGt.emp_code = `${filteredFlat.length} Karyawan`;
-
-                const backendGrandTotal = data.grand_total;
-                if (backendGrandTotal && (!gangCode || gangCode === 'ALL' || gangPrefix)) {
-                    setGrandTotal({ ...frontendGt, ...backendGrandTotal });
-                } else {
-                    setGrandTotal(frontendGt);
-                }
-
-                setRows(filteredFlat);
-                setAllEmployeeNiks(filteredFlat.map(r => r.nik).filter(Boolean));
-                setSelection([]);
-                setLoading(false);
-            } catch (err) {
-                setError(err.message);
-                setLoading(false);
-            }
-            return;
-        }
-
-        setLoading(true);
-        setError('');
         try {
-            let data;
-            if (isProdMode()) {
-                data = await getLockedRawTree(token, division, month, year, useHistoryDb, gangPrefix);
-            } else {
-                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}${gangPrefix ? `&gang_prefix=${gangPrefix}` : ''}`;
-                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) throw new Error(await response.text());
-                data = await response.json();
-            }
-
-            // Cache the raw response for view-switching
-            cachedParamsRef.current = cacheKey;
-            cachedRawDataRef.current = data;
-            if (onDataLoaded) onDataLoaded(data);
-
-            // dynamic_premi_headers and dynamic_potongan_headers are ARRAYS of field names
             const dynPot = data.dynamic_potongan_headers || [];
             const dynPrem = data.dynamic_premi_headers || [];
             const potTitleMap = data.potongan_title_map || {};
             const premTitleMap = data.premi_title_map || {};
 
-            // DEBUG: Log received data
-            console.log("[FRONTEND DEBUG] dynPot (dynamic_potongan_headers):", dynPot);
-            console.log("[FRONTEND DEBUG] potTitleMap:", potTitleMap);
-            console.log("[FRONTEND DEBUG] premTitleMap:", premTitleMap);
-
-            // Build premi headers: { DocDesc_Title → field_name }
-            // Field is the normalized key (e.g., "premi_pupuk"), titleMap gives DocDesc (e.g., "PREMI PUPUK")
             const premWithTitles = {};
             dynPrem.forEach(field => {
-                // Get DocDesc from titleMap, or use field as fallback
                 const title = premTitleMap[field] || field;
                 premWithTitles[title] = field;
             });
 
-            // Build potongan headers: { TaskDesc_Title → field_name }
             const potWithTitles = {};
             dynPot.forEach(field => {
-                // Get TaskDesc from titleMap, or use field as fallback
                 const title = potTitleMap[field] || field;
                 potWithTitles[title] = field;
             });
-
-            console.log("[FRONTEND DEBUG] potWithTitles built:", potWithTitles);
 
             setDynamicHeaders({ premi: premWithTitles, potongan: potWithTitles });
 
             let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
 
-            // Calculate frontend grand total for ALL columns (including UI-only fields)
-            // When gangPrefix is active, show all filtered rows (backend already filtered)
-            const filteredFlat = (gangCode && gangCode !== 'ALL' && !gangPrefix)
-                ? flatRows.filter(r => r.gang_code === gangCode)
-                : flatRows;
-            const frontendGt = PayrollAggregator.calculateGrandTotal(filteredFlat);
-            frontendGt.emp_code = `${filteredFlat.length} Karyawan`;
+            // --- CLIENT-SIDE FILTERING ---
+            // Apply gangPrefix filter (group filter) client-side
+            if (currentGangPrefix) {
+                flatRows = flatRows.filter(r => {
+                    const asist = getAsistensiLocal(r.gang_code);
+                    return asist === currentGangPrefix;
+                });
+            }
 
-            // Use backend-provided grand_total if available to override financial fields
+            // Apply specific gangCode filter client-side
+            if (currentGangCode && currentGangCode !== 'ALL') {
+                flatRows = flatRows.filter(r => r.gang_code === currentGangCode);
+            }
+
+            // Calculate frontend grand total for filtered rows
+            const frontendGt = PayrollAggregator.calculateGrandTotal(flatRows);
+            frontendGt.emp_code = `${flatRows.length} Karyawan`;
+
+            // Use backend grand_total only when showing ALL data (no client-side filter active)
             const backendGrandTotal = data.grand_total;
-            if (backendGrandTotal && (!gangCode || gangCode === 'ALL' || gangPrefix)) {
+            if (backendGrandTotal && !currentGangPrefix && (!currentGangCode || currentGangCode === 'ALL')) {
                 setGrandTotal({ ...frontendGt, ...backendGrandTotal });
             } else {
                 setGrandTotal(frontendGt);
             }
 
-            // Build a map of gang_code -> gang_totals from backend
+            // Build gang_totals map from backend
             const backendGangTotalsMap = {};
             if (data.gangs) {
                 data.gangs.forEach(gang => {
@@ -639,6 +609,7 @@ export default function CustomPayrollTable({
                 });
             }
 
+            // Group rows by gang
             const gangsMap = {};
             flatRows.forEach(row => {
                 const g = row.gang_code;
@@ -648,14 +619,10 @@ export default function CustomPayrollTable({
 
             const processedRows = [];
             let globalNo = 1;
-            let gangKeys = Object.keys(gangsMap).sort();
-            // Only filter by gangCode when gangPrefix is NOT active
-            // When gangPrefix is active, backend already filtered to the right asistensi group
-            if (gangCode && gangCode !== 'ALL' && !gangPrefix) gangKeys = gangKeys.filter(g => g === gangCode);
+            const gangKeys = Object.keys(gangsMap).sort();
 
             gangKeys.forEach(gCode => {
                 const employees = gangsMap[gCode];
-                // Explicitly sort employees by EmpCode ascending
                 employees.sort((a, b) => {
                     const codeA = String(a.emp_code || a.nik || '').trim();
                     const codeB = String(b.emp_code || b.nik || '').trim();
@@ -670,11 +637,9 @@ export default function CustomPayrollTable({
                     processedRows.push(emp);
                 });
 
-                // Calculate frontend gang total for ALL columns
+                // Calculate frontend gang total
                 let gangTotal = PayrollAggregator.calculateGangTotals(gCode, flatRows);
-
-                // Override with backend-provided gang_totals if available for financial fields
-                if (backendGangTotalsMap[gCode]) {
+                if (backendGangTotalsMap[gCode] && !currentGangPrefix && (!currentGangCode || currentGangCode === 'ALL')) {
                     gangTotal = { ...gangTotal, ...backendGangTotalsMap[gCode] };
                 }
                 gangTotal.type = 'gang_total';
@@ -689,16 +654,12 @@ export default function CustomPayrollTable({
             if (processedRows.length > 0) {
                 const storageKey = `payroll_cache_${division}_${month}_${year}`;
                 const employeeDataMap = {};
-
-                // Only store employee rows, indexed by emp_code/nik
                 processedRows.forEach(row => {
                     if (row.type === 'employee') {
                         const code = (row.emp_code || row.nik || '').toString().toUpperCase();
                         if (code) employeeDataMap[code] = row;
                     }
                 });
-
-                // Keep only the last 3 caches to save space
                 try {
                     const keys = Object.keys(localStorage).filter(k => k.startsWith('payroll_cache_'));
                     if (keys.length > 3) {
@@ -708,44 +669,65 @@ export default function CustomPayrollTable({
                         timestamp: Date.now(),
                         data: employeeDataMap
                     }));
-                } catch (e) {
-                    console.warn('[CustomPayrollTable] Failed to cache data to localStorage:', e);
-                }
+                } catch (e) { /* ignore localStorage errors */ }
             }
 
             setRows(processedRows);
 
-            // Determine which dynamic premi fields have values in current gang
+            // Determine active dynamic premi/potongan fields
             const employeeRows = processedRows.filter(r => r.type === 'employee');
-            const activePremi = Object.entries(premWithTitles).filter(([label, field]) => {
-                return employeeRows.some(row => {
+            const activePremi = Object.entries(premWithTitles).filter(([, field]) =>
+                employeeRows.some(row => {
                     const val = row[field];
                     return val !== null && val !== undefined && val !== 0 && val !== '';
-                });
-            }).map(([label, field]) => field);
+                })
+            ).map(([, field]) => field);
             setActivePremiFields(activePremi);
 
-            // Determine which dynamic potongan fields have values
-            // Include ALL fields that have values (KOREKSI, POTONGAN, etc.)
-            const activePot = Object.entries(potWithTitles)
-                .filter(([label, field]) => {
-                    return employeeRows.some(row => {
-                        const val = row[field];
-                        return val !== null && val !== undefined && val !== 0 && val !== '';
-                    });
-                }).map(([label, field]) => field);
+            const activePot = Object.entries(potWithTitles).filter(([, field]) =>
+                employeeRows.some(row => {
+                    const val = row[field];
+                    return val !== null && val !== undefined && val !== 0 && val !== '';
+                })
+            ).map(([, field]) => field);
             setActivePotFields(activePot);
 
-            console.log("[FRONTEND DEBUG] activePotFields:", activePot);
-            console.log("[FRONTEND DEBUG] employeeRows count:", employeeRows.length);
-            if (employeeRows.length > 0) {
-                console.log("[FRONTEND DEBUG] First employee row keys:", Object.keys(employeeRows[0]).slice(0, 60));
-                // Check if PREMI_PPH exists in any row
-                const hasPremiPph = employeeRows.some(r => r.PREMI_PPH !== undefined && r.PREMI_PPH !== 0);
-                console.log("[FRONTEND DEBUG] Has PREMI_PPH in employee rows:", hasPremiPph);
-            }
+            setAllEmployeeNiks(employeeRows.map(r => r.nik).filter(Boolean));
+            setSelection([]);
         } catch (err) {
-            console.error(err);
+            console.error('[CustomPayrollTable] processRawData error:', err);
+            setError(err.message);
+        }
+    }, [division, month, year, getAsistensiLocal]); // eslint-disable-line
+
+    /**
+     * fetchDivisionData: Fetches ALL data for a division (no gangPrefix filter).
+     * This is the ONLY function that makes API calls.
+     */
+    const fetchDivisionData = async (divCacheKey) => {
+        setLoading(true);
+        setError('');
+        try {
+            let data;
+            if (isProdMode()) {
+                // In prod mode, fetch without gangPrefix — get all division data
+                data = await getLockedRawTree(token, division, month, year, useHistoryDb, null);
+            } else {
+                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}`;
+                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!response.ok) throw new Error(await response.text());
+                data = await response.json();
+            }
+
+            // Cache the raw response at division level
+            cachedParamsRef.current = divCacheKey;
+            cachedRawDataRef.current = data;
+            if (onDataLoaded) onDataLoaded(data);
+
+            // Process and display with current filters
+            processRawData(data, gangCode, gangPrefix);
+        } catch (err) {
+            console.error('[CustomPayrollTable] fetchDivisionData error:', err);
             setError(err.message);
         } finally {
             setLoading(false);
@@ -755,19 +737,32 @@ export default function CustomPayrollTable({
     // Pre-populate cache from parent when initialData is provided
     useEffect(() => {
         if (initialData && division && month && year) {
-            const cacheKey = `${division}_${month}_${year}_${useHistoryDb}_${gangPrefix || ''}`;
-            if (cachedParamsRef.current !== cacheKey) {
-                cachedParamsRef.current = cacheKey;
+            const divCacheKey = `${division}_${month}_${year}_${useHistoryDb}_${refreshTrigger}`;
+            if (cachedParamsRef.current !== divCacheKey) {
+                cachedParamsRef.current = divCacheKey;
                 cachedRawDataRef.current = initialData;
-                // Trigger loadData to process cached data
-                loadData();
+                processRawData(initialData, gangCode, gangPrefix);
             }
         }
-    }, [initialData, division, month, year, gangPrefix, useHistoryDb]); // eslint-disable-line
+    }, [initialData]); // eslint-disable-line
 
+    // --- MAIN DATA EFFECT ---
+    // Fetch from API only when division/month/year/useHistoryDb/refreshTrigger change.
+    // For gangCode/gangPrefix changes, re-process from cache (instant, no API call).
     useEffect(() => {
-        if (month && year && division) loadData();
-    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb]);
+        if (!month || !year || !division) return;
+
+        const divCacheKey = `${division}_${month}_${year}_${useHistoryDb}_${refreshTrigger}`;
+
+        // If we have cached data for this division+period, just re-filter client-side (instant)
+        if (cachedParamsRef.current === divCacheKey && cachedRawDataRef.current) {
+            processRawData(cachedRawDataRef.current, gangCode, gangPrefix);
+            return;
+        }
+
+        // Otherwise, fetch fresh data from API (full division, no gangPrefix)
+        fetchDivisionData(divCacheKey);
+    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb]); // eslint-disable-line
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -1300,20 +1295,7 @@ export default function CustomPayrollTable({
                     className: 'text-right',
                     render: (row) => {
                         const val = row[field] || 0;
-                        if (isEditMode && row.type === 'employee') {
-                            const editKey = `${row.nik}-${field}`;
-                            const isEdited = !!editedCells[editKey];
-                            return (
-                                <input
-                                    type="number"
-                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                    value={val === 0 ? '' : val}
-                                    onChange={(e) => handleCellEdit(row.nik, field, e.target.value, val, row.gang_code, 'PREMI', displayName)}
-                                    placeholder="0"
-                                    onClick={(e) => e.stopPropagation()}
-                                />
-                            );
-                        }
+                        // PREMI columns are NOT editable in edit mode - read-only
                         if (val === 0) return '-';
                         return formatNumber(val);
                     }
@@ -1359,13 +1341,63 @@ export default function CustomPayrollTable({
             }
         });
 
+        // KONTAN - Other income column (only shown and editable when kontanEnabled is true)
+        if (kontanEnabled) {
+        cols.push({
+            field: 'kontan',
+            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'KONTAN (+)'],
+            w: 85,
+            className: 'text-right',
+            render: (row) => {
+                const val = Number(row.kontan || 0);
+                // Always editable when shown (kontanEnabled is true)
+                const empCode = row.emp_code || row.nik;
+                const editKey = `${empCode}-kontan`;
+                const cellEdit = editedKontanCells[editKey];
+                const displayVal = cellEdit ? cellEdit.value : val;
+                return (
+                    <input
+                        type="number"
+                        className={`edit-input ${cellEdit ? 'cell-edited' : ''}`}
+                        value={displayVal === 0 ? '' : displayVal}
+                        onChange={(e) => {
+                            const numVal = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                            if (isNaN(numVal)) return;
+                            setEditedKontanCells(prev => ({
+                                ...prev,
+                                [editKey]: {
+                                    nik: empCode,
+                                    value: numVal,
+                                    originalValue: val,
+                                    gang_code: row.gang_code
+                                }
+                            }));
+                            // Optimistically update UI
+                            setRows(prevRows => prevRows.map(r => {
+                                if ((r.emp_code || r.nik) === empCode) {
+                                    return { ...r, kontan: numVal };
+                                }
+                                return r;
+                            }));
+                        }}
+                        placeholder="0"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                );
+            }
+        });
+        } // end kontanEnabled
+
         cols.push({
             field: 'pendapatan_lainnya',
             headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'TOTAL LAINNYA (+)'],
             w: 95,
             className: 'text-right font-bold',
             render: (row) => {
-                const val = Number(row.pendapatan_lainnya || 0);
+                const empCode = row.emp_code || row.nik;
+                const kontanEdit = editedKontanCells[`${empCode}-kontan`];
+                const kontanVal = kontanEdit ? kontanEdit.value : (Number(row.kontan || 0));
+                const val = Number(row.pendapatan_lainnya || 0) + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
             }
@@ -2111,6 +2143,27 @@ export default function CustomPayrollTable({
                                                     +
                                                 </button>
                                             )}
+                                            {cell.label === 'PENDAPATAN LAINNYA' && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setKontanEnabled(prev => !prev); }}
+                                                    style={{
+                                                        marginLeft: 6,
+                                                        opacity: 0.9,
+                                                        background: kontanEnabled ? '#f59e0b' : '#94a3b8',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '2px 6px',
+                                                        fontSize: '9px',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        lineHeight: 1
+                                                    }}
+                                                    title={kontanEnabled ? 'Sembunyikan & nonaktifkan edit Kontan' : 'Aktifkan edit kolom Kontan'}
+                                                >
+                                                    {kontanEnabled ? 'KONTAN ✏️' : 'KONTAN'}
+                                                </button>
+                                            )}
                                         </div>
                                     ) : cell.label === '%TOGGLE_JUMLAH%' ? (
                                         <div className="flex flex-col items-center justify-center gap-0.5 w-full h-full">
@@ -2143,7 +2196,7 @@ export default function CustomPayrollTable({
                                     ) : (
                                         <div className="flex items-center justify-center gap-1 h-full w-full relative group" style={{ textAlign: 'center', lineHeight: '1.2' }}>
                                             <div>{formatHeaderLabel(cell.label)}</div>
-                                            {isEditMode && ['PREMI', 'POTONGAN UPAH KOTOR'].includes(cell.label) && (
+                                            {isEditMode && cell.label === 'POTONGAN UPAH KOTOR' && (
                                                 <button onClick={(e) => { e.stopPropagation(); handleAddColumn(cell.label); }}
                                                     style={{ marginLeft: 6, opacity: 0.9, background: '#f59e0b', color: 'white', border: 'none', borderRadius: '50%', width: 16, height: 16, fontSize: 12, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                                     title={`Tambah kolom ${cell.label} baru`}

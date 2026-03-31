@@ -36,6 +36,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
 
     // --- List Employees by Gang ---
     .get("/list", async ({ query, currentUser }) => {
+        console.log(`[API /list] currentUser: ${currentUser ? currentUser.username : 'null'}, query:`, query);
         let division = query.division || undefined;
         let gangCode = query.gang_code || undefined;
         const religion = query.religion || undefined;
@@ -46,6 +47,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             division = currentUser.divisions[0];
         }
 
+        console.log(`[API /list] Calling repository with:`, { gangCode, division, religion, status });
         const employees = await employeeRepository.list({
             gangCode: gangCode,
             division: division,
@@ -54,6 +56,7 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             skip: parseInt(query.skip || "0"),
             limit: parseInt(query.limit || "500")
         });
+        console.log(`[API /list] Repository returned ${employees.length} employees`);
         return { count: employees.length, data: employees };
     }, {
         query: t.Object({
@@ -358,16 +361,35 @@ employeeRoutes
     // ========================
 
     // --- Get Employee by NIK ---
-    .get("/by-nik/:nik", async ({ params, set }) => {
+    .get("/by-nik/:nik", async ({ params, set, currentUser }) => {
         const employee = await employeeRepository.getByNik(params.nik);
         if (!employee) {
             set.status = 404;
             return { error: "Employee not found" };
         }
+
+        // KERANI DIVISION RESTRICTION
+        if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+            const empLocCode = (employee.loc_code || '').trim().toUpperCase();
+            const { divisionDefinition } = await import('../services/divisionDefinition');
+            const empDivision = divisionDefinition.resolveDivisionCode(empLocCode);
+
+            const hasPermission = currentUser.divisions.some(d => {
+                const userDiv = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                return userDiv === empDivision;
+            });
+
+            if (!hasPermission) {
+                console.warn(`[API] KERANI denied access to employee by NIK ${params.nik}. Emp division: ${empDivision}`);
+                set.status = 403;
+                return { error: `Akses ditolak: Anda tidak memiliki izin untuk melihat data karyawan dari divisi lain` };
+            }
+        }
+
         return employee;
     })
     // --- Checkroll (Full Implementation) ---
-    .get("/:emp_code/checkroll", async ({ params, query, set }) => {
+    .get("/:emp_code/checkroll", async ({ params, query, set, currentUser }) => {
         try {
             let empCode = params.emp_code;
             const month = parseInt(query.month);
@@ -376,6 +398,7 @@ employeeRoutes
             // NIK-to-EmpCode resolution: if the param looks like a KTP number (all digits, >10 chars),
             // resolve it to the actual EmpCode via HR_EMPLOYEE.NewICNo
             const isNik = /^\d{10,}$/.test(empCode);
+            let resolvedFromNik = false;
             if (isNik) {
                 console.log(`[API] Detected NIK (KTP): ${empCode}, resolving to EmpCode...`);
                 const db = (await import('../db/client')).Database.getInstance();
@@ -387,10 +410,38 @@ employeeRoutes
                     const resolvedCode = rows[0].EmpCode.trim();
                     console.log(`[API] Resolved NIK ${empCode} -> EmpCode ${resolvedCode}`);
                     empCode = resolvedCode;
+                    resolvedFromNik = true;
                 } else {
                     console.warn(`[API] NIK ${empCode} not found in HR_EMPLOYEE.NewICNo`);
                     set.status = 404;
                     return { error: `Employee with NIK ${empCode} not found`, emp_code: empCode };
+                }
+            }
+
+            // KERANI DIVISION RESTRICTION: Check if kerani can access this employee
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                // Get employee's loc_code (division) from their gang code
+                const db = (await import('../db/client')).Database.getInstance();
+                const empRows = await db.query<{ LocCode: string }>(
+                    `SELECT LocCode FROM HR_EMPLOYEE WHERE RTRIM(EmpCode) = ?`,
+                    [empCode]
+                );
+                if (empRows.length > 0) {
+                    const empLocCode = (empRows[0].LocCode || '').trim().toUpperCase();
+                    // Normalize using divisionDefinition.resolveDivisionCode
+                    const { divisionDefinition } = await import('../services/divisionDefinition');
+                    const empDivision = divisionDefinition.resolveDivisionCode(empLocCode);
+
+                    const hasPermission = currentUser.divisions.some(d => {
+                        const userDiv = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                        return userDiv === empDivision;
+                    });
+
+                    if (!hasPermission) {
+                        console.warn(`[API] KERANI denied access to employee ${empCode}. Emp division: ${empDivision}, User divisions: ${JSON.stringify(currentUser.divisions)}`);
+                        set.status = 403;
+                        return { error: `Akses ditolak: Anda tidak memiliki izin untuk melihat data karyawan dari divisi lain`, emp_code: empCode };
+                    }
                 }
             }
 
@@ -415,11 +466,33 @@ employeeRoutes
         })
     })
     // --- Attendance Detail (Full Implementation) ---
-    .get("/:emp_code/attendance/detail", async ({ params, query, set }) => {
+    .get("/:emp_code/attendance/detail", async ({ params, query, set, currentUser }) => {
         try {
             const empCode = params.emp_code;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
+
+            // KERANI DIVISION RESTRICTION
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                const db = (await import('../db/client')).Database.getInstance();
+                const empRows = await db.query<{ LocCode: string }>(
+                    `SELECT LocCode FROM HR_EMPLOYEE WHERE RTRIM(EmpCode) = ?`,
+                    [empCode]
+                );
+                if (empRows.length > 0) {
+                    const empLocCode = (empRows[0].LocCode || '').trim().toUpperCase();
+                    const { divisionDefinition } = await import('../services/divisionDefinition');
+                    const empDivision = divisionDefinition.resolveDivisionCode(empLocCode);
+                    const hasPermission = currentUser.divisions.some(d => {
+                        const userDiv = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                        return userDiv === empDivision;
+                    });
+                    if (!hasPermission) {
+                        set.status = 403;
+                        return { error: `Akses ditolak: Anda tidak memiliki izin untuk melihat data karyawan dari divisi lain`, emp_code: empCode };
+                    }
+                }
+            }
 
             const result = await employeeDetailService.getDailyAttendance(empCode, month, year);
             return {
@@ -440,11 +513,33 @@ employeeRoutes
         })
     })
     // --- Overtime Detail (Full Implementation) ---
-    .get("/:emp_code/overtime/detail", async ({ params, query, set }) => {
+    .get("/:emp_code/overtime/detail", async ({ params, query, set, currentUser }) => {
         try {
             const empCode = params.emp_code;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
+
+            // KERANI DIVISION RESTRICTION
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                const db = (await import('../db/client')).Database.getInstance();
+                const empRows = await db.query<{ LocCode: string }>(
+                    `SELECT LocCode FROM HR_EMPLOYEE WHERE RTRIM(EmpCode) = ?`,
+                    [empCode]
+                );
+                if (empRows.length > 0) {
+                    const empLocCode = (empRows[0].LocCode || '').trim().toUpperCase();
+                    const { divisionDefinition } = await import('../services/divisionDefinition');
+                    const empDivision = divisionDefinition.resolveDivisionCode(empLocCode);
+                    const hasPermission = currentUser.divisions.some(d => {
+                        const userDiv = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                        return userDiv === empDivision;
+                    });
+                    if (!hasPermission) {
+                        set.status = 403;
+                        return { error: `Akses ditolak: Anda tidak memiliki izin untuk melihat data karyawan dari divisi lain`, emp_code: empCode };
+                    }
+                }
+            }
 
             const result = await employeeDetailService.getDailyOvertime(empCode, month, year);
             return {
@@ -465,11 +560,33 @@ employeeRoutes
         })
     })
     // --- Lembur Calculation (New) ---
-    .get("/:emp_code/lembur", async ({ params, query, set }) => {
+    .get("/:emp_code/lembur", async ({ params, query, set, currentUser }) => {
         try {
             const empCode = params.emp_code;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
+
+            // KERANI DIVISION RESTRICTION
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                const db = (await import('../db/client')).Database.getInstance();
+                const empRows = await db.query<{ LocCode: string }>(
+                    `SELECT LocCode FROM HR_EMPLOYEE WHERE RTRIM(EmpCode) = ?`,
+                    [empCode]
+                );
+                if (empRows.length > 0) {
+                    const empLocCode = (empRows[0].LocCode || '').trim().toUpperCase();
+                    const { divisionDefinition } = await import('../services/divisionDefinition');
+                    const empDivision = divisionDefinition.resolveDivisionCode(empLocCode);
+                    const hasPermission = currentUser.divisions.some(d => {
+                        const userDiv = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                        return userDiv === empDivision;
+                    });
+                    if (!hasPermission) {
+                        set.status = 403;
+                        return { error: `Akses ditolak: Anda tidak memiliki izin untuk melihat data karyawan dari divisi lain`, emp_code: empCode };
+                    }
+                }
+            }
 
             const result = await lemburCalculator.calculate(empCode, month, year);
             return result;
@@ -484,11 +601,33 @@ employeeRoutes
         })
     })
     // --- Employee History (Multiple Periods) ---
-    .get("/:emp_code/history", async ({ params, query, set }) => {
+    .get("/:emp_code/history", async ({ params, query, set, currentUser }) => {
         try {
             let requestedEmpCode = params.emp_code;
             const requestedMonths = parseInt(query.months || "12"); // Number of months to fetch
             const includeCurrent = query.include_current !== "false";
+
+            // KERANI DIVISION RESTRICTION
+            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
+                const db = (await import('../db/client')).Database.getInstance();
+                const empRows = await db.query<{ LocCode: string }>(
+                    `SELECT LocCode FROM HR_EMPLOYEE WHERE RTRIM(EmpCode) = ?`,
+                    [requestedEmpCode]
+                );
+                if (empRows.length > 0) {
+                    const empLocCode = (empRows[0].LocCode || '').trim().toUpperCase();
+                    const { divisionDefinition } = await import('../services/divisionDefinition');
+                    const empDivision = divisionDefinition.resolveDivisionCode(empLocCode);
+                    const hasPermission = currentUser.divisions.some(d => {
+                        const userDiv = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                        return userDiv === empDivision;
+                    });
+                    if (!hasPermission) {
+                        set.status = 403;
+                        return { error: `Akses ditolak: Anda tidak memiliki izin untuk melihat data karyawan dari divisi lain`, emp_code: requestedEmpCode };
+                    }
+                }
+            }
 
             // RESOLVE ALL HISTORICAL EMPCODES BY NIK
             const db = require("../db/client").Database.getInstance();

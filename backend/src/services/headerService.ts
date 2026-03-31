@@ -213,6 +213,38 @@ export class HeaderService {
         };
     }
 
+    // Get dynamic pendapatan lainnya headers (custom income types from employee_other_incomes)
+    public async getDynamicPendapatanHeaders(
+        month: number,
+        year: number
+    ): Promise<{ type: string; name: string }[]> {
+        const cacheKey = `pendapatan_headers:${month}:${year}`;
+        const cached = cacheService.get<{ type: string; name: string }[]>(cacheKey);
+        if (cached) return cached;
+
+        try {
+            const extDb = Database.getExtendedInstance();
+            const rows = await extDb.query<{ income_type: string; income_name: string }>(`
+                SELECT DISTINCT income_type, income_name 
+                FROM employee_other_incomes
+                WHERE period_year = ? AND period_month = ?
+                  AND income_type NOT IN ('THR', 'BONUS', 'CUSTOM')
+                ORDER BY income_type
+            `, [year, month]);
+
+            const headers = rows.map(r => ({
+                type: r.income_type,
+                name: r.income_name || r.income_type
+            }));
+
+            cacheService.set(cacheKey, headers, 120);
+            return headers;
+        } catch (e) {
+            console.error("[HeaderService] Failed to get dynamic pendapatan headers:", e);
+            return [];
+        }
+    }
+
     // Get column definitions (simplified structure)
     public async getColumnDefinitions(
         month?: number,
@@ -224,6 +256,7 @@ export class HeaderService {
 
         const dynPremi = await this.getDynamicPremiHeaders(m, y, gangCode);
         const dynPotongan = await this.getDynamicPotonganHeaders(m, y, gangCode);
+        const dynPendapatan = await this.getDynamicPendapatanHeaders(m, y);
 
         // Base columns
         const columns: ColumnDef[] = [
@@ -263,7 +296,7 @@ export class HeaderService {
                     { field: "total_tunjangan", headerName: "Total" }
                 ]
             },
-            // [NEW] Pendapatan Lainnya (THR, Bonus) - untuk header daftar upah
+            // [DYNAMIC] Pendapatan Lainnya - THR, Bonus, Custom + dynamically discovered types
             {
                 field: "pendapatan_lainnya",
                 headerName: "PENDAPATAN LAINNYA",
@@ -271,7 +304,10 @@ export class HeaderService {
                     { field: "pendapatan_thr", headerName: "THR" },
                     { field: "pendapatan_bonus", headerName: "Bonus" },
                     { field: "pendapatan_custom", headerName: "Custom" },
-                    { field: "pendapatan_kontanan", headerName: "Kontanan" },
+                    ...dynPendapatan.map(p => ({
+                        field: `pendapatan_${p.type.toLowerCase()}`,
+                        headerName: p.name
+                    })),
                     { field: "pendapatan_lainnya", headerName: "Total" }
                 ]
             },
@@ -326,10 +362,9 @@ export class HeaderService {
             { field: "jumlah_hk", headerName: "JML HK" },
             { field: "gaji_pokok", headerName: "Gaji Pokok" },
             { field: "total_tunjangan", headerName: "Total Tunjangan" },
-            // [NEW] Pendapatan Lainnya
+            // [DYNAMIC] Pendapatan Lainnya
             { field: "pendapatan_thr", headerName: "THR" },
             { field: "pendapatan_bonus", headerName: "Bonus" },
-            { field: "pendapatan_kontanan", headerName: "Kontanan" },
             { field: "pendapatan_lainnya", headerName: "Total Pendapatan Lain" },
             { field: "total_premi", headerName: "Total Premi" },
             { field: "jumlah_upah_kotor", headerName: "Jml Upah Kotor" },

@@ -607,10 +607,13 @@ function NikSearchDropdown({ results, onSelect, onClose }) {
 // ============================================================================
 
 export default function EmployeeDirectoryAnalytics() {
-    const { token } = useAuth();
+    const { token, user, isKeraniUser } = useAuth();
 
-    // Filter states
-    const [division, setDivision] = useState('ALL');
+    // Kerani locked division
+    const keraniDivision = isKeraniUser ? (user?.divisions?.[0] || user?.divisi || null) : null;
+
+    // Filter states - kerani users are locked to their division
+    const [division, setDivision] = useState(keraniDivision || 'ALL');
     const [gang, setGang] = useState('');
     const [religion, setReligion] = useState('');
     const [gender, setGender] = useState('');
@@ -773,6 +776,17 @@ export default function EmployeeDirectoryAnalytics() {
     const handleViewProfile = (emp) => {
         const nik = emp.actual_nik || emp.nik;
         if (!nik) return;
+
+        // Kerani division check: prevent opening HR info for employees outside their division
+        if (isKeraniUser && keraniDivision) {
+            const empGang = emp.gang_code || '';
+            const empDivision = getDivisionFromGang(empGang);
+            if (empDivision !== keraniDivision) {
+                alert(`Akses ditolak: Anda hanya dapat melihat profil karyawan dari divisi ${keraniDivision}.`);
+                return;
+            }
+        }
+
         const params = new URLSearchParams({ nik });
         const path = buildAppPath(`/hr-info?${params.toString()}`);
         window.open(path, '_blank', 'noopener,noreferrer');
@@ -790,7 +804,8 @@ export default function EmployeeDirectoryAnalytics() {
 
     // Clear all filters
     const handleClearFilters = () => {
-        setDivision('ALL');
+        // Kerani users are locked to their division
+        setDivision(keraniDivision || 'ALL');
         setGang('');
         setReligion('');
         setGender('');
@@ -980,11 +995,27 @@ export default function EmployeeDirectoryAnalytics() {
                 <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.625rem' }}>
                     <span style={{ color: '#64748b', fontWeight: '600', fontSize: '0.75rem', minWidth: '45px' }}>🔍 Filter:</span>
 
-                    <select value={division} onChange={e => setDivision(e.target.value)} style={selectStyle}>
-                        {Object.entries(DIVISION_CONFIG).map(([code, cfg]) => (
-                            <option key={code} value={code}>{cfg.label}</option>
-                        ))}
-                    </select>
+                    {/* Division Filter - Hidden for kerani users (locked to their division) */}
+                    {!isKeraniUser && (
+                        <select value={division} onChange={e => setDivision(e.target.value)} style={selectStyle}>
+                            {Object.entries(DIVISION_CONFIG).map(([code, cfg]) => (
+                                <option key={code} value={code}>{cfg.label}</option>
+                            ))}
+                        </select>
+                    )}
+                    {isKeraniUser && keraniDivision && (
+                        <span style={{
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e',
+                            padding: '0.3rem 0.75rem',
+                            borderRadius: '6px',
+                            fontSize: '0.78rem',
+                            fontWeight: '600',
+                            border: '1px solid #fcd34d'
+                        }}>
+                            Divisi: {keraniDivision}
+                        </span>
+                    )}
 
                     <select
                         value={gang} onChange={e => setGang(e.target.value)}
