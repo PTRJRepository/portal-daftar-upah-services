@@ -451,30 +451,49 @@ export class DataExtractorService {
         const empCodes = employees.map(e => e.emp_code);
 
         const startParallel = performance.now();
-        // Fetch all required data in parallel
+
+        // Helper: wrap a query so timeout/error returns a default value instead of crashing Promise.all
+        async function safeQuery<T>(label: string, fn: () => Promise<T>, defaultValue: T): Promise<T> {
+            try {
+                return await fn();
+            } catch (err: any) {
+                const isTimeout = err.message?.includes('Timeout') || err.message?.includes('timeout');
+                if (isTimeout) {
+                    warn(CATEGORY, `⚠️ ${label} timed out — using default (0) values`);
+                } else {
+                    logError(CATEGORY, `${label} failed — using default values:`, err);
+                }
+                return defaultValue;
+            }
+        }
+
+        const emptyPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
+        const emptyPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
+
+        // Fetch all required data in parallel — each query is wrapped so a timeout returns defaults, not an error
         const [
             attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes, bunchesBatch, manualAdjustmentsRaw, positionHistory
         ] = await Promise.all([
-            this.getAttendance(empCodes, startDate, endDate, serverProfile, isHistorical),
-            this.getCuti(empCodes, startDate, endDate, serverProfile, isHistorical),
-            this.getPremi(empCodes, startDate, endDate, isHistorical, serverProfile),
-            this.getPotongan(empCodes, startDate, endDate, serverProfile, isHistorical),
-            this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
-            this.getLemburDetailsWithTaskBreakdown(empCodes, month, year, serverProfile),
+            safeQuery('getAttendance', () => this.getAttendance(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, any>),
+            safeQuery('getCuti', () => this.getCuti(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, CutiData>),
+            safeQuery('getPremi', () => this.getPremi(empCodes, startDate, endDate, isHistorical, serverProfile), emptyPremiResult),
+            safeQuery('getPotongan', () => this.getPotongan(empCodes, startDate, endDate, serverProfile, isHistorical), emptyPotonganResult),
+            safeQuery('getLemburCalculator', () => this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile), {} as Record<string, LemburData>),
+            safeQuery('getLemburDetails', () => this.getLemburDetailsWithTaskBreakdown(empCodes, month, year, serverProfile), {} as Record<string, any>),
 
-            this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile, isHistorical),
-            this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile, isHistorical), // RESTORED
-            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile, isHistorical),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile, isHistorical),
-            this.getUpahPokok(empCodes, year, currentYear, serverProfile),
-            this.getBrondol(empCodes, startDate, endDate, serverProfile, isHistorical),
+            safeQuery('getLemburDocDesc', () => this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
+            safeQuery('getBerasDocDesc', () => this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
+            safeQuery('getJabatan', () => this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile, isHistorical), {} as Record<string, number>),
+            safeQuery('getMasaKerja', () => this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile, isHistorical), {} as Record<string, number>),
+            safeQuery('getUpahPokok', () => this.getUpahPokok(empCodes, year, currentYear, serverProfile), {} as Record<string, number>),
+            safeQuery('getBrondol', () => this.getBrondol(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
 
-            EmployeeEstateService.getEmployeeJobs(),
-            this.getTaskCodes(empCodes, startDate, endDate, serverProfile, isHistorical),
+            safeQuery('getJobTitles', () => EmployeeEstateService.getEmployeeJobs(), {} as Record<string, string>),
+            safeQuery('getTaskCodes', () => this.getTaskCodes(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, any>),
             // [OPTIMIZATION] Skip bunches fetch if requested (e.g. for Payslips)
-            !skipHarvest ? this.getBunchesBatch(empCodes, month, year) : Promise.resolve(new Map()),
-            manualAdjustmentService.getAdjustments(month, year, gangCode || undefined),
-            this.getPositionHistory(empCodes, month, year)
+            !skipHarvest ? safeQuery('getBunches', () => this.getBunchesBatch(empCodes, month, year), new Map()) : Promise.resolve(new Map()),
+            safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined), []),
+            safeQuery('getPositionHistory', () => this.getPositionHistory(empCodes, month, year), {} as Record<string, string>)
         ]);
         debug(CATEGORY, `Phase 1 (16 parallel queries): ${(performance.now() - startParallel).toFixed(0)}ms for ${empCodes.length} employees`);
 

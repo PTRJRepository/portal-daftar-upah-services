@@ -239,8 +239,13 @@ export class HarvesterService {
             }
 
         } catch (error: any) {
-            console.error("[HarvesterService] Error fetching batch bunches:", error.message);
-            console.error("[HarvesterService] Error stack:", error.stack);
+            const isTimeout = error.message?.includes('Timeout') || error.message?.includes('timeout');
+            if (isTimeout) {
+                console.warn(`[HarvesterService] ⚠️ Bunches query timed out for ${empCodes.length} employees. Returning 0 for all bunches data.`);
+            } else {
+                console.error("[HarvesterService] Error fetching batch bunches:", error.message);
+                console.error("[HarvesterService] Error stack:", error.stack);
+            }
         }
 
         return resultMap;

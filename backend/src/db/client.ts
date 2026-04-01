@@ -158,6 +158,14 @@ export class Database {
 
             } catch (error) {
                 logError("DB", `Query failed (Attempt ${attempt + 1}/${maxRetries + 1})`, error);
+                
+                // Don't retry on timeout errors - they'll just timeout again
+                const errMsg = error instanceof Error ? error.message : String(error);
+                if (errMsg.includes('Timeout') || errMsg.includes('timeout') || errMsg.includes('30000ms')) {
+                    logError("DB", `Timeout detected, skipping retries`);
+                    throw error;
+                }
+                
                 if (attempt >= maxRetries) throw error;
                 await new Promise(r => setTimeout(r, delay));
                 delay = Math.min(delay * 2, 2000);
