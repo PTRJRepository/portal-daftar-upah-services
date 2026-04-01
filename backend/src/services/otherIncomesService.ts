@@ -717,29 +717,33 @@ export class OtherIncomesService {
                     logError(CATEGORY, "[OtherIncomesService] Error fetching HR data for bank accounts:", e);
                 }
 
-                // Query HR_PAYROLL table for all empcodes
+                // Query HR_PAYROLL table for all empcodes (CHUNKED to avoid SQL 2100 limit)
                 try {
-                    const placeholders = empCodeArray.map(() => '?').join(',');
-                    const payrollRows = await mainDb.query<any>(`
-                        SELECT
-                            RTRIM(EmpCode) as EmpCode,
-                            RTRIM(BankAccNo) as BankAccNo,
-                            RTRIM(BankCode) as BankCode
-                        FROM HR_PAYROLL
-                        WHERE RTRIM(EmpCode) IN (${placeholders})
-                    `, empCodeArray);
+                    const PAYROLL_CHUNK = 500;
+                    for (let i = 0; i < empCodeArray.length; i += PAYROLL_CHUNK) {
+                        const chunk = empCodeArray.slice(i, i + PAYROLL_CHUNK);
+                        const placeholders = chunk.map(() => '?').join(',');
+                        const payrollRows = await mainDb.query<any>(`
+                            SELECT
+                                RTRIM(EmpCode) as EmpCode,
+                                RTRIM(BankAccNo) as BankAccNo,
+                                RTRIM(BankCode) as BankCode
+                            FROM HR_PAYROLL
+                            WHERE RTRIM(EmpCode) IN (${placeholders})
+                        `, chunk);
 
-                    for (const row of payrollRows) {
-                        const empCodeKey = row.EmpCode?.trim().toUpperCase();
-                        const bankAccNo = row.BankAccNo?.trim() || '';
-                        // Store ALL entries (valid or '0') - prefer valid ones later
-                        if (empCodeKey && bankAccNo) {
-                            const existing = payrollBankMap.get(empCodeKey);
-                            if (!existing) {
-                                payrollBankMap.set(empCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
-                            } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existing.bank_acc_no)) {
-                                // Replace '0' with valid if we find one
-                                payrollBankMap.set(empCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                        for (const row of payrollRows) {
+                            const empCodeKey = row.EmpCode?.trim().toUpperCase();
+                            const bankAccNo = row.BankAccNo?.trim() || '';
+                            // Store ALL entries (valid or '0') - prefer valid ones later
+                            if (empCodeKey && bankAccNo) {
+                                const existing = payrollBankMap.get(empCodeKey);
+                                if (!existing) {
+                                    payrollBankMap.set(empCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                                } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existing.bank_acc_no)) {
+                                    // Replace '0' with valid if we find one
+                                    payrollBankMap.set(empCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                                }
                             }
                         }
                     }
@@ -759,47 +763,53 @@ export class OtherIncomesService {
             if (empNamesForQuery.size > 0) {
                 try {
                     const nameArray = Array.from(empNamesForQuery);
-                    const namePlaceholders = nameArray.map(() => '?').join(',');
 
-                    // Query HR_PAYROLL by emp_name to get bank accounts
-                    // Join with HR_EMPLOYEE to get emp_name
-                    const payrollByNameRows = await mainDb.query<any>(`
-                        SELECT
-                            RTRIM(p.EmpCode) as EmpCode,
-                            RTRIM(e.EmpName) as EmpName,
-                            RTRIM(p.BankAccNo) as BankAccNo,
-                            RTRIM(p.BankCode) as BankCode
-                        FROM HR_PAYROLL p
-                        LEFT JOIN HR_EMPLOYEE e ON p.EmpCode = e.EmpCode
-                        WHERE RTRIM(e.EmpName) IN (${namePlaceholders})
-                    `, nameArray);
+                    // CHUNK to avoid SQL Server 2100 parameter limit
+                    const NAME_CHUNK = 500;
+                    for (let ni = 0; ni < nameArray.length; ni += NAME_CHUNK) {
+                        const nameChunk = nameArray.slice(ni, ni + NAME_CHUNK);
+                        const namePlaceholders = nameChunk.map(() => '?').join(',');
 
-                    for (const row of payrollByNameRows) {
-                        const empCode = row.EmpCode?.trim().toUpperCase();
-                        const empName = row.EmpName?.trim().toUpperCase();
-                        const bankAccNo = row.BankAccNo?.trim() || '';
+                        // Query HR_PAYROLL by emp_name to get bank accounts
+                        // Join with HR_EMPLOYEE to get emp_name
+                        const payrollByNameRows = await mainDb.query<any>(`
+                            SELECT
+                                RTRIM(p.EmpCode) as EmpCode,
+                                RTRIM(e.EmpName) as EmpName,
+                                RTRIM(p.BankAccNo) as BankAccNo,
+                                RTRIM(p.BankCode) as BankCode
+                            FROM HR_PAYROLL p
+                            LEFT JOIN HR_EMPLOYEE e ON p.EmpCode = e.EmpCode
+                            WHERE RTRIM(e.EmpName) IN (${namePlaceholders})
+                        `, nameChunk);
 
-                        // CRITICAL: Store by emp_code as primary key (most reliable)
-                        // This avoids collision when two employees have the same name
-                        if (empCode && bankAccNo) {
-                            const existing = payrollBankMap.get(empCode);
-                            if (!existing) {
-                                payrollBankMap.set(empCode, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
-                            } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existing.bank_acc_no)) {
-                                // Replace '0' with valid if we find one
-                                payrollBankMap.set(empCode, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                        for (const row of payrollByNameRows) {
+                            const empCode = row.EmpCode?.trim().toUpperCase();
+                            const empName = row.EmpName?.trim().toUpperCase();
+                            const bankAccNo = row.BankAccNo?.trim() || '';
+
+                            // CRITICAL: Store by emp_code as primary key (most reliable)
+                            // This avoids collision when two employees have the same name
+                            if (empCode && bankAccNo) {
+                                const existing = payrollBankMap.get(empCode);
+                                if (!existing) {
+                                    payrollBankMap.set(empCode, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                                } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existing.bank_acc_no)) {
+                                    // Replace '0' with valid if we find one
+                                    payrollBankMap.set(empCode, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '' });
+                                }
                             }
-                        }
 
-                        // Also store by emp_name + emp_code combo to avoid duplicate name collisions
-                        // This is used as fallback when emp_code lookup fails
-                        if (empName && empCode && bankAccNo) {
-                            const nameCodeKey = `${empName}|||${empCode}`;
-                            const existingByName = payrollBankByNameMap.get(nameCodeKey);
-                            if (!existingByName) {
-                                payrollBankByNameMap.set(nameCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
-                            } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existingByName.bank_acc_no)) {
-                                payrollBankByNameMap.set(nameCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
+                            // Also store by emp_name + emp_code combo to avoid duplicate name collisions
+                            // This is used as fallback when emp_code lookup fails
+                            if (empName && empCode && bankAccNo) {
+                                const nameCodeKey = `${empName}|||${empCode}`;
+                                const existingByName = payrollBankByNameMap.get(nameCodeKey);
+                                if (!existingByName) {
+                                    payrollBankByNameMap.set(nameCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
+                                } else if (this.isValidBankAccNo(bankAccNo) && !this.isValidBankAccNo(existingByName.bank_acc_no)) {
+                                    payrollBankByNameMap.set(nameCodeKey, { bank_acc_no: bankAccNo, bank_code: row.BankCode?.trim() || '', emp_code: empCode });
+                                }
                             }
                         }
                     }

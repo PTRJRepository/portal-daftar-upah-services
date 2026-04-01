@@ -1187,13 +1187,18 @@ export class HistoryDatabaseService {
         const religionHistoryMap = new Map<string, string>();
         if (empCodesForHr.length > 0) {
             try {
-                const placeholders = empCodesForHr.map(() => '?').join(',');
-                const relRows = await db.query<{ emp_code: string, religion: string }>(`
-                    SELECT RTRIM(emp_code) as emp_code, religion 
-                    FROM dbo.history_hr_employee 
-                    WHERE period_month = ? AND period_year = ? AND RTRIM(emp_code) IN (${placeholders})
-                `, [periodMonth, periodYear, ...empCodesForHr]);
-                relRows.forEach(r => religionHistoryMap.set(r.emp_code.trim().toUpperCase(), r.religion));
+                // CHUNK to avoid SQL Server 2100 parameter limit
+                const REL_CHUNK = 500;
+                for (let ri = 0; ri < empCodesForHr.length; ri += REL_CHUNK) {
+                    const chunk = empCodesForHr.slice(ri, ri + REL_CHUNK);
+                    const placeholders = chunk.map(() => '?').join(',');
+                    const relRows = await db.query<{ emp_code: string, religion: string }>(`
+                        SELECT RTRIM(emp_code) as emp_code, religion 
+                        FROM dbo.history_hr_employee 
+                        WHERE period_month = ? AND period_year = ? AND RTRIM(emp_code) IN (${placeholders})
+                    `, [periodMonth, periodYear, ...chunk]);
+                    relRows.forEach(r => religionHistoryMap.set(r.emp_code.trim().toUpperCase(), r.religion));
+                }
             } catch (e) {
                 logError(CATEGORY, "Error fetching religion from history_hr_employee", e);
             }
@@ -1204,17 +1209,21 @@ export class HistoryDatabaseService {
         if (empCodesForHr.length > 0) {
             try {
                 const liveDb = Database.getInstance(); // Default live db holds HR_EMPLOYEE
-                // Maximum params limit in SQL Server is 2100, we should chunk if larger, but for UI it's usually < 1000
-                const placeholders = empCodesForHr.map(() => '?').join(',');
-                const liveHrRows = await liveDb.query<any>(`
-                    SELECT RTRIM(EmpCode) as emp_code, ResAddress as res_address, HREmpType as hr_emp_type, NewICNo as actual_nik, Religion
-                    FROM dbo.HR_EMPLOYEE
-                    WHERE RTRIM(EmpCode) IN (${placeholders})
-                `, empCodesForHr);
+                // CHUNK to avoid SQL Server 2100 parameter limit
+                const HR_CHUNK = 500;
+                for (let hi = 0; hi < empCodesForHr.length; hi += HR_CHUNK) {
+                    const chunk = empCodesForHr.slice(hi, hi + HR_CHUNK);
+                    const placeholders = chunk.map(() => '?').join(',');
+                    const liveHrRows = await liveDb.query<any>(`
+                        SELECT RTRIM(EmpCode) as emp_code, ResAddress as res_address, HREmpType as hr_emp_type, NewICNo as actual_nik, Religion
+                        FROM dbo.HR_EMPLOYEE
+                        WHERE RTRIM(EmpCode) IN (${placeholders})
+                    `, chunk);
 
-                liveHrRows.forEach(row => {
-                    hrEmployeeMap.set(row.emp_code, row);
-                });
+                    liveHrRows.forEach(row => {
+                        hrEmployeeMap.set(row.emp_code, row);
+                    });
+                }
             } catch (e) {
                 logError(CATEGORY, "Error fetching live HR_EMPLOYEE data", e);
             }

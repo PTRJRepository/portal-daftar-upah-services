@@ -67,46 +67,53 @@ export class EmployeeGangHistoryService {
         if (!niks || niks.length === 0) return new Map();
 
         const uniqueNiks = [...new Set(niks.map(n => n.trim().toUpperCase()).filter(Boolean))];
-        const placeholders = uniqueNiks.map(() => '?').join(',');
 
         try {
-            // Query includes Status and GangCode to help prioritization
-            const rows = await this.db.query<{ NewICNo: string; EmpCode: string; Status: string; GangCode: string }>(`
-                SELECT RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpCode) as EmpCode, e.Status, RTRIM(gl.GangCode) as GangCode
-                FROM HR_EMPLOYEE e
-                LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
-                LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
-                WHERE RTRIM(e.NewICNo) IN (${placeholders}) OR RTRIM(e.EmpCode) IN (${placeholders})
-                ORDER BY 
-                    CASE WHEN e.Status = '1' THEN 0 ELSE 1 END, -- Active first
-                    em.AppJoinDate DESC, 
-                    e.EmpCode DESC
-            `, [...uniqueNiks, ...uniqueNiks]);
-
             const resultMap = new Map<string, string>();
-            
-            // First pass: Try to match by Gang if preferredGangs is provided
-            if (preferredGangs) {
+
+            // CHUNK to avoid SQL Server 2100 parameter limit
+            // Each chunk uses 2x params (IN for NewICNo + IN for EmpCode)
+            const CHUNK_SIZE = 500;
+            for (let i = 0; i < uniqueNiks.length; i += CHUNK_SIZE) {
+                const chunk = uniqueNiks.slice(i, i + CHUNK_SIZE);
+                const placeholders = chunk.map(() => '?').join(',');
+
+                // Query includes Status and GangCode to help prioritization
+                const rows = await this.db.query<{ NewICNo: string; EmpCode: string; Status: string; GangCode: string }>(`
+                    SELECT RTRIM(e.NewICNo) as NewICNo, RTRIM(e.EmpCode) as EmpCode, e.Status, RTRIM(gl.GangCode) as GangCode
+                    FROM HR_EMPLOYEE e
+                    LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                    LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
+                    WHERE RTRIM(e.NewICNo) IN (${placeholders}) OR RTRIM(e.EmpCode) IN (${placeholders})
+                    ORDER BY 
+                        CASE WHEN e.Status = '1' THEN 0 ELSE 1 END, -- Active first
+                        em.AppJoinDate DESC, 
+                        e.EmpCode DESC
+                `, [...chunk, ...chunk]);
+
+                // First pass: Try to match by Gang if preferredGangs is provided
+                if (preferredGangs) {
+                    rows.forEach(row => {
+                        const nikKey = row.NewICNo?.trim().toUpperCase();
+                        const prefGang = preferredGangs.get(nikKey);
+                        if (nikKey && prefGang && row.GangCode === prefGang && !resultMap.has(nikKey)) {
+                            resultMap.set(nikKey, row.EmpCode);
+                        }
+                    });
+                }
+
+                // Second pass: Fill in remaining with best available (Status 1 + Latest Date)
                 rows.forEach(row => {
                     const nikKey = row.NewICNo?.trim().toUpperCase();
-                    const prefGang = preferredGangs.get(nikKey);
-                    if (nikKey && prefGang && row.GangCode === prefGang && !resultMap.has(nikKey)) {
+                    if (nikKey && !resultMap.has(nikKey)) {
                         resultMap.set(nikKey, row.EmpCode);
+                    }
+                    const empKey = row.EmpCode?.trim().toUpperCase();
+                    if (empKey && !resultMap.has(empKey)) {
+                        resultMap.set(empKey, row.EmpCode);
                     }
                 });
             }
-
-            // Second pass: Fill in remaining with best available (Status 1 + Latest Date)
-            rows.forEach(row => {
-                const nikKey = row.NewICNo?.trim().toUpperCase();
-                if (nikKey && !resultMap.has(nikKey)) {
-                    resultMap.set(nikKey, row.EmpCode);
-                }
-                const empKey = row.EmpCode?.trim().toUpperCase();
-                if (empKey && !resultMap.has(empKey)) {
-                    resultMap.set(empKey, row.EmpCode);
-                }
-            });
 
             return resultMap;
         } catch (e) {

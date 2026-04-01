@@ -1,4 +1,5 @@
 import { Database } from "../db/client";
+// Config is imported dynamically in fetchGangs() to avoid circular dependency issues
 import { divisionConfigService } from "./config/DivisionConfigService";
 
 interface Gang {
@@ -320,12 +321,16 @@ export class GangService {
      */
     public async fetchGangs(division?: string, search?: string, includeVirtual: boolean = false): Promise<Gang[]> {
         try {
+            const { Config: Cfg } = await import("../config");
+            console.log(`[GangService] fetchGangs triggered - Div: ${division}, Search: ${search}, Profile: ${Cfg.DB_PROFILE}, DB: ${Cfg.DEFAULT_DATABASE}`);
             if (!division) {
+                console.log(`[GangService] No division provided, returning empty.`);
                 return [];
             }
 
             // Use DivisionConfigService for gang retrieval
             const gangs = await divisionConfigService.getGangsForDivision(division);
+            console.log(`[GangService] divisionConfigService returned ${gangs.length} gangs for ${division}`);
 
             // Filter by search if provided
             let filtered = gangs;
@@ -337,11 +342,13 @@ export class GangService {
                 );
             }
 
-            return filtered.map(g => ({
+            const result = filtered.map(g => ({
                 gang_code: g.gang_code,
                 description: g.description || '',
                 loc_code: g.loc_code
             }));
+            console.log(`[GangService] Returning ${result.length} gangs.`);
+            return result;
         } catch (e) {
             console.error("[GangService] Failed to fetch gangs:", e);
             return [];

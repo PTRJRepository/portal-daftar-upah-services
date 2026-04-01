@@ -309,7 +309,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 gangCode || 'ALL',
                 divisionCode,
                 undefined,
-                "SERVER_PROFILE_2",
+                undefined,
                 true // [FIX] Include virtual gangs for comparison
             );
 
@@ -376,7 +376,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 'ALL',
                 undefined,
                 undefined,
-                "SERVER_PROFILE_2"
+                undefined
             );
 
             // Find the specific employee
@@ -482,7 +482,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 divisionCode || 'ALL',
                 undefined,
                 undefined,
-                "SERVER_PROFILE_2"
+                undefined
             );
 
             const payrollData = payrollResult?.data_rows || [];

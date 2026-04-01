@@ -235,7 +235,7 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
             // Fetch payroll data for each division needed
             for (const div of divisions) {
                 const payrollResult = await dataExtractorService.extractPayrollData(
-                    month, year, div, undefined, undefined, "SERVER_PROFILE_2", false, null, undefined, true // skipHarvest=true
+                    month, year, div, undefined, undefined, undefined, false, null, undefined, true // skipHarvest=true
                 );
                 if (payrollResult?.data_rows) {
                     allPayrollData = allPayrollData.concat(payrollResult.data_rows);

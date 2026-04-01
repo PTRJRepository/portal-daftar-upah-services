@@ -417,6 +417,8 @@ export class DivisionConfigService {
         const db = Database.getInstance();
         const division = this.getDivision(divisionCode);
 
+        console.log(`[DivisionConfigService] getGangsForDivision: ${divisionCode}, resolved: ${division?.code}, type: ${division?.type}`);
+
         if (!division) {
             console.warn(`[DivisionConfigService] Division not found: ${divisionCode}`);
             return [];
@@ -472,11 +474,13 @@ export class DivisionConfigService {
             params = aliases;
         }
 
+        console.log(`[DivisionConfigService] Executing query for ${divisionCode} with aliases: ${JSON.stringify(params)}`);
         const rows = await db.query<any>(query, params);
+        console.log(`[DivisionConfigService] Database returned ${rows.length} rows`);
 
         // Filter for virtual divisions
         if (division.type === 'virtual' && division.gangPattern) {
-            return rows
+            const filtered = rows
                 .filter(row => {
                     const gangCode = row.gang_code?.trim().toUpperCase() || '';
                     const desc = row.description?.trim().toUpperCase() || '';
@@ -492,6 +496,8 @@ export class DivisionConfigService {
                     loc_code: row.loc_code?.trim() || '',
                     division_code: division.code
                 }));
+            console.log(`[DivisionConfigService] Virtual filter: ${filtered.length} rows matched pattern`);
+            return filtered;
         }
 
         return rows.map(row => ({

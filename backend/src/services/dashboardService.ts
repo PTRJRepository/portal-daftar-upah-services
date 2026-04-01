@@ -1216,8 +1216,8 @@ export class DashboardService {
     private async getHarvesterBunches(month: number, year: number): Promise<Map<string, { totalBunches: number; employeeCount: number }>> {
         const gangBunches = new Map<string, { totalBunches: number; employeeCount: number }>();
 
-        // Use SERVER_PROFILE_2 for harvester data (same as payroll data)
-        const dbHarvester = Database.getInstance(undefined, "SERVER_PROFILE_2");
+        // Use default database profile for harvester data
+        const dbHarvester = Database.getInstance();
 
         try {
             const query = `

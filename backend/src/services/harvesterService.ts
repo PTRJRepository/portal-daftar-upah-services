@@ -9,9 +9,16 @@ import type { HarvestData, HarvestDataRaw, HarvestExtendedData, HarvestMasterDat
 export class HarvesterService {
     private static instance: HarvesterService;
     private db: Database;
+    private stagingAvailable: boolean;
 
     private constructor() {
         this.db = Database.getInstance();
+        // Check env flag - skip staging entirely if disabled
+        const disableStaging = process.env.DISABLE_STAGING_DB === 'true';
+        this.stagingAvailable = !disableStaging;
+        if (disableStaging) {
+            console.log("[HarvesterService] Staging DB disabled via DISABLE_STAGING_DB env flag");
+        }
     }
 
     public static getInstance(): HarvesterService {
@@ -35,16 +42,17 @@ export class HarvesterService {
      * FALLBACK: Ambil dari PR_HARVESTERLN_ARC (Legacy)
      */
     public async getEmployeeBunches(empCode: string, month: number, year: number): Promise<HarvestData> {
-        // 1. Coba ambil dari Staging terlebih dahulu
-        try {
-            const stagingData = await this.getEmployeeBunchesFromStaging(empCode, month, year);
-            if (stagingData.total_bunches > 0 || stagingData.bunches_transactions > 0) {
-                // Determine if we should return this or check legacy?
-                // Assume Staging is the source of truth if data exists.
-                return stagingData;
+        // 1. Coba ambil dari Staging terlebih dahulu (skip if previously failed)
+        if (this.stagingAvailable) {
+            try {
+                const stagingData = await this.getEmployeeBunchesFromStaging(empCode, month, year);
+                if (stagingData.total_bunches > 0 || stagingData.bunches_transactions > 0) {
+                    return stagingData;
+                }
+            } catch (e) {
+                this.stagingAvailable = false;
+                console.warn("[HarvesterService] Staging unreachable, disabling for this session. Falling back to legacy.");
             }
-        } catch (e) {
-            console.warn("[HarvesterService] Failed to get from staging, falling back to legacy:", e);
         }
 
         const defaultData: HarvestData = {
@@ -140,31 +148,32 @@ export class HarvesterService {
             return resultMap;
         }
 
-        // 1. Coba ambil dari Staging
-        try {
-            const stagingMap = await this.getBatchEmployeeBunchesFromStaging(empCodes, month, year);
+        // 1. Coba ambil dari Staging (skip if previously failed)
+        if (this.stagingAvailable) {
+            try {
+                const stagingMap = await this.getBatchEmployeeBunchesFromStaging(empCodes, month, year);
 
-            // Check if stagingMap actually has any non-zero data
-            let hasStagingData = false;
-            for (const val of stagingMap.values()) {
-                if (val.total_bunches > 0 || val.bunches_transactions > 0) {
-                    hasStagingData = true;
-                    break;
-                }
-            }
-
-            if (hasStagingData) {
-                // Merge staging results into resultMap
-                for (const [key, val] of stagingMap) {
+                // Check if stagingMap actually has any non-zero data
+                let hasStagingData = false;
+                for (const val of stagingMap.values()) {
                     if (val.total_bunches > 0 || val.bunches_transactions > 0) {
-                        resultMap.set(key, val);
+                        hasStagingData = true;
+                        break;
                     }
                 }
-                // Jika staging ada data, kita pakai staging data untuk karyawan tersebut.
-                return resultMap;
+
+                if (hasStagingData) {
+                    for (const [key, val] of stagingMap) {
+                        if (val.total_bunches > 0 || val.bunches_transactions > 0) {
+                            resultMap.set(key, val);
+                        }
+                    }
+                    return resultMap;
+                }
+            } catch (e) {
+                this.stagingAvailable = false;
+                console.warn("[HarvesterService] Staging unreachable, disabling for this session.");
             }
-        } catch (e) {
-            console.warn("[HarvesterService] Failed batch staging fetch:", e);
         }
 
         try {
@@ -179,18 +188,23 @@ export class HarvesterService {
                 const chunk = empCodes.slice(ci, ci + CHUNK_SIZE);
                 const placeholders = chunk.map(() => "?").join(",");
 
+                // Use JOIN with master table (PR_HARVESTER_ARC) for date filtering
+                // since PR_HARVESTERLN_ARC may not have TrxDate column on all servers
                 const sql = `
-                    SELECT EmpCode, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
-                    FROM PR_HARVESTERLN WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode
-                    UNION ALL
-                    SELECT EmpCode, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
-                    FROM PR_HARVESTERLN_ACC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode
-                    UNION ALL
-                    SELECT EmpCode, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
-                    FROM PR_HARVESTERLN_ARC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode
+                    SELECT l.EmpCode, 
+                        SUM(ISNULL(l.TotalBunches, 0)) as TotalBunches, 
+                        SUM(ISNULL(l.Ripe, 0)) as Ripe, 
+                        SUM(ISNULL(l.Unripe, 0)) as Unripe, 
+                        0 as TotalRound, 
+                        COUNT(*) as TrxCount
+                    FROM PR_HARVESTERLN_ARC l
+                    INNER JOIN PR_HARVESTER_ARC m ON l.MasterID = m.ID
+                    WHERE l.EmpCode IN (${placeholders}) 
+                        AND m.AccMonth = ? AND m.AccYear = ?
+                    GROUP BY l.EmpCode
                 `;
 
-                const params = [...chunk, month, year, ...chunk, month, year, ...chunk, month, year];
+                const params = [...chunk, month, year];
                 const chunkResults = await this.db.query<HarvestDataRaw>(sql, params);
                 allLegacyResults.push(...chunkResults);
             }

@@ -185,7 +185,7 @@ export class DivisionDefinition {
      */
     public async getAllDivisions(includeVirtual: boolean = true): Promise<string[]> {
         try {
-            const db = Database.getInstance(undefined, "SERVER_PROFILE_2");
+            const db = Database.getInstance();
             const rows = await db.query<{ LocCode: string }>(`
                 SELECT DISTINCT [LocCode]
                 FROM [dbo].[HR_GANG]
@@ -305,7 +305,7 @@ export class DivisionDefinition {
      * @param excludeVirtual - Apakah exclude gangs yang termasuk virtual division lain
      */
     private async getRealDivisionGangs(locCode: string, excludeVirtual: boolean = true): Promise<Gang[]> {
-        const db = Database.getInstance(undefined, "SERVER_PROFILE_2");
+        const db = Database.getInstance();
         const cleanedLoc = locCode.toUpperCase();
 
         const rows = await db.query<{ GangCode: string, Description: string, LocCode: string }>(`
@@ -343,7 +343,7 @@ export class DivisionDefinition {
         const config = this.getVirtualDivisionConfig(virtualCode);
         if (!config) return [];
 
-        const db = Database.getInstance(undefined, "SERVER_PROFILE_2");
+        const db = Database.getInstance();
 
         let rows: { GangCode: string, Description: string, LocCode: string }[];
 

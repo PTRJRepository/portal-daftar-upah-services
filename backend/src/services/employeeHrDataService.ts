@@ -120,16 +120,21 @@ export class EmployeeHrDataService {
             const cleanCodes = empCodes.map(c => c.trim()).filter(c => c.length > 0);
             if (cleanCodes.length === 0) return new Map();
 
-            const placeholders = cleanCodes.map(() => '?').join(',');
-
-            const rows = await this.db.query<EmployeeHrData>(
-                `SELECT * FROM dbo.employee_hr_data WHERE RTRIM(emp_code) IN (${placeholders})`,
-                cleanCodes
-            );
-
             const map = new Map<string, EmployeeHrData>();
-            for (const row of rows) {
-                map.set(row.emp_code.trim().toUpperCase(), row);
+            // CHUNK to avoid SQL Server 2100 parameter limit
+            const CHUNK_SIZE = 500;
+            for (let i = 0; i < cleanCodes.length; i += CHUNK_SIZE) {
+                const chunk = cleanCodes.slice(i, i + CHUNK_SIZE);
+                const placeholders = chunk.map(() => '?').join(',');
+
+                const rows = await this.db.query<EmployeeHrData>(
+                    `SELECT * FROM dbo.employee_hr_data WHERE RTRIM(emp_code) IN (${placeholders})`,
+                    chunk
+                );
+
+                for (const row of rows) {
+                    map.set(row.emp_code.trim().toUpperCase(), row);
+                }
             }
             return map;
 
