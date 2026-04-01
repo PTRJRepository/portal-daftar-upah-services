@@ -96,7 +96,7 @@ export async function fetchReportDivisionOptimized(token, { division, month, yea
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
   if (norm.year) params.year = norm.year
-  if (division) params.division = division
+  if (division) params.div = division // Map 'division' to 'div' for locked/report/raw-tree
   if (use_history !== null) params.use_history = use_history
   if (gang_prefix) params.gang_prefix = gang_prefix
 
@@ -104,7 +104,7 @@ export async function fetchReportDivisionOptimized(token, { division, month, yea
   if (token) config.headers = { Authorization: `Bearer ${token}` }
 
   try {
-    const r = await requestWithRetry('/payroll/report/division-optimized', config, 1, 500, 120000)
+    const r = await requestWithRetry('/payroll/locked/report/raw-tree', config, 1, 500, 120000)
     return r.data
   } catch (error) {
     console.error('[PayrollService] Failed to fetch optimized division report:', error)

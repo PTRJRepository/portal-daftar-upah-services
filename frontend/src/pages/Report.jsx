@@ -440,6 +440,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const renderDivisionOptimized = async (token, division, month, year, gangPrefix = null) => {
     try {
       setLoadingStatus(`Fetching optimized division data for ${division}...`)
+      // [FIX] Update to fetch using locked API which actually exists and works
       const groupedData = await fetchReportDivisionOptimized(token, { division, month, year, use_history: useHistory, gang_prefix: gangPrefix })
 
       let flatRows = []

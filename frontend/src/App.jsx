@@ -104,8 +104,13 @@ const OperationalReportWrapper = () => {
 
   // Reset gangPrefix when division changes
   useEffect(() => {
-    setGangPrefix('');
-  }, [division]);
+    // [OPTIMIZATION] Set to the first available group automatically instead of 'SEMUA GROUP'
+    if (availablePrefixes.length > 0) {
+        setGangPrefix(availablePrefixes[0]);
+    } else {
+        setGangPrefix('');
+    }
+  }, [availablePrefixes, division]);
 
   // Layout state for selectors
   // If not admin and locked mode, division is read-only

@@ -470,32 +470,89 @@ export class DataExtractorService {
         const emptyPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
         const emptyPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
 
-        // Fetch all required data in parallel — each query is wrapped so a timeout returns defaults, not an error
-        const [
-            attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes, bunchesBatch, manualAdjustmentsRaw, positionHistory
-        ] = await Promise.all([
-            safeQuery('getAttendance', () => this.getAttendance(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, any>),
-            safeQuery('getCuti', () => this.getCuti(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, CutiData>),
-            safeQuery('getPremi', () => this.getPremi(empCodes, startDate, endDate, isHistorical, serverProfile), emptyPremiResult),
-            safeQuery('getPotongan', () => this.getPotongan(empCodes, startDate, endDate, serverProfile, isHistorical), emptyPotonganResult),
-            safeQuery('getLemburCalculator', () => this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile), {} as Record<string, LemburData>),
-            safeQuery('getLemburDetails', () => this.getLemburDetailsWithTaskBreakdown(empCodes, month, year, serverProfile), {} as Record<string, any>),
+        // [OPTIMIZATION] Batch processing to prevent SQL timeouts.
+        const BATCH_SIZE = 300; 
+        const empCodeChunks: string[][] = [];
+        for (let i = 0; i < empCodes.length; i += BATCH_SIZE) {
+            empCodeChunks.push(empCodes.slice(i, i + BATCH_SIZE));
+        }
 
-            safeQuery('getLemburDocDesc', () => this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
-            safeQuery('getBerasDocDesc', () => this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
-            safeQuery('getJabatan', () => this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile, isHistorical), {} as Record<string, number>),
-            safeQuery('getMasaKerja', () => this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile, isHistorical), {} as Record<string, number>),
-            safeQuery('getUpahPokok', () => this.getUpahPokok(empCodes, year, currentYear, serverProfile), {} as Record<string, number>),
-            safeQuery('getBrondol', () => this.getBrondol(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
+        // Accumulators for batched results
+        let attendanceMap: Record<string, any> = {};
+        let cuti: Record<string, CutiData> = {};
+        let premiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
+        let potonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
+        let lembur: Record<string, LemburData> = {};
+        let lemburWithDetails: Record<string, any> = {};
+        let lemburDocDesc: Record<string, number> = {};
+        let berasDocDesc: Record<string, number> = {};
+        let jabatan: Record<string, number> = {};
+        let masaKerja: Record<string, number> = {};
+        let upahPokok: Record<string, number> = {};
+        let brondol: Record<string, number> = {};
+        let taskCodes: Record<string, any> = {};
+        let bunchesBatch = new Map();
+        let positionHistory = {} as Record<string, string>;
 
+        // Global queries that don't depend on empCodes chunks
+        const [jobTitles, manualAdjustmentsRaw] = await Promise.all([
             safeQuery('getJobTitles', () => EmployeeEstateService.getEmployeeJobs(), {} as Record<string, string>),
-            safeQuery('getTaskCodes', () => this.getTaskCodes(empCodes, startDate, endDate, serverProfile, isHistorical), {} as Record<string, any>),
-            // [OPTIMIZATION] Skip bunches fetch if requested (e.g. for Payslips)
-            !skipHarvest ? safeQuery('getBunches', () => this.getBunchesBatch(empCodes, month, year), new Map()) : Promise.resolve(new Map()),
-            safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined), []),
-            safeQuery('getPositionHistory', () => this.getPositionHistory(empCodes, month, year), {} as Record<string, string>)
+            safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined), [])
         ]);
-        debug(CATEGORY, `Phase 1 (16 parallel queries): ${(performance.now() - startParallel).toFixed(0)}ms for ${empCodes.length} employees`);
+
+        // Process chunks sequentially to drastically reduce database overhead and prevent timeouts
+        for (let idx = 0; idx < empCodeChunks.length; idx++) {
+            const chunk = empCodeChunks[idx];
+            debug(CATEGORY, `Processing batch ${idx + 1}/${empCodeChunks.length} (${chunk.length} employees)...`);
+
+            // Execute the heavy queries just for this chunk
+            const [
+                attB, cutiB, premiB, potB, lemburCalcB, lemburDetB, lemburDocB, berasDocB, 
+                jabatanB, masaKerjaB, upahB, brondolB, taskCodesB, bunchesB, posHistB
+            ] = await Promise.all([
+                safeQuery('getAttendance', () => this.getAttendance(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, any>),
+                safeQuery('getCuti', () => this.getCuti(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, CutiData>),
+                safeQuery('getPremi', () => this.getPremi(chunk, startDate, endDate, isHistorical, serverProfile), JSON.parse(JSON.stringify(emptyPremiResult))),
+                safeQuery('getPotongan', () => this.getPotongan(chunk, startDate, endDate, serverProfile, isHistorical), JSON.parse(JSON.stringify(emptyPotonganResult))),
+                safeQuery('getLemburCalculator', () => this.getLemburDetailsFromCalculator(chunk, month, year, serverProfile), {} as Record<string, LemburData>),
+                safeQuery('getLemburDetails', () => this.getLemburDetailsWithTaskBreakdown(chunk, month, year, serverProfile), {} as Record<string, any>),
+                safeQuery('getLemburDocDesc', () => this.getLemburFromDocDesc(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
+                safeQuery('getBerasDocDesc', () => this.getBerasFromDocDesc(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
+                safeQuery('getJabatan', () => this.getTunjanganAmount(chunk, startDate, endDate, "JABATAN", serverProfile, isHistorical), {} as Record<string, number>),
+                safeQuery('getMasaKerja', () => this.getTunjanganAmount(chunk, startDate, endDate, "MASA%KERJA", serverProfile, isHistorical), {} as Record<string, number>),
+                safeQuery('getUpahPokok', () => this.getUpahPokok(chunk, year, currentYear, serverProfile), {} as Record<string, number>),
+                safeQuery('getBrondol', () => this.getBrondol(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
+                safeQuery('getTaskCodes', () => this.getTaskCodes(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, any>),
+                !skipHarvest ? safeQuery('getBunches', () => this.getBunchesBatch(chunk, month, year), new Map()) : Promise.resolve(new Map()),
+                safeQuery('getPositionHistory', () => this.getPositionHistory(chunk, month, year), {} as Record<string, string>)
+            ]);
+
+            // Merge back into main accumulators
+            Object.assign(attendanceMap, attB);
+            Object.assign(cuti, cutiB);
+            
+            Object.assign(premiResult.amounts, premiB.amounts);
+            Object.assign(premiResult.titleMap, premiB.titleMap);
+            Object.assign(premiResult.details, premiB.details);
+
+            Object.assign(potonganResult.amounts, potB.amounts);
+            Object.assign(potonganResult.titleMap, potB.titleMap);
+
+            Object.assign(lembur, lemburCalcB);
+            Object.assign(lemburWithDetails, lemburDetB);
+            Object.assign(lemburDocDesc, lemburDocB);
+            Object.assign(berasDocDesc, berasDocB);
+            Object.assign(jabatan, jabatanB);
+            Object.assign(masaKerja, masaKerjaB);
+            Object.assign(upahPokok, upahB);
+            Object.assign(brondol, brondolB);
+            Object.assign(taskCodes, taskCodesB);
+            Object.assign(positionHistory, posHistB);
+
+            for (const [k, v] of bunchesB.entries()) bunchesBatch.set(k, v);
+        }
+
+        debug(CATEGORY, `Phase 1 (Chunked queries): ${(performance.now() - startParallel).toFixed(0)}ms for ${empCodes.length} employees`);
 
         // ============================================================
         // [OPTIMIZATION] Phase 2: 4 parallel calls

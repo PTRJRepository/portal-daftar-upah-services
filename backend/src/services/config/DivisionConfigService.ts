@@ -432,22 +432,9 @@ export class DivisionConfigService {
             ? this.getAliases(division.sourceDivision)
             : [];
 
-        if (division.type === 'virtual' && division.sourceDivision) {
-            // For virtual divisions, query from source division using ALL aliases
-            // This ensures we find gangs even if LocCode uses different alias (e.g., P1A vs PG1A)
-            const placeholders = sourceDivAliases.map(() => '?').join(',');
-            query = `
-                SELECT
-                    GangCode as gang_code,
-                    Description as description,
-                    LocCode as loc_code
-                FROM HR_GANG
-                WHERE RTRIM(LocCode) IN (${placeholders})
-                ORDER BY GangCode
-            `;
-            params = sourceDivAliases;
-        } else if (division.type === 'virtual') {
-            // For MILL or other non-source virtual divisions
+        if (division.type === 'virtual') {
+            // For all virtual divisions, query all gangs and let the pattern filter do the work
+            // This prevents issues where a virtual gang's LocCode doesn't match the source division
             query = `
                 SELECT
                     GangCode as gang_code,

@@ -757,10 +757,11 @@ export default function CustomPayrollTable({
         try {
             let data;
             if (isProdMode()) {
-                // In prod mode, fetch without gangPrefix — get all division data
-                data = await getLockedRawTree(token, division, month, year, useHistoryDb, null);
+                // [FIX] In prod mode, respect gangPrefix instead of fetching all division data
+                data = await getLockedRawTree(token, division, month, year, useHistoryDb, gangPrefix || null);
             } else {
-                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}`;
+                const prefixParam = gangPrefix ? `&gang_prefix=${gangPrefix}` : '';
+                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}${prefixParam}`;
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) throw new Error(await response.text());
                 data = await response.json();
