@@ -17,7 +17,8 @@
       "Bash(warna *)",
       "Bash(klik *)",
       "Bash(saat *)",
-      "Bash(integrasi *)"
+      "Bash(integrasi *)",
+      "Bash(taskkill *)"
     ]
   },
   "$version": 3

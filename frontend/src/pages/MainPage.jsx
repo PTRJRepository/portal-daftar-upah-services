@@ -18,6 +18,10 @@ import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
 import GangEmployeeInfo from '../components/GangEmployeeInfo'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
+import { withLRU } from '../utils/cacheUtils'
+
+// Maximum cached entries per cache type (LRU eviction when exceeded)
+const CACHE_MAX_ENTRIES = 10
 
 // Check if running in dev/test mode (admin mode)
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
@@ -1631,7 +1635,7 @@ export default function MainPage({ lockedDiv = null }) {
                       year={year}
                       division={division}
                       initialData={attendanceMatrixCache[attCacheKey] || null}
-                      onDataLoaded={(data) => setAttendanceMatrixCache(prev => ({ ...prev, [attCacheKey]: data }))}
+                      onDataLoaded={(data) => setAttendanceMatrixCache(prev => withLRU(prev, attCacheKey, data, CACHE_MAX_ENTRIES))}
                     />
                   </div>
                   <div style={{ display: activeMatrixView === 'overtime' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', flexDirection: 'column' }}>
@@ -1642,7 +1646,7 @@ export default function MainPage({ lockedDiv = null }) {
                       year={year}
                       division={division}
                       initialData={overtimeMatrixCache[otCacheKey] || null}
-                      onDataLoaded={(data) => setOvertimeMatrixCache(prev => ({ ...prev, [otCacheKey]: data }))}
+                      onDataLoaded={(data) => setOvertimeMatrixCache(prev => withLRU(prev, otCacheKey, data, CACHE_MAX_ENTRIES))}
                     />
                   </div>
                   <div style={{ display: activeMatrixView === 'employee' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', flexDirection: 'column' }}>
@@ -1653,7 +1657,7 @@ export default function MainPage({ lockedDiv = null }) {
                       year={year}
                       division={division}
                       initialData={employeeDataCache[empCacheKey] || null}
-                      onDataLoaded={(data) => setEmployeeDataCache(prev => ({ ...prev, [empCacheKey]: data }))}
+                      onDataLoaded={(data) => setEmployeeDataCache(prev => withLRU(prev, empCacheKey, data, CACHE_MAX_ENTRIES))}
                       onViewEmployeeDetail={handleViewEmployeeDetail}
                     />
                   </div>
@@ -1677,7 +1681,7 @@ export default function MainPage({ lockedDiv = null }) {
                       isEditMode={isEditMode}
                       useHistoryDb={isHistorical}
                       initialData={payrollDataCache[payCacheKey] || null}
-                      onDataLoaded={(data) => setPayrollDataCache(prev => ({ ...prev, [payCacheKey]: data }))}
+                      onDataLoaded={(data) => setPayrollDataCache(prev => withLRU(prev, payCacheKey, data, CACHE_MAX_ENTRIES))}
                       onRefresh={() => setRefreshTrigger(prev => prev + 1)}
                     />
                   </div>

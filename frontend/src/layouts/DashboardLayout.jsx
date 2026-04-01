@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReport } from '../context/ReportContext';
@@ -262,6 +262,43 @@ const DashboardLayout = () => {
     const [reportsOpen, setReportsOpen] = useState(false);
 
     const basePath = getBasePath();
+    const autoCloseTimerRef = useRef(null);
+
+    // Auto-close sidebar after 10 seconds of inactivity
+    useEffect(() => {
+        const sidebar = document.querySelector('[data-sidebar]');
+        if (!sidebar) return;
+
+        const clearAutoClose = () => {
+            if (autoCloseTimerRef.current) {
+                clearTimeout(autoCloseTimerRef.current);
+                autoCloseTimerRef.current = null;
+            }
+        };
+
+        const startAutoClose = () => {
+            if (collapsed) return;
+            clearAutoClose();
+            autoCloseTimerRef.current = setTimeout(() => {
+                setCollapsed(true);
+            }, 10000);
+        };
+
+        // Start timer when sidebar is expanded
+        startAutoClose();
+
+        // Reset timer on any sidebar interaction
+        sidebar.addEventListener('mouseenter', startAutoClose);
+        sidebar.addEventListener('mousemove', startAutoClose);
+        sidebar.addEventListener('click', startAutoClose);
+
+        return () => {
+            clearAutoClose();
+            sidebar.removeEventListener('mouseenter', startAutoClose);
+            sidebar.removeEventListener('mousemove', startAutoClose);
+            sidebar.removeEventListener('click', startAutoClose);
+        };
+    }, [collapsed]);
 
     // Close reports menu if sidebar collapses
     useEffect(() => {
@@ -345,7 +382,7 @@ const DashboardLayout = () => {
             />
 
             {/* ─── SIDEBAR ─────────────────────────────────────────────────── */}
-            <div className="no-print" style={{
+            <div data-sidebar className="no-print" style={{
                 width: sidebarWidth,
                 height: '100%',
                 backgroundColor: C.sidebarBg,

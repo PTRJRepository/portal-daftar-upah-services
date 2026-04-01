@@ -2256,51 +2256,46 @@ export default function CustomPayrollTable({
                                             </button>
                                         </div>
                                     ) : ['PAJAK', 'PANEN', 'ABSENSI', 'TUNJANGAN', 'PENDAPATAN LAINNYA', 'POTONGAN UPAH BERSIH'].includes(cell.label) ? (
-                                        <div className="flex items-center justify-center gap-1 cursor-pointer hover:bg-white/10 transition-colors h-full w-full select-none"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                const groupKey = cell.label === 'POTONGAN UPAH BERSIH' ? 'POTONGAN_BERSIH' : cell.label;
-                                                toggleGroup(groupKey);
-                                            }}
-                                            title="Klik untuk melihat/menyembunyikan detail"
-                                        >
-                                            <span>{cell.label}</span>
-                                            <span style={{ fontSize: '10px', marginLeft: '4px' }}>
-                                                {(
-                                                    cell.label === 'PAJAK' ? isTaxExpanded :
-                                                        cell.label === 'PANEN' ? isHarvestExpanded :
-                                                            cell.label === 'ABSENSI' ? isAttendanceExpanded :
-                                                                cell.label === 'TUNJANGAN' ? isAllowanceExpanded :
-                                                                    cell.label === 'PENDAPATAN LAINNYA' ? isOtherIncomeExpanded :
-                                                                        cell.label === 'POTONGAN UPAH BERSIH' ? isDeductionExpanded : false
-                                                ) ? '▼' : '▶'}
-                                            </span>
-                                            {isEditMode && cell.label === 'POTONGAN UPAH BERSIH' && (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleAddColumn(cell.label); }}
-                                                    style={{ marginLeft: 6, opacity: 0.9, background: '#f59e0b', color: 'white', border: 'none', borderRadius: '50%', width: 16, height: 16, fontSize: 12, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                    title={`Tambah kolom ${cell.label} baru`}
+                                        (() => {
+                                            const isExpanded = cell.label === 'PAJAK' ? isTaxExpanded :
+                                                cell.label === 'PANEN' ? isHarvestExpanded :
+                                                    cell.label === 'ABSENSI' ? isAttendanceExpanded :
+                                                        cell.label === 'TUNJANGAN' ? isAllowanceExpanded :
+                                                            cell.label === 'PENDAPATAN LAINNYA' ? isOtherIncomeExpanded :
+                                                                cell.label === 'POTONGAN UPAH BERSIH' ? isDeductionExpanded : false;
+
+                                            return (
+                                                <div 
+                                                    className={`header-toggle-container ${isExpanded ? 'is-expanded' : ''}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const groupKey = cell.label === 'POTONGAN UPAH BERSIH' ? 'POTONGAN_BERSIH' : cell.label;
+                                                        toggleGroup(groupKey);
+                                                    }}
+                                                    title={isExpanded ? "Klik untuk sembunyikan detail" : "Klik untuk lihat detail"}
                                                 >
-                                                    +
-                                                </button>
-                                            )}
-                                            {cell.label === 'PENDAPATAN LAINNYA' && (
-                                                <span style={{
-                                                    marginLeft: 6,
-                                                    opacity: 0.9,
-                                                    background: '#10b981',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    padding: '2px 6px',
-                                                    fontSize: '9px',
-                                                    fontWeight: 700,
-                                                    lineHeight: 1
-                                                }}>
-                                                    KONTAN
-                                                </span>
-                                            )}
-                                        </div>
+                                                    <span className="header-label-text">{cell.label}</span>
+                                                    
+                                                    <span className="header-toggle-icon">
+                                                        {isExpanded ? '▼' : '▶'}
+                                                    </span>
+
+                                                    {cell.label === 'PENDAPATAN LAINNYA' && (
+                                                        <span className="kontan-badge">KONTAN</span>
+                                                    )}
+
+                                                    {isEditMode && cell.label === 'POTONGAN UPAH BERSIH' && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleAddColumn(cell.label); }}
+                                                            className="header-add-btn"
+                                                            title={`Tambah kolom ${cell.label} baru`}
+                                                        >
+                                                            +
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()
                                     ) : cell.label === '%TOGGLE_JUMLAH%' ? (
                                         <div className="flex flex-col items-center justify-center gap-0.5 w-full h-full">
                                             <span>JUMLAH</span>
