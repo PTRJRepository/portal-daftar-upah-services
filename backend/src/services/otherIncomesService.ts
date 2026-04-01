@@ -190,7 +190,7 @@ export class OtherIncomesService {
         }
     }
 
-    static async initTable():
+    static async initTable() {
         const db = Database.getExtendedInstance();
         try {
             await db.query(`
