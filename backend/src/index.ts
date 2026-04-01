@@ -20,6 +20,12 @@ import { taxReportRoutes } from "./api/taxReportRoutes";
 import { employeeHrDataRoutes } from "./api/employeeHrDataRoutes";
 import { employeeGangHistoryRoutes } from "./api/employeeGangHistoryRoutes";
 import { employeeComparisonRoutes } from "./api/employeeComparisonRoutes";
+import { otherIncomesRoutes } from "./api/otherIncomesRoutes";
+import { millProductionRoutes } from "./api/millProductionRoutes";
+import { Database } from "./db/client";
+import { employeeHrDataService } from "./services/employeeHrDataService";
+import { OtherIncomesService } from "./services/otherIncomesService";
+import { staticPlugin } from "@elysiajs/static";
 import { debug, info, warn, error } from "./utils/logger";
 
 // Initialize Database access

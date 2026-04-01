@@ -49,4 +49,4 @@ const millProductionRoutes = new Elysia({ prefix: "" })
         })
     });
 
-export default millProductionRoutes;
+export { millProductionRoutes };
