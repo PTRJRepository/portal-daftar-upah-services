@@ -270,7 +270,7 @@ export default function ComponentMetadataTestPage() {
                 >
                   <div className="employee-header">
                     <strong>{emp.nama || emp.EmpName}</strong>
-                    <span className="employee-nik">{emp.nik || emp.NIK}</span>
+                    <span className="employee-nik">{emp.new_nik || emp.nik || emp.NIK}</span>
                   </div>
                   <div className="employee-preview">
                     <span>Upah Bersih: {formatCurrency(emp.upah_bersih)}</span>

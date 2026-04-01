@@ -53,6 +53,26 @@ import { Config } from "../config";
 import { gangService } from "./gangService";
 import { employeeHrDataService } from "./employeeHrDataService";
 import { divisionDefinition } from "./divisionDefinition";
+import { debug, info, warn, error as logError } from "../utils/logger";
+
+export interface Employee {
+    nik: string;
+    nama: string;
+    jenis_kelamin: string;
+    loc_code: string;
+    gang_code: string;
+    phone?: string;
+    upah_dasar?: number;
+    actual_nik?: string;
+    religion?: string;
+    status?: string;
+    employee_type?: string;
+    birth_date?: string;
+    join_date?: string;
+    terminate_date?: string;
+}
+
+const CATEGORY = "HistoryDatabaseService";
 
 // Environment variable untuk database transaksi
 const DB_EXTEND_TRANS_DATABASE = Config.DB_EXTEND_TRANS_DATABASE;
@@ -385,6 +405,283 @@ export class HistoryDatabaseService {
         const timestamp = Date.now().toString(36).toUpperCase();
         const random = Math.random().toString(36).substring(2, 8).toUpperCase();
         return `HIST-${timestamp}-${random}`;
+    }
+
+    // ============================================================================
+    // HR HISTORY FALLBACK OPERATIONS
+    // Used when origin DB has no data - queries from history tables
+    // ============================================================================
+
+    /**
+     * Get the history database instance directly (always extend_db_ptrj with SERVER_PROFILE_1)
+     * Used for fallback when origin DB returns no data
+     */
+    public getHistoryDb(): Database {
+        return Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
+    }
+
+    /**
+     * Check if history DB has any data for the given period
+     */
+    public async hasHistoryData(periodMonth?: number, periodYear?: number): Promise<boolean> {
+        try {
+            const db = this.getHistoryDb();
+            let sql = `SELECT TOP 1 1 FROM dbo.history_hr_employee`;
+            const params: any[] = [];
+
+            if (periodMonth && periodYear) {
+                sql += ` WHERE period_month = ? AND period_year = ?`;
+                params.push(periodMonth, periodYear);
+            }
+
+            const result = await db.queryOne<{ '': number }>(sql, params);
+            return !!result;
+        } catch (e) {
+            logError(CATEGORY, "Error checking history data availability", e);
+            return false;
+        }
+    }
+
+    /**
+     * List employees from history database with optional filters
+     */
+    public async listEmployeesFromHistory(options: {
+        skip?: number;
+        limit?: number;
+        gangCode?: string;
+        division?: string;
+        religion?: string;
+        status?: string;
+    } = {}): Promise<Employee[]> {
+        const { skip = 0, limit = 100, gangCode, division, religion, status } = options;
+
+        try {
+            info(CATEGORY, `listEmployeesFromHistory() called with:`, { gangCode, division, religion, status });
+
+            const db = this.getHistoryDb();
+            let params: any[] = [];
+            let whereClauses: string[] = [];
+
+            // Division prefix filter
+            if (division) {
+                const prefixMap: Record<string, string[]> = {
+                    "PG1A": ["A"], "PG1B": ["B"], "PG2A": ["C"], "PG2B": ["D"],
+                    "DME": ["E"], "ARA": ["F"], "AB1": ["G"], "AB2": ["H"],
+                    "INF": ["I"], "ARC": ["J"], "IJL": ["L"],
+                };
+                const prefixes = prefixMap[division] || prefixMap[division.replace("PG1A", "A").replace("PG1B", "B")] || [];
+                if (prefixes.length > 0) {
+                    const conditions = prefixes.map(() => `UPPER(RTRIM(gang_code)) LIKE ?`);
+                    whereClauses.push(`(${conditions.join(" OR ")})`);
+                    params.push(...prefixes.map(p => p + "%"));
+                }
+            }
+
+            // Gang filter
+            if (gangCode && gangCode !== "ALL" && gangCode.trim()) {
+                whereClauses.push(`UPPER(RTRIM(gang_code)) = ?`);
+                params.push(gangCode.trim().toUpperCase());
+            }
+
+            // Religion filter
+            if (religion) {
+                whereClauses.push(`UPPER(RTRIM(religion)) = ?`);
+                params.push(religion.trim().toUpperCase());
+            }
+
+            // Status filter
+            if (status) {
+                whereClauses.push(`UPPER(RTRIM(status)) = ?`);
+                params.push(status.trim().toUpperCase());
+            }
+
+            const whereClause = whereClauses.length > 0
+                ? `WHERE ${whereClauses.join(" AND ")}`
+                : "";
+
+            // Get latest record per employee (highest period_year, period_month)
+            const sql = `
+                SELECT
+                    RTRIM(emp_code) AS nik,
+                    RTRIM(nik) AS actual_nik,
+                    emp_name AS nama,
+                    gender AS jenis_kelamin,
+                    RTRIM(loc_code) AS loc_code,
+                    RTRIM(gang_code) AS gang_code,
+                    RTRIM(religion) AS religion,
+                    RTRIM(status) AS status,
+                    RTRIM(employee_type) AS employee_type,
+                    CONVERT(VARCHAR, birth_date, 23) AS birth_date,
+                    CONVERT(VARCHAR, join_date, 23) AS join_date,
+                    CONVERT(VARCHAR, terminate_date, 23) AS terminate_date,
+                    CONVERT(VARCHAR, birth_date, 23) AS birth_date_str,
+                    period_month,
+                    period_year
+                FROM dbo.history_hr_employee h
+                ${whereClause}
+                AND period_year = (SELECT MAX(period_year) FROM dbo.history_hr_employee h2 WHERE h2.emp_code = h.emp_code)
+                AND period_month = (SELECT MAX(period_month) FROM dbo.history_hr_employee h3
+                    WHERE h3.emp_code = h.emp_code AND h3.period_year = h.period_year)
+                ORDER BY emp_name
+            `;
+
+            const rows = await db.query<any>(sql, params);
+
+            // Apply pagination after deduplication
+            const allEmployees: Employee[] = rows.map((r: any) => ({
+                nik: r.nik?.trim() || "",
+                actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
+                nama: r.nama?.trim() || "",
+                jenis_kelamin: r.gender?.trim() || "L",
+                loc_code: r.loc_code?.trim() || "",
+                gang_code: r.gang_code?.trim() || "",
+                religion: r.religion?.trim() || "",
+                status: r.status?.trim() || "",
+                employee_type: r.employee_type?.trim() || "",
+                birth_date: r.birth_date_str || undefined,
+                join_date: r.join_date || undefined,
+                terminate_date: r.terminate_date || undefined,
+            }));
+
+            info(CATEGORY, `History DB returned ${allEmployees.length} employees`);
+            return allEmployees.slice(skip, skip + limit);
+        } catch (e) {
+            logError(CATEGORY, "listEmployeesFromHistory failed:", e);
+            return [];
+        }
+    }
+
+    /**
+     * Search employees from history database
+     */
+    public async searchEmployeesFromHistory(term: string, limit: number = 50, division?: string): Promise<Employee[]> {
+        if (!term || term.length < 2) return [];
+
+        try {
+            const db = this.getHistoryDb();
+            let params: any[] = [`%${term}%`, `%${term}%`, `%${term}%`];
+            let whereClause = `(emp_code LIKE ? OR emp_name LIKE ? OR nik LIKE ?)`;
+
+            if (division) {
+                const prefixMap: Record<string, string[]> = {
+                    "PG1A": ["A"], "PG1B": ["B"], "PG2A": ["C"], "PG2B": ["D"],
+                    "DME": ["E"], "ARA": ["F"], "AB1": ["G"], "AB2": ["H"],
+                    "INF": ["I"], "ARC": ["J"], "IJL": ["L"],
+                };
+                const prefixes = prefixMap[division] || [];
+                if (prefixes.length > 0) {
+                    const conditions = prefixes.map(() => `UPPER(RTRIM(gang_code)) LIKE ?`);
+                    whereClause += ` AND (${conditions.join(" OR ")})`;
+                    params.push(...prefixes.map(p => p + "%"));
+                }
+            }
+
+            const sql = `
+                SELECT TOP ${limit}
+                    RTRIM(emp_code) AS nik,
+                    RTRIM(nik) AS actual_nik,
+                    emp_name AS nama,
+                    gender AS jenis_kelamin,
+                    RTRIM(loc_code) AS loc_code,
+                    RTRIM(gang_code) AS gang_code,
+                    RTRIM(religion) AS religion,
+                    RTRIM(status) AS status,
+                    RTRIM(employee_type) AS employee_type,
+                    CONVERT(VARCHAR, birth_date, 23) AS birth_date,
+                    CONVERT(VARCHAR, join_date, 23) AS join_date
+                FROM dbo.history_hr_employee
+                WHERE ${whereClause}
+                ORDER BY emp_name
+            `;
+
+            const rows = await db.query<any>(sql, params);
+            return rows.map((r: any) => ({
+                nik: r.nik?.trim() || "",
+                actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
+                nama: r.nama?.trim() || "",
+                jenis_kelamin: r.gender?.trim() || "L",
+                loc_code: r.loc_code?.trim() || "",
+                gang_code: r.gang_code?.trim() || "",
+                religion: r.religion?.trim() || "",
+                status: r.status?.trim() || "",
+                employee_type: r.employee_type?.trim() || "",
+                birth_date: r.birth_date || undefined,
+                join_date: r.join_date || undefined,
+            }));
+        } catch (e) {
+            logError(CATEGORY, "searchEmployeesFromHistory failed:", e);
+            return [];
+        }
+    }
+
+    /**
+     * Get available gang codes from history database
+     */
+    public async getAvailableGangsFromHistory(division?: string): Promise<string[]> {
+        try {
+            const db = this.getHistoryDb();
+            let sql = `SELECT DISTINCT RTRIM(gang_code) AS gang_code FROM dbo.history_hr_employee WHERE gang_code IS NOT NULL AND RTRIM(gang_code) != ''`;
+            const params: any[] = [];
+
+            if (division) {
+                const prefixMap: Record<string, string[]> = {
+                    "PG1A": ["A"], "PG1B": ["B"], "PG2A": ["C"], "PG2B": ["D"],
+                    "DME": ["E"], "ARA": ["F"], "AB1": ["G"], "AB2": ["H"],
+                    "INF": ["I"], "ARC": ["J"], "IJL": ["L"],
+                };
+                const prefixes = prefixMap[division] || [];
+                if (prefixes.length > 0) {
+                    const conditions = prefixes.map(() => `UPPER(RTRIM(gang_code)) LIKE ?`);
+                    sql += ` AND (${conditions.join(" OR ")})`;
+                    params.push(...prefixes.map(p => p + "%"));
+                }
+            }
+
+            sql += ` ORDER BY gang_code`;
+            const rows = await db.query<{ gang_code: string }>(sql, params);
+            return rows.map(r => r.gang_code?.trim()).filter(Boolean) as string[];
+        } catch (e) {
+            logError(CATEGORY, "getAvailableGangsFromHistory failed:", e);
+            return [];
+        }
+    }
+
+    /**
+     * Get available religions from history database
+     */
+    public async getAvailableReligionsFromHistory(): Promise<string[]> {
+        try {
+            const db = this.getHistoryDb();
+            const rows = await db.query<{ religion: string }>(`
+                SELECT DISTINCT RTRIM(religion) AS religion
+                FROM dbo.history_hr_employee
+                WHERE religion IS NOT NULL AND RTRIM(religion) != ''
+                ORDER BY religion
+            `);
+            return rows.map(r => r.religion?.trim()).filter(Boolean) as string[];
+        } catch (e) {
+            logError(CATEGORY, "getAvailableReligionsFromHistory failed:", e);
+            return [];
+        }
+    }
+
+    /**
+     * Get available statuses from history database
+     */
+    public async getAvailableStatusesFromHistory(): Promise<string[]> {
+        try {
+            const db = this.getHistoryDb();
+            const rows = await db.query<{ status: string }>(`
+                SELECT DISTINCT RTRIM(status) AS status
+                FROM dbo.history_hr_employee
+                WHERE status IS NOT NULL AND RTRIM(status) != ''
+                ORDER BY status
+            `);
+            return rows.map(r => r.status?.trim()).filter(Boolean) as string[];
+        } catch (e) {
+            logError(CATEGORY, "getAvailableStatusesFromHistory failed:", e);
+            return [];
+        }
     }
 
     // ============================================================================
@@ -728,7 +1025,7 @@ export class HistoryDatabaseService {
 
         let masterQuery = `SELECT id, dynamic_premi_data, dynamic_potongan_data FROM dbo.payroll_history_header WHERE period_month = ? AND period_year = ?`;
         const masterParams: any[] = [periodMonth, periodYear];
-        console.log(`[DEBUG] getHistoricalPayrollDataAsExtractorFormat params: M:${periodMonth} Y:${periodYear} Gang:${gangCode} Div:${divisionCode}`);
+        debug(CATEGORY, `getHistoricalPayrollDataAsExtractorFormat params: M:${periodMonth} Y:${periodYear} Gang:${gangCode} Div:${divisionCode}`);
 
         if (divisionCode) {
             // Use unified mapping for consistent division handling
@@ -760,7 +1057,7 @@ export class HistoryDatabaseService {
                     masterParams.push(...divList);
                 }
             } catch (e) {
-                console.error("[historyDatabaseService] Error handling division filter:", e);
+                logError(CATEGORY, "Error handling division filter:", e);
                 /* fallback to original logic */
             }
         }
@@ -789,7 +1086,7 @@ export class HistoryDatabaseService {
                     potData.forEach((k: string) => dynamicPotonganSet.add(k));
                 }
             } catch (e) {
-                console.error("[historyDatabaseService] Error parsing dynamic headers for master_id", m.id, e);
+                logError(CATEGORY, "Error parsing dynamic headers for master_id " + m.id, e);
             }
         }
 
@@ -830,7 +1127,7 @@ export class HistoryDatabaseService {
             detailParams.push(...divList, ...divList);
         }
 
-        console.log(`[DEBUG] detailQuery: ${detailQuery}`, detailParams);
+        debug(CATEGORY, `detailQuery: ${detailQuery}`, detailParams);
         const rawDetails = await db.query<any>(detailQuery, detailParams);
         
         // Mitigation: Filter out duplicate employees (Strict unique by NIK/EmpCode)
@@ -843,7 +1140,7 @@ export class HistoryDatabaseService {
             }
         }
         const details = Array.from(uniqueDetailsMap.values());
-        console.log(`[DEBUG] History Detail Fetch for ${divisionCode}/${gangCode}: Raw=${rawDetails.length}, Unique=${details.length}`);
+        debug(CATEGORY, `History Detail Fetch for ${divisionCode}/${gangCode}: Raw=${rawDetails.length}, Unique=${details.length}`);
 
         // Filter details if it's a virtual division or real division needing exclusion
         let finalDetails = details;
@@ -853,7 +1150,7 @@ export class HistoryDatabaseService {
                 const virtualGangs = await divisionDefinition.getGangsForDivision(divisionCode, false);
                 const virtualGangCodes = new Set(virtualGangs.map(g => g.gang_code.toUpperCase()));
                 const filtered = details.filter((d: any) => virtualGangCodes.has(d.gang_code?.trim()?.toUpperCase()));
-                console.log(`[DEBUG] Virtual Division Filter (${divisionCode}): Reduced ${details.length} to ${filtered.length} rows.`);
+                debug(CATEGORY, `Virtual Division Filter (${divisionCode}): Reduced ${details.length} to ${filtered.length} rows.`);
                 finalDetails = filtered.length > 0 ? filtered : details;
             } else {
                 // REAL division: exclude gangs that belong to virtual divisions with exclude_from_source=true
@@ -898,7 +1195,7 @@ export class HistoryDatabaseService {
                 `, [periodMonth, periodYear, ...empCodesForHr]);
                 relRows.forEach(r => religionHistoryMap.set(r.emp_code.trim().toUpperCase(), r.religion));
             } catch (e) {
-                console.error("[historyDatabaseService] Error fetching religion from history_hr_employee", e);
+                logError(CATEGORY, "Error fetching religion from history_hr_employee", e);
             }
         }
 
@@ -919,7 +1216,7 @@ export class HistoryDatabaseService {
                     hrEmployeeMap.set(row.emp_code, row);
                 });
             } catch (e) {
-                console.error("[historyDatabaseService] Error fetching live HR_EMPLOYEE data", e);
+                logError(CATEGORY, "Error fetching live HR_EMPLOYEE data", e);
             }
         }
 
@@ -1060,7 +1357,7 @@ export class HistoryDatabaseService {
         const payrollDb = this.getPayrollDatabase();
         const transDb = this.getTransactionDatabase();
 
-        console.log(`[HistoryDB] Deleting history for ${periodMonth} / ${periodYear}, Div: ${divisionCode || 'ALL'}, Gang: ${gangCode || 'ALL'} `);
+        info(CATEGORY, `Deleting history for ${periodMonth} / ${periodYear}, Div: ${divisionCode || 'ALL'}, Gang: ${gangCode || 'ALL'} `);
 
         // 1. Delete Employee & Gang HR history
         let hrEmployeeSql = `DELETE FROM dbo.history_hr_employee WHERE period_month = ? AND period_year = ? `;
@@ -1540,11 +1837,11 @@ export class HistoryDatabaseService {
         // Run both queries concurrently
         const [hrHistory, payrollHistory] = await Promise.all([
             db.query(careerUrl, [empCode, empCode]).catch((e) => {
-                console.error("[historyDatabaseService] Error fetching HR history:", e);
+                logError(CATEGORY, "Error fetching HR history:", e);
                 return [];
             }),
             db.query(payrollUrl, [empCode, empCode]).catch((e) => {
-                console.error("[historyDatabaseService] Error fetching Payroll history:", e);
+                logError(CATEGORY, "Error fetching Payroll history:", e);
                 return [];
             })
         ]);

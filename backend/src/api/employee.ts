@@ -41,23 +41,25 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
         let gangCode = query.gang_code || undefined;
         const religion = query.religion || undefined;
         const status = query.status || undefined;
+        const forceHistory = query.force_history === "true";
 
         // Strictly lock division for Kerani
         if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
             division = currentUser.divisions[0];
         }
 
-        console.log(`[API /list] Calling repository with:`, { gangCode, division, religion, status });
-        const employees = await employeeRepository.list({
+        console.log(`[API /list] Calling repository with:`, { gangCode, division, religion, status, forceHistory });
+        const result = await employeeRepository.list({
             gangCode: gangCode,
             division: division,
             religion: religion,
             status: status,
             skip: parseInt(query.skip || "0"),
-            limit: parseInt(query.limit || "500")
+            limit: parseInt(query.limit || "500"),
+            forceHistory
         });
-        console.log(`[API /list] Repository returned ${employees.length} employees`);
-        return { count: employees.length, data: employees };
+        console.log(`[API /list] Repository returned ${result.employees.length} employees from ${result.dataSource}`);
+        return { count: result.employees.length, data: result.employees, dataSource: result.dataSource };
     }, {
         query: t.Object({
             gang_code: t.Optional(t.String()),
@@ -65,7 +67,8 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             religion: t.Optional(t.String()),
             status: t.Optional(t.String()),
             skip: t.Optional(t.String()),
-            limit: t.Optional(t.String())
+            limit: t.Optional(t.String()),
+            force_history: t.Optional(t.String())
         })
     })
     // --- Search Employees ---
@@ -77,12 +80,12 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             division = currentUser.divisions[0];
         }
 
-        const employees = await employeeRepository.search(
+        const result = await employeeRepository.search(
             query.q || "",
             parseInt(query.limit || "50"),
             division
         );
-        return { count: employees.length, data: employees };
+        return { count: result.employees.length, data: result.employees, dataSource: result.dataSource };
     }, {
         query: t.Object({
             q: t.String(),
@@ -95,26 +98,29 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
         let gangCode = query.gang_code || undefined;
         const religion = query.religion || undefined;
         const status = query.status || undefined;
+        const forceHistory = query.force_history === "true";
 
         if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
             division = currentUser.divisions[0];
         }
 
-        const employees = await employeeRepository.list({
+        const result = await employeeRepository.list({
             gangCode: gangCode,
             division: division,
             religion: religion,
             status: status,
             skip: 0,
-            limit: 10000  // Large limit for analytics
+            limit: 10000,  // Large limit for analytics
+            forceHistory
         });
-        return { count: employees.length, data: employees };
+        return { count: result.employees.length, data: result.employees, dataSource: result.dataSource };
     }, {
         query: t.Object({
             gang_code: t.Optional(t.String()),
             division: t.Optional(t.String()),
             religion: t.Optional(t.String()),
-            status: t.Optional(t.String())
+            status: t.Optional(t.String()),
+            force_history: t.Optional(t.String())
         })
     })
 
@@ -972,6 +978,7 @@ employeeRoutes
             const gangCodes = gangCodesRaw.split(",").map((g: string) => g.trim()).filter(Boolean);
             const month = parseInt(query.month);
             const year = parseInt(query.year);
+            const includeFaceVerification = query.include_face_verification !== 'false';
 
             if (gangCodes.length === 0) {
                 set.status = 400;
@@ -984,7 +991,7 @@ employeeRoutes
             }
 
             const startTime = Date.now();
-            const results = await gangAttendanceService.getGangAttendanceMatrix(gangCodes, month, year);
+            const results = await gangAttendanceService.getGangAttendanceMatrix(gangCodes, month, year, { includeFaceVerification });
 
             return {
                 success: true,
@@ -1004,7 +1011,8 @@ employeeRoutes
         query: t.Object({
             gang_codes: t.String(),
             month: t.String(),
-            year: t.String()
+            year: t.String(),
+            include_face_verification: t.Optional(t.String())
         })
     })
     // ========================

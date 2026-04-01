@@ -26,11 +26,13 @@ class AggregationEngine {
     this.rules.row_calculations = this.rules.row_calculations || []
     this.rules.filter_rules = this.rules.filter_rules || []
     
+    /* 
     console.log('[AggregationEngine] Initialized with rules:', {
       column_aggregations: this.rules.column_aggregations.length,
       row_calculations: this.rules.row_calculations.length,
       filter_rules: this.rules.filter_rules.length
     })
+    */
   }
 
   /**
@@ -124,11 +126,13 @@ const safeValue = isNaN(numValue) ? 0 : numValue
       })
     }
 
+    /*
     console.log('[AggregationEngine] Filtered data:', {
       original: data.length,
       filtered: filtered.length,
       removed: data.length - filtered.length
     })
+    */
 
     return filtered
   }
@@ -144,7 +148,7 @@ const safeValue = isNaN(numValue) ? 0 : numValue
       (a, b) => (a.execution_order || 0) - (b.execution_order || 0)
     )
 
-    console.log('[AggregationEngine] Applying', sortedRules.length, 'row calculation rules')
+    // console.log('[AggregationEngine] Applying', sortedRules.length, 'row calculation rules')
 
     return rawData.map((row, idx) => {
       const calculatedRow = { ...row }
@@ -296,26 +300,28 @@ const safeValue = isNaN(numValue) ? 0 : numValue
   process(rawData) {
     const startTime = performance.now()
 
-    console.log('[AggregationEngine] 🚀 Starting processing:', rawData.length, 'raw records')
+    // console.log('[AggregationEngine] 🚀 Starting processing:', rawData.length, 'raw records')
 
     // Step 1: Apply filter rules
     const filtered = this.applyFilterRules(rawData)
-    console.log('[AggregationEngine] ✅ Step 1: Filtered', filtered.length, 'records')
+    // console.log('[AggregationEngine] ✅ Step 1: Filtered', filtered.length, 'records')
 
     // Step 2: Apply row-level calculations
     const calculatedData = this.applyRowCalculations(filtered)
-    console.log('[AggregationEngine] ✅ Step 2: Calculated', calculatedData.length, 'rows')
+    // console.log('[AggregationEngine] ✅ Step 2: Calculated', calculatedData.length, 'rows')
 
     // Step 3: Calculate summary/aggregations
     const summary = this.calculateSummary(calculatedData)
-    console.log('[AggregationEngine] ✅ Step 3: Summary computed')
+    // console.log('[AggregationEngine] ✅ Step 3: Summary computed')
 
     // Step 4: Calculate statistics
     const statistics = this.calculateStatistics(calculatedData)
-    console.log('[AggregationEngine] ✅ Step 4: Statistics computed')
+    // console.log('[AggregationEngine] ✅ Step 4: Statistics computed')
 
     const processingTime = performance.now() - startTime
-    console.log('[AggregationEngine] ⚡ Total processing time:', processingTime.toFixed(2), 'ms')
+    if (processingTime > 100) {
+        console.log('[AggregationEngine] ⚡ Total processing time:', processingTime.toFixed(2), 'ms')
+    }
 
     return {
       data_rows: calculatedData,

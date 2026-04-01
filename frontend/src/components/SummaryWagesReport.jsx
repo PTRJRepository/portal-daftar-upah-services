@@ -211,7 +211,7 @@ export default function SummaryWagesReport({
                                     <tr key={item.key}>
                                         <td className="text-center">{rowNum}</td>
                                         <td className="text-left">{row.nama}</td>
-                                        <td className="text-center">{row.nik}</td>
+                                        <td className="text-center">{row.new_nik || row.nik}</td>
                                         <td className={`text-right ${Number(row.jumlah_hk) === 0 ? 'val-zero' : 'val-positive'}`}>
                                             {formatNumber(row.jumlah_hk)}
                                         </td>

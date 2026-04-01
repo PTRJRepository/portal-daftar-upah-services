@@ -544,7 +544,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             field: 'emp_name', headers: ['NAMA KARYAWAN', null, null], w: 200, className: 'text-left', sticky: true, left: 90, render: (r) => (
                 <div style={{ color: r.isBlacklisted ? '#ef4444' : 'inherit' }}>
                     <b>{r.emp_name}</b>
-                    <br /><small>{r.nik} {r.emp_code ? `| ${r.emp_code}` : ''}</small>
+                    <br /><small>{r.new_nik || r.nik} {r.emp_code ? `| ${r.emp_code}` : ''}</small>
                     {r.isPreview && <span style={{ fontSize: '0.6rem', color: 'green', display: 'block' }}> (Preview)</span>}
                     {r.isBlacklisted && <span style={{ fontSize: '0.6rem', color: '#ef4444', display: 'block', fontWeight: 'bold' }}> (BLACKLISTED)</span>}
                 </div>
@@ -818,7 +818,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                                         {blacklistData.map(b => (
                                             <tr key={b.id} style={{ borderBottom: '1px solid #eee' }}>
                                                 <td style={{ padding: '0.5rem' }}>
-                                                    <b>{b.emp_name}</b><br /><small>{b.nik}</small>
+                                                    <b>{b.emp_name}</b><br /><small>{b.new_nik || b.nik}</small>
                                                 </td>
                                                 <td style={{ padding: '0.5rem' }}><small>{b.reason}</small></td>
                                                 <td style={{ padding: '0.5rem', textAlign: 'center' }}>

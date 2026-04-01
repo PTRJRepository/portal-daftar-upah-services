@@ -424,7 +424,7 @@ export default function PayrollAnalysisPage({
                 return (
                   <React.Fragment key={idx}>
                     <tr className={hasDetails ? 'row-has-detail' : ''}>
-                      <td className="font-mono" style={{ fontSize: '0.7rem' }}>{row.nik}</td>
+                      <td className="font-mono" style={{ fontSize: '0.7rem' }}>{row.new_nik || row.nik}</td>
                       <td style={{ fontWeight: 700 }}>{row.nama}</td>
                       <td>{row.gang_code}</td>
                       <td style={{ fontSize: '0.65rem', maxWidth: '120px', whiteSpace: 'normal' }}>{row.task_desc}</td>

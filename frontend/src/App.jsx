@@ -62,7 +62,8 @@ const OperationalReportWrapper = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [useHistoryDb, setUseHistoryDb] = useState(false);
   const [gangPrefix, setGangPrefix] = useState('');
-  const [viewMode, setViewMode] = useState('table'); // 'table' | 'attendance' | 'overtime'
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'attendance' | 'overtime' | 'employee-directory'
+  const [hrSearchNik, setHrSearchNik] = useState('');
 
   // Using location.pathname as key FORCES remount when navigating, solving 'stuck' UI
   // Note: We return the actual content here, or wrap it.
@@ -184,6 +185,17 @@ const OperationalReportWrapper = () => {
     const detailPath = buildAppPath(`/employee/detail?${params.toString()}`)
     window.open(detailPath, '_blank', 'noopener,noreferrer')
   }
+
+  const handleOpenHrProfile = (employeeData) => {
+    console.log('[OperationalReport] Context Menu: Opening HR Profile tab for employee:', employeeData);
+    const empCode = employeeData.emp_code || employeeData.EmpCode || employeeData.nik || employeeData.NIK;
+    if (empCode) {
+        setHrSearchNik(empCode);
+        setViewMode('employee-directory');
+    } else {
+        console.error('[OperationalReport] Cannot view HR Profile: emp_code is missing');
+    }
+  };
 
   // Generate last 3 months for quick select
   const previousPeriods = useMemo(() => {
@@ -342,6 +354,24 @@ const OperationalReportWrapper = () => {
                 }}
               >
                 ⏰ Lembur
+              </button>
+              <button
+                onClick={() => setViewMode('employee-directory')}
+                style={{
+                  padding: '0 12px',
+                  height: '30px',
+                  border: 'none',
+                  background: viewMode === 'employee-directory' ? 'white' : 'transparent',
+                  color: viewMode === 'employee-directory' ? '#0f766e' : '#64748b',
+                  fontWeight: viewMode === 'employee-directory' ? '600' : '500',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  boxShadow: viewMode === 'employee-directory' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                👥 Info Karyawan
               </button>
             </div>
           </div>
@@ -682,12 +712,19 @@ const OperationalReportWrapper = () => {
             fontSize={fontSize}
             onExportReady={setExportHandler}
             onViewEmployeeDetail={handleViewEmployeeDetail}
+            onOpenHrProfile={handleOpenHrProfile}
             selectedEmployees={selectedEmployees}
             onToggleEmployeeSelection={handleToggleEmployeeSelection}
             onSelectAllEmployees={handleSelectAllEmployees}
             isEditMode={isEditMode}
             useHistoryDb={useHistoryDb}
             gangPrefix={gangPrefix || null}
+          />
+        ) : viewMode === 'employee-directory' ? (
+          <EmployeeDirectoryPage
+            key={hrSearchNik || 'directory_base'}
+            defaultView="table"
+            initialSearchQuery={hrSearchNik}
           />
         ) : viewMode === 'attendance' ? (
           <GangAttendanceMatrix

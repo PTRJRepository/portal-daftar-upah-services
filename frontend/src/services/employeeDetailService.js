@@ -171,21 +171,23 @@ export async function getEmployeeHistoricalData(token, empCode) {
  * @param {string[]} gangCodes - Array of gang codes
  * @param {number} month - Month (1-12)
  * @param {number} year - Year
+ * @param {boolean} includeFaceVerification - Whether to include face verification data (default: true)
  * @returns {Promise<Object>} Gang attendance matrix data
  */
-export async function getGangAttendanceMatrix(token, gangCodes, month, year) {
+export async function getGangAttendanceMatrix(token, gangCodes, month, year, includeFaceVerification = true) {
     try {
         const baseUrl = getBaseUrl()
         const params = {
             gang_codes: gangCodes.join(','),
             month: month.toString(),
-            year: year.toString()
+            year: year.toString(),
+            include_face_verification: includeFaceVerification.toString()
         }
 
         const response = await axios.get(`${baseUrl}/gang-attendance-matrix`, {
             headers: { Authorization: `Bearer ${token}` },
             params,
-            timeout: 60000 // 60s timeout for large gangs
+            timeout: 120000 // 120s timeout for large gangs with face verification
         })
         return response.data
     } catch (error) {

@@ -210,7 +210,7 @@ export default function GangHistoricalReportPage({ division, gangCode: initialGa
                                 {data.employees.map((emp, index) => (
                                     <tr key={emp.id || index}>
                                         <td>{index + 1}</td>
-                                        <td>{emp.emp_code || emp.nik}</td>
+                                        <td>{emp.new_nik || emp.nik || emp.emp_code}</td>
                                         <td>{emp.emp_name || emp.nama}</td>
                                         <td>{emp.gang_code}</td>
                                         <td className="number">{emp.jumlah_hk || 0}</td>

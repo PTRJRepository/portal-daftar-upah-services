@@ -287,7 +287,7 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_EMP_CODE).value = emp.emp_code || '';
         row.getCell(COL_NAMA).value = emp.emp_name;
         row.getCell(COL_PARENT_NAME).value = emp.parent_name || '';
-        row.getCell(COL_NIK).value = emp.nik || '';
+        row.getCell(COL_NIK).value = emp.new_nik || emp.nik || '';
         row.getCell(COL_GENDER).value = emp.gender;
         row.getCell(COL_STAT).value = emp.status_ptkp;
         row.getCell(COL_GANG).value = emp.gang_code;
@@ -737,7 +737,7 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(STD_COL_NO).value = i + 1;
         row.getCell(STD_COL_NAMA).value = emp.emp_name;
         row.getCell(STD_COL_EMP_CODE).value = emp.emp_code || '';
-        row.getCell(STD_COL_NIK).value = emp.nik;
+        row.getCell(STD_COL_NIK).value = emp.new_nik || emp.nik;
         row.getCell(STD_COL_NPWP).value = emp.npwp || '';
         row.getCell(STD_COL_ALAMAT).value = emp.alamat || '';
         row.getCell(STD_COL_JABATAN).value = emp.jabatan || '';
@@ -961,7 +961,7 @@ export const generateDecemberTaxExcel = async (
         // Static data (cols A-I: 1-9)
         row.getCell(1).value = emp.no;
         row.getCell(2).value = emp.emp_name;
-        row.getCell(3).value = emp.nik;
+        row.getCell(3).value = emp.new_nik || emp.nik;
         row.getCell(4).value = emp.npwp;
         row.getCell(5).value = emp.alamat;
         row.getCell(6).value = emp.jabatan;
@@ -1086,7 +1086,7 @@ export const generateDecemberTaxExcel = async (
             if (cIdx === 0) {
                 row.getCell(1).value = i + 1;
                 row.getCell(2).value = emp.emp_name;
-                row.getCell(3).value = emp.nik;
+                row.getCell(3).value = emp.new_nik || emp.nik;
             }
 
             row.getCell(4).value = comp.label;

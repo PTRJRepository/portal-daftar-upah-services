@@ -144,6 +144,7 @@ function ViewModeToggle({ viewMode, onChange, disabled }) {
         { key: 'table', label: 'Daftar Upah' },
         { key: 'attendance', label: 'Absensi' },
         { key: 'overtime', label: 'Lembur' },
+        { key: 'employee', label: 'Karyawan' },
     ]
 
     return (

@@ -265,7 +265,7 @@ export async function generateDaftarUpahExcel(
         const gangA = (a.gang_code || a.gang || '').toString();
         const gangB = (b.gang_code || b.gang || '').toString();
         if (gangA !== gangB) return gangA.localeCompare(gangB);
-        return (String(a.nik || '')).localeCompare(String(b.nik || ''));
+        return (String(a.new_nik || a.nik || '')).localeCompare(String(b.new_nik || b.nik || ''));
     });
 
     let currentGang = '';
@@ -325,7 +325,7 @@ export async function generateDaftarUpahExcel(
 
         // Identity
         row.getCell(COL_NO).value = empNo++;
-        row.getCell(COL_NIK).value = emp.nik || '';
+        row.getCell(COL_NIK).value = emp.new_nik || emp.nik || '';
         row.getCell(COL_NAMA).value = emp.nama || emp.emp_name || '';
         row.getCell(COL_JABATAN).value = emp.jabatan || emp.position || '';
 

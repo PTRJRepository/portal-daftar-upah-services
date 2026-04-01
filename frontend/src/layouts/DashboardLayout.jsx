@@ -497,13 +497,13 @@ const DashboardLayout = () => {
                     periodDisplay={null}
                 />
 
-                {/* Content */}
+                {/* Content - key forces Outlet remount on navigation, fixing stuck UI bug */}
                 <div style={{
                     flex: 1,
                     overflowY: 'auto',
                     overflowX: 'hidden',
                 }}>
-                    <Outlet />
+                    <Outlet key={location.pathname} />
                 </div>
             </div>
         </div>

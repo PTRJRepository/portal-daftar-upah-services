@@ -156,7 +156,7 @@ export default function ProductivityReportPage({ onBack, initialMonth, initialYe
         return detailData.employees.filter(emp => {
             const matchesSearch = !detailFilters.searchName || 
                 emp.name.toLowerCase().includes(detailFilters.searchName.toLowerCase()) ||
-                emp.nik.toLowerCase().includes(detailFilters.searchName.toLowerCase());
+                (emp.new_nik || emp.nik).toLowerCase().includes(detailFilters.searchName.toLowerCase());
             
             const matchesOt = emp.lembur_jam >= detailFilters.minOtHours;
             
@@ -399,7 +399,7 @@ export default function ProductivityReportPage({ onBack, initialMonth, initialYe
                                         {filteredEmployees.length > 0 ? (
                                             filteredEmployees.map((emp, idx) => (
                                                 <tr key={idx}>
-                                                    <td className="text-left text-xs font-mono">{emp.nik}</td>
+                                                    <td className="text-left text-xs font-mono">{emp.new_nik || emp.nik}</td>
                                                     <td className="text-left font-semibold">{emp.name}</td>
                                                     <td className="text-center">{emp.gang}</td>
                                                     <td className="text-right">{formatNumber(emp.hk, 1)}</td>

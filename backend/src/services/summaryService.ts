@@ -8,6 +8,9 @@ import { thumbprintService } from "./thumbprintService";
 import { deductionAdjustmentService } from "./deductionAdjustmentService";
 import { luasAreaService } from "./luasAreaService";
 import { currentPeriodService } from "./currentPeriodService";
+import { debug, info, warn, error as logError } from "../utils/logger";
+
+const CATEGORY = "SummaryService";
 
 export interface DivisionSummary {
     division_code: string;
@@ -77,7 +80,7 @@ export class SummaryService {
             this.gangToDivisionMapCache = null;
             this.gangDescriptionsCache = null;
         }
-        console.log(`[SummaryService] useHistoryDb set to: ${useHistory}`);
+        debug(CATEGORY, `useHistoryDb set to: ${useHistory}`);
     }
 
     /**
@@ -103,7 +106,7 @@ export class SummaryService {
         this.gangToDivisionMapCache = null;
         this.gangDescriptionsCache = null;
         this.premiTotalsCache.clear();
-        console.log("[SummaryService] Caches cleared (including TTL caches)");
+        debug(CATEGORY, "[SummaryService] Caches cleared (including TTL caches)");
     }
 
     private async loadJsonData(filename: string): Promise<any> {
@@ -115,7 +118,7 @@ export class SummaryService {
             }
             return null;
         } catch (e) {
-            console.error(`[SummaryService] Failed to load JSON ${filename}:`, e);
+            logError(CATEGORY, `Failed to load JSON ${filename}:`, e);
             return null;
         }
     }
@@ -156,7 +159,7 @@ export class SummaryService {
             return map;
         } catch (e) {
 
-            console.error("[SummaryService] Error getting descriptions:", e);
+            logError(CATEGORY, "Error getting descriptions:", e);
             return {};
         }
     }
@@ -185,7 +188,7 @@ export class SummaryService {
             this.gangToDivisionMapCache = map;
             return map;
         } catch (e) {
-            console.error("[SummaryService] Failed to get gang-to-division map:", e);
+            logError(CATEGORY, "Failed to get gang-to-division map:", e);
             return {};
         }
     }
@@ -195,12 +198,12 @@ export class SummaryService {
         const cacheKey = `${month}-${year}`;
         const cached = this.premiTotalsCache.get(cacheKey);
         if (cached && (Date.now() - cached.timestamp) < SummaryService.CACHE_TTL_MS) {
-            console.log(`[SummaryService] Cache HIT for getAllDivisionsPremiTotals ${cacheKey}`);
+            debug(CATEGORY, `Cache HIT for getAllDivisionsPremiTotals ${cacheKey}`);
             return cached.data;
         }
 
         const startTime = Date.now();
-        console.log(`[SummaryService] Cache MISS for ${cacheKey}, computing...`);
+        debug(CATEGORY, `Cache MISS for ${cacheKey}, computing...`);
 
         // Parallelize lookup queries (all cacheable)
         const [descriptions, gangDivMap, allGangDescs] = await Promise.all([
@@ -311,7 +314,7 @@ export class SummaryService {
             addRowToBucket(realDivAgg[sourceLoc], row, gangCode);
         }
 
-        console.log(`[SummaryService] Step 1 - Real divisions found: ${Object.keys(realDivAgg).join(', ')}`);
+        debug(CATEGORY, `Step 1 - Real divisions found: ${Object.keys(realDivAgg).join(', ')}`);
 
         // STEP 2: Build virtual division rows by extracting matching gangs from real divisions
         // Virtual divisions: INF (from P1A), NRS (from P1B), WKS_PG (from P1A), WKS_AR (from AB2)
@@ -347,9 +350,9 @@ export class SummaryService {
             }
         }
 
-        console.log(`[SummaryService] Step 2 - Virtual divisions built: ${Object.keys(virtualDivAgg).join(', ')}`);
+        debug(CATEGORY, `Step 2 - Virtual divisions built: ${Object.keys(virtualDivAgg).join(', ')}`);
         for (const [vd, gangs] of Object.entries(virtualGangAssignments)) {
-            console.log(`  Virtual ${vd}: ${gangs.size} gangs → [${Array.from(gangs).join(', ')}]`);
+            debug(CATEGORY, `  Virtual ${vd}: ${gangs.size} gangs → [${Array.from(gangs).join(', ')}]`);
         }
 
         // STEP 3: Subtract virtual gang data from parent real divisions
@@ -385,7 +388,7 @@ export class SummaryService {
             if (virtualDivAgg[virtDiv] && realDivAgg[sourceDiv]) {
                 const childGangs = virtualGangAssignments[virtDiv] || new Set();
                 subtractBucket(realDivAgg[sourceDiv], virtualDivAgg[virtDiv], childGangs);
-                console.log(`[SummaryService] Step 3 - Subtracted ${virtDiv} (${childGangs.size} gangs) from ${sourceDiv}`);
+                debug(CATEGORY, `Step 3 - Subtracted ${virtDiv} (${childGangs.size} gangs) from ${sourceDiv}`);
             }
         }
 
@@ -399,7 +402,7 @@ export class SummaryService {
         // The subtraction in Step 3 already handles proper separation.
         if (virtualDivAgg['NRS']) {
             const nrs = virtualDivAgg['NRS'];
-            console.log(`[SummaryService] Step 5 - NRS retained: premi=${nrs.total_premi}, lembur=${nrs.total_lembur}, upah=${nrs.total_upah_bersih}`);
+            debug(CATEGORY, `Step 5 - NRS retained: premi=${nrs.total_premi}, lembur=${nrs.total_lembur}, upah=${nrs.total_upah_bersih}`);
         }
 
         // STEP 6: Merge real + virtual into final divAgg for result building
@@ -417,7 +420,7 @@ export class SummaryService {
             }
         }
 
-        console.log(`[SummaryService] Step 6 - Final divisions: ${Object.keys(divAgg).join(', ')} `);
+        debug(CATEGORY, `Step 6 - Final divisions: ${Object.keys(divAgg).join(', ')} `);
 
         const results: DivisionSummary[] = [];
 
@@ -487,7 +490,7 @@ export class SummaryService {
 
         // Store in TTL cache
         this.premiTotalsCache.set(cacheKey, { data: finalResults, timestamp: Date.now() });
-        console.log(`[SummaryService] getAllDivisionsPremiTotals ${cacheKey} completed in ${Date.now() - startTime}ms, cached.`);
+        debug(CATEGORY, `getAllDivisionsPremiTotals ${cacheKey} completed in ${Date.now() - startTime}ms, cached.`);
 
         return finalResults;
     }
@@ -521,7 +524,7 @@ export class SummaryService {
                 year: currentPeriod.year
             };
         } catch (e) {
-            console.error("[SummaryService] Failed to get latest base data period:", e);
+            logError(CATEGORY, "Failed to get latest base data period:", e);
             // Fallback to config default if service fails
             return {
                 month: Config.DEFAULT_MONTH,
@@ -584,7 +587,7 @@ export class SummaryService {
                 try {
                     dynamicPremi = typeof row.dynamic_premi_data === 'string' ? JSON.parse(row.dynamic_premi_data) : row.dynamic_premi_data;
                 } catch (e) {
-                    console.error(`[SummaryService] Failed to parse dynamic_premi_data for ${div}: `, e);
+                    logError(CATEGORY, `Failed to parse dynamic_premi_data for ${div}: `, e);
                 }
             }
 
@@ -599,7 +602,7 @@ export class SummaryService {
                 try {
                     dynamicPremi = typeof row.informasi_tambahan === 'string' ? JSON.parse(row.informasi_tambahan) : row.informasi_tambahan;
                 } catch (e) {
-                    console.error(`[SummaryService] Failed to parse informasi_tambahan for ${div}: `, e);
+                    logError(CATEGORY, `Failed to parse informasi_tambahan for ${div}: `, e);
                 }
             }
 
@@ -607,7 +610,7 @@ export class SummaryService {
 
             // Add debug logging for AB1 and P1A
             if (div === 'AB1' || div === 'P1A') {
-                console.log(`[SummaryService] getBackfillData processing ${div}: `, {
+                debug(CATEGORY, `getBackfillData processing ${div}: `, {
                     hasDynamicPremiData: !!row.dynamic_premi_data,
                     hasInformasiTambahan: !!row.informasi_tambahan,
                     dynamicPremiKeys: Array.isArray(dynamicPremi) ? dynamicPremi.map((d: any) => d.header) : Object.keys(dynamicPremi || {}),
@@ -634,7 +637,7 @@ export class SummaryService {
 
             // Add debug logging after processing
             if (div === 'AB1' || div === 'P1A') {
-                console.log(`[SummaryService] getBackfillData after processing ${div}: `, {
+                debug(CATEGORY, `getBackfillData after processing ${div}: `, {
                     resultAfter: result[div]
                 });
             }
@@ -681,8 +684,8 @@ export class SummaryService {
         // Fetch previous month's thumbprint data from JSON file
         // This will be used for the "previous month gaji" comparison
         const prevThumbprintData = await thumbprintService.getThumbprintData(prevMonth, prevYear);
-        console.log(`[SummaryService] Loaded previous thumbprint data for ${prevYear} - ${prevMonth}: `, Object.keys(prevThumbprintData).length, "entries");
-        console.log(`[SummaryService] Previous thumbprint data: `, prevThumbprintData);
+        debug(CATEGORY, `Loaded previous thumbprint data for ${prevYear} - ${prevMonth}: `, Object.keys(prevThumbprintData).length, "entries");
+        debug(CATEGORY, `Previous thumbprint data: `, prevThumbprintData);
 
         const prevLookup = new Map(previousData.map(d => [d.division_code, d]));
         const comparisonRows = [];
@@ -697,7 +700,7 @@ export class SummaryService {
             const selisih = currGaji - prevGaji;
             const trend = selisih > 0 ? "NAIK" : (selisih < 0 ? "TURUN" : "TETAP");
 
-            console.log(`[SummaryService] ${divCode}: current_gaji = ${currGaji}, prev_thumbprint = ${prevThumbprintData[divCode]}, selisih = ${selisih} `);
+            debug(CATEGORY, `${divCode}: current_gaji = ${currGaji}, prev_thumbprint = ${prevThumbprintData[divCode]}, selisih = ${selisih} `);
 
             comparisonRows.push({
                 division_code: divCode,
@@ -786,7 +789,7 @@ export class SummaryService {
                 return map;
             }
         } catch (e) {
-            console.error("[SummaryService] Failed to load area_produktif.json, falling back to database:", e);
+            warn(CATEGORY, "Failed to load area_produktif.json, falling back to database:", e);
         }
 
         // Fallback to database if file doesn't exist
@@ -881,7 +884,7 @@ export class SummaryService {
 
         // IMPORTANT: Load previous month's thumbprint data from JSON for gaji_prev
         const prevThumbprintData = await thumbprintService.getThumbprintData(prevMonth, prevYear);
-        console.log(`[ImpactReport] Loaded previous thumbprint data for ${prevYear} - ${prevMonth}: `, Object.keys(prevThumbprintData).length, "entries");
+        debug(CATEGORY, `[ImpactReport] Loaded previous thumbprint data for ${prevYear} - ${prevMonth}: `, Object.keys(prevThumbprintData).length, "entries");
 
         const luasHektar = await this.getDivisionLuasHektar();
         const curInsentif = await this.getDynamicPremiInsentifPanen(month, year);
@@ -910,7 +913,7 @@ export class SummaryService {
             const gajiCurr = curr.total_upah_bersih;
             const gajiDiff = gajiCurr - gajiPrev;
 
-            console.log(`[ImpactReport] ${div}: current_gaji = ${gajiCurr}, prev_thumbprint = ${gajiPrev}, selisih = ${gajiDiff} `);
+            debug(CATEGORY, `[ImpactReport] ${div}: current_gaji = ${gajiCurr}, prev_thumbprint = ${gajiPrev}, selisih = ${gajiDiff} `);
 
             mainRows.push({
                 estate: curr.description,
@@ -979,7 +982,7 @@ export class SummaryService {
 
     public async getAnalysisReportData(month: number, year: number, filterType: string = 'all'): Promise<any> {
         const startTime = Date.now();
-        console.log(`[SummaryService] getAnalysisReportData starting for ${month}/${year}...`);
+        debug(CATEGORY, `getAnalysisReportData starting for ${month}/${year}...`);
 
         // Get previous period
         const prevMonth = month === 1 ? 12 : month - 1;
@@ -990,7 +993,7 @@ export class SummaryService {
             this.getDivisionSummary(undefined, month, year),
             this.getDivisionSummary(undefined, prevMonth, prevYear)
         ]);
-        console.log(`[SummaryService] getAnalysisReportData parallel fetch done in ${Date.now() - startTime}ms`);
+        debug(CATEGORY, `getAnalysisReportData parallel fetch done in ${Date.now() - startTime}ms`);
 
         const currentDivs = currentData.data || [];
         const previousDivs = previousData.data || [];
@@ -1113,7 +1116,7 @@ COUNT(DISTINCT e.EmpCode) as total_employees,
                 source: 'VenusHR14'
             };
         } catch (e: any) {
-            console.error("[SummaryService] Failed to get Mill totals:", e);
+            logError(CATEGORY, "Failed to get Mill totals:", e);
             return {
                 success: false,
                 error: e.message,
@@ -1156,7 +1159,7 @@ COUNT(DISTINCT e.EmpCode) as total_employees,
 
             return rows.map(r => r.DocDesc?.trim()).filter(Boolean);
         } catch (e) {
-            console.error("[SummaryService] Failed to get premi headers for division:", e);
+            logError(CATEGORY, "Failed to get premi headers for division:", e);
             return [];
         }
     }
@@ -1407,7 +1410,7 @@ id, period_month, period_year, division_code, gang_code,
 
             return result;
         } catch (error: any) {
-            console.error("[SummaryService] Failed to get gang descriptions:", error);
+            logError(CATEGORY, "Failed to get gang descriptions:", error);
             return {};
         }
     }
@@ -1437,7 +1440,7 @@ id, period_month, period_year, division_code, gang_code,
                 GROUP BY T.[CustomerCode], S.[Name]
             `, [month, year]);
 
-            console.log(`[SummaryService] Fetched ${rows.length} tonase records from db_ptrj_mill (server_3)`);
+            debug(CATEGORY, `Fetched ${rows.length} tonase records from db_ptrj_mill (server_3)`);
 
             // Division codes to match against supplier names/customer codes
             const divisionCodes = ['P1A', 'P1B', 'P2A', 'P2B', 'AB1', 'AB2', 'ARC', 'DME', 'ARA', 'IJL', 'INF', 'NRS', 'WKS_PG', 'WKS_AR'];
@@ -1456,14 +1459,14 @@ id, period_month, period_year, division_code, gang_code,
                 }
                 if (divTonase > 0) {
                     result[divCode] = divTonase;
-                    console.log(`[SummaryService] Tonase ${divCode}: ${divTonase.toFixed(2)} tons`);
+                    debug(CATEGORY, `Tonase ${divCode}: ${divTonase.toFixed(2)} tons`);
                 }
             }
         } catch (error: any) {
             if (error.message?.includes('Invalid object name') || error.message?.includes('does not exist')) {
-                console.warn(`[SummaryService] WM_TICKET/PU_SUPPLIER table not found in db_ptrj_mill, tonase will be 0`);
+                warn(CATEGORY, `WM_TICKET/PU_SUPPLIER table not found in db_ptrj_mill, tonase will be 0`);
             } else {
-                console.error(`[SummaryService] Failed to fetch tonase from mill:`, error.message);
+                logError(CATEGORY, `Failed to fetch tonase from mill:`, error.message);
             }
         }
         return result;
@@ -1518,7 +1521,7 @@ id, period_month, period_year, division_code, gang_code,
                         taskMap[code].total_amount += amt;
                     }
                 } catch (e) {
-                    console.error(`Failed to parse lembur_records for ${row.emp_name}:`, e);
+                    logError(CATEGORY, `Failed to parse lembur_records for ${row.emp_name}:`, e);
                 }
             }
 
@@ -1537,7 +1540,7 @@ id, period_month, period_year, division_code, gang_code,
                 }
             };
         } catch (e: any) {
-            console.error(`[SummaryService] Failed to get gang detailed analysis for ${gangCode}:`, e);
+            logError(CATEGORY, `Failed to get gang detailed analysis for ${gangCode}:`, e);
             return {
                 success: false,
                 error: e.message

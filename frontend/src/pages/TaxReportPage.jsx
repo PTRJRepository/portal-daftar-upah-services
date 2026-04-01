@@ -214,7 +214,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                                 {idx + 1}
                                             </td>
                                             <td className="col-name">{emp.emp_name}</td>
-                                            <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
+                                            <td className="text-center" style={{ fontSize: '11px' }}>{emp.new_nik || emp.nik || '-'}</td>
                                             <td className="text-center">{emp.gender === 'L' || emp.gender === 'M' ? 'L' : 'P'}</td>
                                             <td className="text-center">{emp.status_ptkp}</td>
                                             <td className="text-center">{emp.kategori_ter}</td>
@@ -567,7 +567,7 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, g
                                     <tr key={emp.emp_code}>
                                         <td className="text-center col-no">{idx + 1}</td>
                                         <td className="col-name">{emp.emp_name}</td>
-                                        <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
+                                        <td className="text-center" style={{ fontSize: '11px' }}>{emp.new_nik || emp.nik || '-'}</td>
 
                                         {subTab === 'penghasilan' ? (
                                             <>
@@ -815,7 +815,7 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, g
                                     <tr key={emp.emp_code}>
                                         <td className="text-center col-no">{idx + 1}</td>
                                         <td className="col-name">{emp.emp_name}</td>
-                                        <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
+                                        <td className="text-center" style={{ fontSize: '11px' }}>{emp.new_nik || emp.nik || '-'}</td>
                                         <td className="text-right">{formatNumber(emp.total?.upah_dasar ? emp.total.upah_dasar / Object.keys(emp.monthly_data || {}).length : 0)}</td>
                                         <td className="text-right">{formatNumber(emp.total?.gaji_pokok ? emp.total.gaji_pokok / Object.keys(emp.monthly_data || {}).length : 0)}</td>
                                         {Array.from({ length: 12 }, (_, m) => (
@@ -982,7 +982,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
                                 <tr key={emp.emp_code}>
                                     <td className="text-center col-no">{idx + 1}</td>
                                     <td className="col-name">{emp.emp_name}</td>
-                                    <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
+                                    <td className="text-center" style={{ fontSize: '11px' }}>{emp.new_nik || emp.nik || '-'}</td>
                                     <td className="text-center">-</td> {/* Placeholder for NPWP */}
                                     {Array.from({ length: 12 }, (_, m) => {
                                         const val = emp.monthly_pph21_adtrans?.[String(m + 1)] || 0;
@@ -1292,7 +1292,7 @@ function DecemberTaxTab({ token, year, division, gang, gangPrefix, refreshKey })
                                 <tr key={emp.emp_code}>
                                     <td className="text-center col-no">{emp.no}</td>
                                     <td className="col-name">{emp.emp_name}</td>
-                                    <td className="text-center" style={{ fontSize: '11px' }}>{emp.nik || '-'}</td>
+                                    <td className="text-center" style={{ fontSize: '11px' }}>{emp.new_nik || emp.nik || '-'}</td>
                                     <td className="text-center">{emp.npwp}</td>
                                     <td style={{ maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={emp.alamat}>{emp.alamat}</td>
                                     <td className="text-center" style={{ fontSize: '11px' }}>{emp.jabatan || '-'}</td>

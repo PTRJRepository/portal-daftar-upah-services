@@ -159,6 +159,48 @@ export class Config {
     public static readonly LOG_FILE_PATH: string = env.LOG_FILE_PATH || join(import.meta.dir, "../logs/error.log");
     public static readonly CLEAR_LOGS_ON_STARTUP: boolean = (env.CLEAR_LOGS_ON_STARTUP !== "false");
 
+    // IT Solution Absensi API (Face Verification)
+    // Base URL: http://10.0.0.110:5176
+    // Provides face verification attendance data per employee per day
+    public static readonly ABSENSI_API_URL: string = env.ABSENSI_API_URL || "http://10.0.0.110:5176";
+    public static readonly ABSENSI_API_KEY: string = env.ABSENSI_API_KEY || "2a993486e7a448474de66bfaea4adba7a99784defbcaba420e7f906176b94df6";
+
+    /**
+     * Division code mapping: payroll division code → IT Solution API division code
+     * Payroll uses LocCode from HR_GANG (P1A, AB1, ARC, IJL, DME, ARA, PGE)
+     * IT Solution API uses: PG1A, PG1B, PG2A, PG2B, DME, ARA, ARB1, ARB2, AREC, IJL, INFRA, STF-OFFICE, SECURITY
+     *
+     * Real LocCodes found in HR_GANG: P1A, P1B, P2A, P2B, AB1, AB2, ARA, ARC, DME, IJL, PGE
+     */
+    public static readonly DIVISION_CODE_MAP: Record<string, string> = {
+        // P divisions
+        "PG1A": "PG1A",
+        "P1A": "PG1A",
+        "PG1B": "PG1B",
+        "P1B": "PG1B",
+        "PG2A": "PG2A",
+        "P2A": "PG2A",
+        "PG2B": "PG2B",
+        "P2B": "PG2B",
+        // AF/AB divisions (HR_GANG uses AB1, AB2)
+        "ARB1": "ARB1",
+        "AB1": "ARB1",
+        "ARB2": "ARB2",
+        "AB2": "ARB2",
+        // ARC (HR_GANG uses ARC, IT Solution uses AREC)
+        "AREC": "AREC",
+        "ARC": "AREC",
+        // Others (direct mapping - same in both systems)
+        "DME": "DME",
+        "ARA": "ARA",
+        "IJL": "IJL",
+        "PGE": "PGE",
+        // Aliases that may appear in payroll system
+        "STF-OFFICE": "STF-OFFICE",
+        "SECURITY": "SECURITY",
+        "INFRA": "INFRA",
+    };
+
     // Helper Methods
     public static get isDev(): boolean {
         return this.RUN_MODE === "dev";

@@ -232,7 +232,8 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
         let val = row[field];
         if (val !== undefined && val !== null) return val;
 
-        if (['nik', 'EMP_CODE'].includes(field) && row.emp_code) return row.emp_code;
+        if (field === 'nik') return row.new_nik || row.nik || '';
+        if (['EMP_CODE'].includes(field) && row.emp_code) return row.emp_code;
         if (field === 'join_date' && row.tanggal_masuk) return row.tanggal_masuk;
 
         if (resolveNested) {

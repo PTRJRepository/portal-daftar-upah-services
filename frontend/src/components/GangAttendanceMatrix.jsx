@@ -24,7 +24,7 @@ const STATUS_CONFIG = {
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
-export default function GangAttendanceMatrix({ token, gangCodes, month, year, division, initialData = null, onDataLoaded = null }) {
+export default function GangAttendanceMatrix({ token, gangCodes, month, year, division, initialData = null, onDataLoaded = null, includeFaceVerification = true }) {
     const [data, setData] = useState(initialData)
     const [loading, setLoading] = useState(!initialData)
     const [error, setError] = useState(null)
@@ -42,7 +42,7 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
         setLoading(true)
         setError(null)
         try {
-            const result = await getGangAttendanceMatrix(token, gangCodes, month, year)
+            const result = await getGangAttendanceMatrix(token, gangCodes, month, year, includeFaceVerification)
             setData(result)
             cachedParamsRef.current = cacheKey
             if (onDataLoaded) onDataLoaded(result)
@@ -55,7 +55,7 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
         } finally {
             setLoading(false)
         }
-    }, [token, gangCodes, month, year, onDataLoaded, data])
+    }, [token, gangCodes, month, year, includeFaceVerification, onDataLoaded, data])
 
     useEffect(() => {
         fetchData()
@@ -168,6 +168,13 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                             <strong>{cfg.short}</strong> {cfg.label}
                         </span>
                     ))}
+                    <span className="gam-legend-divider" />
+                    <span className="gam-face-legend-item" style={{ color: '#059669', background: '#d1fae5' }}>
+                        <strong>V</strong> Face OK
+                    </span>
+                    <span className="gam-face-legend-item" style={{ color: '#dc2626', background: '#fef2f2' }}>
+                        <strong>X</strong> No Face
+                    </span>
                 </div>
 
                 {/* Content */}
@@ -227,17 +234,21 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                                                             <td className="gam-td-name" title={`${emp.emp_name} (${emp.emp_code})`}>
                                                                 {emp.emp_name}
                                                             </td>
-                                                            <td className="gam-td-nik">{emp.nik || '-'}</td>
+                                                            <td className="gam-td-nik">{emp.new_nik || emp.nik || '-'}</td>
                                                             {days.map(d => {
                                                                 const status = emp.daily?.[d] || '-'
                                                                 const cfg = STATUS_CONFIG[status] || STATUS_CONFIG['-']
+                                                                const faceVerif = emp.face_verification?.[d]
+                                                                const hasFaceData = faceVerif !== undefined
+                                                                const faceOk = faceVerif === true
                                                                 return (
                                                                     <td key={d}
-                                                                        className="gam-td-cell"
+                                                                        className={`gam-td-cell ${hasFaceData ? (faceOk ? 'gam-cell-face-ok' : 'gam-cell-face-no') : ''}`}
                                                                         style={{ background: cfg.bg, color: cfg.color }}
-                                                                        title={`${emp.emp_name} - Tgl ${d}: ${cfg.label}`}
+                                                                        title={`${emp.emp_name} - Tgl ${d}: ${cfg.label}${hasFaceData ? (faceOk ? ' [FACE OK]' : ' [NO FACE]') : ''}`}
                                                                     >
-                                                                        {cfg.short}
+                                                                        {hasFaceData && <span className={`gam-face-badge ${faceOk ? 'gam-face-badge-ok' : 'gam-face-badge-no'}`}>{faceOk ? 'V' : 'X'}</span>}
+                                                                        <span className="gam-cell-status">{cfg.short}</span>
                                                                     </td>
                                                                 )
                                                             })}
@@ -357,6 +368,37 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     border-radius: 6px;
                     font-size: 11px;
                     font-weight: 500;
+                }
+                .gam-face-legend-item {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 2px 8px;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+                .gam-legend-divider {
+                    width: 1px;
+                    height: 16px;
+                    background: #d1d5db;
+                    margin: 0 4px;
+                }
+                .gam-face-badge {
+                    font-size: 8px;
+                    font-weight: 800;
+                    margin-right: 1px;
+                    line-height: 1;
+                }
+                .gam-face-badge-ok { color: #059669; }
+                .gam-face-badge-no { color: #dc2626; }
+                .gam-cell-status { font-weight: 600; font-size: 10px; }
+                .gam-td-cell { display: flex; align-items: center; justify-content: center; gap: 1px; }
+                tbody tr:nth-child(even) .gam-td-no,
+                tbody tr:nth-child(even) .gam-td-empcode,
+                tbody tr:nth-child(even) .gam-td-name,
+                tbody tr:nth-child(even) .gam-td-nik {
+                    background: #fafafa;
                 }
                 .gam-content {
                     overflow-y: auto;
@@ -662,12 +704,6 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     color: #9ca3af;
                     margin-top: 4px;
                 }
-                tbody tr:nth-child(even) .gam-td-no,
-                tbody tr:nth-child(even) .gam-td-empcode,
-                tbody tr:nth-child(even) .gam-td-name,
-                tbody tr:nth-child(even) .gam-td-nik {
-                    background: #fafafa;
-                }
                 tbody tr:hover .gam-td-no,
                 tbody tr:hover .gam-td-empcode,
                 tbody tr:hover .gam-td-name,
@@ -742,7 +778,9 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     .gam-th-no, .gam-td-no { min-width: 15px !important; width: 15px !important; font-size: 7px !important; }
                     .gam-th-empcode, .gam-td-empcode { min-width: 45px !important; max-width: 55px !important; font-size: 7px !important; padding: 1px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
                     .gam-th-name, .gam-td-name { min-width: 80px !important; max-width: 110px !important; padding: 1px 2px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 8px !important; }
-                    .gam-th-day, .gam-td-cell { min-width: 14px !important; width: 14px !important; padding: 1px 0 !important; font-size: 8px !important; }
+                    .gam-th-day, .gam-td-cell { min-width: 14px !important; width: 14px !important; padding: 1px 0 !important; font-size: 8px !important; display: table-cell !important; }
+                    .gam-face-badge { display: none !important; }
+                    .gam-cell-status { font-size: 8px !important; }
                     .gam-th-sum, .gam-td-sum { min-width: 16px !important; font-size: 8px !important; padding: 1px !important; }
 
                     .gam-print-btn, .gam-toggle-icon {

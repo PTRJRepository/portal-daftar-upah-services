@@ -125,8 +125,8 @@ export class AppsScriptService {
 
             // Sort employees by NIK
             employees.sort((a, b) => {
-                const nikA = (a.nik || '').trim();
-                const nikB = (b.nik || '').trim();
+                const nikA = (a.new_nik || a.nik || '').trim();
+                const nikB = (b.new_nik || b.nik || '').trim();
                 return nikA.localeCompare(nikB, undefined, { numeric: true, sensitivity: 'base' });
             });
 
@@ -252,8 +252,8 @@ export class AppsScriptService {
 
             // Sort employees by NIK
             employees.sort((a, b) => {
-                const nikA = (a.nik || '').trim();
-                const nikB = (b.nik || '').trim();
+                const nikA = (a.new_nik || a.nik || '').trim();
+                const nikB = (b.new_nik || b.nik || '').trim();
                 return nikA.localeCompare(nikB, undefined, { numeric: true, sensitivity: 'base' });
             });
 
@@ -280,7 +280,7 @@ export class AppsScriptService {
                     Object.entries(lemburByTask).forEach(([taskDesc, data]) => {
                         rows.push([
                             globalNo,
-                            emp.nik || "",
+                            emp.new_nik || emp.nik || "",
                             emp.nama || "",
                             emp.gang_code || "",
                             `${taskDesc} (${data.count}x)`,
@@ -346,8 +346,8 @@ export class AppsScriptService {
 
             // Sort employees by NIK
             employees.sort((a, b) => {
-                const nikA = (a.nik || '').trim();
-                const nikB = (b.nik || '').trim();
+                const nikA = (a.new_nik || a.nik || '').trim();
+                const nikB = (b.new_nik || b.nik || '').trim();
                 return nikA.localeCompare(nikB, undefined, { numeric: true, sensitivity: 'base' });
             });
 
@@ -358,7 +358,7 @@ export class AppsScriptService {
             employees.forEach(emp => {
                 const row: any[] = [
                     globalNo++,
-                    emp.nik || "",
+                    emp.new_nik || emp.nik || "",
                     emp.nama || "",
                     emp.gang_code || "",
                     val(emp.premi_brondol),
@@ -418,8 +418,8 @@ export class AppsScriptService {
 
             // Sort employees by NIK
             employees.sort((a, b) => {
-                const nikA = (a.nik || '').trim();
-                const nikB = (b.nik || '').trim();
+                const nikA = (a.new_nik || a.nik || '').trim();
+                const nikB = (b.new_nik || b.nik || '').trim();
                 return nikA.localeCompare(nikB, undefined, { numeric: true, sensitivity: 'base' });
             });
 
@@ -439,7 +439,7 @@ export class AppsScriptService {
 
                 rows.push([
                     globalNo++,
-                    emp.nik || "",
+                    emp.new_nik || emp.nik || "",
                     emp.nama || "",
                     emp.gang_code || "",
                     val(emp.jumlah_hk),
@@ -844,7 +844,7 @@ export class AppsScriptService {
         const row: any[] = [];
 
         // IDENTITAS (4)
-        row.push(no, emp.nik || "", emp.nama || "", emp.jabatan_estate || emp.jabatan || "");
+        row.push(no, emp.new_nik || emp.nik || "", emp.nama || "", emp.jabatan_estate || emp.jabatan || "");
 
         // ABSENSI (6)
         row.push(

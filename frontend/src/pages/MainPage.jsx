@@ -15,6 +15,7 @@ import AggregationSeederPage from './AggregationSeederPage'
 import PayrollAnalysisPage from './PayrollAnalysisPage'
 import GangAttendanceMatrix from '../components/GangAttendanceMatrix'
 import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
+import GangEmployeeInfo from '../components/GangEmployeeInfo'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
 
@@ -131,12 +132,13 @@ export default function MainPage({ lockedDiv = null }) {
   const [usePeriodSlider, setUsePeriodSlider] = useState(true)
 
   // Matrix View State
-  const [activeMatrixView, setActiveMatrixView] = useState(null) // null | 'attendance' | 'overtime'
+  const [activeMatrixView, setActiveMatrixView] = useState(null) // null | 'attendance' | 'overtime' | 'employee'
 
   // Data caches for view switching (avoid refetch when switching views)
   const [payrollDataCache, setPayrollDataCache] = useState({})   // key: `${division}_${month}_${year}_${useHistoryDb}_${gangPrefix}`
   const [attendanceMatrixCache, setAttendanceMatrixCache] = useState({})  // key: `${gangCodes}_${month}_${year}`
   const [overtimeMatrixCache, setOvertimeMatrixCache] = useState({})     // key: `${gangCodes}_${month}_${year}`
+  const [employeeDataCache, setEmployeeDataCache] = useState({})     // key: `${gangCodes}_${month}_${year}`
 
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
@@ -226,6 +228,19 @@ export default function MainPage({ lockedDiv = null }) {
     // Use buildAppPath to add base path (/upah) in proxy mode
     const detailPath = buildAppPath(`/employee/detail?${params.toString()}`)
     window.open(detailPath, '_blank', 'noopener,noreferrer')
+  }
+
+  // Handler for viewing employee HR Profile (called from PayrollGrid context menu)
+  const handleOpenHrProfile = (employeeData) => {
+    const empCode = employeeData.emp_code || employeeData.EmpCode || employeeData.nik || employeeData.NIK
+    if (!empCode) {
+      console.error('[MainPage] Cannot view HR profile: emp_code is missing', employeeData)
+      return
+    }
+
+    const params = new URLSearchParams({ nik: empCode })
+    const hrPath = buildAppPath(`/hr-info?${params.toString()}`)
+    window.open(hrPath, '_blank', 'noopener,noreferrer')
   }
 
   // Fetch divisions from API (database)
@@ -586,6 +601,29 @@ export default function MainPage({ lockedDiv = null }) {
             >
               Laporan Analisis Payroll
             </div>
+
+            {/* Manajemen Karyawan Link */}
+            <div
+              onClick={() => {
+                const path = buildAppPath('/employee-directory');
+                window.location.href = path;
+              }}
+              style={{
+                padding: '0.75rem 1rem',
+                backgroundColor: 'transparent',
+                color: '#94a3b8',
+                borderRadius: '6px',
+                fontWeight: '500',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                borderLeft: '4px solid transparent',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#334155'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+            >
+              Manajemen Karyawan
+            </div>
           </div>
 
           {/* User Profile & Logout */}
@@ -899,10 +937,79 @@ export default function MainPage({ lockedDiv = null }) {
               {division && gang && !gangLoading && gangs.length > 0 && (
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
                   gap: '1.5rem',
                   marginBottom: '2.5rem'
                 }}>
+                  {/* Employee Info Card */}
+                  <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    padding: '1.75rem',
+                    border: '1px solid #cbd5e1',
+                    borderTop: '5px solid #8b5cf6',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.07)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    transition: 'all 0.3s ease',
+                    cursor: 'pointer'
+                  }}
+                    onClick={() => setActiveMatrixView(activeMatrixView === 'employee' ? null : 'employee')}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 20px -4px rgba(139, 92, 246, 0.2)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.07)' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{
+                        width: '48px', height: '48px',
+                        background: 'linear-gradient(135deg, #ede9fe, #ddd6fe)',
+                        borderRadius: '10px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '1.5rem'
+                      }}>
+                        👥
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+                          Info Karyawan
+                        </h3>
+                        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '2px 0 0' }}>
+                          {gang === 'ALL' ? `${gangs.length} gang` : gang} • {MONTHS[month - 1]} {year}
+                        </p>
+                      </div>
+                      <div style={{ marginLeft: 'auto' }}>
+                        <span style={{
+                          fontSize: '0.65rem',
+                          fontWeight: '700',
+                          background: activeMatrixView === 'employee' ? '#7c3aed' : '#8b5cf6',
+                          color: 'white',
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em'
+                        }}>
+                          {activeMatrixView === 'employee' ? '● AKTIF' : 'LIHAT'}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {['NIK KTP', 'EmpCode', 'Bank'].map(s => (
+                        <span key={s} style={{
+                          fontSize: '0.7rem', fontWeight: '600',
+                          background: '#f5f3ff', color: '#7c3aed',
+                          padding: '2px 8px', borderRadius: '6px',
+                          border: '1px solid #ddd6fe'
+                        }}>{s}</span>
+                      ))}
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem', color: '#64748b',
+                      borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem'
+                    }}>
+                      Klik untuk melihat informasi karyawan per gang
+                    </div>
+                  </div>
+
                   {/* Attendance Matrix Card */}
                   <div style={{
                     backgroundColor: 'white',
@@ -1288,6 +1395,7 @@ export default function MainPage({ lockedDiv = null }) {
               if (mode === 'table') setActiveMatrixView(null);
               else if (mode === 'attendance') setActiveMatrixView('attendance');
               else if (mode === 'overtime') setActiveMatrixView('overtime');
+              else if (mode === 'employee') setActiveMatrixView('employee');
             }}
             onTogglePeriodSlider={setUsePeriodSlider}
             currentProductionMonth={currentProductionMonth}
@@ -1510,6 +1618,7 @@ export default function MainPage({ lockedDiv = null }) {
               const matrixGangCodes = gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang];
               const attCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
               const otCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
+              const empCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
               const payCacheKey = `${division}_${month}_${year}_${isHistorical}_${gangPrefix || ''}`;
               return (
                 <>
@@ -1536,8 +1645,20 @@ export default function MainPage({ lockedDiv = null }) {
                       onDataLoaded={(data) => setOvertimeMatrixCache(prev => ({ ...prev, [otCacheKey]: data }))}
                     />
                   </div>
+                  <div style={{ display: activeMatrixView === 'employee' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', flexDirection: 'column' }}>
+                    <GangEmployeeInfo
+                      token={token}
+                      gangCodes={matrixGangCodes}
+                      month={month}
+                      year={year}
+                      division={division}
+                      initialData={employeeDataCache[empCacheKey] || null}
+                      onDataLoaded={(data) => setEmployeeDataCache(prev => ({ ...prev, [empCacheKey]: data }))}
+                      onViewEmployeeDetail={handleViewEmployeeDetail}
+                    />
+                  </div>
                   {/* Payroll table - always mounted, hidden with display:none when matrix active */}
-                  <div style={{ display: activeMatrixView === null ? 'block' : 'none', width: '100%', height: '100%' }}>
+                  <div style={{ display: !activeMatrixView ? 'block' : 'none', width: '100%', height: '100%' }}>
                     <CustomPayrollTable
                       token={token}
                       month={month}
@@ -1546,6 +1667,7 @@ export default function MainPage({ lockedDiv = null }) {
                       gangCode={gang}
                       gangPrefix={gangPrefix}
                       onViewEmployeeDetail={handleViewEmployeeDetail}
+                      onOpenHrProfile={handleOpenHrProfile}
                       fontSize={fontSize}
                       onExportReady={(handler) => setExportHandler(() => handler)}
                       refreshTrigger={refreshTrigger}

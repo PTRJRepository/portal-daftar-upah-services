@@ -130,7 +130,8 @@ export class ReportService {
             // 1. Employees
             this.db.query(this.reparam(`
                 SELECT DISTINCT
-                    e.EmpCode as nik,
+                    RTRIM(e.EmpCode) as emp_code,
+                    RTRIM(ISNULL(e.NewICNo, e.EmpCode)) as new_nik,
                     e.EmpName as nama,
                     e.Gender as jenis_kelamin,
                     '' as tanggal_join,
@@ -350,10 +351,13 @@ export class ReportService {
         const employeeMap = new Map<string, any>();
 
         employees.forEach(e => {
-            const nik = e.nik.trim();
-            employeeMap.set(nik, {
+            const empCode = (e.emp_code || '').trim().toUpperCase();
+            const newNik = (e.new_nik || empCode).trim();
+            employeeMap.set(empCode, {
                 ...e,
-                nik: nik,
+                emp_code: empCode,
+                nik: newNik,           // Display NIK = KTP NIK (NewICNo)
+                new_nik: newNik,       // NEW: Explicit KTP NIK
                 jenis_kelamin: (e.jenis_kelamin === '2' || String(e.jenis_kelamin).toUpperCase() === 'P') ? 'P' : 'L',
                 premi: {},
                 potongan_upah_kotor: { dynamic: {}, total: 0 },
@@ -435,7 +439,7 @@ export class ReportService {
                 const emp = employeeMap.get(r.EmpCode.trim());
                 if (emp) {
                     emp.lembur_jam = r.TotalHours;
-                    emp.lembur_jumlah = formulas[emp.nik] || 0;
+                    emp.lembur_jumlah = formulas[emp.emp_code] || 0;
                 }
             });
         } else {

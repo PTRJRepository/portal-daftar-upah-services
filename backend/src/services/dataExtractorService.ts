@@ -19,6 +19,9 @@ import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { OtherIncomesService } from "./otherIncomesService";
 import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
 import { cacheService } from './cacheService';
+import { debug, info, warn, error as logError } from "../utils/logger";
+
+const CATEGORY = "DataExtractor";
 
 interface EmployeeRow {
     emp_code: string;
@@ -313,7 +316,7 @@ export class DataExtractorService {
         const cacheKey = `payroll_data:${month}:${year}:${gangCode || 'ALL'}:${divisionCode || ''}:${specificEmpCode || ''}:${gangPrefix || ''}:${skipHarvest}`;
         const cached = cacheService.get<any>(cacheKey);
         if (cached) {
-            console.log(`[DataExtractor] Cache HIT for ${cacheKey} (${cached.data_rows?.length || 0} rows)`);
+            debug(CATEGORY, `Cache HIT for ${cacheKey} (${cached.data_rows?.length || 0} rows)`);
             return { ...cached, meta: { ...cached.meta, _cache_hit: true } };
         }
 
@@ -364,13 +367,13 @@ export class DataExtractorService {
                         });
                     }
 
-                    console.log(`[DataExtractor] Intercepted deep history request for ${month}/${year}. Returning seeded snapshot data. (${historyData.data_rows.length} rows)`);
+                    debug(CATEGORY, `Intercepted deep history request for ${month}/${year}. Returning seeded snapshot data. (${historyData.data_rows.length} rows)`);
                     return historyData;
                 } else {
-                    console.log(`[DataExtractor] No seeded history found for ${month}/${year}. Falling back to live/archive calculation...`);
+                    debug(CATEGORY, `No seeded history found for ${month}/${year}. Falling back to live/archive calculation...`);
                 }
             } catch (err) {
-                console.error(`[DataExtractor] Failed to fetch historical snapshot, falling back:`, err);
+                logError(CATEGORY, `Failed to fetch historical snapshot, falling back:`, err);
             }
         }
         // ------------------------------------
@@ -395,7 +398,7 @@ export class DataExtractorService {
             gangCondition = `RTRIM(e.EmpCode) = '${specificEmpCode.trim()}'`;
         } else if (gangCode && gangCode !== "ALL") {
             const trimmedInput = gangCode.trim().toUpperCase();
-            console.log(`[DataExtractor] Gang Filter: Input='${gangCode}' (Using exact Code matching)`);
+            debug(CATEGORY, `Gang Filter: Input='${gangCode}' (Using exact Code matching)`);
             // Set gangCodeInput so getEmployees can build path-specific conditions
             gangCodeInput = trimmedInput;
             // Default condition using GangCode from HR_GANGLN (live path)
@@ -417,7 +420,7 @@ export class DataExtractorService {
 
         const startTotal = performance.now();
         let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
-        console.log(`[DataExtractor] Phase 0 - getEmployees: ${(performance.now() - startTotal).toFixed(0)}ms, found ${employees.length} employees`);
+        debug(CATEGORY, `Phase 0 - getEmployees: ${(performance.now() - startTotal).toFixed(0)}ms, found ${employees.length} employees`);
 
         // Apply gangPrefix (Group/Asistensi) filter for LIVE path
         if (gangPrefix && employees.length > 0) {
@@ -452,28 +455,28 @@ export class DataExtractorService {
         const [
             attendanceMap, cuti, premiResult, potonganResult, lembur, lemburWithDetails, lemburDocDesc, berasDocDesc, jabatan, masaKerja, upahPokok, brondol, jobTitles, taskCodes, bunchesBatch, manualAdjustmentsRaw, positionHistory
         ] = await Promise.all([
-            this.getAttendance(empCodes, startDate, endDate, serverProfile),
-            this.getCuti(empCodes, startDate, endDate, serverProfile),
+            this.getAttendance(empCodes, startDate, endDate, serverProfile, isHistorical),
+            this.getCuti(empCodes, startDate, endDate, serverProfile, isHistorical),
             this.getPremi(empCodes, startDate, endDate, isHistorical, serverProfile),
-            this.getPotongan(empCodes, startDate, endDate, serverProfile),
+            this.getPotongan(empCodes, startDate, endDate, serverProfile, isHistorical),
             this.getLemburDetailsFromCalculator(empCodes, month, year, serverProfile),
             this.getLemburDetailsWithTaskBreakdown(empCodes, month, year, serverProfile),
 
-            this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile),
-            this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile), // RESTORED
-            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile),
-            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile),
+            this.getLemburFromDocDesc(empCodes, startDate, endDate, serverProfile, isHistorical),
+            this.getBerasFromDocDesc(empCodes, startDate, endDate, serverProfile, isHistorical), // RESTORED
+            this.getTunjanganAmount(empCodes, startDate, endDate, "JABATAN", serverProfile, isHistorical),
+            this.getTunjanganAmount(empCodes, startDate, endDate, "MASA%KERJA", serverProfile, isHistorical),
             this.getUpahPokok(empCodes, year, currentYear, serverProfile),
-            this.getBrondol(empCodes, startDate, endDate, serverProfile),
+            this.getBrondol(empCodes, startDate, endDate, serverProfile, isHistorical),
 
             EmployeeEstateService.getEmployeeJobs(),
-            this.getTaskCodes(empCodes, startDate, endDate, serverProfile),
+            this.getTaskCodes(empCodes, startDate, endDate, serverProfile, isHistorical),
             // [OPTIMIZATION] Skip bunches fetch if requested (e.g. for Payslips)
             !skipHarvest ? this.getBunchesBatch(empCodes, month, year) : Promise.resolve(new Map()),
             manualAdjustmentService.getAdjustments(month, year, gangCode || undefined),
             this.getPositionHistory(empCodes, month, year)
         ]);
-        console.log(`[DataExtractor] Phase 1 (16 parallel queries): ${(performance.now() - startParallel).toFixed(0)}ms for ${empCodes.length} employees`);
+        debug(CATEGORY, `Phase 1 (16 parallel queries): ${(performance.now() - startParallel).toFixed(0)}ms for ${empCodes.length} employees`);
 
         // ============================================================
         // [OPTIMIZATION] Phase 2: 4 parallel calls
@@ -521,11 +524,11 @@ export class DataExtractorService {
                 return await employeeGangHistoryService.resolveLatestEmpCodes(niksToResolve, prefGangMap);
             })()
         ]);
-        console.log(`[DataExtractor] Phase 2 (4 parallel calls): ${(performance.now() - startPhase2).toFixed(0)}ms`);
+        debug(CATEGORY, `Phase 2 (4 parallel calls): ${(performance.now() - startPhase2).toFixed(0)}ms`);
 
         // [DEBUG] Check if THR records are fetched
         const thrCount = dbOtherIncomes.filter((i: any) => i.income_type === 'THR').length;
-        console.log(`[THR FIX] dbOtherIncomes total=${dbOtherIncomes.length}, THR=${thrCount}, gang=${gangCode}`);
+        debug("THR FIX", `dbOtherIncomes total=${dbOtherIncomes.length}, THR=${thrCount}, gang=${gangCode}`);
         // ==============================================================================
         // [THR FIX] Pendapatan Lainnya (THR, Bonus, Custom) Storage & Lookup Strategy
         // ==============================================================================
@@ -1018,7 +1021,7 @@ export class DataExtractorService {
             // [DEBUG KONTAN] Log custom type amounts for this employee
             const customTypesTotal = Object.values(customTypeAmounts).reduce((sum, v) => sum + v, 0);
             if (customTypesTotal > 0) {
-                console.log(`[DEBUG KONTAN] empNik=${empNik}, empCodeKey=${empCodeKey}, customTypeAmounts=`, JSON.stringify(customTypeAmounts), `, empOtherIncomes count=${empOtherIncomes.length}`);
+                debug("KONTAN", `empNik=${empNik}, empCodeKey=${empCodeKey}, customTypeAmounts=`, JSON.stringify(customTypeAmounts));
             }
 
             // Taxable for custom types
@@ -1097,8 +1100,9 @@ export class DataExtractorService {
             const tarif_pajak_ter = pph21TerResult.rate_percent; // Rate as percentage (e.g., 5 for 5%)
             const pph21_ter = pph21TerResult.tax_amount;
             const row: PayrollRow = {
-                emp_code: latestEmpCode,  // Use resolved latest EmpCode
+                emp_code: latestEmpCode,  // Plantware internal EmpCode
                 nik: emp.actual_nik || emp.emp_code,  // Actual NIK KTP (e.g. 1902050504860001)
+                new_nik: emp.actual_nik || emp.emp_code,  // NEW: Explicit KTP NIK
                 nama: emp.emp_name,
                 jabatan_estate: empJobTitle,
                 jenis_kelamin: emp.gender === "2" || emp.gender === "P" ? "P" : "L",
@@ -1253,7 +1257,7 @@ export class DataExtractorService {
 
             dataRows.push(row);
         }
-        console.log(`[DataExtractor] Phase 3 - Row processing (${employees.length} employees): ${(performance.now() - startRowProcessing).toFixed(0)}ms`);
+        debug(CATEGORY, `Phase 3 - Row processing (${employees.length} employees): ${(performance.now() - startRowProcessing).toFixed(0)}ms`);
 
         const totalMs = Date.now() - startTime;
         const result = {
@@ -1275,7 +1279,7 @@ export class DataExtractorService {
         // ============================================================
         const cacheTtl = isHistorical ? 3600 : 120;
         cacheService.set(cacheKey, result, cacheTtl);
-        console.log(`[DataExtractor] TOTAL: ${totalMs}ms for ${gangCode}/${month}/${year} (${dataRows.length} rows, cache TTL=${cacheTtl}s)`);
+        debug(CATEGORY, `TOTAL: ${totalMs}ms for ${gangCode}/${month}/${year} (${dataRows.length} rows, cache TTL=${cacheTtl}s)`);
 
         return result;
     }

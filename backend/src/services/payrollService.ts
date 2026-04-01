@@ -19,7 +19,9 @@ export interface BPJSComponents {
 
 export interface PayrollRow {
     no: number;
-    nik: string;
+    nik: string;           // Backward compat — now contains correct KTP NIK (NewICNo)
+    new_nik: string;       // NEW: Explicit KTP NIK from HR_EMPLOYEE.NewICNo
+    emp_code: string;       // NEW: Plantware internal EmpCode
     nama: string;
     jenis_kelamin: string;
     gang_code: string;

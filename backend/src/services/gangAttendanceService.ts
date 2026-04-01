@@ -14,6 +14,7 @@
  */
 
 import { Database } from "../db/client";
+import { faceVerificationService } from "./faceVerificationService";
 
 // Status codes for the matrix cells
 export type AttendanceStatus = 'H' | 'C' | 'S' | 'M' | 'N' | 'A' | '-' | 'L';
@@ -35,6 +36,8 @@ export interface GangAttendanceRow {
     gang_code: string;
     bank_acc_no: string;
     daily: Record<number, AttendanceStatus>;  // 1-31 => status
+    /** Face verification data from IT Solution API (absen_import). Key = day (1-31), value = hasWork (true/false) */
+    face_verification?: Record<number, boolean>;
     summary: {
         hadir: number;
         cuti_tahunan: number;
@@ -44,6 +47,11 @@ export interface GangAttendanceRow {
         alpa: number;
         total_hk: number;
     };
+}
+
+export interface GetGangAttendanceMatrixOptions {
+    /** Whether to fetch face verification data from IT Solution API (default: true) */
+    includeFaceVerification?: boolean;
 }
 
 export interface GangAttendanceResult {
@@ -94,9 +102,10 @@ class GangAttendanceService {
                     RTRIM(gl.GangMember) as emp_code,
                     RTRIM(e.EmpName) as emp_name,
                     RTRIM(gl.GangCode) as gang_code,
-                    RTRIM(ISNULL(SUBSTRING(gl.GangCode, 1, 2), '')) as division_code
+                    RTRIM(ISNULL(grp.LocCode, SUBSTRING(gl.GangCode, 1, 2))) as division_code
                 FROM HR_GANGLN gl
                 JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(gl.GangMember)
+                LEFT JOIN HR_GANG grp ON RTRIM(grp.GangCode) = RTRIM(gl.GangCode)
                 WHERE RTRIM(gl.GangCode) IN (${placeholders})
                 ORDER BY gang_code, emp_name
             `, [...gangCodes]);
@@ -292,10 +301,12 @@ class GangAttendanceService {
     public async getGangAttendanceMatrix(
         gangCodes: string[],
         month: number,
-        year: number
+        year: number,
+        options: GetGangAttendanceMatrixOptions = {}
     ): Promise<GangAttendanceResult[]> {
         const startTime = Date.now();
         const daysInMonth = new Date(year, month, 0).getDate();
+        const includeFaceVerification = options.includeFaceVerification !== false;
 
         // 1. Get holidays + Sundays
         const holidayMap = await this.getHolidays(month, year);
@@ -333,7 +344,18 @@ class GangAttendanceService {
             this.resolveBankByEmpCodes(allEmpCodes)
         ]);
 
-        // 5. Enrich members with NIK and bank account data
+        // 5. Fetch face verification data from IT Solution API (if enabled)
+        const divisionCodes = [...new Set(members.map(m => m.division_code))];
+        let faceVerificationMap = new Map<string, { daily: Record<number, { hasWork: boolean }> }>();
+        if (includeFaceVerification) {
+            try {
+                faceVerificationMap = await faceVerificationService.getFaceVerification(divisionCodes, month, year);
+            } catch (e) {
+                console.warn(`[GangAttendanceService] Face verification fetch failed:`, e);
+            }
+        }
+
+        // 6. Enrich members with NIK and bank account data
         for (const member of members) {
             const key = member.emp_code.toUpperCase();
             member.nik = nikMap.get(key) || '';
@@ -344,14 +366,13 @@ class GangAttendanceService {
             }
         }
 
-        // 6. Get gang descriptions from history_gang_member (already in data)
+        // 7. Get gang descriptions from HR_GANG (main DB)
         const gangDescMap = new Map<string, string>();
         for (const m of members) {
             if (!gangDescMap.has(m.gang_code)) {
                 gangDescMap.set(m.gang_code, '');
             }
         }
-        // Try to get descriptions from HR_GANG (main DB)
         try {
             const gcPlaceholders = gangCodes.map(() => '?').join(',');
             const gangRows = await this.db.query<{ GangCode: string; Description: string }>(
@@ -365,7 +386,7 @@ class GangAttendanceService {
             console.warn("[GangAttendanceService] Could not fetch gang descriptions from HR_GANG:", e);
         }
 
-        // 7. Build result per gang
+        // 8. Build result per gang
         const results: GangAttendanceResult[] = [];
 
         for (const gangCode of gangCodes) {
@@ -433,6 +454,15 @@ class GangAttendanceService {
 
                 summary.total_hk = summary.hadir + summary.cuti_tahunan + summary.cuti_sakit;
 
+                // Get face verification data for this employee
+                const empFaceData = faceVerificationMap.get(empKey);
+                const face_verification: Record<number, boolean> = {};
+                if (empFaceData) {
+                    for (const [day, data] of Object.entries(empFaceData.daily)) {
+                        face_verification[Number(day)] = data.hasWork;
+                    }
+                }
+
                 return {
                     emp_code: member.emp_code,
                     emp_name: member.emp_name,
@@ -440,6 +470,7 @@ class GangAttendanceService {
                     gang_code: member.gang_code,
                     bank_acc_no: member.bank_acc_no,
                     daily,
+                    face_verification: Object.keys(face_verification).length > 0 ? face_verification : undefined,
                     summary
                 };
             });
@@ -456,7 +487,7 @@ class GangAttendanceService {
             });
         }
 
-        console.log(`[GangAttendanceService] Generated matrix from extend_db_ptrj for ${gangCodes.length} gang(s), ${members.length} employees in ${Date.now() - startTime}ms`);
+        console.log(`[GangAttendanceService] Generated matrix for ${gangCodes.length} gang(s), ${members.length} employees in ${Date.now() - startTime}ms`);
         return results;
     }
 

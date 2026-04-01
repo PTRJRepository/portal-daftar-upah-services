@@ -20,21 +20,15 @@ import { taxReportRoutes } from "./api/taxReportRoutes";
 import { employeeHrDataRoutes } from "./api/employeeHrDataRoutes";
 import { employeeGangHistoryRoutes } from "./api/employeeGangHistoryRoutes";
 import { employeeComparisonRoutes } from "./api/employeeComparisonRoutes";
-import { Database } from "./db/client";
-import { employeeHrDataService } from "./services/employeeHrDataService";
-import { otherIncomesRoutes } from "./api/otherIncomesRoutes";
-import { OtherIncomesService } from "./services/otherIncomesService";
-import { staticPlugin } from "@elysiajs/static";
-import millProductionRoutes from "./api/millProductionRoutes";
-
+import { debug, info, warn, error } from "./utils/logger";
 
 // Initialize Database access
 Database.getInstance();
 
 // Background initialization
 setTimeout(() => {
-    employeeHrDataService.ensureTablesExist().catch(console.error);
-    OtherIncomesService.initTable().catch(console.error);
+    employeeHrDataService.ensureTablesExist().catch(err => error("Init", "Failed to ensure HR tables", err));
+    OtherIncomesService.initTable().catch(err => error("Init", "Failed to init OtherIncomes table", err));
 }, 1000);
 
 const app = new Elysia()
@@ -69,9 +63,15 @@ const app = new Elysia()
         // Log slow requests (> 1s) with warning, normal requests with info
         const method = request.method;
         if (duration > 1000) {
-            console.warn(`SLOW ${method} ${url.pathname} ${duration}ms`);
+            warn("HTTP", `SLOW ${method} ${url.pathname} ${duration}ms`);
         } else {
-            console.log(`${method} ${url.pathname} ${duration}ms`);
+            // Only log non-GET requests at INFO level
+            // GET requests are logged at DEBUG level to reduce terminal noise.
+            if (method !== "GET") {
+                info("HTTP", `${method} ${url.pathname} ${duration}ms`);
+            } else {
+                debug("HTTP", `${method} ${url.pathname} ${duration}ms`);
+            }
         }
     })
     // Proxy Prefix Stripping (if running behind reverse proxy)

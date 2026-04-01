@@ -62,7 +62,6 @@ export class HarvesterService {
             const sql = `
                 SELECT
                     EmpCode,
-                    EmpName,
                     SUM(0) as TotalBunches,
                     0 as Ripe,
                     0 as Unripe,
@@ -72,13 +71,12 @@ export class HarvesterService {
                 WHERE EmpCode = ?
                     AND MONTH(TrxDate) = ?
                     AND YEAR(TrxDate) = ?
-                GROUP BY EmpCode, EmpName
+                GROUP BY EmpCode
 
                 UNION ALL
 
                 SELECT
                     EmpCode,
-                    EmpName,
                     SUM(0) as TotalBunches,
                     0 as Ripe,
                     0 as Unripe,
@@ -88,7 +86,7 @@ export class HarvesterService {
                 WHERE EmpCode = ?
                     AND MONTH(TrxDate) = ?
                     AND YEAR(TrxDate) = ?
-                GROUP BY EmpCode, EmpName
+                GROUP BY EmpCode
             `;
 
             const results = await this.db.query<HarvestDataRaw>(sql, [empCode, month, year, empCode, month, year]);
@@ -174,7 +172,7 @@ export class HarvesterService {
 
             // CHUNKING: SQL Server supports max 2100 params.
             // Legacy query uses empCodes 3x (3 UNION ALLs) + 6 (month/year x3), so max chunk = floor((2100 - 6) / 3) ≈ 698
-            const CHUNK_SIZE = 600;
+            const CHUNK_SIZE = 500;
             const allLegacyResults: HarvestDataRaw[] = [];
 
             for (let ci = 0; ci < empCodes.length; ci += CHUNK_SIZE) {
@@ -182,14 +180,14 @@ export class HarvesterService {
                 const placeholders = chunk.map(() => "?").join(",");
 
                 const sql = `
-                    SELECT EmpCode, EmpName, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
-                    FROM PR_HARVESTERLN WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
+                    SELECT EmpCode, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    FROM PR_HARVESTERLN WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode
                     UNION ALL
-                    SELECT EmpCode, EmpName, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
-                    FROM PR_HARVESTERLN_ACC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
+                    SELECT EmpCode, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    FROM PR_HARVESTERLN_ACC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode
                     UNION ALL
-                    SELECT EmpCode, EmpName, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
-                    FROM PR_HARVESTERLN_ARC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode, EmpName
+                    SELECT EmpCode, SUM(0) as TotalBunches, 0 as Ripe, 0 as Unripe, 0 as TotalRound, COUNT(*) as TrxCount
+                    FROM PR_HARVESTERLN_ARC WHERE EmpCode IN (${placeholders}) AND MONTH(TrxDate) = ? AND YEAR(TrxDate) = ? GROUP BY EmpCode
                 `;
 
                 const params = [...chunk, month, year, ...chunk, month, year, ...chunk, month, year];
@@ -274,7 +272,6 @@ export class HarvesterService {
                     m.GangCode,
                     m.DocDate,
                     l.EmpCode,
-                    l.EmpName,
                     SUM(l.TotalBunches) as TotalBunches,
                     SUM(l.Ripe) as Ripe,
                     SUM(l.Unripe) as Unripe,
@@ -286,7 +283,7 @@ export class HarvesterService {
                     AND m.GangCode = ?
                     AND MONTH(l.TrxDate) = ?
                     AND YEAR(l.TrxDate) = ?
-                GROUP BY m.GangCode, m.DocDate, l.EmpCode, l.EmpName
+                GROUP BY m.GangCode, m.DocDate, l.EmpCode
             `;
 
             const results = await this.db.query<any>(lineSql, [empCode, gangCode, month, year]);

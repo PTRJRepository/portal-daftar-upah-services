@@ -26,7 +26,7 @@ export default function DivisionDetailCard({ division, data, loading, onBack }) 
     useEffect(() => {
         if (!data?.employees) return;
         const filtered = data.employees.filter(emp =>
-            (emp.name.toLowerCase().includes(employeeFilters.search.toLowerCase()) || emp.nik.includes(employeeFilters.search)) &&
+            (emp.name.toLowerCase().includes(employeeFilters.search.toLowerCase()) || (emp.new_nik || emp.nik).includes(employeeFilters.search)) &&
             emp.upah_bersih >= employeeFilters.minNetWage &&
             emp.lembur >= employeeFilters.minOvertime &&
             emp.premi >= employeeFilters.minPremi
@@ -295,7 +295,7 @@ export default function DivisionDetailCard({ division, data, loading, onBack }) 
                                 {filteredEmployees.length > 0 ? (
                                     filteredEmployees.map((emp, idx) => (
                                         <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', backgroundColor: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
-                                            <td style={{ padding: '12px', fontFamily: 'monospace', color: '#64748b' }}>{emp.nik}</td>
+                                            <td style={{ padding: '12px', fontFamily: 'monospace', color: '#64748b' }}>{emp.new_nik || emp.nik}</td>
                                             <td style={{ padding: '12px', fontWeight: '600', color: '#334155' }}>{emp.name}</td>
                                             <td style={{ padding: '12px', color: '#64748b' }}>{emp.gang}</td>
                                             <td style={{ padding: '12px', color: '#64748b' }}>{emp.role}</td>

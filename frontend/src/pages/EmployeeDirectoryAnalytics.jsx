@@ -45,21 +45,22 @@ async function fetchEmployeesList(token, filters = {}) {
         if (filters.gang) params.set('gang_code', filters.gang);
         if (filters.religion) params.set('religion', filters.religion);
         if (filters.status) params.set('status', filters.status);
+        if (filters.forceHistory) params.set('force_history', 'true');
 
         const response = await fetch(`${API_BASE_URL}/payroll/employee/list-all?${params.toString()}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) throw new Error('Failed to fetch');
         const json = await response.json();
-        return json.data || [];
+        return { data: json.data || [], dataSource: json.dataSource || 'origin' };
     } catch (err) {
         console.error('Error fetching employees:', err);
-        return [];
+        return { data: [], dataSource: 'origin' };
     }
 }
 
 async function searchEmployees(token, query, limit = 50) {
-    if (!query || query.trim().length < 2) return [];
+    if (!query || query.trim().length < 2) return { data: [], dataSource: 'origin' };
     try {
         const response = await fetch(
             `${API_BASE_URL}/payroll/employee/search?q=${encodeURIComponent(query)}&limit=${limit}`,
@@ -67,10 +68,10 @@ async function searchEmployees(token, query, limit = 50) {
         );
         if (!response.ok) throw new Error('Search failed');
         const json = await response.json();
-        return json.data || [];
+        return { data: json.data || [], dataSource: json.dataSource || 'origin' };
     } catch (err) {
         console.error('Error searching:', err);
-        return [];
+        return { data: [], dataSource: 'origin' };
     }
 }
 
@@ -401,7 +402,7 @@ function EmployeeCard({ emp, onViewProfile }) {
                         {emp.nama}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '0.5rem', marginTop: '2px', flexWrap: 'wrap' }}>
-                        <span style={{ fontFamily: 'monospace', color: '#1e40af', fontWeight: '600' }}>{emp.nik}</span>
+                        <span style={{ fontFamily: 'monospace', color: '#1e40af', fontWeight: '600' }}>{emp.new_nik || emp.nik}</span>
                         {emp.actual_nik && emp.actual_nik !== emp.nik && (
                             <span style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.7rem' }}>NIK: {emp.actual_nik}</span>
                         )}
@@ -578,7 +579,7 @@ function NikSearchDropdown({ results, onSelect, onClose }) {
                                 {emp.nama}
                             </div>
                             <div style={{ fontSize: '0.7rem', color: '#64748b', display: 'flex', gap: '0.5rem', marginTop: '2px' }}>
-                                <span style={{ fontFamily: 'monospace', fontWeight: '600', color: '#1e40af' }}>{emp.nik}</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: '600', color: '#1e40af' }}>{emp.new_nik || emp.nik}</span>
                                 {emp.actual_nik && emp.actual_nik !== emp.nik && (
                                     <span style={{ color: '#94a3b8' }}>NIK: {emp.actual_nik}</span>
                                 )}
@@ -606,7 +607,7 @@ function NikSearchDropdown({ results, onSelect, onClose }) {
 // Main Page Component
 // ============================================================================
 
-export default function EmployeeDirectoryAnalytics() {
+export default function EmployeeDirectoryAnalytics({ defaultView = 'cards', initialSearchQuery = '' }) {
     const { token, user, isKeraniUser } = useAuth();
 
     // Kerani locked division
@@ -618,7 +619,7 @@ export default function EmployeeDirectoryAnalytics() {
     const [religion, setReligion] = useState('');
     const [gender, setGender] = useState('');
     const [status, setStatus] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState(initialSearchQuery);
 
     // Options
     const [availableGangs, setAvailableGangs] = useState([]);
@@ -630,9 +631,13 @@ export default function EmployeeDirectoryAnalytics() {
     const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(false);
+    // Data source indicator: 'origin' | 'history'
+    const [dataSource, setDataSource] = useState('origin');
+    // Force history mode toggle
+    const [useHistoryMode, setUseHistoryMode] = useState(false);
 
     // View: 'table' | 'cards' | 'analytics'
-    const [viewMode, setViewMode] = useState('cards');
+    const [viewMode, setViewMode] = useState(defaultView);
 
     // NIK search
     const [searchResults, setSearchResults] = useState([]);
@@ -648,6 +653,28 @@ export default function EmployeeDirectoryAnalytics() {
         fetchAvailableStatuses(token).then(setAvailableStatuses);
         fetchAllGangs(token).then(setAllGangs);
     }, [token]);
+
+    // Handle Initial Search Query
+    const initialSearchRan = useRef(false);
+    useEffect(() => {
+        if (token && initialSearchQuery && !initialSearchRan.current) {
+            initialSearchRan.current = true;
+            if (searchTimeout.current) clearTimeout(searchTimeout.current);
+            setLoading(true);
+            searchEmployees(token, initialSearchQuery, 50).then(result => {
+                setSearchResults(result.data);
+                setEmployees(result.data);
+                setDataSource(result.dataSource);
+                setShowSearchDropdown(false);
+                setHasLoaded(true);
+                setLoading(false);
+                setViewMode(defaultView);
+            }).catch(e => {
+                console.error(e);
+                setLoading(false);
+            });
+        }
+    }, [token, initialSearchQuery, defaultView]);
 
     // Load gangs when division changes
     useEffect(() => {
@@ -705,8 +732,8 @@ export default function EmployeeDirectoryAnalytics() {
         }
 
         searchTimeout.current = setTimeout(async () => {
-            const results = await searchEmployees(token, value, 50);
-            setSearchResults(results);
+            const result = await searchEmployees(token, value, 50);
+            setSearchResults(result.data);
             setShowSearchDropdown(true);
         }, 300);
     }, [token]);
@@ -717,17 +744,19 @@ export default function EmployeeDirectoryAnalytics() {
         setSearchResults([]);
         setShowSearchDropdown(false);
         try {
-            const data = await fetchEmployeesList(token, { division, gang, religion, status });
-            setEmployees(data);
+            const result = await fetchEmployeesList(token, { division, gang, religion, status, forceHistory: useHistoryMode });
+            setEmployees(result.data);
+            setDataSource(result.dataSource);
             setHasLoaded(true);
-            setViewMode('cards');
+            setViewMode(defaultView);
         } catch (e) {
             console.error(e);
             setEmployees([]);
+            setDataSource('origin');
         } finally {
             setLoading(false);
         }
-    }, [token, division, gang, religion, status]);
+    }, [token, division, gang, religion, status, useHistoryMode]);
 
     // Search with filters
     const handleFilteredSearch = useCallback(async () => {
@@ -739,9 +768,9 @@ export default function EmployeeDirectoryAnalytics() {
         setSearchResults([]);
         setShowSearchDropdown(false);
         try {
-            const data = await searchEmployees(token, searchTerm, 200);
+            const result = await searchEmployees(token, searchTerm, 200);
             // Apply client-side filters
-            let filtered = data;
+            let filtered = result.data;
             if (division && division !== 'ALL') {
                 filtered = filtered.filter(e => getDivisionFromGang(e.gang_code) === division);
             }
@@ -759,7 +788,7 @@ export default function EmployeeDirectoryAnalytics() {
             }
             setEmployees(filtered);
             setHasLoaded(true);
-            setViewMode('cards');
+            setViewMode(defaultView);
         } catch (e) {
             console.error(e);
             setEmployees([]);
@@ -774,7 +803,7 @@ export default function EmployeeDirectoryAnalytics() {
 
     // View profile
     const handleViewProfile = (emp) => {
-        const nik = emp.actual_nik || emp.nik;
+        const nik = emp.new_nik || emp.actual_nik || emp.nik;
         if (!nik) return;
 
         // Kerani division check: prevent opening HR info for employees outside their division
@@ -799,7 +828,7 @@ export default function EmployeeDirectoryAnalytics() {
         setShowSearchDropdown(false);
         setEmployees([emp]);
         setHasLoaded(true);
-        setViewMode('cards');
+        setViewMode(defaultView);
     };
 
     // Clear all filters
@@ -815,7 +844,9 @@ export default function EmployeeDirectoryAnalytics() {
         setShowSearchDropdown(false);
         setEmployees([]);
         setHasLoaded(false);
-        setViewMode('cards');
+        setViewMode(defaultView);
+        setUseHistoryMode(false);
+        setDataSource('origin');
     };
 
     // Column definitions for AG Grid
@@ -892,7 +923,7 @@ export default function EmployeeDirectoryAnalytics() {
                 {/* Header */}
                 <div style={{ marginBottom: '1.25rem' }}>
                     <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>
-                        👥 Direktori & Analisis Karyawan
+                        👥 Sistem Manajemen Karyawan Enterprise
                     </h1>
                     <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
                         Cari karyawan berdasarkan Gang, Agama, atau NIK KTP dengan visualisasi distribusi demografis.
@@ -923,7 +954,7 @@ export default function EmployeeDirectoryAnalytics() {
                 {/* Empty state card */}
                 <div style={{ flex: 1, background: 'white', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', padding: '3rem', minHeight: '400px' }}>
                     <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>👥</div>
-                    <h3 style={{ color: '#334155', marginBottom: '0.5rem' }}>Direktori Karyawan Interaktif</h3>
+                    <h3 style={{ color: '#334155', marginBottom: '0.5rem' }}>Manajemen Karyawan Terpusat</h3>
                     <p style={{ color: '#94a3b8', fontSize: '0.9rem', textAlign: 'center', maxWidth: '480px', marginBottom: '1.5rem', lineHeight: '1.6' }}>
                         Pilih divisi di atas atau gunakan filter untuk menampilkan data karyawan.
                         Anda dapat melihat data dalam <strong>Tampilan Kartu</strong> yang intuitif, <strong>Tabel AG Grid</strong>, atau <strong>Analisis Distribusi</strong>.
@@ -965,7 +996,7 @@ export default function EmployeeDirectoryAnalytics() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                     <div>
                         <h1 style={{ fontSize: '1.35rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>
-                            👥 Direktori Karyawan
+                            👥 Manajemen Karyawan Enterprise
                             {division !== 'ALL' && (
                                 <span style={{ fontSize: '0.9rem', fontWeight: '600', color: DIVISION_CONFIG[division]?.color || '#64748b', marginLeft: '0.5rem' }}>
                                     · {DIVISION_CONFIG[division]?.label || division}
@@ -979,8 +1010,41 @@ export default function EmployeeDirectoryAnalytics() {
                             {gender && <span> · {gender === 'L' ? 'Laki-laki' : 'Perempuan'}</span>}
                         </p>
                     </div>
-                    {/* View mode toggle */}
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {/* View mode toggle & Action Buttons */}
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                        {/* Data Source Indicator */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{
+                                padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700',
+                                background: dataSource === 'history' ? '#fef3c7' : '#dcfce7',
+                                color: dataSource === 'history' ? '#92400e' : '#166534',
+                                border: `1px solid ${dataSource === 'history' ? '#fcd34d' : '#86efac'}`,
+                                display: 'flex', alignItems: 'center', gap: '4px'
+                            }}>
+                                <span>{dataSource === 'history' ? '📜' : '🗄️'}</span>
+                                <span>{dataSource === 'history' ? 'HISTORY DB' : 'ORIGIN DB'}</span>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.75rem', color: '#64748b', userSelect: 'none' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={useHistoryMode}
+                                    onChange={(e) => setUseHistoryMode(e.target.checked)}
+                                    style={{ cursor: 'pointer', width: '14px', height: '14px' }}
+                                />
+                                Force History
+                            </label>
+                        </div>
+                        <button
+                            onClick={() => alert('Fitur penambahan karyawan baru sedang dalam tahap sinkronisasi dengan ERP Pusat. Silakan hubungi Administrator HR untuk bantuan.')}
+                            style={{
+                                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                color: 'white', border: 'none', padding: '6px 14px', borderRadius: '8px',
+                                fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer',
+                                boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)'
+                            }}
+                        >
+                            ➕ Tambah Karyawan
+                        </button>
                         <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
                             <button onClick={() => setViewMode('cards')} style={{ ...btnStyle(viewMode === 'cards', '#0f172a', '#f1f5f9'), borderRadius: 0, borderRight: '1px solid #e2e8f0', padding: '6px 14px' }}>🃏 Kartu</button>
                             <button onClick={() => setViewMode('table')} style={{ ...btnStyle(viewMode === 'table', '#0f172a', '#f1f5f9'), borderRadius: 0, borderRight: '1px solid #e2e8f0', padding: '6px 14px' }}>📋 Tabel</button>

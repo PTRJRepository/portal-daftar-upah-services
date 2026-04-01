@@ -3,10 +3,15 @@ import { HistoryDatabaseService } from "./historyDatabaseService";
 import { divisionDefinition } from "./divisionDefinition";
 import { employeeHrDataService } from "./employeeHrDataService";
 import { gangService } from "./gangService";
+import { debug, info, warn, error as logError } from "../utils/logger";
+
+const CATEGORY = "OtherIncomes";
 
 export interface OtherIncome {
     id?: number;
-    nik: string;
+    nik: string;           // Legacy NIK (TIDAK PERNAH diubah)
+    new_nik?: string;      // NEW: Correct KTP NIK from HR_EMPLOYEE.NewICNo
+    emp_code?: string;     // NEW: Plantware internal EmpCode
     emp_name: string;
     division_code?: string;
     gang_code?: string;
@@ -23,7 +28,6 @@ export interface OtherIncome {
     religion?: string;
     original_religion?: string; // Track religion BEFORE enrichment (for frontend filtering)
     join_date?: string;
-    emp_code?: string;
     bank_acc_no?: string;
     bank_code?: string;
     sex?: string; // 'L' or 'P'
@@ -88,7 +92,105 @@ export class OtherIncomesService {
         return true;
     }
 
-    static async initTable() {
+    /**
+     * Backfill new_nik for existing records that don't have it.
+     * nik is NEVER changed — this only populates new_nik as the correct KTP NIK.
+     * Strategy:
+     *   1. If emp_code exists → lookup HR_EMPLOYEE.NewICNo by emp_code
+     *   2. If only nik exists → use nik as-is (it's already the correct NIK for legacy records)
+     *
+     * This is safe to run multiple times — uses UPDATE only for NULL values.
+     */
+    static async backfillNewNik(): Promise<{ updated: number; skipped: number; errors: number }> {
+        const db = Database.getExtendedInstance();
+        const mainDb = Database.getInstance();
+        const stats = { updated: 0, skipped: 0, errors: 0 };
+
+        try {
+            // Get all records where new_nik is NULL
+            const records = await db.query(`
+                SELECT id, nik, emp_code
+                FROM employee_other_incomes
+                WHERE new_nik IS NULL OR new_nik = ''
+            `) as any[];
+
+            if (records.length === 0) {
+                console.log('[backfillNewNik] No records need backfill');
+                return stats;
+            }
+
+            console.log(`[backfillNewNik] Found ${records.length} records needing new_nik backfill`);
+
+            // Collect emp_codes for batch lookup
+            const empCodes = [...new Set(
+                records
+                    .map(r => (r.emp_code || '').trim().toUpperCase())
+                    .filter(Boolean)
+            )];
+
+            // Batch lookup NewICNo from HR_EMPLOYEE
+            const newIcNoMap = new Map<string, string>();
+            if (empCodes.length > 0) {
+                const CHUNK = 500;
+                for (let i = 0; i < empCodes.length; i += CHUNK) {
+                    const chunk = empCodes.slice(i, i + CHUNK);
+                    const placeholders = chunk.map(() => '?').join(',');
+                    const rows = await mainDb.query(`
+                        SELECT RTRIM(EmpCode) as EmpCode,
+                               RTRIM(ISNULL(NewICNo, '')) as NewICNo
+                        FROM HR_EMPLOYEE
+                        WHERE RTRIM(EmpCode) IN (${placeholders})
+                    `) as any[];
+                    for (const row of rows) {
+                        const ec = (row.EmpCode || '').trim().toUpperCase();
+                        const nikVal = (row.NewICNo || '').trim();
+                        if (ec && nikVal) {
+                            newIcNoMap.set(ec, nikVal);
+                        }
+                    }
+                }
+            }
+
+            // Update each record
+            for (const record of records) {
+                try {
+                    const empCodeKey = (record.emp_code || '').trim().toUpperCase();
+                    let resolvedNewNik: string | null = null;
+
+                    if (empCodeKey && newIcNoMap.has(empCodeKey)) {
+                        // Prefer NewICNo from HR_EMPLOYEE via emp_code
+                        resolvedNewNik = newIcNoMap.get(empCodeKey) || null;
+                    } else if (record.nik) {
+                        // Legacy record: no emp_code or emp_code not found in HR_EMPLOYEE
+                        // Use existing nik as the NIK value
+                        resolvedNewNik = (record.nik || '').trim() || null;
+                    }
+
+                    if (resolvedNewNik) {
+                        await db.query(`
+                            UPDATE employee_other_incomes
+                            SET new_nik = ?, updated_at = GETDATE()
+                            WHERE id = ? AND (new_nik IS NULL OR new_nik = '')
+                        `, [resolvedNewNik, record.id]);
+                        stats.updated++;
+                    } else {
+                        stats.skipped++;
+                    }
+                } catch (e) {
+                    stats.errors++;
+                    console.error(`[backfillNewNik] Error updating record ${record.id}:`, e);
+                }
+            }
+
+            console.log(`[backfillNewNik] Done: updated=${stats.updated}, skipped=${stats.skipped}, errors=${stats.errors}`);
+            return stats;
+        } catch (e) {
+            console.error('[backfillNewNik] Fatal error:', e);
+            return stats;
+        }
+    }
+
+    static async initTable():
         const db = Database.getExtendedInstance();
         try {
             await db.query(`
@@ -122,6 +224,10 @@ export class OtherIncomesService {
                 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'emp_code')
                 BEGIN
                     ALTER TABLE employee_other_incomes ADD emp_code VARCHAR(50) NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'new_nik')
+                BEGIN
+                    ALTER TABLE employee_other_incomes ADD new_nik VARCHAR(50) NULL;
                 END
                 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'employee_other_incomes' AND COLUMN_NAME = 'religion')
                 BEGIN
@@ -170,7 +276,7 @@ export class OtherIncomesService {
                     CREATE INDEX IX_blacklist_nik_period ON employee_other_incomes_blacklist(nik, period_year, period_month);
                 END
             `);
-        } catch (e) { console.error("Init table error:", e); }
+        } catch (e) { logError(CATEGORY, "Init table error:", e); }
     }
 
     static async addToBlacklist(nik: string, name: string, year: number, month: number, type: string, reason: string = 'User deleted'): Promise<boolean> {
@@ -232,7 +338,7 @@ export class OtherIncomesService {
             let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
             const params: any[] = [year, month];
 
-            console.log(`[getRawIncomes] Fetching for ${month}/${year}, divisionCode: ${divisionCode || 'ALL'}, gangCode: ${gangCode || 'ALL'}`);
+            debug(CATEGORY, `[getRawIncomes] Fetching for ${month}/${year}, divisionCode: ${divisionCode || 'ALL'}, gangCode: ${gangCode || 'ALL'}`);
 
             // STRATEGY: Fetch ALL other incomes for the period
             // WITHOUT filtering by emp_code, nik, gang_code, or division_code.
@@ -247,13 +353,13 @@ export class OtherIncomesService {
             // so performance is not a concern. The actual per-employee matching is
             // handled downstream by dataExtractorService using multilevel fallback.
             
-            console.log(`[getRawIncomes] Fetching ALL records for period ${month}/${year} (no gang/division filter to support transferred employees)`);
+            debug(CATEGORY, `[getRawIncomes] Fetching ALL records for period ${month}/${year} (no gang/division filter to support transferred employees)`);
 
-            console.log(`[getRawIncomes] SQL: ${sql}`);
-            console.log(`[getRawIncomes] Params: ${params.join(', ')}`);
+            debug(CATEGORY, `[getRawIncomes] SQL: ${sql}`);
+            debug(CATEGORY, `[getRawIncomes] Params: ${params.join(', ')}`);
 
             const rows = (await db.query(sql, params)) as any[];
-            console.log(`[getRawIncomes] Database returned ${rows.length} rows`);
+            debug(CATEGORY, `[getRawIncomes] Database returned ${rows.length} rows`);
 
             // If we have rows but they don't have bank_acc_no, we need to fetch from HR_PAYROLL using emp_code
             if (rows.length > 0) {
@@ -261,7 +367,7 @@ export class OtherIncomesService {
                 const empCodesFromRows = [...new Set(rows.map(r => r.emp_code?.trim()).filter(Boolean))];
                 
                 if (empCodesFromRows.length > 0) {
-                    console.log(`[getRawIncomes] Fetching bank accounts for ${empCodesFromRows.length} emp_codes from HR_PAYROLL`);
+                    debug(CATEGORY, `[getRawIncomes] Fetching bank accounts for ${empCodesFromRows.length} emp_codes from HR_PAYROLL`);
                     
                     // Batch fetch bank accounts from HR_PAYROLL by emp_code
                     const CHUNK = 500;
@@ -305,7 +411,7 @@ export class OtherIncomesService {
                         }
                     });
                     
-                    console.log(`[getRawIncomes] Updated ${updatedCount} rows with bank account data from HR_PAYROLL`);
+                    debug(CATEGORY, `[getRawIncomes] Updated ${updatedCount} rows with bank account data from HR_PAYROLL`);
                 }
             }
 
@@ -333,10 +439,10 @@ export class OtherIncomesService {
                 }
             });
 
-            console.log(`[getRawIncomes] After deduplication: ${uniqueMap.size} unique records`);
+            debug(CATEGORY, `[getRawIncomes] After deduplication: ${uniqueMap.size} unique records`);
             return Array.from(uniqueMap.values());
         } catch (e) {
-            console.error(`[getRawIncomes] Error:`, e);
+            logError(CATEGORY, `[getRawIncomes] Error:`, e);
             return [];
         }
     }
@@ -577,7 +683,7 @@ export class OtherIncomesService {
                         }
                     }
                 } catch (e) {
-                    console.error("[OtherIncomesService] Error fetching empcode history from HR_EMPLOYEE:", e);
+                    logError(CATEGORY, "[OtherIncomesService] Error fetching empcode history from HR_EMPLOYEE:", e);
                 }
             }
 
@@ -608,7 +714,7 @@ export class OtherIncomesService {
                         hrDataMap.set(key, value);
                     });
                 } catch (e) {
-                    console.error("[OtherIncomesService] Error fetching HR data for bank accounts:", e);
+                    logError(CATEGORY, "[OtherIncomesService] Error fetching HR data for bank accounts:", e);
                 }
 
                 // Query HR_PAYROLL table for all empcodes
@@ -638,7 +744,7 @@ export class OtherIncomesService {
                         }
                     }
                 } catch (e) {
-                    console.error("[OtherIncomesService] Error fetching bank from HR_PAYROLL:", e);
+                    logError(CATEGORY, "[OtherIncomesService] Error fetching bank from HR_PAYROLL:", e);
                 }
             }
 
@@ -698,19 +804,19 @@ export class OtherIncomesService {
                         }
                     }
                 } catch (e) {
-                    console.error("[OtherIncomesService] Error fetching bank from HR_PAYROLL by name:", e);
+                    logError(CATEGORY, "[OtherIncomesService] Error fetching bank from HR_PAYROLL by name:", e);
                 }
             }
 
             // Override bank info with FALLBACK mechanism: try each empcode until we find one with bank account
             // DEBUG: Log what we're looking for
-            console.log(`[DEBUG BANK] Starting bank resolution for ${hrMap.size} employees...`);
+            debug(CATEGORY, `[DEBUG BANK] Starting bank resolution for ${hrMap.size} employees...`);
             hrMap.forEach((hrData, key) => {
                 // Get all empcodes for this key (newest first)
                 const empCodesToTry = allEmpCodesByKey.get(key) || (hrData.emp_code ? [hrData.emp_code.toUpperCase()] : []);
 
                 // DEBUG: Log the lookup
-                console.log(`[DEBUG BANK] Resolving bank for key=${key}, name=${hrData.emp_name}, emp_codes=${empCodesToTry.join(',')}`);
+                debug(CATEGORY, `[DEBUG BANK] Resolving bank for key=${key}, name=${hrData.emp_name}, emp_codes=${empCodesToTry.join(',')}`);
 
                 // Try each empcode in order (newest first) until we find bank account
                 for (const empCode of empCodesToTry) {
@@ -722,7 +828,7 @@ export class OtherIncomesService {
                         if (this.isValidBankAccNo(hrDataEntry?.bank_acc_no)) {
                             hrData.bank_acc_no = hrDataEntry.bank_acc_no;
                             hrData.bank_code = hrDataEntry.bank_code;
-                            console.log(`[DEBUG BANK] Found in hrDataMap: empCode=${empCode}, bank=${hrData.bank_acc_no}`);
+                            debug(CATEGORY, `[DEBUG BANK] Found in hrDataMap: empCode=${empCode}, bank=${hrData.bank_acc_no}`);
                             break; // Found valid bank account, stop trying
                         }
                     }
@@ -733,7 +839,7 @@ export class OtherIncomesService {
                         if (this.isValidBankAccNo(payrollEntry?.bank_acc_no)) {
                             hrData.bank_acc_no = payrollEntry.bank_acc_no;
                             hrData.bank_code = payrollEntry.bank_code;
-                            console.log(`[DEBUG BANK] Found in payrollBankMap: empCode=${empCode}, bank=${hrData.bank_acc_no}`);
+                            debug(CATEGORY, `[DEBUG BANK] Found in payrollBankMap: empCode=${empCode}, bank=${hrData.bank_acc_no}`);
                             break; // Found valid bank account, stop trying
                         }
                     }
@@ -748,13 +854,13 @@ export class OtherIncomesService {
                         if (this.isValidBankAccNo(byNameEntry?.bank_acc_no)) {
                             hrData.bank_acc_no = byNameEntry.bank_acc_no;
                             hrData.bank_code = byNameEntry.bank_code;
-                            console.log(`[DEBUG BANK] Found in payrollBankByNameMap: key=${nameCodeKey}, bank=${hrData.bank_acc_no}`);
+                            debug(CATEGORY, `[DEBUG BANK] Found in payrollBankByNameMap: key=${nameCodeKey}, bank=${hrData.bank_acc_no}`);
                         }
                     }
                 }
 
                 // DEBUG: Log final result
-                console.log(`[DEBUG BANK] Final: key=${key}, name=${hrData.emp_name}, emp_code=${hrData.emp_code}, bank=${hrData.bank_acc_no}`);
+                debug(CATEGORY, `[DEBUG BANK] Final: key=${key}, name=${hrData.emp_name}, emp_code=${hrData.emp_code}, bank=${hrData.bank_acc_no}`);
             });
 
             // Only fetch blacklist if we have data to filter
@@ -790,7 +896,7 @@ export class OtherIncomesService {
                     const logKey = `${inc.nik}|||${inc.emp_name || inc.nik}`;
                     if (!bankAccountLog.includes(logKey)) {
                         bankAccountLog.push(logKey);
-                        console.log(`[DEBUG BANK] NIK=${inc.nik}, Name=${inc.emp_name || inc.nik}, EmpCode=${hr.emp_code}, BankAcc=${hr.bank_acc_no}, BankCode=${hr.bank_code}`);
+                        debug(CATEGORY, `[DEBUG BANK] NIK=${inc.nik}, Name=${inc.emp_name || inc.nik}, EmpCode=${hr.emp_code}, BankAcc=${hr.bank_acc_no}, BankCode=${hr.bank_code}`);
                     }
                 }
 
@@ -818,7 +924,7 @@ export class OtherIncomesService {
                 }
             });
             return filteredIncomes;
-        } catch (e) { console.error("Enrich error:", e); return incomes; }
+        } catch (e) { logError(CATEGORY, "Enrich error:", e); return incomes; }
     }
 
     static async getIncomesWithDetails(year: number, month: number, divisionCode?: string, gangCode?: string, incomeType?: string): Promise<OtherIncome[]> {
@@ -845,7 +951,7 @@ export class OtherIncomesService {
                     if (nik) historyNikDict[nik] = row;
                 });
             }
-        } catch (e) { console.error("History fetch error:", e); }
+        } catch (e) { logError(CATEGORY, "History fetch error:", e); }
         const thrFormula = await this.getFormula('THR');
         return filtered.map(inc => {
             // EMP-CODE BASIS: Try EmpCode first, then fall back to NIK
@@ -915,7 +1021,7 @@ export class OtherIncomesService {
 
         // ── NON-CURRENT PERIOD: Load from saved employee_other_incomes ────────────
         if (!isCurrentPeriod) {
-            console.log(`[calculateTHRData] Non-current period ${month}/${year} — loading from saved employee_other_incomes by emp_code`);
+            info(CATEGORY, `[calculateTHRData] Non-current period ${month}/${year} — loading from saved employee_other_incomes by emp_code`);
 
             // Build WHERE clause for saved data
             let whereClauses = ['income_type = ?', 'period_year = ?', 'period_month = ?'];
@@ -952,12 +1058,12 @@ export class OtherIncomesService {
                     ORDER BY gang_code, emp_name
                 `, whereParams);
             } catch (e) {
-                console.error('[calculateTHRData] Error fetching saved THR from employee_other_incomes:', e);
+                logError(CATEGORY, '[calculateTHRData] Error fetching saved THR from employee_other_incomes:', e);
                 // Fallback: try recalculate approach
             }
 
             if (savedRows.length > 0) {
-                console.log(`[calculateTHRData] Found ${savedRows.length} saved THR records for period ${month}/${year}`);
+                info(CATEGORY, `[calculateTHRData] Found ${savedRows.length} saved THR records for period ${month}/${year}`);
 
                 const empCodes = [...new Set(
                     savedRows.map(r => r.emp_code.trim().toUpperCase()).filter(Boolean)
@@ -988,9 +1094,9 @@ export class OtherIncomesService {
                                 }
                             }
                         }
-                        console.log(`[calculateTHRData] Fresh bank lookup: ${bankMap.size} emp_codes resolved from HR_PAYROLL`);
+                        info(CATEGORY, `[calculateTHRData] Fresh bank lookup: ${bankMap.size} emp_codes resolved from HR_PAYROLL`);
                     } catch (e) {
-                        console.error('[calculateTHRData] Error fetching fresh bank from HR_PAYROLL:', e);
+                        logError(CATEGORY, '[calculateTHRData] Error fetching fresh bank from HR_PAYROLL:', e);
                     }
                 }
 
@@ -1023,6 +1129,7 @@ export class OtherIncomesService {
 
                     return {
                         nik: r.nik,
+                        new_nik: r.new_nik || r.nik,
                         emp_code: r.emp_code,
                         emp_name: r.emp_name,
                         division_code: r.division_code,
@@ -1050,12 +1157,12 @@ export class OtherIncomesService {
                     const dc = r.division_code || 'UNKNOWN';
                     divDistribution[dc] = (divDistribution[dc] || 0) + 1;
                 });
-                console.log(`[calculateTHRData] Non-current period THR: ${results.length} employees from saved data, division distribution:`, divDistribution);
+                info(CATEGORY, `[calculateTHRData] Non-current period THR: ${results.length} employees from saved data, division distribution:`, divDistribution);
                 return results;
             }
 
             // No saved data found — fall through to recalculate below
-            console.log(`[calculateTHRData] No saved THR data for period ${month}/${year}, falling back to recalculate from history_gang_member`);
+            info(CATEGORY, `[calculateTHRData] No saved THR data for period ${month}/${year}, falling back to recalculate from history_gang_member`);
         }
 
         // ── CURRENT PERIOD or FALLBACK: Recalculate from history_gang_member ────
@@ -1442,6 +1549,7 @@ export class OtherIncomesService {
 
             results.push({
                 nik,
+                new_nik: nik,  // Same as nik — this IS the correct KTP NIK
                 emp_code: empCode,
                 emp_name: payroll?.nama || payroll?.emp_name || member?.emp_name || '',
                 division_code: memberDivisionCode,
@@ -1538,14 +1646,17 @@ export class OtherIncomesService {
                             }
                         } catch { }
                     }
+                    // IMPORTANT: nik column is NEVER updated (append-only). Only new_nik changes.
+                    // new_nik defaults to nik if not provided (backward compat for legacy records).
+                    const resolvedNewNik = (inc as any).new_nik || inc.nik || null;
                     await db.query(`
                         INSERT INTO employee_other_incomes (
                             nik, emp_name, division_code, gang_code,
                             period_year, period_month, income_type,
                             income_name, amount, is_paid_in_thp, is_taxable,
                             details_json, created_at, updated_at,
-                            emp_code, religion, join_date, bank_acc_no, bank_code, sex
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, ?, ?, ?, ?, ?)
+                            emp_code, new_nik, religion, join_date, bank_acc_no, bank_code, sex
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, ?, ?, ?, ?, ?, ?)
                     `, [
                         inc.nik, inc.emp_name, inc.division_code, inc.gang_code,
                         inc.period_year, inc.period_month, inc.income_type,
@@ -1553,6 +1664,7 @@ export class OtherIncomesService {
                         inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0,
                         detailsJson,
                         inc.emp_code || null,
+                        resolvedNewNik,
                         inc.religion || null,
                         joinDateSql,
                         (inc as any).bank_acc_no || null,
@@ -1573,8 +1685,11 @@ export class OtherIncomesService {
     static async addIncome(data: any): Promise<OtherIncome | null> {
         const db = Database.getExtendedInstance();
         try {
-            const result = await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at) OUTPUT INSERTED.* VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())`,
-                [data.nik, data.emp_name, data.division_code, data.gang_code, data.period_year, data.period_month, data.income_type, data.income_name, data.amount, data.is_paid_in_thp ? 1 : 0, data.is_taxable ? 1 : 0]);
+            // nik is NEVER updated — stored as-is for backward compat
+            // new_nik: correct KTP NIK (defaults to nik if not provided)
+            const resolvedNewNik = data.new_nik || data.nik || null;
+            const result = await db.query(`INSERT INTO employee_other_incomes (nik, emp_name, division_code, gang_code, period_year, period_month, income_type, income_name, amount, is_paid_in_thp, is_taxable, created_at, updated_at, emp_code, new_nik) OUTPUT INSERTED.* VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, ?)`,
+                [data.nik, data.emp_name, data.division_code, data.gang_code, data.period_year, data.period_month, data.income_type, data.income_name, data.amount, data.is_paid_in_thp ? 1 : 0, data.is_taxable ? 1 : 0, data.emp_code || null, resolvedNewNik]);
             return result[0];
         } catch (e) { return null; }
     }
@@ -1590,6 +1705,10 @@ export class OtherIncomesService {
             if (data.is_taxable !== undefined) { fields.push('is_taxable = ?'); values.push(data.is_taxable ? 1 : 0); }
             if (data.gang_code !== undefined) { fields.push('gang_code = ?'); values.push(data.gang_code); }
             if (data.division_code !== undefined) { fields.push('division_code = ?'); values.push(data.division_code); }
+            // CRITICAL: nik is NEVER updated — this is the immutable primary key
+            // new_nik can be updated if a correct KTP NIK is provided
+            if (data.new_nik !== undefined) { fields.push('new_nik = ?'); values.push(data.new_nik); }
+            if (data.emp_code !== undefined) { fields.push('emp_code = ?'); values.push(data.emp_code); }
             if (fields.length === 0) return true;
             fields.push('updated_at = GETDATE()');
             values.push(id);

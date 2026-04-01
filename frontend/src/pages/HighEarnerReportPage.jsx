@@ -283,7 +283,7 @@ const HighEarnerReportPage = () => {
                                         <td>
                                             <div style={{ fontWeight: 'bold' }}>{row.nama}</div>
                                             <div style={{ fontSize: '0.75rem', color: '#555' }}>
-                                                {row.nik} | {row.jabatan_estate || '-'}
+                                                {row.new_nik || row.nik} | {row.jabatan_estate || '-'}
                                             </div>
                                         </td>
                                         <td>
