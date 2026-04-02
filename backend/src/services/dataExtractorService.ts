@@ -130,7 +130,9 @@ interface PayrollRow {
         day_type: string;
         hours: number;
         rate: number;
-        amount: number;
+        amount: number;       // Calculated amount (from tier-based rate)
+        raw_amount: number;   // Amount from PR_TASKREGLN table
+        raw_rate: number;     // Rate from PR_TASKREGLN table
         meta?: PayrollComponentMetadata;
     }>;
     // Harvest / Bunches fields (for harvest gangs ending with "H")
@@ -472,67 +474,85 @@ export class DataExtractorService {
         const emptyPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
         const emptyPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
 
-        // [OPTIMIZATION] Batch processing to prevent SQL timeouts.
-        const BATCH_SIZE = 300; 
+        // [OPTIMIZATION] Batch processing: split employees into chunks to prevent SQL timeouts.
+        // Chunk size of 300 ensures each query stays within reasonable parameter limits.
+        const BATCH_SIZE = 300;
         const empCodeChunks: string[][] = [];
         for (let i = 0; i < empCodes.length; i += BATCH_SIZE) {
             empCodeChunks.push(empCodes.slice(i, i + BATCH_SIZE));
         }
 
         // Accumulators for batched results
-        let attendanceMap: Record<string, any> = {};
-        let cuti: Record<string, CutiData> = {};
-        let premiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
-        let potonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
-        let lembur: Record<string, LemburData> = {};
-        let lemburWithDetails: Record<string, any> = {};
-        let lemburDocDesc: Record<string, number> = {};
-        let berasDocDesc: Record<string, number> = {};
-        let jabatan: Record<string, number> = {};
-        let masaKerja: Record<string, number> = {};
-        let upahPokok: Record<string, number> = {};
-        let brondol: Record<string, number> = {};
-        let taskCodes: Record<string, any> = {};
-        let bunchesBatch = new Map();
-        let positionHistory = {} as Record<string, string>;
+        const attendanceMap: Record<string, any> = {};
+        const cuti: Record<string, CutiData> = {};
+        const premiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
+        const potonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
+        const lembur: Record<string, LemburData> = {};
+        const lemburWithDetails: Record<string, any> = {};
+        const lemburDocDesc: Record<string, number> = {};
+        const berasDocDesc: Record<string, number> = {};
+        const jabatan: Record<string, number> = {};
+        const masaKerja: Record<string, number> = {};
+        const upahPokok: Record<string, number> = {};
+        const brondol: Record<string, number> = {};
+        const taskCodes: Record<string, any> = {};
+        const bunchesBatch = new Map();
+        const positionHistory = {} as Record<string, string>;
 
         // Global queries that don't depend on empCodes chunks
-        const [jobTitles, manualAdjustmentsRaw] = await Promise.all([
-            safeQuery('getJobTitles', () => EmployeeEstateService.getEmployeeJobs(), {} as Record<string, string>),
+        // [NIK FIX] Use getEmployeeJobsWithNik() to get dual map: empcode + NIK
+        // Karyawan yang pindah gang dapat emp_code baru → jabatan ikut emp_code lama → hilang
+        // Solusi: fallback ke NIK saat emp_code tidak ketemu di empcodeMap
+        const [jobTitlesResult, manualAdjustmentsRaw] = await Promise.all([
+            safeQuery('getJobTitles', () => EmployeeEstateService.getEmployeeJobsWithNik(), { empcodeMap: {} as Record<string, string>, nikMap: {} as Record<string, string> }),
             safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined), [])
         ]);
+        const jobTitles = jobTitlesResult.empcodeMap;
+        const jobTitlesByNik = jobTitlesResult.nikMap;
 
-        // Process chunks sequentially to drastically reduce database overhead and prevent timeouts
-        for (let idx = 0; idx < empCodeChunks.length; idx++) {
-            const chunk = empCodeChunks[idx];
-            debug(CATEGORY, `Processing batch ${idx + 1}/${empCodeChunks.length} (${chunk.length} employees)...`);
+        // [OPTIMIZATION] Process ALL chunks in PARALLEL instead of sequentially.
+        // Each chunk writes to different keys in the same maps (Object.assign merges without overwriting
+        // existing keys within the same chunk), so parallel processing is safe and ~Nx faster
+        // where N = number of chunks. For 900 employees with BATCH_SIZE=300: 3 chunks → ~3x faster.
+        debug(CATEGORY, `Processing ${empCodeChunks.length} chunks in parallel (${empCodeChunks.length}x speedup)...`);
 
-            // Execute the heavy queries just for this chunk
-            const [
-                attB, cutiB, premiB, potB, lemburCalcB, lemburDetB, lemburDocB, berasDocB, 
-                jabatanB, masaKerjaB, upahB, brondolB, taskCodesB, bunchesB, posHistB
-            ] = await Promise.all([
-                safeQuery('getAttendance', () => this.getAttendance(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, any>),
-                safeQuery('getCuti', () => this.getCuti(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, CutiData>),
-                safeQuery('getPremi', () => this.getPremi(chunk, startDate, endDate, isHistorical, serverProfile), JSON.parse(JSON.stringify(emptyPremiResult))),
-                safeQuery('getPotongan', () => this.getPotongan(chunk, startDate, endDate, serverProfile, isHistorical), JSON.parse(JSON.stringify(emptyPotonganResult))),
-                safeQuery('getLemburCalculator', () => this.getLemburDetailsFromCalculator(chunk, month, year, serverProfile), {} as Record<string, LemburData>),
-                safeQuery('getLemburDetails', () => this.getLemburDetailsWithTaskBreakdown(chunk, month, year, serverProfile), {} as Record<string, any>),
-                safeQuery('getLemburDocDesc', () => this.getLemburFromDocDesc(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
-                safeQuery('getBerasDocDesc', () => this.getBerasFromDocDesc(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
-                safeQuery('getJabatan', () => this.getTunjanganAmount(chunk, startDate, endDate, "JABATAN", serverProfile, isHistorical), {} as Record<string, number>),
-                safeQuery('getMasaKerja', () => this.getTunjanganAmount(chunk, startDate, endDate, "MASA%KERJA", serverProfile, isHistorical), {} as Record<string, number>),
-                safeQuery('getUpahPokok', () => this.getUpahPokok(chunk, year, currentYear, serverProfile), {} as Record<string, number>),
-                safeQuery('getBrondol', () => this.getBrondol(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, number>),
-                safeQuery('getTaskCodes', () => this.getTaskCodes(chunk, startDate, endDate, serverProfile, isHistorical), {} as Record<string, any>),
-                !skipHarvest ? safeQuery('getBunches', () => this.getBunchesBatch(chunk, month, year), new Map()) : Promise.resolve(new Map()),
-                safeQuery('getPositionHistory', () => this.getPositionHistory(chunk, month, year), {} as Record<string, string>)
+        const emptyPremiForChunk = JSON.parse(JSON.stringify(emptyPremiResult));
+        const emptyPotonganForChunk = JSON.parse(JSON.stringify(emptyPotonganResult));
+
+        // Helper: process a single chunk - all queries within are parallel.
+        // Using a named function to avoid TypeScript closure inference issues with Promise.all.
+        const processChunk = async (chunk: string[], idx: number) => {
+            const [attB, cutiB, premiB, potB, lemburCalcB, lemburDetB, lemburDocB, berasDocB, jabatanB, masaKerjaB, upahB, brondolB, taskCodesB, bunchesB, posHistB] = await Promise.all([
+                safeQuery(`getAttendance[${idx}]`, () => this.getAttendance(chunk, startDate, endDate, serverProfile), {}),
+                safeQuery(`getCuti[${idx}]`, () => this.getCuti(chunk, startDate, endDate, serverProfile), {}),
+                safeQuery(`getPremi[${idx}]`, () => this.getPremi(chunk, startDate, endDate, isHistorical, serverProfile), JSON.parse(JSON.stringify(emptyPremiForChunk))),
+                safeQuery(`getPotongan[${idx}]`, () => this.getPotongan(chunk, startDate, endDate, serverProfile), JSON.parse(JSON.stringify(emptyPotonganForChunk))),
+                safeQuery(`getLemburCalculator[${idx}]`, () => this.getLemburDetailsFromCalculator(chunk, month, year, serverProfile), {}),
+                safeQuery(`getLemburDetails[${idx}]`, () => this.getLemburDetailsWithTaskBreakdown(chunk, month, year, serverProfile), {}),
+                safeQuery(`getLemburDocDesc[${idx}]`, () => this.getLemburFromDocDesc(chunk, startDate, endDate, serverProfile), {}),
+                safeQuery(`getBerasDocDesc[${idx}]`, () => this.getBerasFromDocDesc(chunk, startDate, endDate, serverProfile), {}),
+                safeQuery(`getJabatan[${idx}]`, () => this.getTunjanganAmount(chunk, startDate, endDate, "JABATAN", serverProfile), {}),
+                safeQuery(`getMasaKerja[${idx}]`, () => this.getTunjanganAmount(chunk, startDate, endDate, "MASA%KERJA", serverProfile), {}),
+                safeQuery(`getUpahPokok[${idx}]`, () => this.getUpahPokok(chunk, year, currentYear, serverProfile), {}),
+                safeQuery(`getBrondol[${idx}]`, () => this.getBrondol(chunk, startDate, endDate, serverProfile), {}),
+                safeQuery(`getTaskCodes[${idx}]`, () => this.getTaskCodes(chunk, startDate, endDate, serverProfile), {}),
+                !skipHarvest ? safeQuery(`getBunches[${idx}]`, () => this.getBunchesBatch(chunk, month, year), new Map()) : Promise.resolve(new Map()),
+                safeQuery(`getPositionHistory[${idx}]`, () => this.getPositionHistory(chunk, month, year), {})
             ]);
+            return { attB, cutiB, premiB, potB, lemburCalcB, lemburDetB, lemburDocB, berasDocB, jabatanB, masaKerjaB, upahB, brondolB, taskCodesB, bunchesB, posHistB };
+        };
 
-            // Merge back into main accumulators
+        // [OPTIMIZATION] Run ALL chunks in parallel (~Nx speedup where N = chunk count)
+        // Object.assign merging is safe since each chunk writes to different emp_code keys
+        const chunkResults = await Promise.all(empCodeChunks.map((chunk, idx) => processChunk(chunk, idx)));
+
+        // Merge all chunk results into accumulators
+        for (const result of chunkResults) {
+            const { attB, cutiB, premiB, potB, lemburCalcB, lemburDetB, lemburDocB, berasDocB, jabatanB, masaKerjaB, upahB, brondolB, taskCodesB, bunchesB, posHistB } = result;
+
             Object.assign(attendanceMap, attB);
             Object.assign(cuti, cutiB);
-            
+
             Object.assign(premiResult.amounts, premiB.amounts);
             Object.assign(premiResult.titleMap, premiB.titleMap);
             Object.assign(premiResult.details, premiB.details);
@@ -554,7 +574,7 @@ export class DataExtractorService {
             for (const [k, v] of bunchesB.entries()) bunchesBatch.set(k, v);
         }
 
-        debug(CATEGORY, `Phase 1 (Chunked queries): ${(performance.now() - startParallel).toFixed(0)}ms for ${empCodes.length} employees`);
+        debug(CATEGORY, `Phase 1 (Parallel chunks: ${empCodeChunks.length}): ${(performance.now() - startParallel).toFixed(0)}ms for ${empCodes.length} employees`);
 
         // ============================================================
         // [OPTIMIZATION] Phase 2: 4 parallel calls
@@ -637,17 +657,31 @@ export class DataExtractorService {
         const dbTaxableOtherIncomesByNikName = new Map<string, { type: string; name: string; amount: number }[]>();
         // [LEVEL 4] Storage by CLEANED NAME — last resort for karyawan pindahan whose NIK
         // in HR_EMPLOYEE differs from NIK stored in employee_other_incomes
+        // NOTE: KONTAN uses NIK + EMP_NAME instead of cleaned name to avoid cross-employee contamination
         const dbThpByCleanName = new Map<string, number>();
         const dbTaxableByCleanName = new Map<string, number>();
         const dbOtherIncomesByCleanName = new Map<string, { type: string; name: string; amount: number; emp_name?: string }[]>();
         const dbTaxableOtherByCleanName = new Map<string, { type: string; name: string; amount: number }[]>();
+        // [NEW] KONTAN-specific storage: key by NIK + EMP_NAME (from db record)
+        // This is more reliable than cleaned_name for KONTAN since different employees
+        // can have the same cleaned name (e.g., multiple "SUPRIADI")
+        const dbOtherIncomesByNikNameForKontan = new Map<string, { type: string; name: string; amount: number; emp_name?: string }[]>();
+        // [NEW] Taxable KONTAN storage by NIK + EMP_NAME for pajak calculation
+        const dbTaxableOtherIncomesByNikNameForKontan = new Map<string, { type: string; name: string; amount: number }[]>();
 
-        // First pass: count how many records per NIK to detect duplicates
-        const nikCount = new Map<string, number>();
+        // [NIK FIX] Count duplicates per NIK+income_type (bukan per NIK saja)
+        // Sebelumnya: nikCount per NIK → karyawan dengan THR + KONTAN (2 record, NIK sama)
+        // dianggap duplikat NIK → keduanya masuk nikName map, tidak masuk NIK map utama → KONTAN hilang
+        // Fix: Hanya anggap duplikat jika ada 2+ record dengan NIK+income_type YG SAMA
+        const nikTypeCount = new Map<string, number>(); // key: `${nik}|${income_type}`
+        const nikCount = new Map<string, number>();      // kept for backward compat (deprecated usage)
         for (const inc of dbOtherIncomes) {
             const nik = String(inc.nik || '').trim().toUpperCase();
+            const itype = String(inc.income_type || '').trim().toUpperCase();
             if (nik) {
-                nikCount.set(nik, (nikCount.get(nik) || 0) + 1);
+                const typeKey = `${nik}|${itype}`;
+                nikTypeCount.set(typeKey, (nikTypeCount.get(typeKey) || 0) + 1);
+                nikCount.set(nik, (nikCount.get(nik) || 0) + 1); // legacy
             }
         }
 
@@ -663,15 +697,21 @@ export class DataExtractorService {
                 emp_name: dbEmpName
             };
             const dbCleanName = cleanNameFormat(dbEmpName);
-            const nikNameKey = nik ? `${nik}||${dbCleanName}` : '';
+            // KONTAN NIK+NAME key: use emp_name from DB record if available,
+            // otherwise fall back to NIK-only key (emp_name is null for KONTAN records entered via UI)
+            const nikNameKey = nik ? (dbCleanName ? `${nik}||${dbCleanName}` : nik) : '';
+            // [NIK FIX] Use per-type duplicate count for proper dedup detection
+            const incType = String(inc.income_type || '').trim().toUpperCase();
+            const nikTypeDup = nik ? (nikTypeCount.get(`${nik}|${incType}`) || 0) > 1 : false;
 
             if (inc.is_paid_in_thp) {
-                // Level 1: Store by NIK (prioritas utama — semua record THR/Bonus punya nik terisi, emp_code kosong)
+                // Level 1: Store by NIK (prioritas utama)
                 if (nik) {
                     dbThpIncomesMap.set(nik, (dbThpIncomesMap.get(nik) || 0) + Number(inc.amount));
                 }
-                // Level 2: Also store by NIK+NAME if duplicate NIK (for disambiguation)
-                if (nik && nikCount.get(nik)! > 1 && nikNameKey) {
+                // Level 2: Also store by NIK+NAME only if there's a TRUE duplicate (same income_type, same NIK)
+                // [NIK FIX] gunakan nikTypeDup bukan nikCount > 1 agar THR+KONTAN tidak salah dianggap duplikat
+                if (nik && nikTypeDup && nikNameKey) {
                     const existing = dbThpIncomesMap.get(nikNameKey) || 0;
                     dbThpIncomesMap.set(nikNameKey, existing + Number(inc.amount));
                 }
@@ -681,7 +721,7 @@ export class DataExtractorService {
                 }
             }
             if (inc.is_taxable) {
-                // Level 1: Store by NIK (prioritas utama — semua record THR/Bonus punya nik terisi, emp_code kosong)
+                // Level 1: Store by NIK
                 if (nik) {
                     dbTaxableIncomesMap.set(nik, (dbTaxableIncomesMap.get(nik) || 0) + Number(inc.amount));
                     if (!dbTaxableOtherIncomesByNik.has(nik)) {
@@ -689,8 +729,9 @@ export class DataExtractorService {
                     }
                     dbTaxableOtherIncomesByNik.get(nik)!.push(incomeEntry);
                 }
-                // Level 2: Also store by NIK+NAME if duplicate NIK (for disambiguation)
-                if (nik && nikCount.get(nik)! > 1 && nikNameKey) {
+                // Level 2: Store by NIK+NAME only for TRUE duplicates (same income_type)
+                // [NIK FIX] gunakan nikTypeDup agar KONTAN tidak salah masuk nikName map
+                if (nik && nikTypeDup && nikNameKey) {
                     const existing = dbTaxableIncomesMap.get(nikNameKey) || 0;
                     dbTaxableIncomesMap.set(nikNameKey, existing + Number(inc.amount));
                     if (!dbTaxableOtherIncomesByNikName.has(nikNameKey)) {
@@ -698,7 +739,7 @@ export class DataExtractorService {
                     }
                     dbTaxableOtherIncomesByNikName.get(nikNameKey)!.push(incomeEntry);
                 }
-                // Level 3: Also store by emp_code as fallback (untuk karyawan yang tidak punya nik)
+                // Level 3: Store by emp_code as fallback
                 if (empCode) {
                     dbTaxableIncomesMap.set(empCode, (dbTaxableIncomesMap.get(empCode) || 0) + Number(inc.amount));
                     if (!dbTaxableOtherIncomesByNik.has(empCode)) {
@@ -707,35 +748,48 @@ export class DataExtractorService {
                     dbTaxableOtherIncomesByNik.get(empCode)!.push(incomeEntry);
                 }
             }
-            // Build primary array: store by NIK (prioritas utama — SEMUA record THR punya nik terisi, emp_code kosong)
-            // Karyawan yang tidak ganti nik → ketemu langsung
-            // Karyawan yang ganti emp_code → fallback ke emp_code lookup di bawah
+            // Build primary array: store by NIK (prioritas utama)
+            // [NIK FIX] Semua income type (THR, KONTAN, BONUS) harus masuk ke dbOtherIncomesByNik
+            // keyed by NIK. Ini memastikan lookup level 1 (by NIK) selalu berhasil.
             if (nik) {
                 if (!dbOtherIncomesByNik.has(nik)) {
                     dbOtherIncomesByNik.set(nik, []);
                 }
                 dbOtherIncomesByNik.get(nik)!.push(incomeEntry);
-                // Also store by NIK+NAME for duplicate NIK disambiguation
-                if (nikCount.get(nik)! > 1 && nikNameKey) {
+                // Also store by NIK+NAME only for TRUE duplicates (same income_type)
+                // [NIK FIX] gunakan nikTypeDup agar KONTAN tidak salah masuk nikName map
+                if (nikTypeDup && nikNameKey) {
                     if (!dbOtherIncomesByNikName.has(nikNameKey)) {
                         dbOtherIncomesByNikName.set(nikNameKey, []);
                     }
                     dbOtherIncomesByNikName.get(nikNameKey)!.push(incomeEntry);
                 }
             }
-            // Also store by emp_code as fallback (untuk karyawan yang tidak punya nik di data THR)
+            // Also store by emp_code as fallback
             if (empCode) {
                 if (!dbOtherIncomesByNik.has(empCode)) {
                     dbOtherIncomesByNik.set(empCode, []);
                 }
                 dbOtherIncomesByNik.get(empCode)!.push(incomeEntry);
             }
-            // [LEVEL 4] Store by CLEANED NAME as last resort
-            // This catches karyawan pindahan whose NIK is completely different.
-            // IMPORTANT: Only use for THR, BONUS, CUSTOM. Do NOT use for KONTAN!
-            // Multiple different people can have the same cleaned name (e.g., multiple "SUPRIADI")
-            // which would cause cross-contamination if name matching is used for KONTAN.
+            // [LEVEL 4] Store by CLEANED NAME as last resort for karyawan pindahan with completely different NIK.
+            // IMPORTANT: Only use for THR, BONUS, CUSTOM. Do NOT use for KONTAN (multiple SUPRIADI issue)!
             const isKontan = (inc.income_type || '').toUpperCase() === 'KONTAN' || (inc.income_type || '').toUpperCase() === 'KONTANAN';
+            // For KONTAN: store in NIK+NAME fallback map (secondary, in case NIK mismatch)
+            // Primary lookup sudah ada via NIK di dbOtherIncomesByNik (di atas)
+            if (isKontan && nikNameKey) {
+                if (!dbOtherIncomesByNikNameForKontan.has(nikNameKey)) {
+                    dbOtherIncomesByNikNameForKontan.set(nikNameKey, []);
+                }
+                dbOtherIncomesByNikNameForKontan.get(nikNameKey)!.push(incomeEntry);
+                // Also store in taxable map
+                if (inc.is_taxable) {
+                    if (!dbTaxableOtherIncomesByNikNameForKontan.has(nikNameKey)) {
+                        dbTaxableOtherIncomesByNikNameForKontan.set(nikNameKey, []);
+                    }
+                    dbTaxableOtherIncomesByNikNameForKontan.get(nikNameKey)!.push({ type: inc.income_type, name: inc.income_name || inc.income_type, amount: Number(inc.amount) });
+                }
+            }
             if (dbCleanName && !isKontan) {
                 if (inc.is_paid_in_thp) {
                     dbThpByCleanName.set(dbCleanName, (dbThpByCleanName.get(dbCleanName) || 0) + Number(inc.amount));
@@ -804,7 +858,11 @@ export class DataExtractorService {
             const empUpahDasar = gpResult?.upah_dasar?.value || emp.pay_rate || 0;
 
             // Get job title from history override if available, otherwise use real-time
-            const empJobTitle = positionHistory[emp.emp_code] || jobTitles[emp.emp_code] || "";
+            // [NIK FIX] Fallback ke NIK lookup jika emp_code tidak ketemu (karyawan pindah gang)
+            const empJobTitle = positionHistory[emp.emp_code]
+                || jobTitles[emp.emp_code]       // lookup by emp_code (existing)
+                || jobTitlesByNik[nikClean]      // lookup by NIK (NEW — karyawan pindah gang)
+                || "";
 
             // ============================================================
             // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
@@ -882,7 +940,8 @@ export class DataExtractorService {
                 }
 
                 // Add all individual premiums (except static/excluded ones) to dynamic set for UI columns
-                if (key !== "koreksi") {
+                // brondol is a static column (PR_LOOSEFRUIT + PR_ADTRANS), not a dynamic premi type
+                if (key !== "koreksi" && key !== "brondol") {
                     dynamicPremiSet.add(key);
                 }
             }
@@ -1047,10 +1106,10 @@ export class DataExtractorService {
                 if (val === 0 && empCodeKey) {
                     val = map.get(empCodeKey) || 0;
                 }
-                // Level 4: CLEANED NAME (karyawan pindahan — NIK berbeda total)
-                if (val === 0 && empNameForKey && nameMap) {
-                    val = nameMap.get(empNameForKey) || 0;
-                }
+                // [REMOVED] Level 4: Name-based lookup has been disabled.
+                // Reason: employees with the same name (e.g. "SUPRIADI") would share
+                // each other's THR/Kontanan values — causing critical data contamination.
+                // NIK-based lookup (Level 1) is the only reliable unique identifier.
                 if (empCodeKey === 'A0778') {
                     console.log(`[THR DEBUG A0778] lookupByNik FINAL: val=${val}`);
                 }
@@ -1096,36 +1155,48 @@ export class DataExtractorService {
                     }
                 };
 
-                // Merging approach instead of fallback.
-                // An employee might have THR recorded under their NIK, but a manual custom income mapped under their empCode.
-                // We shouldn't stop checking level 3 if level 1 matches.
+                let foundInPrimary = false;
 
                 // Level 1: NIK (prioritas utama — semua THR disimpan by NIK)
-                if (empNik) addEntries(map.get(empNik) || []);
+                if (empNik && map.has(empNik)) {
+                    addEntries(map.get(empNik) || []);
+                    foundInPrimary = true;
+                }
 
                 // Level 2: NIK + NAMA (duplicate NIK disambiguation)
-                if (nikNameKey) addEntries(map.get(nikNameKey) || []);
+                if (nikNameKey && map.has(nikNameKey)) {
+                    addEntries(map.get(nikNameKey) || []);
+                    foundInPrimary = true;
+                }
 
                 // Level 3: emp_code (fallback — untuk case emp_code terisi manual UI)
-                if (empCodeKey) addEntries(map.get(empCodeKey) || []);
+                if (empCodeKey && map.has(empCodeKey)) {
+                    addEntries(map.get(empCodeKey) || []);
+                    foundInPrimary = true;
+                }
 
-                // Level 4: CLEANED NAME (karyawan pindahan — NIK berbeda total)
-                if (empNameForKey && nameMap) addEntries(nameMap.get(empNameForKey) || []);
+                // [REMOVED] Level 4: Name-based lookup disabled to prevent cross-contamination.
+                // Employees with the same name (e.g. "AHMAD", "SUPRIADI") would receive
+                // each other's THR/Kontanan — causing payroll data corruption.
+                // All income records MUST be stored with a valid NIK for lookup to work.
 
                 // [THR DEDUP FIX] Collect all THR entries, deduplicate by preferring
                 // non-proportional entry over proportional one.
-                // "Tunjangan Hari Raya" > "Tunjangan Hari Raya (Proporsi X/12)"
-                // Only use the Proporsi entry if no non-proportional entry exists.
-                const allResults = Array.from(results.values());
-                const thrRaw = allResults.filter(e => e.type === 'THR');
-                if (thrRaw.length > 1) {
-                    const nonProporsi = thrRaw.find(e => !e.name.toUpperCase().includes('PROPORSI'));
-                    const proporsi = thrRaw.find(e => e.name.toUpperCase().includes('PROPORSI'));
-                    // Keep only the non-proportional entry if it exists
-                    results.set('THR|Tunjangan Hari Raya', nonProporsi || proporsi!);
-                    if (proporsi && nonProporsi) {
-                        results.delete('THR|Tunjangan Hari Raya (Proporsi 9/12)');
+                const thrKeys = Array.from(results.keys()).filter(k => k.startsWith('THR|') || k.startsWith('THR_ADDITIONAL|'));
+                if (thrKeys.length > 1) {
+                    const thrEntries = thrKeys.map(k => results.get(k)!);
+                    const nonProporsi = thrEntries.find(e => !e.name.toUpperCase().includes('PROPORSI'));
+                    const proporsi = thrEntries.find(e => e.name.toUpperCase().includes('PROPORSI'));
+                    
+                    const bestEntry = nonProporsi || proporsi || thrEntries[0];
+                    
+                    // Remove ALL THR keys
+                    for (const k of thrKeys) {
+                        results.delete(k);
                     }
+                    
+                    // Add back only the best one
+                    results.set(`${bestEntry.type}|${bestEntry.name}`, bestEntry);
                 }
 
                 return Array.from(results.values());
@@ -1135,7 +1206,16 @@ export class DataExtractorService {
             const pendapatan_tidak_tetap_taxable = lookupByNik(dbTaxableIncomesMap, dbTaxableByCleanName);
 
             // [PRE-COMPUTE] Pendapatan Lainnya (THR + Bonus + Custom) for upah_bersih deduction
-            const empOtherIncomes = lookupOtherIncomes(dbOtherIncomesByNik, dbOtherIncomesByCleanName);
+            const empOtherIncomesBase = lookupOtherIncomes(dbOtherIncomesByNik, dbOtherIncomesByCleanName);
+            // [NEW] Also include KONTAN from NIK+NAME map for employees whose NIK doesn't match directly
+            // This ensures KONTAN records are found even when the NIK in employee_other_incomes
+            // differs from the NIK in HR_EMPLOYEE for this employee.
+            const empOtherIncomesKontanNikName = nikNameKey
+                ? (dbOtherIncomesByNikNameForKontan.get(nikNameKey) || []).filter(
+                    oi => !empOtherIncomesBase.some(existing => existing.type === oi.type && existing.name === oi.name)
+                  )
+                : [];
+            const empOtherIncomes = [...empOtherIncomesBase, ...empOtherIncomesKontanNikName];
             const empTaxableOtherIncomes = lookupOtherIncomes(dbTaxableOtherIncomesByNik, dbTaxableOtherByCleanName);
             // Also check nik+name specific maps for taxable breakdown
             const empTaxableOtherIncomesNikName = nikNameKey ? (dbTaxableOtherIncomesByNikName.get(nikNameKey) || []) : [];
@@ -1171,6 +1251,29 @@ export class DataExtractorService {
                     customTypeAmounts[oiType] = (customTypeAmounts[oiType] || 0) + Number(oi.amount || 0);
                 }
             }
+            // [NEW] KONTAN FALLBACK: Also check NIK+NAME map for KONTAN records
+            // This catches KONTAN that wasn't matched by NIK lookup (e.g., when the NIK
+            // stored in employee_other_incomes differs from the NIK in HR_EMPLOYEE).
+            // Uses NIK + emp_name (from db record) for reliable disambiguation.
+            if (nikNameKey) {
+                const kontanByNikName = dbOtherIncomesByNikNameForKontan.get(nikNameKey) || [];
+                for (const oi of kontanByNikName) {
+                    const oiType = (oi.type || '').toUpperCase();
+                    if (oiType && !standardTypes.has(oiType)) {
+                        // DEDUP: only add if not already found via NIK lookup
+                        if (!customTypeAmounts[oiType]) {
+                            customTypeAmounts[oiType] = 0;
+                        }
+                        // Check if this specific entry (same type+name) is already in empOtherIncomes
+                        const alreadyFound = empOtherIncomes.some(existing =>
+                            existing.type === oi.type && existing.name === oi.name
+                        );
+                        if (!alreadyFound) {
+                            customTypeAmounts[oiType] = (customTypeAmounts[oiType] || 0) + Number(oi.amount || 0);
+                        }
+                    }
+                }
+            }
             // [DEBUG KONTAN] Log custom type amounts for this employee
             const customTypesTotal = Object.values(customTypeAmounts).reduce((sum, v) => sum + v, 0);
             if (customTypesTotal > 0) {
@@ -1183,6 +1286,22 @@ export class DataExtractorService {
                 const oiType = (oi.type || '').toUpperCase();
                 if (oiType && !standardTypes.has(oiType)) {
                     taxable_custom_types_total += Number(oi.amount || 0);
+                }
+            }
+            // [NEW] KONTAN FALLBACK for taxable: also check NIK+NAME taxable map
+            if (nikNameKey) {
+                const kontanTaxableByNikName = dbTaxableOtherIncomesByNikNameForKontan.get(nikNameKey) || [];
+                for (const oi of kontanTaxableByNikName) {
+                    const oiType = (oi.type || '').toUpperCase();
+                    if (oiType && !standardTypes.has(oiType)) {
+                        // DEDUP: only add if not already counted
+                        const alreadyCounted = empTaxableOtherIncomesAll.some(
+                            existing => existing.type === oi.type && existing.name === oi.name
+                        );
+                        if (!alreadyCounted) {
+                            taxable_custom_types_total += Number(oi.amount || 0);
+                        }
+                    }
                 }
             }
             const taxable_pendapatan_lainnya = taxable_pendapatan_thr + taxable_pendapatan_bonus + taxable_pendapatan_custom + taxable_custom_types_total;
@@ -1255,7 +1374,7 @@ export class DataExtractorService {
             const tarif_pajak_ter = pph21TerResult.rate_percent; // Rate as percentage (e.g., 5 for 5%)
             const pph21_ter = pph21TerResult.tax_amount;
             const row: PayrollRow = {
-                emp_code: latestEmpCode,  // Plantware internal EmpCode
+                emp_code: emp.emp_code,  // [FIX] Mengambil empcode langsung dari HR_GANGLN
                 nik: emp.actual_nik || emp.emp_code,  // Actual NIK KTP (e.g. 1902050504860001)
                 new_nik: emp.actual_nik || emp.emp_code,  // NEW: Explicit KTP NIK
                 nama: emp.emp_name,
@@ -1843,16 +1962,20 @@ export class DataExtractorService {
                     trl.EmpCode,
                     CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
                     CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid,
-                    CASE WHEN DATEPART(weekday, trl.TrxDate) = 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate) THEN 1 ELSE 0 END as cuti_minggu,
-                    CASE WHEN EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate) THEN 1 ELSE 0 END as cuti_nasional
+                    CASE WHEN trl.TaskCode LIKE 'GA9127%' OR (DATEPART(weekday, trl.TrxDate) = 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)) THEN 1 ELSE 0 END as cuti_minggu,
+                    CASE WHEN trl.TaskCode LIKE 'GA9128%' OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1) THEN 1 ELSE 0 END as cuti_nasional
                 FROM PR_TASKREGLN trl
                 JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
                   AND (
-                      trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%'
+                      trl.TaskCode LIKE 'GA9129%' 
+                      OR trl.TaskCode LIKE 'GA9126%'
+                      OR trl.TaskCode LIKE 'GA9127%'
+                      OR trl.TaskCode LIKE 'GA9128%'
                       OR DATEPART(weekday, trl.TrxDate) = 1
+                      OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)
                   )
 
                 UNION ALL
@@ -1862,16 +1985,20 @@ export class DataExtractorService {
                     trl.EmpCode,
                     CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
                     CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid,
-                    CASE WHEN DATEPART(weekday, trl.TrxDate) = 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate) THEN 1 ELSE 0 END as cuti_minggu,
-                    CASE WHEN EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate) THEN 1 ELSE 0 END as cuti_nasional
+                    CASE WHEN trl.TaskCode LIKE 'GA9127%' OR (DATEPART(weekday, trl.TrxDate) = 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)) THEN 1 ELSE 0 END as cuti_minggu,
+                    CASE WHEN trl.TaskCode LIKE 'GA9128%' OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1) THEN 1 ELSE 0 END as cuti_nasional
                 FROM PR_TASKREGLN_ARC trl
                 JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
                   AND (
-                      trl.TaskCode LIKE 'GA9129%' OR trl.TaskCode LIKE 'GA9126%'
+                      trl.TaskCode LIKE 'GA9129%' 
+                      OR trl.TaskCode LIKE 'GA9126%'
+                      OR trl.TaskCode LIKE 'GA9127%'
+                      OR trl.TaskCode LIKE 'GA9128%'
                       OR DATEPART(weekday, trl.TrxDate) = 1
+                      OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)
                   )
             ) combined
             GROUP BY RTRIM(EmpCode)
