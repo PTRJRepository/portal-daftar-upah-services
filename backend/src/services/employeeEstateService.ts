@@ -36,7 +36,7 @@ export class EmployeeEstateService {
         const db = Database.getExtendedInstance();
         try {
             await db.query(`
-                IF OBJECT_ID('employee_estate', 'U') IS NULL
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'employee_estate')
                 BEGIN
                     CREATE TABLE employee_estate (
                         empcode VARCHAR(50) PRIMARY KEY,
@@ -48,7 +48,7 @@ export class EmployeeEstateService {
                     )
                 END
 
-                IF OBJECT_ID('history_employee_jabatan_changelog', 'U') IS NULL
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'history_employee_jabatan_changelog')
                 BEGIN
                     CREATE TABLE history_employee_jabatan_changelog (
                         id INT IDENTITY(1,1) PRIMARY KEY,
@@ -79,14 +79,20 @@ export class EmployeeEstateService {
         // Given SQL Server, MERGE is appropriate.
 
         const queries = jobs.map(job => {
-            const jabatan = job.jabatan || 'karyawan panen';
+            // Always trim all fields to handle spaces in identifiers
+            const empcode = (job.empcode || '').trim();
+            const jabatan = (job.jabatan || 'karyawan panen').trim();
+            const employee_name = (job.employee_name || '').trim();
+            const gang = (job.gang || '').trim();
+            const divisi_id = (job.divisi_id || '').trim();
+
             return {
                 sql: `
                     MERGE INTO employee_estate AS target
                     USING (SELECT ? AS empcode) AS source
-                    ON (target.empcode = source.empcode)
+                    ON (RTRIM(target.empcode) = RTRIM(source.empcode))
                     WHEN MATCHED THEN
-                        UPDATE SET 
+                        UPDATE SET
                             jabatan = ?,
                             employee_name = ?,
                             gang = ?,
@@ -97,15 +103,15 @@ export class EmployeeEstateService {
                         VALUES (?, ?, ?, ?, ?, GETDATE());
                 `,
                 params: [
-                    job.empcode,
+                    empcode,
                     jabatan,
-                    job.employee_name,
-                    job.gang,
-                    job.divisi_id,
-                    job.empcode,
-                    job.employee_name,
-                    job.gang,
-                    job.divisi_id,
+                    employee_name,
+                    gang,
+                    divisi_id,
+                    empcode,
+                    employee_name,
+                    gang,
+                    divisi_id,
                     jabatan
                 ]
             };
@@ -119,40 +125,44 @@ export class EmployeeEstateService {
     /**
      * Update a single employee's job title
      */
-    static async updateJobTitle(empCode: string, jobTitle: string, changedBy: string = 'system'): Promise<boolean> {
+    static async updateJobTitle(rawEmpCode: string, jobTitle: string, changedBy: string = 'system'): Promise<boolean> {
         await this.initTable();
         const db = Database.getExtendedInstance();
+
+        // Always trim to handle spaces in input
+        const empCode = (rawEmpCode || '').trim();
+        const jabatan = (jobTitle || '').trim();
 
         try {
             // First get the old job title
             const oldRecord = await db.query<{ jabatan: string }>(
-                "SELECT jabatan FROM employee_estate WHERE empcode = ?",
+                "SELECT jabatan FROM employee_estate WHERE RTRIM(empcode) = ?",
                 [empCode]
             );
-            const jabatanLama = oldRecord.length > 0 ? oldRecord[0].jabatan : null;
+            const jabatanLama = oldRecord.length > 0 ? (oldRecord[0].jabatan || '').trim() : null;
 
             // Save to history changelog if it actually changed or is new
-            if (jabatanLama !== jobTitle) {
+            if (jabatanLama !== jabatan) {
                 await db.query(`
                     INSERT INTO history_employee_jabatan_changelog
                     (empcode, jabatan_lama, jabatan_baru, changed_by)
                     VALUES (?, ?, ?, ?)
-                `, [empCode, jabatanLama, jobTitle, changedBy]);
+                `, [empCode, jabatanLama, jabatan, changedBy]);
             }
 
             await db.query(`
                 MERGE INTO employee_estate AS target
                 USING (SELECT ? AS empcode, ? AS jabatan) AS source
-                ON (target.empcode = source.empcode)
+                ON (RTRIM(target.empcode) = RTRIM(source.empcode))
                 WHEN MATCHED THEN
                     UPDATE SET jabatan = source.jabatan, updated_at = GETDATE()
                 WHEN NOT MATCHED THEN
                     INSERT (empcode, jabatan, updated_at)
                     VALUES (source.empcode, source.jabatan, GETDATE());
-            `, [empCode, jobTitle]);
+            `, [empCode, jabatan]);
             return true;
         } catch (e) {
-            console.error('[EmployeeEstateService] Update failed:', e);
+            console.error(`[EmployeeEstateService] Update failed for '${rawEmpCode}':`, e);
             throw e;
         }
     }
@@ -172,7 +182,8 @@ export class EmployeeEstateService {
 
             const map: Record<string, string> = {};
             rows.forEach(r => {
-                map[r.empcode] = r.jabatan;
+                // Always trim empcode and jabatan to handle spaces in data
+                map[(r.empcode || '').trim()] = (r.jabatan || '').trim();
             });
             return map;
         } catch (e) {

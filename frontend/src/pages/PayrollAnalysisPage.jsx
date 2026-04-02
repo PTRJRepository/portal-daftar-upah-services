@@ -53,6 +53,7 @@ export default function PayrollAnalysisPage({
   // State for range filters per tab
   const [rangeFilters, setRangeFilters] = useState({
     semua: { min: 0, max: null },
+    karyawan: { min: 0, max: null },
     lembur: { min: 0, max: null },
     premi: { min: 0, max: null },
     tunjangan: { min: 0, max: null },
@@ -63,19 +64,6 @@ export default function PayrollAnalysisPage({
   useEffect(() => {
     initPrintMode();
   }, []);
-
-  // Load divisions on mount
-  useEffect(() => {
-    async function loadDivisions() {
-      try {
-        const divs = await fetchDivisions(token);
-        setAllDivisions(divs || []);
-      } catch (e) {
-        console.error('[PayrollAnalysis] Failed to load divisions:', e);
-      }
-    }
-    if (token) loadDivisions();
-  }, [token]);
 
   // Load gangs when division changes
   useEffect(() => {
@@ -112,7 +100,7 @@ export default function PayrollAnalysisPage({
   };
 
   // Fetch payroll data
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (overrideDivisions = null) => {
     if (!token) {
       setRawData([]);
       return;
@@ -126,11 +114,14 @@ export default function PayrollAnalysisPage({
     try {
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
       let targetDivisions = [division];
+
+      // If division is "ALL", we need allDivisions. Use override if provided.
       if (!division || division === 'ALL') {
-        targetDivisions = allDivisions.length > 0 ? allDivisions : [];
+        targetDivisions = overrideDivisions || allDivisions;
       }
 
-      if (targetDivisions.length === 0) {
+      // If we still don't have divisions yet, wait for them
+      if (!targetDivisions || targetDivisions.length === 0) {
         setRawData([]);
         setLoading(false);
         return;
@@ -168,9 +159,34 @@ export default function PayrollAnalysisPage({
     }
   }, [token, division, gang, month, year, allDivisions]);
 
+  // Load divisions first, then fetch data
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    let cancelled = false;
+
+    async function loadAndFetch() {
+      // Load divisions if not yet loaded
+      if (allDivisions.length === 0 && token) {
+        try {
+          const divs = await fetchDivisions(token);
+          if (cancelled) return;
+          setAllDivisions(divs || []);
+        } catch (e) {
+          console.error('[PayrollAnalysis] Failed to load divisions:', e);
+          if (cancelled) return;
+          setError('Failed to load divisions');
+          return;
+        }
+      }
+      // Then fetch data
+      await fetchData();
+    }
+
+    loadAndFetch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, division, gang, month, year]);
 
   // Filter data
   const filteredData = useMemo(() => {
@@ -182,6 +198,10 @@ export default function PayrollAnalysisPage({
 
       switch (activeTab) {
         case 'semua':
+          value = row.upah_bersih || 0;
+          hasData = true;
+          break;
+        case 'karyawan':
           value = row.upah_bersih || 0;
           hasData = true;
           break;
@@ -369,8 +389,8 @@ export default function PayrollAnalysisPage({
         {/* Tabs & Filters (No-print) */}
         <div className="no-print" style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-            {['semua', 'lembur', 'premi', 'tunjangan', 'potongan'].map(t => (
-              <button key={t} onClick={() => setActiveTab(t)} className={activeTab === t ? 'wsp-btn wsp-btn-primary' : 'wsp-btn'} style={{ borderRadius: '20px', fontSize: '0.75rem' }}>{t.toUpperCase()}</button>
+            {['semua', 'karyawan', 'lembur', 'premi', 'tunjangan', 'potongan'].map(t => (
+              <button key={t} onClick={() => setActiveTab(t)} className={activeTab === t ? 'wsp-btn wsp-btn-primary' : 'wsp-btn'} style={{ borderRadius: '20px', fontSize: '0.75rem' }}>{t === 'karyawan' ? 'KARYAWAN' : t.toUpperCase()}</button>
             ))}
           </div>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -387,35 +407,60 @@ export default function PayrollAnalysisPage({
           <table className="wsp-table">
             <thead>
               <tr className="wsp-header-master">
-                <th colSpan="4">INFORMASI KARYAWAN</th>
-                <th colSpan="1">ABSEN</th>
-                {activeTab === 'semua' && <th colSpan="4">TUNJANGAN</th>}
-                {(activeTab === 'semua' || activeTab === 'premi') && <th colSpan={3 + dynamicPremiHeaders.length}>PREMI</th>}
-                {(activeTab === 'semua' || activeTab === 'lembur') && <th colSpan="2">LEMBUR (OT)</th>}
-                {activeTab === 'potongan' && <th colSpan="1">POTONGAN</th>}
-                <th colSpan="1" className="text-right">UPAH BERSIH</th>
+                {activeTab === 'karyawan' ? (
+                  <>
+                    <th colSpan="4">INFORMASI KARYAWAN</th>
+                    <th colSpan="3">STATUS</th>
+                    <th colSpan="2">ABSENSI</th>
+                    <th colSpan="1">GAJI</th>
+                  </>
+                ) : (
+                  <>
+                    <th colSpan="4">INFORMASI KARYAWAN</th>
+                    <th colSpan="1">ABSEN</th>
+                    {activeTab === 'semua' && <th colSpan="4">TUNJANGAN</th>}
+                    {(activeTab === 'semua' || activeTab === 'premi') && <th colSpan={3 + dynamicPremiHeaders.length}>PREMI</th>}
+                    {(activeTab === 'semua' || activeTab === 'lembur') && <th colSpan="2">LEMBUR (OT)</th>}
+                    {activeTab === 'potongan' && <th colSpan="1">POTONGAN</th>}
+                    <th colSpan="1" className="text-right">UPAH BERSIH</th>
+                  </>
+                )}
               </tr>
               <tr className="wsp-header-sub">
                 <th>NIK</th>
                 <th>NAMA</th>
                 <th>GANG</th>
-                <th>TUGAS UTAMA</th>
-                <th className="text-right">HK</th>
-                {(activeTab === 'semua' || activeTab === 'tunjangan') && (
-                  <><th>BERAS</th><th>JABATAN</th><th>MK</th><th>TOTAL</th></>
-                )}
-                {(activeTab === 'semua' || activeTab === 'premi') && (
+                {activeTab === 'karyawan' ? (
                   <>
-                    <th>BRONDOL</th><th>PRUNING</th>
-                    {dynamicPremiHeaders.map(h => <th key={h}>{h.replace('PREMI_', '').replace(/_/g, ' ')}</th>)}
-                    <th>TOTAL</th>
+                    <th>JABATAN</th>
+                    <th>JK</th>
+                    <th>PTKP</th>
+                    <th>TER</th>
+                    <th className="text-right">HK</th>
+                    <th className="text-right">JKERJA</th>
+                    <th className="text-right">UPAH DASAR</th>
+                  </>
+                ) : (
+                  <>
+                    <th>TUGAS UTAMA</th>
+                    <th className="text-right">HK</th>
+                    {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+                      <><th>BERAS</th><th>JABATAN</th><th>MK</th><th>TOTAL</th></>
+                    )}
+                    {(activeTab === 'semua' || activeTab === 'premi') && (
+                      <>
+                        <th>BRONDOL</th><th>PRUNING</th>
+                        {dynamicPremiHeaders.map(h => <th key={h}>{h.replace('PREMI_', '').replace(/_/g, ' ')}</th>)}
+                        <th>TOTAL</th>
+                      </>
+                    )}
+                    {(activeTab === 'semua' || activeTab === 'lembur') && (
+                      <><th>JAM</th><th>RUPIAH</th></>
+                    )}
+                    {activeTab === 'potongan' && <th>TOTAL POTONGAN</th>}
+                    <th className="text-right">DIBAYARKAN</th>
                   </>
                 )}
-                {(activeTab === 'semua' || activeTab === 'lembur') && (
-                  <><th>JAM</th><th>RUPIAH</th></>
-                )}
-                {activeTab === 'potongan' && <th>TOTAL POTONGAN</th>}
-                <th className="text-right">DIBAYARKAN</th>
               </tr>
             </thead>
             <tbody>
@@ -427,8 +472,23 @@ export default function PayrollAnalysisPage({
                       <td className="font-mono" style={{ fontSize: '0.7rem' }}>{row.new_nik || row.nik}</td>
                       <td style={{ fontWeight: 700 }}>{row.nama}</td>
                       <td>{row.gang_code}</td>
-                      <td style={{ fontSize: '0.65rem', maxWidth: '120px', whiteSpace: 'normal' }}>{row.task_desc}</td>
-                      <td className="text-right">{formatNumber(row.jumlah_hk)}</td>
+
+                      {activeTab === 'karyawan' ? (
+                        <>
+                          <td style={{ fontSize: '0.65rem', maxWidth: '100px', whiteSpace: 'normal' }}>{row.jabatan_estate}</td>
+                          <td className="text-center">{row.jenis_kelamin}</td>
+                          <td className="text-center">{row.status_ptkp}</td>
+                          <td className="text-center">{row.kategori_ter}</td>
+                          <td className="text-right">{formatNumber(row.jumlah_hk)}</td>
+                          <td className="text-right">{formatDecimal(row.total_jam_kerja)}</td>
+                          <td className="text-right font-semibold">{formatCurrency(row.upah_dasar)}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ fontSize: '0.65rem', maxWidth: '120px', whiteSpace: 'normal' }}>{row.task_desc}</td>
+                          <td className="text-right">{formatNumber(row.jumlah_hk)}</td>
+                        </>
+                      )}
                       
                       {(activeTab === 'semua' || activeTab === 'tunjangan') && (
                         <>
@@ -457,7 +517,9 @@ export default function PayrollAnalysisPage({
 
                       {activeTab === 'potongan' && <td className="text-right">{formatNumber(row.total_potongan_bersih)}</td>}
                       
-                      <td className="text-right font-bold text-blue-900" style={{ backgroundColor: '#f0f9ff' }}>{formatNumber(row.upah_bersih)}</td>
+                      {activeTab !== 'karyawan' && (
+                        <td className="text-right font-bold text-blue-900" style={{ backgroundColor: '#f0f9ff' }}>{formatNumber(row.upah_bersih)}</td>
+                      )}
                     </tr>
 
                     {/* Detailed Task Breakdown for OT */}
@@ -500,18 +562,28 @@ export default function PayrollAnalysisPage({
             <tfoot>
               <tr className="wsp-grand-total">
                 <td colSpan="4">TOTAL KESELURUHAN ({filteredData.length} KARYAWAN)</td>
-                <td className="text-right">{formatNumber(kpiData.totalHK)}</td>
-                {(activeTab === 'semua' || activeTab === 'tunjangan') && (
-                  <td colSpan="4" className="text-right">{formatCurrency(kpiData.totalTunjangan)}</td>
+                {activeTab === 'karyawan' ? (
+                  <>
+                    <td colSpan="3" className="text-right"></td>
+                    <td className="text-right">{formatNumber(kpiData.totalHK)}</td>
+                    <td colSpan="2" className="text-right"></td>
+                  </>
+                ) : (
+                  <>
+                    <td className="text-right">{formatNumber(kpiData.totalHK)}</td>
+                    {(activeTab === 'semua' || activeTab === 'tunjangan') && (
+                      <td colSpan="4" className="text-right">{formatCurrency(kpiData.totalTunjangan)}</td>
+                    )}
+                    {(activeTab === 'semua' || activeTab === 'premi') && (
+                      <td colSpan={3 + dynamicPremiHeaders.length} className="text-right">{formatCurrency(kpiData.totalPremi)}</td>
+                    )}
+                    {(activeTab === 'semua' || activeTab === 'lembur') && (
+                      <td colSpan="2" className="text-right">{formatCurrency(kpiData.totalLembur)}</td>
+                    )}
+                    {activeTab === 'potongan' && <td className="text-right">{formatCurrency(kpiData.totalPotongan)}</td>}
+                    <td className="text-right">{formatCurrency(kpiData.totalUpahBersih)}</td>
+                  </>
                 )}
-                {(activeTab === 'semua' || activeTab === 'premi') && (
-                  <td colSpan={3 + dynamicPremiHeaders.length} className="text-right">{formatCurrency(kpiData.totalPremi)}</td>
-                )}
-                {(activeTab === 'semua' || activeTab === 'lembur') && (
-                  <td colSpan="2" className="text-right">{formatCurrency(kpiData.totalLembur)}</td>
-                )}
-                {activeTab === 'potongan' && <td className="text-right">{formatCurrency(kpiData.totalPotongan)}</td>}
-                <td className="text-right">{formatCurrency(kpiData.totalUpahBersih)}</td>
               </tr>
             </tfoot>
           </table>

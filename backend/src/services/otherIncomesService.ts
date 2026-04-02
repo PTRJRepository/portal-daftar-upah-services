@@ -282,9 +282,15 @@ export class OtherIncomesService {
     static async addToBlacklist(nik: string, name: string, year: number, month: number, type: string, reason: string = 'User deleted'): Promise<boolean> {
         const db = Database.getExtendedInstance();
         try {
-            const existing = await db.query(`SELECT id FROM employee_other_incomes_blacklist WHERE nik = ? AND period_year = ? AND period_month = ? AND income_type = ?`, [nik, year, month, type]);
+            // Always trim to handle spaces in input identifiers
+            const cleanNik = (nik || '').trim();
+            const cleanName = (name || '').trim();
+            const cleanType = (type || '').trim();
+            const cleanReason = (reason || '').trim();
+            if (!cleanNik) return false;
+            const existing = await db.query(`SELECT id FROM employee_other_incomes_blacklist WHERE RTRIM(nik) = ? AND period_year = ? AND period_month = ? AND RTRIM(income_type) = ?`, [cleanNik, year, month, cleanType]);
             if (existing && existing.length > 0) return true;
-            await db.query(`INSERT INTO employee_other_incomes_blacklist (nik, emp_name, period_year, period_month, income_type, reason) VALUES (?, ?, ?, ?, ?, ?)`, [nik, name, year, month, type, reason]);
+            await db.query(`INSERT INTO employee_other_incomes_blacklist (nik, emp_name, period_year, period_month, income_type, reason) VALUES (?, ?, ?, ?, ?, ?)`, [cleanNik, cleanName, year, month, cleanType, cleanReason]);
             return true;
         } catch (e) { return false; }
     }
@@ -424,14 +430,14 @@ export class OtherIncomesService {
                     try { r.details = JSON.parse(r.details_json); } catch { r.details = null; }
                 }
                 
-                // Priority: emp_code > nik
+                // Priority: nik > emp_code (THR semua record punya nik terisi, emp_code kosong)
                 const empCodeKey = (r.emp_code || '').trim().toUpperCase();
                 const nikKey = (r.nik || '').trim().toUpperCase();
                 const incomeType = (r.income_type || '').trim().toUpperCase();
-                
+
                 // Composite key: employee identifier + income_type
                 // This ensures THR, KONTAN, BONUS etc. for the same employee are all preserved
-                const employeeKey = empCodeKey || nikKey;
+                const employeeKey = nikKey || empCodeKey;
                 const key = `${employeeKey}|${incomeType}`;
                 
                 if (key && employeeKey && !uniqueMap.has(key)) {
@@ -893,14 +899,21 @@ export class OtherIncomesService {
                 
                 // Try composite key first (most specific), then fall back to NIK only
                 const hr = hrMap.get(compositeKey) || hrMap.get(nikKey);
-                
+
                 if (hr) {
+                    // IMPORTANT: emp_code comes from HR_GANG (latest gang member assignment).
+                    // This is the AUTHORITATIVE source — never use the potentially-spaced emp_code from source data.
+                    // NIK is also stored clean from HR_EMPLOYEE.NewICNo.
                     inc.religion = hr.religion;
                     inc.original_religion = hr.original_religion; // Pass original religion to frontend
                     inc.emp_code = hr.emp_code; inc.bank_acc_no = hr.bank_acc_no; inc.bank_code = hr.bank_code;
                     if (!inc.join_date) inc.join_date = hr.join_date;
                     if (!inc.emp_name || inc.emp_name === inc.nik) inc.emp_name = hr.emp_name;
                     (inc as any).upah_dasar = hr.upah_dasar; (inc as any).beras_rate = hr.beras_rate; (inc as any).sex = hr.sex;
+                    // CRITICAL: Always overwrite nik with the CLEAN version (nikKey was built from trimmed input).
+                    // This ensures inc.nik has no trailing spaces after enrichment, fixing lookup failures downstream.
+                    // nikKey is already trimmed/uppered, so use it directly.
+                    inc.nik = nikKey;
 
                     // DEBUG: Track bank account assignments
                     const logKey = `${inc.nik}|||${inc.emp_name || inc.nik}`;
@@ -1645,6 +1658,8 @@ export class OtherIncomesService {
                     }
 
                     // 2. Insert new calculated record (including new EmpCode-basis columns)
+                    // ALWAYS trim all string fields before INSERT to prevent spaces from causing
+                    // lookup mismatches. This is the PRIMARY source of the NIK/emp_code mismatch bug.
                     const detailsJson = inc.details ? JSON.stringify(inc.details) : null;
                     // Convert join_date string to SQL date format
                     let joinDateSql: string | null = null;
@@ -1658,7 +1673,19 @@ export class OtherIncomesService {
                     }
                     // IMPORTANT: nik column is NEVER updated (append-only). Only new_nik changes.
                     // new_nik defaults to nik if not provided (backward compat for legacy records).
-                    const resolvedNewNik = (inc as any).new_nik || inc.nik || null;
+                    // CRITICAL: Trim ALL fields before storage to prevent lookup failures.
+                    const cleanNik = (inc.nik || '').trim();
+                    const cleanEmpName = (inc.emp_name || '').trim();
+                    const cleanDivCode = (inc.division_code || '').trim();
+                    const cleanGangCode = (inc.gang_code || '').trim();
+                    const cleanIncomeType = (inc.income_type || '').trim();
+                    const cleanIncomeName = (inc.income_name || '').trim();
+                    const cleanEmpCode = (inc.emp_code || '').trim();
+                    const resolvedNewNik = ((inc as any).new_nik || inc.nik || '').trim() || null;
+                    const cleanReligion = ((inc as any).religion || '').trim() || null;
+                    const cleanBankAccNo = ((inc as any).bank_acc_no || '').trim() || null;
+                    const cleanBankCode = ((inc as any).bank_code || '').trim() || null;
+                    const cleanSex = ((inc as any).sex || '').trim() || null;
                     await db.query(`
                         INSERT INTO employee_other_incomes (
                             nik, emp_name, division_code, gang_code,
@@ -1668,18 +1695,18 @@ export class OtherIncomesService {
                             emp_code, new_nik, religion, join_date, bank_acc_no, bank_code, sex
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, ?, ?, ?, ?, ?, ?)
                     `, [
-                        inc.nik, inc.emp_name, inc.division_code, inc.gang_code,
-                        inc.period_year, inc.period_month, inc.income_type,
-                        inc.income_name, inc.amount,
+                        cleanNik, cleanEmpName, cleanDivCode, cleanGangCode,
+                        inc.period_year, inc.period_month, cleanIncomeType,
+                        cleanIncomeName, inc.amount,
                         inc.is_paid_in_thp ? 1 : 0, inc.is_taxable ? 1 : 0,
                         detailsJson,
-                        inc.emp_code || null,
+                        cleanEmpCode || null,
                         resolvedNewNik,
-                        inc.religion || null,
+                        cleanReligion,
                         joinDateSql,
-                        (inc as any).bank_acc_no || null,
-                        (inc as any).bank_code || null,
-                        (inc as any).sex || null
+                        cleanBankAccNo,
+                        cleanBankCode,
+                        cleanSex
                     ]);
                     count++;
                 }

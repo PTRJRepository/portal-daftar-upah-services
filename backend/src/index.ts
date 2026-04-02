@@ -25,6 +25,7 @@ import { millProductionRoutes } from "./api/millProductionRoutes";
 import { Database } from "./db/client";
 import { employeeHrDataService } from "./services/employeeHrDataService";
 import { OtherIncomesService } from "./services/otherIncomesService";
+import { historyDatabaseService } from "./services/historyDatabaseService";
 import { staticPlugin } from "@elysiajs/static";
 import { debug, info, warn, error } from "./utils/logger";
 
@@ -35,6 +36,8 @@ Database.getInstance();
 setTimeout(() => {
     employeeHrDataService.ensureTablesExist().catch(err => error("Init", "Failed to ensure HR tables", err));
     OtherIncomesService.initTable().catch(err => error("Init", "Failed to init OtherIncomes table", err));
+    // Migration: add new_nik column for NIK change tracking (append-only pattern)
+    historyDatabaseService.migrateNewNikColumn().catch(err => error("Init", "Failed to migrate new_nik column", err));
 }, 1000);
 
 const app = new Elysia()

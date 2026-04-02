@@ -383,6 +383,13 @@ export class ReportService {
             }
         });
 
+        // ============================================================
+        // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
+        // FILTER: Selalu exclude karyawan dengan kehadiran = 0
+        //
+        // Rule: EXCLUDE if jumlah_hk is missing/0
+        // This matches dataExtractorService filter logic.
+        // ============================================================
         // Filter 0 HK
         for (const [key, emp] of employeeMap.entries()) {
             if (!emp.jumlah_hk) employeeMap.delete(key);

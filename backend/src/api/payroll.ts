@@ -1,3 +1,4 @@
+import { Database } from "../db/client";
 import { Config } from "../config";
 import { Elysia, t } from "elysia";
 import { gangService } from "../services/gangService";
@@ -248,12 +249,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
-                // Filter employees: only include those with HK > 0
-                // This matches the behavior in aggregationSeederRoutes.ts for consistency
+                // ============================================================
+                // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
+                // FILTER: Selalu exclude karyawan dengan kehadiran = 0
+                //
+                // Using hari_kerja (kehadiran) for filtering because:
+                // hari_kerja = hk - seluruh cuti (tahunan, sakit, minggu, nasional)
+                // This reflects actual work days after leave deductions.
+                // jumlah_hk alone is NOT sufficient - must subtract all leaves.
+                //
+                // Rule: EXCLUDE if hari_kerja <= 0 (same as dataExtractorService)
+                // ============================================================
                 const activeEmployees = employees.filter((emp: any) => {
-                    const hkVal = emp.jumlah_hk || emp.jumlah_hk;
-                    const hk = parseFloat(hkVal) || 0;
-                    return hk > 0;
+                    const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
+                    const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
+                    return hari_kerja > 0;
                 });
 
                 const totals: Record<string, number> = {};
@@ -448,12 +458,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
-                // Filter employees: only include those with HK > 0
-                // This matches the behavior in aggregationSeederRoutes.ts for consistency
+                // ============================================================
+                // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
+                // FILTER: Selalu exclude karyawan dengan kehadiran = 0
+                //
+                // Using hari_kerja (kehadiran) for filtering because:
+                // hari_kerja = hk - seluruh cuti (tahunan, sakit, minggu, nasional)
+                // This reflects actual work days after leave deductions.
+                // jumlah_hk alone is NOT sufficient - must subtract all leaves.
+                //
+                // Rule: EXCLUDE if hari_kerja <= 0 (same as dataExtractorService)
+                // ============================================================
                 const activeEmployees = employees.filter((emp: any) => {
-                    const hkVal = emp.jumlah_hk || emp.jumlah_hk;
-                    const hk = parseFloat(hkVal) || 0;
-                    return hk > 0;
+                    const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
+                    const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
+                    return hari_kerja > 0;
                 });
 
                 const totals: Record<string, number> = {};
@@ -471,6 +490,28 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     'pendapatan_lainnya', 'pot_pendapatan_lainnya'
                 ];
 
+                // [FIX] Collect ALL dynamic field names (premi, potongan, pendapatan) upfront
+                // to prevent double-counting in the per-row loops below.
+                // CustomTypesTotal (e.g. KONTAN) is spread as pendapatan_kontan and ALSO included
+                // in pendapatan_lainnya. We add all custom fields to a set so they get counted
+                // ONCE via the numericFields loop, NOT again in the dynamic loops.
+                const extraNumericFields: string[] = [];
+                const extraPremiKeys: string[] = [];
+                const extraPotonganKeys: string[] = [];
+                for (const emp of employees) {
+                    for (const key of Object.keys(emp)) {
+                        if (key.startsWith('premi_') && key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'premi_koreksi') {
+                            if (!extraPremiKeys.includes(key)) extraPremiKeys.push(key);
+                        }
+                        if (key.startsWith('KOREKSI') || key.startsWith('POTONGAN')) {
+                            if (!extraPotonganKeys.includes(key)) extraPotonganKeys.push(key);
+                        }
+                        if (key.startsWith('pendapatan_') && !numericFields.includes(key)) {
+                            if (!extraNumericFields.includes(key)) extraNumericFields.push(key);
+                        }
+                    }
+                }
+
                 // Initialize totals
                 for (const field of numericFields) {
                     totals[field] = 0;
@@ -479,6 +520,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
                 // Sum all numeric fields from active employees only
                 for (const emp of activeEmployees) {
+                    // Standard numeric fields
                     for (const field of numericFields) {
                         const val = emp[field];
                         if (val !== null && val !== undefined) {
@@ -486,34 +528,28 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         }
                     }
 
-                    // Also sum dynamic premi fields (premi_*)
-                    for (const key of Object.keys(emp)) {
-                        if (key.startsWith('premi_') && key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'premi_koreksi') {
-                            const val = emp[key];
-                            if (val !== null && val !== undefined && typeof val === 'number') {
-                                if (!totals[key]) totals[key] = 0;
-                                totals[key] += val;
-                            }
-                        }
-
-                        // Sum dynamic potongan fields
-                        if (key.startsWith('KOREKSI') || key.startsWith('POTONGAN')) {
-                            const val = emp[key];
-                            if (val !== null && val !== undefined && typeof val === 'number') {
-                                if (!totals[key]) totals[key] = 0;
-                                totals[key] += val;
-                            }
-                        }
-
-                        // Sum dynamic pendapatan_* fields (custom income types like pendapatan_kontanan, pendapatan_insentif)
-                        if (key.startsWith('pendapatan_') && !numericFields.includes(key)) {
-                            const val = emp[key];
-                            if (val !== null && val !== undefined && typeof val === 'number') {
-                                if (!totals[key]) totals[key] = 0;
-                                totals[key] += val;
-                            }
+                    // Dynamic premi fields (already included in numericFields loop via extraNumericFields)
+                    for (const key of extraPremiKeys) {
+                        const val = emp[key];
+                        if (val !== null && val !== undefined && typeof val === 'number') {
+                            if (!totals[key]) totals[key] = 0;
+                            totals[key] += val;
                         }
                     }
+
+                    // Dynamic potongan fields
+                    for (const key of extraPotonganKeys) {
+                        const val = emp[key];
+                        if (val !== null && val !== undefined && typeof val === 'number') {
+                            if (!totals[key]) totals[key] = 0;
+                            totals[key] += val;
+                        }
+                    }
+
+                    // [FIX] Dynamic pendapatan_* fields - SKIP adding to totals here
+                    // All custom pendapatan_* keys (e.g. pendapatan_kontan) are already included
+                    // in the numericFields loop above via extraNumericFields.
+                    // The old dynamic loop would double-count them.
                 }
 
                 return totals;
@@ -921,6 +957,182 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             emp_code: t.String()
         }),
         query: t.Object({
+            month: t.Optional(t.String()),
+            year: t.Optional(t.String())
+        })
+    })
+
+    /**
+     * TEST ENDPOINT: Diagnose jabatan, THR, and KONTAN data availability
+     * Tests the full chain: gang → employees → employee_estate / employee_other_incomes
+     */
+    .get("/test/jabatan-thr-kontan", async ({ query, set }) => {
+        try {
+            const db = Database.getExtendedInstance();
+            const dbMain = Database.getInstance();
+            const { OtherIncomesService } = await import("../services/otherIncomesService");
+
+            const gangCode = (query.gang_code as string) || 'H1H';
+            const month = parseInt(query.month as string) || 3;
+            const year = parseInt(query.year as string) || 2026;
+
+            const result: any = {
+                params: { gang_code: gangCode, month, year },
+                timestamp: new Date().toISOString()
+            };
+
+            // STEP 1: Get employees in the gang
+            const gangEmployees = await dbMain.query(`
+                SELECT TOP 20
+                    RTRIM(e.EmpCode) as emp_code,
+                    RTRIM(e.NewICNo) as nik,
+                    RTRIM(e.EmpName) as emp_name,
+                    RTRIM(gl.GangCode) as gang_code,
+                    e.Status
+                FROM HR_EMPLOYEE e
+                INNER JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
+                INNER JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                WHERE gl.GangCode = ?
+                ORDER BY e.EmpName
+            `, [gangCode]);
+
+            result.step1_employees = {
+                total: gangEmployees.length,
+                sample: gangEmployees.slice(0, 5).map((e: any) => ({
+                    emp_code: e.emp_code,
+                    nik: e.nik || '(empty)',
+                    emp_name: e.emp_name
+                }))
+            };
+
+            if (gangEmployees.length === 0) {
+                result.conclusion = 'FAIL';
+                result.message = `No employees found for gang ${gangCode}`;
+                return result;
+            }
+
+            const empCodes = gangEmployees.map((e: any) => e.emp_code);
+            const niks = gangEmployees.map((e: any) => (e.nik || '').trim().toUpperCase()).filter(Boolean);
+
+            // STEP 2: Check employee_estate (JABATAN)
+            const estateRows = await db.query(`
+                SELECT empcode, employee_name, gang, jabatan
+                FROM employee_estate
+                WHERE empcode IN (${empCodes.map(() => '?').join(',')})
+            `, empCodes);
+
+            const estateMap = new Map<string, string>();
+            estateRows.forEach((r: any) => estateMap.set(r.empcode?.trim().toUpperCase(), r.jabatan));
+
+            // Also check by nik
+            const estateRowsByNik = await db.query(`
+                SELECT nik, employee_name, gang, jabatan
+                FROM employee_estate
+                WHERE nik IN (${niks.map(() => '?').join(',')})
+            `, niks);
+            estateRowsByNik.forEach((r: any) => {
+                const key = (r.nik || '').trim().toUpperCase();
+                if (key && !estateMap.has(key)) {
+                    estateMap.set(key, r.jabatan);
+                }
+            });
+
+            const totalEstateCount = await db.query(`SELECT COUNT(*) as cnt FROM employee_estate`);
+            result.step2_jabatan = {
+                table_total_records: totalEstateCount[0]?.cnt || 0,
+                records_for_gang: estateRows.length,
+                matched_by_empcode: estateRows.length,
+                matched_by_nik: estateRowsByNik.length,
+                sample: estateRows.slice(0, 5).map((r: any) => ({
+                    empcode: r.empcode,
+                    jabatan: r.jabatan
+                })),
+                status: estateRows.length > 0 ? 'OK' : 'EMPTY - seed needed'
+            };
+
+            // STEP 3: Check employee_other_incomes (THR + KONTAN)
+            const otherIncomes = await OtherIncomesService.getIncomes(year, month, undefined, gangCode);
+            const thrRecords = otherIncomes.filter((i: any) => i.income_type === 'THR');
+            const kontanRecords = otherIncomes.filter((i: any) => i.income_type === 'KONTAN' || i.income_type === 'KONTANAN');
+
+            // Match against gang employees
+            let thrMatched = 0;
+            let kontanMatched = 0;
+            const thrSample: any[] = [];
+            const kontanSample: any[] = [];
+
+            for (const emp of gangEmployees) {
+                const nikKey = (emp.nik || '').trim().toUpperCase();
+                const empCodeKey = (emp.emp_code || '').trim().toUpperCase();
+
+                const hasThr = thrRecords.some((r: any) =>
+                    ((r.nik || '').trim().toUpperCase() === nikKey && nikKey) ||
+                    ((r.emp_code || '').trim().toUpperCase() === empCodeKey && empCodeKey)
+                );
+                const hasKontan = kontanRecords.some((r: any) =>
+                    ((r.nik || '').trim().toUpperCase() === nikKey && nikKey) ||
+                    ((r.emp_code || '').trim().toUpperCase() === empCodeKey && empCodeKey)
+                );
+
+                if (hasThr) {
+                    thrMatched++;
+                    if (thrSample.length < 5) {
+                        const rec = thrRecords.find((r: any) =>
+                            ((r.nik || '').trim().toUpperCase() === nikKey && nikKey) ||
+                            ((r.emp_code || '').trim().toUpperCase() === empCodeKey && empCodeKey)
+                        );
+                        thrSample.push({ emp_name: emp.emp_name, nik: nikKey || empCodeKey, amount: rec?.amount });
+                    }
+                }
+                if (hasKontan) {
+                    kontanMatched++;
+                    if (kontanSample.length < 5) {
+                        const rec = kontanRecords.find((r: any) =>
+                            ((r.nik || '').trim().toUpperCase() === nikKey && nikKey) ||
+                            ((r.emp_code || '').trim().toUpperCase() === empCodeKey && empCodeKey)
+                        );
+                        kontanSample.push({ emp_name: emp.emp_name, nik: nikKey || empCodeKey, amount: rec?.amount });
+                    }
+                }
+            }
+
+            const totalThrInDb = await db.query(`SELECT COUNT(*) as cnt FROM employee_other_incomes WHERE income_type = 'THR' AND period_year = ? AND period_month = ?`, [year, month]);
+            const totalKontanInDb = await db.query(`SELECT COUNT(*) as cnt FROM employee_other_incomes WHERE income_type IN ('KONTAN','KONTANAN') AND period_year = ? AND period_month = ?`, [year, month]);
+
+            result.step3_thr = {
+                db_total_records: totalThrInDb[0]?.cnt || 0,
+                for_gang: thrRecords.length,
+                matched_to_gang_employees: thrMatched,
+                gang_employees_total: gangEmployees.length,
+                sample: thrSample,
+                status: thrMatched > 0 ? 'OK' : 'EMPTY'
+            };
+
+            result.step4_kontan = {
+                db_total_records: totalKontanInDb[0]?.cnt || 0,
+                for_gang: kontanRecords.length,
+                matched_to_gang_employees: kontanMatched,
+                gang_employees_total: gangEmployees.length,
+                sample: kontanSample,
+                status: kontanMatched > 0 ? 'OK' : 'EMPTY - KONTAN data not seeded'
+            };
+
+            // CONCLUSION
+            const allOk = thrMatched > 0 && kontanMatched >= 0 && estateRows.length > 0;
+            result.conclusion = allOk ? 'PASS' : 'PARTIAL';
+            result.message = allOk
+                ? `Jabatan: ${estateRows.length} records, THR: ${thrMatched}/${gangEmployees.length} employees, KONTAN: ${kontanMatched} employees`
+                : `Some data is missing. Seed missing tables.`;
+
+            return result;
+        } catch (e: any) {
+            console.error("[PayrollRoutes] test/jabatan-thr-kontan error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            gang_code: t.Optional(t.String()),
             month: t.Optional(t.String()),
             year: t.Optional(t.String())
         })

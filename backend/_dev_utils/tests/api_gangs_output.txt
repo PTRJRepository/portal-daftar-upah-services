@@ -1,0 +1,23 @@
+﻿bun.exe : error: 
+Module not found "_dev_
+utils/tests/test_api_ga
+ngs.ts"
+At C:\Users\nbgmf\AppDa
+ta\Roaming\npm\bun.ps1:
+14 char:3
++   & "$basedir/node_mo
+dules/bun/bin/bun.exe" 
+  $args
++   ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo     
+         : 
+NotSpecified: (err    
+or: Module n...t_api_g 
+   angs.ts":String) 
+[], R    emoteException
+    + 
+FullyQualifiedErrorI   
+ d : NativeCommandError
+ 

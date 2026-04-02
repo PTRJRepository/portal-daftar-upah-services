@@ -1,0 +1,188 @@
+[
+  {
+    "TABLE_NAME": "HR_EATAX",
+    "COLUMN_NAME": "EATaxCode",
+    "DATA_TYPE": "nvarchar",
+    "CHARACTER_MAXIMUM_LENGTH": 8
+  },
+  {
+    "TABLE_NAME": "HR_EATAX",
+    "COLUMN_NAME": "Description",
+    "DATA_TYPE": "nvarchar",
+    "CHARACTER_MAXIMUM_LENGTH": 128
+  },
+  {
+    "TABLE_NAME": "HR_EATAX",
+    "COLUMN_NAME": "Status",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 2
+  },
+  {
+    "TABLE_NAME": "HR_EATAX",
+    "COLUMN_NAME": "CreateDate",
+    "DATA_TYPE": "datetime",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_EATAX",
+    "COLUMN_NAME": "UpdateDate",
+    "DATA_TYPE": "datetime",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_EATAX",
+    "COLUMN_NAME": "UpdateID",
+    "DATA_TYPE": "nvarchar",
+    "CHARACTER_MAXIMUM_LENGTH": 20
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "EATaxTaskLnId",
+    "DATA_TYPE": "nvarchar",
+    "CHARACTER_MAXIMUM_LENGTH": 50
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "EATaxCode",
+    "DATA_TYPE": "nvarchar",
+    "CHARACTER_MAXIMUM_LENGTH": 8
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "TaskCode",
+    "DATA_TYPE": "nvarchar",
+    "CHARACTER_MAXIMUM_LENGTH": 30
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "TaskDesc",
+    "DATA_TYPE": "nvarchar",
+    "CHARACTER_MAXIMUM_LENGTH": 200
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "CreateDate",
+    "DATA_TYPE": "datetime",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "UpdateDate",
+    "DATA_TYPE": "datetime",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_EATAXTASKLN",
+    "COLUMN_NAME": "UpdateID",
+    "DATA_TYPE": "nvarchar",
+    "CHARACTER_MAXIMUM_LENGTH": 20
+  },
+  {
+    "TABLE_NAME": "HR_EMPLOYEE",
+    "COLUMN_NAME": "MaritalStatus",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 1
+  },
+  {
+    "TABLE_NAME": "HR_EMPLOYEE",
+    "COLUMN_NAME": "Status",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 2
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "TaxCode",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 8
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "IncomeFrom",
+    "DATA_TYPE": "decimal",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "IncomeTo",
+    "DATA_TYPE": "decimal",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "TaxAmt",
+    "DATA_TYPE": "decimal",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "Status",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 2
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "CreateDate",
+    "DATA_TYPE": "datetime",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "UpdateDate",
+    "DATA_TYPE": "datetime",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_TAX",
+    "COLUMN_NAME": "UpdateID",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 20
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "TaxBranchCode",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 8
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "Description",
+    "DATA_TYPE": "nchar",
+    "CHARACTER_MAXIMUM_LENGTH": 128
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "EmployerTaxNo",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 32
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "Address",
+    "DATA_TYPE": "nchar",
+    "CHARACTER_MAXIMUM_LENGTH": 512
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "Status",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 2
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "CreateDate",
+    "DATA_TYPE": "datetime",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "UpdateDate",
+    "DATA_TYPE": "datetime",
+    "CHARACTER_MAXIMUM_LENGTH": null
+  },
+  {
+    "TABLE_NAME": "HR_TAXBRANCH",
+    "COLUMN_NAME": "UpdateID",
+    "DATA_TYPE": "char",
+    "CHARACTER_MAXIMUM_LENGTH": 20
+  }
+]

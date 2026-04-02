@@ -16,6 +16,7 @@ import PayrollAnalysisPage from './PayrollAnalysisPage'
 import GangAttendanceMatrix from '../components/GangAttendanceMatrix'
 import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
 import GangEmployeeInfo from '../components/GangEmployeeInfo'
+import PayrollTaxMatrix from '../components/PayrollTaxMatrix'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
 import { withLRU } from '../utils/cacheUtils'
@@ -136,13 +137,14 @@ export default function MainPage({ lockedDiv = null }) {
   const [usePeriodSlider, setUsePeriodSlider] = useState(true)
 
   // Matrix View State
-  const [activeMatrixView, setActiveMatrixView] = useState(null) // null | 'attendance' | 'overtime' | 'employee'
+  const [activeMatrixView, setActiveMatrixView] = useState(null) // null | 'attendance' | 'overtime' | 'employee' | 'pajak'
 
   // Data caches for view switching (avoid refetch when switching views)
   const [payrollDataCache, setPayrollDataCache] = useState({})   // key: `${division}_${month}_${year}_${useHistoryDb}_${gangPrefix}`
   const [attendanceMatrixCache, setAttendanceMatrixCache] = useState({})  // key: `${gangCodes}_${month}_${year}`
   const [overtimeMatrixCache, setOvertimeMatrixCache] = useState({})     // key: `${gangCodes}_${month}_${year}`
   const [employeeDataCache, setEmployeeDataCache] = useState({})     // key: `${gangCodes}_${month}_${year}`
+  const [taxDataCache, setTaxDataCache] = useState({})               // key: `${gangCodes}_${month}_${year}_${useHistoryDb}`
 
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
@@ -1151,6 +1153,75 @@ export default function MainPage({ lockedDiv = null }) {
                       Klik untuk melihat matrix jam lembur harian per karyawan
                     </div>
                   </div>
+
+                  {/* Tax (Pajak) Matrix Card */}
+                  <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    padding: '1.75rem',
+                    border: '1px solid #cbd5e1',
+                    borderTop: '5px solid #dc2626',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.07)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    transition: 'all 0.3s ease',
+                    cursor: 'pointer'
+                  }}
+                    onClick={() => setActiveMatrixView(activeMatrixView === 'pajak' ? null : 'pajak')}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 20px -4px rgba(220, 38, 38, 0.2)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.07)' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{
+                        width: '48px', height: '48px',
+                        background: 'linear-gradient(135deg, #fee2e2, #fecaca)',
+                        borderRadius: '10px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '1.5rem'
+                      }}>
+                        💰
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+                          Detail Pajak
+                        </h3>
+                        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '2px 0 0' }}>
+                          {gang === 'ALL' ? `${gangs.length} gang` : gang} • {MONTHS[month - 1]} {year}
+                        </p>
+                      </div>
+                      <div style={{ marginLeft: 'auto' }}>
+                        <span style={{
+                          fontSize: '0.65rem',
+                          fontWeight: '700',
+                          background: activeMatrixView === 'pajak' ? '#b91c1c' : '#dc2626',
+                          color: 'white',
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em'
+                        }}>
+                          {activeMatrixView === 'pajak' ? '● AKTIF' : 'LIHAT'}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {['PTKP', 'TER', 'PPh21', 'BPJS', 'ASTEK'].map(s => (
+                        <span key={s} style={{
+                          fontSize: '0.7rem', fontWeight: '600',
+                          background: '#fef2f2', color: '#dc2626',
+                          padding: '2px 8px', borderRadius: '6px',
+                          border: '1px solid #fecaca'
+                        }}>{s}</span>
+                      ))}
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem', color: '#64748b',
+                      borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem'
+                    }}>
+                      Klik untuk melihat rincian perhitungan pajak per karyawan
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1623,6 +1694,7 @@ export default function MainPage({ lockedDiv = null }) {
               const attCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
               const otCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
               const empCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
+              const taxCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}_${isHistorical}`;
               const payCacheKey = `${division}_${month}_${year}_${isHistorical}_${gangPrefix || ''}`;
               return (
                 <>
@@ -1659,6 +1731,19 @@ export default function MainPage({ lockedDiv = null }) {
                       initialData={employeeDataCache[empCacheKey] || null}
                       onDataLoaded={(data) => setEmployeeDataCache(prev => withLRU(prev, empCacheKey, data, CACHE_MAX_ENTRIES))}
                       onViewEmployeeDetail={handleViewEmployeeDetail}
+                    />
+                  </div>
+                  <div style={{ display: activeMatrixView === 'pajak' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', flexDirection: 'column', position: 'relative' }}>
+                    <PayrollTaxMatrix
+                      token={token}
+                      gangCodes={matrixGangCodes}
+                      month={month}
+                      year={year}
+                      division={division}
+                      initialData={taxDataCache[taxCacheKey] || null}
+                      onDataLoaded={(data) => setTaxDataCache(prev => withLRU(prev, taxCacheKey, data, CACHE_MAX_ENTRIES))}
+                      onViewEmployeeDetail={handleViewEmployeeDetail}
+                      useHistoryDb={isHistorical}
                     />
                   </div>
                   {/* Payroll table - always mounted, hidden with display:none when matrix active */}

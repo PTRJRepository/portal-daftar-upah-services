@@ -15,6 +15,7 @@
 
 import { Database } from "../db/client";
 import { faceVerificationService } from "./faceVerificationService";
+import { lemburCalculator } from "./lemburCalculator";
 
 // Status codes for the matrix cells
 export type AttendanceStatus = 'H' | 'C' | 'S' | 'M' | 'N' | 'A' | '-' | 'L';

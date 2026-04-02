@@ -63,7 +63,11 @@ export class EmployeeResolutionService {
      * @returns Resolution result with confidence level
      */
     public async resolve(input: EmployeeResolutionInput): Promise<EmployeeResolutionResult> {
-        const { nik, preferredGangCode } = input;
+        const { nik: rawNik, preferredGangCode: rawGang } = input;
+
+        // ALWAYS trim to handle spaces in input identifiers
+        const nik = (rawNik || '').trim();
+        const preferredGangCode = (rawGang || '').trim() || undefined;
 
         try {
             // Use EmployeeGangHistoryService for resolution
@@ -99,7 +103,7 @@ export class EmployeeResolutionService {
                 confidence: empDetails.found ? 'HIGH' : 'MEDIUM',
             };
         } catch (error) {
-            console.error(`[EmployeeResolutionService] Error resolving ${nik}:`, error);
+            console.error(`[EmployeeResolutionService] Error resolving '${rawNik}':`, error);
             return {
                 originalNik: nik,
                 latestEmpCode: nik,
@@ -127,13 +131,25 @@ export class EmployeeResolutionService {
             return new Map();
         }
 
+        // Always trim all NIKs to handle spaces in input
+        const trimmedNiks = niks.map(n => (n || '').trim()).filter(n => n.length > 0);
+
+        // Also trim preferredGangs keys
+        let trimmedPreferredGangs: Map<string, string> | undefined;
+        if (preferredGangs) {
+            trimmedPreferredGangs = new Map();
+            preferredGangs.forEach((value, key) => {
+                trimmedPreferredGangs!.set((key || '').trim().toUpperCase(), (value || '').trim());
+            });
+        }
+
         try {
-            return await employeeGangHistoryService.resolveLatestEmpCodes(niks, preferredGangs);
+            return await employeeGangHistoryService.resolveLatestEmpCodes(trimmedNiks, trimmedPreferredGangs);
         } catch (error) {
             console.error('[EmployeeResolutionService] Error in batch resolution:', error);
             // Return input as fallback
             const fallback = new Map<string, string>();
-            niks.forEach(nik => fallback.set(nik.toUpperCase(), nik));
+            trimmedNiks.forEach(nik => fallback.set(nik.toUpperCase(), nik));
             return fallback;
         }
     }
@@ -204,11 +220,12 @@ export class EmployeeResolutionService {
     /**
      * Get employee by NIK
      */
-    public async getEmployeeByNik(nik: string): Promise<{
+    public async getEmployeeByNik(rawNik: string): Promise<{
         empCode: string;
         empName: string;
         status: string;
     } | null> {
+        const nik = (rawNik || '').trim();
         try {
             const rows = await this.db.query<{
                 EmpCode: string;
@@ -222,7 +239,7 @@ export class EmployeeResolutionService {
                 FROM HR_EMPLOYEE e
                 WHERE RTRIM(e.NewICNo) = ? OR RTRIM(e.EmpCode) = ?
                 ORDER BY e.Status DESC, e.EmpCode DESC
-            `, [nik.trim(), nik.trim()]);
+            `, [nik, nik]);
 
             const row = rows[0];
             if (!row) return null;
@@ -233,7 +250,7 @@ export class EmployeeResolutionService {
                 status: row.Status,
             };
         } catch (error) {
-            console.error(`[EmployeeResolutionService] Error getting employee by NIK ${nik}:`, error);
+            console.error(`[EmployeeResolutionService] Error getting employee by NIK '${rawNik}':`, error);
             return null;
         }
     }

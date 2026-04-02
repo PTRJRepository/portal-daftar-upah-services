@@ -361,10 +361,14 @@ export const processDivisionData = (groupedData, options = {}) => {
         // Recalculate all row totals
         const processedRows = gangRows.map(row => calculateRowTotals({ ...row }));
 
-        // Filter out empty rows (optional)
-        const filteredRows = options.filterEmpty
-            ? processedRows.filter(r => (r.jumlah_hk || 0) > 0)
-            : processedRows;
+        // ============================================================
+        // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
+        // FILTER: Selalu exclude karyawan dengan kehadiran = 0
+        //
+        // Rule: EXCLUDE if jumlah_hk <= 0
+        // This is always active (not optional) to match backend behavior.
+        // ============================================================
+        const filteredRows = processedRows.filter(r => (r.jumlah_hk || 0) > 0);
 
         if (filteredRows.length === 0) continue;
 

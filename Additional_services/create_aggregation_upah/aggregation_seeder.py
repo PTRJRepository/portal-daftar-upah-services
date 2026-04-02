@@ -363,7 +363,9 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
     original_count = len(employees)
     
     # Filter employees: only include those with HK > 0
-    # "jika ditemukan saat agregasi total HK nya dari tiap karyawn itu nol, maka tidak usah dithiung"
+    # [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
+    # Selalu exclude karyawan dengan kehadiran = 0 (jumlah_hk > 0)
+    # "jika ditemukan saat agregasi total HK nya dari tiap karyawn itu nol, maka tidak usah dihitung"
     active_employees = []
     for emp in employees:
         hk_val = emp.get("jumlah_hk")

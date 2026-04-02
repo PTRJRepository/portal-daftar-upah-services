@@ -1,0 +1,355 @@
+﻿=== DAFTAR UPAH DEBUG ===
+Base URL: http://localhost:8002
+Token: dev-bypass-token-12345
+
+--- Test 1: Current Period ---
+Γ¥î FAILED: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()
+
+--- Test 2: Locked Report (Daftar Upah) - Feb 2026, gang=ALL ---
+HTTP Status: 422
+Response (first 500 chars): {
+  "type": "validation",
+  "on": "query",
+  "property": "/div",
+  "message": "Expected string",
+  "summary": "Expected property 'div' to be string but found: undefined",
+  "expected": {
+    "div": "",
+    "month": "",
+    "year": ""
+  },
+  "found": {
+    "month": "2",
+    "year": "2026"
+  },
+  "errors": [
+    {
+      "type": 54,
+      "schema": {
+        "type": "string"
+      },
+      "path": "/div",
+      "message": "Expected string",
+      "errors": [],
+      "summary": "Expected property 'd
+Response keys: type, on, property, message, summary, expected, found, errors
+
+--- Test 3: Direct extractPayrollData ---
+[VirtualDivisionRegistry] Registered: INF - Infrastruktur
+[VirtualDivisionRegistry] Registered: NRS - Nursery
+[VirtualDivisionRegistry] Registered: WKS_PG - Workshop Parit Gunung (PGE)
+[VirtualDivisionRegistry] Registered: WKS_AR - Workshop Air Ruak (AB2)
+[VirtualDivisionRegistry] Registered: WORKSHOP - Workshop All
+[VirtualDivisionRegistry] Registered: ARC - Air Ruak Central
+[VirtualDivisionRegistry] Registered: MILL - Palm Oil Mill
+[PayrollComponentRegistry] Registered component: lembur (v1)
+[PayrollComponentRegistry] Registered component: premi (v1)
+[PayrollComponentRegistry] Registered component: tunjangan (v1)
+[PayrollComponentRegistry] Registered component: potongan (v1)
+[PayrollComponentRegistry] Registered component: pph21_ter (v1)
+[PayrollComponentRegistry] Registered component: gaji_pokok (v1)
+[DEBUG_PPH] Emp: A0026 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 51943
+[DEBUG_PPH] Emp: A0072 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 78889
+[DEBUG_PPH] Emp: A0129 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 64510
+[DEBUG_PPH] Emp: A0149 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32878
+[DEBUG_PPH] Emp: A0150 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33080
+[DEBUG_PPH] Emp: A0151 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 53438
+[DEBUG_PPH] Emp: A0152 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 53322
+[DEBUG_PPH] Emp: A0154 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29496
+[DEBUG_PPH] Emp: A0220 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 52047
+[DEBUG_PPH] Emp: A0234 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 67014
+[DEBUG_PPH] Emp: A0255 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 51865
+[DEBUG_PPH] Emp: A0256 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15595
+[DEBUG_PPH] Emp: A0257 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 74983
+[DEBUG_PPH] Emp: A0260 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 81626
+[DEBUG_PPH] Emp: A0263 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 17265
+[DEBUG_PPH] Emp: A0266 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 76488
+[DEBUG_PPH] Emp: A0267 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 65073
+[DEBUG_PPH] Emp: A0268 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 79669
+[DEBUG_PPH] Emp: A0374 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15557
+[DEBUG_PPH] Emp: A0380 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15626
+[DEBUG_PPH] Emp: A0522 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15966
+[DEBUG_PPH] Emp: A0638 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 86846
+[DEBUG_PPH] Emp: A0678 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 151171
+[DEBUG_PPH] Emp: A0679 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 77771
+[DEBUG_PPH] Emp: A0738 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 16161
+[DEBUG_PPH] Emp: A0740 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32625
+[DEBUG_PPH] Emp: A0867 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29097
+[DEBUG_PPH] Emp: A0871 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 46693
+[DEBUG_PPH] Emp: A0894 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 78160
+[DEBUG_PPH] Emp: A0895 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 14116
+[DEBUG_PPH] Emp: A0934 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 86732
+[DEBUG_PPH] Emp: A0961 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 86971
+[DEBUG_PPH] Emp: B0069 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28632
+[DEBUG_PPH] Emp: B0079 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 77333
+[DEBUG_PPH] Emp: B0088 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 86085
+[DEBUG_PPH] Emp: B0128 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 16232
+[DEBUG_PPH] Emp: B0129 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 16162
+[DEBUG_PPH] Emp: B0496 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 88935
+[DEBUG_PPH] Emp: B0497 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13921
+[DEBUG_PPH] Emp: B0502 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33263
+[DEBUG_PPH] Emp: B0580 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13958
+[DEBUG_PPH] Emp: B0598 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28527
+[DEBUG_PPH] Emp: B0745 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 46558
+[DEBUG_PPH] Emp: C0001 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 75066
+[DEBUG_PPH] Emp: C0178 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 52271
+[DEBUG_PPH] Emp: C0179 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 52823
+[DEBUG_PPH] Emp: C0186 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45672
+[DEBUG_PPH] Emp: C0188 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 46388
+[DEBUG_PPH] Emp: C0193 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 16069
+[DEBUG_PPH] Emp: C0194 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29142
+[DEBUG_PPH] Emp: C0431 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13691
+[DEBUG_PPH] Emp: C0511 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15721
+[DEBUG_PPH] Emp: C0526 | Doc: "PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13989
+[DEBUG_PPH] Emp: C0669 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33741
+[DEBUG_PPH] Emp: C0670 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33446
+[DEBUG_PPH] Emp: C0699 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28839
+[DEBUG_PPH] Emp: C0743 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32738
+[DEBUG_PPH] Emp: D0006 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15719
+[DEBUG_PPH] Emp: D0007 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45908
+[DEBUG_PPH] Emp: D0014 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 77680
+[DEBUG_PPH] Emp: D0032 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 14100
+[DEBUG_PPH] Emp: D0041 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 46576
+[DEBUG_PPH] Emp: D0070 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 16107
+[DEBUG_PPH] Emp: D0071 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28673
+[DEBUG_PPH] Emp: E0001 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29246
+[DEBUG_PPH] Emp: E0023 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15690
+[DEBUG_PPH] Emp: E0040 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 16184
+[DEBUG_PPH] Emp: E0075 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 64784
+[DEBUG_PPH] Emp: E0401 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32660
+[DEBUG_PPH] Emp: E0446 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45669
+[DEBUG_PPH] Emp: E0524 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 44981
+[DEBUG_PPH] Emp: E0534 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 63177
+[DEBUG_PPH] Emp: E0551 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32793
+[DEBUG_PPH] Emp: E0552 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32734
+[DEBUG_PPH] Emp: E0580 | Doc: "POTONGAN PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28319
+[DEBUG_PPH] Emp: F0003 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13654
+[DEBUG_PPH] Emp: F0005 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 63452
+[DEBUG_PPH] Emp: F0008 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15821
+[DEBUG_PPH] Emp: F0061 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 115492
+[DEBUG_PPH] Emp: F0110 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28739
+[DEBUG_PPH] Emp: F0111 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13720
+[DEBUG_PPH] Emp: F0115 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15512
+[DEBUG_PPH] Emp: F0155 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33561
+[DEBUG_PPH] Emp: F0290 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 52786
+[DEBUG_PPH] Emp: F0410 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 76013
+[DEBUG_PPH] Emp: F0427 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 53646
+[DEBUG_PPH] Emp: F0453 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45114
+[DEBUG_PPH] Emp: F0460 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45492
+[DEBUG_PPH] Emp: F0467 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13750
+[DEBUG_PPH] Emp: F0491 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33171
+[DEBUG_PPH] Emp: F0496 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13568
+[DEBUG_PPH] Emp: F0497 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45426
+[DEBUG_PPH] Emp: F0508 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 46275
+[DEBUG_PPH] Emp: F0512 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15952
+[DEBUG_PPH] Emp: F0513 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13700
+[DEBUG_PPH] Emp: F0517 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29423
+[DEBUG_PPH] Emp: G0033 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 112850
+[DEBUG_PPH] Emp: G0099 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13700
+[DEBUG_PPH] Emp: G0119 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 46733
+[DEBUG_PPH] Emp: G0134 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13925
+[DEBUG_PPH] Emp: G0150 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 64639
+[DEBUG_PPH] Emp: G0173 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29701
+[DEBUG_PPH] Emp: G0182 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45943
+[DEBUG_PPH] Emp: G0184 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 67440
+[DEBUG_PPH] Emp: G0200 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32927
+[DEBUG_PPH] Emp: G0258 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15679
+[DEBUG_PPH] Emp: G0277 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 16109
+[DEBUG_PPH] Emp: G0307 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15889
+[DEBUG_PPH] Emp: G0316 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 52700
+[DEBUG_PPH] Emp: G0445 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28376
+[DEBUG_PPH] Emp: G0511 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28371
+[DEBUG_PPH] Emp: G0528 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28796
+[DEBUG_PPH] Emp: G0530 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33461
+[DEBUG_PPH] Emp: G0537 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32634
+[DEBUG_PPH] Emp: G0578 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 44995
+[DEBUG_PPH] Emp: G0595 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28825
+[DEBUG_PPH] Emp: G0600 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 16169
+[DEBUG_PPH] Emp: G0607 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28906
+[DEBUG_PPH] Emp: H0047 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28321
+[DEBUG_PPH] Emp: H0159 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29530
+[DEBUG_PPH] Emp: H0219 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33060
+[DEBUG_PPH] Emp: H0220 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 88533
+[DEBUG_PPH] Emp: H0252 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29448
+[DEBUG_PPH] Emp: H0277 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33042
+[DEBUG_PPH] Emp: H0330 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 44670
+[DEBUG_PPH] Emp: H0475 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13537
+[DEBUG_PPH] Emp: H0484 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 74464
+[DEBUG_PPH] Emp: H0489 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33048
+[DEBUG_PPH] Emp: H0490 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15786
+[DEBUG_PPH] Emp: H0495 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13811
+[DEBUG_PPH] Emp: H0506 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13570
+[DEBUG_PPH] Emp: H0552 | Doc: "Potongan PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45144
+[DEBUG_PPH] Emp: J0035 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 81583
+[DEBUG_PPH] Emp: J0073 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 86249
+[DEBUG_PPH] Emp: J0078 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29015
+[DEBUG_PPH] Emp: J0134 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 28309
+[DEBUG_PPH] Emp: J0146 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29450
+[DEBUG_PPH] Emp: J0166 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 83503
+[DEBUG_PPH] Emp: J0186 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15710
+[DEBUG_PPH] Emp: J0187 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45552
+[DEBUG_PPH] Emp: J0227 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15511
+[DEBUG_PPH] Emp: J0239 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45713
+[DEBUG_PPH] Emp: J0255 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13585
+[DEBUG_PPH] Emp: J0258 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 152989
+[DEBUG_PPH] Emp: J0259 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32679
+[DEBUG_PPH] Emp: J0260 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 52159
+[DEBUG_PPH] Emp: J0266 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45175
+[DEBUG_PPH] Emp: J0306 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 29268
+[DEBUG_PPH] Emp: J0336 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 85736
+[DEBUG_PPH] Emp: J0341 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 140390
+[DEBUG_PPH] Emp: J0423 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 83351
+[DEBUG_PPH] Emp: J0429 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15743
+[DEBUG_PPH] Emp: J0437 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15578
+[DEBUG_PPH] Emp: J0471 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 86208
+[DEBUG_PPH] Emp: J0553 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 90804
+[DEBUG_PPH] Emp: J0554 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 63924
+[DEBUG_PPH] Emp: J0557 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 73834
+[DEBUG_PPH] Emp: J0560 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 91296
+[DEBUG_PPH] Emp: J0575 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 45918
+[DEBUG_PPH] Emp: J0623 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 46419
+[DEBUG_PPH] Emp: J0718 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 33835
+[DEBUG_PPH] Emp: J0732 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15685
+[DEBUG_PPH] Emp: J0741 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15511
+[DEBUG_PPH] Emp: J0761 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 78329
+[DEBUG_PPH] Emp: J0762 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 81012
+[DEBUG_PPH] Emp: J0768 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 13837
+[DEBUG_PPH] Emp: J0773 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15989
+[DEBUG_PPH] Emp: J0784 | Doc: "Potongan Pph21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 124910
+[DEBUG_PPH] Emp: J0800 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15767
+[DEBUG_PPH] Emp: J0806 | Doc: "Potongan Pph 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 14105
+[DEBUG_PPH] Emp: L0011 | Doc: "POTONGAN PPH021" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 66095
+[DEBUG_PPH] Emp: L0021 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 32739
+[DEBUG_PPH] Emp: L0028 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 75394
+[DEBUG_PPH] Emp: L0055 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 73417
+[DEBUG_PPH] Emp: L0057 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 53920
+[DEBUG_PPH] Emp: L0086 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 53329
+[DEBUG_PPH] Emp: L0087 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 80626
+[DEBUG_PPH] Emp: L0102 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 52226
+[DEBUG_PPH] Emp: L0103 | Doc: "POTONGAN PPH21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15874
+bun.exe : [03:02:45.754] 
+[ERROR] [DB] Gateway Error 
+(500): {"success":false,"db
+":"staging_PTRJ_iFES_Plantw
+are","server":"SERVER_PROFI
+LE_2","execution_ms":11871.
+772200000007,"data":null,"e
+rror":"Database error: 
+Failed to connect to 
+10.0.0.2:1888 in 15000ms"} 
+Error: HTTP 500
+At C:\Users\nbgmf\AppData\R
+oaming\npm\bun.ps1:14 
+char:3
++   & "$basedir/node_module
+s/bun/bin/bun.exe"   $args
++   ~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecified: ([03  
+  :02:45.754] ...Error:    
+ HTTP 500:String) [], R    
+emoteException
+    + FullyQualifiedErrorI 
+   d : NativeCommandError
+ 
+[03:02:45.765] [ERROR] 
+[DB] Query failed (Attempt 
+1/4) Error: Gateway 
+returned 500: Internal 
+Server Error - {"success":f
+alse,"db":"staging_PTRJ_iFE
+S_Plantware","server":"SERV
+ER_PROFILE_2","execution_ms
+":11871.772200000007,"data"
+:null,"error":"Database 
+error: Failed to connect 
+to 10.0.0.2:1888 in 
+15000ms"}
+[03:03:01.314] [ERROR] 
+[DB] Gateway Error (500): {
+"success":false,"db":"stagi
+ng_PTRJ_iFES_Plantware","se
+rver":"SERVER_PROFILE_2","e
+xecution_ms":14997.21660000
+0043,"data":null,"error":"D
+atabase error: Failed to 
+connect to 10.0.0.2:1888 
+in 15000ms"} Error: HTTP 
+500
+[03:03:01.315] [ERROR] 
+[DB] Query failed (Attempt 
+2/4) Error: Gateway 
+returned 500: Internal 
+Server Error - {"success":f
+alse,"db":"staging_PTRJ_iFE
+S_Plantware","server":"SERV
+ER_PROFILE_2","execution_ms
+":14997.216600000043,"data"
+:null,"error":"Database 
+error: Failed to connect 
+to 10.0.0.2:1888 in 
+15000ms"}
+[03:03:17.034] [ERROR] 
+[DB] Gateway Error (500): {
+"success":false,"db":"stagi
+ng_PTRJ_iFES_Plantware","se
+rver":"SERVER_PROFILE_2","e
+xecution_ms":14477.93859999
+9994,"data":null,"error":"D
+atabase error: Failed to 
+connect to 10.0.0.2:1888 
+in 15000ms"} Error: HTTP 
+500
+[03:03:17.035] [ERROR] 
+[DB] Query failed (Attempt 
+3/4) Error: Gateway 
+returned 500: Internal 
+Server Error - {"success":f
+alse,"db":"staging_PTRJ_iFE
+S_Plantware","server":"SERV
+ER_PROFILE_2","execution_ms
+":14477.938599999994,"data"
+:null,"error":"Database 
+error: Failed to connect 
+to 10.0.0.2:1888 in 
+15000ms"}
+[03:03:32.518] [ERROR] 
+[DB] Gateway Error (500): {
+"success":false,"db":"stagi
+ng_PTRJ_iFES_Plantware","se
+rver":"SERVER_PROFILE_2","e
+xecution_ms":13426.97419999
+9997,"data":null,"error":"D
+atabase error: Failed to 
+connect to 10.0.0.2:1888 
+in 15000ms"} Error: HTTP 
+500
+[03:03:32.521] [ERROR] 
+[DB] Query failed (Attempt 
+4/4) Error: Gateway 
+returned 500: Internal 
+Server Error - {"success":f
+alse,"db":"staging_PTRJ_iFE
+S_Plantware","server":"SERV
+ER_PROFILE_2","execution_ms
+":13426.974199999997,"data"
+:null,"error":"Database 
+error: Failed to connect 
+to 10.0.0.2:1888 in 
+15000ms"}
+[HarvesterService] Error 
+fetching batch bunches 
+from staging: Gateway 
+returned 500: Internal 
+Server Error - {"success":f
+alse,"db":"staging_PTRJ_iFE
+S_Plantware","server":"SERV
+ER_PROFILE_2","execution_ms
+":13426.974199999997,"data"
+:null,"error":"Database 
+error: Failed to connect 
+to 10.0.0.2:1888 in 
+15000ms"}
+[HarvesterService] Fetching bunches (LEGACY) for 1840 employees, month: 2 year: 2026
+[PtkpTaxService] Table history_ptkp_pajak assumed to exist (pre-created)

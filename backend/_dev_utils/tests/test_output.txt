@@ -1,0 +1,31 @@
+﻿=== DB CONNECTION DEBUG ===
+DB_API_URL: http://10.0.0.110:8001
+DB_PROFILE: SERVER_PROFILE_1
+DB_DATABASE: db_ptrj
+DB_EXTEND_PROFILE: SERVER_PROFILE_1
+DB_EXTEND_DATABASE: extend_db_ptrj
+
+--- Test 1: Main DB (HR_EMPLOYEE count) ---
+Γ£à SUCCESS: HR_EMPLOYEE has 5948 rows
+
+--- Test 2: Main DB (HR_GANG count) ---
+Γ£à SUCCESS: HR_GANG has 107 rows
+
+--- Test 3: Sample HR_EMPLOYEE data ---
+Γ£à SUCCESS: Got 3 rows
+   0226 - SALASATUN ( TUKIYEM )
+   0239 - MA'RIPAT ( IQ MA'RIPAT)
+   0241 - MA'RIPAT ( IQ MA'RIPAT )
+
+--- Test 4: Extended DB (extend_db_ptrj) ---
+Γ£à SUCCESS: employee_hr_data has 0 rows
+
+--- Test 5: PR_TASKREGLN_ARC (payroll transactions) ---
+Γ£à SUCCESS: Latest period = 2/2026 (49507 records)
+
+--- Test 6: Raw Gateway HTTP test ---
+HTTP Status: 404
+Response: {"message":"Route POST:/query not found","error":"Not Found","statusCode":404}
+Γ¥î Gateway returned error: Not Found
+
+=== DONE ===

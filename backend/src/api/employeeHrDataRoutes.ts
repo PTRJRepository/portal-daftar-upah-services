@@ -67,7 +67,7 @@ export const employeeHrDataRoutes = new Elysia({ prefix: "/employee-hr-data" })
     // --- Single Fetch HR Data ---
     .get("/:emp_code", async ({ params, set }) => {
         try {
-            const data = await employeeHrDataService.getHrData(params.emp_code);
+            const data = await employeeHrDataService.getHrData((params.emp_code || '').trim());
             if (!data) {
                 // Return empty object rather than 404 so UI knows no override exists
                 return { success: true, data: null };
@@ -90,11 +90,13 @@ export const employeeHrDataRoutes = new Elysia({ prefix: "/employee-hr-data" })
 
             // Fallback username if missing auth
             const username = currentUser?.username || 'system';
+            const cleanEmpCode = (params.emp_code || '').trim();
+            const cleanValue = (value || '').trim();
 
             const result = await employeeHrDataService.updateHrDataField(
-                params.emp_code,
+                cleanEmpCode,
                 field,
-                value,
+                cleanValue,
                 username
             );
 

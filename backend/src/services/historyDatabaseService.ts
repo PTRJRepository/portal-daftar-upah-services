@@ -132,6 +132,7 @@ export interface PayrollHistoryDetail {
     emp_code: string;
     emp_name?: string;
     nik?: string;
+    new_nik?: string;  // Tracks when NIK changes in source (db_ptrj). Original nik is NEVER overwritten.
     gender?: string;
     gang_code: string;
     division_code: string;
@@ -285,6 +286,7 @@ export interface HistoryHrEmployee {
     period_month: number;
     period_year: number;
     nik?: string;
+    new_nik?: string;  // Tracks when NIK changes in source (db_ptrj). Original nik is NEVER overwritten.
     emp_code: string;
     emp_name?: string;
     company_code?: string;
@@ -888,105 +890,85 @@ export class HistoryDatabaseService {
     /**
      * Insert payroll history detail.
      *
-     * NOTE (Data Append-Only Pattern):
-     * - Jika master_id + emp_code SUDAH ADA → update existing record
-     * - Jika belum ada → insert new record
-     * - NIK tidak pernah di-update jika sudah ada di database
-     * - Untuk tracking history, gunakan payroll_history_detail_history table
+     * IMPORTANT: DATA APPEND-ONLY PATTERN (Immutable History)
+     * - Selalu INSERT record baru. TIDAK pernah UPDATE record existing.
+     * - NIK TIDAK PERNAH di-update. Jika NIK berubah di source (db_ptrj),
+     *   simpan NIK baru di kolom `new_nik`, JANGAN overwrite kolom `nik`.
+     * - Jika master_id + emp_code sudah ada → INSERT record baru dengan new_nik tracking
+     * - NIK lama (kolom `nik`) adalah ground truth dan TIDAK AKAN PERNAH berubah.
      *
-     * Jika ingin改为 pure append-only (append-only tanpa UPDATE sama sekali):
-     * - Hapus blok UPDATE, hanya biarkan INSERT
-     * - Gunakan unique constraint pada (master_id, emp_code, period_month, period_year)
-     * - Untuk get latest: SELECT dengan ORDER BY version DESC
+     * new_nik tracking:
+     * - new_nik NULL + existing record → INSERT baru (first seeding)
+     * - new_nik berbeda dari existing `nik` → INSERT baru, set new_nik = current source NIK
+     * - new_nik sama dengan existing `nik` → INSERT baru, set new_nik = same value
      */
     public async savePayrollHistoryDetail(data: PayrollHistoryDetail): Promise<number> {
         const db = this.getPayrollDatabase();
 
-        const existing = await db.queryOne<{ id: number }>(`
-            SELECT id FROM dbo.payroll_history_detail
+        // Check existing record to determine new_nik value
+        const existing = await db.queryOne<{ id: number; nik: string; new_nik: string }>(`
+            SELECT id, nik, new_nik FROM dbo.payroll_history_detail
             WHERE master_id = ? AND emp_code = ?
         `, [data.master_id, data.emp_code]);
 
+        let resolvedNewNik: string | undefined = undefined;
+
         if (existing) {
-            await db.query(`
-                UPDATE dbo.payroll_history_detail SET
-                    history_id = ?, emp_name = ?, nik = ?, gender = ?, gang_code = ?, division_code = ?, loc_code = ?,
-                    status_ptkp = ?, kategori_ter = ?, hari_kerja = ?, cuti_tahunan_hari = ?, cuti_sakit_haid_hari = ?,
-                    cuti_minggu_hari = ?, cuti_nasional_hari = ?, jumlah_hk = ?, total_jam_kerja = ?, upah_dasar = ?,
-                    upah_pokok = ?, gaji_pokok = ?, gaji_pokok_ideal = ?, gaji_pokok_aktual = ?, koreksi_hk = ?,
-                    beras_rate = ?, beras_jumlah = ?, jabatan_rate = ?, jabatan_jumlah = ?, masa_kerja_tahun = ?,
-                    masa_kerja_rate = ?, masa_kerja_jumlah = ?, lembur_jam = ?, lembur_rate = ?, lembur_jumlah = ?,
-                    lembur_records = ?, total_tunjangan = ?,
-                    premi_brondol = ?, premi_brondol_loosefruit = ?, premi_brondol_adtrans = ?, premi_brondol_total = ?,
-                    premi_pph = ?, total_premi = ?, premi_detail = ?,
-                    pot_spsi = ?, pot_pph21 = ?, pot_koreksi = ?, pot_bpjs_kesehatan_pekerja = ?, pot_bpjs_kesehatan_majikan = ?,
-                    pot_bpjs_pensiun_pekerja = ?, pot_bpjs_pensiun_majikan = ?, pot_bpjs_pekerja_total = ?,
-                    pot_astek_pekerja = ?, pot_astek_majikan = ?, pot_astek_jumlah = ?, potongan_detail = ?,
-                    total_potongan = ?, total_potongan_bersih = ?, jumlah_upah_kotor = ?, upah_kotor_pajak = ?,
-                    penghasilan_bruto = ?, tarif_pajak_ter = ?, pph21_ter = ?, upah_bersih = ?, task_code = ?, task_desc = ?,
-                    shortage_details = ?, shortage_total_hours = ?
-                WHERE id = ?
-            `, [
-                data.history_id, data.emp_name, data.nik, data.gender, data.gang_code, data.division_code, data.loc_code,
-                data.status_ptkp, data.kategori_ter, data.hari_kerja, data.cuti_tahunan_hari, data.cuti_sakit_haid_hari,
-                data.cuti_minggu_hari, data.cuti_nasional_hari, data.jumlah_hk, data.total_jam_kerja, data.upah_dasar,
-                data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
-                data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
-                data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
-                data.lembur_records, data.total_tunjangan,
-                data.premi_brondol, data.premi_brondol_loosefruit || 0, data.premi_brondol_adtrans || 0, data.premi_brondol_total || 0,
-                data.premi_pph, data.total_premi, data.premi_detail,
-                data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
-                data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
-                data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
-                data.total_potongan, data.total_potongan_bersih, data.jumlah_upah_kotor, data.upah_kotor_pajak,
-                data.penghasilan_bruto, data.tarif_pajak_ter, data.pph21_ter, data.upah_bersih, data.task_code, data.task_desc,
-                data.shortage_details, data.shortage_total_hours, existing.id
-            ]);
-            return existing.id;
+            // NIK dalam source berbeda dari NIK lama yang tersimpan → tracking di new_nik
+            // NIK lama (kolom `nik`) TIDAK PERNAH diubah
+            if (data.nik && existing.nik && data.nik !== existing.nik) {
+                resolvedNewNik = data.nik;  // NIK baru dari source → simpan di new_nik
+            } else if (data.nik) {
+                resolvedNewNik = data.nik;
+            }
         } else {
-            const result = await db.query(`
-                INSERT INTO dbo.payroll_history_detail (
-                    history_id, master_id, emp_code, emp_name, nik, gender, gang_code, division_code, loc_code,
-                    status_ptkp, kategori_ter, hari_kerja, cuti_tahunan_hari, cuti_sakit_haid_hari,
-                    cuti_minggu_hari, cuti_nasional_hari, jumlah_hk, total_jam_kerja, upah_dasar,
-                    upah_pokok, gaji_pokok, gaji_pokok_ideal, gaji_pokok_aktual, koreksi_hk,
-                    beras_rate, beras_jumlah, jabatan_rate, jabatan_jumlah, masa_kerja_tahun,
-                    masa_kerja_rate, masa_kerja_jumlah, lembur_jam, lembur_rate, lembur_jumlah,
-                    lembur_records, total_tunjangan,
-                    premi_brondol, premi_brondol_loosefruit, premi_brondol_adtrans, premi_brondol_total,
-                    premi_pph, total_premi, premi_detail,
-                    pot_spsi, pot_pph21, pot_koreksi, pot_bpjs_kesehatan_pekerja, pot_bpjs_kesehatan_majikan,
-                    pot_bpjs_pensiun_pekerja, pot_bpjs_pensiun_majikan, pot_bpjs_pekerja_total,
-                    pot_astek_pekerja, pot_astek_majikan, pot_astek_jumlah, potongan_detail,
-                    total_potongan, total_potongan_bersih, jumlah_upah_kotor, upah_kotor_pajak,
-                    penghasilan_bruto, tarif_pajak_ter, pph21_ter, upah_bersih, task_code, task_desc,
-                    shortage_details, shortage_total_hours
-                ) OUTPUT INSERTED.id VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?
-                )
-            `, [
-                data.history_id, data.master_id, data.emp_code, data.emp_name, data.nik, data.gender,
-                data.gang_code, data.division_code, data.loc_code, data.status_ptkp, data.kategori_ter,
-                data.hari_kerja, data.cuti_tahunan_hari, data.cuti_sakit_haid_hari, data.cuti_minggu_hari,
-                data.cuti_nasional_hari, data.jumlah_hk, data.total_jam_kerja, data.upah_dasar,
-                data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
-                data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
-                data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
-                data.lembur_records, data.total_tunjangan,
-                data.premi_brondol, data.premi_brondol_loosefruit || 0, data.premi_brondol_adtrans || 0, data.premi_brondol_total || 0,
-                data.premi_pph, data.total_premi, data.premi_detail,
-                data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
-                data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
-                data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
-                data.total_potongan, data.total_potongan_bersih, data.jumlah_upah_kotor, data.upah_kotor_pajak,
-                data.penghasilan_bruto, data.tarif_pajak_ter, data.pph21_ter, data.upah_bersih,
-                data.task_code, data.task_desc, data.shortage_details, data.shortage_total_hours
-            ]);
-            return result[0]?.id;
+            // Record pertama untuk master_id + emp_code ini
+            resolvedNewNik = data.new_nik;
         }
+
+        const result = await db.query(`
+            INSERT INTO dbo.payroll_history_detail (
+                history_id, master_id, emp_code, emp_name, nik, new_nik, gender, gang_code, division_code, loc_code,
+                status_ptkp, kategori_ter, hari_kerja, cuti_tahunan_hari, cuti_sakit_haid_hari,
+                cuti_minggu_hari, cuti_nasional_hari, jumlah_hk, total_jam_kerja, upah_dasar,
+                upah_pokok, gaji_pokok, gaji_pokok_ideal, gaji_pokok_aktual, koreksi_hk,
+                beras_rate, beras_jumlah, jabatan_rate, jabatan_jumlah, masa_kerja_tahun,
+                masa_kerja_rate, masa_kerja_jumlah, lembur_jam, lembur_rate, lembur_jumlah,
+                lembur_records, total_tunjangan,
+                premi_brondol, premi_brondol_loosefruit, premi_brondol_adtrans, premi_brondol_total,
+                premi_pph, total_premi, premi_detail,
+                pot_spsi, pot_pph21, pot_koreksi, pot_bpjs_kesehatan_pekerja, pot_bpjs_kesehatan_majikan,
+                pot_bpjs_pensiun_pekerja, pot_bpjs_pensiun_majikan, pot_bpjs_pekerja_total,
+                pot_astek_pekerja, pot_astek_majikan, pot_astek_jumlah, potongan_detail,
+                total_potongan, total_potongan_bersih, jumlah_upah_kotor, upah_kotor_pajak,
+                penghasilan_bruto, tarif_pajak_ter, pph21_ter, upah_bersih, task_code, task_desc,
+                shortage_details, shortage_total_hours
+            ) OUTPUT INSERTED.id VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?
+            )
+        `, [
+            data.history_id, data.master_id, data.emp_code, data.emp_name,
+            existing ? existing.nik : data.nik,  // JANGAN overwrite NIK lama
+            resolvedNewNik,
+            data.gender, data.gang_code, data.division_code, data.loc_code,
+            data.status_ptkp, data.kategori_ter, data.hari_kerja, data.cuti_tahunan_hari, data.cuti_sakit_haid_hari,
+            data.cuti_minggu_hari, data.cuti_nasional_hari, data.jumlah_hk, data.total_jam_kerja, data.upah_dasar,
+            data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
+            data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
+            data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
+            data.lembur_records, data.total_tunjangan,
+            data.premi_brondol, data.premi_brondol_loosefruit || 0, data.premi_brondol_adtrans || 0, data.premi_brondol_total || 0,
+            data.premi_pph, data.total_premi, data.premi_detail,
+            data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
+            data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
+            data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
+            data.total_potongan, data.total_potongan_bersih, data.jumlah_upah_kotor, data.upah_kotor_pajak,
+            data.penghasilan_bruto, data.tarif_pajak_ter, data.pph21_ter, data.upah_bersih,
+            data.task_code, data.task_desc, data.shortage_details, data.shortage_total_hours
+        ]);
+        return result[0]?.id;
     }
 
     /**
@@ -1666,99 +1648,98 @@ export class HistoryDatabaseService {
     // ============================================================================
 
     /**
-     * Insert HR Employee history
+     * Insert HR Employee history.
+     *
+     * IMPORTANT: DATA APPEND-ONLY PATTERN (Immutable History)
+     * - Selalu INSERT record baru. TIDAK pernah UPDATE record existing.
+     * - NIK TIDAK PERNAH di-update. Jika NIK berubah di source (db_ptrj),
+     *   simpan NIK baru di kolom `new_nik`, JANGAN overwrite kolom `nik`.
+     * - NIK lama (kolom `nik`) adalah ground truth dan TIDAK AKAN PERNAH berubah.
+     *
+     * Constraint: UNIQUE(emp_code, period_month, period_year) diperlukan
+     * untuk mencegah duplikat. Jika constraint belum ada, seeding berulang
+     * pada periode yang sama akan menyebabkan constraint violation (harus di-drop
+     * terlebih dahulu atau gunakan ON CONFLICT).
      */
     public async saveHrEmployeeHistory(data: HistoryHrEmployee): Promise<number> {
         const db = this.getPayrollDatabase(); // HR history goes to extend_db_ptrj
 
-        const existing = await db.queryOne<{ id: number }>(`
-            SELECT id FROM dbo.history_hr_employee
+        // Check existing record to resolve new_nik
+        const existing = await db.queryOne<{ id: number; nik: string; new_nik: string }>(`
+            SELECT id, nik, new_nik FROM dbo.history_hr_employee
             WHERE emp_code = ? AND period_month = ? AND period_year = ?
         `, [data.emp_code, data.period_month, data.period_year]);
 
-        if (existing) {
-            await db.query(`
-                UPDATE dbo.history_hr_employee SET
-                    history_id = ?, nik = ?, emp_name = ?, company_code = ?, division_code = ?, loc_code = ?,
-                    gang_code = ?, job_code = ?, position = ?, join_date = ?, terminate_date = ?, status = ?,
-                    employee_type = ?, gender = ?, religion = ?, tax_status = ?, ptkp_beras = ?, ptkp_pajak = ?,
-                    upah_dasar = ?, total_hk = ?, source_table = ?
-                WHERE id = ?
-            `, [
-                data.history_id, data.nik, data.emp_name, data.company_code, data.division_code, data.loc_code,
-                data.gang_code, data.job_code, data.position, data.join_date, data.terminate_date, data.status,
-                data.employee_type, data.gender, data.religion, data.tax_status, data.ptkp_beras, data.ptkp_pajak,
-                data.upah_dasar, data.total_hk, data.source_table,
-                existing.id
-            ]);
-            return existing.id;
-        } else {
-            const result = await db.query(`
-                INSERT INTO dbo.history_hr_employee(
-                    history_id, period_month, period_year, nik, emp_code, emp_name,
-                    company_code, division_code, loc_code, gang_code, job_code, position,
-                    join_date, terminate_date, status, employee_type, gender, religion,
-                    tax_status, ptkp_beras, ptkp_pajak,
-                    upah_dasar, total_hk, source_table
-                ) OUTPUT INSERTED.id VALUES(
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                )
-            `, [
-                data.history_id, data.period_month, data.period_year, data.nik, data.emp_code,
-                data.emp_name, data.company_code, data.division_code, data.loc_code, data.gang_code,
-                data.job_code, data.position, data.join_date, data.terminate_date, data.status,
-                data.employee_type, data.gender, data.religion,
-                data.tax_status, data.ptkp_beras, data.ptkp_pajak,
-                data.upah_dasar, data.total_hk, data.source_table
-            ]);
+        let resolvedNewNik: string | undefined = undefined;
 
-            return result[0]?.id;
+        if (existing) {
+            // NIK source berbeda dari NIK lama yang tersimpan → tracking di new_nik
+            // NIK lama TIDAK PERNAH diubah
+            if (data.nik && existing.nik && data.nik !== existing.nik) {
+                resolvedNewNik = data.nik;
+            } else if (data.nik) {
+                resolvedNewNik = data.nik;
+            }
+        } else {
+            resolvedNewNik = data.new_nik;
         }
+
+        // Always INSERT - append-only pattern
+        const result = await db.query(`
+            INSERT INTO dbo.history_hr_employee(
+                history_id, period_month, period_year, nik, new_nik, emp_code, emp_name,
+                company_code, division_code, loc_code, gang_code, job_code, position,
+                join_date, terminate_date, status, employee_type, gender, religion,
+                tax_status, ptkp_beras, ptkp_pajak,
+                upah_dasar, total_hk, source_table
+            ) OUTPUT INSERTED.id VALUES(
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+        `, [
+            data.history_id, data.period_month, data.period_year,
+            existing ? existing.nik : data.nik,  // JANGAN overwrite NIK lama
+            resolvedNewNik,
+            data.emp_code,
+            data.emp_name, data.company_code, data.division_code, data.loc_code, data.gang_code,
+            data.job_code, data.position, data.join_date, data.terminate_date, data.status,
+            data.employee_type, data.gender, data.religion,
+            data.tax_status, data.ptkp_beras, data.ptkp_pajak,
+            data.upah_dasar, data.total_hk, data.source_table
+        ]);
+
+        return result[0]?.id;
     }
 
     /**
      * Insert HR Gang history
      */
+    /**
+     * Insert HR Gang history.
+     *
+     * IMPORTANT: DATA APPEND-ONLY PATTERN (Immutable History)
+     * - Selalu INSERT record baru. TIDAK pernah UPDATE record existing.
+     * - Gang history dicatat per periode untuk tracking perubahan komposisi.
+     */
     public async saveHrGangHistory(data: HistoryHrGang): Promise<number> {
         const db = this.getPayrollDatabase(); // HR history goes to extend_db_ptrj
 
-        const existing = await db.queryOne<{ id: number }>(`
-            SELECT id FROM dbo.history_hr_gang
-            WHERE gang_code = ? AND period_month = ? AND period_year = ?
-        `, [data.gang_code, data.period_month, data.period_year]);
+        // Always INSERT - append-only pattern
+        const result = await db.query(`
+            INSERT INTO dbo.history_hr_gang(
+                history_id, period_month, period_year, division_code, loc_code,
+                gang_code, gang_description, mandor_code, mandor_name, mandor_1_code,
+                mandor_1_name, assistant_code, assistant_name, total_members, is_active, source_table
+            ) OUTPUT INSERTED.id VALUES(
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+        `, [
+            data.history_id, data.period_month, data.period_year, data.division_code, data.loc_code,
+            data.gang_code, data.gang_description, data.mandor_code, data.mandor_name,
+            data.mandor_1_code, data.mandor_1_name, data.assistant_code, data.assistant_name,
+            data.total_members, data.is_active, data.source_table
+        ]);
 
-        if (existing) {
-            await db.query(`
-                UPDATE dbo.history_hr_gang SET
-                    history_id = ?, division_code = ?, loc_code = ?, gang_description = ?, mandor_code = ?,
-                    mandor_name = ?, mandor_1_code = ?, mandor_1_name = ?, assistant_code = ?, assistant_name = ?,
-                    total_members = ?, is_active = ?, source_table = ?
-                WHERE id = ?
-            `, [
-                data.history_id, data.division_code, data.loc_code, data.gang_description, data.mandor_code,
-                data.mandor_name, data.mandor_1_code, data.mandor_1_name, data.assistant_code, data.assistant_name,
-                data.total_members, data.is_active, data.source_table,
-                existing.id
-            ]);
-            return existing.id;
-        } else {
-            const result = await db.query(`
-                INSERT INTO dbo.history_hr_gang(
-                    history_id, period_month, period_year, division_code, loc_code,
-                    gang_code, gang_description, mandor_code, mandor_name, mandor_1_code,
-                    mandor_1_name, assistant_code, assistant_name, total_members, is_active, source_table
-                ) OUTPUT INSERTED.id VALUES(
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                )
-            `, [
-                data.history_id, data.period_month, data.period_year, data.division_code, data.loc_code,
-                data.gang_code, data.gang_description, data.mandor_code, data.mandor_name,
-                data.mandor_1_code, data.mandor_1_name, data.assistant_code, data.assistant_name,
-                data.total_members, data.is_active, data.source_table
-            ]);
-
-            return result[0]?.id;
-        }
+        return result[0]?.id;
     }
 
     // ============================================================================
@@ -1813,12 +1794,13 @@ export class HistoryDatabaseService {
         const db = this.getPayrollDatabase(); // history is in extend_db_ptrj
 
         let careerUrl = `
-            SELECT 
-                period_month, 
+            SELECT
+                period_month,
                 period_year,
                 emp_code,
                 emp_name,
                 nik,
+                new_nik,
                 division_code,
                 loc_code,
                 gang_code,
@@ -1826,7 +1808,13 @@ export class HistoryDatabaseService {
                 position,
                 status,
                 employee_type,
-                upah_dasar
+                upah_dasar,
+                tax_status,
+                ptkp_beras,
+                ptkp_pajak,
+                total_hk,
+                join_date,
+                terminate_date
             FROM dbo.history_hr_employee
             WHERE RTRIM(emp_code) = ? OR RTRIM(nik) = ?
             ORDER BY period_year DESC, period_month DESC
@@ -1860,6 +1848,47 @@ export class HistoryDatabaseService {
             career: hrHistory,
             payroll: payrollHistory
         };
+    }
+
+    // ============================================================================
+    // MIGRATION OPERATIONS
+    // ============================================================================
+
+    /**
+     * Migrate history tables to add new_nik column for NIK change tracking.
+     * This is part of the append-only + NIK immutable pattern implementation.
+     *
+     * Run this once to add the new_nik column to existing tables.
+     */
+    public async migrateNewNikColumn(): Promise<void> {
+        const db = this.getPayrollDatabase();
+
+        try {
+            // payroll_history_detail
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='payroll_history_detail' AND COLUMN_NAME='new_nik')
+                BEGIN
+                    ALTER TABLE dbo.payroll_history_detail ADD new_nik VARCHAR(50) NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: payroll_history_detail.new_nik");
+
+            // history_hr_employee
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='history_hr_employee' AND COLUMN_NAME='new_nik')
+                BEGIN
+                    ALTER TABLE dbo.history_hr_employee ADD new_nik VARCHAR(50) NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: history_hr_employee.new_nik");
+
+            console.log("[HistoryDatabaseService] All new_nik migrations completed successfully");
+        } catch (e: any) {
+            console.error("[HistoryDatabaseService] Migration failed:", e.message);
+            throw e;
+        }
     }
 }
 

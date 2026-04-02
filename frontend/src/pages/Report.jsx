@@ -451,6 +451,9 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         if (!gangRows || gangRows.length === 0) continue
         const computedRows = applyComputeToRows(gangRows, computeRulesRef.current)
         const filteredRows = computedRows.filter(r => (r.jumlah_hk || 0) > 0)
+        // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER] Backend dataExtractorService sudah memfilter
+        // karyawan dengan hari_kerja <= 0. Filter jumlah_hk > 0 di frontend adalah redundan
+        // tapi tetap dipertahankan untuk safety net konsistensi.
         if (filteredRows.length === 0) continue
 
         flatRows.push({
@@ -865,6 +868,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           const data = await fetchReportRowsSimple(activeToken, { month: activeMonth, year: activeYear, gang_code: finalGangCode, division: finalDivision, skip: 0, limit: INFINITE_BATCH_SIZE, use_history: useHistory })
 
           const computed = applyComputeToRows(data, computeRulesRef.current)
+          // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER] Safety net: exclude 0 HK
           const filtered = computed.filter(row => (row.jumlah_hk || 0) > 0)
 
           setRows(filtered)
@@ -1802,6 +1806,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
                       if (batch && batch.length > 0) {
                         const computed = applyComputeToRows(batch, computeRulesRef.current)
+                        // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER] Safety net: exclude 0 HK
                         const filtered = computed.filter(row => (row.jumlah_hk || 0) > 0)
                         recomputeAutoHideMap(filtered)
                         rq.successCallback(filtered, -1)

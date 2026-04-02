@@ -69,6 +69,8 @@ export class EmployeeHrDataService {
                                 ALTER TABLE dbo.employee_hr_data ADD bank_acc_no VARCHAR(50) NULL;
                             IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='employee_hr_data' AND COLUMN_NAME='bank_code')
                                 ALTER TABLE dbo.employee_hr_data ADD bank_code VARCHAR(50) NULL;
+                            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='employee_hr_data' AND COLUMN_NAME='new_nik')
+                                ALTER TABLE dbo.employee_hr_data ADD new_nik VARCHAR(50) NULL;
                         END
                     `
                 },
@@ -145,7 +147,12 @@ export class EmployeeHrDataService {
     }
 
     /**
-     * Update HR Data field (e.g. nik_ktp, bank_acc_no) and insert history record
+     * Update HR Data field (e.g. bank_acc_no, npwp) and insert history record.
+     *
+     * IMPORTANT: DATA APPEND-ONLY PATTERN
+     * - NIK (nik_ktp) TIDAK BISA di-update. Ini adalah immutable identifier.
+     *   Jika NIK berubah di Plantware/db_ptrj, simpan NIK baru di kolom `new_nik`.
+     *   Kolom `nik_ktp` yang lama TIDAK AKAN PERNAH berubah.
      */
     public async updateHrDataField(
         empCode: string,
@@ -155,6 +162,16 @@ export class EmployeeHrDataService {
     ): Promise<boolean> {
         try {
             const cleanEmpCode = empCode.trim().toUpperCase();
+
+            // CRITICAL: NIK is IMMUTABLE - reject any edit attempt
+            if (fieldName === 'nik_ktp' || fieldName === 'nik') {
+                throw new Error(
+                    `NIK (nik_ktp) tidak bisa di-edit. ` +
+                    `NIK adalah immutable identifier. ` +
+                    `Jika NIK berubah di source (Plantware/db_ptrj), ` +
+                    `gunakan kolom 'new_nik' untuk tracking perubahan.`
+                );
+            }
 
             // 1. Get existing data to find old_value and current version
             const existing = await this.getHrData(cleanEmpCode);

@@ -107,9 +107,9 @@ export const PayrollAggregator = {
     emp.pot_bpjs_jumlah = emp.pot_bpjs_pekerja_total + bpjsMajTotal;
 
     // pot_total_4 (Potongan Lainnya)
-    // Formula: pph21 + kontan + pendapatan_lainnya + pinjam + kl + tiket + alat + spsi + koreksi + bpjs_pekerja_total + astek
+    // [FIXED 2026-04-01] pot_kontan DIHAPUS karena sudah termasuk di pot_pendapatan_lainnya (double-count)
+    // Formula: pph21 + pendapatan_lainnya + pinjam + kl + tiket + alat + spsi + koreksi + bpjs_pekerja_total + astek
     emp.pot_total_4 = val(emp.pot_pph21) +
-      val(emp.pot_kontan) +
       val(emp.pot_pendapatan_lainnya) +
       val(emp.pot_pinjam) +
       val(emp.pot_kl) +
@@ -169,10 +169,9 @@ export const PayrollAggregator = {
    * Applies calculation logic to each row.
    * @param {Object} data - Nested JSON from backend { division, gangs: [{ gang_code, employees: [] }] }
    * @param {Object} dynamicHeaders - Optional map of dynamic headers to fields
-   * @param {boolean} hideZeroHK - If true, exclude employees with jumlah_hk = 0 (default: true)
    * @returns {Array} Flat array of employee objects
    */
-  flattenData: (data, dynamicHeaders = {}, hideZeroHK = true) => {
+  flattenData: (data, dynamicHeaders = {}) => {
     if (!data || !data.gangs) return [];
 
     const flatRows = [];
@@ -188,11 +187,18 @@ export const PayrollAggregator = {
       }
     });
 
-    // Filter out employees with 0 HK if hideZeroHK is enabled
-    if (hideZeroHK) {
-      return flatRows.filter(row => (row.jumlah_hk || 0) > 0);
-    }
-    return flatRows;
+    // ============================================================
+    // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
+    // FILTER: Selalu exclude karyawan dengan kehadiran = 0
+    //
+    // Using hari_kerja (kehadiran) instead of jumlah_hk because:
+    // - hari_kerja = hk - seluruh cuti (tahunan, sakit, minggu, nasional)
+    // - This reflects actual work days after leave deductions
+    // - jumlah_hk is gross HK without leave deductions
+    //
+    // Rule: EXCLUDE if hari_kerja <= 0 (same logic as backend)
+    // ============================================================
+    return flatRows.filter(row => (row.hari_kerja || row.kehadiran || 0) > 0);
   },
 
   /**

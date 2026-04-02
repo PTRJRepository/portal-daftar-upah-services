@@ -1,0 +1,32 @@
+﻿[HarvesterService] Staging DB disabled via DISABLE_STAGING_DB env flag
+[VirtualDivisionRegistry] Registered: INF - Infrastruktur
+[VirtualDivisionRegistry] Registered: NRS - Nursery
+[VirtualDivisionRegistry] Registered: WKS_PG - Workshop Parit Gunung (PGE)
+[VirtualDivisionRegistry] Registered: WKS_AR - Workshop Air Ruak (AB2)
+[VirtualDivisionRegistry] Registered: WORKSHOP - Workshop All
+[VirtualDivisionRegistry] Registered: ARC - Air Ruak Central
+[VirtualDivisionRegistry] Registered: MILL - Palm Oil Mill
+[PayrollComponentRegistry] Registered component: lembur (v1)
+[PayrollComponentRegistry] Registered component: premi (v1)
+[PayrollComponentRegistry] Registered component: tunjangan (v1)
+[PayrollComponentRegistry] Registered component: potongan (v1)
+[PayrollComponentRegistry] Registered component: pph21_ter (v1)
+[PayrollComponentRegistry] Registered component: gaji_pokok (v1)
+Fetching period...
+Period: 3/2026
+Fetching gangs for PG1A...
+[GangService] fetchGangs triggered - Div: PG1A, Search: undefined, Profile: SERVER_PROFILE_1, DB: db_ptrj
+[DivisionConfigService] getGangsForDivision: PG1A, resolved: PG1A, type: real
+[DivisionConfigService] Executing query for PG1A with aliases: ["P1A","P1a","pg1a","PLASMA1A","Plasma 1A"]
+[DivisionConfigService] Database returned 14 rows
+[GangService] divisionConfigService returned 14 gangs for PG1A
+[GangService] Returning 14 gangs.
+Extracting payroll data...
+[GangService] fetchGangs triggered - Div: PG1A, Search: undefined, Profile: SERVER_PROFILE_1, DB: db_ptrj
+[DivisionConfigService] getGangsForDivision: PG1A, resolved: PG1A, type: real
+[DivisionConfigService] Executing query for PG1A with aliases: ["P1A","P1a","pg1a","PLASMA1A","Plasma 1A"]
+[DivisionConfigService] Database returned 14 rows
+[GangService] divisionConfigService returned 14 gangs for PG1A
+[GangService] Returning 14 gangs.
+[HarvesterService] Fetching bunches (LEGACY) for [0m[33m230[0m employees, month: [0m[33m3[0m year: [0m[33m2026[0m
+[PtkpTaxService] Table history_ptkp_pajak assumed to exist (pre-created)

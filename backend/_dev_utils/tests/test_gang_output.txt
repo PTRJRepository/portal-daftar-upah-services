@@ -1,0 +1,60 @@
+﻿=== GANG LOADING DEBUG ===
+
+--- Test 1: All LocCodes in HR_GANG ---
+  LocCode: "AB1" -> 6 gangs
+  LocCode: "AB2" -> 8 gangs
+  LocCode: "ARA" -> 7 gangs
+  LocCode: "ARC" -> 14 gangs
+  LocCode: "DME" -> 12 gangs
+  LocCode: "IJL" -> 3 gangs
+  LocCode: "P1A" -> 14 gangs
+  LocCode: "P1B" -> 11 gangs
+  LocCode: "P2A" -> 14 gangs
+  LocCode: "P2B" -> 8 gangs
+  LocCode: "PGE" -> 10 gangs
+
+--- Test 2: getGangsForDivision('PG1A') ---
+  Result: 14 gangs
+    A1H (P1A)
+    A1M (P1A)
+    A1P (P1A)
+    A1T (P1A)
+    A2M (P1A)
+
+--- Test 3: PG1A aliases ---
+  Aliases: ["P1A","P1a","pg1a","PLASMA1A","Plasma 1A"]
+
+--- Test 4: Direct query WHERE LocCode = P1A ---
+  Result: 14 gangs
+    A1H - P1A
+    A1M - P1A
+    A1P - P1A
+    A1T - P1A
+    A2M - P1A
+
+--- Test 5: getGangsForDivision('AB1') ---
+  Result: 6 gangs
+
+--- Test 6: getAllDivisionCodes ---
+  Division codes: PG1A, PG1B, PG2A, PG2B, PGE, AB1, AB2, ARA, ARC, DME, IJL, INF, NRS, WKS_AR, WKS_PG, WORKSHOP, MILL
+
+--- Test 7: Gangs per division ---
+  PG1A: 14 gangs
+  PG1B: 11 gangs
+  PG2A: 14 gangs
+  PG2B: 8 gangs
+  PGE: 10 gangs
+  AB1: 6 gangs
+  AB2: 8 gangs
+  ARA: 7 gangs
+  ARC: 14 gangs
+  DME: 12 gangs
+  IJL: 3 gangs
+  INF: 2 gangs
+  NRS: 1 gangs
+  WKS_AR: 1 gangs
+  WKS_PG: 1 gangs
+  WORKSHOP: 2 gangs
+  MILL: 0 gangs
+
+=== DONE ===

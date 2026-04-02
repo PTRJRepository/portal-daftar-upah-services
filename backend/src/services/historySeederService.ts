@@ -743,7 +743,7 @@ export class HistorySeederService {
 
         try {
             let sql = `
-                SELECT 
+                SELECT
                     e.NewICNo as nik,
                     e.EmpCode as emp_code,
                     e.EmpName as emp_name,
@@ -751,8 +751,8 @@ export class HistorySeederService {
                     g.LocCode as division_code,
                     g.LocCode as loc_code,
                     g.GangCode as gang_code,
-                    NULL as job_code,
-                    NULL as position,
+                    RTRIM(p.JobCode) as job_code,
+                    RTRIM(p.Position) as position,
                     em.AppJoinGrpDate as join_date,
                     em.TerminateDate as terminate_date,
                     e.Status as status,
@@ -762,23 +762,29 @@ export class HistorySeederService {
                     e.MaritalStatus as marital_status,
                     e.PlaceOfBirth as birth_place,
                     e.DOB as birth_date,
-                    NULL as tax_status,
-                    0 as upah_dasar,
-                    -- PTKP Beras Logic
-                    (SELECT TOP 1 CAST(RiceRation AS VARCHAR) FROM HR_PAYROLL p WHERE p.EmpCode = e.EmpCode) as ptkp_beras,
-                    NULL as ptkp_pajak,
+                    RTRIM(p.TaxStatus) as tax_status,
+                    -- upah_dasar: get actual PayRate from HR_PAYROLL
+                    -- PayRate can be 0 for valid cases (new employees, terminated, etc.)
+                    -- DO NOT skip or filter on this value - 0 is a valid state
+                    p.PayRate as upah_dasar,
+                    -- PTKP Beras from RiceRation
+                    CAST(p.RiceRation AS VARCHAR) as ptkp_beras,
+                    -- PTKP Pajak: simplified mapping from TaxStatus
+                    RTRIM(p.TaxStatus) as ptkp_pajak,
                     COALESCE((
                         SELECT SUM(Hours)/7.0
-                        FROM PR_TASKREG tr 
+                        FROM PR_TASKREG tr
                         JOIN PR_TASKREGLN trl ON tr.ID = trl.MasterID
-                        WHERE trl.EmpCode = e.EmpCode 
-                          AND MONTH(trl.TrxDate) = ${options.periodMonth} 
+                        WHERE trl.EmpCode = e.EmpCode
+                          AND MONTH(trl.TrxDate) = ${options.periodMonth}
                           AND YEAR(trl.TrxDate) = ${options.periodYear}
                     ), 0) as total_hk
                 FROM HR_EMPLOYEE e
                 JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
                 LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
                 LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                -- JOIN HR_PAYROLL to get actual rates (PayRate, JobCode, Position, TaxStatus, RiceRation)
+                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                 WHERE 1=1
             `;
 
@@ -825,8 +831,8 @@ export class HistorySeederService {
                     division_code: row.division_code?.trim(),
                     loc_code: row.loc_code?.trim(),
                     gang_code: row.gang_code?.trim(),
-                    job_code: row.job_code?.trim(),
-                    position: row.position?.trim(),
+                    job_code: row.job_code?.trim() || undefined,
+                    position: row.position?.trim() || undefined,
                     join_date: row.join_date,
                     terminate_date: row.terminate_date,
                     status: row.status?.trim(),
@@ -836,10 +842,13 @@ export class HistorySeederService {
                     birth_place: row.birth_place?.trim(),
                     birth_date: row.birth_date,
                     marital_status: row.marital_status?.trim(),
-                    tax_status: row.tax_status?.trim(),
-                    ptkp_beras: row.ptkp_beras?.trim(),
-                    ptkp_pajak: row.ptkp_pajak?.trim() || row.tax_status?.trim(), // simplified mapping
-                    upah_dasar: row.upah_dasar || 0,
+                    tax_status: row.tax_status?.trim() || undefined,
+                    ptkp_beras: row.ptkp_beras?.trim() || undefined,
+                    ptkp_pajak: row.ptkp_pajak?.trim() || undefined,
+                    // upah_dasar: use actual PayRate from HR_PAYROLL
+                    // NOTE: PayRate can be 0 for valid cases (new employees, terminated, etc.)
+                    // DO NOT change this to skip/filter on 0 value - 0 is valid
+                    upah_dasar: row.upah_dasar ?? 0,
                     total_hk: row.total_hk || 0,
                     source_table: 'HR_EMPLOYEE_JOIN'
                 };

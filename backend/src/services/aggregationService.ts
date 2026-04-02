@@ -213,6 +213,17 @@ export class AggregationService {
         const rulesApplied: any[] = [];
         const originalCount = dataRows.length;
 
+        // ============================================================
+        // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
+        // FILTER: Selalu exclude karyawan dengan kehadiran = 0
+        //
+        // Using jumlah_hk for aggregation because the backend
+        // dataExtractorService already filtered out employees where
+        // hari_kerja <= 0 (kehadiran = 0) at the source.
+        // At aggregation level, jumlah_hk > 0 is sufficient indicator.
+        //
+        // Rule: EXCLUDE if jumlah_hk <= 0
+        // ============================================================
         // Rule 1: Filter zero HK
         const filteredRows = dataRows.filter(row => this.getNumericValue(row, 'jumlah_hk') > 0);
 
@@ -250,11 +261,12 @@ export class AggregationService {
                     const pendapatanTidakTetapThp = this.getNumericValue(row, 'pendapatan_tidak_tetap_thp');
                     const pendapatanLainya = this.getNumericValue(row, 'pot_pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_thr');
                     
-                    // jumlah_upah_kotor = (gaji_pokok + total_tunjangan + total_premi + pendapatan_tidak_tetap_thp + pendapatan_lainnya) - pot_koreksi
-                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanTidakTetapThp + pendapatanLainya) - potKoreksi;
+                    // [FIXED 2026-04-01] DUPLIKASI FIX: pendapatan_tidak_tetap_thp DIHAPUS dari formula
+                    // pendapatan_lainnya sudah mencakup SEMUA other incomes (termasuk THP items)
+                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanLainya) - potKoreksi;
                     
-                    // upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph - pendapatan_tidak_tetap_thp
-                    calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph - pendapatanTidakTetapThp;
+                    // [FIXED 2026-04-01] DUPLIKASI FIX: -pendapatan_tidak_tetap_thp DIHAPUS (simetris)
+                    calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph;
                 }
 
                 row['upah_bersih'] = calculatedUpahBersih;

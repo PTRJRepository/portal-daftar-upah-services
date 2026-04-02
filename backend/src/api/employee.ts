@@ -368,7 +368,8 @@ employeeRoutes
 
     // --- Get Employee by NIK ---
     .get("/by-nik/:nik", async ({ params, set, currentUser }) => {
-        const employee = await employeeRepository.getByNik(params.nik);
+        const nik = (params.nik || '').trim();
+        const employee = await employeeRepository.getByNik(nik);
         if (!employee) {
             set.status = 404;
             return { error: "Employee not found" };
@@ -397,7 +398,7 @@ employeeRoutes
     // --- Checkroll (Full Implementation) ---
     .get("/:emp_code/checkroll", async ({ params, query, set, currentUser }) => {
         try {
-            let empCode = params.emp_code;
+            let empCode = (params.emp_code || '').trim();
             const month = parseInt(query.month);
             const year = parseInt(query.year);
 
@@ -474,7 +475,7 @@ employeeRoutes
     // --- Attendance Detail (Full Implementation) ---
     .get("/:emp_code/attendance/detail", async ({ params, query, set, currentUser }) => {
         try {
-            const empCode = params.emp_code;
+            const empCode = (params.emp_code || '').trim();
             const month = parseInt(query.month);
             const year = parseInt(query.year);
 
@@ -521,7 +522,7 @@ employeeRoutes
     // --- Overtime Detail (Full Implementation) ---
     .get("/:emp_code/overtime/detail", async ({ params, query, set, currentUser }) => {
         try {
-            const empCode = params.emp_code;
+            const empCode = (params.emp_code || '').trim();
             const month = parseInt(query.month);
             const year = parseInt(query.year);
 
@@ -568,7 +569,7 @@ employeeRoutes
     // --- Lembur Calculation (New) ---
     .get("/:emp_code/lembur", async ({ params, query, set, currentUser }) => {
         try {
-            const empCode = params.emp_code;
+            const empCode = (params.emp_code || '').trim();
             const month = parseInt(query.month);
             const year = parseInt(query.year);
 

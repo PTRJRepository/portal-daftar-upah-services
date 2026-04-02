@@ -1,0 +1,25 @@
+﻿bun.exe : error: Cannot 
+find package 'axios' from 
+'D:\Gawean Rebinmas\PORTAL_
+ESTATE\Plantware_Auto_Repor
+t\Daftar_Upah_baru\payroll_
+daftar_upah\refactor_produc
+tion\backend\_dev_utils\tes
+ts\test_api_gangs.ts'
+At C:\Users\nbgmf\AppData\R
+oaming\npm\bun.ps1:14 
+char:3
++   & "$basedir/node_module
+s/bun/bin/bun.exe"   $args
++   ~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecified: (err  
+  or: Cannot f...t_api_g   
+ angs.ts':String) [], R    
+emoteException
+    + FullyQualifiedErrorI 
+   d : NativeCommandError
+ 
+
+Bun v1.3.5 (Windows x64)
