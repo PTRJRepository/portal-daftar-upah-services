@@ -20,6 +20,7 @@ import PayslipPrintPage from './pages/PayslipPrintPage'
 import CustomPayrollTable from './components/CustomPayrollTable'
 import GangAttendanceMatrix from './components/GangAttendanceMatrix'
 import GangOvertimeMatrix from './components/GangOvertimeMatrix'
+import GangEmployeeInfo from './components/GangEmployeeInfo'
 import EmployeeDirectoryPage from './pages/EmployeeDirectoryAnalytics'
 import SummaryReportPage from './pages/SummaryReportPage'
 import WagesSummaryRebinmasPage from './pages/WagesSummaryRebinmasPage'
@@ -195,8 +196,9 @@ const OperationalReportWrapper = () => {
     console.log('[OperationalReport] Context Menu: Opening HR Profile tab for employee:', employeeData);
     const empCode = employeeData.emp_code || employeeData.EmpCode || employeeData.nik || employeeData.NIK;
     if (empCode) {
-        setHrSearchNik(empCode);
-        setViewMode('employee-directory');
+        const params = new URLSearchParams({ nik: empCode });
+        const hrPath = buildAppPath(`/hr-info?${params.toString()}`);
+        window.open(hrPath, '_blank', 'noopener,noreferrer');
     } else {
         console.error('[OperationalReport] Cannot view HR Profile: emp_code is missing');
     }
@@ -726,10 +728,13 @@ const OperationalReportWrapper = () => {
             gangPrefix={gangPrefix || null}
           />
         ) : viewMode === 'employee-directory' ? (
-          <EmployeeDirectoryPage
-            key={hrSearchNik || 'directory_base'}
-            defaultView="table"
-            initialSearchQuery={hrSearchNik}
+          <GangEmployeeInfo
+            token={token}
+            gangCodes={gang === 'ALL' ? (filteredGangs.length > 0 ? filteredGangs : gangs).map(g => g.gang_code) : [gang]}
+            month={month}
+            year={year}
+            division={division}
+            onViewEmployeeDetail={handleViewEmployeeDetail}
           />
         ) : viewMode === 'attendance' ? (
           <GangAttendanceMatrix
