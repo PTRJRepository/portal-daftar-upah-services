@@ -11,6 +11,21 @@ import { User, UserRole } from "../types/user";
 
 const authService = AuthService.getInstance();
 
+/**
+ * [PERFORMANCE] Strip heavy per-row array fields before sending JSON to browser.
+ * Fields like shortage_details[], excess_details[], other_incomes[] are not needed
+ * by the summary table but can make JSON 5-20x larger → browser "Aw, Snap!" crash.
+ *
+ * Notes on kept fields:
+ * - has_shortage / has_excess: boolean flags, needed by table cell renderer for coloring
+ * - shortage_total_hours / excess_total_hours: summary totals, needed for tooltip summary
+ * - shortage_details[] / excess_details[]: REMOVED — detail arrays, not used in table view
+ */
+function slimEmployee(emp: any): any {
+    const { shortage_details, excess_details, other_incomes, lembur_records, ...rest } = emp;
+    return rest;
+}
+
 // Helper to get user from header
 async function getUserFromHeader(headers: Record<string, string | undefined>): Promise<User | null> {
     const authHeader = headers["authorization"];
@@ -245,7 +260,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "division_code, month, and year are required" };
             }
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix);
+            // [OPTIMIZATION] The user explicitly requested to skip heavy bunches data (tandan) for the main table view
+            const skipHarvest = true;
+
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix, skipHarvest);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -332,32 +350,41 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 gangsMap[gang].push(row);
             }
 
+            console.log(`[PayrollRoutes] division-raw-tree: division=${divisionCode}, month=${month}, year=${year}, gangPrefix=${gangPrefix || 'none'}`);
+            console.log(`[PayrollRoutes] division-raw-tree: data_rows count=${result.data_rows.length}, gangs count=${Object.keys(gangsMap).length}`);
+            console.log(`[PayrollRoutes] division-raw-tree: dynamic_premi=${result.dynamic_premi_headers?.length || 0}, dynamic_pot=${result.dynamic_potongan_headers?.length || 0}`);
+
+            // [PERFORMANCE] Calculate totals FIRST (needs full data with arrays),
+            // then strip heavy array fields from employee rows before serializing to JSON.
+            // This prevents "Aw, Snap!" browser crash caused by oversized JSON.
+            const grandTotal = calculateTotals(result.data_rows);
+
             // Build gangs list with pre-calculated totals
             const gangsList = Object.entries(gangsMap)
                 .map(([gang_code, employees]) => ({
                     gang_code,
-                    employees,
-                    gang_totals: calculateTotals(employees)  // Pre-calculated totals from backend
+                    employees: employees.map(slimEmployee),  // Strip heavy arrays before sending
+                    gang_totals: calculateTotals(employees)  // Pre-calculated totals from FULL data
                 }))
                 .sort((a, b) => a.gang_code.localeCompare(b.gang_code));
 
-            // Calculate grand total for the entire division
-            const grandTotal = calculateTotals(result.data_rows);
+            // grand total already calculated above (before slimming)
 
-
-
-            return {
+            const response = {
                 division: divisionCode,
                 month,
                 year,
                 gangs: gangsList,
                 grand_total: grandTotal,  // Division-level totals
-                dynamic_premi_headers: result.dynamic_premi_headers,
-                dynamic_potongan_headers: result.dynamic_potongan_headers,
-                premi_title_map: result.premi_title_map,
-                potongan_title_map: result.potongan_title_map,
-                meta: result.meta
+                dynamic_premi_headers: result.dynamic_premi_headers || [],
+                dynamic_potongan_headers: result.dynamic_potongan_headers || [],
+                premi_title_map: result.premi_title_map || {},
+                potongan_title_map: result.potongan_title_map || {},
+                meta: result.meta || {}
             };
+
+            console.log(`[PayrollRoutes] division-raw-tree: returning response with ${gangsList.length} gangs`);
+            return response;
         } catch (e: any) {
             console.error("[PayrollRoutes] division-raw-tree error:", e);
             set.status = 500;
@@ -454,7 +481,17 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             // Use Config.DB_PROFILE for payroll data (main payroll database)
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix);
+            // [OPTIMIZATION] Skip heavy bunches data (tandan) for the main table view
+            const skipHarvest = true;
+
+            console.log(`[PayrollRoutes] /locked/report/raw-tree | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix} useHistory=${useHistoryDb}`);
+
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix, skipHarvest);
+
+            // [DEBUG] Log result summary
+            const empCount = result?.data_rows?.length || 0;
+            const gangCount = result?.gangs?.length || 0;
+            console.log(`[PayrollRoutes] /locked/report/raw-tree RESULT | gangs=${gangCount} employees=${empCount} | gangPrefix=${gangPrefix}`);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -563,17 +600,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 gangsMap[gang].push(row);
             }
 
+            // [PERFORMANCE] Calculate totals FIRST (needs full data with arrays),
+            // then strip heavy array fields from employee rows before serializing to JSON.
+            // This prevents "Aw, Snap!" browser crash caused by oversized JSON.
+            const grandTotal = calculateTotals(result.data_rows);
+
             // Build gangs list with pre-calculated totals
             const gangsList = Object.entries(gangsMap)
                 .map(([gang_code, employees]) => ({
                     gang_code,
-                    employees,
-                    gang_totals: calculateTotals(employees)  // Pre-calculated totals from backend
+                    employees: employees.map(slimEmployee),  // Strip heavy arrays before sending
+                    gang_totals: calculateTotals(employees)  // Pre-calculated totals from FULL data
                 }))
                 .sort((a, b) => a.gang_code.localeCompare(b.gang_code));
 
-            // Calculate grand total for the entire division
-            const grandTotal = calculateTotals(result.data_rows);
+            // grand total already calculated above (before slimming)
 
 
 
@@ -646,6 +687,43 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             remarks: t.Optional(t.String())
         })
     })
+    // --- Explicit Strict Income Deletion (Kontan/THR) ---
+    .post("/locked/income-delete", async ({ body, set, currentUser }) => {
+        try {
+            if (!currentUser) { set.status = 401; return { error: "Unauthorized" }; }
+            const { Database } = await import("../db/client");
+            const { cacheService } = await import("../services/cacheService");
+            const data = body as any;
+            const db = Database.getExtendedInstance();
+            
+            const incomeType = String(data.income_type || '').toUpperCase().trim();
+            const realNik = (data.nik || '').trim();
+            
+            if (!incomeType || !realNik || !data.period_month || !data.period_year) {
+                set.status = 400; return { error: "income_type, nik, period_month, period_year required" };
+            }
+
+            // Strictly delete ONLY this income type for this employee
+            await db.query(`
+                DELETE FROM employee_other_incomes 
+                WHERE nik = ? AND period_month = ? AND period_year = ? AND income_type = ?
+            `, [realNik, data.period_month, data.period_year, incomeType]);
+            
+            const pattern = `payroll_data:${data.period_month}:${data.period_year}`;
+            cacheService.clearByPattern(pattern);
+            
+            return { success: true, message: `${incomeType} deleted successfully for NIK ${realNik}` };
+        } catch (e: any) {
+            set.status = 500; return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            nik: t.String(),
+            period_month: t.Number(),
+            period_year: t.Number(),
+            income_type: t.String()
+        })
+    })
     // --- Locked Pendapatan Lainnya Edit (Generic: Kontanan, Insentif, etc.) ---
     .post("/locked/pendapatan-lainnya-edit", async ({ body, set, currentUser }) => {
         try {
@@ -668,11 +746,12 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { error: "income_type is required" };
             }
 
-            // Look for existing record for this NIK + income_type in this period
+            // Look for existing record for this NIK + emp_name + income_type in this period
+            // Using NIK + emp_name to disambiguate employees that may share the same NIK
             const existing = await db.query(`
                 SELECT id FROM employee_other_incomes 
-                WHERE nik = ? AND period_year = ? AND period_month = ? AND income_type = ?
-            `, [data.nik, data.period_year, data.period_month, incomeType]);
+                WHERE nik = ? AND emp_name = ? AND period_year = ? AND period_month = ? AND income_type = ?
+            `, [data.nik, data.emp_name, data.period_year, data.period_month, incomeType]);
 
             const clearPeriodCache = () => {
                 const pattern = `payroll_data:${data.period_month}:${data.period_year}`;

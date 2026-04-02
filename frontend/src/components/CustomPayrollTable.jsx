@@ -123,8 +123,6 @@ export default function CustomPayrollTable({
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
-    // Track request ID to ignore stale responses from overlapping requests (race condition fix)
-    const requestIdRef = useRef(0);
     // Track data readiness - only show table content after confirmed data load
     const [dataReady, setDataReady] = useState(false);
     const [error, setError] = useState('');
@@ -649,17 +647,24 @@ export default function CustomPayrollTable({
     }, []);
 
     /**
-     * processRawData: Takes cached raw API data and applies gangCode/gangPrefix filters client-side.
-     * This is the single source of truth for transforming raw data → display rows.
+     * processRawData: Transform raw API data → display rows with filters applied.
+     * No caching - direct display.
      */
     const processRawData = useCallback((data, currentGangCode, currentGangPrefix) => {
+        console.log('[CustomPayrollTable] 📥 processRawData called:', {
+            hasData: !!data,
+            dataKeys: data ? Object.keys(data) : [],
+            gangsCount: data?.gangs?.length,
+            employeesCount: data?.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0),
+            currentGangCode,
+            currentGangPrefix
+        });
+
         if (!data) {
-            console.log('[CustomPayrollTable] ⚠️ processRawData: data is null/undefined, skipping');
-            setDataReady(true); // Mark as ready even if data is null - prevents infinite "loading" state
+            console.warn('[CustomPayrollTable] ⚠️ processRawData: data is null/undefined');
+            setDataReady(true);
             return;
         }
-
-        console.log(`[CustomPayrollTable] 📥 processRawData START | gangCode=${currentGangCode} gangPrefix=${currentGangPrefix} | raw employees: ${data.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0) || 0}`);
 
         try {
             const dynPot = data.dynamic_potongan_headers || [];
@@ -763,11 +768,8 @@ export default function CustomPayrollTable({
             // Data removed from localStorage to prevent UI blocking when switching groups.
             // PayslipPrintPage will now fetch data directly from the API.
 
-            const employeeCount = processedRows.filter(r => r.type === 'employee').length;
-            console.log(`[CustomPayrollTable] 📊 SETTING ROWS | total=${processedRows.length} employees=${employeeCount}`);
             setRows(processedRows);
-            setDataReady(true); // Mark data as ready - table can now display
-            console.log(`[CustomPayrollTable] 🎯 DATA READY | ${employeeCount} employees loaded for display`);
+            setDataReady(true);
 
             // Determine active dynamic premi/potongan fields
             const employeeRows = processedRows.filter(r => r.type === 'employee');
@@ -793,99 +795,100 @@ export default function CustomPayrollTable({
             console.error('[CustomPayrollTable] processRawData error:', err);
             setError(err.message);
         }
-    }, [division, month, year, getAsistensiLocal]); // eslint-disable-line
+    }, [division, month, year, getAsistensiLocal]);
 
     /**
-     * fetchDivisionData: Fetches ALL data for a division (no gangPrefix filter).
-     * This is the ONLY function that makes API calls.
+     * fetchDivisionData: Fetches data directly from API.
+     * No caching - always fresh from server.
+     * Race condition: abort previous request when new one starts.
      */
-    const fetchDivisionData = async (divCacheKey) => {
-        const currentRequestId = ++requestIdRef.current;
-        console.log(`[CustomPayrollTable] 🔄 FETCH START — req#${currentRequestId} | div=${division} month=${month} year=${year} gangCode=${gangCode} gangPrefix=${gangPrefix} | loading=${gangLoading}`);
+    const abortControllerRef = useRef(null);
+
+    const fetchDivisionData = useCallback(async () => {
+        // Abort any in-flight request
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        console.log('[CustomPayrollTable] 🔄 FETCH START:', { division, month, year, gangCode, gangPrefix });
+        
         setLoading(true);
         setError('');
-        setDataReady(false); // Mark data as NOT ready - will be set true only after confirmed data
-        setRows([]); // Clear previous rows properly so old data disappears immediately
-        setGrandTotal(null); // Clear grandtotal to provide explicit feedback that old data is gone
-        try {
-            console.log(`[CustomPayrollTable] 📡 API CALL — req#${currentRequestId} | fetching data...`);
-            let data;
+        setDataReady(false);
+        setRows([]);
+        setGrandTotal(null);
 
-            // [FIX] Only send gang_prefix to API when showing ALL gangs.
-            // When a specific gang is selected, gangPrefix from localStorage may not match
-            // the actual group of that gang (e.g., C1B is in Group 2, but gangPrefix='1').
-            // Sending wrong gang_prefix causes backend SQL to exclude the selected gang → empty data.
+        try {
+            // Only send gang_prefix when showing ALL gangs.
+            // When specific gang selected, gangPrefix from filter may not match that gang's actual group.
             const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
 
+            let data;
             if (isProdMode()) {
-                data = await getLockedRawTree(token, division, month, year, useHistoryDb, shouldSendGangPrefix ? (gangPrefix || null) : null);
+                data = await getLockedRawTree(
+                    token, division, month, year, false, // NEVER use history db
+                    shouldSendGangPrefix ? (gangPrefix || null) : null
+                );
             } else {
                 const prefixParam = shouldSendGangPrefix && gangPrefix ? `&gang_prefix=${gangPrefix}` : '';
-                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}${prefixParam}`;
-                console.log(`[CustomPayrollTable] 🌐 FETCH URL — req#${currentRequestId} | gangCode=${gangCode} gangPrefix=${gangPrefix} → sentPrefix=${shouldSendGangPrefix ? gangPrefix : 'null'} | ${url}`);
-                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) throw new Error(await response.text());
+                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${prefixParam}`;
+                console.log('[CustomPayrollTable] 📡 FETCH URL:', url);
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    signal: controller.signal
+                });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[CustomPayrollTable] ❌ HTTP Error:', response.status, errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
                 data = await response.json();
             }
-            console.log(`[CustomPayrollTable] ✅ DATA RECEIVED — req#${currentRequestId} | data keys: ${Object.keys(data || {}).join(', ')} | employees: ${data?.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0) || 0}`);
 
-            // [RACE CONDITION FIX] Ignore stale responses from overlapping requests.
-            // Only process if this is still the latest request.
-            if (currentRequestId !== requestIdRef.current) {
-                console.warn(`[CustomPayrollTable] ⚠️ STALE RESPONSE — req#${currentRequestId} | latest is #${requestIdRef.current} | ignoring`);
-                setLoading(false);
-                return;
+            console.log('[CustomPayrollTable] ✅ DATA RECEIVED:', {
+                hasData: !!data,
+                dataKeys: data ? Object.keys(data) : [],
+                gangsCount: data?.gangs?.length,
+                employeesCount: data?.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0),
+                error: data?.error
+            });
+
+            // Check if API returned an error
+            if (data?.error) {
+                throw new Error(data.error);
             }
 
-            if (onDataLoaded) onDataLoaded(data);
+            // Validate data structure
+            if (!data || typeof data !== 'object') {
+                console.error('[CustomPayrollTable] ❌ Invalid data structure:', data);
+                throw new Error('Invalid data structure from API');
+            }
 
-            // Process and display with current filters
-            console.log(`[CustomPayrollTable] 🔧 PROCESSING — req#${currentRequestId} | gangCode=${gangCode} gangPrefix=${gangPrefix}`);
+            onDataLoaded?.(data);
             processRawData(data, gangCode, gangPrefix);
-            console.log(`[CustomPayrollTable] ✅ PROCESSING COMPLETE — req#${currentRequestId} | calling processRawData done`);
         } catch (err) {
-            // [RACE CONDITION FIX] Only set error if this is still the latest request
-            if (currentRequestId !== requestIdRef.current) {
-                console.warn(`[CustomPayrollTable] ⚠️ STALE ERROR — req#${currentRequestId} | ignoring stale error`);
-                setLoading(false);
-                return;
+            if (err.name === 'AbortError') {
+                console.log('[CustomPayrollTable] ⚠️ Request aborted');
+                return; // Silently ignore aborted requests
             }
-            console.error(`[CustomPayrollTable] ❌ FETCH ERROR — req#${currentRequestId}:`, err);
+            console.error('[CustomPayrollTable] ❌ Fetch error:', err);
             setError(err.message);
-            setDataReady(true); // Mark data as ready (even though empty/error) so UI can show proper state
+            setDataReady(true);
         } finally {
-            // [RACE CONDITION FIX] Only clear loading if this is still the latest request
-            if (currentRequestId === requestIdRef.current) {
+            if (abortControllerRef.current === controller) {
                 setLoading(false);
             }
         }
-    };
+    }, [division, month, year, gangCode, gangPrefix, token, useHistoryDb, gangLoading, processRawData, onDataLoaded]);
 
     // --- MAIN DATA EFFECT ---
-    // Fetch from API on ANY filter change to ensure data is always fresh.
-    // Skip if gangs are still loading to prevent race condition.
+    // Fetch directly from API on filter change. No caching.
     useEffect(() => {
-        console.log(`[CustomPayrollTable] 📌 USE_EFFECT TRIGGERED | month=${month} year=${year} division=${division} gangCode=${gangCode} gangPrefix=${gangPrefix} gangLoading=${gangLoading} token=${!!token}`);
-
-        if (!month || !year || !division) {
-            console.log(`[CustomPayrollTable] ⛔ SKIP — missing params (month/year/division)`);
-            return;
-        }
-
-        if (gangLoading) {
-            console.log(`[CustomPayrollTable] ⛔ SKIP — gangs still loading, waiting...`);
-            return;
-        }
-
-        if (!token) {
-            console.log(`[CustomPayrollTable] ⛔ SKIP — no token`);
-            return;
-        }
-
-        console.log(`[CustomPayrollTable] ✅ TRIGGERING FETCH | gangLoading=${gangLoading}`);
-        const divCacheKey = `${division}_${month}_${year}_${useHistoryDb}_${refreshTrigger}_${gangPrefix || ''}_${gangCode || ''}`;
-        fetchDivisionData(divCacheKey);
-    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb, gangLoading]); // eslint-disable-line
+        if (!month || !year || !division || !token || gangLoading) return;
+        fetchDivisionData();
+    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb, gangLoading, fetchDivisionData]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
