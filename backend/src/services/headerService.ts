@@ -74,10 +74,6 @@ export class HeaderService {
         year: number,
         gangCode?: string
     ): Promise<string[]> {
-        const cacheKey = `premi_headers:${month}:${year}:${gangCode || "ALL"}`;
-        const cached = cacheService.get<string[]>(cacheKey);
-        if (cached) return cached;
-
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const endDate = month === 12
             ? `${year + 1}-01-01`
@@ -114,7 +110,6 @@ export class HeaderService {
                 .filter(Boolean)
                 .slice(0, 7); // Limit to 7
 
-            cacheService.set(cacheKey, headers, 300);
             return headers;
         } catch (e) {
             console.error("[HeaderService] Failed to get dynamic premi headers:", e);
@@ -128,10 +123,6 @@ export class HeaderService {
         year: number,
         gangCode?: string
     ): Promise<string[]> {
-        const cacheKey = `pot_headers:${month}:${year}:${gangCode || "ALL"}`;
-        const cached = cacheService.get<string[]>(cacheKey);
-        if (cached) return cached;
-
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const endDate = month === 12
             ? `${year + 1}-01-01`
@@ -174,7 +165,6 @@ export class HeaderService {
                 })
                 .slice(0, 7);
 
-            cacheService.set(cacheKey, headers, 300);
             return headers;
         } catch (e) {
             console.error("[HeaderService] Failed to get dynamic potongan headers:", e);
@@ -191,8 +181,10 @@ export class HeaderService {
         const m = month || new Date().getMonth() + 1;
         const y = year || new Date().getFullYear();
 
-        const dynPremi = await this.getDynamicPremiHeaders(m, y, gangCode);
-        const dynPotongan = await this.getDynamicPotonganHeaders(m, y, gangCode);
+        const [dynPremi, dynPotongan] = await Promise.all([
+            this.getDynamicPremiHeaders(m, y, gangCode),
+            this.getDynamicPotonganHeaders(m, y, gangCode)
+        ]);
 
         return {
             month: m,
@@ -218,10 +210,6 @@ export class HeaderService {
         month: number,
         year: number
     ): Promise<{ type: string; name: string }[]> {
-        const cacheKey = `pendapatan_headers:${month}:${year}`;
-        const cached = cacheService.get<{ type: string; name: string }[]>(cacheKey);
-        if (cached) return cached;
-
         try {
             const extDb = Database.getExtendedInstance();
             const rows = await extDb.query<{ income_type: string; income_name: string }>(`
@@ -237,7 +225,6 @@ export class HeaderService {
                 name: r.income_name || r.income_type
             }));
 
-            cacheService.set(cacheKey, headers, 120);
             return headers;
         } catch (e) {
             console.error("[HeaderService] Failed to get dynamic pendapatan headers:", e);
@@ -254,9 +241,11 @@ export class HeaderService {
         const m = month || new Date().getMonth() + 1;
         const y = year || new Date().getFullYear();
 
-        const dynPremi = await this.getDynamicPremiHeaders(m, y, gangCode);
-        const dynPotongan = await this.getDynamicPotonganHeaders(m, y, gangCode);
-        const dynPendapatan = await this.getDynamicPendapatanHeaders(m, y);
+        const [dynPremi, dynPotongan, dynPendapatan] = await Promise.all([
+            this.getDynamicPremiHeaders(m, y, gangCode),
+            this.getDynamicPotonganHeaders(m, y, gangCode),
+            this.getDynamicPendapatanHeaders(m, y)
+        ]);
 
         // Base columns
         const columns: ColumnDef[] = [

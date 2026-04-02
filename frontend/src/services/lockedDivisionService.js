@@ -106,16 +106,18 @@ export async function getLockedReport(token, div, gangCode, month, year, skip = 
  * @param {boolean} useHistoryDb - Use historical snapshot
  * @param {string} gangPrefix - Optional prefix (Asistensi)
  */
-export async function getLockedRawTree(token, div, month, year, useHistoryDb = false, gangPrefix = null) {
+export async function getLockedRawTree(token, div, month, year, useHistoryDb = false, gangPrefix = null, gangCode = null) {
     try {
         const params = { div, month, year };
         if (useHistoryDb) params.use_history = 'true';
         if (gangPrefix) params.gang_prefix = gangPrefix;
+        if (gangCode && gangCode !== 'ALL') params.gang_code = gangCode;
 
         const response = await axios.get(`${BASE_URL}/report/raw-tree`, {
             headers: { Authorization: `Bearer ${token}` },
             params
         })
+        console.log('[getLockedRawTree] EXACT axios response.data:', response.data, 'typeof data:', typeof response.data, 'isArray:', Array.isArray(response.data));
         return response.data
     } catch (error) {
         console.error('[LockedDivisionService] Failed to get locked raw tree:', error)

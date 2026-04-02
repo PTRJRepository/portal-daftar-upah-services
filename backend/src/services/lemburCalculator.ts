@@ -3,6 +3,18 @@ import { cacheService } from "./cacheService";
 import { payrollService } from "./payrollService";
 import { PayrollComponent, PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
 
+
+// Helper to safely format JS Dates to local YYYY-MM-DD
+function formatSystemDate(dateInput: Date | string): string {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
+
 // Day Type Classification
 export enum DayType {
     WORKDAY_LONG = "WORKDAY_LONG",       // Mon, Tue, Wed, Thu, Sat (7+ hours before OT)
@@ -294,16 +306,19 @@ export class LemburCalculator {
                 const dayOfWeek = trxDate.getDay();
                 const dateKey = row.TrxDate.substring(0, 10); // Assuming YYYY-MM-DD
 
-                // Classify Day (Client-side logic to avoid N calls)
-                let dayType = dayOfWeek === 0 ? DayType.SUNDAY : (dayOfWeek === 5 ? DayType.WORKDAY_SHORT : DayType.WORKDAY_LONG);
-
-                // Check holiday
-                // Note: getHolidays returns Record<string, ...>. Keys might need strict formatting.
-                // The getHolidays implementation uses ISO substring(0,10).
-                // We should ensure consistency.
-                const holiday = holidays[trxDate.toISOString().substring(0, 10)];
+                // Classify Day — check holidays FIRST (a Sunday on a religious holiday
+                // must use the religious holiday rate, not the Sunday rate)
+                const holidayKey = formatSystemDate(trxDate);
+                const holiday = holidays[holidayKey];
+                let dayType: DayType;
                 if (holiday) {
                     dayType = holiday.is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
+                } else if (dayOfWeek === 0) {
+                    dayType = DayType.SUNDAY;
+                } else if (dayOfWeek === 5) {
+                    dayType = DayType.WORKDAY_SHORT;
+                } else {
+                    dayType = DayType.WORKDAY_LONG;
                 }
 
                 const breakdown = this.calculateOvertimePayment(row.Hours, dayType, upj, dayOfWeek === 5);
@@ -340,7 +355,9 @@ export class LemburCalculator {
             task_desc: string;
             hours: number;
             rate: number;
-            amount: number;
+            amount: number;         // Calculated amount (from tier-based rate)
+            raw_amount: number;      // Amount from PR_TASKREGLN table
+            raw_rate: number;        // Rate from PR_TASKREGLN table
             meta?: PayrollComponentMetadata;
         }>;
         meta?: PayrollComponentMetadata;
@@ -370,6 +387,8 @@ export class LemburCalculator {
                 hours: number;
                 rate: number;
                 amount: number;
+                raw_amount: number;
+                raw_rate: number;
                 meta?: PayrollComponentMetadata;
             }>;
             meta?: PayrollComponentMetadata;
@@ -396,12 +415,16 @@ export class LemburCalculator {
                 Hours: number;
                 TrxDate: string;
                 TaskCode: string;
+                Amount: number;
+                Rate: number;
             }>(`
                 SELECT
                     trl.EmpCode,
                     trl.Hours,
                     trl.TrxDate,
-                    trl.TaskCode
+                    trl.TaskCode,
+                    trl.Amount,
+                    trl.Rate
                 FROM PR_TASKREGLN trl
                 JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
@@ -414,7 +437,9 @@ export class LemburCalculator {
                     trl.EmpCode,
                     trl.Hours,
                     trl.TrxDate,
-                    trl.TaskCode
+                    trl.TaskCode,
+                    trl.Amount,
+                    trl.Rate
                 FROM PR_TASKREGLN_ARC trl
                 JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
@@ -475,6 +500,8 @@ export class LemburCalculator {
                 hours: number;
                 rate: number;
                 amount: number;
+                raw_amount: number;
+                raw_rate: number;
                 meta?: PayrollComponentMetadata;
             }> = [];
 
@@ -495,17 +522,19 @@ export class LemburCalculator {
 
                 // Create individual transaction record
                 records.push({
-                    date: trxDate.toISOString().substring(0, 10),
+                    date: formatSystemDate(trxDate),
                     day_name: dayNames[dayOfWeek],
                     day_type: getDayTypeDisplayName(dayType),
                     task_code: taskCode,
                     task_desc: taskDesc,
                     hours: row.Hours,
                     rate: breakdown.total_rate || 0,
-                    amount: breakdown.total_amount,
+                    amount: breakdown.total_amount,       // Calculated amount (from tier-based rate)
+                    raw_amount: row.Amount || 0,          // Amount from PR_TASKREGLN table
+                    raw_rate: row.Rate || 0,              // Rate from PR_TASKREGLN table
                     meta: {
                         source: 'DATABASE_PLANTWARE',
-                        description: `Overtime on ${trxDate.toISOString().substring(0, 10)} (${taskDesc})`,
+                        description: `Overtime on ${formatSystemDate(trxDate)} (${taskDesc})`,
                         calculation_basis: `Day Type: ${getDayTypeDisplayName(dayType)}, UPJ: ${upj}`,
                         taxable: true
                     }
@@ -562,31 +591,29 @@ export class LemburCalculator {
 
     private async classifyDay(date: Date, year: number): Promise<DayType> {
         const dayOfWeek = date.getDay();
-        if (dayOfWeek === 0) return DayType.SUNDAY;
 
-        // Check holidays
+        // Check holidays FIRST — a Sunday that falls on a religious holiday
+        // must use the religious holiday rate (higher), not the Sunday rate.
         const holidays = await this.getHolidays(year);
-        const dateStr = date.toISOString().substring(0, 10);
+        const dateStr = formatSystemDate(date);
         if (holidays[dateStr]) {
             return holidays[dateStr].is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
         }
 
+        // After holidays, classify by day of week
+        if (dayOfWeek === 0) return DayType.SUNDAY;
         if (dayOfWeek === 5) return DayType.WORKDAY_SHORT;
         return DayType.WORKDAY_LONG;
     }
 
     private async getHolidays(year: number): Promise<Record<string, { is_religious: boolean }>> {
-        const cacheKey = `holidays_${year}`;
-        const cached = cacheService.get<Record<string, { is_religious: boolean }>>(cacheKey);
-        if (cached) return cached;
-
         const rows = await this.db.query<{ HolidayDate: string; Description: string }>(`
             SELECT HolidayDate, Description FROM HR_GPH WHERE YEAR(HolidayDate) = ?
         `, [year]);
 
         const holidays: Record<string, { is_religious: boolean }> = {};
         for (const row of rows) {
-            const dateStr = new Date(row.HolidayDate).toISOString().substring(0, 10);
+            const dateStr = formatSystemDate(row.HolidayDate);
             const desc = (row.Description || "").toUpperCase();
             const isReligious = desc.includes("IDUL") || desc.includes("NATAL") ||
                 desc.includes("IMLEK") || desc.includes("WAISAK") ||
@@ -595,7 +622,6 @@ export class LemburCalculator {
             holidays[dateStr] = { is_religious: isReligious };
         }
 
-        cacheService.set(cacheKey, holidays, 3600);
         return holidays;
     }
 

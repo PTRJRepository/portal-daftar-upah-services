@@ -212,6 +212,9 @@ class Pph21TerService {
         bpjsKesehatanMajikan: number,
         potKoreksi: number = 0
     ): number {
+        // KOREKSI (koreksi panen, koreksi HK) dikurangkan dari penghasilan bruto karena
+        // koreksi = koreksi kelebihan pembayaran, bukan penghasilan baru.
+        // POTONGAN (SPSI, astek pekerja, bpjs pekerja) TIDAK dikurangkan dari bruto.
         return gajiPokokAktual +
             berasJumlah +
             jabatanJumlah +

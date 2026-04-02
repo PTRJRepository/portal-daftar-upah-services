@@ -874,13 +874,9 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
     const [popupError, setPopupError] = useState(null);
     const [popupMeta, setPopupMeta] = useState(null);
 
-    // Cache fetched monthly details
-    const monthlyCache = React.useRef({});
-
     const loadData = useCallback(async () => {
         setLoading(true);
         setError(null);
-        monthlyCache.current = {};
         try {
             const result = await fetchAnnualTaxReport(token, year, month, division, gang, gangPrefix);
             setData(result);
@@ -902,12 +898,9 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
         setPopupData(null);
         setPopupLoading(true);
         try {
-            const cacheKey = `${clickedMonth}_${year}`;
-            let monthlyResult = monthlyCache.current[cacheKey];
-            if (!monthlyResult) {
-                monthlyResult = await fetchMonthlyTaxReport(token, year, clickedMonth, division, gang, gangPrefix);
-                monthlyCache.current[cacheKey] = monthlyResult;
-            }
+            // No caching - always fetch fresh detail for the popup
+            const monthlyResult = await fetchMonthlyTaxReport(token, year, clickedMonth, division, gang, gangPrefix);
+            
             const empDetail = monthlyResult.employees?.find(
                 e => e.emp_code === emp.emp_code || e.emp_code?.trim() === emp.emp_code?.trim()
             );

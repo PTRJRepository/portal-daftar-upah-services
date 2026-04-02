@@ -36,7 +36,7 @@ export interface DuplicateNikEmployee {
 export interface NikResolutionResult {
     nik: string;
     resolved_emp_code: string | null;
-    resolution_method: 'single' | 'status' | 'join_date' | 'gang_match' | 'name_match' | 'latest';
+    resolution_method: 'single' | 'status' | 'join_date' | 'gang_match' | 'name_match' | 'latest' | 'latest_update';
     all_emp_codes: string[];
     confidence: 'high' | 'medium' | 'low';
     notes?: string;
@@ -116,12 +116,22 @@ export class DuplicateNikMitigationService {
 
     /**
      * Get all employees associated with a specific NIK
+     * 
+     * IMPORTANT: Prioritizes employees WITH gang assignment from HR_GANGLN
+     * EmpCode is taken from HR_GANGLN.GangMember (most accurate for payroll)
+     * 
+     * NOTE: Input NIK is trimmed to handle spaces in database
      */
     public async getEmployeesByNik(nik: string): Promise<DuplicateNikEmployee[]> {
+        // ALWAYS trim input to handle spaces
+        const trimmedNik = (nik || '').trim();
+        
         try {
+            // Query prioritizes employees with gang assignment
+            // Uses HR_GANGLN.GangMember as the authoritative EmpCode source
             const rows = await this.db.query(`
                 SELECT
-                    RTRIM(e.EmpCode) as emp_code,
+                    RTRIM(COALESCE(gl.GangMember, e.EmpCode)) as emp_code,
                     e.EmpName as emp_name,
                     RTRIM(gl.GangCode) as gang_code,
                     RTRIM(e.LocCode) as division_code,
@@ -132,11 +142,12 @@ export class DuplicateNikMitigationService {
                 LEFT JOIN HR_EMPLOYMENT em ON RTRIM(e.EmpCode) = RTRIM(em.EmpCode)
                 LEFT JOIN HR_GANGLN gl ON RTRIM(e.EmpCode) = RTRIM(gl.GangMember)
                 WHERE RTRIM(e.NewICNo) = ? OR RTRIM(e.EmpCode) = ?
-                ORDER BY 
-                    CASE WHEN e.Status = '1' THEN 0 ELSE 1 END,
-                    em.AppJoinDate DESC,
-                    e.EmpCode DESC
-            `, [nik, nik]);
+                ORDER BY
+                    gl.GangMember DESC, -- Prioritize employees with gang assignment
+                    e.EmpCode DESC,
+                    CASE WHEN RTRIM(e.Status) = '1' THEN 0 ELSE 1 END,
+                    em.AppJoinDate DESC
+            `, [trimmedNik, trimmedNik]);
 
             return rows.map(r => ({
                 emp_code: r.emp_code,
@@ -157,8 +168,11 @@ export class DuplicateNikMitigationService {
      * Check if a specific NIK has duplicates
      */
     public async hasDuplicate(nik: string): Promise<boolean> {
+        // Trim input to handle spaces
+        const trimmedNik = (nik || '').trim();
+        
         // Check cache first
-        const cached = this.getCachedDuplicate(nik);
+        const cached = this.getCachedDuplicate(trimmedNik);
         if (cached) {
             return cached.employee_count > 1;
         }
@@ -168,7 +182,7 @@ export class DuplicateNikMitigationService {
             FROM HR_EMPLOYEE
             WHERE (RTRIM(NewICNo) = ? OR RTRIM(EmpCode) = ?)
               AND NewICNo IS NOT NULL AND RTRIM(NewICNo) != ''
-        `, [nik, nik]);
+        `, [trimmedNik, trimmedNik]);
 
         return (result?.cnt || 0) > 1;
     }
@@ -196,11 +210,14 @@ export class DuplicateNikMitigationService {
 
     /**
      * Resolve the correct EmpCode for a given NIK with optional context
-     * 
+     *
+     * IMPORTANT: Now prioritizes latest EmpCode (C-prefix > B-prefix > A-prefix)
+     * The underlying query already orders by EmpCode DESC, so first result is the latest
+     *
      * Resolution priority:
-     * 1. Status = '1' (Active) + Latest Join Date
-     * 2. Match with preferred gang (if provided)
-     * 3. Latest EmpCode (alphabetically)
+     * 1. Latest EmpCode (highest alphabetically - C > B > A)
+     * 2. Status = '1' (Active) - used as tiebreaker
+     * 3. Match with preferred gang (if provided)
      */
     public async resolveEmpCode(
         nik: string,
@@ -235,27 +252,17 @@ export class DuplicateNikMitigationService {
             };
         }
 
-        // Multiple employees found - need resolution
+        // Multiple employees found - use latest EmpCode (query already sorted by EmpCode DESC)
         const allEmpCodes = employees.map(e => e.emp_code);
-
-        // Strategy 1: Filter by Status = '1' (Active)
-        const activeEmployees = employees.filter(e => e.status === '1');
         
-        if (activeEmployees.length === 1) {
-            return {
-                nik,
-                resolved_emp_code: activeEmployees[0].emp_code,
-                resolution_method: 'status',
-                all_emp_codes: allEmpCodes,
-                confidence: 'high',
-                notes: 'Resolved by active status - only one active employee found'
-            };
-        }
-
-        if (activeEmployees.length > 1) {
-            // Strategy 2: Match with preferred gang
+        // First employee is the one with highest EmpCode (C-prefix > B-prefix > A-prefix)
+        const latestEmpCode = employees[0].emp_code;
+        
+        // Check if we should use preferred gang/division matching for better accuracy
+        if (options?.preferredGang || options?.preferredDivision) {
+            // Try to find match with preferred gang among employees with highest EmpCode
             if (options?.preferredGang) {
-                const gangMatch = activeEmployees.find(e => 
+                const gangMatch = employees.find(e =>
                     e.gang_code?.toUpperCase() === options.preferredGang?.toUpperCase()
                 );
                 
@@ -266,14 +273,14 @@ export class DuplicateNikMitigationService {
                         resolution_method: 'gang_match',
                         all_emp_codes: allEmpCodes,
                         confidence: 'high',
-                        notes: `Resolved by gang match - ${options.preferredGang}`
+                        notes: `Resolved by gang match - ${options.preferredGang} (latest EmpCode: ${latestEmpCode})`
                     };
                 }
             }
-
-            // Strategy 3: Match with preferred division
+            
+            // Try to find match with preferred division
             if (options?.preferredDivision) {
-                const divisionMatch = activeEmployees.find(e => 
+                const divisionMatch = employees.find(e =>
                     e.division_code?.toUpperCase() === options.preferredDivision?.toUpperCase()
                 );
                 
@@ -284,40 +291,20 @@ export class DuplicateNikMitigationService {
                         resolution_method: 'gang_match',
                         all_emp_codes: allEmpCodes,
                         confidence: 'high',
-                        notes: `Resolved by division match - ${options.preferredDivision}`
+                        notes: `Resolved by division match - ${options.preferredDivision} (latest EmpCode: ${latestEmpCode})`
                     };
                 }
             }
-
-            // Strategy 4: Latest join date
-            const sortedByJoinDate = activeEmployees.sort((a, b) => {
-                const dateA = a.join_date ? new Date(a.join_date).getTime() : 0;
-                const dateB = b.join_date ? new Date(b.join_date).getTime() : 0;
-                return dateB - dateA;
-            });
-
-            if (sortedByJoinDate[0]?.join_date) {
-                return {
-                    nik,
-                    resolved_emp_code: sortedByJoinDate[0].emp_code,
-                    resolution_method: 'join_date',
-                    all_emp_codes: allEmpCodes,
-                    confidence: 'medium',
-                    notes: 'Resolved by latest join date'
-                };
-            }
         }
 
-        // Fallback: Use latest EmpCode alphabetically
-        const sortedByEmpCode = employees.sort((a, b) => b.emp_code.localeCompare(a.emp_code));
-        
+        // Default: Use latest EmpCode (first in the sorted list)
         return {
             nik,
-            resolved_emp_code: sortedByEmpCode[0]?.emp_code || null,
+            resolved_emp_code: latestEmpCode,
             resolution_method: 'latest',
             all_emp_codes: allEmpCodes,
-            confidence: 'low',
-            notes: 'Fallback - using latest EmpCode alphabetically'
+            confidence: 'high',
+            notes: `Using latest EmpCode (C-prefix > B-prefix > A-prefix): ${latestEmpCode}`
         };
     }
 
@@ -516,10 +503,10 @@ export class DuplicateNikMitigationService {
                 LEFT JOIN HR_EMPLOYMENT em ON RTRIM(e.EmpCode) = RTRIM(em.EmpCode)
                 LEFT JOIN HR_GANGLN gl ON RTRIM(e.EmpCode) = RTRIM(gl.GangMember)
                 ${condition}
-                ORDER BY 
-                    CASE WHEN e.Status = '1' THEN 0 ELSE 1 END,
-                    e.EmpName,
-                    e.EmpCode DESC
+                ORDER BY
+                    e.EmpCode DESC, -- Prioritize latest empcode (C-prefix > B-prefix > A-prefix)
+                    CASE WHEN RTRIM(e.Status) = '1' THEN 0 ELSE 1 END,
+                    e.EmpName
             `, params);
 
             return rows.map(r => ({
@@ -832,7 +819,7 @@ export class DuplicateNikMitigationService {
      * Get the most recently updated EmpCode for a NIK from HR_EMPLOYMENT table
      * This reflects the latest data entry/update
      * 
-     * Note: Uses AppJoinDate DESC as proxy for "latest" since UpdateDate may not exist
+     * Note: Prioritizes EmpCode DESC first to get latest empcode (C-prefix > B-prefix > A-prefix)
      */
     private async getLatestUpdatedEmpCode(nik: string): Promise<string | null> {
         try {
@@ -843,19 +830,19 @@ export class DuplicateNikMitigationService {
                     FROM HR_EMPLOYEE e
                     LEFT JOIN HR_EMPLOYMENT em ON RTRIM(e.EmpCode) = RTRIM(em.EmpCode)
                     WHERE RTRIM(e.NewICNo) = ? OR RTRIM(e.EmpCode) = ?
-                    ORDER BY em.UpdateDate DESC, em.AppJoinDate DESC, e.EmpCode DESC
+                    ORDER BY e.EmpCode DESC, em.UpdateDate DESC, em.AppJoinDate DESC
                 `, [nik, nik]);
 
                 return rows[0]?.EmpCode || null;
             } catch {
-                // UpdateDate doesn't exist, fallback to AppJoinDate DESC + EmpCode DESC
-                // This gives us the most recent employment record
+                // UpdateDate doesn't exist, fallback to EmpCode DESC first
+                // This gives us the highest/latest empcode
                 const rows = await this.db.query(`
                     SELECT TOP 1 RTRIM(e.EmpCode) as EmpCode
                     FROM HR_EMPLOYEE e
                     LEFT JOIN HR_EMPLOYMENT em ON RTRIM(e.EmpCode) = RTRIM(em.EmpCode)
                     WHERE RTRIM(e.NewICNo) = ? OR RTRIM(e.EmpCode) = ?
-                    ORDER BY em.AppJoinDate DESC, e.EmpCode DESC
+                    ORDER BY e.EmpCode DESC, em.AppJoinDate DESC
                 `, [nik, nik]);
 
                 return rows[0]?.EmpCode || null;

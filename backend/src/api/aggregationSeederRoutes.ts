@@ -216,7 +216,7 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                     total_premi, dynamic_premi_data, informasi_tambahan, total_koreksi,
                     total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
                     total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
-                    created_at, updated_at, source_endpoint, version_index
+                    created_at, updated_at, source_endpoint
                 FROM dbo.daftar_upah_aggregation_history
                 WHERE 1=1
             `;
@@ -236,7 +236,7 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 params.push(division);
             }
 
-            sql += " ORDER BY division_code, gang_code, version_index DESC";
+            sql += " ORDER BY division_code, gang_code";
 
             const records = await db.query<any>(sql, params.length > 0 ? params : undefined);
 
@@ -298,14 +298,6 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                     SUM(h.total_spsi) as total_spsi
                 FROM dbo.daftar_upah_aggregation_history h
                 WHERE h.period_month = ? AND h.period_year = ?
-                  -- LATEST VERSION ONLY: Only get the most recent seeding per gang
-                  AND h.version_index = (
-                      SELECT MAX(h2.version_index)
-                      FROM dbo.daftar_upah_aggregation_history h2
-                      WHERE h2.gang_code = h.gang_code
-                        AND h2.period_month = h.period_month
-                        AND h2.period_year = h.period_year
-                  )
                 GROUP BY h.division_code
                 ORDER BY h.division_code
             `, [month, year]);
@@ -436,14 +428,6 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 SELECT h.division_code, COUNT(*) as gang_count
                 FROM dbo.daftar_upah_aggregation_history h
                 WHERE h.period_month = ? AND h.period_year = ?
-                  -- LATEST VERSION ONLY: Only count most recent seeding per gang
-                  AND h.version_index = (
-                      SELECT MAX(h2.version_index)
-                      FROM dbo.daftar_upah_aggregation_history h2
-                      WHERE h2.gang_code = h.gang_code
-                        AND h2.period_month = h.period_month
-                        AND h2.period_year = h.period_year
-                  )
                 GROUP BY h.division_code
                 ORDER BY h.division_code
             `, [month, year]);
@@ -889,16 +873,6 @@ async function insertOrUpdateAggregation(
     const dbDivisionCode = DIVISION_CODE_MAP[division] || division;
 
     try {
-        // Calculate next version_index = MAX(existing) + 1
-        // Using COALESCE to handle case where no records exist yet (returns 1)
-        const versionResult = await db.queryOne<{ next_ver: number }>(`
-            SELECT COALESCE(MAX(version_index), 0) + 1 AS next_ver
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE gang_code = ? AND period_month = ? AND period_year = ?
-        `, [aggregation.gang_code, month, year]);
-
-        const nextVersion = versionResult?.next_ver ?? 1;
-
         // APPEND-ONLY: Always INSERT a new record (never UPDATE existing)
         // GETDATE() is used directly in SQL for timestamp fields
         await db.query(`
@@ -912,11 +886,11 @@ async function insertOrUpdateAggregation(
                 total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
                 total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
                 dynamic_premi_data, informasi_tambahan, total_koreksi,
-                created_at, updated_at, source_endpoint, version_index
+                created_at, updated_at, source_endpoint
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?
             )
         `, [
             month,
@@ -956,8 +930,7 @@ async function insertOrUpdateAggregation(
             aggregation.dynamic_premi_data,
             aggregation.informasi_tambahan,
             aggregation.total_koreksi,
-            sourceEndpoint,
-            nextVersion  // version_index: auto-increment per gang-period
+            sourceEndpoint
         ]);
     } catch (error) {
         console.error("[InsertAggregation] Error:", error);

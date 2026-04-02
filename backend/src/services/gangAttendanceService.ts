@@ -87,11 +87,17 @@ class GangAttendanceService {
      * Get gang members from HR_GANGLN + HR_EMPLOYEE (main db_ptrj)
      * Uses the current gang membership to get employees.
      * EmpCode is the key — NIK and bank account are resolved afterwards.
+     *
+     * RULE: emp_code ALWAYS comes from HR_GANGLN.GangMember (gang membership table).
+     * This is the authoritative source for who belongs to which gang.
+     * NIK is derived from emp_code via HR_EMPLOYEE.NewICNo.
      */
     private async getGangMembersFromMainDb(gangCodes: string[]): Promise<GangMember[]> {
         if (gangCodes.length === 0) return [];
 
-        const placeholders = gangCodes.map(() => '?').join(',');
+        // Always trim gangCodes input
+        const cleanGangCodes = gangCodes.map(gc => (gc || '').trim().toUpperCase()).filter(Boolean);
+        const placeholders = cleanGangCodes.map(() => '?').join(',');
         try {
             const rows = await this.db.query<{
                 emp_code: string;
@@ -100,6 +106,8 @@ class GangAttendanceService {
                 division_code: string;
             }>(`
                 SELECT DISTINCT
+                    -- emp_code comes from HR_GANGLN.GangMember (authoritative gang membership)
+                    -- RTRIM ensures no trailing spaces cause lookup mismatches
                     RTRIM(gl.GangMember) as emp_code,
                     RTRIM(e.EmpName) as emp_name,
                     RTRIM(gl.GangCode) as gang_code,
@@ -109,16 +117,18 @@ class GangAttendanceService {
                 LEFT JOIN HR_GANG grp ON RTRIM(grp.GangCode) = RTRIM(gl.GangCode)
                 WHERE RTRIM(gl.GangCode) IN (${placeholders})
                 ORDER BY gang_code, emp_name
-            `, [...gangCodes]);
+            `, cleanGangCodes);
 
-            console.log(`[GangAttendanceService] Got ${rows.length} members from HR_GANGLN for gangs [${gangCodes.join(',')}]`);
+            console.log(`[GangAttendanceService] Got ${rows.length} members from HR_GANGLN for gangs [${cleanGangCodes.join(',')}]`);
 
+            // CRITICAL: Always trim ALL fields before returning to prevent downstream lookup failures.
+            // emp_code is used as the primary key for all subsequent lookups (attendance, NIK, bank).
             return rows.map(r => ({
-                emp_code: r.emp_code,
-                emp_name: r.emp_name,
+                emp_code: (r.emp_code || '').trim(), // Ensure no spaces
+                emp_name: (r.emp_name || '').trim(),
                 nik: '',
-                gang_code: r.gang_code,
-                division_code: r.division_code,
+                gang_code: (r.gang_code || '').trim(),
+                division_code: (r.division_code || '').trim(),
                 bank_acc_no: '',
                 bank_code: ''
             }));
@@ -130,14 +140,19 @@ class GangAttendanceService {
 
     /**
      * Resolve NIK (NewICNo) from HR_EMPLOYEE by EmpCode (batch)
+     * emp_code is the authoritative key from HR_GANGLN; NIK is derived from it.
      */
     private async resolveNikByEmpCodes(empCodes: string[]): Promise<Map<string, string>> {
         const result = new Map<string, string>();
         if (empCodes.length === 0) return result;
 
+        // Always trim all empCodes to ensure consistent key matching
+        const cleanCodes = empCodes.map(ec => (ec || '').trim().toUpperCase()).filter(Boolean);
+        if (cleanCodes.length === 0) return result;
+
         const CHUNK = 500;
-        for (let i = 0; i < empCodes.length; i += CHUNK) {
-            const chunk = empCodes.slice(i, i + CHUNK);
+        for (let i = 0; i < cleanCodes.length; i += CHUNK) {
+            const chunk = cleanCodes.slice(i, i + CHUNK);
             const placeholders = chunk.map(() => '?').join(',');
             try {
                 const rows = await this.db.query<{ EmpCode: string; NewICNo: string }>(`
@@ -146,6 +161,7 @@ class GangAttendanceService {
                     WHERE RTRIM(EmpCode) IN (${placeholders})
                 `, chunk);
                 for (const r of rows) {
+                    // emp_code as key is always trimmed + uppercased
                     result.set(r.EmpCode.trim().toUpperCase(), r.NewICNo?.trim() || '');
                 }
             } catch (e) {
@@ -157,14 +173,19 @@ class GangAttendanceService {
 
     /**
      * Resolve bank account (BankAccNo) from HR_PAYROLL by EmpCode (batch)
+     * emp_code is the authoritative key from HR_GANGLN; bank is resolved from it.
      */
     private async resolveBankByEmpCodes(empCodes: string[]): Promise<Map<string, { bank_acc_no: string; bank_code: string }>> {
         const result = new Map<string, { bank_acc_no: string; bank_code: string }>();
         if (empCodes.length === 0) return result;
 
+        // Always trim all empCodes to ensure consistent key matching
+        const cleanCodes = empCodes.map(ec => (ec || '').trim().toUpperCase()).filter(Boolean);
+        if (cleanCodes.length === 0) return result;
+
         const CHUNK = 500;
-        for (let i = 0; i < empCodes.length; i += CHUNK) {
-            const chunk = empCodes.slice(i, i + CHUNK);
+        for (let i = 0; i < cleanCodes.length; i += CHUNK) {
+            const chunk = cleanCodes.slice(i, i + CHUNK);
             const placeholders = chunk.map(() => '?').join(',');
             try {
                 const rows = await this.db.query<{ EmpCode: string; BankAccNo: string; BankCode: string }>(`
@@ -190,6 +211,9 @@ class GangAttendanceService {
     /**
      * Bulk fetch attendance data from PR_TASKREGLN + PR_TASKREGLN_ARC (main db_ptrj)
      * Uses TaskCode to determine attendance status (same pattern as employeeDetailService)
+     *
+     * RULE: emp_code is the authoritative key from HR_GANGLN.
+     * All attendance records are joined/filtered by this emp_code.
      */
     private async getBulkAttendanceFromMainDb(empCodes: string[], month: number, year: number): Promise<Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>> {
         const result = new Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>();
@@ -199,9 +223,12 @@ class GangAttendanceService {
         const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
         const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth}`;
 
+        // CRITICAL: Always trim emp_codes to ensure consistent key matching with gang membership
+        const cleanCodes = empCodes.map(ec => (ec || '').trim().toUpperCase()).filter(Boolean);
+
         const CHUNK = 500;
-        for (let i = 0; i < empCodes.length; i += CHUNK) {
-            const chunk = empCodes.slice(i, i + CHUNK);
+        for (let i = 0; i < cleanCodes.length; i += CHUNK) {
+            const chunk = cleanCodes.slice(i, i + CHUNK);
             const placeholders = chunk.map(() => '?').join(',');
 
             try {
@@ -239,12 +266,13 @@ class GangAttendanceService {
                 `, [...chunk, startDate, endDate, ...chunk, startDate, endDate]);
 
                 for (const row of rows) {
-                    const empKey = row.EmpCode.trim().toUpperCase();
+                    // emp_code is always trimmed + uppercased to match HR_GANGLN source
+                    const empKey = (row.EmpCode || '').trim().toUpperCase();
                     if (!result.has(empKey)) {
                         result.set(empKey, []);
                     }
                     // Determine attendance flags from TaskCode (matching employeeDetailService logic)
-                    const tc = row.TaskCode || '';
+                    const tc = (row.TaskCode || '').trim();
                     result.get(empKey)!.push({
                         day: row.day_of_month,
                         taskCode: tc,
@@ -518,9 +546,11 @@ class GangAttendanceService {
         const members = await this.getGangMembersFromMainDb(gangCodes);
         if (members.length === 0) return [];
 
+        // emp_code is already trimmed from getGangMembersFromMainDb
         const empCodes = members.map(m => m.emp_code);
 
         // Get overtime data from PR_TASKREGLN + ARC where OT = 1 (main db_ptrj)
+        // RULE: emp_code comes from HR_GANGLN — attendance/lembur is joined via this authoritative emp_code
         const overtimeRows = await this.db.query<{
             EmpCode: string;
             TrxDate: string;
@@ -550,7 +580,7 @@ class GangAttendanceService {
                 WHERE l.OT = 1 AND l.TrxDate >= ? AND l.TrxDate <= ?
             ) trl
             LEFT JOIN PR_TASKCODE tc ON tc.TaskCode = trl.TaskCode
-            WHERE trl.EmpCode IN (${empCodes.map((_, i) => `?`).join(',')})
+            WHERE RTRIM(trl.EmpCode) IN (${empCodes.map((_, i) => `?`).join(',')})
             ORDER BY trl.EmpCode, trl.TrxDate
         `, [
             startDate, endDate,
@@ -562,8 +592,6 @@ class GangAttendanceService {
         const holidayDays = new Set<number>(Object.keys(holidayMap).map(Number));
 
         // Group by employee
-
-        // Group by employee
         const empOvertimeMap = new Map<string, {
             daily: Record<number, { hours: number; amount: number; taskDesc: string; dayType: string }[]>;
             totalHours: number;
@@ -572,7 +600,8 @@ class GangAttendanceService {
         }>();
 
         for (const row of overtimeRows) {
-            const empKey = row.EmpCode.trim().toUpperCase();
+            // emp_code key must match the authoritative HR_GANGLN source (trimmed + uppercased)
+            const empKey = (row.EmpCode || '').trim().toUpperCase();
             const trxDate = new Date(row.TrxDate);
             const day = trxDate.getDate();
             const dayOfWeek = trxDate.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat

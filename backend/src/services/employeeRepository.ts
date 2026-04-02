@@ -351,10 +351,6 @@ export class EmployeeRepository {
      * Get available gang codes, optionally filtered by division prefix
      */
     public async getAvailableGangs(division?: string): Promise<string[]> {
-        const cacheKey = division ? `available_gangs_${division}` : "available_gangs_all";
-        const cached = cacheService.get<string[]>(cacheKey);
-        if (cached) return cached;
-
         try {
             let sql = `
                 SELECT DISTINCT g.GangCode FROM HR_GANGLN g
@@ -381,7 +377,6 @@ export class EmployeeRepository {
                 gangs = await this._getAvailableGangsFromHistory(division);
             }
 
-            cacheService.set(cacheKey, gangs, 300);
             return gangs;
         } catch (e) {
             console.error("[EmployeeRepository] getAvailableGangs failed:", e);
@@ -553,10 +548,6 @@ export class EmployeeRepository {
      * Get available religions for filter dropdown
      */
     public async getAvailableReligions(): Promise<string[]> {
-        const cacheKey = "available_religions";
-        const cached = cacheService.get<string[]>(cacheKey);
-        if (cached) return cached;
-
         try {
             const rows = await this.db.query<{ Religion: string }>(`
                 SELECT DISTINCT Religion FROM HR_EMPLOYEE
@@ -570,7 +561,6 @@ export class EmployeeRepository {
                 religions = await this._getAvailableReligionsFromHistory();
             }
 
-            cacheService.set(cacheKey, religions, 600);
             return religions;
         } catch (e) {
             console.error("[EmployeeRepository] getAvailableReligions failed:", e);
@@ -598,10 +588,6 @@ export class EmployeeRepository {
      * Get available statuses for filter dropdown
      */
     public async getAvailableStatuses(): Promise<string[]> {
-        const cacheKey = "available_statuses";
-        const cached = cacheService.get<string[]>(cacheKey);
-        if (cached) return cached;
-
         try {
             const rows = await this.db.query<{ Status: string }>(`
                 SELECT DISTINCT Status FROM HR_EMPLOYEE
@@ -615,7 +601,6 @@ export class EmployeeRepository {
                 statuses = await this._getAvailableStatusesFromHistory();
             }
 
-            cacheService.set(cacheKey, statuses, 600);
             return statuses;
         } catch (e) {
             console.error("[EmployeeRepository] getAvailableStatuses failed:", e);

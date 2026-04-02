@@ -5,7 +5,6 @@
  * Provides common functionality for:
  * - Metadata management
  * - Error handling
- * - Caching
  * - Performance tracking
  *
  * All component services (lembur, premi, tunjangan, potongan, etc.)
@@ -13,7 +12,6 @@
  */
 
 import { Database } from '../../db/client';
-import { cacheService } from '../cacheService';
 import {
     PayrollCalculationInput,
     PayrollCalculationResult,
@@ -33,7 +31,6 @@ export abstract class BasePayrollComponentService<TInput extends PayrollCalculat
 
     // Dependencies
     protected db: Database;
-    protected cacheService = cacheService;
 
     constructor() {
         this.db = Database.getInstance();
@@ -71,50 +68,30 @@ export abstract class BasePayrollComponentService<TInput extends PayrollCalculat
 
     /**
      * Calculate payroll component for a single employee
-     * Handles caching, error handling, and performance tracking
+     * Handles error handling and performance tracking. Caching is disabled.
      */
     public async calculate(
         input: TInput,
         options: PayrollCalculationOptions = {}
     ): Promise<PayrollCalculationResult<TOutput>> {
-        const { useCache = false, forceRecalculate = false } = options;
-
-        // Check cache if enabled and not forcing recalculation
-        if (useCache && !forceRecalculate) {
-            const cacheKey = this.getCacheKey(input);
-            const cached = await this.cacheService.get<PayrollCalculationResult<TOutput>>(cacheKey);
-            if (cached) {
-                return { ...cached, cached: true };
-            }
-        }
-
         // Perform calculation
         const startTime = performance.now();
         const result = await this.calculateSingle(input);
         result.execution_time_ms = performance.now() - startTime;
 
-        // Store in cache if enabled
-        if (useCache) {
-            const cacheKey = this.getCacheKey(input);
-            await this.cacheService.set(cacheKey, result, this.getCacheTTL());
-        }
-
         return result;
     }
 
     /**
-     * Calculate payroll component for multiple employees
+     * Calculate payroll component for multiple employees. Caching is disabled.
      */
     public async calculateBatch(
         inputs: TInput[],
         options: PayrollCalculationOptions = {}
     ): Promise<BatchPayrollCalculationResult<TOutput>> {
-        const { useCache = false, forceRecalculate = false } = options;
-
         const startTime = performance.now();
         const results = new Map<string, PayrollCalculationResult<TOutput>>();
         const errors: string[] = [];
-        let cachedCount = 0;
 
         // Group inputs by period for efficient batch processing
         const groupedInputs = this.groupInputsByPeriod(inputs);
@@ -127,7 +104,6 @@ export abstract class BasePayrollComponentService<TInput extends PayrollCalculat
                 // Add results to map
                 for (const [empCode, result] of batchResult.results.entries()) {
                     results.set(empCode, result);
-                    if (result.cached) cachedCount++;
                 }
 
                 // Collect errors
@@ -145,7 +121,7 @@ export abstract class BasePayrollComponentService<TInput extends PayrollCalculat
                 total_calculated: results.size,
                 total_errors: errors.length,
                 execution_time_ms: performance.now() - startTime,
-                cached_count: cachedCount,
+                cached_count: 0,
             },
             meta: this.buildMetadata('CALCULATION', `Batch ${this.componentName} calculation`),
         };

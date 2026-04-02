@@ -13,12 +13,9 @@ export class HarvesterService {
 
     private constructor() {
         this.db = Database.getInstance();
-        // Check env flag - skip staging entirely if disabled
-        const disableStaging = process.env.DISABLE_STAGING_DB === 'true';
-        this.stagingAvailable = !disableStaging;
-        if (disableStaging) {
-            console.log("[HarvesterService] Staging DB disabled via DISABLE_STAGING_DB env flag");
-        }
+        // Sesuai permintaan user: Abaikan penggunaan database staging
+        this.stagingAvailable = false;
+        console.log("[HarvesterService] Staging DB disabled by default as requested");
     }
 
     public static getInstance(): HarvesterService {

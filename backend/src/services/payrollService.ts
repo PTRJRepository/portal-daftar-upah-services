@@ -239,10 +239,6 @@ export class PayrollService {
     public async getPayratesMap(empCodes: string[], serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
 
-        const cacheKey = `payrates:${serverProfile || "default"}:${empCodes.sort().join(",")}`;
-        const cached = cacheService.get<Record<string, number>>(cacheKey);
-        if (cached) return cached;
-
         const map: Record<string, number> = {};
         const chunks = this.chunk(empCodes, 200);
 
@@ -260,7 +256,6 @@ export class PayrollService {
             }
         }
 
-        cacheService.set(cacheKey, map, 300);
         return map;
     }
 
@@ -271,10 +266,6 @@ export class PayrollService {
         endDate: string
     ): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
-
-        const cacheKey = `loosefruit:${startDate}:${endDate}:${empCodes.sort().join(",")}`;
-        const cached = cacheService.get<Record<string, number>>(cacheKey);
-        if (cached) return cached;
 
         const map: Record<string, number> = {};
         const chunks = this.chunk(empCodes, 200);
@@ -296,7 +287,6 @@ export class PayrollService {
             }
         }
 
-        cacheService.set(cacheKey, map, 300);
         return map;
     }
 
@@ -309,11 +299,6 @@ export class PayrollService {
         exactMatch: boolean = false
     ): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
-
-        const matchType = exactMatch ? "exact" : "like";
-        const cacheKey = `premi:${matchType}:${pattern}:${startDate}:${endDate}:${empCodes.sort().join(",")}`;
-        const cached = cacheService.get<Record<string, number>>(cacheKey);
-        if (cached) return cached;
 
         const map: Record<string, number> = {};
         const chunks = this.chunk(empCodes, 200);
@@ -337,7 +322,6 @@ export class PayrollService {
             }
         }
 
-        cacheService.set(cacheKey, map, 300);
         return map;
     }
 

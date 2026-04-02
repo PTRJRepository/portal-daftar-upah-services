@@ -18,7 +18,6 @@ import { divisionDefinition } from "./divisionDefinition";
 import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { OtherIncomesService } from "./otherIncomesService";
 import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
-import { cacheService } from './cacheService';
 import { debug, info, warn, error as logError } from "../utils/logger";
 
 const CATEGORY = "DataExtractor";
@@ -33,6 +32,7 @@ interface EmployeeRow {
     beras_rate: number;
     join_date: string | null;
     actual_nik?: string;
+    jabatan?: string;
 }
 
 interface CutiData {
@@ -312,19 +312,6 @@ export class DataExtractorService {
         const daysInMonth = new Date(year, month, 0).getDate();
 
         // ============================================================
-        // [OPTIMIZATION] Cache key based on all parameters
-        // Cache is only active in production mode (see cacheService.ts)
-        // Historical data (before current period) cached longer (1hr)
-        // Current period data cached shorter (2min) for fresher reads
-        // ============================================================
-        const cacheKey = `payroll_data:${month}:${year}:${gangCode || 'ALL'}:${divisionCode || ''}:${specificEmpCode || ''}:${gangPrefix || ''}:${skipHarvest}`;
-        const cached = cacheService.get<any>(cacheKey);
-        if (cached) {
-            debug(CATEGORY, `Cache HIT for ${cacheKey} (${cached.data_rows?.length || 0} rows)`);
-            return { ...cached, meta: { ...cached.meta, _cache_hit: true } };
-        }
-
-        // ============================================================
         // [OPTIMIZATION] Parallelize: currentPeriod + gangService fetch together
         // ============================================================
         const [currentPeriod, allGangs] = await Promise.all([
@@ -336,10 +323,6 @@ export class DataExtractorService {
 
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
-
-
-
-        // --- DEEP HISTORY INTERCEPTOR ---
         // For development/debugging as requested, bypass the interceptor to allow getPremi logic to run for History
         // If history mode is on, try to fetch from the snapshot tables first.
         let shouldFetchHistory = false; // Bypass: isHistorical && historyDatabaseService.isHistoryMode();
@@ -499,12 +482,17 @@ export class DataExtractorService {
         const bunchesBatch = new Map();
         const positionHistory = {} as Record<string, string>;
 
+        const harvestEmpCodes = new Set(employees.filter(e => e.gang_code?.toString().toUpperCase().trim().endsWith('H')).map(e => e.emp_code));
+
         // Global queries that don't depend on empCodes chunks
         // [NIK FIX] Use getEmployeeJobsWithNik() to get dual map: empcode + NIK
         // Karyawan yang pindah gang dapat emp_code baru → jabatan ikut emp_code lama → hilang
         // Solusi: fallback ke NIK saat emp_code tidak ketemu di empcodeMap
         const [jobTitlesResult, manualAdjustmentsRaw] = await Promise.all([
-            safeQuery('getJobTitles', () => EmployeeEstateService.getEmployeeJobsWithNik(), { empcodeMap: {} as Record<string, string>, nikMap: {} as Record<string, string> }),
+            safeQuery('getJobTitles', async () => {
+                const { EmployeeEstateService: EES } = await import("./employeeEstateService");
+                return EES.getEmployeeJobsWithNik();
+            }, { empcodeMap: {} as Record<string, string>, nikMap: {} as Record<string, string> }),
             safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined), [])
         ]);
         const jobTitles = jobTitlesResult.empcodeMap;
@@ -522,6 +510,7 @@ export class DataExtractorService {
         // Helper: process a single chunk - all queries within are parallel.
         // Using a named function to avoid TypeScript closure inference issues with Promise.all.
         const processChunk = async (chunk: string[], idx: number) => {
+            const harvestChunk = chunk.filter(c => harvestEmpCodes.has(c));
             const [attB, cutiB, premiB, potB, lemburCalcB, lemburDetB, lemburDocB, berasDocB, jabatanB, masaKerjaB, upahB, brondolB, taskCodesB, bunchesB, posHistB] = await Promise.all([
                 safeQuery(`getAttendance[${idx}]`, () => this.getAttendance(chunk, startDate, endDate, serverProfile), {}),
                 safeQuery(`getCuti[${idx}]`, () => this.getCuti(chunk, startDate, endDate, serverProfile), {}),
@@ -536,7 +525,7 @@ export class DataExtractorService {
                 safeQuery(`getUpahPokok[${idx}]`, () => this.getUpahPokok(chunk, year, currentYear, serverProfile), {}),
                 safeQuery(`getBrondol[${idx}]`, () => this.getBrondol(chunk, startDate, endDate, serverProfile), {}),
                 safeQuery(`getTaskCodes[${idx}]`, () => this.getTaskCodes(chunk, startDate, endDate, serverProfile), {}),
-                !skipHarvest ? safeQuery(`getBunches[${idx}]`, () => this.getBunchesBatch(chunk, month, year), new Map()) : Promise.resolve(new Map()),
+                (!skipHarvest && harvestChunk.length > 0) ? safeQuery(`getBunches[${idx}]`, () => this.getBunchesBatch(harvestChunk, month, year), new Map()) : Promise.resolve(new Map()),
                 safeQuery(`getPositionHistory[${idx}]`, () => this.getPositionHistory(chunk, month, year), {})
             ]);
             return { attB, cutiB, premiB, potB, lemburCalcB, lemburDetB, lemburDocB, berasDocB, jabatanB, masaKerjaB, upahB, brondolB, taskCodesB, bunchesB, posHistB };
@@ -859,10 +848,11 @@ export class DataExtractorService {
 
             // Get job title from history override if available, otherwise use real-time
             // [NIK FIX] Fallback ke NIK lookup jika emp_code tidak ketemu (karyawan pindah gang)
+            // [JABATAN FIX] Fallback terakhir ke HR_GANGLN.Jabatan (source langsung dari gang member)
             const empJobTitle = positionHistory[emp.emp_code]
                 || jobTitles[emp.emp_code]       // lookup by emp_code (existing)
                 || jobTitlesByNik[nikClean]      // lookup by NIK (NEW — karyawan pindah gang)
-                || "";
+                || (emp.jabatan || "").trim();   // [FIX] Fallback terakhir dari HR_GANGLN.Jabatan
 
             // ============================================================
             // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
@@ -1352,7 +1342,11 @@ export class DataExtractorService {
             // - Premi
             // - ASTEK/BPJS Pensiun Majikan (0.84%)
             // - BPJS Kesehatan Majikan (4%)
-            // - Other Taxable Incomes
+            // - Other Taxable Incomes (THR, bonus, dll)
+            //
+            // KOREKSI (koreksi panen, koreksi HK) dikurangkan dari penghasilan bruto karena
+            // koreksi = koreksi kelebihan pembayaran, bukan penghasilan baru.
+            // POTONGAN (SPSI, astek pekerja, bpjs pekerja) TIDAK dikurangkan dari bruto.
             const penghasilan_bruto = gaji_pokok_aktual +
                 berasJumlah +
                 empJabatan +
@@ -1546,14 +1540,7 @@ export class DataExtractorService {
             }
         };
 
-        // ============================================================
-        // [OPTIMIZATION] Cache the result
-        // Historical periods (before current): cache 1 hour
-        // Current period: cache 2 minutes (fresher data)
-        // ============================================================
-        const cacheTtl = isHistorical ? 3600 : 120;
-        cacheService.set(cacheKey, result, cacheTtl);
-        debug(CATEGORY, `TOTAL: ${totalMs}ms for ${gangCode}/${month}/${year} (${dataRows.length} rows, cache TTL=${cacheTtl}s)`);
+        debug(CATEGORY, `TOTAL: ${totalMs}ms for ${gangCode}/${month}/${year} (${dataRows.length} rows)`);
 
         return result;
     }

@@ -93,21 +93,17 @@ const PEKERJA_COLUMNS = [
     { key: 'pot_pph21', label: 'PPH21\n(dari ADTRANS)', align: 'right' },
 ]
 
-export default function PayrollTaxMatrix({ token, gangCodes, month, year, division, initialData = null, onDataLoaded = null, onViewEmployeeDetail = null, useHistoryDb = false }) {
-    const [data, setData] = useState(initialData)
-    const [loading, setLoading] = useState(!initialData)
+export default function PayrollTaxMatrix({ token, gangCodes, month, year, division, onViewEmployeeDetail = null, useHistoryDb = false }) {
+    const [data, setData] = useState(null)
+    const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [showPekerjaDetail, setShowPekerjaDetail] = useState(false)
     const [search, setSearch] = useState('')
     const [sortBy, setSortBy] = useState('nama')
     const [sortOrder, setSortOrder] = useState('asc')
-    const cachedParamsRef = useRef(null)
 
     const fetchData = useCallback(async () => {
         if (!gangCodes || gangCodes.length === 0 || !month || !year) return
-
-        const cacheKey = gangCodes.join(',') + '_' + month + '_' + year + '_' + String(useHistoryDb)
-        if (cachedParamsRef.current === cacheKey && data) return
 
         setLoading(true)
         setError(null)
@@ -115,14 +111,12 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
             // Fetch raw tree data which contains all employee payroll rows
             const result = await getLockedRawTree(token, division, month, year, gangCodes, useHistoryDb)
             setData(result)
-            cachedParamsRef.current = cacheKey
-            if (onDataLoaded) onDataLoaded(result)
         } catch (err) {
             setError(err.message || 'Gagal memuat data pajak')
         } finally {
             setLoading(false)
         }
-    }, [token, gangCodes, month, year, division, useHistoryDb, onDataLoaded, data])
+    }, [token, gangCodes, month, year, division, useHistoryDb])
 
     useEffect(() => {
         fetchData()

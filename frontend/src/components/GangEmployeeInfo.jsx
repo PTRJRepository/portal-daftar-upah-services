@@ -44,34 +44,28 @@ function formatNumber(n) {
     return Number(n).toLocaleString('id-ID')
 }
 
-export default function GangEmployeeInfo({ token, gangCodes, month, year, division, initialData = null, onDataLoaded = null, onViewEmployeeDetail = null }) {
-    const [data, setData] = useState(initialData)
-    const [loading, setLoading] = useState(!initialData)
+export default function GangEmployeeInfo({ token, gangCodes, month, year, division, onViewEmployeeDetail = null }) {
+    const [data, setData] = useState(null)
+    const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [search, setSearch] = useState('')
     const [sortBy, setSortBy] = useState('name') // 'name' | 'emp_code' | 'hk'
     const [sortOrder, setSortOrder] = useState('asc')
-    const cachedParamsRef = useRef(null)
 
     const fetchData = useCallback(async () => {
         if (!gangCodes || gangCodes.length === 0 || !month || !year) return
-
-        const cacheKey = gangCodes.join(',') + '_' + month + '_' + year
-        if (cachedParamsRef.current === cacheKey && data) return
 
         setLoading(true)
         setError(null)
         try {
             const result = await getGangAttendanceMatrix(token, gangCodes, month, year)
             setData(result)
-            cachedParamsRef.current = cacheKey
-            if (onDataLoaded) onDataLoaded(result)
         } catch (err) {
             setError(err.message || 'Gagal memuat data karyawan')
         } finally {
             setLoading(false)
         }
-    }, [token, gangCodes, month, year, onDataLoaded, data])
+    }, [token, gangCodes, month, year])
 
     useEffect(() => {
         fetchData()

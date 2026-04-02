@@ -263,7 +263,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // [OPTIMIZATION] The user explicitly requested to skip heavy bunches data (tandan) for the main table view
             const skipHarvest = true;
 
+            // [DEBUG] Log input parameters
+            console.log(`[PayrollRoutes] /report/division-raw-tree | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix || 'none'} DB_PROFILE=${Config.DB_PROFILE} useHistory=${useHistoryDb} RUN_MODE=${Config.RUN_MODE}`);
+
             const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix, skipHarvest);
+
+            // [DEBUG] Log result summary
+            console.log(`[PayrollRoutes] /report/division-raw-tree RESULT | data_rows=${result.data_rows.length} gangs=${result.gangs?.length || 0} | gangPrefix=${gangPrefix}`);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {
@@ -478,20 +484,21 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             const includeVirtual = query.include_virtual === 'true';
             const gangPrefix = query.gang_prefix;
+            const gangCode = query.gang_code || "ALL";
 
             // Use Config.DB_PROFILE for payroll data (main payroll database)
 
             // [OPTIMIZATION] Skip heavy bunches data (tandan) for the main table view
             const skipHarvest = true;
 
-            console.log(`[PayrollRoutes] /locked/report/raw-tree | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix} useHistory=${useHistoryDb}`);
+            console.log(`[PayrollRoutes] /locked/report/raw-tree | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} gangPrefix=${gangPrefix} useHistory=${useHistoryDb}`);
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix, skipHarvest);
+            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix, skipHarvest);
 
             // [DEBUG] Log result summary
             const empCount = result?.data_rows?.length || 0;
             const gangCount = result?.gangs?.length || 0;
-            console.log(`[PayrollRoutes] /locked/report/raw-tree RESULT | gangs=${gangCount} employees=${empCount} | gangPrefix=${gangPrefix}`);
+            console.log(`[PayrollRoutes] /locked/report/raw-tree RESULT | gangs=${gangCount} employees=${empCount} | gangCode=${gangCode} | gangPrefix=${gangPrefix}`);
 
             // Helper function to calculate totals for a list of employees
             const calculateTotals = (employees: any[]) => {

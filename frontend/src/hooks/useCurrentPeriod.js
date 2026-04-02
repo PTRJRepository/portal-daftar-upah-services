@@ -10,62 +10,31 @@ const STORAGE_KEYS = {
 }
 
 /**
- * Load from localStorage with error handling
- */
-const loadFromStorage = (key, defaultValue) => {
-  try {
-    const stored = localStorage.getItem(key)
-    return stored !== null ? parseInt(stored) : defaultValue
-  } catch {
-    return defaultValue
-  }
-}
-
-/**
- * Save to localStorage with error handling
- */
-const saveToStorage = (key, value) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch (e) {
-    console.warn(`[useCurrentPeriod] Failed to save ${key}:`, e)
-  }
-}
-
-/**
  * Custom hook to fetch and use the current payroll period
- *
+ * 
  * The current period is determined by the backend from PR_TASKREGLN_ARC
  * and is calculated as: latest period + 1 month
- *
- * Period is persisted to localStorage and shared across all pages via ReportContext.
- *
+ * 
  * @returns {Object} { month, year, setMonth, setYear, loading, error, refetch, display, isCurrent }
  */
 export function useCurrentPeriod() {
   const { token } = useAuth()
 
-  // Initialize state from localStorage or use current date
-  const [monthState, setMonthState] = useState(() =>
-    loadFromStorage(STORAGE_KEYS.MONTH, new Date().getMonth() + 1)
-  )
-  const [yearState, setYearState] = useState(() =>
-    loadFromStorage(STORAGE_KEYS.YEAR, new Date().getFullYear())
-  )
+  // Initialize state using current calendar date as fallback until API responds
+  const [monthState, setMonthState] = useState(new Date().getMonth() + 1)
+  const [yearState, setYearState] = useState(new Date().getFullYear())
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [data, setData] = useState(null)
 
-  // Wrapped setters that persist to localStorage
+  // Simple state setters
   const setMonth = useCallback((val) => {
     setMonthState(val)
-    saveToStorage(STORAGE_KEYS.MONTH, val)
   }, [])
 
   const setYear = useCallback((val) => {
     setYearState(val)
-    saveToStorage(STORAGE_KEYS.YEAR, val)
   }, [])
 
   const loadCurrentPeriod = useCallback(async () => {
@@ -74,39 +43,23 @@ export function useCurrentPeriod() {
       return
     }
 
-    // Check if we already have values from localStorage
-    const hasStoredMonth = localStorage.getItem(STORAGE_KEYS.MONTH) !== null
-    const hasStoredYear = localStorage.getItem(STORAGE_KEYS.YEAR) !== null
-
     try {
+      setLoading(true)
       const currentPeriod = await fetchCurrentPeriod(token)
       console.log('[useCurrentPeriod] Loaded current period from API:', currentPeriod)
 
-      // Only update from API if no localStorage values exist
       if (currentPeriod && currentPeriod.month && currentPeriod.year) {
         setData(currentPeriod)
-
-        if (!hasStoredMonth || !hasStoredYear) {
-          setMonth(currentPeriod.month)
-          setYear(currentPeriod.year)
-          console.log(`[useCurrentPeriod] No localStorage found, set period to month=${currentPeriod.month}, year=${currentPeriod.year}`)
-        } else {
-          console.log(`[useCurrentPeriod] Using localStorage values: month=${monthState}, year=${yearState}`)
-        }
+        setMonth(currentPeriod.month)
+        setYear(currentPeriod.year)
       }
     } catch (e) {
       console.error('[useCurrentPeriod] Failed to load current period from API:', e)
       setError(e)
-      // Fallback to current calendar date on error (only if no localStorage)
-      if (!hasStoredMonth || !hasStoredYear) {
-        const now = new Date()
-        setMonth(now.getMonth() + 1)
-        setYear(now.getFullYear())
-      }
     } finally {
       setLoading(false)
     }
-  }, [token, monthState, yearState])
+  }, [token, setMonth, setYear])
 
   useEffect(() => {
     loadCurrentPeriod()

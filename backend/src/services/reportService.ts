@@ -8,10 +8,6 @@ export class ReportService {
     private static instance: ReportService;
     private db: Database;
 
-    private currentMonthCache: { year: number; month: number } | null = null;
-    private currentMonthCacheTime: number = 0;
-    private readonly CACHE_TTL_SECONDS = 300;
-
     private constructor() {
         this.db = Database.getInstance();
     }
@@ -26,11 +22,6 @@ export class ReportService {
     // --- Helpers ---
 
     private async getCurrentMonthFromDb(): Promise<{ year: number; month: number }> {
-        const now = Date.now();
-        if (this.currentMonthCache && (now - this.currentMonthCacheTime) < (this.CACHE_TTL_SECONDS * 1000)) {
-            return this.currentMonthCache;
-        }
-
         try {
             const rows = await this.db.query<{ year: number; month: number }>(`
                 SELECT TOP 1 YEAR(DocDate) as year, MONTH(DocDate) as month 
@@ -41,9 +32,7 @@ export class ReportService {
             const row = rows[0];
 
             if (row && row.year && row.month) {
-                this.currentMonthCache = { year: row.year, month: row.month };
-                this.currentMonthCacheTime = now;
-                return this.currentMonthCache;
+                return { year: row.year, month: row.month };
             }
         } catch (e) {
             console.error("Error getting current month from DB:", e);

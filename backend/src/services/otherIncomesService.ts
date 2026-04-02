@@ -517,9 +517,9 @@ export class OtherIncomesService {
                     LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
                     WHERE RTRIM(e.EmpCode) IN (${placeholders}) OR RTRIM(e.NewICNo) IN (${placeholders})
                     ORDER BY
-                        CASE WHEN e.Status = '1' THEN 0 ELSE 1 END, -- Active employees first
-                        em.AppJoinDate DESC, -- Most recent join date first
-                        e.EmpCode DESC -- Then by EmpCode descending
+                        e.EmpCode DESC, -- Prioritize latest empcode (C-prefix > B-prefix > A-prefix)
+                        CASE WHEN RTRIM(e.Status) = '1' THEN 0 ELSE 1 END,
+                        em.AppJoinDate DESC
                 `, [...chunk, ...chunk]);
 
                 // Group by employee and get the LATEST gang

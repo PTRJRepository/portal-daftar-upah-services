@@ -19,10 +19,6 @@ import GangEmployeeInfo from '../components/GangEmployeeInfo'
 import PayrollTaxMatrix from '../components/PayrollTaxMatrix'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
-import { withLRU } from '../utils/cacheUtils'
-
-// Maximum cached entries per cache type (LRU eviction when exceeded)
-const CACHE_MAX_ENTRIES = 10
 
 // Check if running in dev/test mode (admin mode)
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
@@ -137,14 +133,8 @@ export default function MainPage({ lockedDiv = null }) {
   const [usePeriodSlider, setUsePeriodSlider] = useState(true)
 
   // Matrix View State
+  // Matrix View State
   const [activeMatrixView, setActiveMatrixView] = useState(null) // null | 'attendance' | 'overtime' | 'employee' | 'pajak'
-
-  // Data caches for view switching (avoid refetch when switching views)
-  const [payrollDataCache, setPayrollDataCache] = useState({})   // key: `${division}_${month}_${year}_${useHistoryDb}_${gangPrefix}`
-  const [attendanceMatrixCache, setAttendanceMatrixCache] = useState({})  // key: `${gangCodes}_${month}_${year}`
-  const [overtimeMatrixCache, setOvertimeMatrixCache] = useState({})     // key: `${gangCodes}_${month}_${year}`
-  const [employeeDataCache, setEmployeeDataCache] = useState({})     // key: `${gangCodes}_${month}_${year}`
-  const [taxDataCache, setTaxDataCache] = useState({})               // key: `${gangCodes}_${month}_${year}_${useHistoryDb}`
 
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
@@ -1688,91 +1678,70 @@ export default function MainPage({ lockedDiv = null }) {
       <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'auto' }}>
         {division && gang ? (
           <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-            {/* Cache key helpers */}
-            {(() => {
-              const matrixGangCodes = gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang];
-              const attCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
-              const otCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
-              const empCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}`;
-              const taxCacheKey = `${matrixGangCodes.join(',')}_${month}_${year}_${isHistorical}`;
-              const payCacheKey = `${division}_${month}_${year}_${isHistorical}_${gangPrefix || ''}`;
-              return (
-                <>
-                  {/* Show matrix views - use display toggling to avoid unmount/remount */}
-                  <div style={{ display: activeMatrixView === 'attendance' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', flexDirection: 'column' }}>
-                    <GangAttendanceMatrix
-                      token={token}
-                      gangCodes={matrixGangCodes}
-                      month={month}
-                      year={year}
-                      division={division}
-                      initialData={attendanceMatrixCache[attCacheKey] || null}
-                      onDataLoaded={(data) => setAttendanceMatrixCache(prev => withLRU(prev, attCacheKey, data, CACHE_MAX_ENTRIES))}
-                    />
-                  </div>
-                  <div style={{ display: activeMatrixView === 'overtime' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', flexDirection: 'column' }}>
-                    <GangOvertimeMatrix
-                      token={token}
-                      gangCodes={matrixGangCodes}
-                      month={month}
-                      year={year}
-                      division={division}
-                      initialData={overtimeMatrixCache[otCacheKey] || null}
-                      onDataLoaded={(data) => setOvertimeMatrixCache(prev => withLRU(prev, otCacheKey, data, CACHE_MAX_ENTRIES))}
-                    />
-                  </div>
-                  <div style={{ display: activeMatrixView === 'employee' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', flexDirection: 'column' }}>
-                    <GangEmployeeInfo
-                      token={token}
-                      gangCodes={matrixGangCodes}
-                      month={month}
-                      year={year}
-                      division={division}
-                      initialData={employeeDataCache[empCacheKey] || null}
-                      onDataLoaded={(data) => setEmployeeDataCache(prev => withLRU(prev, empCacheKey, data, CACHE_MAX_ENTRIES))}
-                      onViewEmployeeDetail={handleViewEmployeeDetail}
-                    />
-                  </div>
-                  <div style={{ display: activeMatrixView === 'pajak' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', flexDirection: 'column', position: 'relative' }}>
-                    <PayrollTaxMatrix
-                      token={token}
-                      gangCodes={matrixGangCodes}
-                      month={month}
-                      year={year}
-                      division={division}
-                      initialData={taxDataCache[taxCacheKey] || null}
-                      onDataLoaded={(data) => setTaxDataCache(prev => withLRU(prev, taxCacheKey, data, CACHE_MAX_ENTRIES))}
-                      onViewEmployeeDetail={handleViewEmployeeDetail}
-                      useHistoryDb={isHistorical}
-                    />
-                  </div>
-                  {/* Payroll table - always mounted, hidden with display:none when matrix active */}
-                  <div style={{ display: !activeMatrixView ? 'block' : 'none', width: '100%', height: '100%' }}>
-                    <CustomPayrollTable
-                      token={token}
-                      month={month}
-                      year={year}
-                      division={division}
-                      gangCode={gang}
-                      gangPrefix={gangPrefix}
-                      onViewEmployeeDetail={handleViewEmployeeDetail}
-                      onOpenHrProfile={handleOpenHrProfile}
-                      fontSize={fontSize}
-                      onExportReady={(handler) => setExportHandler(() => handler)}
-                      refreshTrigger={refreshTrigger}
-                      selectedEmployees={selectedEmployees}
-                      onToggleEmployeeSelection={handleToggleEmployeeSelection}
-                      onSelectAllEmployees={handleSelectAllEmployees}
-                      isEditMode={isEditMode}
-                      useHistoryDb={isHistorical}
-                      initialData={payrollDataCache[payCacheKey] || null}
-                      onDataLoaded={(data) => setPayrollDataCache(prev => withLRU(prev, payCacheKey, data, CACHE_MAX_ENTRIES))}
-                      onRefresh={() => setRefreshTrigger(prev => prev + 1)}
-                    />
-                  </div>
-                </>
-              );
-            })()}
+            <>
+              {/* Show matrix views - use display toggling to avoid unmount/remount */}
+              <div style={{ display: activeMatrixView === 'attendance' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', flexDirection: 'column' }}>
+                <GangAttendanceMatrix
+                  token={token}
+                  gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
+                  month={month}
+                  year={year}
+                  division={division}
+                />
+              </div>
+              <div style={{ display: activeMatrixView === 'overtime' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', flexDirection: 'column' }}>
+                <GangOvertimeMatrix
+                  token={token}
+                  gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
+                  month={month}
+                  year={year}
+                  division={division}
+                />
+              </div>
+              <div style={{ display: activeMatrixView === 'employee' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', flexDirection: 'column' }}>
+                <GangEmployeeInfo
+                  token={token}
+                  gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
+                  month={month}
+                  year={year}
+                  division={division}
+                  onViewEmployeeDetail={handleViewEmployeeDetail}
+                />
+              </div>
+              <div style={{ display: activeMatrixView === 'pajak' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', flexDirection: 'column', position: 'relative' }}>
+                <PayrollTaxMatrix
+                  token={token}
+                  gangCodes={gang === 'ALL' ? gangs.map(g => g.gang_code) : [gang]}
+                  month={month}
+                  year={year}
+                  division={division}
+                  useHistoryDb={isHistorical}
+                />
+              </div>
+            </>
+            {/* Payroll table - always mounted, hidden with display:none when matrix active */}
+            <div style={{ display: !activeMatrixView ? 'block' : 'none', width: '100%', height: '100%' }}>
+              <CustomPayrollTable
+                token={token}
+                month={month}
+                year={year}
+                division={division}
+                gangCode={gang}
+                gangPrefix={gangPrefix}
+                gangLoading={gangLoading}
+                onViewEmployeeDetail={handleViewEmployeeDetail}
+                onOpenHrProfile={handleOpenHrProfile}
+                fontSize={fontSize}
+                onExportReady={(handler) => setExportHandler(() => handler)}
+                refreshTrigger={refreshTrigger}
+                selectedEmployees={selectedEmployees}
+                onToggleEmployeeSelection={handleToggleEmployeeSelection}
+                onSelectAllEmployees={handleSelectAllEmployees}
+                isEditMode={isEditMode}
+                useHistoryDb={isHistorical}
+                onRefresh={() => setRefreshTrigger(prev => prev + 1)}
+              />
+            </div>
           </div>
         ) : (
           <div className="flex-center h-full flex-col text-neutral-400">

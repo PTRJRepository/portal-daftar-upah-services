@@ -191,4 +191,132 @@ export class EmployeeEstateService {
             return {};
         }
     }
+
+    /**
+     * Get employee job titles with DUAL MAP: by empcode AND by NIK.
+     *
+     * MASALAH: Karyawan yang pindah gang mendapat emp_code baru,
+     * tapi jabatan disimpan dengan emp_code LAMA di employee_estate.
+     * Lookup via emp_code baru GAGAL → jabatan kosong.
+     *
+     * SOLUSI: Join employee_estate dengan HR_EMPLOYEE untuk mendapat NIK (NewICNo),
+     * lalu return dua map:
+     *   - empcodeMap: { empcode → jabatan }  (existing, untuk backward compat)
+     *   - nikMap:     { nik → jabatan }       (NEW, untuk karyawan yang ganti emp_code)
+     *
+     * Lookup di dataExtractorService harus cek empcodeMap dulu, fallback ke nikMap.
+     */
+    static async getEmployeeJobsWithNik(): Promise<{
+        empcodeMap: Record<string, string>;
+        nikMap: Record<string, string>;
+    }> {
+        await this.initTable();
+        const extDb = Database.getExtendedInstance();
+        const mainDb = Database.getInstance();
+
+        const empcodeMap: Record<string, string> = {};
+        const nikMap: Record<string, string> = {};
+
+        try {
+            // Step 1: Get all jabatan from employee_estate (extend DB)
+            const estateRows = await extDb.query<{ empcode: string; jabatan: string }>(
+                "SELECT empcode, jabatan FROM employee_estate WHERE jabatan IS NOT NULL AND jabatan <> ''"
+            );
+
+            if (estateRows.length === 0) {
+                return { empcodeMap, nikMap };
+            }
+
+            // Build empcodeMap first.
+            // IMPORTANT: Some old records in employee_estate have empcode stored as a NIK
+            // (16-digit numeric e.g. "1902052002200001") instead of a Plantware EmpCode (e.g. "A001").
+            // These NIK-format empcodes won't match HR_EMPLOYEE.EmpCode, so we detect them
+            // and put them DIRECTLY into nikMap — no HR_EMPLOYEE join needed.
+            const empCodes: string[] = [];         // Normal Plantware emp_codes (e.g. "A001", "C0744")
+            const nikLikeEmpcodes: string[] = [];  // empcode values that look like NIKs (16-digit)
+
+            const NIK_REGEX = /^\d{16}$/; // NIK is exactly 16 digits
+
+            for (const r of estateRows) {
+                const ec = (r.empcode || '').trim();
+                const jb = (r.jabatan || '').trim();
+                if (!ec || !jb) continue;
+
+                empcodeMap[ec] = jb;
+
+                if (NIK_REGEX.test(ec)) {
+                    // empcode IS a NIK — map directly to nikMap without HR_EMPLOYEE join
+                    const ecUpper = ec.toUpperCase();
+                    if (!nikMap[ecUpper]) {
+                        nikMap[ecUpper] = jb;
+                    }
+                    nikLikeEmpcodes.push(ec);
+                } else {
+                    // Normal Plantware emp_code — need HR_EMPLOYEE join to resolve NIK
+                    empCodes.push(ec);
+                }
+            }
+
+            // Step 2: Query HR_EMPLOYEE (main DB) to get NIK (NewICNo) for normal Plantware emp_codes
+            // Chunked to avoid SQL 2100 param limit
+            const CHUNK = 500;
+            for (let i = 0; i < empCodes.length; i += CHUNK) {
+                const chunk = empCodes.slice(i, i + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+                try {
+                    const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string }>(
+                        `SELECT RTRIM(EmpCode) as EmpCode, RTRIM(ISNULL(NewICNo,'')) as NewICNo
+                         FROM HR_EMPLOYEE
+                         WHERE RTRIM(EmpCode) IN (${placeholders})`,
+                        chunk
+                    );
+                    for (const hr of hrRows) {
+                        const ec = (hr.EmpCode || '').trim().toUpperCase();
+                        const nik = (hr.NewICNo || '').trim().toUpperCase();
+                        if (nik && empcodeMap[ec] && !nikMap[nik]) {
+                            nikMap[nik] = empcodeMap[ec];
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[EmployeeEstateService] Could not join with HR_EMPLOYEE for chunk:', e);
+                }
+            }
+
+            // Step 3: Reverse NIK lookup for NIK-format empcodes.
+            // Query HR_EMPLOYEE WHERE NewICNo IN (nikLikeEmpcodes) to find the CURRENT
+            // Plantware emp_code for these employees. This lets direct emp_code lookup work too.
+            if (nikLikeEmpcodes.length > 0) {
+                for (let i = 0; i < nikLikeEmpcodes.length; i += CHUNK) {
+                    const chunk = nikLikeEmpcodes.slice(i, i + CHUNK);
+                    const placeholders = chunk.map(() => '?').join(',');
+                    try {
+                        const hrRows = await mainDb.query<{ EmpCode: string; NewICNo: string }>(
+                            `SELECT RTRIM(EmpCode) as EmpCode, RTRIM(ISNULL(NewICNo,'')) as NewICNo
+                             FROM HR_EMPLOYEE
+                             WHERE RTRIM(ISNULL(NewICNo,'')) IN (${placeholders})`,
+                            chunk
+                        );
+                        for (const hr of hrRows) {
+                            const ec = (hr.EmpCode || '').trim().toUpperCase();
+                            const nik = (hr.NewICNo || '').trim().toUpperCase();
+                            // Bridge: current Plantware emp_code → jabatan via NIK
+                            if (nik && nikMap[nik] && !empcodeMap[ec]) {
+                                empcodeMap[ec] = nikMap[nik];
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[EmployeeEstateService] Could not reverse-lookup NIK empcodes:', e);
+                    }
+                }
+            }
+
+            console.log(`[EmployeeEstateService] Final maps: empcodeMap=${Object.keys(empcodeMap).length}, nikMap=${Object.keys(nikMap).length}`);
+
+
+            return { empcodeMap, nikMap };
+        } catch (e) {
+            console.warn('[EmployeeEstateService] getEmployeeJobsWithNik failed:', e);
+            return { empcodeMap, nikMap };
+        }
+    }
 }

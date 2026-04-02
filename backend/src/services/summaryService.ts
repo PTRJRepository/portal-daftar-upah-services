@@ -52,15 +52,6 @@ export class SummaryService {
     // When true, HR_GANG etc. are queried from extend_db_ptrj instead of db_ptrj
     private _useHistoryDb: boolean = false;
 
-    // Cache for mapping data to improve performance and avoid timeouts
-    private divisionDescriptionsCache: Record<string, string> | null = null;
-    private gangToDivisionMapCache: Record<string, string> | null = null;
-    private gangDescriptionsCache: Record<string, string> | null = null;
-
-    // TTL cache for getAllDivisionsPremiTotals results (key: "month-year", TTL: 5 min)
-    private premiTotalsCache: Map<string, { data: DivisionSummary[]; timestamp: number }> = new Map();
-    private static CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
     private constructor() {
         // Enforce DB_PROFILE for summary reports
         this.db = Database.getInstance(undefined, Config.DB_PROFILE);
@@ -75,11 +66,6 @@ export class SummaryService {
      */
     public setUseHistoryDb(useHistory: boolean): void {
         this._useHistoryDb = useHistory;
-        if (useHistory) {
-            // Clear caches when switching mode so data is re-fetched from correct DB
-            this.gangToDivisionMapCache = null;
-            this.gangDescriptionsCache = null;
-        }
         debug(CATEGORY, `useHistoryDb set to: ${useHistory}`);
     }
 
@@ -99,14 +85,10 @@ export class SummaryService {
     }
 
     /**
-     * Clear all in-memory caches
+     * Clear all in-memory caches (No-op as caches are removed)
      */
     public clearCache(): void {
-        this.divisionDescriptionsCache = null;
-        this.gangToDivisionMapCache = null;
-        this.gangDescriptionsCache = null;
-        this.premiTotalsCache.clear();
-        debug(CATEGORY, "[SummaryService] Caches cleared (including TTL caches)");
+        debug(CATEGORY, "[SummaryService] Cache cleared request received (Cache is disabled)");
     }
 
     private async loadJsonData(filename: string): Promise<any> {
@@ -123,15 +105,11 @@ export class SummaryService {
         }
     }
 
-
-
     private async loadThumbprintData(month: number, year: number): Promise<Record<string, number>> {
         return await thumbprintService.getThumbprintData(month, year);
     }
 
     private async getDivisionDescriptions(): Promise<Record<string, string>> {
-        if (this.divisionDescriptionsCache) return this.divisionDescriptionsCache;
-
         try {
             const rows = await this.extendDb.query<{ Divisi: string, Description: string }>(`
                 SELECT [Divisi], [Description] FROM [dbo].[Divisi_Description]
@@ -155,10 +133,8 @@ export class SummaryService {
                 }
             }
 
-            this.divisionDescriptionsCache = map;
             return map;
         } catch (e) {
-
             logError(CATEGORY, "Error getting descriptions:", e);
             return {};
         }
@@ -170,8 +146,6 @@ export class SummaryService {
      * daftar_upah_aggregation_history stores division_code = 'ALL'.
      */
     private async getGangToDivisionMap(): Promise<Record<string, string>> {
-        if (this.gangToDivisionMapCache) return this.gangToDivisionMapCache;
-
         try {
             const queryDb = this.getDbForQuery();
             const gangRows = await queryDb.query<{ GangCode: string; LocCode: string }>(`
@@ -185,7 +159,6 @@ export class SummaryService {
                 const lc = row.LocCode?.trim();
                 if (gc && lc) map[gc] = lc;
             }
-            this.gangToDivisionMapCache = map;
             return map;
         } catch (e) {
             logError(CATEGORY, "Failed to get gang-to-division map:", e);
@@ -194,31 +167,18 @@ export class SummaryService {
     }
 
     public async getAllDivisionsPremiTotals(month: number, year: number): Promise<DivisionSummary[]> {
-        // Check TTL cache first
-        const cacheKey = `${month}-${year}`;
-        const cached = this.premiTotalsCache.get(cacheKey);
-        if (cached && (Date.now() - cached.timestamp) < SummaryService.CACHE_TTL_MS) {
-            debug(CATEGORY, `Cache HIT for getAllDivisionsPremiTotals ${cacheKey}`);
-            return cached.data;
-        }
-
         const startTime = Date.now();
-        debug(CATEGORY, `Cache MISS for ${cacheKey}, computing...`);
+        debug(CATEGORY, `Computing totals for ${month}-${year} directly from database...`);
 
-        // Parallelize lookup queries (all cacheable)
+        // Parallelize lookup queries
         const [descriptions, gangDivMap, allGangDescs] = await Promise.all([
             this.getDivisionDescriptions(),
             this.getGangToDivisionMap(),
             this.getAllGangDescriptions()
         ]);
 
-        // Fetch per-gang rows - LATEST VERSION ONLY via CTE
+        // Fetch per-gang rows - direct table access (no version_index column exists)
         const query = `
-            WITH latest AS (
-                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
-                FROM dbo.daftar_upah_aggregation_history
-                GROUP BY gang_code, period_month, period_year
-            )
             SELECT
                 h.gang_code,
                 h.division_code,
@@ -236,12 +196,7 @@ export class SummaryService {
                 ISNULL(h.total_koreksi, 0) as total_koreksi,
                 ISNULL(h.total_ffb_weight, 0) as total_ffb_weight,
                 ISNULL(h.total_weight_tbs, 0) as total_weight_tbs
-            FROM latest l
-            JOIN dbo.daftar_upah_aggregation_history h
-                ON l.gang_code = h.gang_code
-                AND l.period_month = h.period_month
-                AND l.period_year = h.period_year
-                AND l.max_ver = h.version_index
+            FROM dbo.daftar_upah_aggregation_history h
             WHERE h.period_month = ? AND h.period_year = ?
         `;
 
@@ -542,23 +497,11 @@ export class SummaryService {
     private async getBackfillData(month: number, year: number): Promise<Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }>> {
         const gangDivMap = await this.getGangToDivisionMap();
         const allGangDescs = await this.getAllGangDescriptions();
-        // LATEST VERSION ONLY
-        const query = `
-            WITH latest AS (
-                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
-                FROM dbo.daftar_upah_aggregation_history
-                GROUP BY gang_code, period_month, period_year
-            )
+        const rows = await this.extendDb.query<any>(`
             SELECT h.gang_code, h.division_code, h.dynamic_premi_data, h.informasi_tambahan
-            FROM latest l
-            JOIN dbo.daftar_upah_aggregation_history h
-                ON l.gang_code = h.gang_code
-                AND l.period_month = h.period_month
-                AND l.period_year = h.period_year
-                AND l.max_ver = h.version_index
+            FROM dbo.daftar_upah_aggregation_history h
             WHERE h.period_month = ? AND h.period_year = ?
-    `;
-        const rows = await this.extendDb.query<any>(query, [month, year]);
+    `, [month, year]);
         const result: Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }> = {};
 
         for (const row of rows) {
@@ -802,20 +745,9 @@ export class SummaryService {
     private async getDynamicPremiInsentifPanen(month: number, year: number): Promise<Record<string, { insentif_panen: number }>> {
         const gangDivMap = await this.getGangToDivisionMap();
         const allGangDescs = await this.getAllGangDescriptions();
-        // LATEST VERSION ONLY
         const rows = await this.extendDb.query<any>(`
-            WITH latest AS (
-                SELECT gang_code, period_month, period_year, MAX(version_index) as max_ver
-                FROM dbo.daftar_upah_aggregation_history
-                GROUP BY gang_code, period_month, period_year
-            )
             SELECT h.gang_code, h.division_code, h.dynamic_premi_data, h.informasi_tambahan
-            FROM latest l
-            JOIN dbo.daftar_upah_aggregation_history h
-                ON l.gang_code = h.gang_code
-                AND l.period_month = h.period_month
-                AND l.period_year = h.period_year
-                AND l.max_ver = h.version_index
+            FROM dbo.daftar_upah_aggregation_history h
             WHERE h.period_month = ? AND h.period_year = ?
     `, [month, year]);
 

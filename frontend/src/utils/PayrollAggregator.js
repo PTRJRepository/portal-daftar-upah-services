@@ -174,6 +174,30 @@ export const PayrollAggregator = {
   flattenData: (data, dynamicHeaders = {}) => {
     if (!data || !data.gangs) return [];
 
+    // LOG: Show source data overview
+    const gangCount = data.gangs?.length || 0;
+    const totalEmpRaw = data.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0) || 0;
+    console.log(`[PayrollAggregator] 📦 flattenData IN | gangs=${gangCount} rawEmployees=${totalEmpRaw}`);
+
+    // Check for duplicate NIKs across gangs (causes duplicate rows)
+    const nikMap = {};
+    const dupNik = [];
+    data.gangs.forEach(gang => {
+      (gang.employees || []).forEach(emp => {
+        const nik = emp.nik || emp.NIK;
+        if (nik) {
+          if (nikMap[nik]) {
+            dupNik.push({ nik, prev: nikMap[nik], curr: gang.gang_code });
+          } else {
+            nikMap[nik] = gang.gang_code;
+          }
+        }
+      });
+    });
+    if (dupNik.length > 0) {
+      console.warn(`[PayrollAggregator] ⚠️ DUPLICATE NIKs found (${dupNik.length}):`, dupNik.slice(0, 5));
+    }
+
     const flatRows = [];
     data.gangs.forEach(gang => {
       if (gang.employees && Array.isArray(gang.employees)) {
@@ -198,7 +222,9 @@ export const PayrollAggregator = {
     //
     // Rule: EXCLUDE if hari_kerja <= 0 (same logic as backend)
     // ============================================================
-    return flatRows.filter(row => (row.hari_kerja || row.kehadiran || 0) > 0);
+    const filteredRows = flatRows.filter(row => (row.hari_kerja || row.kehadiran || 0) > 0);
+    console.log(`[PayrollAggregator] 📤 flattenData OUT | flat=${flatRows.length} filtered=${filteredRows.length} (excluded ${flatRows.length - filteredRows.length})`);
+    return filteredRows;
   },
 
   /**

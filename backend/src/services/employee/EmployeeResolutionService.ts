@@ -219,6 +219,8 @@ export class EmployeeResolutionService {
 
     /**
      * Get employee by NIK
+     * 
+     * IMPORTANT: Prioritizes EmpCode DESC first to get latest empcode (C-prefix > B-prefix > A-prefix)
      */
     public async getEmployeeByNik(rawNik: string): Promise<{
         empCode: string;
@@ -238,7 +240,7 @@ export class EmployeeResolutionService {
                     e.Status
                 FROM HR_EMPLOYEE e
                 WHERE RTRIM(e.NewICNo) = ? OR RTRIM(e.EmpCode) = ?
-                ORDER BY e.Status DESC, e.EmpCode DESC
+                ORDER BY e.EmpCode DESC, e.Status DESC
             `, [nik, nik]);
 
             const row = rows[0];

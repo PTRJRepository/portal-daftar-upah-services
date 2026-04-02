@@ -44,6 +44,7 @@ export interface EmployeeInfo {
     birth_date?: string;
     gang_description?: string;
     status_ptkp?: string;
+    jabatan?: string;
 }
 
 export interface AttendanceSummary {
@@ -134,6 +135,7 @@ export class EmployeeDetailService {
                 MaritalStatus: string;
                 BirthPlace: string;
                 BirthDate: string;
+                Jabatan: string;
             }>(`
                 SELECT DISTINCT
                     e.EmpCode,
@@ -150,7 +152,8 @@ export class EmployeeDetailService {
                     e.Religion,
                     e.PlaceOfBirth as BirthPlace,
                     e.DOB as BirthDate,
-                    e.MaritalStatus
+                    e.MaritalStatus,
+                    RTRIM(gl.Jabatan) as Jabatan
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
                 LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
@@ -184,6 +187,7 @@ export class EmployeeDetailService {
                 religion: row.Religion?.trim() || undefined,
                 birth_place: row.BirthPlace?.trim() || undefined,
                 birth_date: row.BirthDate || undefined,
+                jabatan: row.Jabatan?.trim() || undefined,
             };
         } catch (e) {
             console.error("[EmployeeDetailService] Failed to get employee info:", e);

@@ -803,7 +803,6 @@ export default function CustomPayrollTable({
      * Race condition: abort previous request when new one starts.
      */
     const abortControllerRef = useRef(null);
-
     const fetchDivisionData = useCallback(async () => {
         // Abort any in-flight request
         if (abortControllerRef.current) {
@@ -812,7 +811,7 @@ export default function CustomPayrollTable({
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        console.log('[CustomPayrollTable] 🔄 FETCH START:', { division, month, year, gangCode, gangPrefix });
+        console.log('[CustomPayrollTable] 🔄 FETCH START:', { division, month, year, gangCode, gangPrefix });    
         
         setLoading(true);
         setError('');
@@ -822,7 +821,7 @@ export default function CustomPayrollTable({
 
         try {
             // Only send gang_prefix when showing ALL gangs.
-            // When specific gang selected, gangPrefix from filter may not match that gang's actual group.
+            // When specific gang selected, gangPrefix from filter may not match that gang's actual group.       
             const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
 
             let data;
@@ -832,8 +831,10 @@ export default function CustomPayrollTable({
                     shouldSendGangPrefix ? (gangPrefix || null) : null
                 );
             } else {
-                const prefixParam = shouldSendGangPrefix && gangPrefix ? `&gang_prefix=${gangPrefix}` : '';
-                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${prefixParam}`;
+                const prefixParam = shouldSendGangPrefix && gangPrefix ? `&gang_prefix=${gangPrefix}` : '';      
+                const historyParam = useHistoryDb ? `&use_history=true` : '';
+                const gangCodeParam = gangCode && gangCode !== 'ALL' ? `&gang_code=${gangCode}` : '';
+                const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${prefixParam}${historyParam}${gangCodeParam}`;
                 console.log('[CustomPayrollTable] 📡 FETCH URL:', url);
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` },
@@ -846,14 +847,6 @@ export default function CustomPayrollTable({
                 }
                 data = await response.json();
             }
-
-            console.log('[CustomPayrollTable] ✅ DATA RECEIVED:', {
-                hasData: !!data,
-                dataKeys: data ? Object.keys(data) : [],
-                gangsCount: data?.gangs?.length,
-                employeesCount: data?.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0),
-                error: data?.error
-            });
 
             // Check if API returned an error
             if (data?.error) {
@@ -868,6 +861,7 @@ export default function CustomPayrollTable({
 
             onDataLoaded?.(data);
             processRawData(data, gangCode, gangPrefix);
+
         } catch (err) {
             if (err.name === 'AbortError') {
                 console.log('[CustomPayrollTable] ⚠️ Request aborted');

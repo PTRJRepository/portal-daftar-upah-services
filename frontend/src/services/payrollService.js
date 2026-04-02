@@ -114,20 +114,9 @@ export async function fetchReportAggregate(token, { month, year, gang_code, divi
   if (division) params.division = division
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
-  const key = `${token || 'guest'}:${gang_code || 'all'}:${year || 'curr'}:${month || 'curr'}`
-  if (inflightAggregate.has(key)) {
-    const p = inflightAggregate.get(key)
-    const r = await p
-    return r.data
-  }
-  const p = requestWithRetry('/payroll/report/aggregate', config, 1, 500, 90000)
-  inflightAggregate.set(key, p)
-  try {
-    const r = await p
-    return r.data
-  } finally {
-    inflightAggregate.delete(key)
-  }
+  
+  const r = await requestWithRetry('/payroll/report/aggregate', config, 1, 500, 90000)
+  return r.data
 }
 
 export async function fetchReportCount(token, { month, year, gang_code, division }) {
@@ -139,20 +128,9 @@ export async function fetchReportCount(token, { month, year, gang_code, division
   if (division) params.division = division
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
-  const key = `${token || 'guest'}:${gang_code || 'all'}:${year || 'curr'}:${month || 'curr'}`
-  if (inflightCount.has(key)) {
-    const p = inflightCount.get(key)
-    const r = await p
-    return r.data
-  }
-  const p = requestWithRetry('/payroll/report/count', config, 2, 300, 10000)
-  inflightCount.set(key, p)
-  try {
-    const r = await p
-    return r.data
-  } finally {
-    inflightCount.delete(key)
-  }
+  
+  const r = await requestWithRetry('/payroll/report/count', config, 2, 300, 10000)
+  return r.data
 }
 
 /**
@@ -313,7 +291,3 @@ export async function fetchComponentRegistry(token) {
     throw error
   }
 }
-
-// In-flight guards to prevent duplicate requests for identical parameters
-const inflightAggregate = new Map()
-const inflightCount = new Map()
