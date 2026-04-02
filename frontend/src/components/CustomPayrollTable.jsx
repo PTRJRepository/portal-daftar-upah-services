@@ -655,6 +655,7 @@ export default function CustomPayrollTable({
     const processRawData = useCallback((data, currentGangCode, currentGangPrefix) => {
         if (!data) {
             console.log('[CustomPayrollTable] ⚠️ processRawData: data is null/undefined, skipping');
+            setDataReady(true); // Mark as ready even if data is null - prevents infinite "loading" state
             return;
         }
 
@@ -809,13 +810,19 @@ export default function CustomPayrollTable({
         try {
             console.log(`[CustomPayrollTable] 📡 API CALL — req#${currentRequestId} | fetching data...`);
             let data;
+
+            // [FIX] Only send gang_prefix to API when showing ALL gangs.
+            // When a specific gang is selected, gangPrefix from localStorage may not match
+            // the actual group of that gang (e.g., C1B is in Group 2, but gangPrefix='1').
+            // Sending wrong gang_prefix causes backend SQL to exclude the selected gang → empty data.
+            const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
+
             if (isProdMode()) {
-                // [FIX] In prod mode, respect gangPrefix instead of fetching all division data
-                data = await getLockedRawTree(token, division, month, year, useHistoryDb, gangPrefix || null);
+                data = await getLockedRawTree(token, division, month, year, useHistoryDb, shouldSendGangPrefix ? (gangPrefix || null) : null);
             } else {
-                const prefixParam = gangPrefix ? `&gang_prefix=${gangPrefix}` : '';
+                const prefixParam = shouldSendGangPrefix && gangPrefix ? `&gang_prefix=${gangPrefix}` : '';
                 const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}${prefixParam}`;
-                console.log(`[CustomPayrollTable] 🌐 FETCH URL — req#${currentRequestId} | ${url}`);
+                console.log(`[CustomPayrollTable] 🌐 FETCH URL — req#${currentRequestId} | gangCode=${gangCode} gangPrefix=${gangPrefix} → sentPrefix=${shouldSendGangPrefix ? gangPrefix : 'null'} | ${url}`);
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) throw new Error(await response.text());
                 data = await response.json();
@@ -845,6 +852,7 @@ export default function CustomPayrollTable({
             }
             console.error(`[CustomPayrollTable] ❌ FETCH ERROR — req#${currentRequestId}:`, err);
             setError(err.message);
+            setDataReady(true); // Mark data as ready (even though empty/error) so UI can show proper state
         } finally {
             // [RACE CONDITION FIX] Only clear loading if this is still the latest request
             if (currentRequestId === requestIdRef.current) {
@@ -2230,9 +2238,12 @@ export default function CustomPayrollTable({
         />
     );
 
-    // Show "Belum Tersedia" when data is not ready OR no rows available
-    // This covers: API error, data not generated, wrong period, etc.
-    if (!dataReady || (!loading && rows.length === 0)) {
+    // Show "Belum Tersedia" ONLY when:
+    // 1. Loading is complete (loading = false)
+    // 2. Data has been fetched (dataReady = true) 
+    // 3. But no rows returned (rows.length = 0)
+    // This means: data was fetched but genuinely empty, not still loading
+    if (!loading && dataReady && rows.length === 0) {
         const MONTHS_LABEL = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
         // Error state with retry button
