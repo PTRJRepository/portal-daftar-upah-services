@@ -12,7 +12,7 @@ async function checkData() {
     const rows = await db.query(`
         SELECT TOP 100 nik, emp_name, period_year, period_month, income_type, amount, income_name, details_json
         FROM employee_other_incomes
-        WHERE income_type = 'THR' AND period_year = 2026 AND period_month = 2
+        WHERE income_type = 'THR' AND period_year = 2026 AND period_month = 3
         ORDER BY nik
     `);
 
