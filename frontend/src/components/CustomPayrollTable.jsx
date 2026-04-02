@@ -116,15 +116,17 @@ export default function CustomPayrollTable({
     isEditMode = false,
     useHistoryDb = false,
     gangPrefix = null,
+    gangLoading = false,  // Pass gangLoading from parent to prevent fetch during gang load
     initialData = null,   // Cached raw API response from parent
     onDataLoaded = null,   // Callback to notify parent of loaded data
     onRefresh = null      // Callback to trigger parent refresh (for saving)
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
-    // Track params for which we have cached data (skip refetch when switching views)
-    const cachedParamsRef = useRef(null);
-    const cachedRawDataRef = useRef(null);
+    // Track request ID to ignore stale responses from overlapping requests (race condition fix)
+    const requestIdRef = useRef(0);
+    // Track data readiness - only show table content after confirmed data load
+    const [dataReady, setDataReady] = useState(false);
     const [error, setError] = useState('');
     const [dynamicHeaders, setDynamicHeaders] = useState({ premi: {}, potongan: {} });
     const [grandTotal, setGrandTotal] = useState(null);
@@ -458,9 +460,25 @@ export default function CustomPayrollTable({
         const kontanEdits = Object.values(editedKontanCells);
         if (kontanEdits.length === 0) return;
 
+        // Check for delete operations (amount = 0)
+        const deleteRows = kontanEdits.filter(k => k.value === 0);
+        const saveRows = kontanEdits.filter(k => k.value !== 0);
+
+        if (deleteRows.length > 0) {
+            const names = deleteRows.map(k => k.emp_code || k.nik).join(', ');
+            const confirmed = window.confirm(
+                `HAPUS KONTAN untuk ${deleteRows.length} karyawan?\n\n` +
+                `Karyawan: ${names}\n\n` +
+                `Nilai 0 berarti data KONTAN akan DIHAPUS dari database.\n` +
+                `Tindakan ini TIDAK DAPAT DIBATALKAN!`
+            );
+            if (!confirmed) return;
+        }
+
         setIsSavingKontan(true);
         try {
             let successCount = 0;
+            let deleteCount = 0;
             for (const k of kontanEdits) {
                 const payload = {
                     period_month: month,
@@ -472,7 +490,9 @@ export default function CustomPayrollTable({
                     adjustment_type: 'PENDAPATAN_LAINNYA',
                     adjustment_name: 'KONTAN',
                     amount: k.value,
-                    remarks: `KONTAN edited via UI on ${new Date().toLocaleString()}`
+                    remarks: k.value === 0
+                        ? `KONTAN DELETED via UI on ${new Date().toLocaleString()}`
+                        : `KONTAN edited via UI on ${new Date().toLocaleString()}`
                 };
                 console.log(`[handleSaveKontan] Saving: nik=${k.nik}, emp_code=${k.emp_code}, gang=${k.gang_code}, amount=${k.value}, period=${month}/${year}`);
 
@@ -482,20 +502,52 @@ export default function CustomPayrollTable({
                 if (isProdMode()) {
                     try {
                         const { saveLockedManualEdit } = await import('../services/lockedDivisionService');
-                        resJson = await saveLockedManualEdit(token, payload);
-                        resOk = true;
+                        if (k.value === 0) {
+                            // Use EXPLICIT DELETE endpoint
+                            const delPayload = {
+                                nik: k.nik,
+                                period_month: month,
+                                period_year: year,
+                                income_type: 'KONTAN'
+                            };
+                            const delRes = await fetch('/payroll/locked/income-delete', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify(delPayload)
+                            });
+                            resJson = await delRes.json();
+                            resOk = delRes.ok;
+                        } else {
+                            resJson = await saveLockedManualEdit(token, payload);
+                            resOk = true;
+                        }
                     } catch (err) {
                         console.error("Prod Mode kontan save failed:", err);
                     }
                 } else {
-                    const res = await fetch('/payroll/manual-edit', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify(payload)
-                    });
+                    let res;
+                    if (k.value === 0) {
+                         const delPayload = {
+                            nik: k.nik,
+                            period_month: month,
+                            period_year: year,
+                            income_type: 'KONTAN'
+                        };
+                        res = await fetch('/payroll/locked/income-delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify(delPayload)
+                        });
+                    } else {
+                        res = await fetch('/payroll/manual-edit', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                    }
                     if (res.ok) {
                         resOk = true;
                         resJson = await res.json();
@@ -504,12 +556,17 @@ export default function CustomPayrollTable({
 
                 if (resOk && resJson?.success) {
                     successCount++;
+                    if (k.value === 0) deleteCount++;
                 }
             }
 
             if (successCount > 0) {
                 console.log(`[handleSaveKontan] SUCCESS: ${successCount} KONTAN values saved, triggering refresh`);
-                alert(`Berhasil menyimpan ${successCount} nilai KONTAN.`);
+                if (deleteCount > 0) {
+                    alert(`Berhasil menghapus ${deleteCount} data KONTAN.\nBerhasil menyimpan ${saveRows.length} nilai KONTAN.`);
+                } else {
+                    alert(`Berhasil menyimpan ${successCount} nilai KONTAN.`);
+                }
                 setEditedKontanCells({});
                 onRefresh?.();
             } else {
@@ -596,7 +653,12 @@ export default function CustomPayrollTable({
      * This is the single source of truth for transforming raw data → display rows.
      */
     const processRawData = useCallback((data, currentGangCode, currentGangPrefix) => {
-        if (!data) return;
+        if (!data) {
+            console.log('[CustomPayrollTable] ⚠️ processRawData: data is null/undefined, skipping');
+            return;
+        }
+
+        console.log(`[CustomPayrollTable] 📥 processRawData START | gangCode=${currentGangCode} gangPrefix=${currentGangPrefix} | raw employees: ${data.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0) || 0}`);
 
         try {
             const dynPot = data.dynamic_potongan_headers || [];
@@ -697,29 +759,14 @@ export default function CustomPayrollTable({
                 processedRows.push(gangTotal);
             });
 
-            // Store data in localStorage for PayslipPrintPage optimization
-            if (processedRows.length > 0) {
-                const storageKey = `payroll_cache_${division}_${month}_${year}`;
-                const employeeDataMap = {};
-                processedRows.forEach(row => {
-                    if (row.type === 'employee') {
-                        const code = (row.emp_code || row.nik || '').toString().toUpperCase();
-                        if (code) employeeDataMap[code] = row;
-                    }
-                });
-                try {
-                    const keys = Object.keys(localStorage).filter(k => k.startsWith('payroll_cache_'));
-                    if (keys.length > 3) {
-                        keys.sort().slice(0, keys.length - 3).forEach(k => localStorage.removeItem(k));
-                    }
-                    localStorage.setItem(storageKey, JSON.stringify({
-                        timestamp: Date.now(),
-                        data: employeeDataMap
-                    }));
-                } catch (e) { /* ignore localStorage errors */ }
-            }
+            // Data removed from localStorage to prevent UI blocking when switching groups.
+            // PayslipPrintPage will now fetch data directly from the API.
 
+            const employeeCount = processedRows.filter(r => r.type === 'employee').length;
+            console.log(`[CustomPayrollTable] 📊 SETTING ROWS | total=${processedRows.length} employees=${employeeCount}`);
             setRows(processedRows);
+            setDataReady(true); // Mark data as ready - table can now display
+            console.log(`[CustomPayrollTable] 🎯 DATA READY | ${employeeCount} employees loaded for display`);
 
             // Determine active dynamic premi/potongan fields
             const employeeRows = processedRows.filter(r => r.type === 'employee');
@@ -752,9 +799,15 @@ export default function CustomPayrollTable({
      * This is the ONLY function that makes API calls.
      */
     const fetchDivisionData = async (divCacheKey) => {
+        const currentRequestId = ++requestIdRef.current;
+        console.log(`[CustomPayrollTable] 🔄 FETCH START — req#${currentRequestId} | div=${division} month=${month} year=${year} gangCode=${gangCode} gangPrefix=${gangPrefix} | loading=${gangLoading}`);
         setLoading(true);
         setError('');
+        setDataReady(false); // Mark data as NOT ready - will be set true only after confirmed data
+        setRows([]); // Clear previous rows properly so old data disappears immediately
+        setGrandTotal(null); // Clear grandtotal to provide explicit feedback that old data is gone
         try {
+            console.log(`[CustomPayrollTable] 📡 API CALL — req#${currentRequestId} | fetching data...`);
             let data;
             if (isProdMode()) {
                 // [FIX] In prod mode, respect gangPrefix instead of fetching all division data
@@ -762,55 +815,69 @@ export default function CustomPayrollTable({
             } else {
                 const prefixParam = gangPrefix ? `&gang_prefix=${gangPrefix}` : '';
                 const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${useHistoryDb ? '&use_history=true' : ''}${prefixParam}`;
+                console.log(`[CustomPayrollTable] 🌐 FETCH URL — req#${currentRequestId} | ${url}`);
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) throw new Error(await response.text());
                 data = await response.json();
             }
+            console.log(`[CustomPayrollTable] ✅ DATA RECEIVED — req#${currentRequestId} | data keys: ${Object.keys(data || {}).join(', ')} | employees: ${data?.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0) || 0}`);
 
-            // Cache the raw response at division level
-            cachedParamsRef.current = divCacheKey;
-            cachedRawDataRef.current = data;
+            // [RACE CONDITION FIX] Ignore stale responses from overlapping requests.
+            // Only process if this is still the latest request.
+            if (currentRequestId !== requestIdRef.current) {
+                console.warn(`[CustomPayrollTable] ⚠️ STALE RESPONSE — req#${currentRequestId} | latest is #${requestIdRef.current} | ignoring`);
+                setLoading(false);
+                return;
+            }
+
             if (onDataLoaded) onDataLoaded(data);
 
             // Process and display with current filters
+            console.log(`[CustomPayrollTable] 🔧 PROCESSING — req#${currentRequestId} | gangCode=${gangCode} gangPrefix=${gangPrefix}`);
             processRawData(data, gangCode, gangPrefix);
+            console.log(`[CustomPayrollTable] ✅ PROCESSING COMPLETE — req#${currentRequestId} | calling processRawData done`);
         } catch (err) {
-            console.error('[CustomPayrollTable] fetchDivisionData error:', err);
+            // [RACE CONDITION FIX] Only set error if this is still the latest request
+            if (currentRequestId !== requestIdRef.current) {
+                console.warn(`[CustomPayrollTable] ⚠️ STALE ERROR — req#${currentRequestId} | ignoring stale error`);
+                setLoading(false);
+                return;
+            }
+            console.error(`[CustomPayrollTable] ❌ FETCH ERROR — req#${currentRequestId}:`, err);
             setError(err.message);
         } finally {
-            setLoading(false);
+            // [RACE CONDITION FIX] Only clear loading if this is still the latest request
+            if (currentRequestId === requestIdRef.current) {
+                setLoading(false);
+            }
         }
     };
 
-    // Pre-populate cache from parent when initialData is provided
-    useEffect(() => {
-        if (initialData && division && month && year) {
-            const divCacheKey = `${division}_${month}_${year}_${useHistoryDb}_${refreshTrigger}`;
-            if (cachedParamsRef.current !== divCacheKey) {
-                cachedParamsRef.current = divCacheKey;
-                cachedRawDataRef.current = initialData;
-                processRawData(initialData, gangCode, gangPrefix);
-            }
-        }
-    }, [initialData]); // eslint-disable-line
-
     // --- MAIN DATA EFFECT ---
-    // Fetch from API only when division/month/year/useHistoryDb/refreshTrigger change.
-    // For gangCode/gangPrefix changes, re-process from cache (instant, no API call).
+    // Fetch from API on ANY filter change to ensure data is always fresh.
+    // Skip if gangs are still loading to prevent race condition.
     useEffect(() => {
-        if (!month || !year || !division) return;
+        console.log(`[CustomPayrollTable] 📌 USE_EFFECT TRIGGERED | month=${month} year=${year} division=${division} gangCode=${gangCode} gangPrefix=${gangPrefix} gangLoading=${gangLoading} token=${!!token}`);
 
-        const divCacheKey = `${division}_${month}_${year}_${useHistoryDb}_${refreshTrigger}`;
-
-        // If we have cached data for this division+period, just re-filter client-side (instant)
-        if (cachedParamsRef.current === divCacheKey && cachedRawDataRef.current) {
-            processRawData(cachedRawDataRef.current, gangCode, gangPrefix);
+        if (!month || !year || !division) {
+            console.log(`[CustomPayrollTable] ⛔ SKIP — missing params (month/year/division)`);
             return;
         }
 
-        // Otherwise, fetch fresh data from API (full division, no gangPrefix)
+        if (gangLoading) {
+            console.log(`[CustomPayrollTable] ⛔ SKIP — gangs still loading, waiting...`);
+            return;
+        }
+
+        if (!token) {
+            console.log(`[CustomPayrollTable] ⛔ SKIP — no token`);
+            return;
+        }
+
+        console.log(`[CustomPayrollTable] ✅ TRIGGERING FETCH | gangLoading=${gangLoading}`);
+        const divCacheKey = `${division}_${month}_${year}_${useHistoryDb}_${refreshTrigger}_${gangPrefix || ''}_${gangCode || ''}`;
         fetchDivisionData(divCacheKey);
-    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb]); // eslint-disable-line
+    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb, gangLoading]); // eslint-disable-line
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -1332,8 +1399,12 @@ export default function CustomPayrollTable({
         cols.push({ field: 'premi_brondol', headers: ['PREMI', null, null, 'BRONDOL'], w: 80, className: 'text-right' });
 
         // PREMI (dynamic) - only show if has values in current gang
+        // Filter out 'brondol' - it's already rendered as a static column above
         Object.entries(dynamicHeaders.premi)
-            .filter(([label, field]) => activePremiFields.includes(field) || isEditMode) // Show all in edit mode to allow adding new ones
+            .filter(([label, field]) => {
+                if (field === 'brondol') return false; // Already rendered as static 'premi_brondol' column
+                return activePremiFields.includes(field) || isEditMode;
+            })
             .forEach(([label, field]) => {
                 const displayName = label.replace('PREMI ', '');
                 cols.push({
@@ -1408,35 +1479,103 @@ export default function CustomPayrollTable({
 
                 // Only editable when edit mode is ON
                 if (isEditMode && row.type === 'employee') {
+                    // Check if this row has a pending delete (value explicitly set to 0)
+                    const hasPendingDelete = cellEdit && cellEdit.value === 0;
                     return (
-                        <input
-                            type="number"
-                            className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                            value={displayVal === 0 ? '' : displayVal}
-                            onChange={(e) => {
-                                const numVal = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                if (isNaN(numVal)) return;
-                                setEditedKontanCells(prev => ({
-                                    ...prev,
-                                    [editKey]: {
-                                        nik: realNik || row.emp_code,  // Real NIK (KTP) or emp_code fallback
-                                        emp_code: row.emp_code,         // Emp code (B0065, etc.)
-                                        value: numVal,
-                                        originalValue: val,
-                                        gang_code: row.gang_code
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input
+                                type="number"
+                                className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
+                                value={displayVal}
+                                onChange={(e) => {
+                                    const rawVal = e.target.value;
+                                    // Allow empty string (treat as 0 = delete)
+                                    if (rawVal === '') {
+                                        setEditedKontanCells(prev => ({
+                                            ...prev,
+                                            [editKey]: {
+                                                nik: realNik || row.emp_code,
+                                                emp_code: row.emp_code,
+                                                value: 0,
+                                                originalValue: val,
+                                                gang_code: row.gang_code
+                                            }
+                                        }));
+                                        setRows(prevRows => prevRows.map(r => {
+                                            if ((r.emp_code || r.nik) === empCode) {
+                                                return { ...r, pendapatan_kontan: 0 };
+                                            }
+                                            return r;
+                                        }));
+                                        return;
                                     }
-                                }));
-                                // Optimistically update UI
-                                setRows(prevRows => prevRows.map(r => {
-                                    if ((r.emp_code || r.nik) === empCode) {
-                                        return { ...r, pendapatan_kontan: numVal };
-                                    }
-                                    return r;
-                                }));
-                            }}
-                            placeholder="0"
-                            onClick={(e) => e.stopPropagation()}
-                        />
+                                    const numVal = parseFloat(rawVal);
+                                    if (isNaN(numVal)) return;
+                                    setEditedKontanCells(prev => ({
+                                        ...prev,
+                                        [editKey]: {
+                                            nik: realNik || row.emp_code,
+                                            emp_code: row.emp_code,
+                                            value: numVal,
+                                            originalValue: val,
+                                            gang_code: row.gang_code
+                                        }
+                                    }));
+                                    // Optimistically update UI
+                                    setRows(prevRows => prevRows.map(r => {
+                                        if ((r.emp_code || r.nik) === empCode) {
+                                            return { ...r, pendapatan_kontan: numVal };
+                                        }
+                                        return r;
+                                    }));
+                                }}
+                                placeholder="0"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ width: '65px' }}
+                            />
+                            {hasPendingDelete && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const confirmed = window.confirm(
+                                            `HAPUS KONTAN untuk ${row.emp_name || empCode}?\n\nCatatan: Nilai 0 akan menghapus data KONTAN dari database.`
+                                        );
+                                        if (!confirmed) {
+                                            // Cancel the delete - restore original value
+                                            setEditedKontanCells(prev => {
+                                                const updated = { ...prev };
+                                                delete updated[editKey];
+                                                return updated;
+                                            });
+                                            setRows(prevRows => prevRows.map(r => {
+                                                if ((r.emp_code || r.nik) === empCode) {
+                                                    return { ...r, pendapatan_kontan: val };
+                                                }
+                                                return r;
+                                            }));
+                                        }
+                                    }}
+                                    style={{
+                                        background: '#dc2626',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '3px',
+                                        cursor: 'pointer',
+                                        fontSize: '10px',
+                                        fontWeight: 'bold',
+                                        padding: '2px 5px',
+                                        width: '18px',
+                                        height: '18px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}
+                                    title="Klik untuk hapus (akan menghapus saat SIMPAN)"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
                     );
                 }
                 // Read-only display
@@ -2090,11 +2229,60 @@ export default function CustomPayrollTable({
             ]}
         />
     );
-    if (error) return <div style={{ padding: 20, color: 'red' }}>Error: {error}</div>;
 
-    // Empty state when no data is loaded
-    if (!loading && rows.length === 0) {
+    // Show "Belum Tersedia" when data is not ready OR no rows available
+    // This covers: API error, data not generated, wrong period, etc.
+    if (!dataReady || (!loading && rows.length === 0)) {
         const MONTHS_LABEL = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+        // Error state with retry button
+        if (error) {
+            return (
+                <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    height: '100%', minHeight: '400px', padding: '40px',
+                    background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)'
+                }}>
+                    <div style={{
+                        background: 'white', borderRadius: '16px', padding: '48px', textAlign: 'center',
+                        border: '2px solid #fecaca', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                        maxWidth: '600px', width: '100%'
+                    }}>
+                        <div style={{ fontSize: '4rem', marginBottom: '16px' }}>❌</div>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#dc2626', margin: '0 0 8px' }}>
+                            Gagal Memuat Data
+                        </h3>
+                        <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6', margin: '0 0 20px' }}>
+                            {error}
+                        </p>
+                        <div style={{
+                            background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '8px',
+                            padding: '12px 16px', fontSize: '0.85rem', color: '#92400e',
+                            display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center',
+                            marginBottom: '20px'
+                        }}>
+                            <span>💡</span>
+                            <span>Tekan tombol <strong>Refresh</strong> atau coba beberapa saat lagi.</span>
+                        </div>
+                        <button
+                            onClick={() => {
+                                console.log('[CustomPayrollTable] 🔄 Retry triggered');
+                                onRefresh?.();
+                            }}
+                            style={{
+                                padding: '10px 24px', background: '#dc2626', color: 'white',
+                                border: 'none', borderRadius: '8px', cursor: 'pointer',
+                                fontWeight: '700', fontSize: '0.95rem'
+                            }}
+                        >
+                            🔄 Coba Lagi
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // Data not available / not generated state
         return (
             <div style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -2104,7 +2292,7 @@ export default function CustomPayrollTable({
                 <div style={{
                     background: 'white', borderRadius: '16px', padding: '48px', textAlign: 'center',
                     border: '2px dashed #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
-                    maxWidth: '500px', width: '100%'
+                    maxWidth: '600px', width: '100%'
                 }}>
                     <div style={{ fontSize: '4rem', marginBottom: '16px' }}>📭</div>
                     <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>
@@ -2118,11 +2306,25 @@ export default function CustomPayrollTable({
                     <div style={{
                         background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '8px',
                         padding: '12px 16px', fontSize: '0.85rem', color: '#92400e',
-                        display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center'
+                        display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center',
+                        marginBottom: '20px'
                     }}>
                         <span>💡</span>
                         <span>Pastikan data payroll sudah di-seed untuk periode ini. Coba gunakan tombol <strong>Refresh</strong> atau pilih periode/divisi lain.</span>
                     </div>
+                    <button
+                        onClick={() => {
+                            console.log('[CustomPayrollTable] 🔄 Refresh button clicked');
+                            onRefresh?.();
+                        }}
+                        style={{
+                            padding: '10px 24px', background: '#1e3a8a', color: 'white',
+                            border: 'none', borderRadius: '8px', cursor: 'pointer',
+                            fontWeight: '700', fontSize: '0.95rem'
+                        }}
+                    >
+                        🔄 Refresh / Muat Ulang
+                    </button>
                 </div>
             </div>
         );
@@ -2169,9 +2371,15 @@ export default function CustomPayrollTable({
                             fontWeight: 'bold',
                             fontSize: '12px'
                         }}
-                        title="Simpan semua nilai KONTAN"
+                        title="Simpan semua nilai KONTAN. Nilai 0 = HAPUS data."
                     >
-                        {isSavingKontan ? '💾 Menyimpan...' : `💾 SIMPAN KONTAN${Object.keys(editedKontanCells).length > 0 ? ` (${Object.keys(editedKontanCells).length})` : ''}`}
+                        {isSavingKontan ? '💾 Menyimpan...' : (() => {
+                            const editCount = Object.keys(editedKontanCells).length;
+                            const deleteCount = Object.values(editedKontanCells).filter(k => k.value === 0).length;
+                            if (editCount === 0) return '💾 SIMPAN KONTAN';
+                            if (deleteCount > 0) return `💾 SIMPAN KONTAN (${editCount} | ${deleteCount} HAPUS)`;
+                            return `💾 SIMPAN KONTAN (${editCount})`;
+                        })()}
                     </button>
 
                     {/* Separator */}

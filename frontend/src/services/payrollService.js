@@ -57,8 +57,8 @@ export async function fetchReportRows(token, { month, year, gang_code, division,
 }
 
 /**
- * Optimized fetch function that uses the real data endpoint for best performance
- * Uses the same query as the reference engine - returns actual employee data
+ * Fetch payroll rows for a specific gang.
+ * Uses /payroll/report endpoint which returns { data: [...], ... }
  */
 export async function fetchReportRowsSimple(token, { month, year, gang_code, division, skip = 0, limit = 50, use_history = null }) {
   const params = {}
@@ -75,19 +75,12 @@ export async function fetchReportRowsSimple(token, { month, year, gang_code, div
   if (token) config.headers = { Authorization: `Bearer ${token}` }
 
   try {
-    console.log('[PayrollService] Using optimized real endpoint for best performance')
-    const r = await requestWithRetry('/payroll/report/real', config, 1, 500, 90000)
-    return r.data
+    const r = await requestWithRetry('/payroll/report', config, 2, 500, 120000)
+    // Endpoint returns { data: [...], meta: {...}, ... } - extract the data array
+    return r.data?.data ?? []
   } catch (error) {
-    console.error('[PayrollService] Real endpoint failed, falling back to simple endpoint:', error)
-    // Fallback to simple endpoint if real endpoint fails
-    try {
-      const r = await requestWithRetry('/payroll/report/simple', config, 1, 500, 60000)
-      return r.data
-    } catch (fallbackError) {
-      console.error('[PayrollService] All endpoints failed:', fallbackError)
-      return []
-    }
+    console.error('[PayrollService] fetchReportRowsSimple failed:', error)
+    return []
   }
 }
 

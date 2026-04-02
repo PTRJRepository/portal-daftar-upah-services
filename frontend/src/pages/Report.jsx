@@ -89,6 +89,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const gridRef = useRef(null)
   const dataInitRef = useRef(false)
   const autoHideMapRef = useRef({})
+  // [FIX] Store rows in a ref so datasource can synchronously access current data without state timing issues
+  const rowsDataRef = useRef([])
 
   const [loading, setLoading] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
@@ -97,6 +99,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [firstBatchReady, setFirstBatchReady] = useState(false)
   const [firstBatchAttempted, setFirstBatchAttempted] = useState(false)
   const [initialRowsPreview, setInitialRowsPreview] = useState([])
+  // [FIX] Gate AG Grid rendering until data is actually ready to prevent "loading done but no data" flicker
+  const [dataReady, setDataReady] = useState(false)
   const [gangInfo, setGangInfo] = useState(null)
   const [selectionStats, setSelectionStats] = useState({ count: 0, sum: 0, average: 0 })
   const [viewMode, setViewMode] = useState('table') // 'table' | 'matrix'
@@ -115,7 +119,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   // --- DYNAMIC PENDAPATAN LAINNYA EDIT MODE ---
   const [editModePendapatan, setEditModePendapatan] = useState(false)
   const [customPendapatanTypes, setCustomPendapatanTypes] = useState([]) // [{type: 'KONTANAN', name: 'Kontanan'}, ...]
-  const [pendingPendapatanEdits, setPendingPendapatanEdits] = useState({}) // { 'NIK::TYPE': { nik, emp_name, gang_code, amount, income_type, income_name } }
+  const [pendingPendapatanEdits, setPendingPendapatanEdits] = useState({}) // { 'NIK::NAMA::TYPE': { nik, emp_name, gang_code, amount, income_type, income_name } }
   const [isSavingPendapatan, setIsSavingPendapatan] = useState(false)
   const [showAddPendapatanPopup, setShowAddPendapatanPopup] = useState(false)
   const [newPendapatanName, setNewPendapatanName] = useState('')
@@ -187,7 +191,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   // Generic pendapatan lainnya edit handler
   const handlePendapatanChange = useCallback((nik, empName, gangCode, incomeType, incomeName, newVal) => {
     const amount = parseFloat(newVal) || 0;
-    const key = `${nik}::${incomeType}`;
+    // KEY: Use NIK + Nama + TYPE to disambiguate employees with the same NIK
+    const key = `${nik}::${empName}::${incomeType}`;
     setPendingPendapatanEdits(prev => ({
       ...prev,
       [key]: { nik, emp_name: empName, gang_code: gangCode, amount, income_type: incomeType, income_name: incomeName }
@@ -210,7 +215,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
   const handleRemovePendapatanType = (type) => {
     setCustomPendapatanTypes(prev => prev.filter(t => t.type !== type));
-    // Remove pending edits for this type
+    // Remove pending edits for this type (key format: NIK::NAMA::TYPE)
     setPendingPendapatanEdits(prev => {
       const next = { ...prev };
       Object.keys(next).forEach(key => {
@@ -444,10 +449,21 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       const groupedData = await fetchReportDivisionOptimized(token, { division, month, year, use_history: useHistory, gang_prefix: gangPrefix })
 
       let flatRows = []
-      const sortedGangs = Object.keys(groupedData).sort()
+      
+      let gangsData = [];
+      if (groupedData && Array.isArray(groupedData.gangs)) {
+        gangsData = groupedData.gangs;
+      } else if (groupedData) {
+        const sortedGangs = Object.keys(groupedData).filter(k => Array.isArray(groupedData[k])).sort()
+        gangsData = sortedGangs.map(gang => ({
+          gang_code: gang,
+          employees: groupedData[gang]
+        }))
+      }
 
-      for (const gang of sortedGangs) {
-        const gangRows = groupedData[gang]
+      for (const gangObj of gangsData) {
+        const gang = gangObj.gang_code;
+        const gangRows = gangObj.employees;
         if (!gangRows || gangRows.length === 0) continue
         const computedRows = applyComputeToRows(gangRows, computeRulesRef.current)
         const filteredRows = computedRows.filter(r => (r.jumlah_hk || 0) > 0)
@@ -534,10 +550,12 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         flatRows.push(totalRow)
       }
       setRows(flatRows)
+      rowsDataRef.current = flatRows // [FIX] Sync to ref
       setPinnedBottom([])
       recomputeAutoHideMap(flatRows)
       setFirstBatchReady(true)
       setFirstBatchAttempted(true)
+      setDataReady(true) // [FIX] Data is now confirmed ready
 
     } catch (e) {
       console.error("Division render error:", e)
@@ -850,6 +868,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       if (columnDefs.length === 0) return;
 
       setLoading(true);
+      setDataReady(false); // [FIX] Prevent grid mount until data is confirmed ready
       setLoadingStatus('Loading payroll data...')
       setError('')
       try {
@@ -873,10 +892,12 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
           setRows(filtered)
           const safe = Array.isArray(filtered) ? filtered : []
+          rowsDataRef.current = safe // [FIX] Sync to ref so datasource can access synchronously
           recomputeAutoHideMap(safe)
           setInitialRowsPreview(safe.slice(0, INFINITE_BATCH_SIZE))
           setFirstBatchAttempted(true)
           setFirstBatchReady(safe.length > 0)
+          setDataReady(true) // [FIX] Data is now confirmed ready - grid can safely render
 
           const agg = (field) => Math.round(safe.reduce((a, b) => a + Number(b[field] || 0), 0))
 
@@ -1240,11 +1261,14 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       cfg.cellClass = (cfg.cellClass || '') + ' cell-net-salary cell-accounting'
     }
 
-    // 7. Dynamic Pendapatan Lainnya Edit Mode - make custom pendapatan columns editable
-    const customPendapatanField = f.startsWith('pendapatan_') && !['pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'].includes(f);
+    // 7. Dynamic Pendapatan Lainnya Edit Mode - make custom pendapatan columns editable (including THR)
+    const customPendapatanField = f.startsWith('pendapatan_') && !['pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'].includes(f);
     if (customPendapatanField) {
       const fieldType = f.replace('pendapatan_', '').toUpperCase();
-      const typeInfo = (params) => (params.context.customPendapatanTypes || []).find(t => t.type === fieldType);
+      const typeInfo = (params) => {
+        if (fieldType === 'THR') return { type: 'THR', name: 'Tunjangan Hari Raya' };
+        return (params.context.customPendapatanTypes || []).find(t => t.type === fieldType);
+      }
       cfg.editable = (params) => params.context.editModePendapatan && !!typeInfo(params) && !params.data?.isHeader && !params.data?.isTotal;
       cfg.cellStyle = (params) => {
         if (params.context.editModePendapatan && !!typeInfo(params) && !params.data?.isHeader && !params.data?.isTotal) {
@@ -1742,7 +1766,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
       {viewMode === 'table' ? (
         <React.Fragment>
-          {(!loading && rows.length === 0 && finalGangCode && !error) ? (
+          {/* [FIX] Only show "no data" message when loading is DONE and data is READY but rows are empty */}
+          {(!loading && dataReady && rows.length === 0 && finalGangCode && !error) ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-card)', border: '2px dashed var(--neutral-300)', borderRadius: '12px', margin: '20px', padding: '40px' }}>
               <div style={{ fontSize: '4.5rem', marginBottom: '1rem', color: 'var(--neutral-400)' }}>📭</div>
               <h3 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', fontWeight: '600', fontSize: '1.25rem' }}>Data Belum Tersedia</h3>
@@ -1750,7 +1775,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                 Data daftar upah untuk <strong>{(String(finalGangCode).toUpperCase() === 'ALL') ? 'Semua Group' : `Group ${finalGangCode}`}</strong> pada periode <strong>Bulan {activeMonth} Tahun {activeYear}</strong> belum bisa ditampilkan atau belum digenerate.
               </p>
             </div>
-          ) : (
+          {/* [FIX] AG Grid only mounts when data is confirmed ready - prevents "loading done but no data" flicker */}
+          ) : dataReady ? (
           <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
             <AgGridReact
               ref={gridRef}
@@ -1786,8 +1812,14 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                       const yearValue = typeof finalMonth === 'string' && finalMonth.includes('-') ? parseInt(finalMonth.split('-')[0], 10) : finalYear
 
                       let batch = []
-                      if (start === 0 && initialRowsPreview && initialRowsPreview.length > 0) {
-                        batch = initialRowsPreview.slice(0, end - start)
+                      // [FIX] Use rowsDataRef for first batch - this is synchronous (ref, not state)
+                      // so it's always available when datasource is called, regardless of React state timing
+                      if (start === 0 && rowsDataRef.current && rowsDataRef.current.length > 0) {
+                        batch = rowsDataRef.current.slice(0, end - start)
+                        // Sync to initialRowsPreview for consistency
+                        if (initialRowsPreview.length === 0) {
+                          setInitialRowsPreview(rowsDataRef.current.slice(0, INFINITE_BATCH_SIZE))
+                        }
                       } else {
                         const leafFields = []
                         const walk = (c) => { if (c.children) c.children.forEach(walk); else if (c.field) leafFields.push(c.field) }
@@ -1821,6 +1853,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             />
           </div>
           )}
+        )}
 
           {/* Save Button for NIK Edits */}
           {Object.keys(pendingNikEdits).length > 0 && (

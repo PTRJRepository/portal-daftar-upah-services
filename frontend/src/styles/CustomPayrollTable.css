@@ -776,3 +776,35 @@
     font-weight: 600;
     color: #1a365d;
 }
+
+/* ============================================
+   KONTAN DELETE INDICATOR STYLES
+   ============================================ */
+
+/* Input field that is marked for deletion (value = 0) */
+.cell-delete {
+    background-color: #fee2e2 !important;
+    /* light red bg */
+    border: 1px solid #ef4444 !important;
+    /* red border */
+    color: #dc2626 !important;
+    font-weight: bold !important;
+}
+
+/* Edit input base styles (fallback if not defined elsewhere) */
+.edit-input {
+    padding: 2px 4px;
+    border: 1px solid #3b82f6;
+    border-radius: 3px;
+    font-size: 12px;
+    width: 70px;
+    text-align: right;
+}
+
+/* Cell edited indicator */
+.cell-edited {
+    background-color: #dbeafe !important;
+    /* light blue bg */
+    border: 1px solid #3b82f6 !important;
+    /* blue border */
+}
