@@ -57,50 +57,67 @@ async function diagnose() {
     console.log(`Total in DB - THR: ${thrRecords.length}, KONTAN: ${kontanRecords.length}`);
 
     if (kontanRecords.length > 0) {
-        const sampleK = kontanRecords[0];
-        console.log(`Sample KONTAN record: NIK=${sampleK.nik}, Name=${sampleK.emp_name}, Amount=${sampleK.amount}, Type=${sampleK.income_type}`);
+        console.log(`Searching for a gang with KONTAN data among ${kontanRecords.length} records...`);
         
-        // Find which gang this employee belongs to
-        const empCode = sampleK.emp_code || '';
-        const nik = sampleK.nik || '';
-        
-        const empGangInfo = await dbMain.query<any>(`
-            SELECT TOP 1 RTRIM(GangCode) as GangCode FROM HR_GANGLN WHERE GangMember = ? OR GangMember = (SELECT EmpCode FROM HR_EMPLOYEE WHERE NewICNo = ?)
-        `, [empCode, nik]);
-        
-        if (empGangInfo.length > 0) {
-            const targetGang = empGangInfo[0].GangCode;
-            console.log(`Employee belongs to gang: ${targetGang}. Re-diagnosing for this gang.`);
+        let targetGang = '';
+        let matchedEmp: any = null;
+
+        for (const k of kontanRecords) {
+            const empCode = k.emp_code || '';
+            const nik = k.nik || '';
             
+            const empGangInfo = await dbMain.query<any>(`
+                SELECT TOP 1 RTRIM(GangCode) as GangCode FROM HR_GANGLN 
+                WHERE GangMember = ? OR GangMember IN (SELECT EmpCode FROM HR_EMPLOYEE WHERE NewICNo = ?)
+            `, [empCode, nik]);
+            
+            if (empGangInfo.length > 0) {
+                targetGang = empGangInfo[0].GangCode;
+                matchedEmp = k;
+                break;
+            }
+        }
+
+        if (targetGang) {
+            console.log(`Found! Employee ${matchedEmp.emp_name} (${matchedEmp.nik}/${matchedEmp.emp_code}) belongs to gang: ${targetGang}.`);
+            console.log(`Amount: ${matchedEmp.amount}, Type: ${matchedEmp.income_type}`);
+            
+            // Let's also check if this specific employee exists in HR_EMPLOYEE and what their codes are
+            const empCodesFromNik = await dbMain.query<any>(`SELECT EmpCode, EmpName FROM HR_EMPLOYEE WHERE NewICNo = ?`, [matchedEmp.nik]);
+            console.log(`EmpCodes for NIK ${matchedEmp.nik}:`, empCodesFromNik);
+
             // 5. Test dataExtractorService for the TARGET gang
             console.log(`Step 5: Testing extractPayrollData for gang ${targetGang}...`);
             const result = await dataExtractorService.extractPayrollData(month, year, targetGang);
             const dataRows = result.data_rows;
             
-            const rowsWithKontan = dataRows.filter(r => r.pendapatan_kontan !== undefined || (r as any).pendapatan_kontanan !== undefined || (r as any).pendapatan_kontan > 0);
-            console.log(`Rows with any KONTAN field: ${rowsWithKontan.length}`);
-            
-            if (rowsWithKontan.length > 0) {
-                console.log("Matched rows with KONTAN:");
-                rowsWithKontan.forEach(r => {
-                    console.log({
-                        emp_code: r.emp_code,
-                        nama: r.nama,
-                        pendapatan_kontan: r.pendapatan_kontan,
-                        pendapatan_kontanan: (r as any).pendapatan_kontanan
-                    });
+            // Look for our specific employee in dataRows
+            const targetEmpRow = dataRows.find(r => 
+                (r.emp_code && empCodesFromNik.some((ec:any) => ec.EmpCode.trim() === r.emp_code.trim())) || 
+                (r.nik && r.nik.trim() === matchedEmp.nik.trim())
+            );
+
+            if (targetEmpRow) {
+                console.log("Target employee found in dataExtractor result:");
+                console.log({
+                    emp_code: targetEmpRow.emp_code,
+                    nama: targetEmpRow.nama,
+                    nik: targetEmpRow.nik,
+                    pendapatan_thr: targetEmpRow.pendapatan_thr,
+                    pendapatan_kontan: targetEmpRow.pendapatan_kontan,
+                    pendapatan_kontanan: (targetEmpRow as any).pendapatan_kontanan,
+                    all_fields: Object.keys(targetEmpRow).filter(k => k.startsWith('pendapatan_'))
                 });
             } else {
-                console.log("FAIL: Even though we found an employee with KONTAN in this gang, they don't have KONTAN in extractPayrollData output.");
-                // Let's debug why
-                const targetEmp = dataRows.find(r => r.emp_code === empCode || r.nik === nik);
-                if (targetEmp) {
-                    console.log("Target employee found in data_rows, but no KONTAN fields present.");
-                    console.log("Fields present:", Object.keys(targetEmp).filter(k => k.startsWith('pendapatan_')));
-                } else {
-                    console.log(`Target employee ${empCode}/${nik} NOT found in gang ${targetGang} for period ${month}/${year}`);
-                }
+                console.log(`Target employee NOT FOUND in dataRows for gang ${targetGang}`);
+                console.log("First 3 employees in this gang:", dataRows.slice(0, 3).map(r => ({ code: r.emp_code, name: r.nama })));
             }
+
+            const rowsWithKontan = dataRows.filter(r => r.pendapatan_kontan !== undefined || (r as any).pendapatan_kontanan !== undefined || (r as any).pendapatan_kontan > 0);
+            console.log(`Total rows in gang ${targetGang}: ${dataRows.length}`);
+            console.log(`Rows with any KONTAN field in this gang: ${rowsWithKontan.length}`);
+        } else {
+            console.log("Could not find any employee with KONTAN who is currently in a gang in HR_GANGLN.");
         }
     }
 }

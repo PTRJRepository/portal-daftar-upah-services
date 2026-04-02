@@ -572,6 +572,7 @@ class GangAttendanceService {
         }>();
 
         for (const row of overtimeRows) {
+            const empKey = row.EmpCode.trim().toUpperCase();
             const trxDate = new Date(row.TrxDate);
             const day = trxDate.getDate();
             const dayOfWeek = trxDate.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
@@ -588,15 +589,15 @@ class GangAttendanceService {
                 dayType = 'Hari Kerja';
             }
 
-            if (!empOvertimeMap.has(row.EmpCode)) {
-                empOvertimeMap.set(row.EmpCode, {
+            if (!empOvertimeMap.has(empKey)) {
+                empOvertimeMap.set(empKey, {
                     daily: {},
                     totalHours: 0,
                     totalAmount: 0,
                     totalRecords: 0
                 });
             }
-            const empData = empOvertimeMap.get(row.EmpCode)!;
+            const empData = empOvertimeMap.get(empKey)!;
             if (!empData.daily[day]) empData.daily[day] = [];
             empData.daily[day].push({
                 hours: row.Hours,
@@ -621,7 +622,7 @@ class GangAttendanceService {
 
         for (const [gangCode, gangMembers] of membersByGang) {
             const employees: GangOvertimeRow[] = gangMembers.map(member => {
-                const otData = empOvertimeMap.get(member.emp_code);
+                const otData = empOvertimeMap.get(member.emp_code.trim().toUpperCase());
                 if (!otData) {
                     return {
                         emp_code: member.emp_code,

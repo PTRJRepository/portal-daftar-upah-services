@@ -15,6 +15,7 @@ export interface OtherIncome {
     emp_name: string;
     division_code?: string;
     gang_code?: string;
+    jabatan?: string;      // NEW: Job position/role
     period_year: number;
     period_month: number;
     income_type: string; // THR, Bonus, Custom

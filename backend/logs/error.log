@@ -1,2 +1,10 @@
-[2026-04-02T01:13:21.654Z] === LOGS CLEARED ON STARTUP ===
+[2026-04-02T01:20:06.517Z] === LOGS CLEARED ON STARTUP ===
 
+[2026-04-02T01:21:41.565Z] [01:21:41.565] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 33582ms
+[2026-04-02T01:21:46.152Z] [01:21:46.152] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 38188ms
+[2026-04-02T01:24:14.133Z] [01:24:14.131] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 29453ms
+[2026-04-02T01:24:31.173Z] [01:24:31.173] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 26378ms
+[2026-04-02T01:33:30.635Z] [01:33:30.634] [WARN] [HTTP] SLOW GET /payroll/employee/C0001/checkroll 28686ms
+[2026-04-02T01:33:49.992Z] [01:33:49.991] [WARN] [HTTP] SLOW GET /payroll/employee/C0001/history 18756ms
+[2026-04-02T01:34:38.155Z] [01:34:38.154] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 32360ms
+[2026-04-02T01:34:41.980Z] [01:34:41.980] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 36188ms
