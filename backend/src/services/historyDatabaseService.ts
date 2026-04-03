@@ -272,6 +272,8 @@ export interface HistoryGangMember {
     loc_code?: string;
     emp_code: string;
     emp_name?: string;
+    nik?: string;
+    jabatan?: string;
     join_date?: Date;
     is_active: boolean;
     period_month: number;
@@ -805,7 +807,12 @@ export class HistoryDatabaseService {
                     total_ffb_weight, total_weight_tbs, informasi_tambahan,
                     created_by, source_endpoint, is_locked, lock_reason
                 ) OUTPUT INSERTED.id VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `, [
                 data.history_id, data.period_month, data.period_year, data.division_code, data.gang_code, data.gang_description,
@@ -944,8 +951,18 @@ export class HistoryDatabaseService {
                 penghasilan_bruto, tarif_pajak_ter, pph21_ter, upah_bersih, task_code, task_desc,
                 shortage_details, shortage_total_hours
             ) OUTPUT INSERTED.id VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?
             )
         `, [
@@ -1618,14 +1635,14 @@ export class HistoryDatabaseService {
             const result = await db.query(`
                 INSERT INTO dbo.history_gang_member(
                     history_id, gang_code, gang_description, division_code, loc_code, emp_code,
-                    emp_name, join_date, is_active, period_month, period_year, source_table
+                    emp_name, nik, jabatan, join_date, is_active, period_month, period_year, source_table
                 ) OUTPUT INSERTED.id VALUES(
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `, [
                 data.history_id, data.gang_code, data.gang_description, data.division_code,
-                data.loc_code, data.emp_code, data.emp_name, data.join_date, data.is_active,
-                data.period_month, data.period_year, data.source_table
+                data.loc_code, data.emp_code, data.emp_name, data.nik || null, data.jabatan || null,
+                data.join_date, data.is_active, data.period_month, data.period_year, data.source_table
             ]);
 
             return result[0]?.id;
@@ -1690,10 +1707,11 @@ export class HistoryDatabaseService {
                 history_id, period_month, period_year, nik, new_nik, emp_code, emp_name,
                 company_code, division_code, loc_code, gang_code, job_code, position,
                 join_date, terminate_date, status, employee_type, gender, religion,
+                birth_place, birth_date, marital_status,
                 tax_status, ptkp_beras, ptkp_pajak,
                 upah_dasar, total_hk, source_table
             ) OUTPUT INSERTED.id VALUES(
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
         `, [
             data.history_id, data.period_month, data.period_year,
@@ -1703,6 +1721,7 @@ export class HistoryDatabaseService {
             data.emp_name, data.company_code, data.division_code, data.loc_code, data.gang_code,
             data.job_code, data.position, data.join_date, data.terminate_date, data.status,
             data.employee_type, data.gender, data.religion,
+            data.birth_place, data.birth_date, data.marital_status,
             data.tax_status, data.ptkp_beras, data.ptkp_pajak,
             data.upah_dasar, data.total_hk, data.source_table
         ]);
@@ -1884,7 +1903,17 @@ export class HistoryDatabaseService {
             `);
             console.log("[HistoryDatabaseService] Migrated: history_hr_employee.new_nik");
 
-            console.log("[HistoryDatabaseService] All new_nik migrations completed successfully");
+            // history_gang_member - add jabatan column
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='history_gang_member' AND COLUMN_NAME='jabatan')
+                BEGIN
+                    ALTER TABLE dbo.history_gang_member ADD jabatan VARCHAR(100) NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: history_gang_member.jabatan");
+
+            console.log("[HistoryDatabaseService] All migrations completed successfully");
         } catch (e: any) {
             console.error("[HistoryDatabaseService] Migration failed:", e.message);
             throw e;

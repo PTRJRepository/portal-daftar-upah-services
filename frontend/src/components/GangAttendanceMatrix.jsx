@@ -160,13 +160,17 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                             <strong>{cfg.short}</strong> {cfg.label}
                         </span>
                     ))}
-                    <span className="gam-legend-divider" />
-                    <span className="gam-face-legend-item" style={{ color: '#059669', background: '#d1fae5' }}>
-                        <strong>V</strong> Face OK
-                    </span>
-                    <span className="gam-face-legend-item" style={{ color: '#dc2626', background: '#fef2f2' }}>
-                        <strong>X</strong> No Face
-                    </span>
+                    {includeFaceVerification && (
+                        <>
+                            <span className="gam-legend-divider" />
+                            <span className="gam-face-legend-item" style={{ color: '#059669', background: '#d1fae5' }}>
+                                <strong>V</strong> Face OK
+                            </span>
+                            <span className="gam-face-legend-item" style={{ color: '#dc2626', background: '#fef2f2' }}>
+                                <strong>X</strong> No Face
+                            </span>
+                        </>
+                    )}
                 </div>
 
                 {/* Content */}

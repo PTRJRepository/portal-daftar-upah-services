@@ -669,13 +669,15 @@ export class HistorySeederService {
         try {
             // Get current period gang members
             let sql = `
-                SELECT 
+                SELECT
                     g.GangCode, g.Description as GangDesc, g.LocCode,
-                    gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate, e.NewICNo
+                    gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate, e.NewICNo,
+                    COALESCE(ee.jabatan, '') as Jabatan
                 FROM HR_GANG g
                 JOIN HR_GANGLN gl ON g.GangCode = gl.GangCode
                 JOIN HR_EMPLOYEE e ON gl.GangMember = e.EmpCode
                 LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
+                LEFT JOIN employee_estate ee ON RTRIM(ee.empcode) = RTRIM(e.EmpCode)
                 WHERE 1=1
             `;
 
@@ -716,6 +718,7 @@ export class HistorySeederService {
                     emp_code: latestEmpCode?.trim(),
                     emp_name: row.EmpName?.trim(),
                     nik: row.NewICNo?.trim(),
+                    jabatan: row.Jabatan?.trim() || '',  // Jabatan from employee_estate
                     period_month: options.month,
                     period_year: options.year,
                     join_date: row.AppJoinGrpDate,
@@ -751,8 +754,9 @@ export class HistorySeederService {
                     g.LocCode as division_code,
                     g.LocCode as loc_code,
                     g.GangCode as gang_code,
-                    RTRIM(p.JobCode) as job_code,
-                    RTRIM(p.Position) as position,
+                    -- JobCode, Position, TaxStatus don't exist in HR_PAYROLL - use NULL
+                    NULL as job_code,
+                    NULL as position,
                     em.AppJoinGrpDate as join_date,
                     em.TerminateDate as terminate_date,
                     e.Status as status,
@@ -762,15 +766,10 @@ export class HistorySeederService {
                     e.MaritalStatus as marital_status,
                     e.PlaceOfBirth as birth_place,
                     e.DOB as birth_date,
-                    RTRIM(p.TaxStatus) as tax_status,
-                    -- upah_dasar: get actual PayRate from HR_PAYROLL
-                    -- PayRate can be 0 for valid cases (new employees, terminated, etc.)
-                    -- DO NOT skip or filter on this value - 0 is a valid state
+                    -- PayRate & RiceRation are the ONLY valid columns in HR_PAYROLL
                     p.PayRate as upah_dasar,
-                    -- PTKP Beras from RiceRation
                     CAST(p.RiceRation AS VARCHAR) as ptkp_beras,
-                    -- PTKP Pajak: simplified mapping from TaxStatus
-                    RTRIM(p.TaxStatus) as ptkp_pajak,
+                    NULL as ptkp_pajak,
                     COALESCE((
                         SELECT SUM(Hours)/7.0
                         FROM PR_TASKREG tr
@@ -783,7 +782,7 @@ export class HistorySeederService {
                 JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
                 LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
                 LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
-                -- JOIN HR_PAYROLL to get actual rates (PayRate, JobCode, Position, TaxStatus, RiceRation)
+                -- JOIN HR_PAYROLL to get rates (PayRate, JobCode, RiceRation only - Position & TaxStatus don't exist)
                 LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                 WHERE 1=1
             `;

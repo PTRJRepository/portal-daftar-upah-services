@@ -1572,7 +1572,7 @@ export class DataExtractorService {
             rows = await db.query<any>(`
                 SELECT DISTINCT
                     RTRIM(e.EmpCode) as emp_code,
-                    e.NewICNo as actual_nik,
+                    ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
                     e.EmpName as emp_name,
                     e.Gender as gender,
                     RTRIM(e.LocCode) as loc_code,
@@ -2920,6 +2920,102 @@ export class DataExtractorService {
         const phase0Time = Date.now() - t0;
         debug(CATEGORY, `🚀 Phase 0 (identity): ${phase0Time}ms, ${employees.length} employees`);
 
+        // ═══════════════════════════════════════════════════════
+        // PHASE 0b: Enrichment - NIK from extend_db_ptrj history
+        // Jabatan: will be added later when history_gang_member has the column
+        // ═══════════════════════════════════════════════════════
+        if (employees.length > 0) {
+            const empCodeList = employees.map(e => `'${e.emp_code}'`).join(',');
+            let nikFound = 0;
+
+            // Ensure ALL employees have nik and jabatan fields (even if empty)
+            for (const emp of employees) {
+                emp.nik = emp.actual_nik || emp.emp_code;  // Default fallback
+                emp.jabatan = emp.jabatan || '';            // Default fallback
+            }
+
+            // Try NIK from history_hr_employee (extend_db_ptrj)
+            try {
+                const extendDb = Database.getExtendedInstance();
+                const nikRows = await extendDb.query<any>(`
+                    SELECT RTRIM(emp_code) as emp_code, RTRIM(nik) as nik
+                    FROM dbo.history_hr_employee
+                    WHERE RTRIM(emp_code) IN (${empCodeList})
+                      AND nik IS NOT NULL AND RTRIM(nik) != ''
+                `);
+                const nikMap = new Map<string, string>();
+                for (const row of nikRows) {
+                    if (!nikMap.has(row.emp_code)) nikMap.set(row.emp_code, row.nik);
+                }
+                for (const emp of employees) {
+                    if (nikMap.has(emp.emp_code)) {
+                        const nikVal = nikMap.get(emp.emp_code);
+                        emp.actual_nik = nikVal;
+                        emp.nik = nikVal;
+                        nikFound++;
+                    }
+                }
+                debug(CATEGORY, `📋 NIK from history_hr_employee: ${nikFound}/${employees.length}`);
+            } catch (e) {
+                debug(CATEGORY, `⚠️ history_hr_employee NIK lookup skipped: ${e.message}`);
+            }
+
+            // Try Jabatan from history_gang_member (extend_db_ptrj)
+            let jabatanFound = 0;
+            try {
+                const extendDb = Database.getExtendedInstance();
+                const jabatanRows = await extendDb.query<any>(`
+                    SELECT RTRIM(emp_code) as emp_code, RTRIM(jabatan) as jabatan
+                    FROM dbo.history_gang_member
+                    WHERE RTRIM(emp_code) IN (${empCodeList})
+                      AND jabatan IS NOT NULL AND RTRIM(jabatan) != ''
+                `);
+                const jabatanMap = new Map<string, string>();
+                for (const row of jabatanRows) {
+                    if (!jabatanMap.has(row.emp_code)) jabatanMap.set(row.emp_code, row.jabatan);
+                }
+                for (const emp of employees) {
+                    if (jabatanMap.has(emp.emp_code)) {
+                        emp.jabatan = jabatanMap.get(emp.emp_code);
+                        jabatanFound++;
+                    }
+                }
+                debug(CATEGORY, `📋 Jabatan from history_gang_member: ${jabatanFound}/${employees.length}`);
+            } catch (e) {
+                debug(CATEGORY, `⚠️ history_gang_member jabatan lookup skipped: ${e.message}`);
+            }
+
+            // [JABATAN ESTATE] Get jabatan from employee_estate (extend_db_ptrj)
+            let jabatanEstateFound = 0;
+            try {
+                const { EmployeeEstateService: EES } = await import("./employeeEstateService");
+                const jobTitlesResult = await EES.getEmployeeJobsWithNik();
+                const { empcodeMap: estateEmpMap, nikMap: estateNikMap } = jobTitlesResult;
+                for (const emp of employees) {
+                    const nikClean = (emp.actual_nik || '').trim().toUpperCase();
+                    const estateJabatan = estateEmpMap[emp.emp_code] || estateNikMap[nikClean] || '';
+                    if (estateJabatan) {
+                        emp.jabatan_estate = estateJabatan;
+                        jabatanEstateFound++;
+                    } else if (emp.jabatan) {
+                        // Fallback to history_gang_member jabatan if estate is empty
+                        emp.jabatan_estate = emp.jabatan;
+                    } else {
+                        emp.jabatan_estate = '';
+                    }
+                }
+                debug(CATEGORY, `📋 Jabatan estate from employee_estate: ${jabatanEstateFound}/${employees.length}`);
+            } catch (e) {
+                debug(CATEGORY, `⚠️ employee_estate jabatan lookup skipped: ${e.message}`);
+            }
+
+            // Log enrichment result
+            debug(CATEGORY, `📊 Final enrichment: NIK=${nikFound}, Jabatan=${jabatanFound}`);
+            for (let i = 0; i < Math.min(3, employees.length); i++) {
+                debug(CATEGORY, `  ${employees[i].emp_code}: nik=${employees[i].nik || '-'}, jabatan=${employees[i].jabatan || '-'}`);
+            }
+        }
+
         // Apply gangPrefix filter
         if (gangPrefix && employees.length > 0) {
             const isNumeric = /^\d+$/.test(gangPrefix);
@@ -2945,6 +3041,14 @@ export class DataExtractorService {
         // Build initial gangs map with IDENTITY ONLY (nama, gender, gang)
         const gangsMap = new Map<string, any[]>();
         const gangOrder: string[] = [];
+        
+        // DEBUG: Log first 3 employees after enrichment
+        debug(CATEGORY, `📊 Building gangsMap with ${employees.length} employees. Sample enrichment status:`);
+        for (let i = 0; i < Math.min(3, employees.length); i++) {
+            const emp = employees[i];
+            debug(CATEGORY, `  ${emp.emp_code}: actual_nik=${emp.actual_nik || '(none)'}, jabatan=${emp.jabatan || '(none)'}, role=${emp.role || '(none)'}`);
+        }
+        
         for (const emp of employees) {
             const gang = emp.gang_code || "UNKNOWN";
             if (!gangsMap.has(gang)) {
@@ -2953,15 +3057,18 @@ export class DataExtractorService {
             }
             gangsMap.get(gang)!.push({
                 emp_code: emp.emp_code,
-                nik: emp.actual_nik || emp.emp_code,
+                nik: emp.actual_nik || emp.emp_code,  // NIK from extend_db_ptrj or fallback to emp_code
                 nama: emp.emp_name,
                 gang_code: emp.gang_code,
                 loc_code: emp.loc_code,
                 gender: emp.gender,
+                jabatan: emp.jabatan || '',  // Jabatan from history_gang_member
+                jabatan_estate: emp.jabatan_estate || emp.jabatan || '',  // Jabatan from employee_estate (extend_db_ptrj)
+                role: emp.role || '',        // Role from history
                 // Phase markers
                 _phase: 0,
                 _enriched: false,
-                _loading: false // Frontend can show loading indicator
+                _loading: false
             });
         }
 
@@ -3029,10 +3136,12 @@ export class DataExtractorService {
 
         // Update employees with attendance data
         for (const emp of employees) {
-            const attData = globalAttendanceMap[emp.emp_code] || { hk: 0, total_hours: 0 };
+            const attData = globalAttendanceMap[emp.emp_code] || { hk: 0, total_hours: 0, total_amount_rp: 0, shortage_count: 0 };
             const empCuti = globalCutiMap[emp.emp_code] || { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
             emp.jumlah_hk = attData.hk || 0;
             emp.total_jam_kerja = attData.total_hours || 0;
+            emp.total_amount_rp = attData.total_amount_rp || 0; // Gaji Pokok Aktual dari database
+            emp.shortage_count = attData.shortage_count || 0;
             emp.cuti_tahunan_hari = empCuti.cuti_tahunan;
             emp.cuti_sakit_haid_hari = empCuti.cuti_sakit_haid;
             emp.cuti_minggu_hari = empCuti.cuti_minggu;
@@ -3048,6 +3157,8 @@ export class DataExtractorService {
                     Object.assign(emp, {
                         jumlah_hk: empData.jumlah_hk,
                         total_jam_kerja: empData.total_jam_kerja,
+                        total_amount_rp: empData.total_amount_rp,
+                        shortage_count: empData.shortage_count,
                         cuti_tahunan_hari: empData.cuti_tahunan_hari,
                         cuti_sakit_haid_hari: empData.cuti_sakit_haid_hari,
                         cuti_minggu_hari: empData.cuti_minggu_hari,
@@ -3302,8 +3413,11 @@ export class DataExtractorService {
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
             let pot_koreksi = 0;
             for (const [key, val] of Object.entries(empPotongan)) {
-                if (key.startsWith("KOREKSI")) pot_koreksi += Math.abs(val as number);
+                // KOREKSI should be NEGATIVE (it's a deduction from gross pay)
+                if (key.startsWith("KOREKSI")) pot_koreksi += (val as number);
             }
+            // Ensure pot_koreksi is negative (if it's positive, make it negative)
+            if (pot_koreksi > 0) pot_koreksi = -pot_koreksi;
 
             const caruman = calculateAllCaruman(upahDasar, masaKerjaJumlah);
             const pot_astek = caruman.astek_pekerja_jht;
@@ -3312,8 +3426,13 @@ export class DataExtractorService {
                 .filter(([key]) => !["SPSI", "PPH21", "PREMI_PPH"].includes(key) && !key.startsWith("KOREKSI"))
                 .reduce((sum, [, val]) => sum + Math.abs(val as number), 0);
 
-            const gaji_pokok = attData.total_amount_rp || 0;
-            const jumlah_upah_kotor = gaji_pokok + total_tunjangan + total_premi + pot_koreksi;
+            // Calculate payroll components (match GajiPokokService formulas)
+            const gaji_pokok_aktual = emp.total_amount_rp || 0; // Already set in Phase 1
+            const hk_attendance = emp.jumlah_hk || 0;
+            const gaji_pokok_ideal = upahDasar * hk_attendance; // upah_dasar × HK
+            const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal; // Positive = overpaid, Negative = underpaid
+
+            const jumlah_upah_kotor = gaji_pokok_aktual + total_tunjangan + total_premi + pot_koreksi;
             const total_potongan = pot_astek + pot_bpjs + pot_spsi + pot_pph21 + other_potongan;
             const upah_bersih = jumlah_upah_kotor - total_potongan;
 
@@ -3321,12 +3440,52 @@ export class DataExtractorService {
             const statusPTKP = dbPtkpMap.get(empCode.toUpperCase()) || mapBerasRateToPTKP(berasRate);
             const kategoriTER = mapPTKPToTER(statusPTKP);
 
+            // Calculate penghasilan_bruto for PPH21 TER
+            // Formula: gaji_pokok_aktual + total_tunjangan + lembur + total_premi + astek_084 + bpjs_kes_majikan
+            const penghasilan_bruto = gaji_pokok_aktual 
+                + total_tunjangan 
+                + (empLembur.jumlah || 0) 
+                + total_premi 
+                + (caruman.astek_majikan_jkk_jkm || 0) 
+                + (caruman.bpjs_kes_majikan || 0);
+
+            // Calculate PPh21 TER
+            let pph21_ter = 0;
+            let tarif_pajak_ter = 0;
+            try {
+                const { pph21TerService } = await import('./pph21TerService');
+                console.log(`[DataExtractor] Phase 4 - Tax calc for ${empCode}: statusPTKP=${statusPTKP}, kategoriTER=${kategoriTER}, penghasilan_bruto=${penghasilan_bruto}`);
+                
+                const pphResult = pph21TerService.calculatePph21Ter(penghasilan_bruto, statusPTKP);
+                pph21_ter = pphResult.tax_amount || 0;
+                tarif_pajak_ter = pphResult.rate_percent || 0;
+                
+                console.log(`[DataExtractor] Phase 4 - Tax result: pph21_ter=${pph21_ter}, tarif_pajak_ter=${tarif_pajak_ter}%, ter_category=${pphResult.ter_category}`);
+            } catch (e: any) {
+                console.error(`[DataExtractor] Phase 4 - PPh21 TER calculation failed for ${empCode}:`, e.message);
+            }
+
             // Apply final data directly to emp object
             emp.hari_kerja = hari_kerja;
             emp.beras_rate = berasRate;
             emp.beras_jumlah = berasJumlah;
             emp.total_tunjangan = total_tunjangan;
-            emp.gaji_pokok = gaji_pokok;
+            
+            // Payroll fields (match frontend columnDefs)
+            emp.gaji_pokok_ideal = gaji_pokok_ideal;
+            emp.gaji_pokok_aktual = gaji_pokok_aktual;
+            emp.gaji_pokok = gaji_pokok_aktual; // Main alias
+            emp.gaji_pokok_dibayarkan = gaji_pokok_aktual; // For PAJAK section (GP BAYAR)
+            emp.koreksi_hk = koreksi_hk;
+            emp.pot_koreksi = pot_koreksi; // Koreksi (negative for deductions)
+            emp.astek_084 = caruman.astek_majikan_jkk_jkm || 0; // ASTEK 0.84% untuk pajak
+            
+            // Total tunjangan for display
+            emp.total_tunjangan_display = total_tunjangan;
+            emp.penghasilan_bruto = penghasilan_bruto; // For PAJAK section
+            emp.pph21_ter = pph21_ter; // PPh21 TER tax amount
+            emp.tarif_pajak_ter = tarif_pajak_ter; // TER tax rate percentage
+
             emp.jumlah_upah_kotor = jumlah_upah_kotor;
             
             // Backend field names (detailed)
@@ -3359,12 +3518,89 @@ export class DataExtractorService {
             emp.bpjs_pensiun_majikan = caruman.bpjs_pensiun_majikan || 0;
             emp.astek_jht_pekerja = caruman.astek_pekerja_jht || 0;
             emp.astek_jht_majikan = caruman.astek_majikan_jht || 0;
-            
+
             emp.status_ptkp = statusPTKP;
             emp.kategori_ter = kategoriTER;
             emp._phase = 4;
             emp._enriched = true;
             emp._loading = false;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // PHASE 4b: Other Incomes (THR, Bonus, Custom) from extend_db_ptrj
+        // NOTE: employee_other_incomes is in extend_db_ptrj, NOT db_ptrj!
+        // ═══════════════════════════════════════════════════════
+        try {
+            // Use the CORRECT database instance for extend_db_ptrj
+            const extDb = Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
+            const empCodeList = employees.map(e => `'${e.emp_code}'`).join(',');
+            
+            // Get other incomes from extend_db_ptrj
+            // IMPORTANT: THR records may have empty emp_code, so we also match by NIK
+            const nikList = employees.filter(e => e.actual_nik).map(e => `'${e.actual_nik}'`).join(',');
+            
+            if (!empCodeList && !nikList) {
+                debug(CATEGORY, `💰 Skipping other incomes lookup - no emp_codes or NIKs available`);
+                return;
+            }
+            
+            const conditions: string[] = [];
+            if (empCodeList) conditions.push(`RTRIM(emp_code) IN (${empCodeList})`);
+            if (nikList) conditions.push(`RTRIM(nik) IN (${nikList})`);
+            
+            const incomeRows = await extDb.query<any>(`
+                SELECT RTRIM(emp_code) as emp_code, RTRIM(nik) as nik, RTRIM(income_type) as income_type,
+                       RTRIM(income_name) as income_name, amount
+                FROM dbo.employee_other_incomes
+                WHERE period_month = ? AND period_year = ?
+                  AND (${conditions.join(' OR ')})
+            `, [month, year]);
+
+            debug(CATEGORY, `💰 Found ${incomeRows?.length || 0} other income records in extend_db_ptrj`);
+            
+            if (incomeRows?.length === 0) {
+                debug(CATEGORY, `💰 WARNING: No other incomes found for month=${month}, year=${year}. Table may be empty or emp_codes may be missing.`);
+            }
+
+            // Group by emp_code
+            const incomeByEmp = new Map<string, Array<{type: string, name: string, amount: number}>>();
+            for (const row of incomeRows) {
+                // Try to match by emp_code first, then by nik
+                let key = row.emp_code;
+                if (!key && row.nik) {
+                    const emp = employees.find(e => e.actual_nik === row.nik);
+                    if (emp) key = emp.emp_code;
+                }
+                if (!key) continue;
+                
+                if (!incomeByEmp.has(key)) incomeByEmp.set(key, []);
+                incomeByEmp.get(key)!.push({
+                    type: row.income_type,
+                    name: row.income_name,
+                    amount: row.amount || 0
+                });
+            }
+
+            // Attach to employees and calculate additional income
+            for (const emp of employees) {
+                const incomes = incomeByEmp.get(emp.emp_code) || [];
+                emp.other_incomes = incomes;
+
+                // Extract specific income types to top-level fields
+                for (const inc of incomes) {
+                    const fieldKey = `pendapatan_${inc.type.toLowerCase()}`;
+                    emp[fieldKey] = inc.amount;
+                }
+
+                // Total pendapatan lainnya (excluding kontan which is handled separately)
+                const otherIncomeTotal = incomes
+                    .filter(i => i.type !== 'KONTAN' && i.type !== 'KONTANAN')
+                    .reduce((sum, i) => sum + i.amount, 0);
+                emp.total_pendapatan_lainnya = otherIncomeTotal;
+            }
+            debug(CATEGORY, `💰 Other incomes attached to ${incomeByEmp.size} employees`);
+        } catch (e) {
+            debug(CATEGORY, `⚠️ Other income lookup skipped: ${e.message}`);
         }
 
         // Filter & sort employees

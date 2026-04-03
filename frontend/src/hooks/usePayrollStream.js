@@ -199,6 +199,13 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                             case 'gang_update': {
                                 const { gang_code, employees, gang_totals, employees_count, gang_index, phase, is_complete } = data;
 
+                                // DEBUG: Log first employee's fields to see what data arrives
+                                if (employees && employees.length > 0 && phase === 'complete') {
+                                    console.log('[usePayrollStream] Sample employee fields:', Object.keys(employees[0]).slice(0, 40));
+                                    console.log('[usePayrollStream] Sample nik:', employees[0].nik);
+                                    console.log('[usePayrollStream] Sample jabatan:', employees[0].jabatan);
+                                }
+
                                 // Track if this gang data is from complete phase (fully enriched)
                                 gangsMapRef.current[gang_code] = {
                                     gang_code,

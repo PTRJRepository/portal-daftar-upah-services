@@ -1687,6 +1687,7 @@ export default function MainPage({ lockedDiv = null }) {
                   month={month}
                   year={year}
                   division={division}
+                  includeFaceVerification={false}
                 />
               </div>
               <div style={{ display: activeMatrixView === 'overtime' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', padding: '1rem', flexDirection: 'column' }}>
