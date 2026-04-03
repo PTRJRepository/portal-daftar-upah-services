@@ -126,10 +126,9 @@ cd backend && bun run src/scripts/test_division_mapping.ts
 
 # Test THR summary
 cd backend && bun run src/scripts/test_thr_summary.ts
-
-# Check THR data
-cd backend && bun run src/scripts/check_thr_data.ts
 ```
+
+**Note:** All test/debug scripts (check_thr_data, diagnose_*, trace_*, etc.) have been moved to `_dev_utils/scripts/debugging/`.
 
 ## Database Connection Rules (CRITICAL)
 
@@ -684,22 +683,35 @@ await db.query(`
 
 ### PTKP Status Mapping (Tax Classification)
 
-PTKP (Penghasilan Tidak Kena Pajak) status is derived from `beras_rate` (RiceRation) in HR_PAYROLL:
+PTKP (Penghasilan Tidak Kena Pajak) status is derived from `beras_rate` (RiceRation) in HR_PAYROLL. **Single Source of Truth:** `backend/src/services/payroll/formulas/PTKPMapper.ts`
 
 | beras_rate | PTKP Status | TER Category |
 |------------|-------------|--------------|
 | 2250 | TK/0 | TER A |
 | 3250 | TK/1 | TER A |
 | 4200 | TK/2 | TER B |
-| 3750 | K/0 | TER A |
+| 3700 | K/0 | TER A |
 | 4650 | K/1 | TER B |
-| 5550 | K/2 | TER B |
+| 5500 | K/2 | TER B |
 | 6450 | K/3 | TER C |
 
+**Legacy DB mappings (150/kg formulas):**
+| beras_rate | PTKP Status |
+|-----------|------------|
+| 3150 | TK/1 |
+| 4050 | TK/2 |
+| 4950 | TK/3 |
+| 3600 | K/0 |
+| 4500 | K/1 |
+| 5400 | K/2 |
+| 6300 | K/3 |
+| 3750 | K/0 |
+| 5550 | K/2 |
+
 **TER Categories:**
-- **TER A**: TK/0, TK/1, K/0 (5% rate)
-- **TER B**: TK/2, K/1, K/2 (15% rate)
-- **TER C**: K/3 (25% rate)
+- **TER A**: TK/0, TK/1, K/0 (PTKP ≤ 58,500,000)
+- **TER B**: TK/2, TK/3, K/1, K/2 (PTKP 63,000,000 - 67,500,000)
+- **TER C**: K/3 (PTKP = 72,000,000)
 
 ### Premium (Premi) Filtering Rules
 
@@ -760,6 +772,46 @@ if (hari_kerja <= 0) continue;
 Applied in: `dataExtractorService.ts` line ~301-317
 
 For totals calculation, only employees with `jumlah_hk > 0` are included.
+
+### PayrollCalculator - Single Source of Truth for Payroll Formulas
+
+**Location:** `backend/src/services/payroll/components/PayrollCalculator.ts`
+**Formula Module:** `backend/src/services/payroll/formulas/`
+
+**CRITICAL:** All derived payroll field calculations must use PayrollCalculator. Do NOT recalculate formulas manually in other services.
+
+#### Formula Business Rules (Final 2026-04-03):
+
+```
+1. UPAH KOTOR        = gaji_pokok_aktual + total_tunjangan + total_premi
+   [Base Gross]      WITHOUT koreksi or pendapatan_lainnya
+
+2. JUMLAH UPAH KOTOR = UPAH KOTOR + pot_koreksi + pendapatan_lainnya
+   [Daftar Upah]     koreksi & lainnya di-ADD untuk TAMPILAN saja
+
+3. PENGHASILAN BRUTO = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + astek_m + bpjs_m
+   [PAJAK]            Koreksi & lainnya adalah bagian dari penghasilan kena pajak
+
+4. UPAH KOTOR PAJAK  = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + bpjs_pekerja
+   [PAJAK]            Untuk header/tampilan pajak
+
+5. TOTAL POTONGAN     = astek + bpjs_kes + bpjs_pensiun + spsi + pph21 + other + pendapatan_lainnya
+   [Take-Home]        koreksi TIDAK masuk (already in jumlah_upah_kotor)
+                       pendapatan_lainnya WAJIB masuk (to offset the + in jumlah_upah_kotor)
+
+6. UPAH BERSIH       = jumlah_upah_kotor - total_potongan + premi_pph
+   [Take-Home Pay]    premi_pph = ADDITION (penambah), bukan potongan
+```
+
+**Pendapatan Lainnya (THR+Bonus+Custom+KONTAN) Flow:**
+| Field | Effect |
+|-------|--------|
+| `jumlah_upah_kotor` | **ADDED (+)** |
+| `total_potongan` | **SUBTRACTED (-)** — offsets the + |
+| `upah_bersih` | Net = 0, but structurally required for slip display |
+
+**Balance Check:** koreksi (+) in gross, koreksi NOT in potongan → no double deduction
+**Balance Check:** lainnya (+) in gross, lainnya (-) in potongan → net = 0 for incomes
 
 ## Configuration
 
