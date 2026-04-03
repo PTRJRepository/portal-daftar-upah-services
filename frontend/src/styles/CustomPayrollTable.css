@@ -822,3 +822,110 @@
 .payroll-table-container {
     transition: opacity 0.2s ease;
 }
+
+/* ============================================
+   PROGRESSIVE STREAMING ANIMATIONS
+   ============================================ */
+
+/* Fade in animation for new rows */
+@keyframes fadeInRow {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+        background-color: #fef9c3;
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        background-color: transparent;
+    }
+}
+
+@keyframes fadeInGang {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+        background-color: #dbeafe;
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+        background-color: transparent;
+    }
+}
+
+/* New gang header row animation */
+.gang-header-row.row-animating {
+    animation: fadeInGang 0.4s ease-out forwards;
+}
+
+/* New employee row animation */
+.payroll-table tbody tr.row-animating {
+    animation: fadeInRow 0.3s ease-out forwards;
+}
+
+/* Staggered animation for gang chunks */
+.gang-chunk-new .gang-header-row {
+    animation: fadeInGang 0.4s ease-out forwards;
+}
+
+.gang-chunk-new tbody tr:nth-child(even) {
+    animation: fadeInRow 0.3s ease-out 0.05s forwards;
+    opacity: 0;
+}
+
+.gang-chunk-new tbody tr:nth-child(odd) {
+    animation: fadeInRow 0.3s ease-out 0.1s forwards;
+    opacity: 0;
+}
+
+/* Pulse animation for streaming indicator */
+@keyframes streamingPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+}
+
+.streaming-indicator {
+    animation: streamingPulse 1.5s ease-in-out infinite;
+}
+
+/* Progress bar animation */
+@keyframes progressPulse {
+    0% {
+        background-position: 0% 50%;
+    }
+    100% {
+        background-position: 100% 50%;
+    }
+}
+
+.progress-bar-animated {
+    background: linear-gradient(
+        90deg,
+        #3b82f6 0%,
+        #60a5fa 25%,
+        #3b82f6 50%,
+        #60a5fa 75%,
+        #3b82f6 100%
+    );
+    background-size: 200% 100%;
+    animation: progressPulse 2s linear infinite;
+}
+
+/* Loading dots animation */
+@keyframes loadingDots {
+    0% { content: '.'; }
+    33% { content: '..'; }
+    66% { content: '...'; }
+}
+
+.loading-dots::after {
+    content: '.';
+    animation: loadingDots 1.5s steps(1) infinite;
+}

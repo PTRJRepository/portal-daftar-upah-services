@@ -247,13 +247,14 @@ export default function CustomPayrollTable({
         // If streaming is active and has progress, use stream progress
         if (stream.progress?.stage && stream.progress.stage !== null) {
             return {
-                stage: stream.progress.stage === 'complete' ? 'complete' : 'streaming',
+                stage: stream.progress.stage, // Use actual stage: 'connecting', 'querying', 'streaming', 'complete', 'error'
                 message: stream.progress.message || 'Memproses data...',
                 totalGangs: stream.progress.totalGangs || 0,
                 processedGangs: stream.progress.processedGangs || 0,
                 totalEmployees: stream.progress.totalEmployees || 0,
                 processedEmployees: stream.progress.processedEmployees || 0,
-                bytesReceived: stream.progress.bytesReceived || 0
+                bytesReceived: stream.progress.bytesReceived || 0,
+                currentGang: stream.progress.currentGang || null
             };
         }
         return loadingProgress;
@@ -262,7 +263,11 @@ export default function CustomPayrollTable({
     // Build rows from streamed gangs progressively
     // This useMemo recalculates whenever gangs change (which happens as gangs stream in)
     const streamRows = useMemo(() => {
-        if (!stream.gangs || stream.gangs.length === 0) return [];
+        console.log('[CustomPayrollTable] streamRows recomputing: stream.gangs.length =', stream.gangs?.length);
+        if (!stream.gangs || stream.gangs.length === 0) {
+            console.log('[CustomPayrollTable] streamRows: returning empty, stream.gangs is', stream.gangs);
+            return [];
+        }
 
         const processedRows = [];
         let globalNo = 1;
