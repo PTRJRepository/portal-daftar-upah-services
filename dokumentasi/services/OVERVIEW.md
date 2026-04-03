@@ -24,11 +24,19 @@
 | `DeductionExtractor` | `payroll/extractors/` | Potongan from PR_ADTRANS |
 | `HarvestExtractor` | `payroll/extractors/` | FFB harvesting data |
 
+### Payroll OtherIncomes (NEW - Apr 2026)
+| Service | Path | Purpose |
+|---------|------|---------|
+| `IncomeCategorizer` | `payroll/otherIncomes/` | Categorize THR, Bonus, Custom, KONTAN |
+| `DynamicColumnDetector` | `payroll/otherIncomes/` | Parse DocDesc patterns |
+| `ThrProcessor` | `payroll/otherIncomes/` | THR calculation logic |
+| `OtherIncomeProcessor` | `payroll/otherIncomes/` | Main orchestrator |
+
 ### God Classes (In Progress)
 | Service | Size | Status |
 |---------|------|--------|
 | `dataExtractorService` | 149KB | Using extractors (integration pending) |
-| `otherIncomesService` | 141KB | Will be split |
+| `otherIncomesService` | 141KB | Using otherIncomes module (integration pending) |
 | `taxReportService` | 78KB | Pending |
 | `historyDatabaseService` | 82KB | Pending |
 
@@ -65,7 +73,7 @@ const attendance = await getAttendanceExtractor().extract(empCodes, startDate, e
 
 ### CRITICAL
 1. **Integrate extractors into `dataExtractorService`** → Replace inline methods
-2. **Split `otherIncomesService`** → `otherIncomes/` module (4 submodules)
+2. **Integrate otherIncomes into `otherIncomesService`** → Replace inline methods
 
 ### HIGH
 3. **Consolidate division services** → 3 → 1
