@@ -191,7 +191,7 @@ export default function CustomPayrollTable({
     const [isAttendanceExpanded, setAttendanceExpanded] = useState(false);
     const [isAllowanceExpanded, setAllowanceExpanded] = useState(false);
     const [isOtherIncomeExpanded, setOtherIncomeExpanded] = useState(false);
-    const [isDeductionExpanded, setDeductionExpanded] = useState(false);
+    const [isDeductionExpanded, setDeductionExpanded] = useState(true); // Default true to show BPJS details
 
     // Table Preferences (Body Cell Colors - applied to body cells, NOT headers)
     const [cellColors, setCellColors] = useState(DEFAULT_CELL_COLORS);
@@ -328,33 +328,36 @@ export default function CustomPayrollTable({
     }, [stream.gangs, gangPrefix, gangCode]);
 
     // Determine active dynamic fields from streamed rows
+    // Use meta headers as source of truth, not employee data values
+    // This ensures columns appear even when values are 0/null
     const streamActiveFields = useMemo(() => {
         const employeeRows = streamRows.filter(r => r.type === 'employee');
         if (employeeRows.length === 0) return { activePremi: [], activePot: [], activePendapatan: [] };
 
+        // Primary source: meta headers from backend
         const dynPot = stream.meta?.dynamic_potongan_headers || [];
         const dynPrem = stream.meta?.dynamic_premi_headers || [];
-        const potTitleMap = stream.meta?.potongan_title_map || {};
-        const premTitleMap = stream.meta?.premi_title_map || {};
 
-        const premWithTitles = {};
-        dynPrem.forEach(field => { premWithTitles[field] = field; });
-        const potWithTitles = {};
-        dynPot.forEach(field => { potWithTitles[field] = field; });
+        // Also extract from employee data to catch any fields backend missed
+        const allFieldKeys = new Set();
+        employeeRows.forEach(row => {
+            Object.keys(row).forEach(key => {
+                if (key.startsWith('premi_') || key.startsWith('potongan_')) {
+                    allFieldKeys.add(key);
+                }
+            });
+        });
 
-        const activePremi = Object.entries(premWithTitles).filter(([, field]) =>
-            employeeRows.some(row => {
-                const val = row[field];
-                return val !== null && val !== undefined && val !== 0 && val !== '';
-            })
-        ).map(([, field]) => field);
+        // Merge both sources - prefer meta headers, add any extras from data
+        const activePremi = [...new Set([
+            ...dynPrem,
+            ...Array.from(allFieldKeys).filter(k => k.startsWith('premi_'))
+        ])];
 
-        const activePot = Object.entries(potWithTitles).filter(([, field]) =>
-            employeeRows.some(row => {
-                const val = row[field];
-                return val !== null && val !== undefined && val !== 0 && val !== '';
-            })
-        ).map(([, field]) => field);
+        const activePot = [...new Set([
+            ...dynPot,
+            ...Array.from(allFieldKeys).filter(k => k.startsWith('potongan_'))
+        ])];
 
         const excludedPendapatan = ['pendapatan_tidak_tetap', 'pendapatan_lainnya'];
         const allPendapatanKeys = new Set();
@@ -2154,12 +2157,8 @@ export default function CustomPayrollTable({
                     // INCLUDE: POTONGAN X, and other dynamic items
                     return true;
                 })
-                .filter(([label, field]) => activePotFields.includes(field) || isEditMode) // Show all in edit mode
-                .sort(([a], [b]) => (a || '').localeCompare(b || '')); // Sort alphabetically
-
-            console.log("[DEBUG] potonganBersihFields:", potonganBersihFields);
-            console.log("[DEBUG] dynamicHeaders.potongan:", dynamicHeaders.potongan);
-            console.log("[DEBUG] activePotFields:", activePotFields);
+                .filter(([label, field]) => activePotFields.includes(field) || isEditMode)
+                .sort(([a], [b]) => (a || '').localeCompare(b || ''));
 
             for (const [label, field] of potonganBersihFields) {
                 // Clean up the label for display

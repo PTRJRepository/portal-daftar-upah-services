@@ -234,6 +234,19 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                                 break;
                             }
 
+                            case 'headers': {
+                                // Update meta with dynamic headers when they arrive
+                                console.log('[usePayrollStream] Headers received:', data);
+                                setMeta(prev => ({
+                                    ...(prev || {}),
+                                    dynamic_premi_headers: data.dynamic_premi_headers || prev?.dynamic_premi_headers || [],
+                                    dynamic_potongan_headers: data.dynamic_potongan_headers || prev?.dynamic_potongan_headers || [],
+                                    premi_title_map: data.dynamic_premi_titles || prev?.premi_title_map || {},
+                                    potongan_title_map: data.dynamic_potongan_titles || prev?.potongan_title_map || {}
+                                }));
+                                break;
+                            }
+
                             case 'complete': {
                                 setGrandTotal(data.grand_total);
                                 setIsComplete(true);

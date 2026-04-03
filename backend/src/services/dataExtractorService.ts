@@ -3158,12 +3158,28 @@ export class DataExtractorService {
             // Collect dynamic headers
             for (const [empCode, empPremi] of Object.entries(premiB.amounts || {})) {
                 for (const key of Object.keys(empPremi || {})) {
-                    if (key !== "koreksi" && key !== "brondol") dynamicPremiSet.add(key);
+                    if (key !== "koreksi" && key !== "brondol") {
+                        // Use prefixed field name to match frontend data
+                        const fieldName = key.startsWith('premi_') ? key : `premi_${key}`;
+                        dynamicPremiSet.add(fieldName);
+                    }
                 }
             }
             for (const [empCode, empPot] of Object.entries(potB.amounts || {})) {
                 for (const key of Object.keys(empPot || {})) {
-                    if (!key.startsWith("KOREKSI") && key !== "SPSI" && key !== "PPH21") dynamicPotonganSet.add(key);
+                    if (key !== "SPSI" && key !== "PPH21") {
+                        // For KOREKSI: use key as-is (e.g., "KOREKSI_1", "KOREKSI_2")
+                        // For others: use prefixed name (e.g., "potongan_X")
+                        let fieldName;
+                        if (key.startsWith("KOREKSI")) {
+                            fieldName = key; // Keep KOREKSI fields as-is for frontend matching
+                        } else if (key.startsWith('potongan_')) {
+                            fieldName = key;
+                        } else {
+                            fieldName = `potongan_${key}`;
+                        }
+                        dynamicPotonganSet.add(fieldName);
+                    }
                 }
             }
         }
@@ -3231,18 +3247,29 @@ export class DataExtractorService {
         const t4 = Date.now();
         debug(CATEGORY, `🧮 Phase 4: Final calculations...`);
 
-        // Load PTKP ONCE (not per employee!)
-        const { ptkpTaxService } = await import('./ptkpTaxService');
-        const ptkpMasterRecords = await ptkpTaxService.getPtkpByYear(year);
+        // Build PTKP map with timeout-safe approach
+        // Use cached/fast lookup first, async PTKP only if fast
         const dbPtkpMap = new Map<string, string>();
-        for (const record of ptkpMasterRecords) {
-            if (record.emp_code) {
-                dbPtkpMap.set(record.emp_code.trim().toUpperCase(), record.ptkp_status);
+        try {
+            // Try to get PTKP with timeout-safe approach
+            const { ptkpTaxService } = await import('./ptkpTaxService');
+            // Use Promise.race with timeout to prevent hanging
+            const ptkpPromise = ptkpTaxService.getPtkpByYear(year);
+            const timeoutPromise = new Promise<void>((resolve) => setTimeout(() => resolve(), 2000)); // 2s max for PTKP
+            const ptkpMasterRecords = await Promise.race([ptkpPromise, timeoutPromise]) || [];
+            for (const record of ptkpMasterRecords) {
+                if (record.emp_code) {
+                    dbPtkpMap.set(record.emp_code.trim().toUpperCase(), record.ptkp_status);
+                }
             }
+        } catch (e) {
+            warn(CATEGORY, `⚠️ PTKP lookup failed, using default: ${e.message}`);
         }
 
         // Calculate final values for each employee
-        for (const emp of employees) {
+        // Use for...of instead of forEach for better performance
+        for (let i = 0; i < employees.length; i++) {
+            const emp = employees[i];
             const empCode = emp.emp_code;
             const attData = globalAttendanceMap[empCode] || { hk: 0, total_hours: 0, total_amount_rp: 0 };
             const empCuti = globalCutiMap[empCode] || { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
@@ -3290,63 +3317,124 @@ export class DataExtractorService {
             const total_potongan = pot_astek + pot_bpjs + pot_spsi + pot_pph21 + other_potongan;
             const upah_bersih = jumlah_upah_kotor - total_potongan;
 
+            // Use cached PTKP or default based on beras rate
             const statusPTKP = dbPtkpMap.get(empCode.toUpperCase()) || mapBerasRateToPTKP(berasRate);
             const kategoriTER = mapPTKPToTER(statusPTKP);
 
-            // Apply final data
-            Object.assign(emp, {
-                hari_kerja,
-                beras_rate: berasRate,
-                beras_jumlah: berasJumlah,
-                total_tunjangan,
-                gaji_pokok,
-                jumlah_upah_kotor,
-                pot_astek,
-                pot_bpjs_pekerja_total: pot_bpjs,
-                pot_spsi,
-                pot_pph21,
-                total_potongan,
-                upah_bersih,
-                status_ptkp: statusPTKP,
-                kategori_ter: kategoriTER,
-                _phase: 4,
-                _enriched: true,
-                _loading: false
-            });
+            // Apply final data directly to emp object
+            emp.hari_kerja = hari_kerja;
+            emp.beras_rate = berasRate;
+            emp.beras_jumlah = berasJumlah;
+            emp.total_tunjangan = total_tunjangan;
+            emp.gaji_pokok = gaji_pokok;
+            emp.jumlah_upah_kotor = jumlah_upah_kotor;
+            
+            // Backend field names (detailed)
+            emp.pot_astek = pot_astek;
+            emp.pot_bpjs_pekerja_total = pot_bpjs;
+            emp.pot_spsi = pot_spsi;
+            emp.pot_pph21 = pot_pph21;
+            emp.total_potongan = total_potongan;
+            emp.total_potongan_bersih = total_potongan;
+            emp.upah_bersih = upah_bersih;
+            
+            // Frontend-compatible aliases (for column rendering)
+            emp.astek = pot_astek; // ASTEK total
+            emp.bpjs_kes = pot_bpjs; // BPJS Kesehatan total pekerja
+            emp.spsi = pot_spsi;
+            emp.pph21 = pot_pph21;
+            emp.pph21_ter = pot_pph21;
+            
+            // BPJS detail breakdown (must match frontend columnDefs exactly)
+            emp.pot_astek_maj = caruman.astek_majikan_jht || 0;
+            emp.pot_bpjs_kesehatan_pekerja = caruman.bpjs_kes_pekerja || 0;
+            emp.pot_bpjs_kesehatan_majikan = caruman.bpjs_kes_majikan || 0;
+            emp.pot_bpjs_pensiun_pekerja = caruman.bpjs_pensiun_pekerja || 0;
+            emp.pot_bpjs_pensiun_majikan = caruman.bpjs_pensiun_majikan || 0;
+            
+            // Additional aliases for flexibility
+            emp.bpjs_kes_pekerja = caruman.bpjs_kes_pekerja || 0;
+            emp.bpjs_kes_majikan = caruman.bpjs_kes_majikan || 0;
+            emp.bpjs_pensiun_pekerja = caruman.bpjs_pensiun_pekerja || 0;
+            emp.bpjs_pensiun_majikan = caruman.bpjs_pensiun_majikan || 0;
+            emp.astek_jht_pekerja = caruman.astek_pekerja_jht || 0;
+            emp.astek_jht_majikan = caruman.astek_majikan_jht || 0;
+            
+            emp.status_ptkp = statusPTKP;
+            emp.kategori_ter = kategoriTER;
+            emp._phase = 4;
+            emp._enriched = true;
+            emp._loading = false;
         }
 
         // Filter & sort employees
-        employees = employees.filter(emp => {
+        const filteredEmployees = [];
+        for (const emp of employees) {
             const effective_hk = (emp.jumlah_hk || 0) - ((emp.cuti_minggu_hari || 0) + (emp.cuti_nasional_hari || 0));
             const totalCuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0) + (emp.cuti_minggu_hari || 0) + (emp.cuti_nasional_hari || 0);
             const hari_kerja = Math.max(0, (emp.jumlah_hk || 0) - totalCuti);
             const other_cuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0);
             const total_earnings = (emp.gaji_pokok || 0) + (emp.total_tunjangan || 0) + (emp.total_premi || 0) + (emp.lembur_jumlah || 0);
 
-            // Keep if: has effective work OR has other cuti OR has earnings
-            return effective_hk > 0 || other_cuti > 0 || total_earnings > 0;
-        });
+            // Keep if: has effective work OR has other cuti OR has earnings OR has basic identity data
+            // Relaxed filter: show employees with basic data even if earnings are 0
+            const hasBasicData = emp.nama || emp.emp_name;
+            if (effective_hk > 0 || other_cuti > 0 || total_earnings > 0 || hasBasicData) {
+                filteredEmployees.push(emp);
+            }
+        }
+
+        // Sort by name first (single sort pass)
+        filteredEmployees.sort((a, b) => (a?.emp_name || a?.nama || '').localeCompare(b?.emp_name || b?.nama || ''));
+
+        // Flatten nested premi/potongan objects to top-level fields for frontend compatibility
+        for (const emp of filteredEmployees) {
+            if (emp.premi && typeof emp.premi === 'object') {
+                for (const [key, val] of Object.entries(emp.premi)) {
+                    if (key !== 'brondol' && key !== 'koreksi') {
+                        const fieldName = key.startsWith('premi_') ? key : `premi_${key}`;
+                        emp[fieldName] = val;
+                    }
+                }
+            }
+            if (emp.potongan && typeof emp.potongan === 'object') {
+                for (const [key, val] of Object.entries(emp.potongan)) {
+                    // KOREKSI fields: keep as-is (KOREKSI_1, KOREKSI_2)
+                    // Others: add potongan_ prefix
+                    let fieldName;
+                    if (key.startsWith('KOREKSI')) {
+                        fieldName = key; // KOREKSI_1, KOREKSI_2, etc.
+                    } else if (key.startsWith('potongan_')) {
+                        fieldName = key;
+                    } else {
+                        fieldName = `potongan_${key}`;
+                    }
+                    emp[fieldName] = val;
+                }
+            }
+            // Calculate total potongan upah kotor (sum of all KOREKSI)
+            let totalKoreksi = 0;
+            for (const [key, val] of Object.entries(emp)) {
+                if (key.startsWith('KOREKSI') && typeof val === 'number') {
+                    totalKoreksi += Math.abs(val);
+                }
+            }
+            emp.potongan_upah_kotor_total = totalKoreksi;
+        }
 
         // Rebuild gangsMap with filtered & sorted data
         gangsMap.clear();
-        for (const emp of employees) {
-            // Safety check: ensure employee has nama
-            if (!emp || !emp.nama) {
-                debug(CATEGORY, `⚠️ Skipping employee without nama: ${JSON.stringify(emp).substring(0, 100)}`);
-                continue;
-            }
+        for (const emp of filteredEmployees) {
+            // Safety check: ensure employee has name (could be emp_name or nama)
+            const empNama = emp.nama || emp.emp_name;
+            if (!emp || !empNama) continue;
             const gang = emp.gang_code || "UNKNOWN";
             if (!gangsMap.has(gang)) gangsMap.set(gang, []);
+            
+            // Ensure nama field exists for frontend compatibility
+            if (!emp.nama) emp.nama = emp.emp_name;
+            
             gangsMap.get(gang)!.push(emp);
-        }
-
-        // Sort by name within each gang (with safety check)
-        for (const [gangCodeKey, gangEmployees] of gangsMap) {
-            gangEmployees.sort((a, b) => {
-                const nameA = a?.nama || '';
-                const nameB = b?.nama || '';
-                return nameA.localeCompare(nameB);
-            });
         }
 
         const totalTime = Date.now() - startTime;
