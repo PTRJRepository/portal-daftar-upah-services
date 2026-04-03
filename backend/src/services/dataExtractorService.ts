@@ -18,6 +18,8 @@ import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { OtherIncomesService } from "./otherIncomesService";
 import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
 import { cacheService } from "./cacheService";
+// PTKP mapping - Single Source of Truth
+import { mapBerasRateToPTKP, mapPTKPToTER } from './payroll/formulas/PTKPMapper';
 import { debug, info, warn, error as logError } from "../utils/logger";
 import { PayrollCalculator } from "./payroll/components/PayrollCalculator";
 
@@ -195,7 +197,6 @@ interface PayrollRow {
     // PPH21 TER fields
     tarif_pajak_ter: number; // TER rate as percentage (e.g., 5 for 5%)
     pph21_ter: number; // Calculated PPH21 amount using TER method
-    pendapatan_tidak_tetap_thp: number;
     taxable_pendapatan_lainnya: number; // sama dengan pendapatan_lainnya (semua taxable)
     upah_bersih: number;
     pot_astek: number;
@@ -208,53 +209,6 @@ interface PayrollRow {
     taxable_pendapatan_bonus: number;
     taxable_pendapatan_custom: number;
     [key: string]: any;
-}
-
-/**
- * Map beras_rate (RiceRation) to PTKP status
- * PTKP = Penghasilan Tidak Kena Pajak (Non-Taxable Income Status)
- * Based on RiceRation values from HR_PAYROLL
- */
-function mapBerasRateToPTKP(berasRate: number): string {
-    // Handle monthly bulk values
-    if (berasRate && berasRate >= 10000) {
-        berasRate = Math.round(berasRate / 30);
-    }
-    const mapping: Record<number, string> = {
-        2250: 'TK/0',
-        3250: 'TK/1',
-        4200: 'TK/2',
-        3700: 'K/0',
-        4650: 'K/1',
-        5500: 'K/2',
-        6450: 'K/3',
-        // Legacy DB formulas
-        3150: 'TK/1',
-        4050: 'TK/2',
-        4950: 'TK/3',
-        3600: 'K/0',
-        4500: 'K/1',
-        5400: 'K/2',
-        6300: 'K/3',
-        3750: 'K/0',
-        5550: 'K/2',
-    };
-    return mapping[berasRate] || '-';
-}
-
-/**
- * Map PTKP status to TER (Tarif Efektif Rata-rata) category
- * Based on formula: IF(OR(PTKP="TK/0",PTKP="TK/1",PTKP="K/0"),"TER A",IF(PTKP="K/3","TER C","TER B"))
- */
-function mapPTKPToTER(statusPTKP: string): string {
-    if (!statusPTKP || statusPTKP === '-') return '-';
-    if (statusPTKP === 'TK/0' || statusPTKP === 'TK/1' || statusPTKP === 'K/0') {
-        return 'TER A';
-    }
-    if (statusPTKP === 'K/3') {
-        return 'TER C';
-    }
-    return 'TER B';
 }
 
 function cleanNameFormat(name: string): string {
@@ -480,8 +434,9 @@ export class DataExtractorService {
         const emptyPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
 
         // [OPTIMIZATION] Batch processing: split employees into chunks to prevent SQL timeouts.
-        // Chunk size of 300 ensures each query stays within reasonable parameter limits.
-        const BATCH_SIZE = 300;
+        // [PERF] Reduced from 300 to 50 — smaller IN clauses = faster queries (index-friendly).
+        // With 900 employees: 18 chunks × 15 queries = 270 queries (all parallel).
+        const BATCH_SIZE = 50;
         const empCodeChunks: string[][] = [];
         for (let i = 0; i < empCodes.length; i += BATCH_SIZE) {
             empCodeChunks.push(empCodes.slice(i, i + BATCH_SIZE));
@@ -1223,8 +1178,6 @@ export class DataExtractorService {
                 return Array.from(results.values());
             };
 
-            const pendapatan_tidak_tetap_thp = lookupByNik(dbThpIncomesMap, dbThpByCleanName);
-
             // [PRE-COMPUTE] Pendapatan Lainnya (THR + Bonus + Custom) for upah_bersih deduction
             const empOtherIncomesBase = lookupOtherIncomes(dbOtherIncomesByNik, dbOtherIncomesByCleanName);
             // [NEW] Also include KONTAN from NIK+NAME map for employees whose NIK doesn't match directly
@@ -1263,7 +1216,7 @@ export class DataExtractorService {
             const taxable_pendapatan_custom = getTaxableOiByType('CUSTOM', empTaxableOtherIncomesAll);
 
             // [DYNAMIC] Discover all non-standard income types and sum them
-            const standardTypes = new Set(['THR', 'BONUS', 'CUSTOM']);
+            const standardTypes = new Set(['THR', 'BONUS', 'CUSTOM', 'PENDAPATAN TIDAK TETAP']);
             const customTypeAmounts: Record<string, number> = {};
             for (const oi of empOtherIncomes) {
                 const oiType = (oi.type || '').toUpperCase();
@@ -1485,7 +1438,6 @@ export class DataExtractorService {
                 total_potongan_bersih,
                 // [NEW] premi_pph is separate field for display with + sign
                 premi_pph: pot_premi_pph,
-                pendapatan_tidak_tetap_thp,
                 taxable_pendapatan_lainnya: calc.taxable_pendapatan_lainnya,
                 // Individual taxable breakdown for display
                 taxable_pendapatan_thr,
@@ -1505,8 +1457,8 @@ export class DataExtractorService {
                     ])
                 ),
                 pendapatan_lainnya: pendapatan_lainnya_amount,
-                // [NEW] Pendapatan Lainnya shown as a deduction in Potongan Upah Bersih section
-                pot_pendapatan_lainnya: pendapatan_lainnya_amount,
+                // REMOVED: pot_pendapatan_lainnya - sudah masuk PayrollCalculator via pendapatan_lainnya
+                // Jika di-output lagi di sini, maka akan double-count di upstream services (reportService, dll)
                 // REMOVED: premi: empPremi - causes double-counting in frontend
                 // Individual premi fields are already added via ...empPremi below
                 pot_astek: pot_astek_pekerja,
@@ -2222,11 +2174,6 @@ export class DataExtractorService {
                         }
                     }
                 }
-            }
-
-            // [DEBUG] Log PPH items
-            if (r.doc_desc?.toUpperCase().includes("PPH") && r.row_type !== 'X') {
-                console.log(`[DEBUG_PPH] Emp: ${emp} | Doc: "${r.doc_desc}" | Task: "${r.task_desc}" | Key: "${key}" | Amt: ${r.amount}`);
             }
 
             amounts[emp][key] = (amounts[emp][key] || 0) + Math.abs(r.amount || 0);

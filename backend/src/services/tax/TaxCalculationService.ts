@@ -2,13 +2,7 @@
  * Tax Calculation Service
  *
  * Centralized service for all tax calculations (PTKP & PPh21 TER).
- * Provides single source of truth for:
- * - Mapping beras_rate to PTKP status
- * - Mapping PTKP status to TER category
- * - PTKP amount calculations
- * - Tax rate calculations (layered based on gross income range)
- *
- * This service should be used by ALL services that need tax calculations.
+ * Delegates PTKP mapping to payroll/formulas/PTKPMapper.ts (Single Source of Truth).
  *
  * IMPORTANT: TER rates are LAYERED based on monthly gross income (upah kotor).
  * Each TER category (A, B, C) has 40-44 layers with rates from 0% to 34%.
@@ -22,6 +16,7 @@
  */
 
 import { Database } from "../../db/client";
+import { mapBerasRateToPTKP, mapPTKPToTER, getPTKPAmount } from '../payroll/formulas/PTKPMapper';
 
 /**
  * Input for tax calculation
@@ -70,57 +65,11 @@ export type TERCategory = 'TER A' | 'TER B' | 'TER C' | '-';
 
 /**
  * Tax Calculation Service - Single Source of Truth for Tax Calculations
+ *
+ * PTKP mapping delegated to payroll/formulas/PTKPMapper.ts
  */
 export class TaxCalculationService {
     private static instance: TaxCalculationService;
-
-    // Beras Rate → PTKP Mapping (Single Source of Truth)
-    private static readonly BERAS_RATE_TO_PTKP: Record<number, PTKPStatus> = {
-        // Exact mapping
-        2250: 'TK/0',
-        3250: 'TK/1',
-        4200: 'TK/2',
-        3700: 'K/0',
-        4650: 'K/1',
-        5500: 'K/2',
-        6450: 'K/3',
-        // Legacy DB mappings (150/kg formulas)
-        3150: 'TK/1',
-        4050: 'TK/2',
-        4950: 'TK/3',
-        3600: 'K/0',
-        4500: 'K/1',
-        5400: 'K/2',
-        6300: 'K/3',
-        3750: 'K/0',  // Legacy
-        5550: 'K/2',  // Legacy
-    };
-
-    // PTKP Amounts by year (single source)
-    private static readonly PTKP_AMOUNTS: Record<number, Record<PTKPStatus, number>> = {
-        2025: {
-            'TK/0': 54000000,
-            'TK/1': 58500000,
-            'TK/2': 63000000,
-            'TK/3': 67500000,
-            'K/0': 58500000,
-            'K/1': 63000000,
-            'K/2': 67500000,
-            'K/3': 72000000,
-            '-': 54000000,
-        },
-        2026: {
-            'TK/0': 54000000,
-            'TK/1': 58500000,
-            'TK/2': 63000000,
-            'TK/3': 67500000,
-            'K/0': 58500000,
-            'K/1': 63000000,
-            'K/2': 67500000,
-            'K/3': 72000000,
-            '-': 54000000,
-        },
-    };
 
     // TER Rates: Flat rates removed. TaxCalculationService now delegates to pph21TerService
     // which reads layered rates from rule_TER_pajak.json (PP 58/2023 / PER-16/PJ/2022).
@@ -153,54 +102,36 @@ export class TaxCalculationService {
 
     /**
      * Map Beras Rate to PTKP Status
-     * Handles both monthly and daily rates
+     * Delegates to PTKPMapper (Single Source of Truth)
      *
      * @param berasRate - Rice ration rate (daily or monthly)
      * @returns PTKP status string
      */
     public mapBerasRateToPTKP(berasRate: number): PTKPStatus {
-        if (!berasRate || berasRate <= 0) return 'TK/0';
-
-        // Handle monthly bulk values (e.g. 135000 = 4500 * 30)
-        const normalizedRate = berasRate >= 10000 ? berasRate / 30 : berasRate;
-
-        return TaxCalculationService.BERAS_RATE_TO_PTKP[normalizedRate] || 'TK/0';
+        return mapBerasRateToPTKP(berasRate);
     }
 
     /**
      * Map PTKP Status to TER Category
-     *
-     * Based on PP 58/2023:
-     * - TER A: TK/0, TK/1, K/0 (PTKP ≤ 58,500,000)
-     * - TER B: TK/2, TK/3, K/1, K/2 (PTKP 63,000,000 - 67,500,000)
-     * - TER C: K/3 (PTKP = 72,000,000)
+     * Delegates to PTKPMapper (Single Source of Truth)
      *
      * @param ptkpStatus - PTKP status (TK/0, TK/1, K/0, etc.)
      * @returns TER category
      */
     public mapPTKPToTER(ptkpStatus: string): TERCategory {
-        if (!ptkpStatus || ptkpStatus === '-') return '-';
-        if (['TK/0', 'TK/1', 'K/0'].includes(ptkpStatus)) return 'TER A';
-        if (ptkpStatus === 'K/3') return 'TER C';
-        // TK/2, TK/3, K/1, K/2 → TER B
-        return 'TER B';
+        return mapPTKPToTER(ptkpStatus);
     }
 
     /**
      * Get PTKP Amount based on status and year
+     * Delegates to PTKPMapper (Single Source of Truth)
      *
      * @param ptkpStatus - PTKP status
      * @param year - Tax year
      * @returns Annual PTKP amount
      */
     public getPTKPAmount(ptkpStatus: string, year: number): number {
-        const yearData = TaxCalculationService.PTKP_AMOUNTS[year];
-        if (!yearData) {
-            // Fallback to 2025 rates if year not found
-            console.warn(`[TaxCalculationService] PTKP rates for year ${year} not found, using 2025 rates`);
-            return TaxCalculationService.PTKP_AMOUNTS[2025][ptkpStatus as PTKPStatus] || 54000000;
-        }
-        return yearData[ptkpStatus as PTKPStatus] || 54000000;
+        return getPTKPAmount(ptkpStatus, year);
     }
 
     /**

@@ -24,16 +24,22 @@
  *    = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + bpjs_pekerja
  *
  * 5. TOTAL POTONGAN (Total Pengurangan dari Take-Home Pay)
- *    = astek_pekerja + bpjs_kes_pekerja + bpjs_pensiun_pekerja + spsi + pph21
- *    NOTE: koreksi & lainnya TIDAK masuk total_potongan karena sudah termasuk
- *    dalam UPAH KOTOR tampilan. Hasilnya: UPAH BERSIH = UPAH KOTOR - bpjs - astek - spsi - pph21.
+ *    = astek_pekerja + bpjs_kes_pekerja + bpjs_pensiun_pekerja + spsi + pph21 + other_potongan + pendapatan_lainnya
+ *    NOTE: koreksi TIDAK masuk total_potongan karena sudah termasuk
+ *    dalam jumlah_upah_kotor. Jika masuk total_potongan, akan di-subtract 2x → minus.
+ *    NOTE: pendapatan_lainnya (THR+Bonus+Custom+KONTAN) WAJIB masuk total_potongan
+ *    karena di jumlah_upah_kotor di-add sebagai tambahan (+), harus di-reduce juga.
  *
  * 6. UPAH BERSIH (Take-Home Pay)
- *    = UPAH KOTOR + pot_koreksi + pendapatan_lainnya - total_potongan + premi_pph
- *    = UPAH KOTOR - total_potongan + premi_pph
+ *    = jumlah_upah_kotor - total_potongan + premi_pph
+ *    = (upah_kotor + pot_koreksi + pendapatan_lainnya) - total_potongan + premi_pph
  *
  *    premi_pph = ADDITION (penambah upah bersih), bukan potongan.
+ *
+ * PTKP mapping delegated to payroll/formulas/PTKPMapper.ts (Single Source of Truth)
  */
+
+import { getPTKPAmount, getTERCategory } from '../formulas/PTKPMapper';
 
 export interface PayrollCalculatorInput {
     // Earnings components
@@ -154,8 +160,12 @@ export class PayrollCalculator {
 
         // ─────────────────────────────────────────────────────────
         // 4. TOTAL POTONGAN (Total Pengurangan dari Take-Home Pay)
-        //    = astek + bpjs_kes + bpjs_pensiun + spsi + pph21 + koreksi + lainnya + other
-        //    NOTE: koreksi, lainnya, other_potongan MASUK total_potongan agar mengurangi take-home pay.
+        //    = astek + bpjs_kes + bpjs_pensiun + spsi + pph21 + other + pendapatan_lainnya
+        //    NOTE: koreksi TIDAK masuk total_potongan karena sudah termasuk
+        //    di jumlah_upah_kotor (Grand Subtotal). Jika masuk total_potongan,
+        //    maka akan di-subtract 2x → upah_bersih minus.
+        //    NOTE: pendapatan_lainnya (THR+Bonus+Custom+KONTAN) di-subtract di sini
+        //    karena di jumlah_upah_kotor di-add sebagai tambahan (+) Gross.
         // ─────────────────────────────────────────────────────────
         const komponen_potongan = {
             astek_pekerja: input.pot_astek_pekerja,
@@ -163,9 +173,8 @@ export class PayrollCalculator {
             bpjs_pensiun_pekerja: input.pot_bpjs_pensiun_pekerja,
             spsi: input.pot_spsi,
             pph21: input.pot_pph21,
-            koreksi: input.pot_koreksi,
-            lainnya: input.pendapatan_lainnya,
             other: input.other_potongan,
+            lainnya: input.pendapatan_lainnya,
             subtotal: 0, // computed below
         };
         komponen_potongan.subtotal =
@@ -174,9 +183,8 @@ export class PayrollCalculator {
             komponen_potongan.bpjs_pensiun_pekerja +
             komponen_potongan.spsi +
             komponen_potongan.pph21 +
-            komponen_potongan.koreksi +
-            komponen_potongan.lainnya +
-            komponen_potongan.other;
+            komponen_potongan.other +
+            komponen_potongan.lainnya;
 
         const total_potongan = komponen_potongan.subtotal;
 
@@ -215,11 +223,11 @@ export class PayrollCalculator {
 
         // ─────────────────────────────────────────────────────────
         // 8. UPAH BERSIH (Take-Home Pay)
-        //    = UPAH KOTOR - total_potongan + premi_pph
-        //    Karena koreksi, lainnya, other MASUK total_potongan,
-        //    maka hasil akhir: UPAH KOTOR - bpjs - astek - spsi - pph21 - koreksi - lainnya - other + premi_pph
+        //    = JUMLAH UPAH KOTOR - total_potongan + premi_pph
+        //    = (upah_kotor + pot_koreksi + pendapatan_lainnya) - total_potongan + premi_pph
+        //    dimana: total_potongan = astek + bpjs + spsi + pph21 + other + pendapatan_lainnya
         // ─────────────────────────────────────────────────────────
-        const upah_bersih = upah_kotor - total_potongan + input.pot_premi_pph;
+        const upah_bersih = jumlah_upah_kotor - total_potongan + input.pot_premi_pph;
 
         return {
             // Core gross
@@ -244,18 +252,10 @@ export class PayrollCalculator {
     }
 
     private static getPTKPAmount(statusPtkp: string, year: number): number {
-        const ptkpValues: Record<string, number> = {
-            'TK/0': 54000000, 'TK/1': 58500000, 'TK/2': 63000000, 'TK/3': 67500000,
-            'K/0':  58500000, 'K/1': 63000000, 'K/2': 67500000, 'K/3':  72000000,
-        };
-        return ptkpValues[statusPtkp] || 54000000;
+        return getPTKPAmount(statusPtkp, year);
     }
 
-    // Old calculateTER removed because TER rules are dynamic from JSON
-
     private static getTERCategory(statusPtkp: string): string {
-        if (statusPtkp === 'TK/0' || statusPtkp === 'TK/1' || statusPtkp === 'K/0') return 'TER A';
-        if (statusPtkp === 'K/3') return 'TER C';
-        return 'TER B';
+        return getTERCategory(statusPtkp);
     }
 }

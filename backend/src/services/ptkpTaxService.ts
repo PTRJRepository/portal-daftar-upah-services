@@ -1,63 +1,27 @@
 /**
  * PTKP Tax Service
- * 
+ *
  * Service khusus untuk mengelola data PTKP (Penghasilan Tidak Kena Pajak).
  * Terpisah dari seeder biasa - hanya diaktifkan secara manual.
- * 
+ *
  * Mekanisme:
  * 1. Membaca RiceRation (beras_rate) dari HR_PAYROLL di origin DB
  * 2. Meng-convert ke status PTKP (TK/0, K/0, K/1, K/2, K/3, TK/1, TK/2, TK/3)
  * 3. Menentukan kategori TER (TER A, TER B, TER C)
  * 4. Menyimpan ke tabel history_ptkp_pajak di extend_db_ptrj (per tahun)
  * 5. Mengupdate ptkp_pajak di history_hr_employee
- * 
+ *
  * PTKP bersifat persistent per tahun - tidak berubah sampai ganti tahun.
+ *
+ * PTKP mapping delegated to payroll/formulas/PTKPMapper.ts (Single Source of Truth)
  */
 
 import { Database } from "../db/client";
 import { Config } from "../config";
+import { mapBerasRateToPTKP, mapPTKPToTER } from './payroll/formulas/PTKPMapper';
 
-// ============================================================
-// Beras Rate → PTKP Mapping
-// ============================================================
-
-const BERAS_RATE_TO_PTKP: Record<number, string> = {
-    // Exact mapping provided by User
-    2250: 'TK/0',
-    3250: 'TK/1',
-    4200: 'TK/2',
-    3700: 'K/0',
-    4650: 'K/1',
-    5500: 'K/2',
-    6450: 'K/3',
-
-    // Actual DB legacy mappings found in HR_PAYROLL 
-    // (Based on 150/kg formulas e.g. TK/1 = 21kg * 150 = 3150)
-    3150: 'TK/1',
-    4050: 'TK/2',
-    4950: 'TK/3',
-    3600: 'K/0',
-    4500: 'K/1',
-    5400: 'K/2',
-    6300: 'K/3',
-    3750: 'K/0', // Legacy value before new 3700 rate
-    5550: 'K/2', // Legacy value before new 5500 rate
-};
-
-function mapBerasRateToPTKP(berasRate: number): string {
-    // Handle monthly bulk values (e.g. 135000 = 4500 * 30)
-    if (berasRate && berasRate >= 10000) {
-        berasRate = berasRate / 30;
-    }
-    return BERAS_RATE_TO_PTKP[berasRate] || 'TK/0';
-}
-
-export function mapPTKPToTER(ptkpStatus: string): string {
-    if (!ptkpStatus || ptkpStatus === '-') return '-';
-    if (['TK/0', 'TK/1', 'K/0'].includes(ptkpStatus)) return 'TER A';
-    if (ptkpStatus === 'K/3') return 'TER C';
-    return 'TER B';
-}
+// Re-export for backward compatibility - consumers import from ptkpTaxService
+export { mapBerasRateToPTKP, mapPTKPToTER };
 
 // ============================================================
 // Interfaces

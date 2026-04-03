@@ -18,6 +18,7 @@ import { BasePayrollComponentService } from '../BasePayrollComponentService';
 import { pph21TerService as mainPph21TerService } from '../../pph21TerService';
 import { PayrollCalculationInput, PayrollCalculationResult, BatchPayrollCalculationResult } from '../../../types/payroll/BasePayrollTypes';
 import { PayrollComponent } from '../../../types/payroll/PayrollComponent';
+import { mapBerasRateToPTKP } from '../../payroll/formulas/PTKPMapper';
 
 export interface Pph21Input extends PayrollCalculationInput {
     penghasilan_bruto: number;
@@ -54,7 +55,7 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
             // Map beras_rate to PTKP status
             let ptkp_status = ptkp_status_override;
             if (!ptkp_status) {
-                ptkp_status = this.mapBerasRateToPTKP(beras_rate);
+                ptkp_status = mapBerasRateToPTKP(beras_rate);
             }
 
             // Calculate PPH21 using the main TER service (with full progressive brackets)
@@ -181,45 +182,6 @@ export class Pph21TerService extends BasePayrollComponentService<Pph21Input, Pph
             result[row.EmpCode?.trim() || ''] = row.beras_rate || 0;
         }
         return result;
-    }
-
-    /**
-     * Map beras_rate (RiceRation) to PTKP status
-     *
-     * Based on HR_PAYROLL.beras_rate:
-     * - 2250 -> TK/0
-     * - 3250 -> TK/1
-     * - 4200 -> TK/2
-     * - 3700 -> K/0
-     * - 4650 -> K/1
-     * - 5500 -> K/2
-     * - 6450 -> K/3
-     */
-    private mapBerasRateToPTKP(beras_rate: number): string {
-        // Handle monthly bulk values
-        if (beras_rate && beras_rate >= 10000) {
-            beras_rate = Math.round(beras_rate / 30);
-        }
-        const ptkpMap: Record<number, string> = {
-            2250: 'TK/0',
-            3250: 'TK/1',
-            4200: 'TK/2',
-            3700: 'K/0',
-            4650: 'K/1',
-            5500: 'K/2',
-            6450: 'K/3',
-            // Legacy DB formulas
-            3150: 'TK/1',
-            4050: 'TK/2',
-            4950: 'TK/3',
-            3600: 'K/0',
-            4500: 'K/1',
-            5400: 'K/2',
-            6300: 'K/3',
-            3750: 'K/0',
-            5550: 'K/2',
-        };
-        return ptkpMap[beras_rate] || 'TK/0';
     }
 }
 

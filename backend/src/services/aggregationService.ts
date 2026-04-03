@@ -192,7 +192,10 @@ export class AggregationService {
             if (k.includes('upah_kotor')) continue;
             if (k === 'pot_bpjs_kes') continue;
 
-            if (k.startsWith('pot_') || k.startsWith('bpjs_') || ['pph21', 'spsi', 'koreksi'].includes(k)) {
+            // NOTE: 'koreksi' is NOT included - it's already added in jumlah_upah_kotor
+            // Including it here would cause double subtraction (already fixed in PayrollCalculator)
+            // NOTE: 'pendapatan_lainnya' MUST be included to offset the + in jumlah_upah_kotor
+            if (k.startsWith('pot_') || k.startsWith('bpjs_') || ['pph21', 'spsi', 'pendapatan_lainnya'].includes(k)) {
                 total += this.getNumericValue(row, key);
             }
         }
@@ -258,14 +261,15 @@ export class AggregationService {
                     const totalTunjangan = this.calculateRowTotalTunjangan(row);
                     const totalPremi = this.calculateRowTotalPremi(row);
                     const potKoreksi = this.getNumericValue(row, 'koreksi');
-                    const pendapatanTidakTetapThp = this.getNumericValue(row, 'pendapatan_tidak_tetap_thp');
                     const pendapatanLainya = this.getNumericValue(row, 'pot_pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_thr');
                     
-                    // [FIXED 2026-04-01] DUPLIKASI FIX: pendapatan_tidak_tetap_thp DIHAPUS dari formula
-                    // pendapatan_lainnya sudah mencakup SEMUA other incomes (termasuk THP items)
-                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanLainya) - potKoreksi;
+                    // [FIXED 2026-04-03] SIGN ERROR FIX: potKoreksi di-ADD ke gross (sesuai PayrollCalculator)
+                    // koreksi adalah bagian dari penghasilan, di-add ke jumlah_upah_kotor untuk tampilan
+                    // koreksi TIDAK masuk total_potongan (avoid double deduction)
+                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanLainya) + potKoreksi;
                     
-                    // [FIXED 2026-04-01] DUPLIKASI FIX: -pendapatan_tidak_tetap_thp DIHAPUS (simetris)
+                    // [FIXED 2026-04-03] formula now matches PayrollCalculator exactly:
+                    // upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
                     calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph;
                 }
 
