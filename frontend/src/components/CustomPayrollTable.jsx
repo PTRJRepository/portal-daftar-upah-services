@@ -1673,7 +1673,8 @@ export default function CustomPayrollTable({
                 const empCode = row.emp_code || row.nik;
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
                 const kontanVal = kontanEdit ? kontanEdit.value : (Number(row.pendapatan_kontan || 0));
-                const val = Number(row.pendapatan_lainnya || 0) + (kontanVal || 0);
+                const baseKontan = Number(row.pendapatan_kontan || 0);
+                const val = Number(row.pendapatan_lainnya || 0) - baseKontan + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
             }
@@ -1739,7 +1740,8 @@ export default function CustomPayrollTable({
                 const empCode = row.emp_code || row.nik;
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
                 const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
-                const val = Number(row.jumlah_upah_kotor || 0) + (kontanVal || 0);
+                const baseKontan = Number(row.pendapatan_kontan || 0);
+                const val = Number(row.jumlah_upah_kotor || 0) - baseKontan + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
             }
@@ -1979,7 +1981,8 @@ export default function CustomPayrollTable({
                     const empCode = row.emp_code || row.nik;
                     const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
                     const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
-                    const val = Number(row.pendapatan_lainnya || 0) + (kontanVal || 0);
+                    const baseKontan = Number(row.pendapatan_kontan || 0);
+                    const val = Number(row.pendapatan_lainnya || 0) - baseKontan + (kontanVal || 0);
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
@@ -1997,8 +2000,9 @@ export default function CustomPayrollTable({
                 const empCode = row.emp_code || row.nik;
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
                 const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
+                const baseKontan = Number(row.pendapatan_kontan || 0);
                 const baseVal = Number(row.total_potongan_bersih || 0);
-                const val = baseVal + (kontanVal || 0);
+                const val = baseVal - baseKontan + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
             }

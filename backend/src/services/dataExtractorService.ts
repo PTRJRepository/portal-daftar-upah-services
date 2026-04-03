@@ -1024,10 +1024,19 @@ export class DataExtractorService {
                     continue;
                 }
 
-                if (key.includes("BPJS")) {
-                    if (!key.includes("MAJIKAN") && !key.includes("MAJ")) {
+                if (keyUpper.includes("BPJS")) {
+                    if (!keyUpper.includes("MAJIKAN") && !keyUpper.includes("MAJ")) {
                         db_bpjs_kes += Math.abs(val as number);
                     }
+                    continue;
+                }
+
+                // [CRITICAL FIX 2026-04-03]
+                // Prevent DOUBLE DEDUCTION of custom incomes (KONTAN, THR, BONUS) from PR_ADTRANS.
+                // These components are now fully managed by employee_other_incomes and aggregated into
+                // pendapatan_lainnya_amount, which automatically deducts them in PayrollCalculator.
+                // Including them here would subtract them a second time, causing minus Upah Bersih.
+                if (keyUpper.includes("KONTAN") || keyUpper.includes("THR") || keyUpper.includes("BONUS")) {
                     continue;
                 }
 
