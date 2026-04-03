@@ -1296,6 +1296,43 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
         console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year}`);
 
+        // Helper: calculate gang totals
+        const calculateGangTotals = (employees: any[]): Record<string, number> => {
+            const activeEmployees = employees.filter((emp: any) => {
+                const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
+                const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
+                return hari_kerja > 0;
+            });
+
+            const totals: Record<string, number> = {};
+            const numericFields = [
+                'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
+                'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
+                'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
+                'potongan_upah_kotor_total', 'jumlah_upah_kotor',
+                'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
+                'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
+                'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
+                'upah_bersih', 'koreksi_hk',
+                'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
+                'pendapatan_lainnya', 'pot_pendapatan_lainnya'
+            ];
+
+            for (const field of numericFields) totals[field] = 0;
+            totals['employee_count'] = activeEmployees.length;
+
+            for (const emp of activeEmployees) {
+                for (const field of numericFields) {
+                    const val = emp[field];
+                    if (val !== null && val !== undefined) {
+                        totals[field] += parseFloat(val) || 0;
+                    }
+                }
+            }
+
+            return totals;
+        };
+
         const encoder = new TextEncoder();
         let cancelled = false;
 
@@ -1329,59 +1366,77 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         meta: { query_time_ms: 0 }
                     })}\n\n`));
 
-                    // Step 3: Process gangs one by one
-                    // For each gang, fetch employee data and calculate
+                    // Step 3: Process gangs in parallel batches (3 at a time)
+                    // This allows gangs to be yielded as they complete rather than waiting sequentially
                     const allEmployeeData: any[] = [];
                     const dynamicPremiSet = new Set<string>();
                     const dynamicPotonganSet = new Set<string>();
+                    const BATCH_SIZE = 3;
 
-                    for (let i = 0; i < gangCodes.length; i++) {
+                    let processedCount = 0;
+
+                    for (let batchStart = 0; batchStart < gangCodes.length; batchStart += BATCH_SIZE) {
                         if (cancelled) return;
 
-                        const gCode = gangCodes[i];
+                        const batchEnd = Math.min(batchStart + BATCH_SIZE, gangCodes.length);
+                        const batchCodes = gangCodes.slice(batchStart, batchEnd);
+
+                        // Send progress for this batch
                         controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
                             stage: 'streaming',
-                            message: `Memproses gang ${gCode} (${i + 1}/${gangCodes.length})...`,
-                            processed_gangs: i,
+                            message: `Memproses gangs ${batchCodes.join(', ')}...`,
+                            processed_gangs: processedCount,
                             total_gangs: gangCodes.length,
-                            current_gang: gCode
+                            current_gang: batchCodes[0]
                         })}\n\n`));
 
-                        // Extract data for this single gang
-                        const result = await dataExtractorService.extractPayrollData(
-                            month, year, gCode, divisionCode, null,
-                            Config.DB_PROFILE, false, null, gangPrefix, true, true
+                        // Process this batch in parallel
+                        const batchResults = await Promise.all(
+                            batchCodes.map((gCode, idx) =>
+                                dataExtractorService.extractPayrollData(
+                                    month, year, gCode, divisionCode, null,
+                                    Config.DB_PROFILE, false, null, gangPrefix, true, true
+                                ).then(result => ({ gCode, result, idx: batchStart + idx }))
+                            )
                         );
 
                         if (cancelled) return;
 
-                        // Track dynamic headers
-                        for (const h of result.dynamic_premi_headers || []) dynamicPremiSet.add(h);
-                        for (const h of result.dynamic_potongan_headers || []) dynamicPotonganSet.add(h);
+                        // Yield each completed gang immediately
+                        for (const { gCode, result, idx } of batchResults) {
+                            // Track dynamic headers
+                            for (const h of result.dynamic_premi_headers || []) dynamicPremiSet.add(h);
+                            for (const h of result.dynamic_potongan_headers || []) dynamicPotonganSet.add(h);
 
-                        // Add employees to our collection
-                        allEmployeeData.push(...result.data_rows);
+                            // Add employees to our collection
+                            allEmployeeData.push(...result.data_rows);
 
-                        // Send this gang's data immediately
-                        controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
-                            gang_code: gCode,
-                            employees: result.data_rows.map(slimEmployee),
-                            gang_totals: {},  // Calculated after all data
-                            gang_index: i,
-                            employees_count: result.data_rows.length,
-                            processed_gangs: i + 1,
-                            total_gangs: gangCodes.length
-                        })}\n\n`));
+                            // Calculate gang totals for this gang
+                            const gangTotals = calculateGangTotals(result.data_rows);
 
-                        // Send progress
+                            // Send this gang's data immediately
+                            controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
+                                gang_code: gCode,
+                                employees: result.data_rows.map(slimEmployee),
+                                gang_totals: gangTotals,
+                                gang_index: idx,
+                                employees_count: result.data_rows.length,
+                                processed_gangs: processedCount + 1,
+                                total_gangs: gangCodes.length
+                            })}\n\n`));
+
+                            processedCount++;
+                        }
+
+                        // Send batch progress
                         controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
                             stage: 'streaming',
-                            message: `Selesai gang ${gCode}`,
-                            processed_gangs: i + 1,
+                            message: `Selesai batch ${Math.ceil(processedCount / BATCH_SIZE)}/${Math.ceil(gangCodes.length / BATCH_SIZE)}`,
+                            processed_gangs: processedCount,
                             total_gangs: gangCodes.length,
                             processed_employees: allEmployeeData.length,
                             total_employees: 0,
-                            current_gang: gCode
+                            current_gang: gangCodes[batchStart]
                         })}\n\n`));
                     }
 

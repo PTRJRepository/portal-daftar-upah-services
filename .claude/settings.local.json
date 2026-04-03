@@ -116,7 +116,14 @@
       "Bash(mv backend/src/scripts/diagnose_religion.ts _dev_utils/scripts/debugging/)",
       "Bash(mv backend/src/scripts/diagnose_deep.ts _dev_utils/scripts/debugging/)",
       "Bash(mv backend/src/scripts/diagnose_thr_b2n.ts _dev_utils/scripts/debugging/)",
-      "Bash(mv backend/src/scripts/trace_thr_flow.ts _dev_utils/scripts/debugging/)"
+      "Bash(mv backend/src/scripts/trace_thr_flow.ts _dev_utils/scripts/debugging/)",
+      "Bash(mkdir -p .agent/skills)",
+      "Bash(git clone:*)",
+      "WebSearch",
+      "WebFetch(domain:publish.obsidian.md)",
+      "Bash(obsidian-mcp --help)",
+      "Bash(npx -y obsidian-mcp --vault \"C:/Users/nbgmf/OneDrive/Documents/Obsidian Vault\" --ObsidianUrl \"https://127.0.0.1:27124\" --apiKey \"2a71e6c5159c207ee37e80e7a67b94dd64f392236bda22d866094641831f8eac\")",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": [],
