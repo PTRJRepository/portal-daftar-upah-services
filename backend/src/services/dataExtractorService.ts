@@ -4,7 +4,6 @@ import { payrollService } from "./payrollService";
 import { gangService } from "./gangService";
 import { lemburCalculator } from "./lemburCalculator";
 import { EmployeeEstateService } from "./employeeEstateService";
-import { calculatePph21Ter } from "./pph21TerService";
 import { currentPeriodService } from "./currentPeriodService";
 import { PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
 import { harvesterService } from "./harvesterService";
@@ -20,6 +19,7 @@ import { OtherIncomesService } from "./otherIncomesService";
 import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
 import { cacheService } from "./cacheService";
 import { debug, info, warn, error as logError } from "../utils/logger";
+import { PayrollCalculator } from "./payroll/components/PayrollCalculator";
 
 const CATEGORY = "DataExtractor";
 
@@ -196,7 +196,7 @@ interface PayrollRow {
     tarif_pajak_ter: number; // TER rate as percentage (e.g., 5 for 5%)
     pph21_ter: number; // Calculated PPH21 amount using TER method
     pendapatan_tidak_tetap_thp: number;
-    pendapatan_tidak_tetap_taxable: number;
+    taxable_pendapatan_lainnya: number; // sama dengan pendapatan_lainnya (semua taxable)
     upah_bersih: number;
     pot_astek: number;
     pot_astek_maj: number;
@@ -207,7 +207,6 @@ interface PayrollRow {
     taxable_pendapatan_thr: number;
     taxable_pendapatan_bonus: number;
     taxable_pendapatan_custom: number;
-    taxable_pendapatan_lainnya: number;
     [key: string]: any;
 }
 
@@ -1215,7 +1214,6 @@ export class DataExtractorService {
             };
 
             const pendapatan_tidak_tetap_thp = lookupByNik(dbThpIncomesMap, dbThpByCleanName);
-            const pendapatan_tidak_tetap_taxable = lookupByNik(dbTaxableIncomesMap, dbTaxableByCleanName);
 
             // [PRE-COMPUTE] Pendapatan Lainnya (THR + Bonus + Custom) for upah_bersih deduction
             const empOtherIncomesBase = lookupOtherIncomes(dbOtherIncomesByNik, dbOtherIncomesByCleanName);
@@ -1317,78 +1315,58 @@ export class DataExtractorService {
                 }
             }
             const taxable_pendapatan_lainnya = taxable_pendapatan_thr + taxable_pendapatan_bonus + taxable_pendapatan_custom + taxable_custom_types_total;
+            // [UPDATED] pendapatan_lainnya_amount = TOTAL all other incomes (THR + Bonus + Custom + Kontan, etc.)
+            // ALL of this amount is taxable AND reduces take-home pay via total_potongan
             const pendapatan_lainnya_amount = getOiByType('THR') + getOiByType('BONUS') + getOiByType('CUSTOM') + customTypesTotal;
 
-            // [FIXED] PREMI_PPH is an ADDITION (penambah), NOT a deduction
-            // [FIXED] pot_koreksi is ONLY in Potongan Upah Kotor, NOT in total_potongan
-            // total_potongan = astek + bpjs_pekerja + spsi + pph21 + other (no koreksi) + pendapatan_lainnya_amount
-            const total_potongan = pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja +
-                pot_spsi + pot_pph21 + other_potongan + pendapatan_lainnya_amount;
-
-            // [FIXED 2026-04-01] DUPLIKASI FIX: pendapatan_tidak_tetap_thp DIHAPUS dari formula
-            // ROOT CAUSE: pendapatan_tidak_tetap_thp (sum of is_paid_in_thp items) dan pendapatan_lainnya_amount
-            // (sum of ALL income types) OVERLAP karena keduanya berasal dari employee_other_incomes yang SAMA.
-            // Contoh: KONTAN 200 → masuk pendapatan_tidak_tetap_thp (200) + pendapatan_lainnya_amount (200) = 400 (SALAH!)
-            // FIX: Hanya gunakan pendapatan_lainnya_amount (sudah mencakup SEMUA other incomes termasuk THP items).
-            // pendapatan_tidak_tetap_thp tetap tersedia sebagai field terpisah untuk display/informasi.
-            const jumlah_upah_kotor = (gaji_pokok_aktual + total_tunjangan + total_premi + pendapatan_lainnya_amount) - pot_koreksi;
-
-            // [NEW] Upah Kotor Pajak = (Jumlah Upah Kotor - Pendapatan Lainnya) + Astek + BPJS Kesehatan + Other Taxable Incomes (untuk header/pajak)
-            const upah_kotor_pajak = (jumlah_upah_kotor - pendapatan_lainnya_amount) + pot_astek_pekerja + pot_bpjs_kesehatan_pekerja + pendapatan_tidak_tetap_taxable;
-
-            // [FIXED 2026-04-01] DUPLIKASI FIX: -pendapatan_tidak_tetap_thp DIHAPUS dari formula (simetris dengan fix di jumlah_upah_kotor)
-            // Sebelumnya: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph - pendapatan_tidak_tetap_thp
-            // Sekarang: pendapatan_lainnya_amount sudah di-add ke gross dan di-deduct via total_potongan (cancel out).
-            // Tidak perlu subtract pendapatan_tidak_tetap_thp lagi karena sudah tidak di-add ke gross.
-            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph;
-
-            // formula handled inside OOP logic
-            const koreksi_hk = gpResult?.koreksi_hk?.value || 0;
-
-            // [FIXED] Astek 0.84% calculation
-            // IMPORTANT: Always calculated from payrate × 30 (monthly salary), NOT from gaji_pokok_ideal
-            // Formula: (payrate × 30 + tunjangan_masa_kerja) × 0.84%
-            // This is the EMPLOYER portion of BPJS Pensiun (ASTEK) for tax calculation
-            const gaji_pokok_bulanan = caruman.gajiStandar; // Always payrate × 30
-            const astek_084 = caruman.astek_majikan_jkk_jkm; // 0.84%
-
-            // [CENTRALIZED] BPJS Kesehatan Majikan (4%)
-            const bpjs_kesehatan_majikan_4_pct = caruman.bpjs_kes_majikan; // 4%
-
-            // [UPDATED] Penghasilan Bruto calculation for PPh21 TER
-            // IMPORTANT: Includes ASTEK (0.84%) + BPJS Kesehatan Majikan (4%) + Taxable Other Incomes (THR, etc)
-            // Per PP 58 Tahun 2023, penghasilan bruto untuk perhitungan PPh21 meliputi:
-            // - Gaji Pokok Aktual
-            // - Tunjangan (Beras, Jabatan, Masa Kerja)
-            // - Lembur
-            // - Premi
-            // - ASTEK/BPJS Pensiun Majikan (0.84%)
-            // - BPJS Kesehatan Majikan (4%)
-            // - Other Taxable Incomes (THR, bonus, dll)
-            //
-            // KOREKSI (koreksi panen, koreksi HK) dikurangkan dari penghasilan bruto karena
-            // koreksi = koreksi kelebihan pembayaran, bukan penghasilan baru.
-            // POTONGAN (SPSI, astek pekerja, bpjs pekerja) TIDAK dikurangkan dari bruto.
-            const penghasilan_bruto = gaji_pokok_aktual +
-                berasJumlah +
-                empJabatan +
-                empMasaKerjaJumlah +
-                empLemburJumlahPure +
-                total_premi +
-                astek_084 +
-                bpjs_kesehatan_majikan_4_pct +
-                pendapatan_tidak_tetap_taxable -
-                pot_koreksi;
-
-            // Use DB Master PTKP mapped status if available, or fallback to RiceRation mapping
+            // [SINGLE SOURCE OF TRUTH] Use PayrollCalculator for ALL derived field formulas
+            // This ensures consistency across ALL tabs: Daftar Upah, Pajak, Summary, Analysis.
+            // See PayrollCalculator.ts for full business rule documentation.
             const rawEmpCode = String(emp.emp_code || '').trim().toUpperCase();
             const statusPtkp = dbPtkpMap.get(rawEmpCode) || mapBerasRateToPTKP(berasRate);
 
-            // [NEW] PPH21 TER calculation
-            // Calculate TER rate and PPH21 amount based on penghasilan_bruto and status_ptkp
-            const pph21TerResult = calculatePph21Ter(penghasilan_bruto, statusPtkp);
-            const tarif_pajak_ter = pph21TerResult.rate_percent; // Rate as percentage (e.g., 5 for 5%)
-            const pph21_ter = pph21TerResult.tax_amount;
+            const calc = PayrollCalculator.calculate(
+                {
+                    // Earnings
+                    gaji_pokok_aktual,
+                    beras_jumlah: berasJumlah,
+                    jabatan_jumlah: empJabatan,
+                    masa_kerja_jumlah: empMasaKerjaJumlah,
+                    lembur_jumlah: empLemburJumlahPure,
+                    total_tunjangan,
+                    total_premi,
+                    pot_koreksi,
+                    pendapatan_lainnya: pendapatan_lainnya_amount,
+                    // Deductions
+                    pot_astek_pekerja,
+                    pot_bpjs_kesehatan_pekerja,
+                    pot_bpjs_pensiun_pekerja,
+                    pot_spsi,
+                    pot_pph21,
+                    other_potongan,
+                    pot_premi_pph,
+                    // Tax components (employer)
+                    astek_majikan: caruman.astek_majikan_jkk_jkm,
+                    bpjs_majikan: caruman.bpjs_kes_majikan,
+                },
+                statusPtkp
+            );
+
+            // Extract results from PayrollCalculator
+            const {
+                jumlah_upah_kotor,
+                potongan_upah_kotor,
+                upah_kotor_pajak,
+                penghasilan_bruto,
+                tarif_pajak_ter,
+                pph21_ter,
+                total_potongan,
+                total_potongan_bersih,
+                upah_bersih,
+            } = calc;
+
+            // formula handled inside OOP logic
+            const koreksi_hk = gpResult?.koreksi_hk?.value || 0;
             const row: PayrollRow = {
                 emp_code: emp.emp_code,  // [FIX] Mengambil empcode langsung dari HR_GANGLN
                 nik: emp.actual_nik || emp.emp_code,  // Actual NIK KTP (e.g. 1902050504860001)
@@ -1485,21 +1463,25 @@ export class DataExtractorService {
                     ...koreksiVariations,
                     total: pot_koreksi
                 },
-                gaji_pokok_bulanan,
-                astek_084,
-                bpjs_kesehatan_majikan_4_pct,
+                // [FROM PayrollCalculator] Tax-related fields
+                gaji_pokok_bulanan: caruman.gajiStandar,
+                astek_084: caruman.astek_majikan_jkk_jkm,
+                bpjs_kesehatan_majikan_4_pct: caruman.bpjs_kes_majikan,
                 penghasilan_bruto,
                 tarif_pajak_ter,
                 pph21_ter,
                 total_potongan,
-                // [FIXED] total_potongan_bersih = total_potongan - premi_pph
-                // Because premi_pph is ADDED (+), not deducted
-                // So: Jumlah Potongan Bersih = BPJS + ASTEK + SPSI + PPH21 - PREMI_PPH
-                total_potongan_bersih: total_potongan - pot_premi_pph,
+                // [FROM PayrollCalculator] Potongan Bersih = total_potongan - premi_pph
+                // (premi_pph is ADDED to net pay, not deducted)
+                total_potongan_bersih,
                 // [NEW] premi_pph is separate field for display with + sign
                 premi_pph: pot_premi_pph,
                 pendapatan_tidak_tetap_thp,
-                pendapatan_tidak_tetap_taxable,
+                taxable_pendapatan_lainnya: calc.taxable_pendapatan_lainnya,
+                // Individual taxable breakdown for display
+                taxable_pendapatan_thr,
+                taxable_pendapatan_bonus,
+                taxable_pendapatan_custom,
                 upah_bersih,
                 // Other Incomes for display (THR, Bonus, Custom, etc.)
                 other_incomes: empOtherIncomes,
@@ -1516,12 +1498,6 @@ export class DataExtractorService {
                 pendapatan_lainnya: pendapatan_lainnya_amount,
                 // [NEW] Pendapatan Lainnya shown as a deduction in Potongan Upah Bersih section
                 pot_pendapatan_lainnya: pendapatan_lainnya_amount,
-                // [NEW] Taxable breakdown of other incomes for PAJAK section display
-                // These show how THR/Bonus/Custom are included in penghasilan_bruto
-                taxable_pendapatan_thr,
-                taxable_pendapatan_bonus,
-                taxable_pendapatan_custom,
-                taxable_pendapatan_lainnya,
                 // REMOVED: premi: empPremi - causes double-counting in frontend
                 // Individual premi fields are already added via ...empPremi below
                 pot_astek: pot_astek_pekerja,
@@ -2226,7 +2202,15 @@ export class DataExtractorService {
                         titleMap[key] = title;
                     } else {
                         const taskCode = r.task_code?.trim();
-                        titleMap[key] = taskCode || title;
+                        const taskDesc = r.task_desc?.trim();
+                        // Show task_desc + task_code in header (similar to premi format)
+                        if (taskDesc && taskCode) {
+                            titleMap[key] = `${taskDesc}\n(${taskCode})`;
+                        } else if (taskCode) {
+                            titleMap[key] = taskCode;
+                        } else {
+                            titleMap[key] = title;
+                        }
                     }
                 }
             }

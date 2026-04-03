@@ -492,6 +492,16 @@ body>#root>div {
   height: 100dvh !important;
 }
 
+/* Progress Bar Animation */
+@keyframes progress-bar-stripes {
+  0% { background-position: 1rem 0; }
+  100% { background-position: 0 0; }
+}
+
+.progress-bar-animated {
+  animation: progress-bar-stripes 1s linear infinite;
+}
+
 /* Print Override for Proxy Mode Fixes */
 @media print {
 

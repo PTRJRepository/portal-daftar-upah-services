@@ -6,11 +6,26 @@ interface Gang {
     gang_code: string;
     description: string;
     loc_code?: string;
+    server_profile: string;
 }
 
 export class GangService {
     private static instance: GangService;
     private db: Database;
+
+    /**
+     * Determine server profile based on LocCode or GangCode
+     */
+    public getServerProfile(locCode?: string, gangCode?: string): string {
+        const loc = (locCode || '').trim().toUpperCase();
+        const gang = (gangCode || '').trim().toUpperCase();
+
+        if (loc === 'MILL' || loc === 'PKS' || gang.startsWith('M')) {
+            return "SERVER_PROFILE_3"; // Mill Profile
+        }
+
+        return "SERVER_PROFILE_1"; // Estate Profile (Default)
+    }
 
     // GangCode to Division mapping
     private readonly DIVISION_MAPPING: Record<string, string[]> = {
@@ -345,7 +360,8 @@ export class GangService {
             const result = filtered.map(g => ({
                 gang_code: g.gang_code,
                 description: g.description || '',
-                loc_code: g.loc_code
+                loc_code: g.loc_code,
+                server_profile: this.getServerProfile(g.loc_code, g.gang_code)
             }));
             console.log(`[GangService] Returning ${result.length} gangs.`);
             return result;

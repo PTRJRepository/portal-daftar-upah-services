@@ -3,6 +3,7 @@ import { aggregationService } from "./aggregationService";
 import { gangService } from "./gangService";
 import { lemburCalculator } from "./lemburCalculator";
 import { calculateAllCaruman } from './carumanDefinitions';
+import { PayrollCalculator } from './payroll/components/PayrollCalculator';
 
 export class ReportService {
     private static instance: ReportService;
@@ -540,23 +541,44 @@ export class ReportService {
             emp.potongan_upah_kotor.total = potKoreksi;
             emp.potongan_upah_kotor_total = potKoreksi;
 
-            emp.jumlah_upah_kotor = (emp.gaji_pokok + emp.total_tunjangan + emp.total_premi) - potKoreksi;
-            emp.upah_kotor_premi = emp.jumlah_upah_kotor;
-
+            // [SINGLE SOURCE OF TRUTH] Use PayrollCalculator for all derived field formulas
+            // This ensures consistency with dataExtractorService across all tabs.
             const dynamicSum = Object.values(emp.potongan_upah_bersih.dynamic || {}).reduce((a: any, b: any) => a + b, 0) as number;
 
-            emp.total_potongan_bersih =
-                astekPek +
-                emp.pot_bpjs_pekerja_total +
-                (emp.pot_spsi || 0) +
-                (emp.pot_pph21 || 0) +
-                dynamicSum;
+            // Compute other_potongan: all dynamic deductions (kontan, thr, pinjam, etc.)
+            const other_potongan = dynamicSum;
+            // pendapatan_lainnya: 0 (reportService doesn't compute THR/Bonus/Custom earnings)
+            const calc = PayrollCalculator.calculate(
+                {
+                    gaji_pokok_aktual: emp.gaji_pokok,
+                    beras_jumlah: emp.beras_jumlah || 0,
+                    jabatan_jumlah: emp.jabatan_jumlah || 0,
+                    masa_kerja_jumlah: emp.masa_kerja_jumlah || 0,
+                    lembur_jumlah: emp.lembur_jumlah || 0,
+                    total_tunjangan: emp.total_tunjangan,
+                    total_premi: emp.total_premi,
+                    pot_koreksi: potKoreksi,
+                    pendapatan_lainnya: 0,
+                    pendapatan_tidak_tetap_taxable: 0,
+                    pot_astek_pekerja: astekPek,
+                    pot_bpjs_kesehatan_pekerja: emp.pot_bpjs_kesehatan_pekerja,
+                    pot_bpjs_pensiun_pekerja: bpjsPenPek,
+                    pot_spsi: emp.pot_spsi || 0,
+                    pot_pph21: emp.pot_pph21 || 0,
+                    other_potongan,
+                    pot_premi_pph: 0,
+                    astek_majikan: caruman.astek_majikan_jkk_jkm,
+                    bpjs_majikan: caruman.bpjs_kes_majikan,
+                }
+            );
 
-            emp.potongan_upah_bersih.total = emp.total_potongan_bersih;
-            emp.total_potongan = emp.total_potongan_bersih;
+            emp.jumlah_upah_kotor = calc.jumlah_upah_kotor;
+            emp.upah_kotor_premi = calc.jumlah_upah_kotor;
+            emp.total_potongan = calc.total_potongan;
+            emp.total_potongan_bersih = calc.total_potongan_bersih;
+            emp.upah_bersih = calc.upah_bersih;
 
-            emp.upah_bersih = emp.jumlah_upah_kotor - emp.total_potongan_bersih;
-
+            emp.potongan_upah_bersih.total = emp.total_potongan;
             finalRows.push(emp);
         }
 

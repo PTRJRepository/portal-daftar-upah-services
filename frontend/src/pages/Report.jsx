@@ -96,6 +96,8 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [isExporting, setIsExporting] = useState(false)
   const [isDownloadingExcel, setIsDownloadingExcel] = useState(false)
   const [loadingStatus, setLoadingStatus] = useState('')
+  const [loadProgress, setLoadProgress] = useState({ current: 0, total: 0, status: '' })
+  const [isIncrementalLoading, setIsIncrementalLoading] = useState(false)
   const [firstBatchReady, setFirstBatchReady] = useState(false)
   const [firstBatchAttempted, setFirstBatchAttempted] = useState(false)
   const [initialRowsPreview, setInitialRowsPreview] = useState([])
@@ -441,125 +443,197 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
   }, [finalDivision, authToken, allGangs, gangFilter.filters])
 
-  // Render Division Optimized Logic
-  const renderDivisionOptimized = async (token, division, month, year, gangPrefix = null) => {
-    try {
-      setLoadingStatus(`Fetching optimized division data for ${division}...`)
-      // [FIX] Update to fetch using locked API which actually exists and works
-      const groupedData = await fetchReportDivisionOptimized(token, { division, month, year, use_history: useHistory, gang_prefix: gangPrefix })
+  // Helper to calculate total row for a gang
+  const calculateTotalRow = (filteredRows, gang) => {
+    const agg = (field) => Math.round(filteredRows.reduce((a, b) => a + Number(b[field] || 0), 0))
 
-      let flatRows = []
-      
-      let gangsData = [];
-      if (groupedData && Array.isArray(groupedData.gangs)) {
-        gangsData = groupedData.gangs;
-      } else if (groupedData) {
-        const sortedGangs = Object.keys(groupedData).filter(k => Array.isArray(groupedData[k])).sort()
-        gangsData = sortedGangs.map(gang => ({
-          gang_code: gang,
-          employees: groupedData[gang]
-        }))
-      }
-
-      for (const gangObj of gangsData) {
-        const gang = gangObj.gang_code;
-        const gangRows = gangObj.employees;
-        if (!gangRows || gangRows.length === 0) continue
-        const computedRows = applyComputeToRows(gangRows, computeRulesRef.current)
-        const filteredRows = computedRows.filter(r => (r.jumlah_hk || 0) > 0)
-        // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER] Backend dataExtractorService sudah memfilter
-        // karyawan dengan hari_kerja <= 0. Filter jumlah_hk > 0 di frontend adalah redundan
-        // tapi tetap dipertahankan untuk safety net konsistensi.
-        if (filteredRows.length === 0) continue
-
-        flatRows.push({
-          isHeader: true,
-          gang_code: gang,
-          id: `HEADER_${gang}`
-        })
-        flatRows.push(...filteredRows)
-
-        const agg = (field) => Math.round(filteredRows.reduce((a, b) => a + Number(b[field] || 0), 0))
-
-        // Helper function to aggregate nested other_incomes array
-        const aggOtherIncomes = (type) => {
-          return filteredRows.reduce((sum, row) => {
-            if (row.other_incomes && Array.isArray(row.other_incomes)) {
-              const found = row.other_incomes.find(oi => oi.type === type);
-              if (found) sum += Number(found.amount || 0);
-            }
-            return sum;
-          }, 0);
-        };
-
-        const totalRow = {
-          isTotal: true,
-          no: '', jenis_kelamin: '', nik: '', nama: `TOTAL ${gang}`,
-          upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
-          cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
-          gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
-          // [DYNAMIC] Pendapatan Lainnya
-          pendapatan_thr: Math.round(aggOtherIncomes('THR')),
-          pendapatan_bonus: Math.round(aggOtherIncomes('BONUS')),
-          pendapatan_custom: Math.round(aggOtherIncomes('CUSTOM')),
-          // Dynamic custom types aggregation
-          ...Object.fromEntries(
-            customPendapatanTypes.map(t => [`pendapatan_${t.type.toLowerCase()}`, agg(`pendapatan_${t.type.toLowerCase()}`)])
-          ),
-          pendapatan_lainnya: agg('pendapatan_lainnya'),
-          premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
-          pot_koreksi: agg('pot_koreksi'),
-          total_premi: agg('total_premi'),
-          jumlah_upah_kotor: agg('jumlah_upah_kotor'),
-          pot_pph21: agg('pot_pph21'), pot_kontan: agg('pot_kontan'), pot_thr: agg('pot_thr'), pot_pinjam: agg('pot_pinjam'), pot_kl: agg('pot_kl'), pot_bpjs_kes: agg('pot_bpjs_kes'),
-          // Updated Astek Keys
-          pot_astek: agg('pot_astek'), pot_astek_maj: agg('pot_astek_maj'), pot_astek_jumlah: agg('pot_astek_jumlah'),
-          // Legacy Keys (if needed)
-          pot_bpjs_pek: agg('pot_bpjs_pek'), pot_bpjs_maj: agg('pot_bpjs_maj'),
-
-          pot_bpjs_kesehatan_pekerja: agg('pot_bpjs_kesehatan_pekerja'),
-          pot_bpjs_kesehatan_majikan: agg('pot_bpjs_kesehatan_majikan'),
-          pot_bpjs_pensiun_pekerja: agg('pot_bpjs_pensiun_pekerja'),
-          pot_bpjs_pensiun_majikan: agg('pot_bpjs_pensiun_majikan'),
-          pot_bpjs_jumlah: agg('pot_bpjs_jumlah'),
-          pot_bpjs_pekerja_total: agg('pot_bpjs_pekerja_total'),
-          pot_spsi: agg('pot_spsi'),
-          total_potongan: agg('total_potongan'), upah_bersih: agg('upah_bersih')
+    // Helper function to aggregate nested other_incomes array
+    const aggOtherIncomes = (type) => {
+      return filteredRows.reduce((sum, row) => {
+        if (row.other_incomes && Array.isArray(row.other_incomes)) {
+          const found = row.other_incomes.find(oi => oi.type === type);
+          if (found) sum += Number(found.amount || 0);
         }
+        return sum;
+      }, 0);
+    };
 
-        // Add dynamic premi fields from nested structure
-        const sampleRow = flatRows[0] || {}
-        if (sampleRow.premi && typeof sampleRow.premi === 'object') {
-          Object.keys(sampleRow.premi).forEach(key => {
-            if (key.startsWith('premi_')) {
-              const f = `premi.${key}`
-              const sum = agg(f)
-              if (sum > 0) totalRow[f] = sum
-            }
-          })
-        }
+    const totalRow = {
+      isTotal: true,
+      no: '', jenis_kelamin: '', nik: '', nama: `TOTAL ${gang}`,
+      upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
+      cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
+      gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
+      // [DYNAMIC] Pendapatan Lainnya
+      pendapatan_thr: Math.round(aggOtherIncomes('THR')),
+      pendapatan_bonus: Math.round(aggOtherIncomes('BONUS')),
+      pendapatan_custom: Math.round(aggOtherIncomes('CUSTOM')),
+      // Dynamic custom types aggregation
+      ...Object.fromEntries(
+        customPendapatanTypes.map(t => [`pendapatan_${t.type.toLowerCase()}`, agg(`pendapatan_${t.type.toLowerCase()}`)])
+      ),
+      pendapatan_lainnya: agg('pendapatan_lainnya'),
+      premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
+      pot_koreksi: agg('pot_koreksi'),
+      total_premi: agg('total_premi'),
+      jumlah_upah_kotor: agg('jumlah_upah_kotor'),
+      pot_pph21: agg('pot_pph21'), pot_kontan: agg('pot_kontan'), pot_thr: agg('pot_thr'), pot_pinjam: agg('pot_pinjam'), pot_kl: agg('pot_kl'), pot_bpjs_kes: agg('pot_bpjs_kes'),
+      pot_astek: agg('pot_astek'), pot_astek_maj: agg('pot_astek_maj'), pot_astek_jumlah: agg('pot_astek_jumlah'),
+      pot_bpjs_pek: agg('pot_bpjs_pek'), pot_bpjs_maj: agg('pot_bpjs_maj'),
+      pot_bpjs_kesehatan_pekerja: agg('pot_bpjs_kesehatan_pekerja'),
+      pot_bpjs_kesehatan_majikan: agg('pot_bpjs_kesehatan_majikan'),
+      pot_bpjs_pensiun_pekerja: agg('pot_bpjs_pensiun_pekerja'),
+      pot_bpjs_pensiun_majikan: agg('pot_bpjs_pensiun_majikan'),
+      pot_bpjs_jumlah: agg('pot_bpjs_jumlah'),
+      pot_bpjs_pekerja_total: agg('pot_bpjs_pekerja_total'),
+      pot_spsi: agg('pot_spsi'),
+      total_potongan: agg('total_potongan'), upah_bersih: agg('upah_bersih')
+    }
 
-        // Add dynamic potongan fields from nested structure
-        if (sampleRow.potongan_upah_kotor && sampleRow.potongan_upah_kotor.dynamic) {
-          Object.keys(sampleRow.potongan_upah_kotor.dynamic).forEach(key => {
-            const f = `potongan_upah_kotor.dynamic.${key}`
-            const sum = agg(f)
-            if (sum > 0) totalRow[f] = sum
-          })
+    // Add dynamic premi fields from nested structure
+    if (filteredRows[0]?.premi && typeof filteredRows[0].premi === 'object') {
+      Object.keys(filteredRows[0].premi).forEach(key => {
+        if (key.startsWith('premi_')) {
+          totalRow[`premi.${key}`] = agg(`premi.${key}`)
         }
-        flatRows.push(totalRow)
-      }
-      setRows(flatRows)
-      rowsDataRef.current = flatRows // [FIX] Sync to ref
+      })
+    }
+
+    return totalRow
+  }
+
+  // Helper to update Grand Total incrementally
+  const updateGrandTotal = (allRows) => {
+    const dataRows = allRows.filter(r => !r.isHeader && !r.isTotal)
+    if (dataRows.length === 0) {
       setPinnedBottom([])
-      recomputeAutoHideMap(flatRows)
-      setFirstBatchReady(true)
-      setFirstBatchAttempted(true)
-      setDataReady(true) // [FIX] Data is now confirmed ready
+      return
+    }
+
+    const agg = (field) => Math.round(dataRows.reduce((a, b) => a + Number(b[field] || 0), 0))
+    const aggNested = (objProp, key) => Math.round(dataRows.reduce((a, b) => {
+      const val = (b[objProp] && b[objProp][key]) ? Number(b[objProp][key]) : 0
+      return a + val
+    }, 0))
+
+    const aggOtherIncomesGrand = (type) => {
+      return dataRows.reduce((sum, row) => {
+        if (row.other_incomes && Array.isArray(row.other_incomes)) {
+          const found = row.other_incomes.find(oi => oi.type === type);
+          if (found) sum += Number(found.amount || 0);
+        }
+        return sum;
+      }, 0);
+    };
+
+    const grand = {
+      no: '', jenis_kelamin: '', nik: '', nama: 'GRAND TOTAL',
+      upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
+      cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
+      gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
+      pendapatan_thr: Math.round(aggOtherIncomesGrand('THR')),
+      pendapatan_bonus: Math.round(aggOtherIncomesGrand('BONUS')),
+      pendapatan_custom: Math.round(aggOtherIncomesGrand('CUSTOM')),
+      ...Object.fromEntries(
+        customPendapatanTypes.map(t => [`pendapatan_${t.type.toLowerCase()}`, agg(`pendapatan_${t.type.toLowerCase()}`)])
+      ),
+      pendapatan_lainnya: agg('pendapatan_lainnya'),
+      premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
+      pot_koreksi: agg('pot_koreksi'),
+      total_premi: agg('total_premi'),
+      jumlah_upah_kotor: agg('jumlah_upah_kotor'),
+      pot_pph21: agg('pot_pph21'), pot_kontan: agg('pot_kontan'), pot_thr: agg('pot_thr'), pot_pinjam: agg('pot_pinjam'), pot_kl: agg('pot_kl'), pot_bpjs_kes: agg('pot_bpjs_kes'),
+      pot_astek: agg('pot_astek'), pot_astek_maj: agg('pot_astek_maj'), pot_astek_jumlah: agg('pot_astek_jumlah'),
+      pot_bpjs_pek: agg('pot_bpjs_pek'), pot_bpjs_maj: agg('pot_bpjs_maj'),
+      pot_bpjs_kesehatan_pekerja: agg('pot_bpjs_kesehatan_pekerja'),
+      pot_bpjs_kesehatan_majikan: agg('pot_bpjs_kesehatan_majikan'),
+      pot_bpjs_pensiun_pekerja: agg('pot_bpjs_pensiun_pekerja'),
+      pot_bpjs_pensiun_majikan: agg('pot_bpjs_pensiun_majikan'),
+      pot_bpjs_jumlah: agg('pot_bpjs_jumlah'),
+      pot_bpjs_pekerja_total: agg('pot_bpjs_pekerja_total'),
+      pot_spsi: agg('pot_spsi'),
+      total_potongan: agg('total_potongan'), upah_bersih: agg('upah_bersih'),
+      premi: {}
+    }
+
+    const premiKeys = new Set()
+    dataRows.forEach(r => { if (r.premi) Object.keys(r.premi).forEach(k => premiKeys.add(k)) })
+    premiKeys.forEach(k => { grand.premi[k] = aggNested('premi', k) })
+
+    setPinnedBottom([grand])
+  }
+
+  // Render Division Incremental Logic
+  const renderDivisionIncremental = async (token, division, month, year, gangs) => {
+    if (!gangs || gangs.length === 0) {
+      setDataReady(true)
+      return
+    }
+
+    try {
+      setIsIncrementalLoading(true)
+      setLoadProgress({ current: 0, total: gangs.length, status: 'Menyiapkan pemuatan bertahap...' })
+      
+      let flatRows = []
+      let loadedCount = 0
+      const BATCH_SIZE = 3
+
+      for (let i = 0; i < gangs.length; i += BATCH_SIZE) {
+        const batch = gangs.slice(i, i + BATCH_SIZE)
+        const batchPromises = batch.map(g => 
+          fetchReportRowsSimple(token, { 
+            month, year, gang_code: g.gang_code, division, 
+            skip: 0, limit: 2000, use_history: useHistory,
+            server_profile: g.server_profile 
+          }).then(data => ({ gang: g.gang_code, employees: data }))
+        )
+
+        setLoadProgress(prev => ({ 
+          ...prev, 
+          status: `Memproses Group: ${batch.map(g => g.gang_code).join(', ')}...` 
+        }))
+
+        const results = await Promise.all(batchPromises)
+
+        for (const res of results) {
+          const { gang, employees } = res
+          loadedCount++
+          
+          if (!employees || employees.length === 0) continue
+
+          const computed = applyComputeToRows(employees, computeRulesRef.current)
+          const filtered = computed.filter(r => (r.jumlah_hk || 0) > 0)
+          
+          if (filtered.length > 0) {
+            flatRows.push({ isHeader: true, gang_code: gang, id: `HEADER_${gang}` })
+            flatRows.push(...filtered)
+            flatRows.push(calculateTotalRow(filtered, gang))
+          }
+        }
+
+        // Update UI incrementally
+        const currentFlatRows = [...flatRows]
+        setRows(currentFlatRows)
+        rowsDataRef.current = currentFlatRows
+        updateGrandTotal(currentFlatRows)
+        recomputeAutoHideMap(currentFlatRows)
+        setLoadProgress(prev => ({ ...prev, current: Math.min(loadedCount, gangs.length) }))
+
+        if (i === 0) {
+          setFirstBatchReady(true)
+          setFirstBatchAttempted(true)
+          setDataReady(true)
+        }
+      }
+
+      setIsIncrementalLoading(false)
+      setLoadProgress(prev => ({ ...prev, status: 'Selesai' }))
+      if (typeof onLoad === 'function') onLoad()
 
     } catch (e) {
-      console.error("Division render error:", e)
-      setError("Failed to render division report")
+      console.error("Incremental load error:", e)
+      setError("Gagal memuat data secara bertahap")
+      setIsIncrementalLoading(false)
     }
   }
 
@@ -882,7 +956,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         }
 
         if (String(finalGangCode).toUpperCase() === 'ALL') {
-          await renderDivisionOptimized(activeToken, finalDivision, activeMonth, activeYear, gangPrefixProp)
+          await renderDivisionIncremental(activeToken, finalDivision, activeMonth, activeYear, allGangs)
         } else {
           const data = await fetchReportRowsSimple(activeToken, { month: activeMonth, year: activeYear, gang_code: finalGangCode, division: finalDivision, skip: 0, limit: INFINITE_BATCH_SIZE, use_history: useHistory })
 
@@ -1748,7 +1822,44 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         </div>
       )}
 
-      {loading && (
+      {/* Incremental Loading Progress Bar */}
+      {isIncrementalLoading && (
+        <div style={{
+          padding: '10px 20px',
+          backgroundColor: '#f8fafc',
+          borderBottom: '1px solid #e2e8f0',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>
+              {loadProgress.status}
+            </span>
+            <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
+              {loadProgress.current} / {loadProgress.total} Group ({Math.round((loadProgress.current / loadProgress.total) * 100)}%)
+            </span>
+          </div>
+          <div style={{
+            width: '100%',
+            height: '8px',
+            backgroundColor: '#e2e8f0',
+            borderRadius: '4px',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              width: `${(loadProgress.current / loadProgress.total) * 100}%`,
+              height: '100%',
+              backgroundColor: '#3b82f6',
+              transition: 'width 0.3s ease-in-out',
+              backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent)',
+              backgroundSize: '1rem 1rem'
+            }} className="progress-bar-animated" />
+          </div>
+        </div>
+      )}
+
+      {loading && !isIncrementalLoading && (
         <LoadingScreen
           isLoading={true}
           message={loadingStatus || 'Memuat data laporan...'}

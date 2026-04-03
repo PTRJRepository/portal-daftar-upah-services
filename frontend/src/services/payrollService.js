@@ -60,7 +60,7 @@ export async function fetchReportRows(token, { month, year, gang_code, division,
  * Fetch payroll rows for a specific gang.
  * Uses /payroll/report endpoint which returns { data: [...], ... }
  */
-export async function fetchReportRowsSimple(token, { month, year, gang_code, division, skip = 0, limit = 50, use_history = null }) {
+export async function fetchReportRowsSimple(token, { month, year, gang_code, division, skip = 0, limit = 50, use_history = null, server_profile = null }) {
   const params = {}
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
@@ -70,6 +70,7 @@ export async function fetchReportRowsSimple(token, { month, year, gang_code, div
   if (typeof skip === 'number') params.skip = skip
   if (typeof limit === 'number') params.limit = limit
   if (use_history !== null) params.use_history = use_history
+  if (server_profile) params.server_profile = server_profile
 
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
