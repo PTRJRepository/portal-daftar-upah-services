@@ -79,12 +79,22 @@ export class CacheService {
 
     /**
      * [OPTIMIZATION] Check if caching should be used for a given period.
-     * Returns false for current period to ensure fresh data.
+     * - Historical periods: cache with long TTL (1 hour)
+     * - Current period: cache with short TTL (60 seconds) to balance freshness and speed
      */
     public shouldCache(month: number, year: number, currentMonth: number, currentYear: number): boolean {
-        // Only cache historical periods (before current month/year)
+        // Always return true - caching is now enabled for all periods
+        // TTL is determined by the caller based on historical vs current
+        return true;
+    }
+
+    /**
+     * Get appropriate TTL based on whether period is historical
+     */
+    public getPayrollCacheTtl(month: number, year: number, currentMonth: number, currentYear: number): number {
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
-        return isHistorical;
+        // Historical: 1 hour TTL, Current: 60 second TTL
+        return isHistorical ? 3600 : 60;
     }
 
     /**

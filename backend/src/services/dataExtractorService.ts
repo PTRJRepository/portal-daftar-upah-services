@@ -280,10 +280,11 @@ export class DataExtractorService {
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
 
-        // [OPTIMIZATION] Cache check for historical periods
-        // Only cache if: (1) it's historical data, (2) no specific emp requested, (3) caching is enabled
+        // [OPTIMIZATION] Cache check for all periods (historical + current)
+        // TTL determined by getPayrollCacheTtl: 1 hour for historical, 60s for current
         const cacheKey = cacheService.buildPayrollKey(gangCode, month, year, divisionCode);
-        if (isHistorical && !specificEmpCode && cacheService.shouldCache(month, year, currentMonth, currentYear)) {
+        const useCache = !specificEmpCode && cacheService.shouldCache(month, year, currentMonth, currentYear);
+        if (useCache) {
             const cached = cacheService.get<{
                 data_rows: PayrollRow[];
                 dynamic_premi_headers: string[];
@@ -1500,12 +1501,12 @@ export class DataExtractorService {
             }
         };
 
-        // [OPTIMIZATION] Cache historical results
-        // Only cache if: (1) it's historical data, (2) no specific emp requested, (3) has data
-        if (isHistorical && !specificEmpCode && dataRows.length > 0) {
-            // TTL: 1 hour for historical data (but up to 2h max from cacheService)
-            cacheService.set(cacheKey, result, 3600);
-            debug(CATEGORY, `💾 [CACHE SAVE] ${cacheKey} — cached ${dataRows.length} rows (TTL: 1h)`);
+        // [OPTIMIZATION] Cache results for all periods
+        // TTL: 1 hour for historical, 60 seconds for current period
+        if (useCache && dataRows.length > 0) {
+            const ttl = cacheService.getPayrollCacheTtl(month, year, currentMonth, currentYear);
+            cacheService.set(cacheKey, result, ttl);
+            debug(CATEGORY, `💾 [CACHE SAVE] ${cacheKey} — cached ${dataRows.length} rows (TTL: ${ttl}s)`);
         }
 
         debug(CATEGORY, `TOTAL: ${totalMs}ms for ${gangCode}/${month}/${year} (${dataRows.length} rows)`);
