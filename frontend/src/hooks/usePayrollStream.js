@@ -108,9 +108,7 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             const gangCodeParam = gangCode && gangCode !== 'ALL' ? `&gang_code=${gangCode}` : '';
             const url = `/payroll/report/division-raw-tree/stream?division_code=${division}&month=${month}&year=${year}${prefixParam}${gangCodeParam}`;
 
-            console.log('[usePayrollStream] Starting JSON fetch:', url);
-
-            setProgress(prev => ({ ...prev, stage: 'querying', message: 'Memproses query database...' }));
+            console.log('[usePayrollStream] Starting SSE stream:', url);
 
             const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` },
@@ -124,81 +122,132 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
-            const json = await response.json();
-            console.log('[usePayrollStream] JSON received:', json.meta?.total_gangs, 'gangs,', json.meta?.total_employees, 'employees');
-
-            if (json.error) {
-                throw new Error(json.error);
+            if (!response.body) {
+                throw new Error('No response body available');
             }
 
-            // Set meta
-            setMeta(json.meta || {});
-            setProgress(prev => ({
-                ...prev,
-                stage: 'streaming',
-                message: `Loading ${json.gangs?.length || 0} gangs...`,
-                totalGangs: json.meta?.total_gangs || 0,
-                totalEmployees: json.meta?.total_employees || 0
-            }));
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-            // Process gangs progressively
-            const gangsData = json.gangs || [];
-            gangsMapRef.current = {};
+            while (true) {
+                const { done, value } = await reader.read();
 
-            for (let i = 0; i < gangsData.length; i++) {
-                if (controller.signal.aborted) {
-                    console.log('[usePayrollStream] Aborted during progressive load');
-                    return;
+                if (done) {
+                    console.log('[usePayrollStream] Stream complete');
+                    break;
                 }
 
-                const gangData = gangsData[i];
-                gangsMapRef.current[gangData.gang_code] = gangData;
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
 
-                // Update gangs array incrementally
-                setGangs(prev => {
-                    const next = [...prev];
-                    const existingIdx = next.findIndex(g => g.gang_code === gangData.gang_code);
-                    if (existingIdx >= 0) {
-                        next[existingIdx] = gangData;
-                    } else {
-                        // Insert in sorted order
-                        const insertIdx = next.findIndex(g => g.gang_code > gangData.gang_code);
-                        if (insertIdx >= 0) {
-                            next.splice(insertIdx, 0, gangData);
-                        } else {
-                            next.push(gangData);
+                // Process complete SSE events
+                while (true) {
+                    const delimiterIndex = buffer.indexOf('\n\n');
+                    if (delimiterIndex === -1) break;
+
+                    const eventString = buffer.slice(0, delimiterIndex + 2);
+                    buffer = buffer.slice(delimiterIndex + 2);
+
+                    const eventMatch = eventString.match(/^event: ([^\n]+)\ndata: ([\s\S]*?)\n\n$/);
+                    if (!eventMatch) continue;
+
+                    const eventName = eventMatch[1];
+                    const eventData = eventMatch[2];
+
+                    try {
+                        const data = JSON.parse(eventData);
+
+                        switch (eventName) {
+                            case 'meta': {
+                                gangsMapRef.current = {};
+                                setMeta(data);
+                                setProgress(prev => ({
+                                    ...prev,
+                                    stage: data.stage || 'querying',
+                                    message: data.meta?.query_time_ms ? `Query selesai (${data.meta.query_time_ms}ms)` : 'Menunggu data...',
+                                    totalGangs: data.total_gangs || 0,
+                                    totalEmployees: data.total_employees || 0
+                                }));
+                                console.log('[usePayrollStream] Meta:', data.total_gangs, 'gangs');
+                                break;
+                            }
+
+                            case 'progress': {
+                                setProgress(prev => ({
+                                    ...prev,
+                                    stage: data.stage || 'streaming',
+                                    message: data.message || 'Memproses...',
+                                    processedGangs: data.processed_gangs || prev.processedGangs,
+                                    totalGangs: data.total_gangs || prev.totalGangs,
+                                    processedEmployees: data.processed_employees || prev.processedEmployees,
+                                    totalEmployees: data.total_employees || prev.totalEmployees,
+                                    currentGang: data.current_gang || prev.currentGang
+                                }));
+                                break;
+                            }
+
+                            case 'gang': {
+                                const { gang_code, employees, gang_totals, employees_count, gang_index } = data;
+
+                                gangsMapRef.current[gang_code] = {
+                                    gang_code,
+                                    employees,
+                                    gang_totals,
+                                    employees_count,
+                                    gang_index
+                                };
+
+                                setGangs(prev => {
+                                    const next = [...prev];
+                                    const existingIdx = next.findIndex(g => g.gang_code === gang_code);
+                                    if (existingIdx >= 0) {
+                                        next[existingIdx] = gangsMapRef.current[gang_code];
+                                    } else {
+                                        const insertIdx = next.findIndex(g => g.gang_code > gang_code);
+                                        if (insertIdx >= 0) {
+                                            next.splice(insertIdx, 0, gangsMapRef.current[gang_code]);
+                                        } else {
+                                            next.push(gangsMapRef.current[gang_code]);
+                                        }
+                                    }
+                                    return next;
+                                });
+                                break;
+                            }
+
+                            case 'complete': {
+                                setGrandTotal(data.grand_total);
+                                setIsComplete(true);
+                                setProgress(prev => ({
+                                    ...prev,
+                                    stage: 'complete',
+                                    message: `Selesai! ${data.gangs_count} gang, ${data.employees_count} karyawan`,
+                                    processedGangs: data.gangs_count || 0,
+                                    totalGangs: data.gangs_count || 0,
+                                    processedEmployees: data.employees_count || 0,
+                                    totalEmployees: data.employees_count || 0,
+                                    currentGang: null
+                                }));
+                                console.log('[usePayrollStream] Complete');
+                                break;
+                            }
+
+                            case 'error': {
+                                setError(data.message || 'Unknown error');
+                                setProgress(prev => ({
+                                    ...prev,
+                                    stage: 'error',
+                                    message: data.message || 'Error'
+                                }));
+                                break;
+                            }
                         }
+                    } catch (e) {
+                        console.warn('[usePayrollStream] Parse error:', e.message);
                     }
-                    return next;
-                });
-
-                // Update progress
-                setProgress(prev => ({
-                    ...prev,
-                    processedGangs: i + 1,
-                    processedEmployees: prev.processedEmployees + (gangData.employees?.length || 0),
-                    currentGang: gangData.gang_code
-                }));
-
-                // Small delay between gangs for visual effect
-                await new Promise(r => setTimeout(r, 30));
+                }
             }
-
-            // Complete
-            setGrandTotal(json.grand_total || null);
-            setIsComplete(true);
-            setProgress(prev => ({
-                ...prev,
-                stage: 'complete',
-                message: `Selesai! ${json.meta?.total_gangs || 0} gang, ${json.meta?.total_employees || 0} karyawan`,
-                processedGangs: json.meta?.total_gangs || 0,
-                totalGangs: json.meta?.total_gangs || 0,
-                processedEmployees: json.meta?.total_employees || 0,
-                totalEmployees: json.meta?.total_employees || 0,
-                currentGang: null
-            }));
-            console.log('[usePayrollStream] Complete');
-
         } catch (err) {
             if (err.name === 'AbortError') {
                 console.log('[usePayrollStream] Aborted');

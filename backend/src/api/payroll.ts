@@ -1265,7 +1265,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      * - complete: { grand_total, total_execution_ms }
      * - error: { message }
      */
-    // JSON endpoint (simpler, more reliable than SSE)
+    // Progressive streaming - processes gangs one by one for true progressive loading
     .get("/report/division-raw-tree/stream", async ({ headers, query, set }): Promise<any> => {
         const authHeader = headers["authorization"] as string | undefined;
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -1275,7 +1275,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         const token = authHeader.split(" ")[1];
         const user = await authService.verifyToken(token);
 
-        const { dataExtractorService } = await import("../services/dataExtractorService");
         const divisionCode = query.division_code;
         const month = parseInt(query.month);
         const year = parseInt(query.year);
@@ -1295,74 +1294,136 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
         }
 
-        const skipHarvest = true;
-        const startTime = performance.now();
+        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year}`);
 
-        console.log(`[JSON Stream] Starting | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix || 'none'}`);
+        const encoder = new TextEncoder();
+        let cancelled = false;
 
-        try {
-            const result = await dataExtractorService.extractPayrollData(
-                month, year, gangCode, divisionCode, null,
-                Config.DB_PROFILE, false, null, gangPrefix, skipHarvest, true
-            );
+        const stream = new ReadableStream({
+            async start(controller) {
+                try {
+                    // Step 1: Send connecting state immediately
+                    controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({ stage: 'connecting', message: 'Menghubungi server...', processed_gangs: 0, total_gangs: 0 })}\n\n`));
 
-            const queryTime = performance.now() - startTime;
-            console.log(`[JSON Stream] Data fetched: ${queryTime.toFixed(0)}ms for ${result.data_rows.length} rows`);
+                    // Import services fresh to avoid issues
+                    const { dataExtractorService } = await import("../services/dataExtractorService");
+                    const { divisionConfigService } = await import("../services/config/DivisionConfigService");
+                    const { gangService } = await import("../services/gangService");
+                    const { Config } = await import("../config");
 
-            // Debug: log unique gang codes
-            const uniqueGangs = [...new Set(result.data_rows.map(r => r.gang_code).filter(Boolean))];
-            console.log(`[JSON Stream] Unique gang codes:`, uniqueGangs);
+                    // Step 2: Get gang list first (FAST - from config)
+                    controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({ stage: 'querying', message: 'Mendapatkan daftar gang...', processed_gangs: 0, total_gangs: 0 })}\n\n`));
 
-            // Group employees by gang
-            const gangsMap: Record<string, any[]> = {};
-            for (const row of result.data_rows) {
-                const gang = row.gang_code || "UNKNOWN";
-                if (!gangsMap[gang]) gangsMap[gang] = [];
-                gangsMap[gang].push(row);
+                    const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
+                    const gangCodes = gangs.map(g => g.gang_code).sort();
+                    console.log(`[Stream] Found ${gangCodes.length} gangs for ${divisionCode}`);
+
+                    // Send meta with gang count immediately
+                    controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({
+                        division: divisionCode,
+                        month,
+                        year,
+                        total_gangs: gangCodes.length,
+                        total_employees: 0,
+                        stage: 'processing',
+                        meta: { query_time_ms: 0 }
+                    })}\n\n`));
+
+                    // Step 3: Process gangs one by one
+                    // For each gang, fetch employee data and calculate
+                    const allEmployeeData: any[] = [];
+                    const dynamicPremiSet = new Set<string>();
+                    const dynamicPotonganSet = new Set<string>();
+
+                    for (let i = 0; i < gangCodes.length; i++) {
+                        if (cancelled) return;
+
+                        const gCode = gangCodes[i];
+                        controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                            stage: 'streaming',
+                            message: `Memproses gang ${gCode} (${i + 1}/${gangCodes.length})...`,
+                            processed_gangs: i,
+                            total_gangs: gangCodes.length,
+                            current_gang: gCode
+                        })}\n\n`));
+
+                        // Extract data for this single gang
+                        const result = await dataExtractorService.extractPayrollData(
+                            month, year, gCode, divisionCode, null,
+                            Config.DB_PROFILE, false, null, gangPrefix, true, true
+                        );
+
+                        if (cancelled) return;
+
+                        // Track dynamic headers
+                        for (const h of result.dynamic_premi_headers || []) dynamicPremiSet.add(h);
+                        for (const h of result.dynamic_potongan_headers || []) dynamicPotonganSet.add(h);
+
+                        // Add employees to our collection
+                        allEmployeeData.push(...result.data_rows);
+
+                        // Send this gang's data immediately
+                        controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
+                            gang_code: gCode,
+                            employees: result.data_rows.map(slimEmployee),
+                            gang_totals: {},  // Calculated after all data
+                            gang_index: i,
+                            employees_count: result.data_rows.length,
+                            processed_gangs: i + 1,
+                            total_gangs: gangCodes.length
+                        })}\n\n`));
+
+                        // Send progress
+                        controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                            stage: 'streaming',
+                            message: `Selesai gang ${gCode}`,
+                            processed_gangs: i + 1,
+                            total_gangs: gangCodes.length,
+                            processed_employees: allEmployeeData.length,
+                            total_employees: 0,
+                            current_gang: gCode
+                        })}\n\n`));
+                    }
+
+                    if (cancelled) return;
+
+                    // Calculate grand total from all data
+                    const grandTotal = calculateGangTotals(allEmployeeData);
+
+                    // Send complete
+                    controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({
+                        grand_total: grandTotal,
+                        gangs_count: gangCodes.length,
+                        employees_count: allEmployeeData.length,
+                        dynamic_premi_headers: Array.from(dynamicPremiSet),
+                        dynamic_potongan_headers: Array.from(dynamicPotonganSet)
+                    })}\n\n`));
+
+                    console.log(`[Stream] Complete: ${gangCodes.length} gangs, ${allEmployeeData.length} employees`);
+                    controller.close();
+
+                } catch (e: any) {
+                    console.error('[Stream] Error:', e);
+                    try {
+                        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: e.message })}\n\n`));
+                        controller.close();
+                    } catch {}
+                }
+            },
+            cancel() {
+                cancelled = true;
             }
+        });
 
-            const gangKeys = Object.keys(gangsMap).sort();
-            console.log(`[JSON Stream] Gangs after grouping:`, gangKeys);
-
-            // Build gangs array
-            const gangs = gangKeys.map((gCode, idx) => {
-                const employees = gangsMap[gCode];
-                employees.sort((a, b) => {
-                    const codeA = String(a.emp_code || a.nik || '').trim();
-                    const codeB = String(b.emp_code || b.nik || '').trim();
-                    return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
-                });
-                return {
-                    gang_code: gCode,
-                    employees: employees.map(slimEmployee),
-                    gang_index: idx
-                };
-            });
-
-            const totalTime = performance.now() - startTime;
-            console.log(`[JSON Stream] Complete: ${gangKeys.length} gangs, ${result.data_rows.length} employees in ${totalTime.toFixed(0)}ms`);
-
-            return {
-                success: true,
-                meta: {
-                    division: divisionCode,
-                    month,
-                    year,
-                    total_gangs: gangKeys.length,
-                    total_employees: result.data_rows.length,
-                    query_time_ms: Math.round(queryTime),
-                    execution_time_ms: Math.round(totalTime)
-                },
-                gangs,
-                dynamic_premi_headers: result.dynamic_premi_headers || [],
-                dynamic_potongan_headers: result.dynamic_potongan_headers || [],
-                dynamic_headers_loaded: true
-            };
-        } catch (e: any) {
-            console.error("[JSON Stream] Error:", e);
-            set.status = 500;
-            return { error: e.message };
-        }
+        return new Response(stream, {
+            headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "Access-Control-Allow-Origin": "*",
+            }
+        });
     }, {
         query: t.Object({
             division_code: t.String(),
