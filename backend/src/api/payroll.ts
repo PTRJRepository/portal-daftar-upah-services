@@ -1339,21 +1339,15 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         const stream = new ReadableStream({
             async start(controller) {
                 try {
-                    // Step 1: Send connecting state immediately
-                    controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({ stage: 'connecting', message: 'Menghubungi server...', processed_gangs: 0, total_gangs: 0 })}\n\n`));
-
-                    // Import services fresh to avoid issues
+                    // Import services
                     const { dataExtractorService } = await import("../services/dataExtractorService");
                     const { divisionConfigService } = await import("../services/config/DivisionConfigService");
-                    const { gangService } = await import("../services/gangService");
                     const { Config } = await import("../config");
 
-                    // Step 2: Get gang list first (FAST - from config)
-                    controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({ stage: 'querying', message: 'Mendapatkan daftar gang...', processed_gangs: 0, total_gangs: 0 })}\n\n`));
-
+                    // Step 1: Get gang list immediately (fast - from config)
                     const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
                     const gangCodes = gangs.map(g => g.gang_code).sort();
-                    console.log(`[Stream] Found ${gangCodes.length} gangs for ${divisionCode}`);
+                    console.log(`[Stream] Found ${gangCodes.length} gangs, starting data fetch...`);
 
                     // Send meta with gang count immediately
                     controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({
@@ -1362,99 +1356,93 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         year,
                         total_gangs: gangCodes.length,
                         total_employees: 0,
-                        stage: 'processing',
-                        meta: { query_time_ms: 0 }
+                        stage: 'querying'
                     })}\n\n`));
 
-                    // Step 3: Process gangs in parallel batches (3 at a time)
-                    // This allows gangs to be yielded as they complete rather than waiting sequentially
-                    const allEmployeeData: any[] = [];
-                    const dynamicPremiSet = new Set<string>();
-                    const dynamicPotonganSet = new Set<string>();
-                    const BATCH_SIZE = 3;
-
-                    let processedCount = 0;
-
-                    for (let batchStart = 0; batchStart < gangCodes.length; batchStart += BATCH_SIZE) {
-                        if (cancelled) return;
-
-                        const batchEnd = Math.min(batchStart + BATCH_SIZE, gangCodes.length);
-                        const batchCodes = gangCodes.slice(batchStart, batchEnd);
-
-                        // Send progress for this batch
-                        controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
-                            stage: 'streaming',
-                            message: `Memproses gangs ${batchCodes.join(', ')}...`,
-                            processed_gangs: processedCount,
-                            total_gangs: gangCodes.length,
-                            current_gang: batchCodes[0]
-                        })}\n\n`));
-
-                        // Process this batch in parallel
-                        const batchResults = await Promise.all(
-                            batchCodes.map((gCode, idx) =>
-                                dataExtractorService.extractPayrollData(
-                                    month, year, gCode, divisionCode, null,
-                                    Config.DB_PROFILE, false, null, gangPrefix, true, true
-                                ).then(result => ({ gCode, result, idx: batchStart + idx }))
-                            )
-                        );
-
-                        if (cancelled) return;
-
-                        // Yield each completed gang immediately
-                        for (const { gCode, result, idx } of batchResults) {
-                            // Track dynamic headers
-                            for (const h of result.dynamic_premi_headers || []) dynamicPremiSet.add(h);
-                            for (const h of result.dynamic_potongan_headers || []) dynamicPotonganSet.add(h);
-
-                            // Add employees to our collection
-                            allEmployeeData.push(...result.data_rows);
-
-                            // Calculate gang totals for this gang
-                            const gangTotals = calculateGangTotals(result.data_rows);
-
-                            // Send this gang's data immediately
-                            controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
-                                gang_code: gCode,
-                                employees: result.data_rows.map(slimEmployee),
-                                gang_totals: gangTotals,
-                                gang_index: idx,
-                                employees_count: result.data_rows.length,
-                                processed_gangs: processedCount + 1,
-                                total_gangs: gangCodes.length
-                            })}\n\n`));
-
-                            processedCount++;
+                    // Step 2: Send periodic progress during the 47-second query
+                    // This fills the loading bar gradually during the wait
+                    let progressCount = 0;
+                    const progressInterval = setInterval(() => {
+                        if (cancelled) {
+                            clearInterval(progressInterval);
+                            return;
                         }
+                        progressCount++;
+                        const progressPercent = Math.min(progressCount * 5, 90);
+                        controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                            stage: 'querying',
+                            message: `Memproses database... ${progressPercent}%`,
+                            processed_gangs: 0,
+                            total_gangs: gangCodes.length,
+                            progress_percent: progressPercent
+                        })}\n\n`));
+                    }, 2000);
 
-                        // Send batch progress
+                    // Step 3: Fetch ALL data at once (takes ~47 seconds)
+                    const result = await dataExtractorService.extractPayrollData(
+                        month, year, "ALL", divisionCode, null,
+                        Config.DB_PROFILE, false, null, gangPrefix, true, true
+                    );
+
+                    clearInterval(progressInterval);
+                    if (cancelled) return;
+
+                    console.log(`[Stream] Data fetched: ${result.data_rows.length} rows, grouping by gang...`);
+
+                    // Step 4: Group employees by gang
+                    const gangsMap: Record<string, any[]> = {};
+                    for (const row of result.data_rows) {
+                        const gang = row.gang_code || "UNKNOWN";
+                        if (!gangsMap[gang]) gangsMap[gang] = [];
+                        gangsMap[gang].push(row);
+                    }
+
+                    // Step 5: Stream gangs progressively with small delay
+                    let processedGangs = 0;
+                    for (const gCode of gangCodes) {
+                        if (cancelled) return;
+
+                        const employees = gangsMap[gCode] || [];
+                        const gangTotals = calculateGangTotals(employees);
+
+                        controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
+                            gang_code: gCode,
+                            employees: employees.map(slimEmployee),
+                            gang_totals: gangTotals,
+                            gang_index: processedGangs,
+                            employees_count: employees.length,
+                            processed_gangs: processedGangs + 1,
+                            total_gangs: gangCodes.length
+                        })}\n\n`));
+
+                        processedGangs++;
+
                         controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
                             stage: 'streaming',
-                            message: `Selesai batch ${Math.ceil(processedCount / BATCH_SIZE)}/${Math.ceil(gangCodes.length / BATCH_SIZE)}`,
-                            processed_gangs: processedCount,
+                            message: `Streaming gang ${processedGangs}/${gangCodes.length}`,
+                            processed_gangs: processedGangs,
                             total_gangs: gangCodes.length,
-                            processed_employees: allEmployeeData.length,
-                            total_employees: 0,
-                            current_gang: gangCodes[batchStart]
+                            processed_employees: result.data_rows.length,
+                            total_employees: result.data_rows.length,
+                            progress_percent: 90 + Math.floor((processedGangs / gangCodes.length) * 10)
                         })}\n\n`));
+
+                        await new Promise(r => setTimeout(r, 50));
                     }
 
                     if (cancelled) return;
 
-                    // Calculate grand total from all data
-                    const grandTotal = calculateGangTotals(allEmployeeData);
-
-                    // Send complete
+                    // Step 6: Send complete
+                    const grandTotal = calculateGangTotals(result.data_rows);
                     controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({
                         grand_total: grandTotal,
                         gangs_count: gangCodes.length,
-                        employees_count: allEmployeeData.length,
-                        dynamic_premi_headers: Array.from(dynamicPremiSet),
-                        dynamic_potongan_headers: Array.from(dynamicPotonganSet)
+                        employees_count: result.data_rows.length,
+                        dynamic_premi_headers: result.dynamic_premi_headers || [],
+                        dynamic_potongan_headers: result.dynamic_potongan_headers || []
                     })}\n\n`));
 
-                    console.log(`[Stream] Complete: ${gangCodes.length} gangs, ${allEmployeeData.length} employees`);
+                    console.log(`[Stream] Complete: ${gangCodes.length} gangs, ${result.data_rows.length} employees`);
                     controller.close();
 
                 } catch (e: any) {
