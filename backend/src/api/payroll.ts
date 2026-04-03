@@ -1295,7 +1295,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
         }
 
-        console.log(`[Stream] Starting | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode}`);
+        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode}`);
 
         const encoder = new TextEncoder();
         let cancelled = false;
@@ -1309,75 +1309,180 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
                     // Send initial progress
                     controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
-                        stage: 'querying',
-                        message: 'Memproses database...',
+                        stage: 'connecting',
+                        message: 'Menghubungi server...',
                         processed_gangs: 0,
                         total_gangs: 0
                     })}\n\n`));
 
-                    // Fetch all data at once - benefits from caching
-                    // If cached, returns instant. If not cached, waits for DB query.
-                    const result = await dataExtractorService.extractPayrollData(
-                        month, year, gangCode, divisionCode, null,
-                        Config.DB_PROFILE, false, null, gangPrefix, true, true
+                    // Use TRUE lazy loading extraction - yields data in phases
+                    const progressiveStream = dataExtractorService.extractPayrollDataProgressive(
+                        month, year, gangCode, divisionCode,
+                        Config.DB_PROFILE, gangPrefix
                     );
 
-                    if (cancelled) return;
+                    let gangIndex = 0;
+                    const gangOrder: string[] = [];
+                    let lastMeta: any = null;
+                    let lastPhase = '';
+                    const streamStartTime = Date.now();
+                    const allDynamicPremiHeaders = new Set<string>();
+                    const allDynamicPotonganHeaders = new Set<string>();
+                    let globalPremiTitleMap: Record<string, string> = {};
+                    let globalPotonganTitleMap: Record<string, string> = {};
 
-                    console.log(`[Stream] Data fetched: ${result.data_rows.length} rows`);
+                    for await (const chunk of progressiveStream) {
+                        if (cancelled) break;
 
-                    // Group employees by gang
-                    const gangsMap: Record<string, any[]> = {};
-                    for (const row of result.data_rows) {
-                        const gang = row.gang_code || "UNKNOWN";
-                        if (!gangsMap[gang]) gangsMap[gang] = [];
-                        gangsMap[gang].push(row);
+                        const { phase, gangs, current_gang, meta, dynamic_premi_headers, dynamic_potongan_headers, dynamic_premi_titles, dynamic_potongan_titles } = chunk;
+
+                        // Track gang order from identity phase
+                        if (phase === 'identity' && gangOrder.length === 0) {
+                            gangOrder.push(...Array.from(gangs.keys()).sort());
+                        }
+
+                        // Update dynamic headers as they arrive
+                        if (dynamic_premi_headers) {
+                            dynamic_premi_headers.forEach(h => allDynamicPremiHeaders.add(h));
+                        }
+                        if (dynamic_potongan_headers) {
+                            dynamic_potongan_headers.forEach(h => allDynamicPotonganHeaders.add(h));
+                        }
+                        if (dynamic_premi_titles) {
+                            Object.assign(globalPremiTitleMap, dynamic_premi_titles);
+                        }
+                        if (dynamic_potongan_titles) {
+                            Object.assign(globalPotonganTitleMap, dynamic_potongan_titles);
+                        }
+
+                        if (phase !== lastPhase) {
+                            console.log(`[Stream] Phase ${phase}: ${meta.message}`);
+                            lastPhase = phase;
+                        }
+
+                        lastMeta = meta;
+
+                        // Phase 0: Identity (names only)
+                        if (phase === 'identity') {
+                            controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({
+                                division: divisionCode,
+                                month,
+                                year,
+                                total_gangs: meta.total_gangs,
+                                total_employees: meta.total_employees,
+                                dynamic_premi_headers: [],
+                                dynamic_potongan_headers: [],
+                                stage: 'identity',
+                                query_time_ms: 0
+                            })}\n\n`));
+
+                            // Send all gangs with names only
+                            for (const [gangCodeKey, employees] of gangs) {
+                                const idx = gangOrder.indexOf(gangCodeKey);
+                                const slimEmployees = employees.map((emp: any) => {
+                                    const { _phase, _enriched, _loading, ...rest } = emp;
+                                    return slimEmployee(rest);
+                                });
+
+                                controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
+                                    gang_code: gangCodeKey,
+                                    employees: slimEmployees,
+                                    gang_index: idx >= 0 ? idx : gangIndex++,
+                                    employees_count: employees.length,
+                                    phase: 'identity',
+                                    is_complete: false
+                                })}\n\n`));
+                            }
+
+                            controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                                stage: 'identity_loaded',
+                                message: meta.message,
+                                processed_gangs: meta.total_gangs,
+                                total_gangs: meta.total_gangs,
+                                progress_pct: meta.progress_pct
+                            })}\n\n`));
+                        }
+
+                        // Phase 1-3: Progressive enrichment
+                        if (phase === 'attendance' || phase === 'overtime' || phase === 'premium') {
+                            const stageMap: Record<string, string> = {
+                                'attendance': 'attendance_loaded',
+                                'overtime': 'overtime_loaded',
+                                'premium': 'premium_loaded'
+                            };
+
+                            // Send updated gangs
+                            for (const [gangCodeKey, employees] of gangs) {
+                                const idx = gangOrder.indexOf(gangCodeKey);
+                                const slimEmployees = employees.map((emp: any) => {
+                                    const { _phase, _enriched, _loading, ...rest } = emp;
+                                    return slimEmployee(rest);
+                                });
+
+                                controller.enqueue(encoder.encode(`event: gang_update\ndata: ${JSON.stringify({
+                                    gang_code: gangCodeKey,
+                                    employees: slimEmployees,
+                                    gang_index: idx,
+                                    phase: phase,
+                                    is_complete: false
+                                })}\n\n`));
+                            }
+
+                            controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                                stage: stageMap[phase] || 'loading',
+                                message: meta.message,
+                                processed_gangs: meta.total_gangs,
+                                total_gangs: meta.total_gangs,
+                                progress_pct: meta.progress_pct
+                            })}\n\n`));
+                        }
+
+                        // Complete phase
+                        if (phase === 'complete') {
+                            console.log(`[Stream] ✅ Complete: ${meta.message}`);
+
+                            // Send final filtered & sorted gangs
+                            for (const [gangCodeKey, employees] of gangs) {
+                                const idx = gangOrder.indexOf(gangCodeKey);
+                                const slimEmployees = employees.map((emp: any) => {
+                                    const { _phase, _enriched, _loading, ...rest } = emp;
+                                    return slimEmployee(rest);
+                                });
+
+                                controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
+                                    gang_code: gangCodeKey,
+                                    employees: slimEmployees,
+                                    gang_index: idx >= 0 ? idx : gangIndex++,
+                                    employees_count: employees.length,
+                                    phase: 'complete',
+                                    is_complete: true
+                                })}\n\n`));
+                            }
+
+                            controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                                stage: 'complete',
+                                message: meta.message,
+                                processed_gangs: meta.processed_gangs,
+                                total_gangs: meta.total_gangs,
+                                progress_pct: 100
+                            })}\n\n`));
+
+                            // Send final headers
+                            controller.enqueue(encoder.encode(`event: headers\ndata: ${JSON.stringify({
+                                dynamic_premi_headers: Array.from(allDynamicPremiHeaders),
+                                dynamic_potongan_headers: Array.from(allDynamicPotonganHeaders),
+                                dynamic_premi_titles: globalPremiTitleMap,
+                                dynamic_potongan_titles: globalPotonganTitleMap
+                            })}\n\n`));
+
+                            controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({
+                                message: meta.message,
+                                total_execution_ms: Date.now() - streamStartTime,
+                                total_gangs: meta.total_gangs,
+                                total_employees: meta.total_employees
+                            })}\n\n`));
+                        }
                     }
-
-                    const gangCodes = Object.keys(gangsMap).sort();
-
-                    // Send meta
-                    controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({
-                        division: divisionCode,
-                        month,
-                        year,
-                        total_gangs: gangCodes.length,
-                        total_employees: result.data_rows.length,
-                        dynamic_premi_headers: result.dynamic_premi_headers || [],
-                        dynamic_potongan_headers: result.dynamic_potongan_headers || []
-                    })}\n\n`));
-
-                    // Stream gangs with small delay between each
-                    for (let i = 0; i < gangCodes.length; i++) {
-                        if (cancelled) return;
-
-                        const gCode = gangCodes[i];
-                        const employees = gangsMap[gCode] || [];
-
-                        controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
-                            gang_code: gCode,
-                            employees: employees.map(slimEmployee),
-                            gang_index: i,
-                            employees_count: employees.length
-                        })}\n\n`));
-
-                        controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
-                            stage: 'streaming',
-                            message: `Streaming gang ${i + 1}/${gangCodes.length}`,
-                            processed_gangs: i + 1,
-                            total_gangs: gangCodes.length,
-                            processed_employees: result.data_rows.length
-                        })}\n\n`));
-
-                        // Small delay for visual effect
-                        await new Promise(r => setTimeout(r, 30));
-                    }
-
-                    // Send complete
-                    controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({
-                        gangs_count: gangCodes.length,
-                        employees_count: result.data_rows.length
-                    })}\n\n`));
 
                     controller.close();
 

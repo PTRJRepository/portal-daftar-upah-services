@@ -41,7 +41,9 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
         processedEmployees: 0,
         totalEmployees: 0,
         bytesReceived: 0,
-        currentGang: null
+        currentGang: null,
+        progressPct: 0,                               // 0-100 progressive percentage
+        currentPhase: null                            // 'identity' | 'attendance' | 'overtime' | 'premium' | 'deductions' | 'complete'
     });
     const [grandTotal, setGrandTotal] = useState(null);
     const [error, setError] = useState(null);
@@ -68,7 +70,9 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                 processedEmployees: 0,
                 totalEmployees: 0,
                 bytesReceived: 0,
-                currentGang: null
+                currentGang: null,
+                progressPct: 0,
+                currentPhase: null
             });
         }
     }, [division, month, year, gangPrefix, gangCode]);
@@ -99,7 +103,9 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             processedEmployees: 0,
             totalEmployees: 0,
             bytesReceived: 0,
-            currentGang: null
+            currentGang: null,
+            progressPct: 0,
+            currentPhase: null
         });
 
         try {
@@ -182,27 +188,39 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                                     totalGangs: data.total_gangs || prev.totalGangs,
                                     processedEmployees: data.processed_employees || prev.processedEmployees,
                                     totalEmployees: data.total_employees || prev.totalEmployees,
-                                    currentGang: data.current_gang || prev.currentGang
+                                    currentGang: data.current_gang || prev.currentGang,
+                                    progressPct: data.progress_pct || (data.stage === 'complete' ? 100 : 0),
+                                    currentPhase: data.current_phase || prev.currentPhase
                                 }));
                                 break;
                             }
 
-                            case 'gang': {
-                                const { gang_code, employees, gang_totals, employees_count, gang_index } = data;
+                            case 'gang':
+                            case 'gang_update': {
+                                const { gang_code, employees, gang_totals, employees_count, gang_index, phase, is_complete } = data;
 
+                                // Track if this gang data is from complete phase (fully enriched)
                                 gangsMapRef.current[gang_code] = {
                                     gang_code,
                                     employees,
                                     gang_totals,
                                     employees_count,
-                                    gang_index
+                                    gang_index,
+                                    phase,
+                                    is_complete: is_complete || false
                                 };
 
                                 setGangs(prev => {
                                     const next = [...prev];
                                     const existingIdx = next.findIndex(g => g.gang_code === gang_code);
                                     if (existingIdx >= 0) {
-                                        next[existingIdx] = gangsMapRef.current[gang_code];
+                                        // Update existing gang - keep the most enriched version
+                                        const existing = next[existingIdx];
+                                        const existingPhase = existing.phase || 'identity';
+                                        // Only update if new data is more enriched
+                                        if ((phase === 'complete' && is_complete) || !existing.is_complete) {
+                                            next[existingIdx] = gangsMapRef.current[gang_code];
+                                        }
                                     } else {
                                         const insertIdx = next.findIndex(g => g.gang_code > gang_code);
                                         if (insertIdx >= 0) {

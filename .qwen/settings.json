@@ -21,7 +21,10 @@
       "Bash(taskkill *)",
       "Bash(del *)",
       "Bash(timeout *)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(rmdir *)",
+      "Bash(powershell *)",
+      "Bash(rm *)"
     ]
   },
   "$version": 3

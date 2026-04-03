@@ -182,6 +182,7 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 1600,
+    minify: false, // TEMPORARY: Disable minification to debug TDZ error
     rollupOptions: {
       output: {
         manualChunks: {

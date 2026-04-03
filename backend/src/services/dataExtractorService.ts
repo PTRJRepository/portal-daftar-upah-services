@@ -8,8 +8,8 @@ import { currentPeriodService } from "./currentPeriodService";
 import { PayrollComponentMetadata } from "../types/payroll/PayrollComponent";
 import { harvesterService } from "./harvesterService";
 import { historyDatabaseService } from "./historyDatabaseService";
-// Import new unified component services
-import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
+// [FIX] Removed static import to prevent circular dependency
+// import { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } from "./payroll";
 import { gajiPokokService } from "./payroll/components/GajiPokokService";
 import { manualAdjustmentService } from "./manualAdjustmentService";
 import { employeeHrDataService } from "./employeeHrDataService";
@@ -2687,6 +2687,9 @@ export class DataExtractorService {
         // Then calculate components using the new component services
         const empCodes = baseResult.data_rows.map(row => row.nik);
 
+        // [FIX] Dynamic import to prevent circular dependency
+        const { payrollComponentRegistry } = await import("./payroll");
+
         // Calculate all components in parallel using the registry
         const componentResults = await payrollComponentRegistry.calculateAllBatch(
             empCodes.map(code => ({
@@ -2770,6 +2773,9 @@ export class DataExtractorService {
     }> {
         const startTime = Date.now();
 
+        // [FIX] Dynamic import to prevent circular dependency
+        const { lemburService, premiService, tunjanganService, potonganService, pph21TerService, payrollComponentRegistry } = await import("./payroll");
+
         // Calculate all components for this employee
         const gajiPokokResult = await gajiPokokService.calculate({
             emp_code: empCode,
@@ -2839,6 +2845,529 @@ export class DataExtractorService {
                 execution_time_ms: Date.now() - startTime,
                 service_versions: payrollComponentRegistry.getAllServiceVersions(),
             },
+        };
+    }
+
+    /**
+     * [TRUE LAZY LOADING] Async generator that yields employee data in phases:
+     * - Phase 0 (T+0-1s): Employee names ONLY (instant render)
+     * - Phase 1 (T+1-3s): + Attendance data (HK, jam kerja)
+     * - Phase 2 (T+3-8s): + Overtime + Allowances
+     * - Phase 3 (T+8-15s): + Premiums + Deductions
+     * - Phase 4 (T+15-20s): + Final calculations (gaji bersih, etc)
+     *
+     * KEY: Frontend can render rows IMMEDIATELY with names, then progressively
+     * update cells as data arrives. Much better UX than waiting 45s for all data.
+     */
+    public async *extractPayrollDataProgressive(
+        month: number,
+        year: number,
+        gangCode: string = "ALL",
+        divisionCode?: string,
+        serverProfile?: string,
+        gangPrefix?: string
+    ): AsyncGenerator<{
+        phase: 'identity' | 'attendance' | 'overtime' | 'premium' | 'complete';
+        gangs: Map<string, any[]>;
+        current_gang?: string;
+        meta: {
+            total_gangs: number;
+            total_employees: number;
+            processed_employees: number;
+            progress_pct: number;
+            message: string;
+        };
+        dynamic_premi_headers?: string[];
+        dynamic_potongan_headers?: string[];
+        dynamic_premi_titles?: Record<string, string>;
+        dynamic_potongan_titles?: Record<string, string>;
+    }> {
+        const startTime = Date.now();
+        const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
+        const nextMonth = month === 12 ? 1 : month + 1;
+        const nextYear = month === 12 ? year + 1 : year;
+        const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`;
+
+        // Parallel: Get period info + all gangs
+        const [currentPeriod, allGangs] = await Promise.all([
+            currentPeriodService.getCurrentPeriod(),
+            gangService.fetchGangs(divisionCode || undefined, undefined, false)
+        ]);
+        const currentMonth = currentPeriod.month;
+        const currentYear = currentPeriod.year;
+        const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
+
+        // Build gang condition
+        let gangCondition = "1=1";
+        let gangCodeInput: string | null = null;
+        if (gangCode && gangCode !== "ALL") {
+            gangCodeInput = gangCode.trim().toUpperCase();
+            gangCondition = `(UPPER(RTRIM(gl.GangCode)) = '${gangCodeInput}' OR UPPER(RTRIM(g.GangCode)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
+        } else if (divisionCode) {
+            if (allGangs.length > 0) {
+                const conditions = allGangs.map((gang: { gang_code: string, description: string }) =>
+                    `(UPPER(RTRIM(g.GangCode)) = UPPER('${gang.gang_code.trim()}') OR UPPER(RTRIM(g.Description)) = UPPER('${gang.description.trim()}'))`
+                ).join(' OR ');
+                gangCondition = `(${conditions})`;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // PHASE 0: Get employees ONLY (fast, ~1s)
+        // ═══════════════════════════════════════════════════════
+        const t0 = Date.now();
+        let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
+        const phase0Time = Date.now() - t0;
+        debug(CATEGORY, `🚀 Phase 0 (identity): ${phase0Time}ms, ${employees.length} employees`);
+
+        // Apply gangPrefix filter
+        if (gangPrefix && employees.length > 0) {
+            const isNumeric = /^\d+$/.test(gangPrefix);
+            employees = employees.filter(emp => {
+                const gc = (emp.gang_code || '').trim().toUpperCase();
+                if (isNumeric) {
+                    const asistensi = gc.startsWith('K2') ? '1' : (gc.match(/\d+/)?.[0] ?? null);
+                    return asistensi === gangPrefix;
+                }
+                return gc.startsWith(gangPrefix.toUpperCase());
+            });
+        }
+
+        if (employees.length === 0) {
+            yield {
+                phase: 'complete',
+                gangs: new Map(),
+                meta: { total_gangs: 0, total_employees: 0, processed_employees: 0, progress_pct: 100, message: 'No employees found' }
+            };
+            return;
+        }
+
+        // Build initial gangs map with IDENTITY ONLY (nama, gender, gang)
+        const gangsMap = new Map<string, any[]>();
+        const gangOrder: string[] = [];
+        for (const emp of employees) {
+            const gang = emp.gang_code || "UNKNOWN";
+            if (!gangsMap.has(gang)) {
+                gangsMap.set(gang, []);
+                gangOrder.push(gang);
+            }
+            gangsMap.get(gang)!.push({
+                emp_code: emp.emp_code,
+                nik: emp.actual_nik || emp.emp_code,
+                nama: emp.emp_name,
+                gang_code: emp.gang_code,
+                loc_code: emp.loc_code,
+                gender: emp.gender,
+                // Phase markers
+                _phase: 0,
+                _enriched: false,
+                _loading: false // Frontend can show loading indicator
+            });
+        }
+
+        // ✅ YIELD PHASE 0: Names ONLY - Frontend renders IMMEDIATELY
+        yield {
+            phase: 'identity',
+            gangs: new Map(gangsMap),
+            meta: {
+                total_gangs: gangsMap.size,
+                total_employees: employees.length,
+                processed_employees: employees.length,
+                progress_pct: 10,
+                message: `Loaded ${employees.length} employees. Fetching attendance...`
+            }
+        };
+
+        // ═══════════════════════════════════════════════════════
+        // PHASE 1: LAZY LOAD Attendance + Cuti (Background)
+        // ═══════════════════════════════════════════════════════
+        const t1 = Date.now();
+        const empCodes = employees.map(e => e.emp_code);
+        const BATCH_SIZE = 50;
+        const empCodeChunks: string[][] = [];
+        for (let i = 0; i < empCodes.length; i += BATCH_SIZE) {
+            empCodeChunks.push(empCodes.slice(i, i + BATCH_SIZE));
+        }
+
+        // Global accumulators for lazy loading
+        const globalAttendanceMap: Record<string, any> = {};
+        const globalCutiMap: Record<string, any> = {};
+        const globalLemburMap: Record<string, any> = {};
+        const globalJabatanMap: Record<string, number> = {};
+        const globalMasaKerjaMap: Record<string, number> = {};
+        const globalUpahPokokMap: Record<string, number> = {};
+        const globalBrondolMap: Record<string, number> = {};
+        const globalTaskCodesMap: Record<string, any> = {};
+        const globalPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
+        const globalPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
+        const dynamicPremiSet = new Set<string>();
+        const dynamicPotonganSet = new Set<string>();
+
+        async function safeQuery<T>(label: string, fn: () => Promise<T>, defaultValue: T): Promise<T> {
+            try {
+                return await fn();
+            } catch (err: any) {
+                warn(CATEGORY, `⚠️ ${label} failed: ${err.message}`);
+                return defaultValue;
+            }
+        }
+
+        const emptyPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
+        const emptyPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
+
+        // [PHASE 1] Attendance + Cuti
+        debug(CATEGORY, `📋 Phase 1: Loading attendance/cuti...`);
+        const phase1Promises = empCodeChunks.map((chunk, idx) => Promise.all([
+            safeQuery(`attendance[${idx}]`, () => this.getAttendance(chunk, startDate, endDate, serverProfile), {}),
+            safeQuery(`cuti[${idx}]`, () => this.getCuti(chunk, startDate, endDate, serverProfile), {}),
+        ]));
+        const phase1Results = await Promise.all(phase1Promises);
+        for (const [attB, cutiB] of phase1Results) {
+            Object.assign(globalAttendanceMap, attB);
+            Object.assign(globalCutiMap, cutiB);
+        }
+
+        // Update employees with attendance data
+        for (const emp of employees) {
+            const attData = globalAttendanceMap[emp.emp_code] || { hk: 0, total_hours: 0 };
+            const empCuti = globalCutiMap[emp.emp_code] || { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
+            emp.jumlah_hk = attData.hk || 0;
+            emp.total_jam_kerja = attData.total_hours || 0;
+            emp.cuti_tahunan_hari = empCuti.cuti_tahunan;
+            emp.cuti_sakit_haid_hari = empCuti.cuti_sakit_haid;
+            emp.cuti_minggu_hari = empCuti.cuti_minggu;
+            emp.cuti_nasional_hari = empCuti.cuti_nasional;
+            emp._phase = 1;
+        }
+
+        // Update gangsMap with attendance data
+        for (const [gangCodeKey, gangEmployees] of gangsMap) {
+            for (const emp of gangEmployees) {
+                const empData = employees.find(e => e.emp_code === emp.emp_code);
+                if (empData) {
+                    Object.assign(emp, {
+                        jumlah_hk: empData.jumlah_hk,
+                        total_jam_kerja: empData.total_jam_kerja,
+                        cuti_tahunan_hari: empData.cuti_tahunan_hari,
+                        cuti_sakit_haid_hari: empData.cuti_sakit_haid_hari,
+                        cuti_minggu_hari: empData.cuti_minggu_hari,
+                        cuti_nasional_hari: empData.cuti_nasional_hari,
+                        _phase: 1
+                    });
+                }
+            }
+        }
+
+        debug(CATEGORY, `✅ Phase 1 (attendance): ${Date.now() - t1}ms`);
+        yield {
+            phase: 'attendance',
+            gangs: new Map(gangsMap),
+            meta: {
+                total_gangs: gangsMap.size,
+                total_employees: employees.length,
+                processed_employees: employees.length,
+                progress_pct: 25,
+                message: `Attendance loaded. Processing overtime...`
+            }
+        };
+
+        // ═══════════════════════════════════════════════════════
+        // PHASE 2: LAZY LOAD Overtime + Allowances
+        // ═══════════════════════════════════════════════════════
+        const t2 = Date.now();
+        debug(CATEGORY, `⏱️ Phase 2: Loading overtime/allowances...`);
+
+        const phase2Promises = empCodeChunks.map((chunk, idx) => Promise.all([
+            safeQuery(`lembur[${idx}]`, () => this.getLemburDetailsWithTaskBreakdown(chunk, month, year, serverProfile), {}),
+            safeQuery(`jabatan[${idx}]`, () => this.getTunjanganAmount(chunk, startDate, endDate, "JABATAN", serverProfile), {}),
+            safeQuery(`masaKerja[${idx}]`, () => this.getTunjanganAmount(chunk, startDate, endDate, "MASA%KERJA", serverProfile), {}),
+            safeQuery(`upahPokok[${idx}]`, () => this.getUpahPokok(chunk, year, currentYear, serverProfile), {}),
+        ]));
+        const phase2Results = await Promise.all(phase2Promises);
+        for (const [lemburB, jabatanB, masaKerjaB, upahB] of phase2Results) {
+            Object.assign(globalLemburMap, lemburB);
+            Object.assign(globalJabatanMap, jabatanB);
+            Object.assign(globalMasaKerjaMap, masaKerjaB);
+            Object.assign(globalUpahPokokMap, upahB);
+        }
+
+        // Update employees with overtime data
+        for (const emp of employees) {
+            const empLembur = globalLemburMap[emp.emp_code] || { jam: 0, jumlah: 0, records: [] };
+            emp.lembur_jam = empLembur.jam || 0;
+            emp.lembur_jumlah = empLembur.jumlah || 0;
+            emp.lembur_records = empLembur.records || [];
+            emp.jabatan_jumlah = globalJabatanMap[emp.emp_code] || 0;
+            emp.masa_kerja_jumlah = globalMasaKerjaMap[emp.emp_code] || 0;
+            emp.upah_dasar = globalUpahPokokMap[emp.emp_code] || emp.pay_rate || 0;
+            emp._phase = 2;
+        }
+
+        // Update gangsMap
+        for (const [gangCodeKey, gangEmployees] of gangsMap) {
+            for (const emp of gangEmployees) {
+                const empData = employees.find(e => e.emp_code === emp.emp_code);
+                if (empData) {
+                    Object.assign(emp, {
+                        lembur_jam: empData.lembur_jam,
+                        lembur_jumlah: empData.lembur_jumlah,
+                        lembur_records: empData.lembur_records,
+                        jabatan_jumlah: empData.jabatan_jumlah,
+                        masa_kerja_jumlah: empData.masa_kerja_jumlah,
+                        upah_dasar: empData.upah_dasar,
+                        _phase: 2
+                    });
+                }
+            }
+        }
+
+        debug(CATEGORY, `✅ Phase 2 (overtime/allowances): ${Date.now() - t2}ms`);
+        yield {
+            phase: 'overtime',
+            gangs: new Map(gangsMap),
+            meta: {
+                total_gangs: gangsMap.size,
+                total_employees: employees.length,
+                processed_employees: employees.length,
+                progress_pct: 50,
+                message: `Overtime loaded. Processing premiums...`
+            }
+        };
+
+        // ═══════════════════════════════════════════════════════
+        // PHASE 3: LAZY LOAD Premiums + Deductions
+        // ═══════════════════════════════════════════════════════
+        const t3 = Date.now();
+        debug(CATEGORY, `💰 Phase 3: Loading premiums/deductions...`);
+
+        const phase3Promises = empCodeChunks.map((chunk, idx) => Promise.all([
+            safeQuery(`premi[${idx}]`, () => this.getPremi(chunk, startDate, endDate, isHistorical, serverProfile), JSON.parse(JSON.stringify(emptyPremiResult))),
+            safeQuery(`potongan[${idx}]`, () => this.getPotongan(chunk, startDate, endDate, serverProfile), JSON.parse(JSON.stringify(emptyPotonganResult))),
+            safeQuery(`brondol[${idx}]`, () => this.getBrondol(chunk, startDate, endDate, serverProfile), {}),
+            safeQuery(`taskCodes[${idx}]`, () => this.getTaskCodes(chunk, startDate, endDate, serverProfile), {}),
+        ]));
+        const phase3Results = await Promise.all(phase3Promises);
+        for (const [premiB, potB, brondolB, taskCodesB] of phase3Results) {
+            Object.assign(globalPremiResult.amounts, premiB.amounts);
+            Object.assign(globalPremiResult.titleMap, premiB.titleMap);
+            Object.assign(globalPotonganResult.amounts, potB.amounts);
+            Object.assign(globalPotonganResult.titleMap, potB.titleMap);
+            Object.assign(globalBrondolMap, brondolB);
+            Object.assign(globalTaskCodesMap, taskCodesB);
+
+            // Collect dynamic headers
+            for (const [empCode, empPremi] of Object.entries(premiB.amounts || {})) {
+                for (const key of Object.keys(empPremi || {})) {
+                    if (key !== "koreksi" && key !== "brondol") dynamicPremiSet.add(key);
+                }
+            }
+            for (const [empCode, empPot] of Object.entries(potB.amounts || {})) {
+                for (const key of Object.keys(empPot || {})) {
+                    if (!key.startsWith("KOREKSI") && key !== "SPSI" && key !== "PPH21") dynamicPotonganSet.add(key);
+                }
+            }
+        }
+
+        // Update employees with premium data
+        for (const emp of employees) {
+            const empPremi = globalPremiResult.amounts[emp.emp_code] || {};
+            const empPotongan = globalPotonganResult.amounts[emp.emp_code] || {};
+            const empBrondol = globalBrondolMap[emp.emp_code] || 0;
+            const empPremiBrondol = empPremi["brondol"] || 0;
+
+            let total_premi = 0;
+            for (const [key, val] of Object.entries(empPremi)) {
+                if (key !== "koreksi") total_premi += Number(val) || 0;
+            }
+            total_premi += empBrondol;
+
+            emp.premi = empPremi;
+            emp.potongan = empPotongan;
+            emp.premi_brondol = empBrondol + empPremiBrondol;
+            emp.total_premi = total_premi;
+            emp.task_code = globalTaskCodesMap[emp.emp_code]?.task_code || "";
+            emp.task_desc = globalTaskCodesMap[emp.emp_code]?.task_desc || "";
+            emp._phase = 3;
+        }
+
+        // Update gangsMap
+        for (const [gangCodeKey, gangEmployees] of gangsMap) {
+            for (const emp of gangEmployees) {
+                const empData = employees.find(e => e.emp_code === emp.emp_code);
+                if (empData) {
+                    Object.assign(emp, {
+                        premi: empData.premi,
+                        potongan: empData.potongan,
+                        premi_brondol: empData.premi_brondol,
+                        total_premi: empData.total_premi,
+                        task_code: empData.task_code,
+                        task_desc: empData.task_desc,
+                        _phase: 3
+                    });
+                }
+            }
+        }
+
+        debug(CATEGORY, `✅ Phase 3 (premiums/deductions): ${Date.now() - t3}ms`);
+        yield {
+            phase: 'premium',
+            gangs: new Map(gangsMap),
+            meta: {
+                total_gangs: gangsMap.size,
+                total_employees: employees.length,
+                processed_employees: employees.length,
+                progress_pct: 75,
+                message: `Premiums loaded. Calculating final values...`
+            },
+            dynamic_premi_headers: Array.from(dynamicPremiSet),
+            dynamic_potongan_headers: Array.from(dynamicPotonganSet),
+            dynamic_premi_titles: globalPremiResult.titleMap,
+            dynamic_potongan_titles: globalPotonganResult.titleMap
+        };
+
+        // ═══════════════════════════════════════════════════════
+        // PHASE 4: FINAL CALCULATIONS (Gaji Bersih, PPh21, etc)
+        // ═══════════════════════════════════════════════════════
+        const t4 = Date.now();
+        debug(CATEGORY, `🧮 Phase 4: Final calculations...`);
+
+        // Load PTKP ONCE (not per employee!)
+        const { ptkpTaxService } = await import('./ptkpTaxService');
+        const ptkpMasterRecords = await ptkpTaxService.getPtkpByYear(year);
+        const dbPtkpMap = new Map<string, string>();
+        for (const record of ptkpMasterRecords) {
+            if (record.emp_code) {
+                dbPtkpMap.set(record.emp_code.trim().toUpperCase(), record.ptkp_status);
+            }
+        }
+
+        // Calculate final values for each employee
+        for (const emp of employees) {
+            const empCode = emp.emp_code;
+            const attData = globalAttendanceMap[empCode] || { hk: 0, total_hours: 0, total_amount_rp: 0 };
+            const empCuti = globalCutiMap[empCode] || { cuti_tahunan: 0, cuti_sakit_haid: 0, cuti_minggu: 0, cuti_nasional: 0 };
+            const empPremi = globalPremiResult.amounts[empCode] || {};
+            const empPotongan = globalPotonganResult.amounts[empCode] || {};
+            const empLembur = globalLemburMap[empCode] || { jam: 0, jumlah: 0 };
+            const hk = attData.hk || 0;
+            const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
+            const berasJumlah = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
+            const upahDasar = globalUpahPokokMap[empCode] || emp.pay_rate || 0;
+            const jabatanJumlah = globalJabatanMap[empCode] || 0;
+            const masaKerjaJumlah = globalMasaKerjaMap[empCode] || 0;
+
+            // Effective HK
+            const effective_hk = hk - (empCuti.cuti_minggu + empCuti.cuti_nasional);
+            const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
+            const hari_kerja = Math.max(0, hk - totalCuti);
+            const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
+
+            // Calculate totals
+            const total_tunjangan = berasJumlah + jabatanJumlah + masaKerjaJumlah + (empLembur.jumlah || 0);
+            let total_premi = 0;
+            for (const [key, val] of Object.entries(empPremi)) {
+                if (key !== "koreksi") total_premi += Number(val) || 0;
+            }
+            total_premi += (globalBrondolMap[empCode] || 0);
+
+            // Deductions
+            const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
+            const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
+            let pot_koreksi = 0;
+            for (const [key, val] of Object.entries(empPotongan)) {
+                if (key.startsWith("KOREKSI")) pot_koreksi += Math.abs(val as number);
+            }
+
+            const caruman = calculateAllCaruman(upahDasar, masaKerjaJumlah);
+            const pot_astek = caruman.astek_pekerja_jht;
+            const pot_bpjs = caruman.bpjs_kes_pekerja + caruman.bpjs_pensiun_pekerja;
+            const other_potongan = Object.entries(empPotongan)
+                .filter(([key]) => !["SPSI", "PPH21", "PREMI_PPH"].includes(key) && !key.startsWith("KOREKSI"))
+                .reduce((sum, [, val]) => sum + Math.abs(val as number), 0);
+
+            const gaji_pokok = attData.total_amount_rp || 0;
+            const jumlah_upah_kotor = gaji_pokok + total_tunjangan + total_premi + pot_koreksi;
+            const total_potongan = pot_astek + pot_bpjs + pot_spsi + pot_pph21 + other_potongan;
+            const upah_bersih = jumlah_upah_kotor - total_potongan;
+
+            const statusPTKP = dbPtkpMap.get(empCode.toUpperCase()) || mapBerasRateToPTKP(berasRate);
+            const kategoriTER = mapPTKPToTER(statusPTKP);
+
+            // Apply final data
+            Object.assign(emp, {
+                hari_kerja,
+                beras_rate: berasRate,
+                beras_jumlah: berasJumlah,
+                total_tunjangan,
+                gaji_pokok,
+                jumlah_upah_kotor,
+                pot_astek,
+                pot_bpjs_pekerja_total: pot_bpjs,
+                pot_spsi,
+                pot_pph21,
+                total_potongan,
+                upah_bersih,
+                status_ptkp: statusPTKP,
+                kategori_ter: kategoriTER,
+                _phase: 4,
+                _enriched: true,
+                _loading: false
+            });
+        }
+
+        // Filter & sort employees
+        employees = employees.filter(emp => {
+            const effective_hk = (emp.jumlah_hk || 0) - ((emp.cuti_minggu_hari || 0) + (emp.cuti_nasional_hari || 0));
+            const totalCuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0) + (emp.cuti_minggu_hari || 0) + (emp.cuti_nasional_hari || 0);
+            const hari_kerja = Math.max(0, (emp.jumlah_hk || 0) - totalCuti);
+            const other_cuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0);
+            const total_earnings = (emp.gaji_pokok || 0) + (emp.total_tunjangan || 0) + (emp.total_premi || 0) + (emp.lembur_jumlah || 0);
+
+            // Keep if: has effective work OR has other cuti OR has earnings
+            return effective_hk > 0 || other_cuti > 0 || total_earnings > 0;
+        });
+
+        // Rebuild gangsMap with filtered & sorted data
+        gangsMap.clear();
+        for (const emp of employees) {
+            // Safety check: ensure employee has nama
+            if (!emp || !emp.nama) {
+                debug(CATEGORY, `⚠️ Skipping employee without nama: ${JSON.stringify(emp).substring(0, 100)}`);
+                continue;
+            }
+            const gang = emp.gang_code || "UNKNOWN";
+            if (!gangsMap.has(gang)) gangsMap.set(gang, []);
+            gangsMap.get(gang)!.push(emp);
+        }
+
+        // Sort by name within each gang (with safety check)
+        for (const [gangCodeKey, gangEmployees] of gangsMap) {
+            gangEmployees.sort((a, b) => {
+                const nameA = a?.nama || '';
+                const nameB = b?.nama || '';
+                return nameA.localeCompare(nameB);
+            });
+        }
+
+        const totalTime = Date.now() - startTime;
+        const totalEmployees = Array.from(gangsMap.values()).reduce((sum, arr) => sum + arr.length, 0);
+
+        debug(CATEGORY, `✅ Phase 4 (final): ${Date.now() - t4}ms | Total: ${totalTime}ms for ${totalEmployees} employees`);
+
+        yield {
+            phase: 'complete',
+            gangs: new Map(gangsMap),
+            meta: {
+                total_gangs: gangsMap.size,
+                total_employees: totalEmployees,
+                processed_employees: totalEmployees,
+                progress_pct: 100,
+                message: `✅ Complete! ${totalEmployees} employees in ${(totalTime / 1000).toFixed(1)}s`
+            },
+            dynamic_premi_headers: Array.from(dynamicPremiSet),
+            dynamic_potongan_headers: Array.from(dynamicPotonganSet),
+            dynamic_premi_titles: globalPremiResult.titleMap,
+            dynamic_potongan_titles: globalPotonganResult.titleMap
         };
     }
 }

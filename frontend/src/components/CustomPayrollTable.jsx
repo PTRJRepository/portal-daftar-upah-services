@@ -11,6 +11,18 @@ import { getTablePreferences, DEFAULT_CELL_COLORS } from '../services/tablePrefe
 import { usePayrollStream } from '../hooks/usePayrollStream';
 
 /**
+ * Helper: Extract asistensi number from gang code
+ * Must be defined at module level to avoid TDZ (Temporal Dead Zone) errors in minified builds
+ */
+const getAsistensiLocal = (gang_code) => {
+    if (!gang_code) return '';
+    const gc = String(gang_code).trim().toUpperCase();
+    if (gc.startsWith('K2')) return '1';
+    const match = gc.match(/\d+/);
+    return match ? match[0] : '';
+};
+
+/**
  * DAFTAR UPAH (Payroll Register)
  *
  * Daftar Upah adalah tabel yang berisi uraian lengkap tentang gaji karyawan,
@@ -260,8 +272,6 @@ export default function CustomPayrollTable({
         return loadingProgress;
     }, [stream.progress, loadingProgress]);
 
-    // Build rows from streamed gangs progressively
-    // This useMemo recalculates whenever gangs change (which happens as gangs stream in)
     const streamRows = useMemo(() => {
         console.log('[CustomPayrollTable] streamRows recomputing: stream.gangs.length =', stream.gangs?.length);
         if (!stream.gangs || stream.gangs.length === 0) {
@@ -273,17 +283,23 @@ export default function CustomPayrollTable({
         let globalNo = 1;
 
         stream.gangs.forEach(gangData => {
+            // Guard against malformed data
+            if (!gangData || typeof gangData !== 'object') {
+                console.warn('[CustomPayrollTable] Skipping invalid gangData:', gangData);
+                return;
+            }
+
             const gCode = gangData.gang_code;
-            const employees = gangData.employees || [];
+            const employees = Array.isArray(gangData.employees) ? gangData.employees : [];
 
             // Filter by gangPrefix if specified
             const filteredEmployees = gangPrefix
-                ? employees.filter(r => getAsistensiLocal(r.gang_code) === gangPrefix)
+                ? employees.filter(emp => emp && getAsistensiLocal(emp.gang_code) === gangPrefix)
                 : employees;
 
             // Filter by specific gangCode if specified
             const gangFilteredEmployees = gangCode && gangCode !== 'ALL'
-                ? filteredEmployees.filter(r => r.gang_code === gangCode)
+                ? filteredEmployees.filter(emp => emp && emp.gang_code === gangCode)
                 : filteredEmployees;
 
             // Add gang header
@@ -291,6 +307,7 @@ export default function CustomPayrollTable({
 
             // Add employees with numbering
             gangFilteredEmployees.forEach(emp => {
+                if (!emp) return;
                 emp.no = globalNo++;
                 emp.type = 'employee';
                 emp.id = emp.new_nik || emp.nik || `EMP_${emp.no}`;
@@ -417,15 +434,6 @@ export default function CustomPayrollTable({
         }
         return rows;
     }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells]);
-
-    // Helper: extract asistensi number from gang code (used in filtering)
-    const getAsistensiLocal = (gang_code) => {
-        if (!gang_code) return '';
-        const gc = String(gang_code).trim().toUpperCase();
-        if (gc.startsWith('K2')) return '1';
-        const match = gc.match(/\d+/);
-        return match ? match[0] : '';
-    };
 
     // Toggle handlers
     const toggleGroup = useCallback((group) => {
@@ -1124,7 +1132,7 @@ export default function CustomPayrollTable({
             setError(err.message);
             setLoadingProgress({ stage: 'complete', message: '', totalGangs: 0, processedGangs: 0, totalEmployees: 0, processedEmployees: 0 });
         }
-    }, [division, month, year, getAsistensiLocal]);
+    }, [division, month, year]);
 
     /**
      * fetchDivisionData: Fetches data directly from API.
