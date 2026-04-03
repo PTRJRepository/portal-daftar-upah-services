@@ -1,2 +1,5 @@
-[2026-04-03T03:22:44.027Z] === LOGS CLEARED ON STARTUP ===
+[2026-04-03T04:55:16.440Z] === LOGS CLEARED ON STARTUP ===
 
+[2026-04-03T04:55:28.016Z] [04:55:28.016] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 5215ms
+[2026-04-03T04:55:49.645Z] [04:55:49.644] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 25947ms
+[2026-04-03T04:56:06.830Z] [04:56:06.830] [WARN] [HTTP] SLOW GET /payroll/locked/report/raw-tree 23053ms

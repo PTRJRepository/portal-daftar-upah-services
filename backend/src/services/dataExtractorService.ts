@@ -293,7 +293,8 @@ export class DataExtractorService {
         includeVirtualGangs: boolean = false,
         useHistoryDb?: boolean | null,
         gangPrefix?: string,
-        skipHarvest: boolean = false
+        skipHarvest: boolean = false,
+        skipHeavyDetails: boolean = false
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -1470,9 +1471,8 @@ export class DataExtractorService {
                 penghasilan_bruto,
                 tarif_pajak_ter,
                 pph21_ter,
+                // [FROM PayrollCalculator] total_potongan = astek + bpjs_kes + bpjs_pensiun + spsi + pph21
                 total_potongan,
-                // [FROM PayrollCalculator] Potongan Bersih = total_potongan - premi_pph
-                // (premi_pph is ADDED to net pay, not deducted)
                 total_potongan_bersih,
                 // [NEW] premi_pph is separate field for display with + sign
                 premi_pph: pot_premi_pph,

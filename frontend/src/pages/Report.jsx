@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import React from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import HierHeaderGroup from '../components/common/HierHeaderGroup'
 import 'ag-grid-community/styles/ag-grid.css'
@@ -64,6 +65,20 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [allGangs, setAllGangs] = useState([])
   const [allDivisions, setAllDivisions] = useState([])
 
+  // [FIX] Matrix gang codes - loaded independently from available gangs, not from rows
+  // This ensures attendance/lembur matrix works even without payroll (Daftar Upah) data loaded
+  const matrixGangCodes = React.useMemo(() => {
+    // Always prefer availableGangs (already filtered by division + gang filter)
+    if (availableGangs.length > 0) {
+      return [...new Set(availableGangs.map(g => g.gang_code).filter(Boolean))]
+    }
+    // Fallback to rows (Daftar Upah data) - may be empty for Estate PC
+    if (rows.length > 0) {
+      return [...new Set(rows.map(r => r.gang_code).filter(Boolean))]
+    }
+    return []
+  }, [availableGangs, rows])
+
   // In development mode, use default values if props are not provided
   const devMonth = DEV_MODE ? (month || undefined) : month
   const devYear = DEV_MODE ? (year || undefined) : year
@@ -85,9 +100,9 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [error, setError] = useState('')
   const computeRulesRef = useRef({})
 
-  // --- MISSING DEFINITIONS RESTORED ---
   const gridRef = useRef(null)
   const dataInitRef = useRef(false)
+  const requestIdRef = useRef(0)
   const autoHideMapRef = useRef({})
   // [FIX] Store rows in a ref so datasource can synchronously access current data without state timing issues
   const rowsDataRef = useRef([])
@@ -125,6 +140,15 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const [isSavingPendapatan, setIsSavingPendapatan] = useState(false)
   const [showAddPendapatanPopup, setShowAddPendapatanPopup] = useState(false)
   const [newPendapatanName, setNewPendapatanName] = useState('')
+
+  // [NEW] Slim employee rows to save memory in frontend state
+  const slimEmployeeFrontend = useCallback((emp) => {
+    if (!emp) return emp;
+    // Strip heavy detail arrays that aren't needed for the main table
+    // Keep other_incomes as it's needed for calculations
+    const { shortage_details, excess_details, lembur_records, ...rest } = emp;
+    return rest;
+  }, []);
 
   const handleNikChange = useCallback((empcode, newVal, oldVal, rowData) => {
     if (newVal === oldVal) return;
@@ -444,7 +468,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   }, [finalDivision, authToken, allGangs, gangFilter.filters])
 
   // Helper to calculate total row for a gang
-  const calculateTotalRow = (filteredRows, gang) => {
+  const calculateTotalRow = useCallback((filteredRows, gang) => {
     const agg = (field) => Math.round(filteredRows.reduce((a, b) => a + Number(b[field] || 0), 0))
 
     // Helper function to aggregate nested other_incomes array
@@ -500,10 +524,10 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
 
     return totalRow
-  }
+  }, [customPendapatanTypes])
 
   // Helper to update Grand Total incrementally
-  const updateGrandTotal = (allRows) => {
+  const updateGrandTotal = useCallback((allRows) => {
     const dataRows = allRows.filter(r => !r.isHeader && !r.isTotal)
     if (dataRows.length === 0) {
       setPinnedBottom([])
@@ -561,79 +585,126 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     premiKeys.forEach(k => { grand.premi[k] = aggNested('premi', k) })
 
     setPinnedBottom([grand])
-  }
+  }, [customPendapatanTypes])
 
-  // Render Division Incremental Logic
+  // Render Division Incremental Logic with Parallel Server Fetchers
   const renderDivisionIncremental = async (token, division, month, year, gangs) => {
     if (!gangs || gangs.length === 0) {
       setDataReady(true)
       return
     }
 
+    const myRequestId = ++requestIdRef.current;
+
     try {
       setIsIncrementalLoading(true)
-      setLoadProgress({ current: 0, total: gangs.length, status: 'Menyiapkan pemuatan bertahap...' })
+      setLoadProgress({ current: 0, total: gangs.length, status: 'Menyiapkan pemuatan paralel...' })
       
-      let flatRows = []
-      let loadedCount = 0
-      const BATCH_SIZE = 3
+      const resultsMap = new Map();
+      let loadedCount = 0;
+      const activeGangs = new Set();
 
-      for (let i = 0; i < gangs.length; i += BATCH_SIZE) {
-        const batch = gangs.slice(i, i + BATCH_SIZE)
-        const batchPromises = batch.map(g => 
-          fetchReportRowsSimple(token, { 
-            month, year, gang_code: g.gang_code, division, 
-            skip: 0, limit: 2000, use_history: useHistory,
-            server_profile: g.server_profile 
-          }).then(data => ({ gang: g.gang_code, employees: data }))
-        )
+      // Group gangs by server profile
+      const serverGroups = {};
+      gangs.forEach(g => {
+        const p = g.server_profile || 'SERVER_PROFILE_1';
+        if (!serverGroups[p]) serverGroups[p] = [];
+        serverGroups[p].push(g);
+      });
 
-        setLoadProgress(prev => ({ 
-          ...prev, 
-          status: `Memproses Group: ${batch.map(g => g.gang_code).join(', ')}...` 
-        }))
-
-        const results = await Promise.all(batchPromises)
-
-        for (const res of results) {
-          const { gang, employees } = res
-          loadedCount++
-          
-          if (!employees || employees.length === 0) continue
-
-          const computed = applyComputeToRows(employees, computeRulesRef.current)
-          const filtered = computed.filter(r => (r.jumlah_hk || 0) > 0)
-          
+      const updateUI = () => {
+        if (myRequestId !== requestIdRef.current) return;
+        
+        // Flatten map to rows, sorted by gang_code
+        const sortedGangs = Array.from(resultsMap.keys()).sort();
+        const flat = [];
+        sortedGangs.forEach(g => {
+          const { filtered } = resultsMap.get(g);
           if (filtered.length > 0) {
-            flatRows.push({ isHeader: true, gang_code: gang, id: `HEADER_${gang}` })
-            flatRows.push(...filtered)
-            flatRows.push(calculateTotalRow(filtered, gang))
+            flat.push({ isHeader: true, gang_code: g, id: `HEADER_${g}` });
+            flat.push(...filtered);
+            flat.push(calculateTotalRow(filtered, g));
           }
+        });
+        
+        setRows(flat);
+        rowsDataRef.current = flat;
+        updateGrandTotal(flat);
+        recomputeAutoHideMap(flat);
+        
+        if (loadedCount > 0 && !dataReady) {
+          setDataReady(true);
+          setFirstBatchReady(true);
         }
+      };
 
-        // Update UI incrementally
-        const currentFlatRows = [...flatRows]
-        setRows(currentFlatRows)
-        rowsDataRef.current = currentFlatRows
-        updateGrandTotal(currentFlatRows)
-        recomputeAutoHideMap(currentFlatRows)
-        setLoadProgress(prev => ({ ...prev, current: Math.min(loadedCount, gangs.length) }))
+      // Worker for each server group
+      const serverWorker = async (profile, groupGangs) => {
+        // Process this server in batches of 2 to avoid blocking
+        for (let i = 0; i < groupGangs.length; i += 2) {
+          if (myRequestId !== requestIdRef.current) return;
 
-        if (i === 0) {
-          setFirstBatchReady(true)
-          setFirstBatchAttempted(true)
-          setDataReady(true)
+          const batch = groupGangs.slice(i, i + 2);
+          batch.forEach(g => activeGangs.add(g.gang_code));
+          
+          setLoadProgress(prev => ({ 
+            ...prev, 
+            status: activeGangs.size > 0 ? `Aktif: ${Array.from(activeGangs).join(', ')}` : 'Memproses...'
+          }));
+
+          const batchResults = await Promise.all(batch.map(g => 
+            fetchReportRowsSimple(token, { 
+              month, year, gang_code: g.gang_code, division, 
+              skip: 0, limit: 2000, use_history: useHistory,
+              server_profile: g.server_profile,
+              summary_only: 'true'
+            }).then(data => ({ gang: g.gang_code, employees: data }))
+          ));
+
+          if (myRequestId !== requestIdRef.current) return;
+
+          for (const res of batchResults) {
+            const { gang, employees } = res;
+            activeGangs.delete(gang);
+            loadedCount++;
+            
+            if (!employees || employees.length === 0) {
+              resultsMap.set(gang, { employees: [], filtered: [] });
+              continue;
+            }
+
+            const computed = applyComputeToRows(employees, computeRulesRef.current);
+            const filtered = computed.filter(r => (r.jumlah_hk || 0) > 0).map(slimEmployeeFrontend);
+            
+            resultsMap.set(gang, { employees, filtered });
+          }
+
+          // Batch UI update
+          updateUI();
+
+          setLoadProgress(prev => ({ 
+            ...prev, 
+            current: loadedCount,
+            status: activeGangs.size > 0 ? `Aktif: ${Array.from(activeGangs).join(', ')}` : 'Memproses...'
+          }));
         }
+      };
+
+      // Start all server workers in parallel
+      await Promise.all(Object.entries(serverGroups).map(([profile, grp]) => serverWorker(profile, grp)));
+
+      if (myRequestId === requestIdRef.current) {
+        setIsIncrementalLoading(false);
+        setLoadProgress(prev => ({ ...prev, status: 'Selesai', current: gangs.length }));
+        if (typeof onLoad === 'function') onLoad();
       }
 
-      setIsIncrementalLoading(false)
-      setLoadProgress(prev => ({ ...prev, status: 'Selesai' }))
-      if (typeof onLoad === 'function') onLoad()
-
     } catch (e) {
-      console.error("Incremental load error:", e)
-      setError("Gagal memuat data secara bertahap")
-      setIsIncrementalLoading(false)
+      if (myRequestId === requestIdRef.current) {
+        console.error("Incremental load error:", e);
+        setError("Gagal memuat data secara bertahap");
+        setIsIncrementalLoading(false);
+      }
     }
   }
 
@@ -868,16 +939,13 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           })
 
           // --- INJECT JABATAN COLUMN ---
-          console.log("Starting Column Injection...");
           let injected = false;
           const injectJabatanRecursive = (colsList) => {
             for (let i = 0; i < colsList.length; i++) {
               const c = colsList[i];
-              console.log("Checking col:", c.field, c.headerName);
               if (c.children) {
                 injectJabatanRecursive(c.children);
               } else if (c.field === 'beras_jumlah' || c.field === 'beras_rate' || c.field === 'tunjangan_beras') {
-                console.log("Found injection point at:", c.field);
                 // Found injection point
                 colsList.splice(i, 0, {
                   headerName: 'JABATAN',
@@ -916,8 +984,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             }
           }
           injectJabatanRecursive(finalCols);
-          if (!injected) console.warn("WARNING: Jabatan Column NOT injected! target field not found.");
-
 
           setColumnDefs(finalCols)
         } catch (colErr) {
@@ -962,7 +1028,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
           const computed = applyComputeToRows(data, computeRulesRef.current)
           // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER] Safety net: exclude 0 HK
-          const filtered = computed.filter(row => (row.jumlah_hk || 0) > 0)
+          const filtered = computed.filter(row => (row.jumlah_hk || 0) > 0).map(slimEmployeeFrontend);
 
           setRows(filtered)
           const safe = Array.isArray(filtered) ? filtered : []
@@ -1031,21 +1097,11 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
               if (r.premi) Object.keys(r.premi).forEach(k => premiKeys.add(k))
             })
             
-            let nestedPremiSum = 0
             premiKeys.forEach(k => {
               const val = aggNested('premi', k)
               grand.premi[k] = val
-              nestedPremiSum += val
             })
 
-            // Ensure total_premi is the SUM of all individual premiums if not already correct
-            // grand.total_premi = agg('total_premi') // This usually comes from backend total_premi
-            
-            for (let i = 1; i <= 7; i++) {
-              const f = `premi_dynamic_${i}`
-              const sum = agg(f)
-              if (sum > 0) grand[f] = sum
-            }
             // Add dynamic potongan from nested structure
             if (safe[0] && safe[0].potongan_upah_kotor && safe[0].potongan_upah_kotor.dynamic) {
               Object.keys(safe[0].potongan_upah_kotor.dynamic).forEach(key => {
@@ -1072,7 +1128,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
     // Trigger run when dependencies change
     run()
-  }, [authToken, activeMonth, activeYear, finalGangCode, columnDefs, useHistory])
+  }, [authToken, activeMonth, activeYear, finalGangCode, columnDefs, useHistory, customPendapatanTypes, slimEmployeeFrontend])
 
   useEffect(() => {
     let active = true
@@ -1080,7 +1136,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         try {
           if (authToken && finalGangCode) {
             if (String(finalGangCode).toUpperCase() === 'ALL') {
-              if (active) setGangInfo({ division: finalDivision, description: 'All gangs in division (Optimized)', loc_code: '' })
+              if (active) setGangInfo({ division: finalDivision, description: 'All gangs in division (Incremental)', loc_code: '' })
             } else {
               const info = await fetchGangInfo(authToken, finalGangCode)
               if (active) setGangInfo(info)
@@ -1159,7 +1215,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       ...customPendapatanTypes.map(t => `pendapatan_${t.type.toLowerCase()}`)
     ]
     const intFields = ['no', 'hari_kerja', 'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari', 'tidak_hadir_cth', 'tidak_hadir_alpa', 'jumlah_hk', 'masa_kerja_tahun', 'bunches_total', 'bunches_ripe', 'bunches_unripe', 'bunches_round', 'bunches_transactions']
-    // lembur_jam removed from intFields - should preserve decimal values (e.g., 1.5 hours)
     const decimalFields = ['lembur_jam']
 
     // Universal value getter for all field access - handles both flat and nested structures
@@ -1185,45 +1240,16 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         // Handle special cases for premium fields that might be nested
         if (field.startsWith('premi_') && row.premi && typeof row.premi === 'object') {
           const propertyName = field.replace('premi_', '');
-
-          // Try direct access to nested property
           if (row.premi[propertyName] !== undefined) {
             return Number(row.premi[propertyName]) || 0;
-          }
-
-          // Special mappings for common premium fields
-          const specialMappings = {
-            'brondol': 'brondol',
-            'pruning': 'pruning',
-            'masa_kerja': 'premi_masa_kerja',
-            'potongan_spsi': 'premi_potongan_spsi'
-          };
-
-          if (specialMappings[propertyName] && row.premi[specialMappings[propertyName]] !== undefined) {
-            return Number(row.premi[specialMappings[propertyName]]) || 0;
           }
         }
 
         // Handle nested object access for potongan_upah_kotor.dynamic
         if (field.includes('potongan_upah_kotor.dynamic.')) {
           const dynamicKey = field.replace('potongan_upah_kotor.dynamic.', '');
-          if (row.potongan_upah_kotor &&
-            row.potongan_upah_kotor.dynamic &&
-            typeof row.potongan_upah_kotor.dynamic === 'object' &&
-            row.potongan_upah_kotor.dynamic[dynamicKey] !== undefined) {
+          if (row.potongan_upah_kotor?.dynamic?.[dynamicKey] !== undefined) {
             return Number(row.potongan_upah_kotor.dynamic[dynamicKey]) || 0;
-          }
-        }
-
-
-        // Handle nested object access for potongan_upah_bersih.dynamic
-        if (field.includes('potongan_upah_bersih.dynamic.')) {
-          const dynamicKey = field.replace('potongan_upah_bersih.dynamic.', '');
-          if (row.potongan_upah_bersih &&
-            row.potongan_upah_bersih.dynamic &&
-            typeof row.potongan_upah_bersih.dynamic === 'object' &&
-            row.potongan_upah_bersih.dynamic[dynamicKey] !== undefined) {
-            return Number(row.potongan_upah_bersih.dynamic[dynamicKey]) || 0;
           }
         }
 
@@ -1277,49 +1303,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     if (isPremi) {
       cfg.headerClass = (cfg.headerClass || '') + ' header-section-premi'
       if (moneyFields.includes(f)) cfg.cellClass = (cfg.cellClass || '') + ' cell-premi cell-accounting'
-
-      // Add valueGetter for direct premi fields if not already set to ensure correct data access
-      if (f.startsWith('premi_') && !cfg.valueGetter) {
-        cfg.valueGetter = (params) => {
-          const row = params.data;
-          if (!row) return 0;
-
-          // Handle dot notation fields like 'premi.normalized_field'
-          if (f.includes('.')) {
-            const [objectName, fieldName] = f.split('.');
-            if (row[objectName] && typeof row[objectName] === 'object' && row[objectName][fieldName] !== undefined) {
-              return Number(row[objectName][fieldName]) || 0;
-            }
-          }
-
-          // Try direct field access first (for flat fields like premi_brondol, pot_spsi, etc.)
-          let value = row[f];
-          if (value !== undefined && value !== null) {
-            return Number(value) || 0;
-          }
-
-          // Fallback: try accessing through premi nested object
-          if (row.premi && typeof row.premi === 'object') {
-            // Check direct field in nested object
-            if (row.premi[f] !== undefined) {
-              return Number(row.premi[f]) || 0;
-            }
-
-            // Additional fallback: check for field without 'premi_' prefix in nested object
-            const fieldNameWithoutPrefix = f.replace('premi_', '');
-            if (row.premi[fieldNameWithoutPrefix] !== undefined) {
-              return Number(row.premi[fieldNameWithoutPrefix]) || 0;
-            }
-
-            // Special handling for premi_brondol which might be stored as 'brondol' in nested object
-            if (f === 'premi_brondol' && row.premi.brondol !== undefined) {
-              return Number(row.premi.brondol) || 0;
-            }
-          }
-
-          return 0;
-        };
-      }
     }
 
     // 5. Deduction (Potongan)
@@ -1335,7 +1318,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       cfg.cellClass = (cfg.cellClass || '') + ' cell-net-salary cell-accounting'
     }
 
-    // 7. Dynamic Pendapatan Lainnya Edit Mode - make custom pendapatan columns editable (including THR)
+    // 7. Dynamic Pendapatan Lainnya Edit Mode
     const customPendapatanField = f.startsWith('pendapatan_') && !['pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'].includes(f);
     if (customPendapatanField) {
       const fieldType = f.replace('pendapatan_', '').toUpperCase();
@@ -1426,7 +1409,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       cfg.valueFormatter = p => formatInteger(p.value)
       cfg.type = 'rightAligned'
     } else if (cfg.field && decimalFields.includes(cfg.field)) {
-      // Use decimal formatter for lembur_jam etc. (preserves 1 decimal place)
       cfg.valueFormatter = p => formatDecimal(p.value)
       cfg.type = 'rightAligned'
     } else if (cfg.field && ['nama'].includes(cfg.field)) {
@@ -1444,7 +1426,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
 
     return cfg
-  }, [baseCol])
+  }, [baseCol, customPendapatanTypes])
 
   const enhanceColumnsRecursive = (cols, depth = 0) => {
     if (!Array.isArray(cols)) return []
@@ -1454,7 +1436,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         const kids = enhanceColumnsRecursive(c.children, depth + 1)
         const visibleKids = kids.filter(k => !k.hide)
         if (visibleKids.length > 0) {
-          // Apply header styles to group parents too
           let headerClass = `hdr-level-${depth + 1}`
           const hdr = String(c.headerName || '').toUpperCase()
           if (hdr.includes('ABSENSI')) headerClass += ' header-section-absensi'
@@ -1475,10 +1456,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const ensureHierarchicalOrThrow = (cols) => {
     const arr = Array.isArray(cols) ? cols : []
     const hasGroup = arr.some(c => Array.isArray(c.children) && c.children.length > 0)
-    if (!hasGroup && arr.length > 0) {
-      // Auto-wrap if flat? For now throw to ensure structure
-      // throw new Error('Hierarchical headers required')
-    }
   }
 
   const recomputeAutoHideMap = (dataRows) => {
@@ -1486,12 +1463,10 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       const neverHide = new Set([
         'no', 'nik', 'nama', 'jenis_kelamin', 'upah_bersih', 'jumlah_upah_kotor', 'total_tunjangan', 'total_premi', 'gaji_pokok', 'upah_pokok', 'hari_kerja', 'jumlah_hk',
         'total_potongan', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya',
-        // Dynamic custom pendapatan types
         ...customPendapatanTypes.map(t => `pendapatan_${t.type.toLowerCase()}`)
       ])
 
-      // Add dynamic potongan fields to neverHide if they have data
-      if (dataRows[0] && dataRows[0].potongan_upah_kotor && dataRows[0].potongan_upah_kotor.dynamic) {
+      if (dataRows[0]?.potongan_upah_kotor?.dynamic) {
         Object.keys(dataRows[0].potongan_upah_kotor.dynamic).forEach(key => {
           neverHide.add(`potongan_upah_kotor.dynamic.${key}`)
         })
@@ -1524,7 +1499,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
     try {
       setIsExporting(true);
-      setLoadingStatus('Generating Excel Worksheet in progress. This could take a while...');
+      setLoadingStatus('Generating Excel Worksheet in progress...');
       await exportReportToExcelPro(rows, columnDefs, {
         division: finalDivision,
         gangCode: finalGangCode,
@@ -1540,12 +1515,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
   }
 
-  /**
-   * Download Daftar Upah as a server-generated Excel with:
-   * - Dynamic premi columns (one col per premi type)
-   * - 'Uraian Premi' section header
-   * - Excel formulas for all calculated values
-   */
   const handleDownloadDaftarUpahExcel = async () => {
     try {
       setIsDownloadingExcel(true);
@@ -1579,6 +1548,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   };
 
   const autoSizeAll = () => {
+    if (!gridRef.current?.columnApi) return
     const allIds = []
     gridRef.current.columnApi.getColumns().forEach(c => allIds.push(c.getId()))
     gridRef.current.columnApi.autoSizeColumns(allIds)
@@ -1621,7 +1591,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                 setRows([])
                 setPinnedBottom([])
                 setOverrideDivision(newDivision)
-                setOverrideGangCode(null) // Reset gang when division changes
+                setOverrideGangCode(null)
                 dataInitRef.current = false
               }
             }}
@@ -1649,7 +1619,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             isDownloadingExcel={isDownloadingExcel}
             onDownloadExcel={handleDownloadDaftarUpahExcel}
           />
-          {/* Pendapatan Lainnya Edit Mode Toggle + Add */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px', position: 'relative' }}>
             <button
               onClick={() => setEditModePendapatan(p => !p)}
@@ -1690,7 +1659,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                 +
               </button>
             )}
-            {/* Active custom types pills */}
             {editModePendapatan && customPendapatanTypes.length > 0 && (
               <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                 {customPendapatanTypes.map(t => (
@@ -1715,7 +1683,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                 ))}
               </div>
             )}
-            {/* Add Popup */}
             {showAddPendapatanPopup && (
               <div style={{
                 position: 'absolute',
@@ -1737,53 +1704,24 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                     value={newPendapatanName}
                     onChange={e => setNewPendapatanName(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') handleAddPendapatanType(newPendapatanName); }}
-                    placeholder="Nama kolom (misal: Kontanan)"
+                    placeholder="Nama kolom"
                     autoFocus
-                    style={{
-                      flex: 1,
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #d1d5db',
-                      fontSize: '12px',
-                      outline: 'none'
-                    }}
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '12px' }}
                   />
-                  <button
-                    onClick={() => handleAddPendapatanType(newPendapatanName)}
-                    disabled={!newPendapatanName.trim()}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      backgroundColor: '#10b981',
-                      color: '#fff',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      cursor: newPendapatanName.trim() ? 'pointer' : 'not-allowed',
-                      opacity: newPendapatanName.trim() ? 1 : 0.5
-                    }}
-                  >
-                    Tambah
-                  </button>
+                  <button onClick={() => handleAddPendapatanType(newPendapatanName)} disabled={!newPendapatanName.trim()} className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '12px' }}>Tambah</button>
                 </div>
-                <button
-                  onClick={() => setShowAddPendapatanPopup(false)}
-                  style={{ marginTop: '6px', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '11px' }}
-                >Tutup</button>
               </div>
             )}
           </div>
         </div>
       }
     >
-      {/* Gang Filter Component */}
       <GangFilter
         gangs={gangFilter.availableData.gangs}
         divisions={gangFilter.availableData.divisions}
         selectedFilters={gangFilter.filters}
         onFiltersChange={(filters) => {
           gangFilter.setFilters(filters)
-          // Clear current data when filter changes
           setRows([])
           setPinnedBottom([])
           dataInitRef.current = false
@@ -1791,348 +1729,99 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         isLoading={gangFilter.isLoading}
       />
 
-      {/* Filter Status Summary */}
-      {gangFilter.filters.hasActiveFilter && (
-        <div style={{
-          marginBottom: '1rem',
-          padding: '0.75rem',
-          backgroundColor: 'var(--info-50)',
-          border: '1px solid var(--info-200)',
-          borderRadius: '6px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem'
-        }}>
-          <span style={{ fontSize: '1rem' }}>🎯</span>
-          <div>
-            <div style={{ fontWeight: '600', color: 'var(--info-800)', fontSize: '0.9rem' }}>
-              Filter Aktif: {gangFilter.getFilterSummary().text}
-            </div>
-            <div style={{ color: 'var(--info-700)', fontSize: '0.8rem' }}>
-              {gangFilter.stats.totalInSelection} gang dari {gangFilter.stats.totalGangs} total gang
-            </div>
-          </div>
-          <button
-            className="btn btn-secondary"
-            onClick={() => gangFilter.clearFilters()}
-            style={{ marginLeft: 'auto', fontSize: '0.8rem', padding: '0.25rem 0.75rem' }}
-          >
-            Clear Filter
-          </button>
-        </div>
-      )}
-
-      {/* Incremental Loading Progress Bar */}
       {isIncrementalLoading && (
-        <div style={{
-          padding: '10px 20px',
-          backgroundColor: '#f8fafc',
-          borderBottom: '1px solid #e2e8f0',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10
-        }}>
+        <div style={{ padding: '10px 20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>
-              {loadProgress.status}
-            </span>
-            <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
-              {loadProgress.current} / {loadProgress.total} Group ({Math.round((loadProgress.current / loadProgress.total) * 100)}%)
-            </span>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>{loadProgress.status}</span>
+            <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>{loadProgress.current} / {loadProgress.total} ({Math.round((loadProgress.current / loadProgress.total) * 100)}%)</span>
           </div>
-          <div style={{
-            width: '100%',
-            height: '8px',
-            backgroundColor: '#e2e8f0',
-            borderRadius: '4px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              width: `${(loadProgress.current / loadProgress.total) * 100}%`,
-              height: '100%',
-              backgroundColor: '#3b82f6',
-              transition: 'width 0.3s ease-in-out',
-              backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent)',
-              backgroundSize: '1rem 1rem'
-            }} className="progress-bar-animated" />
+          <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+            <div style={{ width: `${(loadProgress.current / loadProgress.total) * 100}%`, height: '100%', backgroundColor: '#3b82f6', transition: 'width 0.3s ease-in-out' }} className="progress-bar-animated" />
           </div>
         </div>
       )}
 
       {loading && !isIncrementalLoading && (
-        <LoadingScreen
-          isLoading={true}
-          message={loadingStatus || 'Memuat data laporan...'}
-          gangCode={finalGangCode}
-          month={activeMonth}
-          year={activeYear}
-          steps={[
-            { name: 'Menghubungkan ke database', duration: 1500 },
-            { name: 'Mengambil data karyawan', duration: 2000 },
-            { name: 'Melakukan kalkulasi payroll', duration: 2500 },
-            { name: 'Menyiapkan laporan akhir', duration: 1500 }
-          ]}
-        />
+        <LoadingScreen isLoading={true} message={loadingStatus || 'Memuat data...'} gangCode={finalGangCode} month={activeMonth} year={activeYear} />
       )}
 
       {viewMode === 'table' ? (
         <React.Fragment>
-          {/* [FIX] Only show "no data" message when loading is DONE and data is READY but rows are empty */}
           {(!loading && dataReady && rows.length === 0 && finalGangCode && !error) ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-card)', border: '2px dashed var(--neutral-300)', borderRadius: '12px', margin: '20px', padding: '40px' }}>
-              <div style={{ fontSize: '4.5rem', marginBottom: '1rem', color: 'var(--neutral-400)' }}>📭</div>
-              <h3 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', fontWeight: '600', fontSize: '1.25rem' }}>Data Belum Tersedia</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', maxWidth: '400px', textAlign: 'center', lineHeight: '1.5' }}>
-                Data daftar upah untuk <strong>{(String(finalGangCode).toUpperCase() === 'ALL') ? 'Semua Group' : `Group ${finalGangCode}`}</strong> pada periode <strong>Bulan {activeMonth} Tahun {activeYear}</strong> belum bisa ditampilkan atau belum digenerate.
-              </p>
+            <div className="flex-center" style={{ height: '300px', flexDirection: 'column' }}>
+              <div style={{ fontSize: '3rem' }}>📭</div>
+              <h3>Data Belum Tersedia</h3>
             </div>
-          {/* [FIX] AG Grid only mounts when data is confirmed ready - prevents "loading done but no data" flicker */}
           ) : dataReady ? (
-          <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
-            <AgGridReact
-              ref={gridRef}
-              context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory, editModePendapatan, customPendapatanTypes, onPendapatanChange: handlePendapatanChange }}
-              columnDefs={columnDefs}
-              rowData={rows}
-              columnTypes={columnTypes}
-              rowModelType={String(finalGangCode).toUpperCase() === 'ALL' ? 'clientSide' : 'infinite'}
-              cacheBlockSize={INFINITE_BATCH_SIZE}
-              maxBlocksInCache={5}
-              blockLoadDebounceMillis={200}
-              getRowId={params => params.data?.id || params.data?.nik || params.data?.NIK || params.data?.no}
-              defaultColDef={baseCol}
-              rowClassRules={rowClassRules}
-              pinnedBottomRowData={pinnedBottom}
-              rowSelection={'multiple'}
-              rowBuffer={20}
-              suppressRowClickSelection={true}
-              onRangeSelectionChanged={onRangeSelectionChanged}
-              onCellClicked={onCellClicked}
-              animateRows={true}
-              rowHeight={32}
-              autoGroupHeaderHeight={true}
-              isFullWidthRow={(params) => params.rowNode.data && params.rowNode.data.isHeader}
-              fullWidthCellRenderer={GangHeaderRenderer}
-              onGridReady={params => {
-                if (String(finalGangCode).toUpperCase() !== 'ALL') {
-                  const datasource = {
-                    getRows: async rq => {
-                      const start = rq.startRow
-                      const end = rq.endRow
-                      const monthValue = typeof finalMonth === 'string' && finalMonth.includes('-') ? parseInt(finalMonth.split('-')[1], 10) : finalMonth
-                      const yearValue = typeof finalMonth === 'string' && finalMonth.includes('-') ? parseInt(finalMonth.split('-')[0], 10) : finalYear
-
-                      let batch = []
-                      // [FIX] Use rowsDataRef for first batch - this is synchronous (ref, not state)
-                      // so it's always available when datasource is called, regardless of React state timing
-                      if (start === 0 && rowsDataRef.current && rowsDataRef.current.length > 0) {
-                        batch = rowsDataRef.current.slice(0, end - start)
-                        // Sync to initialRowsPreview for consistency
-                        if (initialRowsPreview.length === 0) {
-                          setInitialRowsPreview(rowsDataRef.current.slice(0, INFINITE_BATCH_SIZE))
+            <div style={{ flex: 1, width: '100%' }} className="ag-theme-alpine">
+              <AgGridReact
+                ref={gridRef}
+                context={{ jobTitles, onJobChange: handleJobChange, editModeNik, onNikChange: handleNikChange, openNikHistory, editModePendapatan, customPendapatanTypes, onPendapatanChange: handlePendapatanChange }}
+                columnDefs={columnDefs}
+                rowData={rows}
+                columnTypes={columnTypes}
+                rowModelType={String(finalGangCode).toUpperCase() === 'ALL' ? 'clientSide' : 'infinite'}
+                getRowId={params => params.data?.id || params.data?.nik || params.data?.NIK || params.data?.no}
+                defaultColDef={baseCol}
+                rowClassRules={rowClassRules}
+                pinnedBottomRowData={pinnedBottom}
+                rowSelection={'multiple'}
+                rowBuffer={20}
+                onRangeSelectionChanged={onRangeSelectionChanged}
+                onCellClicked={onCellClicked}
+                animateRows={true}
+                rowHeight={32}
+                isFullWidthRow={(params) => params.rowNode.data?.isHeader}
+                fullWidthCellRenderer={GangHeaderRenderer}
+                onGridReady={params => {
+                  if (String(finalGangCode).toUpperCase() !== 'ALL') {
+                    const datasource = {
+                      getRows: async rq => {
+                        const start = rq.startRow
+                        const end = rq.endRow
+                        let batch = []
+                        if (start === 0 && rowsDataRef.current.length > 0) {
+                          batch = rowsDataRef.current.slice(0, end - start)
+                        } else {
+                          batch = await fetchReportRowsBatched(authToken, { month: activeMonth, year: activeYear, gang_code: finalGangCode, division: finalDivision, skip: start, limit: end - start })
                         }
-                      } else {
-                        const leafFields = []
-                        const walk = (c) => { if (c.children) c.children.forEach(walk); else if (c.field) leafFields.push(c.field) }
-                        columnDefs.forEach(walk)
-
-                        batch = await fetchReportRowsBatched(authToken, {
-                          month: (overrideMonth || monthValue),
-                          year: (overrideYear || yearValue),
-                          gang_code: finalGangCode,
-                          division: finalDivision,
-                          fields: leafFields,
-                          skip: start,
-                          limit: end - start
-                        })
-                      }
-
-                      if (batch && batch.length > 0) {
-                        const computed = applyComputeToRows(batch, computeRulesRef.current)
-                        // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER] Safety net: exclude 0 HK
-                        const filtered = computed.filter(row => (row.jumlah_hk || 0) > 0)
-                        recomputeAutoHideMap(filtered)
-                        rq.successCallback(filtered, -1)
-                      } else {
-                        rq.successCallback([], 0)
+                        if (batch?.length > 0) {
+                          const filtered = applyComputeToRows(batch, computeRulesRef.current).filter(row => (row.jumlah_hk || 0) > 0).map(slimEmployeeFrontend);
+                          rq.successCallback(filtered, -1)
+                        } else rq.successCallback([], 0)
                       }
                     }
+                    params.api.setDatasource(datasource)
                   }
-                  params.api.setDatasource(datasource)
-                }
-              }}
-            />
-          </div>
-          )}
-        )}
+                }}
+              />
+            </div>
+          ) : null}
 
-          {/* Save Button for NIK Edits */}
           {Object.keys(pendingNikEdits).length > 0 && (
             <div className="report-save-bar">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '18px' }}>⚠️</span>
-                <span style={{ color: '#854d0e', fontWeight: '600' }}>
-                  Pending: {Object.keys(pendingNikEdits).length} NIK telah diubah (Versioned Edit Mode)
-                </span>
-              </div>
-              <div className="report-save-bar-actions">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => { setPendingNikEdits({}); loadColumnDefinitions(); }}
-                  disabled={isSavingNik}
-                  style={{ backgroundColor: 'white' }}
-                >
-                  Batal
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleSaveNikEdits}
-                  disabled={isSavingNik}
-                  style={{ backgroundColor: '#eab308', color: '#854d0e', borderColor: '#ca8a04' }}
-                >
-                  {isSavingNik ? 'Menyimpan...' : '💾 SIMPAN PERUBAHAN NIK'}
-                </button>
-              </div>
+              <span>Pending: {Object.keys(pendingNikEdits).length} NIK diubah</span>
+              <button className="btn btn-primary" onClick={handleSaveNikEdits}>SIMPAN PERUBAHAN NIK</button>
             </div>
           )}
 
-          {/* Save Button for Pendapatan Lainnya Edits */}
           {Object.keys(pendingPendapatanEdits).length > 0 && (
             <div className="report-save-bar" style={{ borderColor: '#10b981', backgroundColor: '#ecfdf5' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '18px' }}>💰</span>
-                <span style={{ color: '#065f46', fontWeight: '600' }}>
-                  Pending: {Object.keys(pendingPendapatanEdits).length} Pendapatan Lainnya telah diubah
-                </span>
-              </div>
-              <div className="report-save-bar-actions">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setPendingPendapatanEdits({})}
-                  disabled={isSavingPendapatan}
-                  style={{ backgroundColor: 'white' }}
-                >
-                  Batal
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleSavePendapatanEdits}
-                  disabled={isSavingPendapatan}
-                  style={{ backgroundColor: '#10b981', color: '#fff', borderColor: '#059669' }}
-                >
-                  {isSavingPendapatan ? 'Menyimpan...' : '💾 SIMPAN PENDAPATAN'}
-                </button>
-              </div>
+              <span>Pending: {Object.keys(pendingPendapatanEdits).length} Pendapatan diubah</span>
+              <button className="btn btn-primary" onClick={handleSavePendapatanEdits}>SIMPAN PENDAPATAN</button>
             </div>
           )}
         </React.Fragment>
       ) : viewMode === 'attendance' ? (
-        <GangAttendanceMatrix
-          token={authToken}
-          gangCodes={
-            String(finalGangCode).toUpperCase() === 'ALL'
-              ? (rows.length > 0
-                  ? [...new Set(rows.filter(r => r.gang_code && !r.isHeader && !r.isTotal).map(r => r.gang_code))]
-                  : (allGangs || []).map(g => g.gang_code))
-              : [finalGangCode]
-          }
-          month={activeMonth}
-          year={activeYear}
-          division={finalDivision}
-        />
+        <GangAttendanceMatrix token={authToken} gangCodes={matrixGangCodes} month={activeMonth} year={activeYear} division={finalDivision} />
+      ) : viewMode === 'overtime' ? (
+        <GangOvertimeMatrix token={authToken} gangCodes={matrixGangCodes} month={activeMonth} year={activeYear} division={finalDivision} />
       ) : (
-        <GangOvertimeMatrix
-          token={authToken}
-          gangCodes={
-            String(finalGangCode).toUpperCase() === 'ALL'
-              ? (rows.length > 0
-                  ? [...new Set(rows.filter(r => r.gang_code && !r.isHeader && !r.isTotal).map(r => r.gang_code))]
-                  : (allGangs || []).map(g => g.gang_code))
-              : [finalGangCode]
-          }
-          month={activeMonth}
-          year={activeYear}
-          division={finalDivision}
-        />
-      )}
-
-      {/* History Modal for NIK */}
-      {historyModalNik.isOpen && (
-        <div className="history-modal-overlay" onClick={() => setHistoryModalNik({ isOpen: false, data: null, empCode: null, loading: false })}>
-          <div className="history-modal-content" onClick={e => e.stopPropagation()}>
-            <div className="history-modal-header">
-              <h3 style={{ margin: 0 }}>Riwayat Perubahan NIK</h3>
-              <button
-                onClick={() => setHistoryModalNik({ isOpen: false, data: null, empCode: null, loading: false })}
-                style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}
-              >✕</button>
-            </div>
-
-            <div style={{ marginBottom: '16px', fontWeight: '600', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Karyawan: {historyModalNik.empCode}</span>
-            </div>
-
-            {historyModalNik.loading ? (
-              <div style={{ textAlign: 'center', padding: '20px' }}>Loading history...</div>
-            ) : historyModalNik.data && historyModalNik.data.length > 0 ? (
-              <div className="history-list">
-                {historyModalNik.data.map((h, index) => (
-                  <div key={h.id} className="history-item">
-                    <div className="history-meta" style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '8px' }}>
-                      <span><strong>Versi:</strong> {h.version} {index === 0 && <span style={{ color: '#10b981', fontSize: '10px', marginLeft: '4px' }}>(Terbaru)</span>}</span>
-                      <span><strong>Diubah oleh:</strong> {h.changed_by}</span>
-                      <span>{new Date(h.changed_at).toLocaleString('id-ID')}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div className="history-changes">
-                        <span className="history-old">{h.old_value || '(Kosong/Tidak Ada)'}</span>
-                        <span>➔</span>
-                        <span className="history-new">{h.new_value}</span>
-                      </div>
-
-                      {/* Delete Version Button - only on the latest version */}
-                      {index === 0 && (
-                        <button
-                          onClick={async () => {
-                            if (!window.confirm(`Yakin ingin MENGHAPUS versi ini dan ROLLBACK NIK ke versi sebelumnya?`)) return;
-
-                            try {
-                              const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
-                              const res = await fetch(`${backendUrl}/employee-hr-data/${historyModalNik.empCode}/rollback`, {
-                                method: 'POST',
-                                headers: { 'Authorization': authToken ? `Bearer ${authToken}` : '' }
-                              });
-                              const json = await res.json();
-                              if (json.success) {
-                                alert("Berhasil di-rollback!");
-                                setHistoryModalNik({ isOpen: false, data: null, empCode: null, loading: false });
-                                // Force refresh grid data
-                                setRows([]);
-                                setPinnedBottom([]);
-                                dataInitRef.current = false;
-                              } else {
-                                alert("Gagal rollback: " + json.error);
-                              }
-                            } catch (e) {
-                              alert("Error: " + e.message);
-                            }
-                          }}
-                          className="btn btn-danger"
-                          style={{
-                            padding: '4px 8px', fontSize: '11px', backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fca5a5'
-                          }}
-                        >
-                          🗑️ Hapus Setelan Versi Ini
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="history-empty">Belum ada riwayat perubahan NIK (versi default Plantware).</div>
-            )}
-          </div>
+        // 'employee' view mode - show simple employee list
+        <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👤</div>
+          <h3 style={{ color: '#374151' }}>Mode Karyawan</h3>
+          <p>Fitur daftar karyawan individu sedang dalam pengembangan.</p>
         </div>
       )}
 
@@ -2141,21 +1830,6 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   )
 }
 
-// Main Report component that wraps with GangFilterProvider
-export default function ReportWrapper({ token, user, month, year, gang_code, division, onLoad, onBack, gangPrefix = null }) {
-  return (
-    <GangFilterProvider>
-      <ReportContent
-        token={token}
-        user={user}
-        month={month}
-        year={year}
-        gang_code={gang_code}
-        division={division}
-        onLoad={onLoad}
-        onBack={onBack}
-        gangPrefix={gangPrefix}
-      />
-    </GangFilterProvider>
-  )
+export default function ReportWrapper(props) {
+  return <GangFilterProvider><ReportContent {...props} /></GangFilterProvider>
 }

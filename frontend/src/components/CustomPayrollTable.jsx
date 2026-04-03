@@ -147,6 +147,7 @@ export default function CustomPayrollTable({
     const [highlightedRowId, setHighlightedRowId] = useState(null);
     const [activePremiFields, setActivePremiFields] = useState([]);
     const [activePotFields, setActivePotFields] = useState([]);
+    const [activePendapatanFields, setActivePendapatanFields] = useState([]); // dynamically discovered pendapatan_* fields
     const [allEmployeeNiks, setAllEmployeeNiks] = useState([]);
 
     // Manual Edit State
@@ -861,6 +862,17 @@ export default function CustomPayrollTable({
             ).map(([, field]) => field);
             setActivePotFields(activePot);
 
+            // Discover dynamic pendapatan_* fields by scanning rows (not in headers map)
+            const allPendapatanKeys = new Set();
+            employeeRows.forEach(row => {
+                Object.keys(row).forEach(key => {
+                    if (key.startsWith('pendapatan_')) {
+                        allPendapatanKeys.add(key);
+                    }
+                });
+            });
+            setActivePendapatanFields(Array.from(allPendapatanKeys).sort());
+
             setAllEmployeeNiks(employeeRows.map(r => r.nik).filter(Boolean));
             setSelection([]);
 
@@ -1103,23 +1115,23 @@ export default function CustomPayrollTable({
                         );
                     }
                 },
-                // PENDAPATAN LAINNYA TAXABLE - THR, Bonus, Custom that are taxable (included in penghasilan_bruto)
-                // These show how other incomes are factored into tax calculation
-                { field: 'taxable_pendapatan_thr', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'THR'], w: 85, className: 'text-right', render: (row) => {
-                    const val = Number(row.taxable_pendapatan_thr || row.pendapatan_thr || 0);
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }},
-                { field: 'taxable_pendapatan_bonus', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'BONUS'], w: 85, className: 'text-right', render: (row) => {
-                    const val = Number(row.taxable_pendapatan_bonus || row.pendapatan_bonus || 0);
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }},
-                { field: 'taxable_pendapatan_custom', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'CUSTOM'], w: 85, className: 'text-right', render: (row) => {
-                    const val = Number(row.taxable_pendapatan_custom || row.pendapatan_custom || 0);
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }},
+                // PENDAPATAN LAINNYA TAXABLE (Dynamic) - THR, Bonus, Custom, etc that are taxable (included in penghasilan_bruto)
+                ...activePendapatanFields.filter(f => f !== 'pendapatan_lainnya').map(field => {
+                    const baseType = field.replace('pendapatan_', '');
+                    const taxField = `taxable_pendapatan_${baseType}`;
+                    const displayName = baseType.toUpperCase();
+                    return {
+                        field: taxField,
+                        headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, displayName],
+                        w: 85,
+                        className: 'text-right',
+                        render: (row) => {
+                            const val = Number(row[taxField] || row[field] || 0);
+                            if (val === 0) return '-';
+                            return formatNumber(val);
+                        }
+                    };
+                }),
                 { field: 'taxable_pendapatan_lainnya', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'TOTAL'], w: 85, className: 'text-right font-bold', render: (row) => {
                     const val = Number(row.taxable_pendapatan_lainnya || row.pendapatan_lainnya || 0);
                     if (val === 0) return '-';
@@ -1511,42 +1523,21 @@ export default function CustomPayrollTable({
             });
         cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold' });
 
-        // PENDAPATAN LAINNYA - THR, Bonus, Custom (Tampil sebagai PENAMBAHAN di UPAH KOTOR)
-        // This section shows other incomes as ADDITIONS to gross wage (before subtraction as deduction)
-        cols.push({
-            field: 'pendapatan_thr',
-            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'THR (+)'],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_thr || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
-        cols.push({
-            field: 'pendapatan_bonus',
-            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'BONUS (+)'],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_bonus || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
-        cols.push({
-            field: 'pendapatan_custom',
-            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'CUSTOM (+)'],
-            w: 85,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_custom || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
+        // PENDAPATAN LAINNYA (Dynamic) - (Tampil sebagai PENAMBAHAN di UPAH KOTOR)
+        activePendapatanFields.forEach(field => {
+            if (field === 'pendapatan_lainnya' || field === 'pendapatan_kontan') return;
+            const displayName = field.replace('pendapatan_', '').toUpperCase() + ' (+)';
+            cols.push({
+                field,
+                headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, displayName],
+                w: 85,
+                className: 'text-right',
+                render: (row) => {
+                    const val = Number(row[field] || 0);
+                    if (val === 0) return '-';
+                    return formatNumber(val);
+                }
+            });
         });
 
         // KONTAN - Other income column (always visible, editable only in edit mode)
@@ -1941,44 +1932,21 @@ export default function CustomPayrollTable({
                 });
             }
 
-            // PENDAPATAN LAINNYA - THR, Bonus, Custom (Digabung ke dalam POTONGAN LAINNYA)
-            // THR (Tunjangan Hari Raya)
-            cols.push({
-                field: 'pendapatan_thr',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'THR (-)'],
-                w: 85,
-                className: 'text-right',
-                render: (row) => {
-                    const val = Number(row.pendapatan_thr || 0);
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }
-            });
-
-            // Bonus
-            cols.push({
-                field: 'pendapatan_bonus',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'BONUS (-)'],
-                w: 85,
-                className: 'text-right',
-                render: (row) => {
-                    const val = Number(row.pendapatan_bonus || 0);
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }
-            });
-
-            // Custom (income type lain)
-            cols.push({
-                field: 'pendapatan_custom',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'CUSTOM (-)'],
-                w: 85,
-                className: 'text-right',
-                render: (row) => {
-                    const val = Number(row.pendapatan_custom || 0);
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }
+            // PENDAPATAN LAINNYA (Dynamic) - (Digabung ke dalam POTONGAN LAINNYA)
+            activePendapatanFields.forEach(field => {
+                if (field === 'pendapatan_lainnya' || field === 'pendapatan_kontan') return;
+                const displayName = field.replace('pendapatan_', '').toUpperCase() + ' (-)';
+                cols.push({
+                    field,
+                    headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, displayName],
+                    w: 85,
+                    className: 'text-right',
+                    render: (row) => {
+                        const val = Number(row[field] || 0);
+                        if (val === 0) return '-';
+                        return formatNumber(val);
+                    }
+                });
             });
 
             // KONTAN (sync from UPAH KOTOR - same value as deduction)

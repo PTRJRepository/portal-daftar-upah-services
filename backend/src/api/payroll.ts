@@ -390,12 +390,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             };
 
             console.log(`[PayrollRoutes] division-raw-tree: returning response with ${gangsList.length} gangs`);
-            // [DEBUG] Check if jabatan_jumlah is in the response
-            const firstEmp = gangsList[0]?.employees?.[0];
-            if (firstEmp) {
-                const jb = firstEmp.jabatan_jumlah;
-                console.log(`[DEBUG] First employee ${firstEmp.emp_code}: jabatan_jumlah = ${jb}, keys = ${Object.keys(firstEmp).filter(k => k.includes('jabatan') || k.includes('tunjangan')).join(', ')}`);
-            }
             return response;
         } catch (e: any) {
             console.error("[PayrollRoutes] division-raw-tree error:", e);
@@ -951,9 +945,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
             const gangPrefix = query.gang_prefix;
             const serverProfile = query.server_profile || Config.DB_PROFILE;
+            const skipHeavyDetails = query.summary_only === 'true';
 
             // Use provided serverProfile or default to Config.DB_PROFILE
-            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, serverProfile, false, useHistoryDb, gangPrefix);
+            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, serverProfile, false, useHistoryDb, gangPrefix, false, skipHeavyDetails);
 
             return {
                 gang_code: gangCode,
@@ -978,7 +973,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             limit: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
             gang_prefix: t.Optional(t.String()),
-            server_profile: t.Optional(t.String())
+            server_profile: t.Optional(t.String()),
+            summary_only: t.Optional(t.String())
         })
     })
 

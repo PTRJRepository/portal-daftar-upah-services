@@ -881,16 +881,23 @@ export default function EmployeeDetailPage({
                             {daysOfWeek.map(day => <div key={`ot-header-${day}`} className="calendar-day-header">{day}</div>)}
                             {blanks.map(blank => <div key={`ot-blank-${blank}`} className="calendar-cell empty"></div>)}
                             {days.map(day => {
-                                const dayData = overtime.matrix?.[day] || { has_overtime: false, hours: 0 }
+                                const dayData = overtime.matrix?.[day] || { has_overtime: false, hours: 0, amount_formula: 0 }
+                                const displayAmount = dayData.amount_formula || dayData.amount || 0
                                 return (
                                     <div
                                         key={`ot-cell-${day}`}
                                         className={`calendar-cell overtime-cell ${dayData.has_overtime ? 'has-overtime' : ''}`}
-                                        title={dayData.has_overtime ? `Tanggal ${day}: ${dayData.hours} jam` : `Tanggal ${day}: Tidak ada lembur`}
+                                        title={dayData.has_overtime
+                                            ? `Tanggal ${day}: ${dayData.hours} jam = Rp ${formatCurrency(displayAmount)}`
+                                            : `Tanggal ${day}: Tidak ada lembur`
+                                        }
                                     >
                                         <div className="calendar-date">{day}</div>
                                         {dayData.has_overtime && (
-                                            <div className="calendar-status">{dayData.hours} Jam</div>
+                                            <>
+                                                <div className="calendar-status ot-hours">{dayData.hours}j</div>
+                                                <div className="calendar-status ot-amount">Rp{formatCurrency(displayAmount)}</div>
+                                            </>
                                         )}
                                     </div>
                                 )
