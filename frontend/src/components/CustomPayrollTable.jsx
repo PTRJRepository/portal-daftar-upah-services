@@ -8,6 +8,7 @@ import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
 import { getTablePreferences, DEFAULT_CELL_COLORS } from '../services/tablePreferencesService';
+import { usePayrollStream } from '../hooks/usePayrollStream';
 
 /**
  * DAFTAR UPAH (Payroll Register)
@@ -75,6 +76,13 @@ const formatDecimal = (value) => {
     const n = Number(value);
     if (isNaN(n)) return '-';
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
+};
+
+const formatBytes = (bytes) => {
+    if (!bytes || bytes === 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 // Format header label to support newlines manually across environments
@@ -178,6 +186,242 @@ export default function CustomPayrollTable({
 
     const tableRef = useRef(null);
 
+    // ================================================================
+    // PROGRESSIVE STREAMING (SSE)
+    // Replace the old fetch/process approach with SSE streaming
+    // ================================================================
+    const [streamEnabled, setStreamEnabled] = useState(true); // Always use streaming
+
+    // Use SSE streaming for progressive data delivery
+    const stream = usePayrollStream({
+        token,
+        division,
+        month,
+        year,
+        gangPrefix,
+        gangCode,
+        enabled: !!token && !!division && !!month && !!year && !gangLoading && streamEnabled
+    });
+
+    // Sync stream grand total to component state
+    useEffect(() => {
+        if (stream.grandTotal) {
+            setGrandTotal(stream.grandTotal);
+        }
+    }, [stream.grandTotal]);
+
+    // Sync stream dynamic headers to component state
+    useEffect(() => {
+        if (stream.meta) {
+            const dynPot = stream.meta.dynamic_potongan_headers || [];
+            const dynPrem = stream.meta.dynamic_premi_headers || [];
+            const potTitleMap = stream.meta.potongan_title_map || {};
+            const premTitleMap = stream.meta.premi_title_map || {};
+
+            const premWithTitles = {};
+            dynPrem.forEach(field => {
+                const title = premTitleMap[field] || field;
+                premWithTitles[title] = field;
+            });
+            const potWithTitles = {};
+            dynPot.forEach(field => {
+                const title = potTitleMap[field] || field;
+                potWithTitles[title] = field;
+            });
+            setDynamicHeaders({ premi: premWithTitles, potongan: potWithTitles });
+
+            // Notify parent of data loaded
+            onDataLoaded?.({
+                gangs: stream.gangs,
+                grand_total: stream.grandTotal,
+                dynamic_premi_headers: dynPrem,
+                dynamic_potongan_headers: dynPot,
+                premi_title_map: premTitleMap,
+                potongan_title_map: potTitleMap
+            });
+        }
+    }, [stream.meta, stream.gangs, stream.grandTotal, onDataLoaded]);
+
+    // Merge stream progress with existing loadingProgress for the loading bar
+    const effectiveProgress = useMemo(() => {
+        // If streaming is active and has progress, use stream progress
+        if (stream.progress?.stage && stream.progress.stage !== null) {
+            return {
+                stage: stream.progress.stage === 'complete' ? 'complete' : 'streaming',
+                message: stream.progress.message || 'Memproses data...',
+                totalGangs: stream.progress.totalGangs || 0,
+                processedGangs: stream.progress.processedGangs || 0,
+                totalEmployees: stream.progress.totalEmployees || 0,
+                processedEmployees: stream.progress.processedEmployees || 0,
+                bytesReceived: stream.progress.bytesReceived || 0
+            };
+        }
+        return loadingProgress;
+    }, [stream.progress, loadingProgress]);
+
+    // Build rows from streamed gangs progressively
+    // This useMemo recalculates whenever gangs change (which happens as gangs stream in)
+    const streamRows = useMemo(() => {
+        if (!stream.gangs || stream.gangs.length === 0) return [];
+
+        const processedRows = [];
+        let globalNo = 1;
+
+        stream.gangs.forEach(gangData => {
+            const gCode = gangData.gang_code;
+            const employees = gangData.employees || [];
+
+            // Filter by gangPrefix if specified
+            const filteredEmployees = gangPrefix
+                ? employees.filter(r => getAsistensiLocal(r.gang_code) === gangPrefix)
+                : employees;
+
+            // Filter by specific gangCode if specified
+            const gangFilteredEmployees = gangCode && gangCode !== 'ALL'
+                ? filteredEmployees.filter(r => r.gang_code === gangCode)
+                : filteredEmployees;
+
+            // Add gang header
+            processedRows.push({ type: 'gang_header', gang_code: gCode, id: `HEADER_${gCode}` });
+
+            // Add employees with numbering
+            gangFilteredEmployees.forEach(emp => {
+                emp.no = globalNo++;
+                emp.type = 'employee';
+                emp.id = emp.new_nik || emp.nik || `EMP_${emp.no}`;
+                processedRows.push(emp);
+            });
+
+            // Add gang total
+            const gangTotal = gangData.gang_totals || {};
+            gangTotal.type = 'gang_total';
+            gangTotal.id = `TOTAL_${gCode}`;
+            gangTotal.gang_code = gCode;
+            gangTotal.nama = `TOTAL GANG ${gCode}`;
+            gangTotal.emp_code = `${gangFilteredEmployees.length} Kary.`;
+            processedRows.push(gangTotal);
+        });
+
+        return processedRows;
+    }, [stream.gangs, gangPrefix, gangCode]);
+
+    // Determine active dynamic fields from streamed rows
+    const streamActiveFields = useMemo(() => {
+        const employeeRows = streamRows.filter(r => r.type === 'employee');
+        if (employeeRows.length === 0) return { activePremi: [], activePot: [], activePendapatan: [] };
+
+        const dynPot = stream.meta?.dynamic_potongan_headers || [];
+        const dynPrem = stream.meta?.dynamic_premi_headers || [];
+        const potTitleMap = stream.meta?.potongan_title_map || {};
+        const premTitleMap = stream.meta?.premi_title_map || {};
+
+        const premWithTitles = {};
+        dynPrem.forEach(field => { premWithTitles[field] = field; });
+        const potWithTitles = {};
+        dynPot.forEach(field => { potWithTitles[field] = field; });
+
+        const activePremi = Object.entries(premWithTitles).filter(([, field]) =>
+            employeeRows.some(row => {
+                const val = row[field];
+                return val !== null && val !== undefined && val !== 0 && val !== '';
+            })
+        ).map(([, field]) => field);
+
+        const activePot = Object.entries(potWithTitles).filter(([, field]) =>
+            employeeRows.some(row => {
+                const val = row[field];
+                return val !== null && val !== undefined && val !== 0 && val !== '';
+            })
+        ).map(([, field]) => field);
+
+        const excludedPendapatan = ['pendapatan_tidak_tetap', 'pendapatan_lainnya'];
+        const allPendapatanKeys = new Set();
+        employeeRows.forEach(row => {
+            Object.keys(row).forEach(key => {
+                if (key.startsWith('pendapatan_') && !excludedPendapatan.includes(key)) {
+                    allPendapatanKeys.add(key);
+                }
+            });
+        });
+
+        return {
+            activePremi,
+            activePot,
+            activePendapatan: Array.from(allPendapatanKeys).sort()
+        };
+    }, [streamRows, stream.meta]);
+
+    // Update active field states when stream data changes
+    useEffect(() => {
+        if (streamRows.length > 0) {
+            setActivePremiFields(streamActiveFields.activePremi);
+            setActivePotFields(streamActiveFields.activePot);
+            setActivePendapatanFields(streamActiveFields.activePendapatan);
+
+            const employeeRows = streamRows.filter(r => r.type === 'employee');
+            setAllEmployeeNiks(employeeRows.map(r => r.nik).filter(Boolean));
+            setSelection([]);
+            setDataReady(true);
+        }
+    }, [streamRows, streamActiveFields]);
+
+    // Fallback: if stream errors and we have no data, fall back to old fetch
+    useEffect(() => {
+        if (stream.error && !stream.gangs?.length && streamEnabled) {
+            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch');
+            setStreamEnabled(false);
+            setError(null); // Clear stream error
+        }
+    }, [stream.error]);
+
+    // When streaming is active, keep rows in sync with streamRows for edit mode compatibility
+    // But don't overwrite rows if user has made edits (to preserve optimistic updates)
+    useEffect(() => {
+        const hasEdits = Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0;
+        if (stream.gangs && stream.gangs.length > 0 && streamRows.length > 0) {
+            if (!hasEdits) {
+                setRows(streamRows);
+            }
+        }
+    }, [streamRows]);
+
+    // Use displayRows as the single source of truth for rendering
+    // It merges stream data with edit overlays when needed
+    const displayRows = useMemo(() => {
+        if (stream.gangs && stream.gangs.length > 0 && rows.length > 0) {
+            // Merge stream rows with any pending edits
+            if (Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0) {
+                return rows.map(row => {
+                    if (row.type !== 'employee') return row;
+                    const empCode = row.emp_code || row.nik;
+                    const editKey = `${empCode}`;
+                    const edit = editedCells[editKey];
+                    const kontanEdit = editedKontanCells[editKey];
+                    if (!edit && !kontanEdit) return row;
+                    return {
+                        ...row,
+                        ...(edit ? { [edit.field]: edit.value } : {}),
+                        ...(kontanEdit ? { pendapatan_kontanan: kontanEdit.value } : {})
+                    };
+                });
+            }
+            return rows;
+        }
+        if (stream.gangs && stream.gangs.length > 0) {
+            return streamRows;
+        }
+        return rows;
+    }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells]);
+
+    // Helper: extract asistensi number from gang code (used in filtering)
+    const getAsistensiLocal = (gang_code) => {
+        if (!gang_code) return '';
+        const gc = String(gang_code).trim().toUpperCase();
+        if (gc.startsWith('K2')) return '1';
+        const match = gc.match(/\d+/);
+        return match ? match[0] : '';
+    };
+
     // Toggle handlers
     const toggleGroup = useCallback((group) => {
         if (group === 'PANEN') setHarvestExpanded(prev => !prev);
@@ -196,15 +440,15 @@ export default function CustomPayrollTable({
         }
     }, []);
 
-    // Sync employee codes when rows change (for select-all checkbox state only)
+    // Sync employee codes when displayRows change (for select-all checkbox state only)
     useEffect(() => {
-        const empCodeList = rows
+        const empCodeList = displayRows
             .filter(r => r.type === 'employee')
             .map(r => r.emp_code || r.nik)
             .filter(code => code);
         setAllEmployeeNiks(empCodeList);
         // NOTE: Don't call onSelectAllEmployees here - let user manually select employees
-    }, [rows]);
+    }, [displayRows]);
 
     // Handle checkbox toggle
     const handleCheckboxChange = (nik) => {
@@ -275,7 +519,7 @@ export default function CustomPayrollTable({
         }
 
         // Track the added column so we can persist it even if empty
-        const firstEmp = rows.find(r => r.type === 'employee');
+        const firstEmp = displayRows.find(r => r.type === 'employee');
         if (firstEmp) {
             setAddedColumns(prev => [...prev, {
                 nik: firstEmp.nik,
@@ -619,7 +863,7 @@ export default function CustomPayrollTable({
         if (!confirm('Simpan/Seed semua jabatan yang tampil ke database?')) return;
         setLoading(true);
         try {
-            const employees = rows.filter(r => r.type === 'employee');
+            const employees = displayRows.filter(r => r.type === 'employee');
             const payload = employees.map(r => ({
                 empcode: r.nik,
                 employee_name: r.nama,
@@ -649,15 +893,6 @@ export default function CustomPayrollTable({
             setLoading(false);
         }
     };
-
-    // Helper to extract Asistensi (group number) from gang code (same logic as MainPage)
-    const getAsistensiLocal = useCallback((gangCode) => {
-        if (!gangCode) return null;
-        const gc = gangCode.trim().toUpperCase();
-        if (gc.startsWith('K2')) return '1';
-        const match = gc.match(/\d+/);
-        return match ? match[0] : null;
-    }, []);
 
     /**
      * processRawData: Transform raw API data → display rows with PROGRESSIVE rendering.
@@ -863,10 +1098,12 @@ export default function CustomPayrollTable({
             setActivePotFields(activePot);
 
             // Discover dynamic pendapatan_* fields by scanning rows (not in headers map)
+            // EXCLUDE: pendapatan_tidak_tetap (duplikat dari pendapatan_thr + pendapatan_kontan, tidak boleh tampil sebagai kolom)
+            const excludedPendapatan = ['pendapatan_tidak_tetap', 'pendapatan_lainnya'];
             const allPendapatanKeys = new Set();
             employeeRows.forEach(row => {
                 Object.keys(row).forEach(key => {
-                    if (key.startsWith('pendapatan_')) {
+                    if (key.startsWith('pendapatan_') && !excludedPendapatan.includes(key)) {
                         allPendapatanKeys.add(key);
                     }
                 });
@@ -974,11 +1211,16 @@ export default function CustomPayrollTable({
     }, [division, month, year, gangCode, gangPrefix, token, useHistoryDb, gangLoading, processRawData, onDataLoaded]);
 
     // --- MAIN DATA EFFECT ---
-    // Fetch directly from API on filter change. No caching.
+    // When streaming is enabled: use SSE stream (handled by usePayrollStream hook)
+    // When streaming is disabled: fallback to old fetch/process approach
     useEffect(() => {
         if (!month || !year || !division || !token || gangLoading) return;
-        fetchDivisionData();
-    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb, gangLoading, fetchDivisionData]);
+        // Streaming is handled by usePayrollStream hook automatically
+        // Only call fetchDivisionData when streaming is disabled (fallback mode)
+        if (!streamEnabled) {
+            fetchDivisionData();
+        }
+    }, [month, year, division, gangCode, gangPrefix, token, refreshTrigger, useHistoryDb, gangLoading, fetchDivisionData, streamEnabled]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -1524,8 +1766,10 @@ export default function CustomPayrollTable({
         cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold' });
 
         // PENDAPATAN LAINNYA (Dynamic) - (Tampil sebagai PENAMBAHAN di UPAH KOTOR)
+        // EXCLUDE: pendapatan_lainnya (total), pendapatan_kontan (kolom terpisah), pendapatan_tidak_tetap (duplikat)
+        const excludedPendapatanCols = ['pendapatan_lainnya', 'pendapatan_kontan', 'pendapatan_tidak_tetap'];
         activePendapatanFields.forEach(field => {
-            if (field === 'pendapatan_lainnya' || field === 'pendapatan_kontan') return;
+            if (excludedPendapatanCols.includes(field)) return;
             const displayName = field.replace('pendapatan_', '').toUpperCase() + ' (+)';
             cols.push({
                 field,
@@ -1934,59 +2178,6 @@ export default function CustomPayrollTable({
                 });
             }
 
-            // PENDAPATAN LAINNYA (Dynamic) - (Digabung ke dalam POTONGAN LAINNYA)
-            activePendapatanFields.forEach(field => {
-                if (field === 'pendapatan_lainnya' || field === 'pendapatan_kontan') return;
-                const displayName = field.replace('pendapatan_', '').toUpperCase() + ' (-)';
-                cols.push({
-                    field,
-                    headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, displayName],
-                    w: 85,
-                    className: 'text-right',
-                    render: (row) => {
-                        const val = Number(row[field] || 0);
-                        if (val === 0) return '-';
-                        return formatNumber(val);
-                    }
-                });
-            });
-
-            // KONTAN (sync from UPAH KOTOR - same value as deduction)
-            cols.push({
-                field: 'pot_kontan',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'KONTAN (-)'],
-                w: 85,
-                className: 'text-right',
-                render: (row) => {
-                    if (row.type !== 'employee') {
-                        const val = Number(row.pendapatan_kontan || 0);
-                        if (val === 0) return '-';
-                        return formatNumber(val);
-                    }
-                    const empCode = row.emp_code || row.nik;
-                    const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
-                    const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
-                    if (kontanVal === 0) return '-';
-                    return formatNumber(kontanVal);
-                }
-            });
-
-            // Total Pendapatan Lainnya (include kontan)
-            cols.push({
-                field: 'pendapatan_lainnya',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'TOTAL LAINNYA (-)'],
-                w: 95,
-                className: 'text-right font-bold',
-                render: (row) => {
-                    const empCode = row.emp_code || row.nik;
-                    const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
-                    const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
-                    const baseKontan = Number(row.pendapatan_kontan || 0);
-                    const val = Number(row.pendapatan_lainnya || 0) - baseKontan + (kontanVal || 0);
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }
-            });
         }
 
         // Total Potongan Bersih (Always Shown) - sync with kontan edits
@@ -2293,10 +2484,10 @@ export default function CustomPayrollTable({
 
     // Show "Belum Tersedia" ONLY when:
     // 1. Loading is complete (loading = false)
-    // 2. Data has been fetched (dataReady = true) 
-    // 3. But no rows returned (rows.length = 0)
+    // 2. Data has been fetched (dataReady = true)
+    // 3. But no rows returned (displayRows.length = 0)
     // This means: data was fetched but genuinely empty, not still loading
-    if (!loading && dataReady && rows.length === 0) {
+    if (!loading && dataReady && displayRows.length === 0) {
         const MONTHS_LABEL = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
         // Error state with retry button
@@ -2399,8 +2590,8 @@ export default function CustomPayrollTable({
 
     return (
         <div className="payroll-table-container" style={{ fontSize: `${11 * scale}px` }} onMouseUp={handleMouseUp}>
-            {/* Loading Progress Bar - Above Header */}
-            {loading && loadingProgress.stage && (
+            {/* Loading / Streaming Progress Bar - Sticky Header */}
+            {(loading || (effectiveProgress?.stage && effectiveProgress.stage !== 'complete')) && (
                 <div style={{
                     position: 'sticky',
                     top: 0,
@@ -2411,10 +2602,10 @@ export default function CustomPayrollTable({
                     borderBottom: '2px solid #e5e7eb',
                     padding: '12px 20px',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                    marginBottom: rows.length > 0 ? '0' : '0'
                 }}>
                     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        {/* Top row: icon + message + stats */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <div style={{
                                     width: '20px',
@@ -2424,16 +2615,37 @@ export default function CustomPayrollTable({
                                     borderRadius: '50%',
                                     animation: 'spin 1s linear infinite'
                                 }} />
-                                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
-                                    {loadingProgress.message || 'Memproses data...'}
-                                </span>
+                                <div>
+                                    <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
+                                        {effectiveProgress?.stage === 'connecting' ? 'Menghubungi server...' :
+                                         effectiveProgress?.stage === 'querying' ? 'Memproses query database...' :
+                                         effectiveProgress?.stage === 'streaming' ? 'Streaming data...' :
+                                         effectiveProgress?.message || 'Memproses data...'}
+                                    </span>
+                                    {effectiveProgress?.stage === 'streaming' && streamEnabled && (
+                                        <span style={{ marginLeft: '8px', fontSize: '11px', color: '#10b981', fontWeight: 500 }}>
+                                            ⚡ Streaming aktif
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                            {loadingProgress.totalGangs > 0 && (
-                                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
-                                    {loadingProgress.processedGangs}/{loadingProgress.totalGangs} gang • {loadingProgress.processedEmployees}/{loadingProgress.totalEmployees} karyawan
-                                </span>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                {effectiveProgress?.totalGangs > 0 && (
+                                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
+                                        {effectiveProgress.processedGangs}/{effectiveProgress.totalGangs} gang
+                                        {' • '}
+                                        {effectiveProgress.processedEmployees}/{effectiveProgress.totalEmployees} karyawan
+                                    </span>
+                                )}
+                                {effectiveProgress?.bytesReceived > 0 && (
+                                    <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 400 }}>
+                                        {formatBytes(effectiveProgress.bytesReceived)}
+                                    </span>
+                                )}
+                            </div>
                         </div>
+
+                        {/* Progress bar */}
                         <div style={{
                             width: '100%',
                             height: '6px',
@@ -2443,14 +2655,46 @@ export default function CustomPayrollTable({
                         }}>
                             <div style={{
                                 height: '100%',
-                                width: loadingProgress.totalGangs > 0
-                                    ? `${(loadingProgress.processedGangs / loadingProgress.totalGangs) * 100}%`
+                                width: effectiveProgress?.totalGangs > 0
+                                    ? `${(effectiveProgress.processedGangs / effectiveProgress.totalGangs) * 100}%`
                                     : '100%',
-                                backgroundColor: loadingProgress.stage === 'fetching' ? '#3b82f6' : '#10b981',
+                                backgroundColor: effectiveProgress?.stage === 'querying' ? '#f59e0b' :
+                                                effectiveProgress?.stage === 'streaming' ? '#10b981' :
+                                                effectiveProgress?.stage === 'connecting' ? '#3b82f6' : '#10b981',
                                 transition: 'width 0.3s ease',
                                 borderRadius: '3px'
                             }} />
                         </div>
+
+                        {/* Gang name indicator during streaming */}
+                        {effectiveProgress?.stage === 'streaming' && stream.gangs?.length > 0 && (
+                            <div style={{
+                                marginTop: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                flexWrap: 'wrap'
+                            }}>
+                                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Gang:</span>
+                                {stream.gangs.slice(-Math.min(6, stream.gangs.length)).map((g, i) => (
+                                    <span key={g.gang_code} style={{
+                                        fontSize: '11px',
+                                        padding: '2px 8px',
+                                        borderRadius: '10px',
+                                        backgroundColor: '#f1f5f9',
+                                        color: '#475569',
+                                        fontWeight: 500
+                                    }}>
+                                        {g.gang_code} ({g.employees?.length || 0})
+                                    </span>
+                                ))}
+                                {stream.gangs.length > 6 && (
+                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                        +{stream.gangs.length - 6} gang lagi...
+                                    </span>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -2671,7 +2915,7 @@ export default function CustomPayrollTable({
                     ))}
                 </thead>
                 <tbody>
-                    {rows.map((row, rIdx) => {
+                    {displayRows.map((row, rIdx) => {
                         if (row.type === 'gang_header') {
                             return (
                                 <tr key={row.id} className="gang-header-row">
@@ -2750,7 +2994,7 @@ export default function CustomPayrollTable({
                                 // Special handling for specific columns
                                 if (col.field === 'nama') val = 'GRAND TOTAL';
                                 else if (col.field === 'no') val = '';
-                                else if (col.field === 'emp_code') val = `${rows.filter(r => !r.isTotal && !r.isHeader).length} KARYAWAN`;
+                                else if (col.field === 'emp_code') val = `${displayRows.filter(r => !r.isTotal && !r.isHeader).length} KARYAWAN`;
                                 // For numeric columns, always show 0 instead of '-' if value is undefined
                                 else if (typeof val === 'number' || val !== undefined) {
                                     // It's a number (could be 0), format it

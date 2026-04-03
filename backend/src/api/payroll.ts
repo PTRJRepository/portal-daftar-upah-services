@@ -1244,3 +1244,292 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             return { error: e.message };
         }
     })
+
+    /**
+     * PROGRESSIVE STREAMING ENDPOINT
+     *
+     * Uses Server-Sent Events (SSE) to stream gang data progressively.
+     *
+     * Flow:
+     * 1. Run ALL heavy DB queries in parallel (same as original)
+     * 2. Group employees by gang
+     * 3. Stream each gang batch as it's processed
+     * 4. Stream final grand_total when all gangs are done
+     *
+     * This allows the frontend to start rendering rows BEFORE all data is processed.
+     *
+     * Event types:
+     * - meta: { total_gangs, total_employees, dynamic_headers, execution_time_ms }
+     * - progress: { stage, message, processed_gangs, total_gangs }
+     * - gang: { gang_code, employees[], gang_totals, chunk_index }
+     * - complete: { grand_total, total_execution_ms }
+     * - error: { message }
+     */
+    .get("/report/division-raw-tree/stream", async ({ headers, query, set }): Promise<any> => {
+        const authHeader = headers["authorization"] as string | undefined;
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { error: "Unauthorized" };
+        }
+        const token = authHeader.split(" ")[1];
+        const user = await authService.verifyToken(token);
+
+        const { dataExtractorService } = await import("../services/dataExtractorService");
+        const divisionCode = query.division_code;
+        const month = parseInt(query.month);
+        const year = parseInt(query.year);
+        const gangPrefix = query.gang_prefix;
+        const gangCode = query.gang_code || "ALL";
+
+        if (!divisionCode || !month || !year) {
+            set.status = 400;
+            return { error: "division_code, month, and year are required" };
+        }
+
+        // Permission check
+        if (user && user.role !== UserRole.ADMIN) {
+            if (divisionCode && !user.divisions.includes(divisionCode)) {
+                set.status = 403;
+                return { error: "Division not accessible" };
+            }
+        }
+
+        const skipHarvest = true;
+
+        console.log(`[SSE Stream] Starting | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix || 'none'}`);
+
+        // Set headers for SSE
+        set.headers = {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  // Disable buffering for nginx
+            "Access-Control-Allow-Origin": "*",
+        };
+
+        // Helper: send SSE event
+        const sendEvent = (eventName: string, data: any): string => {
+            const payload = JSON.stringify(data);
+            return `event: ${eventName}\ndata: ${payload}\n\n`;
+        };
+
+        // Helper: encode for SSE (escape newlines, carriage returns)
+        const encodeSSE = (str: string): string => {
+            return str.replace(/\r\n|\r|\n/g, "\\n").replace(/\r/g, "\\r");
+        };
+
+        try {
+            // === PHASE 0 + 1 + 2: Run all DB queries (same as original, can't stream this) ===
+            const startTotal = performance.now();
+
+            const result = await dataExtractorService.extractPayrollData(
+                month, year, gangCode, divisionCode, null,
+                Config.DB_PROFILE, false, null, gangPrefix, skipHarvest, true // skipHeavyDetails=true
+            );
+
+            const queryTime = performance.now() - startTotal;
+            console.log(`[SSE Stream] Query phase done: ${queryTime.toFixed(0)}ms for ${result.data_rows.length} rows`);
+
+            // Group employees by gang
+            const gangsMap: Record<string, any[]> = {};
+            for (const row of result.data_rows) {
+                const gang = row.gang_code || "UNKNOWN";
+                if (!gangsMap[gang]) gangsMap[gang] = [];
+                gangsMap[gang].push(row);
+            }
+
+            const gangKeys = Object.keys(gangsMap).sort();
+            const totalEmployees = result.data_rows.length;
+
+            // Helper: calculate gang totals
+            const calculateGangTotals = (employees: any[]): Record<string, number> => {
+                const activeEmployees = employees.filter((emp: any) => {
+                    const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
+                    const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
+                    return hari_kerja > 0;
+                });
+
+                const totals: Record<string, number> = {};
+                const numericFields = [
+                    'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
+                    'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
+                    'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
+                    'potongan_upah_kotor_total', 'jumlah_upah_kotor',
+                    'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
+                    'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
+                    'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
+                    'upah_bersih', 'koreksi_hk',
+                    'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
+                    'pendapatan_lainnya', 'pot_pendapatan_lainnya',
+                    'bunches_total', 'bunches_ripe', 'bunches_unripe',
+                    'bunches_underripe', 'bunches_overripe', 'bunches_rotten', 'bunches_abnormal',
+                    'loose_fruit', 'bunches_transactions'
+                ];
+
+                for (const field of numericFields) totals[field] = 0;
+                totals['employee_count'] = activeEmployees.length;
+
+                for (const emp of activeEmployees) {
+                    for (const field of numericFields) {
+                        const val = emp[field];
+                        if (val !== null && val !== undefined) {
+                            totals[field] += parseFloat(val) || 0;
+                        }
+                    }
+                    // Dynamic premi
+                    for (const key of Object.keys(emp)) {
+                        if (key.startsWith('premi_') && key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'premi_koreksi') {
+                            const val = emp[key];
+                            if (val !== null && val !== undefined && typeof val === 'number') {
+                                if (!totals[key]) totals[key] = 0;
+                                totals[key] += val;
+                            }
+                        }
+                        if (key.startsWith('KOREKSI') || key.startsWith('POTONGAN')) {
+                            const val = emp[key];
+                            if (val !== null && val !== undefined && typeof val === 'number') {
+                                if (!totals[key]) totals[key] = 0;
+                                totals[key] += val;
+                            }
+                        }
+                    }
+                }
+
+                return totals;
+            };
+
+            // Calculate grand total
+            const grandTotal = calculateGangTotals(result.data_rows);
+
+            // === Send meta event ===
+            const metaPayload: Record<string, any> = {
+                division: divisionCode,
+                month,
+                year,
+                total_gangs: gangKeys.length,
+                total_employees: totalEmployees,
+                dynamic_premi_headers: result.dynamic_premi_headers || [],
+                dynamic_potongan_headers: result.dynamic_potongan_headers || [],
+                premi_title_map: result.premi_title_map || {},
+                potongan_title_map: result.potongan_title_map || {},
+                meta: {
+                    query_time_ms: Math.round(queryTime),
+                    row_count: result.data_rows.length
+                }
+            };
+
+            const totalTime = performance.now() - startTotal;
+            metaPayload.meta.execution_time_ms = Math.round(totalTime);
+
+            return new Response(
+                new ReadableStream({
+                    start(controller) {
+                        const encoder = new TextEncoder();
+
+                        const send = (eventName: string, data: any) => {
+                            try {
+                                const sse = sendEvent(eventName, data);
+                                controller.enqueue(encoder.encode(sse));
+                            } catch (e) {
+                                console.warn(`[SSE Stream] Failed to send ${eventName}:`, e);
+                            }
+                        };
+
+                        // Send initial meta
+                        send('meta', metaPayload);
+
+                        // === Stream gangs progressively ===
+                        // Group gangs into chunks of 5 for batched streaming
+                        // This balances responsiveness (small chunks) with throughput (fewer writes)
+                        const GANG_CHUNK_SIZE = 5;
+
+                        for (let i = 0; i < gangKeys.length; i++) {
+                            const gCode = gangKeys[i];
+                            const employees = gangsMap[gCode];
+
+                            // Sort employees by emp_code
+                            employees.sort((a, b) => {
+                                const codeA = String(a.emp_code || a.nik || '').trim();
+                                const codeB = String(b.emp_code || b.nik || '').trim();
+                                return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+                            });
+
+                            // Strip heavy arrays from employees before sending
+                            const slimEmployees = employees.map(slimEmployee);
+                            const gangTotals = calculateGangTotals(employees);
+
+                            send('gang', {
+                                gang_code: gCode,
+                                employees: slimEmployees,
+                                gang_totals: gangTotals,
+                                chunk_index: Math.floor(i / GANG_CHUNK_SIZE),
+                                gang_index: i,
+                                total_gangs: gangKeys.length,
+                                employees_count: employees.length
+                            });
+
+                            // Progress event every chunk
+                            if (i % GANG_CHUNK_SIZE === GANG_CHUNK_SIZE - 1 || i === gangKeys.length - 1) {
+                                send('progress', {
+                                    stage: 'streaming',
+                                    message: `Memproses gang ${i + 1}/${gangKeys.length}: ${gCode}`,
+                                    processed_gangs: i + 1,
+                                    total_gangs: gangKeys.length,
+                                    processed_employees: slimEmployees.reduce((s, e) => s + 1, 0),
+                                    total_employees: totalEmployees
+                                });
+                            }
+                        }
+
+                        // Send complete with grand total
+                        send('complete', {
+                            grand_total: grandTotal,
+                            total_execution_ms: Math.round(performance.now() - startTotal),
+                            gangs_count: gangKeys.length,
+                            employees_count: totalEmployees
+                        });
+
+                        controller.close();
+                    },
+                    cancel() {
+                        console.log('[SSE Stream] Client disconnected');
+                    }
+                }),
+                {
+                    headers: {
+                        "Content-Type": "text/event-stream",
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",
+                        "Access-Control-Allow-Origin": "*",
+                    }
+                }
+            );
+        } catch (e: any) {
+            console.error("[SSE Stream] Error:", e);
+            return new Response(
+                new ReadableStream({
+                    start(controller) {
+                        const encoder = new TextEncoder();
+                        controller.enqueue(encoder.encode(sendEvent('error', { message: e.message })));
+                        controller.close();
+                    }
+                }),
+                {
+                    headers: {
+                        "Content-Type": "text/event-stream",
+                        "Cache-Control": "no-cache",
+                        "X-Accel-Buffering": "no",
+                    }
+                }
+            );
+        }
+    }, {
+        query: t.Object({
+            division_code: t.String(),
+            month: t.String(),
+            year: t.String(),
+            gang_prefix: t.Optional(t.String()),
+            gang_code: t.Optional(t.String())
+        })
+    })

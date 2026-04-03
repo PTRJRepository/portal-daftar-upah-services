@@ -559,7 +559,6 @@ export class ReportService {
                     total_premi: emp.total_premi,
                     pot_koreksi: potKoreksi,
                     pendapatan_lainnya: 0,
-                    pendapatan_tidak_tetap_taxable: 0,
                     pot_astek_pekerja: astekPek,
                     pot_bpjs_kesehatan_pekerja: emp.pot_bpjs_kesehatan_pekerja,
                     pot_bpjs_pensiun_pekerja: bpjsPenPek,

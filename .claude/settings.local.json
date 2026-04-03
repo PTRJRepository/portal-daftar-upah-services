@@ -106,7 +106,17 @@
       "Bash(find 'D:\\\\Gawean Rebinmas\\\\PORTAL_ESTATE\\\\Plantware_Auto_Report\\\\Daftar_Upah_baru\\\\payroll_daftar_upah\\\\refactor_production/backend' -maxdepth 3 -type f \\\\\\(-name *.py -o -name *.json -o -name *.yaml -o -name *.yml \\\\\\))",
       "Bash(find 'D:\\\\Gawean Rebinmas\\\\PORTAL_ESTATE\\\\Plantware_Auto_Report\\\\Daftar_Upah_baru\\\\payroll_daftar_upah\\\\refactor_production/frontend/src' -maxdepth 4 -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
       "Bash(bun --bun tsc --noEmit)",
-      "Bash(python3)"
+      "Bash(python3)",
+      "Bash(mkdir -p _dev_utils/scripts/debugging)",
+      "Bash(mv backend/src/scripts/diagnose_*.ts _dev_utils/scripts/debugging/)",
+      "Bash(mv backend/src/scripts/trace_*.ts _dev_utils/scripts/debugging/)",
+      "Bash(mv backend/src/scripts/check_tables.ts _dev_utils/scripts/debugging/)",
+      "Bash(mv backend/src/scripts/check_history.ts _dev_utils/scripts/debugging/)",
+      "Bash(mv backend/src/scripts/diagnose_all_gangs.ts _dev_utils/scripts/debugging/)",
+      "Bash(mv backend/src/scripts/diagnose_religion.ts _dev_utils/scripts/debugging/)",
+      "Bash(mv backend/src/scripts/diagnose_deep.ts _dev_utils/scripts/debugging/)",
+      "Bash(mv backend/src/scripts/diagnose_thr_b2n.ts _dev_utils/scripts/debugging/)",
+      "Bash(mv backend/src/scripts/trace_thr_flow.ts _dev_utils/scripts/debugging/)"
     ],
     "deny": [],
     "ask": [],

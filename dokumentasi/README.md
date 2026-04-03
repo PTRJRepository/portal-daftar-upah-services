@@ -1,154 +1,62 @@
 # Dokumentasi Arsitektur Sistem Report Plantware Daftar Upah
 
 ## Gambaran Umum
-Dokumentasi ini menjelaskan secara menyeluruh arsitektur sistem report daftar upah berbasis backend Python FastAPI yang terintegrasi dengan AG Grid frontend. Sistem ini dirancang untuk mengelola dan menampilkan data payroll karyawan dengan efisien dan aman.
 
-## Struktur Dokumentasi
+Dokumentasi ini menjelaskan arsitektur sistem daftar upah berbasis **Bun + Elysia** (backend) dan **React + AG Grid Enterprise** (frontend). Sistem dirancang untuk payroll processing dan reporting dengan performa tinggi.
+
+## Catatan Penting
+
+**Dokumentasi ini outdated.** Banyak file di folder `dokumentasi/` masih referensi FastAPI, Python backend, dan struktur lama. **CLAUDE.md di root project adalah sumber kebenaran utama** untuk arsitektur dan panduan development. Selalu preferensi CLAUDE.md di atas file dokumentasi dalam folder ini.
+
+## Stack Teknologi
+
+### Backend
+- **Bun** runtime + **Elysia** framework
+- **Python SQL Gateway API** sebagai middleware ke MSSQL databases
+- **Singleton pattern** untuk services
+- JWT token authentication
+
+### Frontend
+- **React 18** + **Vite 5**
+- **AG Grid Enterprise** untuk komponen tabel
+- **CustomPayrollTable** (CSS-based) untuk daftar upah utama
+- **React Context** untuk state management (bukan Redux)
+- Progressive streaming via SSE
+
+## Struktur Direktori
 ```
 dokumentasi/
-├── README.md                     # Dokumentasi utama (file ini)
-├── Project_Structure_Diagram.md  # Bagan Struktur Project (Mermaid)
-├── BackendStructure.md          # Struktur dan arsitektur backend
-├── API_Documentation.md         # Spesifikasi API endpoints
-├── Database_Configuration.md    # Konfigurasi dan arsitektur database
-├── Performance_Optimization.md  # Optimisasi performa dan threading
-├── Security_Authentication.md   # Keamanan dan otentikasi
-├── FrontendStructure.md         # Struktur frontend dan integrasi
-├── TestingMode.md              # Mode testing dan debug
-├── KALKULATOR_PPH21_TER.md     # 📘 Panduan lengkap Kalkulator PPh21 TER
-├── DAFTAR_DIVISI_LENGKAP.md    # Daftar divisi dan mapping
-├── DETAIL_PROSES_LAYANAN.md    # Detail proses layanan
-├── DETAIL_TEKNIS_CODEBASE.md   # Detail teknis codebase
-├── DivisionConfigService.md    # Konfigurasi divisi
-├── DOCDESC_MAPPING_GUIDE.md    # Panduan mapping deskripsi
-├── division_to_gang_mechanism.md # Mekanisme division to gang
-├── Employee_Gang_Query.md      # Query employee gang
-├── kehadrian_kembur_absen.md   # Kehadiran dan absensi
-├── INCONSISTENCIES_OOP_RECOMMENDATIONS.md # Analisis OOP
-├── PREMI_INCONSISTENCY_ANALYSIS.md # Analisis premi
-├── REFACTORING_IMPLEMENTATION_PLAN.md # Plan refactoring
-└── diagrams/                    # Diagram arsitektur sistem
+├── README.md                      # Dokumentasi utama (file ini)
+├── TestingMode.md                # Mode testing & login bypass
+├── FrontendStructure.md           # Struktur frontend (aktaual)
+├── arsitektur_sistem.md          # Diagram arsitektur
+└── diagrams/
+    ├── FrontendStructure.md      # Struktur frontend (aktaual)
+    └── [lainya]                   # Diagram lain (perlu verifikasi)
 ```
 
-## Arsitektur Keseluruhan
-```
-refactor_production/
-├── backend/                      # Backend Python FastAPI
-│   ├── app/                     # Aplikasi utama
-│   │   ├── api/                 # Endpoint API
-│   │   ├── core/                # Fungsi inti
-│   │   ├── models/              # Model data Pydantic
-│   │   ├── repositories/        # Layer akses data
-│   │   ├── services/            # Logika bisnis
-│   │   └── utils/               # Fungsi utilitas
-│   ├── config/                  # Konfigurasi aplikasi
-│   ├── database/                # Layanan dan konfigurasi database
-│   ├── tests/                   # File uji
-│   ├── main.py                  # Entry point aplikasi
-│   └── requirements.txt         # Dependensi Python
-├── frontend/                    # Frontend React AG Grid
-├── dokumentasi/                 # Dokumentasi sistem
-├── Engine_HTML_Templating/      # Template laporan HTML
-└── docker-compose.yml           # Konfigurasi container (jika ada)
-```
+## Fitur Utama
 
-## Fitur Utama Sistem
+### Backend
+- **SQL Gateway**: Koneksi via Python middleware (bukan ODBC langsung)
+- **Parallel Batch Queries**: DB queries dijalankan parallel untuk performa
+- **Caching**: Payroll cache 1h TTL untuk historical periods
+- **JWT Auth**: Token-based authentication
+- **Progressive Streaming**: SSE endpoint untuk streaming data per gang
+- **Singleton Services**: Service instances di-cache untuk reuse
 
-### 1. Backend Architecture
-- **Framework**: FastAPI dengan Python 3.8+
-- **Database**: Microsoft SQL Server (MSSQL) melalui pyodbc
-- **Pola Arsitektur**: MVC dengan pemisahan concern
-- **Autentikasi**: JWT token-based system
-- **Keamanan**: Validasi input, sanitasi data, CORS protection
+### Frontend
+- **CustomPayrollTable**: Tabel kustom CSS-based (bukan AG Grid native rows)
+- **React Context**: AuthContext, HeaderContext, GangFilterContext
+- **Test Mode**: Login bypass untuk development
+- **Dynamic Headers**: Kolom berdasarkan data aktual
+- **Export Excel**: Dukungan export payroll data
 
-### 2. Pengelolaan Payroll
-- **Perhitungan Gaji**: Formula lengkap untuk upah pokok, tunjangan, premi, dan potongan
-- **BPJS Calculation**: Perhitungan komponen BPJS Kesehatan dan Pensiun
-- **Absensi Integration**: Integrasi dengan data absensi karyawan
-- **Multi-Gang Support**: Dukungan untuk berbagai kelompok kerja (gang)
-- **PPh21 TER Calculation**: Perhitungan pajak PPh21 dengan metode TER (PP 58/2023)
+## Panduan Developer
 
-### 3. Optimisasi Performa
-- **Threading**: Pemrosesan paralel untuk header dan data
-- **Caching**: Cache service untuk data payroll dan konfigurasi
-- **Database Optimization**: Query parameterized dan optimasi indeks
-- **Async Processing**: Non-blocking I/O operations
+1. **CLAUDE.md (root)** — Sumber kebenaran utama untuk arsitektur, API, database rules, business logic
+2. **dokumentasi/TestingMode.md** — Mode testing & login bypass
+3. **dokumentasi/arsitektur_sistem.md** — Diagram alur data (aktaual)
+4. **dokumentasi/FrontendStructure.md** — Struktur frontend (aktaual)
 
-### 4. UI Integration
-- **AG Grid**: Tabel interaktif untuk menampilkan data payroll
-- **Dynamic Headers**: Struktur header yang disesuaikan dengan data
-- **Column Definitions**: Konfigurasi kolom dengan aturan agregasi
-- **Real-time Filtering**: Filter data real-time di sisi server
-
-## Alur Proses Utama
-
-### 1. Penanganan Request
-1. Frontend mengirim request ke backend API
-2. Middleware otentikasi memverifikasi JWT token
-3. Validasi parameter input menggunakan Pydantic models
-4. Service layer memproses permintaan
-5. Repository layer mengakses database
-6. Response dikirim kembali ke frontend
-
-### 2. Pengambilan Data Payroll
-1. Request `/payroll/report` dengan parameter gang, bulan, tahun
-2. Service layer memanggil repository untuk mengambil data karyawan
-3. Perhitungan payroll dilakukan berdasarkan data absensi dan konfigurasi
-4. Data difilter dan dipaginasi sesuai permintaan
-5. Response di-cache untuk permintaan berikutnya
-6. Data dikembalikan dalam format PayrollRow
-
-### 3. Generasi Header Dinamis
-1. Request `/payroll/headers` untuk struktur AG Grid
-2. Service menentukan kolom berdasarkan data aktual
-3. Header dihasilkan secara dinamis sesuai dengan periode dan gang
-4. Struktur header dirancang untuk AG Grid dengan hierarki kolom
-5. Response dioptimasi dengan threading jika diaktifkan
-
-## Konfigurasi Lingkungan
-
-### Mode Operasi
-- **Development Mode**: localhost + 10.0.0.128 access
-- **Production Mode**: 10.0.0.110 access
-- **Test Mode**: Mode pengujian dengan data demo
-
-### Database Profiles
-- **Local Profile**: Koneksi ke database lokal
-- **Remote Profile**: Koneksi ke server produksi
-- **Custom Profile**: Konfigurasi database fleksibel
-
-## Integrasi dan Deployment
-
-### Backend Deployment
-- **Uvicorn Server**: Web server production-ready
-- **Multiple Workers**: Support untuk concurrent request handling
-- **Docker Support**: Containerization ready
-- **Environment Configuration**: Multi-environment support
-
-### Frontend Integration
-- **REST API**: Endpoint API untuk komunikasi frontend-backend
-- **AG Grid Configuration**: Kolom dan header dinamis
-- **Authentication Flow**: Integrasi dengan sistem otentikasi
-- **Real-time Updates**: Data update mechanism
-
-## Panduan Penggunaan
-
-### Untuk Developer
-1. Lihat `BackendStructure.md` untuk arsitektur backend
-2. Lihat `API_Documentation.md` untuk spesifikasi endpoint
-3. Lihat `Database_Configuration.md` untuk konfigurasi database
-4. Lihat `Performance_Optimization.md` untuk optimisasi
-5. Lihat `Security_Authentication.md` untuk keamanan
-6. Lihat **`KALKULATOR_PPH21_TER.md`** untuk implementasi perhitungan pajak PPh21 TER
-
-### Untuk Administrator Sistem
-1. Konfigurasi `config.json` sesuai lingkungan
-2. Atur environment variables untuk keamanan
-3. Monitor performa dengan endpoint `/payroll/health`
-4. Gunakan endpoint `/payroll/performance/compare` untuk benchmark
-
-### Untuk Pengguna Akhir
-1. Gunakan otentikasi untuk mengakses sistem
-2. Gunakan AG Grid untuk eksplorasi data payroll
-3. Gunakan filter dan paginasi untuk efisiensi tampilan
-4. Gunakan export HTML untuk laporan resmi
+File dokumentasi lain (BackendStructure.md, Performance_Optimization.md, dll) mungkin outdated — cek CLAUDE.md untuk informasi terbaru.

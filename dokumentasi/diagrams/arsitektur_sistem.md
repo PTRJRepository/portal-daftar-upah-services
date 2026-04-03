@@ -1,51 +1,75 @@
 # Arsitektur Sistem Report Plantware Daftar Upah
 
-## Diagram Alur Data (Data Flow Diagram)
+## Stack Teknologi
 
-```mermaid
-graph TB
-    subgraph "Frontend (React + AG Grid)"
-        A[Report.jsx] --> B[AG Grid Component]
-        C[Services API] --> A
-    end
-    
-    subgraph "Backend (FastAPI)"
-        D[API Endpoints] --> E[Services Layer]
-        E --> F[Repositories Layer]
-        G[Database] --> F
-    end
-    
-    subgraph "Database"
-        H[SQL Server] --> G
-    end
-    
-    subgraph "Template Engine"
-        I[HTML Template Engine] --> J[Dynamic Header Generator]
-    end
-    
-    C <--> D
-    F <--> G
-    E <--> J
+### Backend
+- **Bun + Elysia**: REST API server (port 8002)
+- **Python SQL Gateway API**: Middleware untuk koneksi ke MSSQL databases
+- **Database**: MSSQL (`db_ptrj`, `extend_db_ptrj`, `VenusHR14`, `db_ptrj_mill`)
+
+### Frontend
+- **React + Vite**: UI framework dengan build tool
+- **AG Grid Enterprise**: Tabel interaktif dengan hierarchical headers
+- **Axios**: HTTP client untuk API calls
+- **Custom Payroll Table**: Tabel kustom (bukan AG Grid native) dengan CSS-based rendering
+
+## Alur Data
+
+```
+Frontend (React)
+    ↓ HTTP/Axios
+Backend (Bun + Elysia)
+    ↓ SQL Gateway API
+Python SQL Gateway (localhost:8001)
+    ↓ ODBC
+MSSQL Databases (db_ptrj, extend_db_ptrj, VenusHR14)
 ```
 
-## Penjelasan Alur:
-1. **Frontend** (Report.jsx) memanggil layanan API untuk mengambil data
-2. **API Endpoints** menerima permintaan dan meneruskannya ke Services Layer
-3. **Services Layer** memproses logika bisnis dan memanggil Repositories Layer
-4. **Repositories Layer** melakukan operasi CRUD ke database
-5. **Database** menyediakan data ke sistem
-6. **Dynamic Header Generator** membuat header secara dinamis berdasarkan data sebenarnya
-7. **AG Grid** merender data dalam bentuk tabel dengan fitur-fitur canggih
+## Routing
 
-## Komponen Utama:
-- **Frontend**: React, AG Grid React, Axios untuk API calls
-- **Backend**: FastAPI, Pydantic, Database abstraction
-- **Database**: SQL Server (koneksi melalui MSSQL Service)
-- **Template Engine**: HTML templating untuk laporan
+Backend mount routes di dua prefix:
+- `/payroll/*`, `/summary/*`, `/auth/*` — akses langsung
+- `/backend/upah/*` — proxy mode (strip prefix via middleware)
 
-## Arsitektur Rendering AG Grid:
-1. Frontend meminta data dan definisi kolom
-2. Backend menghasilkan definisi kolom dinamis berdasarkan data
-3. Frontend menerima data dan konfigurasi kolom
-4. AG Grid merender tabel dengan fitur yang sesuai
-5. Kolom NO dan NAMA difreeze di posisi kiri
+## Struktur Backend
+
+```
+backend/src/
+├── api/              # Route handlers (Elysia routes)
+├── services/          # Business logic (singleton pattern)
+│   ├── config/        # DivisionConfigService (single source of truth)
+│   ├── employee/      # Employee-related services
+│   ├── payroll/       # Payroll component services
+│   └── tax/          # Tax calculation services
+├── db/               # SQL Gateway client
+└── config.ts         # Environment variables
+```
+
+## Struktur Frontend
+
+```
+frontend/src/
+├── pages/             # Page components (.jsx)
+├── components/        # Reusable components
+│   ├── common/        # Shared components
+│   └── CustomPayrollTable.jsx  # Custom table renderer
+├── services/          # API client (Axios)
+├── context/           # React contexts
+├── hooks/             # Custom hooks (usePayrollStream, useCurrentPeriod)
+└── utils/             # Utilities (PayrollAggregator, exportExcel)
+```
+
+## API Endpoints Utama
+
+| Method | Endpoint | Fungsi |
+|--------|----------|--------|
+| GET | `/payroll/report/division-raw-tree` | Data payroll per gang |
+| GET | `/payroll/report/division-raw-tree/stream` | SSE streaming (progressive) |
+| GET | `/payroll/headers` | Dynamic column headers |
+| GET | `/payroll/gangs` | Daftar gang per divisi |
+| POST | `/auth/login` | Login JWT |
+| POST | `/api/aggregation/seed` | Trigger aggregation |
+
+## Progressive Streaming
+
+Endpoint `/payroll/report/division-raw-tree/stream` menggunakan Server-Sent Events (SSE) untuk streaming data progressive. Gang pertama tampil setelah query selesai, sisanya stream bertahap.

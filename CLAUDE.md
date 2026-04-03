@@ -1394,3 +1394,71 @@ getFilterSidebarHtml()              // Generate sidebar HTML
 **Issue:** Filter not working for viewers
 - **Cause:** Old filter method tried to modify original sheet
 - **Fix:** Updated version creates new sheet - redeploy Code.js
+
+## Progressive Streaming (Apr 2026)
+
+### Overview
+
+Daftar Upah menggunakan **Server-Sent Events (SSE)** untuk streaming data progressive. Gang pertama tampil setelah query database selesai, sisanya stream bertahap.
+
+### Backend Endpoint
+
+```
+GET /payroll/report/division-raw-tree/stream
+```
+
+**Flow:**
+1. Backend run semua parallel DB queries (semua employees)
+2. Setelah query selesai, kirim `meta` event (headers, total gangs)
+3. Stream gang-gang bertahap via `gang` event (batched per 5 gangs)
+4. Kirim `complete` event dengan grand total
+
+**Event types:**
+- `meta`: Headers, total gangs, total employees
+- `gang`: Data per gang (employees + totals)
+- `progress`: Progress update
+- `complete`: Grand total, execution time
+- `error`: Error message
+
+### Frontend Hook
+
+```javascript
+// frontend/src/hooks/usePayrollStream.js
+import { usePayrollStream } from '../hooks/usePayrollStream';
+
+const stream = usePayrollStream({
+    token, division, month, year, gangPrefix, gangCode,
+    enabled: !!token && !!division && !!month && !!year && !gangLoading
+});
+
+// State yang disediakan:
+// stream.gangs      - Array gang yang sudah diterima
+// stream.meta        - Metadata (headers, total gangs/employees)
+// stream.progress    - Progress stage, message, counts
+// stream.grandTotal  - Grand total dari complete event
+// stream.error       - Error jika ada
+// stream.isComplete   - True saat streaming selesai
+```
+
+### Loading Bar
+
+`CustomPayrollTable` menampilkan loading bar sticky di header tabel saat streaming aktif:
+
+- Stage indicator: connecting → querying → streaming → complete
+- Gang/employee count progress
+- Bytes received (untuk monitoring transfer)
+- Gang chips terakhir yang diproses
+
+**Stage colors:**
+- `connecting`: Blue spinner
+- `querying`: Orange progress bar (sedang jalankan DB queries)
+- `streaming`: Green progress bar (data datang bertahap)
+- `complete`: Bar hijau penuh
+
+### Performance Notes
+
+- **BATCH_SIZE = 50** di `dataExtractorService.ts` — IN clauses lebih kecil untuk query lebih cepat
+- SSE streaming aktif SELALU (bukan hanya dev mode)
+- Jika SSE gagal/error, auto-fallback ke legacy fetch
+- Debug logging PPH per-row sudah dihapus dari production code
+

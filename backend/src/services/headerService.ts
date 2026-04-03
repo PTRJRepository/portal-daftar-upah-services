@@ -216,7 +216,7 @@ export class HeaderService {
                 SELECT DISTINCT income_type, income_name 
                 FROM employee_other_incomes
                 WHERE period_year = ? AND period_month = ?
-                  AND income_type NOT IN ('THR', 'BONUS', 'CUSTOM')
+                  AND income_type NOT IN ('THR', 'BONUS', 'CUSTOM', 'PENDAPATAN TIDAK TETAP')
                 ORDER BY income_type
             `, [year, month]);
 
@@ -318,7 +318,6 @@ export class HeaderService {
                 children: [
                     { field: "pot_spsi", headerName: "SPSI" },
                     { field: "pot_pph21", headerName: "PPH21" },
-                    { field: "pot_pendapatan_lainnya", headerName: "Pend. Lainnya" },
                     { field: "pot_koreksi", headerName: "Koreksi" },
                     ...dynPotongan.map((h, i) => ({
                         field: this.mapPotonganField(h) || `pot_dynamic_${i + 1}`,

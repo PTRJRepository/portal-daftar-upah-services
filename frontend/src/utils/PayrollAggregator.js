@@ -107,10 +107,9 @@ export const PayrollAggregator = {
     emp.pot_bpjs_jumlah = emp.pot_bpjs_pekerja_total + bpjsMajTotal;
 
     // pot_total_4 (Potongan Lainnya)
-    // [FIXED 2026-04-01] pot_kontan DIHAPUS karena sudah termasuk di pot_pendapatan_lainnya (double-count)
-    // Formula: pph21 + pendapatan_lainnya + pinjam + kl + tiket + alat + spsi + koreksi + bpjs_pekerja_total + astek
+    // [FIXED 2026-04-03] pot_pendapatan_lainnya DIHAPUS karena sudah termasuk di UPAH KOTOR (pendapatan_lainnya =/add ke gross, bukan subtract)
+    // Formula: pph21 + pinjam + kl + tiket + alat + spsi + koreksi + bpjs_pekerja_total + astek
     emp.pot_total_4 = val(emp.pot_pph21) +
-      val(emp.pot_pendapatan_lainnya) +
       val(emp.pot_pinjam) +
       val(emp.pot_kl) +
       val(emp.pot_tiket) +

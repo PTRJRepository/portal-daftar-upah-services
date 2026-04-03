@@ -1,47 +1,64 @@
 # Mode Testing: Login Injection & Token Management
 
-Fitur ini hanya aktif ketika `TEST_MODE=true` atau `VITE_DEV_MODE=true` di frontend. Semua bagian bertanda `// TESTING ONLY` tidak akan dipakai di production.
+Fitur ini aktif ketika `TEST_MODE=true` (backend) atau `VITE_DEV_MODE=true` (frontend). Kode bertanda `// TESTING ONLY` tidak jalan di production.
 
 ## Ringkasan
-- Login di-bypass pada mode testing, menggunakan akun admin default.
-- Tersedia token permanen untuk seluruh request selama mode testing.
-- Auto-inject token saat menerima `401` dan lakukan retry sekali.
-- Panel dropdown untuk memilih `division`, `gang`, `month`, dan `year` tanpa autentikasi.
+- Login di-bypass menggunakan akun admin default
+- Token permanen untuk seluruh request selama mode testing
+- Auto-inject token saat menerima `401` dan retry sekali
+- Panel dropdown untuk memilih `division`, `gang`, `month`, `year` tanpa autentikasi manual
 
 ## Cara Mengaktifkan
-1. Frontend: jalankan dengan dev test flag
-   - `npm run dev:test` (mengaktifkan `VITE_DEV_MODE=true`)
-2. Backend: set environment `TEST_MODE=true`
-   - PowerShell: `$env:TEST_MODE='true'`
 
-## Komponen & Endpoint
-- Endpoint backend: `GET /auth/test-token` (hanya di testing)
-  - Mengembalikan `{ access_token, token_type: 'bearer', expires: 'never' }`
-- File token permanen: `backend/token.json` berisi `{"token":"permanent-testing-token"}`
-- Interceptor frontend: `src/utils/httpSetup.js`
-  - Menambahkan header `Authorization: Bearer <testing_token>` ke semua request.
-  - Ketika `401`, otomatis mengambil token testing dan retry sekali.
-- Panel pemilihan: `src/components/common/TestModePanel.jsx`
-  - Menyediakan dropdown `Division`, `Gang`, `Month`, `Year`.
+### Backend
+```powershell
+$env:TEST_MODE='true'
+cd backend
+bun run dev
+```
 
-## Alur Pakai
-1. Jalankan backend dengan `TEST_MODE=true`.
-2. Jalankan frontend dengan `npm run dev:test`.
-3. Di halaman utama, panel “TESTING ONLY” muncul.
-4. Pilih `Division`, `Gang`, `Month`, `Year`.
-5. Laporan akan dimuat tanpa proses login dan tanpa manajemen token manual.
+### Frontend
+```bash
+cd frontend
+npm run dev:test   # Aktifkan VITE_DEV_MODE=true
+```
 
-## Catatan Keamanan
-- Token permanen hanya diterima ketika `TEST_MODE=true`; di production endpoint `GET /auth/test-token` akan mengembalikan `403`.
-- Backend akan mencatat warning saat ada akses tanpa header Authorization di mode testing.
-- Semua kode bertanda `// TESTING ONLY` ditujukan khusus untuk pengujian.
+Atau dengan environment variable langsung:
+```bash
+$env:VITE_DEV_MODE='true'
+npm run dev
+```
+
+## Cara Pakai
+1. Jalankan backend dengan `TEST_MODE=true`
+2. Jalankan frontend dengan `npm run dev:test`
+3. Browser langsung ke halaman utama (tanpa login)
+4. Pilih `Division`, `Gang`, `Month`, `Year` dari panel TESTING ONLY
+5. Laporan langsung dimuat tanpa login
+
+## Endpoint & Komponen
+
+| Item | Lokasi | Keterangan |
+|------|--------|------------|
+| Test token endpoint | `GET /auth/test-token` | Hanya aktif di mode TEST_MODE=true |
+| Token permanent | `backend/token.json` | Isi: `{"token": "permanent-testing-token"}` |
+| HTTP interceptor | `src/utils/httpSetup.js` | Inject Authorization header + retry on 401 |
+| Test mode panel | `src/components/common/TestModePanel.jsx` | Dropdown division/gang/month/year |
+| Prod mode check | `src/utils/prodModeUtils.js` | `isProdMode()` function |
 
 ## Troubleshooting
-- Mengalami `401` di mode testing:
-  - Pastikan frontend dijalankan dengan `VITE_DEV_MODE=true` (gunakan `npm run dev:test`).
-  - Pastikan backend environment `TEST_MODE=true`.
-  - Buka DevTools Console; Anda akan melihat warning “TESTING ONLY: Received 401 — injecting testing token and retrying once”.
-- Panel tidak memuat `Gang`:
-  - Pastikan backend up dan endpoint `/payroll/gangs` bisa diakses.
-  - Coba pilih `Division` lain, atau kosongkan pencarian.
 
+### Mengalami 401 di mode testing
+1. Pastikan frontend jalan dengan `VITE_DEV_MODE=true` (bukan hanya TEST_MODE backend)
+2. Cek DevTools Console — akan ada warning "TESTING ONLY: Received 401 — injecting testing token"
+3. Pastikan `token.json` ada di folder `backend/`
+
+### Panel TESTING tidak muncul
+1. Pastikan `VITE_DEV_MODE=true` di environment frontend
+2. Cek `npm run dev:test` bukan `npm run dev`
+3. Pastikan backend sudah jalan dengan `TEST_MODE=true`
+
+### Gang tidak dimuat
+1. Pastikan endpoint `/payroll/gangs` accessible dari backend
+2. Cek network tab di DevTools untuk response
+3. Pastikan database credentials benar di `.env`
