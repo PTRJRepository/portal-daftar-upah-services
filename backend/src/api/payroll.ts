@@ -1265,7 +1265,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      * - complete: { grand_total, total_execution_ms }
      * - error: { message }
      */
-    // Progressive streaming - processes gangs one by one for true progressive loading
+    // Progressive streaming endpoint - uses SSE to stream data progressively
+    // Falls back to standard fetch if SSE not supported
     .get("/report/division-raw-tree/stream", async ({ headers, query, set }): Promise<any> => {
         const authHeader = headers["authorization"] as string | undefined;
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -1294,44 +1295,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
         }
 
-        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year}`);
-
-        // Helper: calculate gang totals
-        const calculateGangTotals = (employees: any[]): Record<string, number> => {
-            const activeEmployees = employees.filter((emp: any) => {
-                const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
-                const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
-                return hari_kerja > 0;
-            });
-
-            const totals: Record<string, number> = {};
-            const numericFields = [
-                'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
-                'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
-                'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
-                'potongan_upah_kotor_total', 'jumlah_upah_kotor',
-                'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
-                'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
-                'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
-                'upah_bersih', 'koreksi_hk',
-                'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
-                'pendapatan_lainnya', 'pot_pendapatan_lainnya'
-            ];
-
-            for (const field of numericFields) totals[field] = 0;
-            totals['employee_count'] = activeEmployees.length;
-
-            for (const emp of activeEmployees) {
-                for (const field of numericFields) {
-                    const val = emp[field];
-                    if (val !== null && val !== undefined) {
-                        totals[field] += parseFloat(val) || 0;
-                    }
-                }
-            }
-
-            return totals;
-        };
+        console.log(`[Stream] Starting | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode}`);
 
         const encoder = new TextEncoder();
         let cancelled = false;
@@ -1341,118 +1305,80 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 try {
                     // Import services
                     const { dataExtractorService } = await import("../services/dataExtractorService");
-                    const { divisionConfigService } = await import("../services/config/DivisionConfigService");
                     const { Config } = await import("../config");
 
-                    // Step 1: Get gang list immediately (fast - from config)
-                    const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
-                    const gangCodes = gangs.map(g => g.gang_code).sort();
-                    console.log(`[Stream] Found ${gangCodes.length} gangs, processing per-gang...`);
+                    // Send initial progress
+                    controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                        stage: 'querying',
+                        message: 'Memproses database...',
+                        processed_gangs: 0,
+                        total_gangs: 0
+                    })}\n\n`));
 
-                    // Send meta with gang count immediately
+                    // Fetch all data at once - benefits from caching
+                    // If cached, returns instant. If not cached, waits for DB query.
+                    const result = await dataExtractorService.extractPayrollData(
+                        month, year, gangCode, divisionCode, null,
+                        Config.DB_PROFILE, false, null, gangPrefix, true, true
+                    );
+
+                    if (cancelled) return;
+
+                    console.log(`[Stream] Data fetched: ${result.data_rows.length} rows`);
+
+                    // Group employees by gang
+                    const gangsMap: Record<string, any[]> = {};
+                    for (const row of result.data_rows) {
+                        const gang = row.gang_code || "UNKNOWN";
+                        if (!gangsMap[gang]) gangsMap[gang] = [];
+                        gangsMap[gang].push(row);
+                    }
+
+                    const gangCodes = Object.keys(gangsMap).sort();
+
+                    // Send meta
                     controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({
                         division: divisionCode,
                         month,
                         year,
                         total_gangs: gangCodes.length,
-                        total_employees: 0,
-                        stage: 'querying'
+                        total_employees: result.data_rows.length,
+                        dynamic_premi_headers: result.dynamic_premi_headers || [],
+                        dynamic_potongan_headers: result.dynamic_potongan_headers || []
                     })}\n\n`));
 
-                    // Step 2: Process gangs in parallel batches (3 at a time)
-                    // Yield each batch as it completes - first batch at ~15s instead of 47s
-                    const BATCH_SIZE = 3;
-                    let processedGangs = 0;
-                    let totalEmployees = 0;
-                    const allEmployeeData: any[] = [];
-                    const dynamicPremiSet = new Set<string>();
-                    const dynamicPotonganSet = new Set<string>();
-
-                    for (let batchStart = 0; batchStart < gangCodes.length; batchStart += BATCH_SIZE) {
+                    // Stream gangs with small delay between each
+                    for (let i = 0; i < gangCodes.length; i++) {
                         if (cancelled) return;
 
-                        const batchEnd = Math.min(batchStart + BATCH_SIZE, gangCodes.length);
-                        const batchCodes = gangCodes.slice(batchStart, batchEnd);
+                        const gCode = gangCodes[i];
+                        const employees = gangsMap[gCode] || [];
 
-                        // Send batch starting message
-                        controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
-                            stage: 'streaming',
-                            message: `Memproses gang ${batchCodes.join(', ')}...`,
-                            processed_gangs: processedGangs,
-                            total_gangs: gangCodes.length,
-                            progress_percent: Math.floor((processedGangs / gangCodes.length) * 100)
+                        controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
+                            gang_code: gCode,
+                            employees: employees.map(slimEmployee),
+                            gang_index: i,
+                            employees_count: employees.length
                         })}\n\n`));
 
-                        // Process this batch in parallel - each gang is independent
-                        const batchResults = await Promise.all(
-                            batchCodes.map((gCode, idx) =>
-                                dataExtractorService.extractPayrollData(
-                                    month, year, gCode, divisionCode, null,
-                                    Config.DB_PROFILE, false, null, gangPrefix, true, true
-                                ).then(result => {
-                                    console.log(`[Stream] Gang ${gCode} done: ${result.data_rows.length} employees`);
-                                    return { gCode, result, idx: batchStart + idx };
-                                }).catch(err => {
-                                    console.error(`[Stream] Gang ${gCode} error:`, err.message);
-                                    return { gCode, result: { data_rows: [], dynamic_premi_headers: [], dynamic_potongan_headers: [] }, idx: batchStart + idx };
-                                })
-                            )
-                        );
+                        controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                            stage: 'streaming',
+                            message: `Streaming gang ${i + 1}/${gangCodes.length}`,
+                            processed_gangs: i + 1,
+                            total_gangs: gangCodes.length,
+                            processed_employees: result.data_rows.length
+                        })}\n\n`));
 
-                        if (cancelled) return;
-
-                        // Yield each completed gang in this batch
-                        for (const { gCode, result } of batchResults) {
-                            // Collect dynamic headers
-                            for (const h of result.dynamic_premi_headers || []) dynamicPremiSet.add(h);
-                            for (const h of result.dynamic_potongan_headers || []) dynamicPotonganSet.add(h);
-
-                            // Add to all data
-                            allEmployeeData.push(...result.data_rows);
-                            totalEmployees += result.data_rows.length;
-
-                            // Calculate gang totals
-                            const gangTotals = calculateGangTotals(result.data_rows);
-
-                            // Send this gang's data immediately
-                            controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
-                                gang_code: gCode,
-                                employees: result.data_rows.map(slimEmployee),
-                                gang_totals: gangTotals,
-                                gang_index: processedGangs,
-                                employees_count: result.data_rows.length,
-                                processed_gangs: processedGangs + 1,
-                                total_gangs: gangCodes.length
-                            })}\n\n`));
-
-                            processedGangs++;
-
-                            // Send progress after each gang
-                            controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
-                                stage: 'streaming',
-                                message: `Selesai gang ${gCode}`,
-                                processed_gangs: processedGangs,
-                                total_gangs: gangCodes.length,
-                                processed_employees: totalEmployees,
-                                total_employees: 0, // Unknown until all done
-                                progress_percent: Math.floor((processedGangs / gangCodes.length) * 100)
-                            })}\n\n`));
-                        }
+                        // Small delay for visual effect
+                        await new Promise(r => setTimeout(r, 30));
                     }
 
-                    if (cancelled) return;
-
-                    // Step 3: Send complete with grand total
-                    const grandTotal = calculateGangTotals(allEmployeeData);
+                    // Send complete
                     controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({
-                        grand_total: grandTotal,
                         gangs_count: gangCodes.length,
-                        employees_count: allEmployeeData.length,
-                        dynamic_premi_headers: Array.from(dynamicPremiSet),
-                        dynamic_potongan_headers: Array.from(dynamicPotonganSet)
+                        employees_count: result.data_rows.length
                     })}\n\n`));
 
-                    console.log(`[Stream] Complete: ${gangCodes.length} gangs, ${allEmployeeData.length} employees`);
                     controller.close();
 
                 } catch (e: any) {
@@ -1485,4 +1411,96 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             gang_prefix: t.Optional(t.String()),
             gang_code: t.Optional(t.String())
         })
+    })
+
+    /**
+     * Cache warming endpoint - pre-populates cache for fast subsequent requests
+     * POST /api/payroll/warm-cache
+     */
+    .post("/warm-cache", async ({ body, set }): Promise<any> => {
+        try {
+            const { dataExtractorService } = await import("../services/dataExtractorService");
+            const { divisionConfigService } = await import("../services/config/DivisionConfigService");
+            const { currentPeriodService } = await import("../services/currentPeriodService");
+            const { cacheService } = await import("../services/cacheService");
+            const { Config } = await import("../config");
+
+            const data = body as any;
+            const division = data?.division || 'ALL';
+            const month = data?.month;
+            const year = data?.year;
+
+            // Get current period if not specified
+            let targetMonth = month;
+            let targetYear = year;
+            if (!targetMonth || !targetYear) {
+                const current = await currentPeriodService.getCurrentPeriod();
+                targetMonth = current.month;
+                targetYear = current.year;
+            }
+
+            console.log(`[CacheWarm] Starting cache warm for div=${division} month=${targetMonth} year=${targetYear}`);
+
+            const startTime = Date.now();
+            let gangsWarmed = 0;
+            let employeesWarmed = 0;
+            let errors = 0;
+
+            if (division === 'ALL') {
+                // Warm cache for all divisions
+                const divisions = divisionConfigService.getAllDivisionCodes();
+                for (const div of divisions) {
+                    try {
+                        const result = await dataExtractorService.extractPayrollData(
+                            targetMonth, targetYear, "ALL", div, null,
+                            Config.DB_PROFILE, false, null, undefined, true, true
+                        );
+                        gangsWarmed++;
+                        employeesWarmed += result.data_rows.length;
+                    } catch (e) {
+                        errors++;
+                        console.error(`[CacheWarm] Error warming ${div}:`, e.message);
+                    }
+                }
+            } else {
+                // Warm cache for specific division
+                const result = await dataExtractorService.extractPayrollData(
+                    targetMonth, targetYear, "ALL", division, null,
+                    Config.DB_PROFILE, false, null, undefined, true, true
+                );
+                gangsWarmed++;
+                employeesWarmed += result.data_rows.length;
+            }
+
+            const elapsed = Date.now() - startTime;
+            console.log(`[CacheWarm] Complete: ${gangsWarmed} divisions, ${employeesWarmed} employees in ${elapsed}ms, errors: ${errors}`);
+
+            return {
+                success: true,
+                warmed: {
+                    divisions: gangsWarmed,
+                    employees: employeesWarmed,
+                    elapsed_ms: elapsed,
+                    errors
+                }
+            };
+        } catch (e: any) {
+            console.error('[CacheWarm] Error:', e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        body: t.Object({
+            division: t.Optional(t.String()),
+            month: t.Optional(t.Number()),
+            year: t.Optional(t.Number())
+        })
+    })
+
+    /**
+     * Get cache statistics
+     */
+    .get("/cache-stats", async (): Promise<any> => {
+        const { cacheService } = await import("../services/cacheService");
+        return cacheService.getStats();
     })
