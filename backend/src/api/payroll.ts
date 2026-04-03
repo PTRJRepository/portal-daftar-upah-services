@@ -1347,7 +1347,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     // Step 1: Get gang list immediately (fast - from config)
                     const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
                     const gangCodes = gangs.map(g => g.gang_code).sort();
-                    console.log(`[Stream] Found ${gangCodes.length} gangs, starting data fetch...`);
+                    console.log(`[Stream] Found ${gangCodes.length} gangs, processing per-gang...`);
 
                     // Send meta with gang count immediately
                     controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({
@@ -1359,90 +1359,100 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         stage: 'querying'
                     })}\n\n`));
 
-                    // Step 2: Send periodic progress during the 47-second query
-                    // This fills the loading bar gradually during the wait
-                    let progressCount = 0;
-                    const progressInterval = setInterval(() => {
-                        if (cancelled) {
-                            clearInterval(progressInterval);
-                            return;
-                        }
-                        progressCount++;
-                        const progressPercent = Math.min(progressCount * 5, 90);
-                        controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
-                            stage: 'querying',
-                            message: `Memproses database... ${progressPercent}%`,
-                            processed_gangs: 0,
-                            total_gangs: gangCodes.length,
-                            progress_percent: progressPercent
-                        })}\n\n`));
-                    }, 2000);
-
-                    // Step 3: Fetch ALL data at once (takes ~47 seconds)
-                    const result = await dataExtractorService.extractPayrollData(
-                        month, year, "ALL", divisionCode, null,
-                        Config.DB_PROFILE, false, null, gangPrefix, true, true
-                    );
-
-                    clearInterval(progressInterval);
-                    if (cancelled) return;
-
-                    console.log(`[Stream] Data fetched: ${result.data_rows.length} rows, grouping by gang...`);
-
-                    // Step 4: Group employees by gang
-                    const gangsMap: Record<string, any[]> = {};
-                    for (const row of result.data_rows) {
-                        const gang = row.gang_code || "UNKNOWN";
-                        if (!gangsMap[gang]) gangsMap[gang] = [];
-                        gangsMap[gang].push(row);
-                    }
-
-                    // Step 5: Stream gangs progressively with small delay
+                    // Step 2: Process gangs in parallel batches (3 at a time)
+                    // Yield each batch as it completes - first batch at ~15s instead of 47s
+                    const BATCH_SIZE = 3;
                     let processedGangs = 0;
-                    for (const gCode of gangCodes) {
+                    let totalEmployees = 0;
+                    const allEmployeeData: any[] = [];
+                    const dynamicPremiSet = new Set<string>();
+                    const dynamicPotonganSet = new Set<string>();
+
+                    for (let batchStart = 0; batchStart < gangCodes.length; batchStart += BATCH_SIZE) {
                         if (cancelled) return;
 
-                        const employees = gangsMap[gCode] || [];
-                        const gangTotals = calculateGangTotals(employees);
+                        const batchEnd = Math.min(batchStart + BATCH_SIZE, gangCodes.length);
+                        const batchCodes = gangCodes.slice(batchStart, batchEnd);
 
-                        controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
-                            gang_code: gCode,
-                            employees: employees.map(slimEmployee),
-                            gang_totals: gangTotals,
-                            gang_index: processedGangs,
-                            employees_count: employees.length,
-                            processed_gangs: processedGangs + 1,
-                            total_gangs: gangCodes.length
-                        })}\n\n`));
-
-                        processedGangs++;
-
+                        // Send batch starting message
                         controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
                             stage: 'streaming',
-                            message: `Streaming gang ${processedGangs}/${gangCodes.length}`,
+                            message: `Memproses gang ${batchCodes.join(', ')}...`,
                             processed_gangs: processedGangs,
                             total_gangs: gangCodes.length,
-                            processed_employees: result.data_rows.length,
-                            total_employees: result.data_rows.length,
-                            progress_percent: 90 + Math.floor((processedGangs / gangCodes.length) * 10)
+                            progress_percent: Math.floor((processedGangs / gangCodes.length) * 100)
                         })}\n\n`));
 
-                        await new Promise(r => setTimeout(r, 50));
+                        // Process this batch in parallel - each gang is independent
+                        const batchResults = await Promise.all(
+                            batchCodes.map((gCode, idx) =>
+                                dataExtractorService.extractPayrollData(
+                                    month, year, gCode, divisionCode, null,
+                                    Config.DB_PROFILE, false, null, gangPrefix, true, true
+                                ).then(result => {
+                                    console.log(`[Stream] Gang ${gCode} done: ${result.data_rows.length} employees`);
+                                    return { gCode, result, idx: batchStart + idx };
+                                }).catch(err => {
+                                    console.error(`[Stream] Gang ${gCode} error:`, err.message);
+                                    return { gCode, result: { data_rows: [], dynamic_premi_headers: [], dynamic_potongan_headers: [] }, idx: batchStart + idx };
+                                })
+                            )
+                        );
+
+                        if (cancelled) return;
+
+                        // Yield each completed gang in this batch
+                        for (const { gCode, result } of batchResults) {
+                            // Collect dynamic headers
+                            for (const h of result.dynamic_premi_headers || []) dynamicPremiSet.add(h);
+                            for (const h of result.dynamic_potongan_headers || []) dynamicPotonganSet.add(h);
+
+                            // Add to all data
+                            allEmployeeData.push(...result.data_rows);
+                            totalEmployees += result.data_rows.length;
+
+                            // Calculate gang totals
+                            const gangTotals = calculateGangTotals(result.data_rows);
+
+                            // Send this gang's data immediately
+                            controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
+                                gang_code: gCode,
+                                employees: result.data_rows.map(slimEmployee),
+                                gang_totals: gangTotals,
+                                gang_index: processedGangs,
+                                employees_count: result.data_rows.length,
+                                processed_gangs: processedGangs + 1,
+                                total_gangs: gangCodes.length
+                            })}\n\n`));
+
+                            processedGangs++;
+
+                            // Send progress after each gang
+                            controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
+                                stage: 'streaming',
+                                message: `Selesai gang ${gCode}`,
+                                processed_gangs: processedGangs,
+                                total_gangs: gangCodes.length,
+                                processed_employees: totalEmployees,
+                                total_employees: 0, // Unknown until all done
+                                progress_percent: Math.floor((processedGangs / gangCodes.length) * 100)
+                            })}\n\n`));
+                        }
                     }
 
                     if (cancelled) return;
 
-                    // Step 6: Send complete
-                    const grandTotal = calculateGangTotals(result.data_rows);
+                    // Step 3: Send complete with grand total
+                    const grandTotal = calculateGangTotals(allEmployeeData);
                     controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({
                         grand_total: grandTotal,
                         gangs_count: gangCodes.length,
-                        employees_count: result.data_rows.length,
-                        dynamic_premi_headers: result.dynamic_premi_headers || [],
-                        dynamic_potongan_headers: result.dynamic_potongan_headers || []
+                        employees_count: allEmployeeData.length,
+                        dynamic_premi_headers: Array.from(dynamicPremiSet),
+                        dynamic_potongan_headers: Array.from(dynamicPotonganSet)
                     })}\n\n`));
 
-                    console.log(`[Stream] Complete: ${gangCodes.length} gangs, ${result.data_rows.length} employees`);
+                    console.log(`[Stream] Complete: ${gangCodes.length} gangs, ${allEmployeeData.length} employees`);
                     controller.close();
 
                 } catch (e: any) {
