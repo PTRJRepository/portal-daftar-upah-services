@@ -192,6 +192,23 @@ const app = new Elysia()
         version: "2.0.0",
         mode: Config.RUN_MODE
     }))
+    // [OPTIMIZATION] Cache statistics endpoint
+    .get("/api/cache/stats", () => {
+        const { cacheService } = require("./services/cacheService");
+        const { lemburCalculator } = require("./services/lemburCalculator");
+        return {
+            payroll_cache: cacheService.getStats(),
+            lembur_holiday_years_cached: Array.from(lemburCalculator.holidayCache?.keys() || []),
+            note: "Cache enabled for historical payroll periods only. Current period data is always fresh."
+        };
+    })
+    // [OPTIMIZATION] Clear cache endpoint (admin use)
+    .post("/api/cache/clear", () => {
+        const { cacheService } = require("./services/cacheService");
+        const before = cacheService.getStats().size;
+        cacheService.clear();
+        return { cleared: true, entries_removed: before };
+    })
     .get("/health", () => ({
         status: "ok",
         timestamp: new Date().toISOString(),

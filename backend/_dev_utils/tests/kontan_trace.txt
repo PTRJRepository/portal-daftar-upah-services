@@ -1,0 +1,72 @@
+Period: 3/2026
+
+=== KONTAN records (10) ===
+  id=21438, nik="1902054509770001", code="0226", amount=150000, gang=H1H
+    → HR_EMPLOYEE (2 records):
+      EmpCode=D0228, Name="SALASATUN ( TUKIYEM )"
+      NOT in any gang (transferred/left?)
+      EmpCode=0226, Name="SALASATUN ( TUKIYEM )"
+      NOT in any gang (transferred/left?)
+  id=21439, nik="1906042509710001", code="B0065", amount=20, gang=B2N
+    → HR_EMPLOYEE (1 records):
+      EmpCode=B0065, Name="SISWANDI ( MARYANI )"
+      Current gangs: B2N
+  id=21441, nik="5203121111960003", code="C0744", amount=94825, gang=C1B
+    → HR_EMPLOYEE (1 records):
+      EmpCode=C0744, Name="HAERUDIN"
+      Current gangs: C1B
+  id=21442, nik="1902040112910004", code="C0032", amount=200000, gang=C1H
+    → HR_EMPLOYEE (1 records):
+      EmpCode=C0032, Name="RIDHO APRIZAL (  ARYATI )"
+      Current gangs: C1H
+  id=21443, nik="1902040107800096", code="C0050", amount=207875, gang=C1H
+    → HR_EMPLOYEE (1 records):
+      EmpCode=C0050, Name="SUIP ( SELAMA )"
+      Current gangs: C1H
+  id=21444, nik="1902042012900001", code="C0051", amount=197450, gang=C1H
+    → HR_EMPLOYEE (1 records):
+      EmpCode=C0051, Name="ROBIN DINATA ( DASNIAR )"
+      Current gangs: C1H
+  id=21445, nik="1902040501800001", code="C0054", amount=183925, gang=C1H
+    → HR_EMPLOYEE (1 records):
+      EmpCode=C0054, Name="SAPARUDIN ( HAMSUNA )"
+      Current gangs: C1H
+  id=21446, nik="1906042202840002", code="C0319", amount=104875, gang=C1H
+    → HR_EMPLOYEE (1 records):
+      EmpCode=C0319, Name="RIDUAN ( ERNAWATI )"
+      Current gangs: C1H
+  id=21447, nik="1902041606020001", code="C0374", amount=187725, gang=C1H
+    → HR_EMPLOYEE (1 records):
+      EmpCode=C0374, Name="SONJA PRIYOGA ( SURNA )"
+      Current gangs: C1H
+  id=21448, nik="1906041411920002", code="C0713", amount=195425, gang=C1H
+    → HR_EMPLOYEE (2 records):
+      EmpCode=C0713, Name="FRANSISKO GAUTAMA ( MARYATI )"
+      Current gangs: C1H
+      EmpCode=A0862, Name="FRANSISKO GAUTAMA ( MARYATI )"
+      NOT in any gang (transferred/left?)
+
+=== PG1A members KONTAN check ===
+PG1A members: 0
+PG1A members with KONTAN in DB: 0
+
+=== TRACE: First KONTAN NIK = "1902054509770001" ===
+HR_EMPLOYEE by emp_code "0226": 1 rows
+  emp_code=0226, nik="1902054509770001", name="SALASATUN ( TUKIYEM )"
+  NIK MATCH: stored="1902054509770001" vs HR="1902054509770001" = true
+
+NIK format check:
+  Stored NIK: "1902054509770001" (length=16)
+  UPPER: "1902054509770001" (length=16)
+  Char codes: 49,57,48,50,48
+
+=== All KONTAN NIKs vs PG1A NIKs ===
+PG1A NIKs count: 0
+KONTAN NIKs count: 10
+Intersection (PG1A members with KONTAN): 0
+
+KONTAN records by gang_code:
+  Gang H1H: 1 KONTAN records
+  Gang B2N: 1 KONTAN records
+  Gang C1B: 1 KONTAN records
+  Gang C1H: 7 KONTAN records

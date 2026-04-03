@@ -1,0 +1,44 @@
+Period: 3/2026, range: 2026-03-01 to 2026-04-01
+
+--- PR_ADTRANS: Looking for JABATAN ---
+Found 5 JABATAN records in PR_ADTRANS:
+  EmpCode=A0001, DocDate=2026-03-31T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=66500
+  EmpCode=A0026, DocDate=2026-03-31T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=40000
+  EmpCode=A0071, DocDate=2026-03-31T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=63000
+  EmpCode=A0072, DocDate=2026-03-31T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=55000
+  EmpCode=A0083, DocDate=2026-03-31T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=45000
+Records in current period: 238
+
+--- PR_ADTRANS_ARC: Looking for JABATAN ---
+No JABATAN in PR_ADTRANS_ARC for current period!
+PR_ADTRANS_ARC ALL DATES (5):
+  A0026: DocDate=2026-02-28T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=52500
+  A0151: DocDate=2026-02-28T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=77000
+  A0154: DocDate=2026-02-28T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=50000
+  A0187: DocDate=2026-02-28T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=77000
+  A0256: DocDate=2026-02-28T00:00:00.000Z, DocDesc="TUNJANGAN JABATAN", total=55000
+
+--- employee_estate: Jabatan role assignments ---
+empcodeMap size: 3628
+nikMap size: 1654
+  EmpCode=016/1902052002/200 → jabatan=karyawan perawatan
+  EmpCode=024/19020520042007 → jabatan=karyawan panen
+  EmpCode=1114041205890001 → jabatan=helper
+  EmpCode=1114042502980002 → jabatan=karyawan perawatan
+  EmpCode=112/19020420072005 → jabatan=karyawan perawatan
+  NIK=1114041205890001 → jabatan=helper
+  NIK=1114042502980002 → jabatan=karyawan perawatan
+  NIK=1203211111990002 → jabatan=Karyawan
+  NIK=1205140608960002 → jabatan=kerani kantor
+  NIK=1205142712920001 → jabatan=operator
+
+--- Explanation of jabatan_rate vs jabatan_estate ---
+jabatan_estate = role name (string) from employee_estate table
+jabatan_jumlah = Rp amount from PR_ADTRANS DocDesc LIKE '%JABATAN%'
+These are DIFFERENT: role name from our DB vs tunjangan amount from payroll transactions
+
+Total empcode-jabatan mappings: 3628
+Total nik-jabatan mappings: 1654
+
+--- PG1A member jabatan lookup ---
+PG1A members found: 0

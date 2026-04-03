@@ -85,6 +85,8 @@ export class LemburCalculator {
     private static instance: LemburCalculator;
     private db: Database;
     private upjValue: number;
+    // [OPTIMIZATION] Cache holidays by year - holidays don't change, so cache indefinitely
+    holidayCache: Map<number, Record<string, { is_religious: boolean }>> = new Map();
 
     private constructor() {
         this.db = Database.getInstance();
@@ -132,7 +134,7 @@ export class LemburCalculator {
                 Amount: number;
                 Rate: number;
             }>(`
-                SELECT 
+                SELECT
                     trl.ID,
                     trl.EmpCode,
                     e.EmpName,
@@ -149,9 +151,9 @@ export class LemburCalculator {
                     FROM PR_TASKREGLN l
                     JOIN PR_TASKREG m ON l.MasterID = m.ID
                     WHERE l.EmpCode = ? AND l.TrxDate >= ? AND l.TrxDate <= ? AND l.OT = 1
-                    
+
                     UNION ALL
-                    
+
                     -- Archive Table
                     SELECT l.ID, l.EmpCode, l.TrxDate, l.Hours, l.TaskCode, l.ShiftCode, l.Amount, l.Rate
                     FROM PR_TASKREGLN_ARC l
@@ -246,7 +248,7 @@ export class LemburCalculator {
                 Hours: number;
                 TrxDate: string;
             }>(`
-                SELECT 
+                SELECT
                     trl.EmpCode,
                     trl.Hours,
                     trl.TrxDate
@@ -254,17 +256,17 @@ export class LemburCalculator {
                     -- Active Table
                     SELECT l.EmpCode, l.TrxDate, l.Hours
                     FROM PR_TASKREGLN l
-                    WHERE l.EmpCode IN (${empList}) 
-                      AND l.TrxDate >= ? AND l.TrxDate <= ? 
+                    WHERE l.EmpCode IN (${empList})
+                      AND l.TrxDate >= ? AND l.TrxDate <= ?
                       AND l.OT = 1
-                    
+
                     UNION ALL
-                    
+
                     -- Archive Table
                     SELECT l.EmpCode, l.TrxDate, l.Hours
                     FROM PR_TASKREGLN_ARC l
-                    WHERE l.EmpCode IN (${empList}) 
-                      AND l.TrxDate >= ? AND l.TrxDate <= ? 
+                    WHERE l.EmpCode IN (${empList})
+                      AND l.TrxDate >= ? AND l.TrxDate <= ?
                       AND l.OT = 1
                 ) trl
                 ORDER BY trl.EmpCode, trl.TrxDate
@@ -473,12 +475,44 @@ export class LemburCalculator {
             }
         }
 
-        // 4. Build individual records per employee (one record per transaction)
-        // This ensures total lembur = sum of all detail records (no double counting)
+        // 4. [OPTIMIZATION] Fetch holidays once — already cached by year
+        const holidays = await this.getHolidays(year);
+
+        // 5. [OPTIMIZATION] Group rows by employee FIRST — O(M) single pass instead of O(N×M)
+        // Previous: for each employee, loop through ALL rows = O(N×M) worst case
+        // Now: group once, then iterate only that employee's rows = O(M) + O(N×K)
+        const empRowsMap: Record<string, typeof rows> = {};
+        for (const row of rows) {
+            const ec = row.EmpCode?.trim();
+            if (ec) {
+                if (!empRowsMap[ec]) empRowsMap[ec] = [];
+                empRowsMap[ec].push(row);
+            }
+        }
+
+        // 6. [OPTIMIZATION] Inline sync day classification — avoids await per transaction
+        // holidays already fetched and cached above; direct lookup is O(1)
+        const classifyDaySync = (date: Date): DayType => {
+            const dayOfWeek = date.getDay();
+            const dateStr = formatSystemDate(date);
+            if (holidays[dateStr]) {
+                return holidays[dateStr].is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
+            }
+            if (dayOfWeek === 0) return DayType.SUNDAY;
+            if (dayOfWeek === 5) return DayType.WORKDAY_SHORT;
+            return DayType.WORKDAY_LONG;
+        };
+
         const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
         for (const empCode of empCodes) {
             const empKey = empCode.trim();
+            const myRows = empRowsMap[empKey] || [];
+
+            // Pre-compute UPJ once per employee (same for all rows of this employee)
+            const payRate = payRates[empKey] || 0;
+            const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
+
             result[empKey] = {
                 total_hours: 0,
                 total_payment: 0,
@@ -490,7 +524,8 @@ export class LemburCalculator {
                 }
             };
 
-            // Store individual transaction records
+            if (myRows.length === 0) continue;
+
             const records: Array<{
                 date: string;
                 day_name: string;
@@ -505,22 +540,16 @@ export class LemburCalculator {
                 meta?: PayrollComponentMetadata;
             }> = [];
 
-            for (const row of rows) {
-                const rowEmpCode = row.EmpCode?.trim();
-                if (rowEmpCode !== empKey) continue;
-
+            // 7. [OPTIMIZATION] Iterate only this employee's rows — no full scan, no await
+            for (const row of myRows) {
                 const taskCode = (row.TaskCode || "").trim();
                 const taskDesc = taskDescMap[taskCode] || taskCode;
-                // UPJ = payrate × 30 / 173
-                // If payRate is not available, use fallback UPJ from environment
-                const payRate = payRates[empKey] || 0;
-                const upj = payRate > 0 ? (payRate * 30) / 173 : this.upjValue;
                 const trxDate = new Date(row.TrxDate);
                 const dayOfWeek = trxDate.getDay();
-                const dayType = await this.classifyDay(trxDate, year);
+                // [OPTIMIZATION] Sync inline classification — no await, uses cached holidays
+                const dayType = classifyDaySync(trxDate);
                 const breakdown = this.calculateOvertimePayment(row.Hours, dayType, upj, dayOfWeek === 5);
 
-                // Create individual transaction record
                 records.push({
                     date: formatSystemDate(trxDate),
                     day_name: dayNames[dayOfWeek],
@@ -529,9 +558,9 @@ export class LemburCalculator {
                     task_desc: taskDesc,
                     hours: row.Hours,
                     rate: breakdown.total_rate || 0,
-                    amount: breakdown.total_amount,       // Calculated amount (from tier-based rate)
-                    raw_amount: row.Amount || 0,          // Amount from PR_TASKREGLN table
-                    raw_rate: row.Rate || 0,              // Rate from PR_TASKREGLN table
+                    amount: breakdown.total_amount,
+                    raw_amount: row.Amount || 0,
+                    raw_rate: row.Rate || 0,
                     meta: {
                         source: 'DATABASE_PLANTWARE',
                         description: `Overtime on ${formatSystemDate(trxDate)} (${taskDesc})`,
@@ -540,16 +569,12 @@ export class LemburCalculator {
                     }
                 });
 
-                // Add to totals
                 result[empKey].total_hours += row.Hours;
                 result[empKey].total_payment += breakdown.total_amount;
             }
 
-            // Sort records by date
             records.sort((a, b) => a.date.localeCompare(b.date));
 
-            // Create task_breakdown from individual records (for compatibility)
-            // Group by task_desc for summary view
             const taskGroupMap: Record<string, {
                 task_code: string;
                 task_desc: string;
@@ -574,8 +599,8 @@ export class LemburCalculator {
                 taskGroupMap[groupKey].record_count += 1;
             }
 
-            result[empKey].task_breakdown = Object.values(taskGroupMap).sort((a, b) => b.amount - a.amount);
-            result[empKey].records = records; // Add individual records
+            result[empKey].task_breakdown = Object.values(taskGroupMap).sort((a, b) => b.amount - b.amount);
+            result[empKey].records = records;
         }
 
         return result;
@@ -607,6 +632,11 @@ export class LemburCalculator {
     }
 
     private async getHolidays(year: number): Promise<Record<string, { is_religious: boolean }>> {
+        // [OPTIMIZATION] Cache holidays by year - holidays are static, never change
+        if (this.holidayCache.has(year)) {
+            return this.holidayCache.get(year)!;
+        }
+
         const rows = await this.db.query<{ HolidayDate: string; Description: string }>(`
             SELECT HolidayDate, Description FROM HR_GPH WHERE YEAR(HolidayDate) = ?
         `, [year]);
@@ -622,6 +652,8 @@ export class LemburCalculator {
             holidays[dateStr] = { is_religious: isReligious };
         }
 
+        // Cache indefinitely (holidays don't change)
+        this.holidayCache.set(year, holidays);
         return holidays;
     }
 

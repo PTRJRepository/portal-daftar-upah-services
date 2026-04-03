@@ -4,7 +4,9 @@
  */
 import axios from 'axios'
 
-const BASE_URL = '/payroll/locked'
+// We omit the leading slash so Axios properly appends this to its defaults.baseURL
+// instead of treating it as an absolute path that bypasses the proxy mapping.
+const BASE_URL = 'payroll/locked'
 
 /**
  * Verify external token and get user claims

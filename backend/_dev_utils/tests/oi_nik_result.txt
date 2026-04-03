@@ -1,0 +1,26 @@
+Period: 3/2026
+
+NIK/EmpCode fill stats for 3/2026:
+  type=THR: total=1616, has_nik=1616, has_empcode=0, has_empname=1616
+  type=KONTAN: total=137, has_nik=137, has_empcode=137, has_empname=0
+
+--- KONTAN sample records ---
+  id=21438, nik="1902054509770001", code="0226", name="null", amount=150000, gang=H1H
+  id=21439, nik="1906042509710001", code="B0065", name="null", amount=20, gang=B2N
+  id=21441, nik="5203121111960003", code="C0744", name="null", amount=94825, gang=C1B
+  id=21442, nik="1902040112910004", code="C0032", name="null", amount=200000, gang=C1H
+  id=21443, nik="1902040107800096", code="C0050", name="null", amount=207875, gang=C1H
+  id=21444, nik="1902042012900001", code="C0051", name="null", amount=197450, gang=C1H
+  id=21445, nik="1902040501800001", code="C0054", name="null", amount=183925, gang=C1H
+  id=21446, nik="1906042202840002", code="C0319", name="null", amount=104875, gang=C1H
+  id=21447, nik="1902041606020001", code="C0374", name="null", amount=187725, gang=C1H
+  id=21448, nik="1906041411920002", code="C0713", name="null", amount=195425, gang=C1H
+
+--- THR sample records ---
+  nik="1902052403700001", code="NULL", name="ROSADI ( KURNIA )", amount=4035000
+  nik="1902052702880003", code="NULL", name="FEBRIANSYAH ( YUSNI )", amount=4255500
+  nik="1902050509810003", code="NULL", name="SAYUTI ( AMINAH )", amount=4259000
+  nik="1902010510710009", code="NULL", name="MUZIL ( HABSA )", amount=4232000
+  nik="1902051906820002", code="NULL", name="YUHANI ( ROBIATI )", amount=4190000
+
+--- PG1A members NIK cross-check with THR ---

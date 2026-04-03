@@ -182,6 +182,7 @@ export class ReportService {
                 )
                   AND LF.DocDate >= @start
                   AND LF.DocDate < @end
+                  AND CHARINDEX('_', LF.DocDate) = 0  -- Filter out ID codes like LF50317375_01, only use real dates
                 GROUP BY LFLN.EmpCode
             `, gangSubCond.params, startDate, endDate, useArc),
 

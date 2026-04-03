@@ -18,7 +18,10 @@
       "Bash(klik *)",
       "Bash(saat *)",
       "Bash(integrasi *)",
-      "Bash(taskkill *)"
+      "Bash(taskkill *)",
+      "Bash(del *)",
+      "Bash(timeout *)",
+      "Bash(curl *)"
     ]
   },
   "$version": 3

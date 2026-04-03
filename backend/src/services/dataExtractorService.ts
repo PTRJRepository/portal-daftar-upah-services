@@ -18,6 +18,7 @@ import { divisionDefinition } from "./divisionDefinition";
 import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { OtherIncomesService } from "./otherIncomesService";
 import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
+import { cacheService } from "./cacheService";
 import { debug, info, warn, error as logError } from "../utils/logger";
 
 const CATEGORY = "DataExtractor";
@@ -312,6 +313,7 @@ export class DataExtractorService {
         const daysInMonth = new Date(year, month, 0).getDate();
 
         // ============================================================
+        // ============================================================
         // [OPTIMIZATION] Parallelize: currentPeriod + gangService fetch together
         // ============================================================
         const [currentPeriod, allGangs] = await Promise.all([
@@ -323,6 +325,26 @@ export class DataExtractorService {
 
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
+
+        // [OPTIMIZATION] Cache check for historical periods
+        // Only cache if: (1) it's historical data, (2) no specific emp requested, (3) caching is enabled
+        const cacheKey = cacheService.buildPayrollKey(gangCode, month, year, divisionCode);
+        if (isHistorical && !specificEmpCode && cacheService.shouldCache(month, year, currentMonth, currentYear)) {
+            const cached = cacheService.get<{
+                data_rows: PayrollRow[];
+                dynamic_premi_headers: string[];
+                dynamic_potongan_headers: string[];
+                premi_title_map: Record<string, string>;
+                potongan_title_map: Record<string, string>;
+                meta: { execution_time_ms: number; row_count: number; cached: boolean };
+            }>(cacheKey);
+            if (cached) {
+                debug(CATEGORY, `✅ [CACHE HIT] ${cacheKey} — returning ${cached.data_rows.length} rows (cached)`);
+                cached.meta.cached = true;
+                return cached;
+            }
+            debug(CATEGORY, `⏳ [CACHE MISS] ${cacheKey} — fetching from DB...`);
+        }
         // For development/debugging as requested, bypass the interceptor to allow getPremi logic to run for History
         // If history mode is on, try to fetch from the snapshot tables first.
         let shouldFetchHistory = false; // Bypass: isHistorical && historyDatabaseService.isHistoryMode();
@@ -431,7 +453,7 @@ export class DataExtractorService {
                 dynamic_potongan_headers: [],
                 premi_title_map: {},
                 potongan_title_map: {},
-                meta: { execution_time_ms: 0, row_count: 0 }
+                meta: { execution_time_ms: 0, row_count: 0, cached: false }
             };
         }
 
@@ -1536,9 +1558,18 @@ export class DataExtractorService {
             potongan_title_map: potonganTitleMap,
             meta: {
                 execution_time_ms: totalMs,
-                row_count: dataRows.length
+                row_count: dataRows.length,
+                cached: false
             }
         };
+
+        // [OPTIMIZATION] Cache historical results
+        // Only cache if: (1) it's historical data, (2) no specific emp requested, (3) has data
+        if (isHistorical && !specificEmpCode && dataRows.length > 0) {
+            // TTL: 1 hour for historical data (but up to 2h max from cacheService)
+            cacheService.set(cacheKey, result, 3600);
+            debug(CATEGORY, `💾 [CACHE SAVE] ${cacheKey} — cached ${dataRows.length} rows (TTL: 1h)`);
+        }
 
         debug(CATEGORY, `TOTAL: ${totalMs}ms for ${gangCode}/${month}/${year} (${dataRows.length} rows)`);
 
@@ -2331,38 +2362,35 @@ export class DataExtractorService {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // Try ARC table first (for archived/locked periods)
-        let rows = await db.query<{ emp_code: string; total: number; doc_desc: string }>(`
-            SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total, t.DocDesc as doc_desc
-            FROM PR_ADTRANS_ARC t
-            JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-            WHERE t.EmpCode IN (${empList})
-              AND t.DocDate >= ? AND t.DocDate < ?
-              AND UPPER(t.DocDesc) LIKE '%LEMBUR%'
-              AND ln.Amount > 0
-            GROUP BY t.EmpCode, t.DocDesc
-        `, [startDate, endDate]);
-
-        // If no data, try base table
-        if (rows.length === 0) {
-            rows = await db.query<{ emp_code: string; total: number; doc_desc: string }>(`
+        // [OPTIMIZATION] Parallelize ARC + base table queries
+        // Run both in parallel, then merge results (SUM aggregation handles duplicates)
+        const [arcRows, baseRows] = await Promise.all([
+            db.query<{ emp_code: string; total: number; doc_desc: string }>(`
+                SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total, t.DocDesc as doc_desc
+                FROM PR_ADTRANS_ARC t
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE t.EmpCode IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND UPPER(t.DocDesc) LIKE '%LEMBUR%'
+                  AND ln.Amount > 0
+                GROUP BY t.EmpCode, t.DocDesc
+            `, [startDate, endDate]),
+            db.query<{ emp_code: string; total: number; doc_desc: string }>(`
                 SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total, t.DocDesc as doc_desc
                 FROM PR_ADTRANS t
                 JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-                WHERE t.EmpCode IN(${empList})
+                WHERE t.EmpCode IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
-            AND UPPER(t.DocDesc) LIKE '%LEMBUR%'
+                  AND UPPER(t.DocDesc) LIKE '%LEMBUR%'
                   AND ln.Amount > 0
                 GROUP BY t.EmpCode, t.DocDesc
-            `, [startDate, endDate]);
-        }
+            `, [startDate, endDate])
+        ]);
 
-        if (rows.length > 0) {
-            // console.log(`[DataExtractor] Sample lembur DocDesc: `, rows.slice(0, 3));
-        }
-
+        // Merge results: SUM by emp_code (duplicates from ARC+base are aggregated)
+        const allRows = [...arcRows, ...baseRows];
         const result: Record<string, number> = {};
-        for (const r of rows) {
+        for (const r of allRows) {
             const empCode = r.emp_code?.trim() || "";
             result[empCode] = (result[empCode] || 0) + (r.total || 0);
         }
@@ -2378,21 +2406,20 @@ export class DataExtractorService {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // Try ARC table first (for archived/locked periods) - WITHOUT RTRIM on EmpCode
-        let rows = await db.query<{ emp_code: string; total: number; doc_desc: string }>(`
-            SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total, t.DocDesc as doc_desc
-            FROM PR_ADTRANS_ARC t
-            JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-            WHERE t.EmpCode IN (${empList})
-              AND t.DocDate >= ? AND t.DocDate < ?
-              AND UPPER(t.DocDesc) LIKE '%BERAS%'
-              AND ln.Amount > 0
-            GROUP BY t.EmpCode, t.DocDesc
-        `, [startDate, endDate]);
-
-        // If no data, try base table
-        if (rows.length === 0) {
-            rows = await db.query<{ emp_code: string; total: number; doc_desc: string }>(`
+        // [OPTIMIZATION] Parallelize ARC + base table queries
+        // Run both in parallel, then merge results (SUM aggregation handles duplicates)
+        const [arcRows, baseRows] = await Promise.all([
+            db.query<{ emp_code: string; total: number; doc_desc: string }>(`
+                SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total, t.DocDesc as doc_desc
+                FROM PR_ADTRANS_ARC t
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE t.EmpCode IN (${empList})
+                  AND t.DocDate >= ? AND t.DocDate < ?
+                  AND UPPER(t.DocDesc) LIKE '%BERAS%'
+                  AND ln.Amount > 0
+                GROUP BY t.EmpCode, t.DocDesc
+            `, [startDate, endDate]),
+            db.query<{ emp_code: string; total: number; doc_desc: string }>(`
                 SELECT t.EmpCode as emp_code, SUM(ln.Amount) as total, t.DocDesc as doc_desc
                 FROM PR_ADTRANS t
                 JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
@@ -2401,15 +2428,13 @@ export class DataExtractorService {
                   AND UPPER(t.DocDesc) LIKE '%BERAS%'
                   AND ln.Amount > 0
                 GROUP BY t.EmpCode, t.DocDesc
-            `, [startDate, endDate]);
-        }
+            `, [startDate, endDate])
+        ]);
 
-        if (rows.length > 0) {
-            // console.log(`[DataExtractor] Sample beras DocDesc: `, rows.slice(0, 3));
-        }
-
+        // Merge results: SUM by emp_code (duplicates from ARC+base are aggregated)
+        const allRows = [...arcRows, ...baseRows];
         const result: Record<string, number> = {};
-        for (const r of rows) {
+        for (const r of allRows) {
             const empCode = r.emp_code?.trim() || "";
             result[empCode] = (result[empCode] || 0) + (r.total || 0);
         }
@@ -2553,6 +2578,7 @@ export class DataExtractorService {
                 JOIN PR_LOOSEFRUITLN LFLN ON LF.ID = LFLN.MasterID
                 WHERE RTRIM(LFLN.EmpCode) IN(${empList})
                   AND LF.DocDate >= ? AND LF.DocDate < ?
+                  AND CHARINDEX('_', LF.DocDate) = 0  -- Filter out ID codes like LF50317375_01, only use real dates
 
             UNION ALL
 
@@ -2561,6 +2587,7 @@ export class DataExtractorService {
                 JOIN PR_LOOSEFRUITLN_ARC LFLN ON LF.ID = LFLN.MasterID
                 WHERE RTRIM(LFLN.EmpCode) IN(${empList})
                   AND LF.DocDate >= ? AND LF.DocDate < ?
+                  AND CHARINDEX('_', LF.DocDate) = 0  -- Filter out ID codes like LF50317375_01, only use real dates
             ) combined
             GROUP BY RTRIM(EmpCode)
             `, [startDate, endDate, startDate, endDate]);

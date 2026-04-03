@@ -808,3 +808,17 @@
     border: 1px solid #3b82f6 !important;
     /* blue border */
 }
+
+/* ============================================
+   LOADING PROGRESS BAR STYLES
+   ============================================ */
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Smooth transitions for loading states */
+.payroll-table-container {
+    transition: opacity 0.2s ease;
+}

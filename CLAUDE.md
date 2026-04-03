@@ -256,7 +256,7 @@ export const dataExtractorService = DataExtractorService.getInstance();
 | `employeeEstateService` | Manage job title/estate data |
 | `tunjanganService` | Handle allowance calculations |
 | `thumbprintService` | Manage thumbprint data storage/retrieval |
-| `cacheService` | Cache management (disabled in dev unless override) |
+| `cacheService` | Cache management for historical payroll periods (1h TTL) |
 | `currentPeriodService` | Get current payroll period |
 | `deductionAdjustmentService` | Handle deduction adjustments |
 | `luasAreaService` | Calculate area-based values |
@@ -822,8 +822,23 @@ DEFAULT_YEAR=2025
 - **RUN_MODE=dev**: Uses `SERVER_PROFILE_1` for development
 - **USE_PROXY=true**: Strips `/backend/upah` prefix, sets `AUTH_MODE=external`
 - **TEST_MODE=true**: Enables test mode with default values for gang/month/year
-- **Cache**: Disabled in dev mode unless `ENABLE_PRODUCTION_CACHE=true`
-- **DISABLE_CACHE=true**: Force disable cache globally
+- **Cache**: **Enabled for historical periods only** (bulan lalu yang tidak berubah). Current period data always fresh from DB.
+
+### Caching Strategy (Apr 2026)
+
+**Enabled optimizations:**
+
+| Type | Data | TTL | Benefit |
+|------|------|-----|---------|
+| **Payroll Cache** | HistoricalDaftar Upah results | 1 hour | ~instant load for past months |
+| **Holiday Cache** | HR_GPH holidays by year | Permanent (static) | Lembur calculation faster |
+| **Parallel Queries** | ARC + base DB fallback | N/A | Faster Lembur/Beras DocDesc lookup |
+
+**Cache endpoints:**
+- `GET /api/cache/stats` — View cache hit/miss, cached years
+- `POST /api/cache/clear` — Clear all payroll cache
+
+**Key:** `payroll:{gangCode}:{month}:{year}:{divisionCode || 'ALL'}`
 
 ### Thumbprint Data
 

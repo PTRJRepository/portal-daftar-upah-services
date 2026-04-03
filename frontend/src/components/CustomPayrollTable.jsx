@@ -126,6 +126,18 @@ export default function CustomPayrollTable({
     // Track data readiness - only show table content after confirmed data load
     const [dataReady, setDataReady] = useState(false);
     const [error, setError] = useState('');
+    
+    // Progressive loading state
+    const [loadingProgress, setLoadingProgress] = useState({
+        stage: null, // 'fetching' | 'processing' | 'rendering' | 'complete'
+        message: '',
+        currentGang: null,
+        totalGangs: 0,
+        processedGangs: 0,
+        totalEmployees: 0,
+        processedEmployees: 0
+    });
+
     const [dynamicHeaders, setDynamicHeaders] = useState({ premi: {}, potongan: {} });
     const [grandTotal, setGrandTotal] = useState(null);
     const [selection, setSelection] = useState([]); // Changed to array for multi-select
@@ -647,10 +659,11 @@ export default function CustomPayrollTable({
     }, []);
 
     /**
-     * processRawData: Transform raw API data → display rows with filters applied.
-     * No caching - direct display.
+     * processRawData: Transform raw API data → display rows with PROGRESSIVE rendering.
+     * Shows data gang-by-gang to avoid blocking the UI thread.
+     * No caching - direct display with progressive updates.
      */
-    const processRawData = useCallback((data, currentGangCode, currentGangPrefix) => {
+    const processRawData = useCallback(async (data, currentGangCode, currentGangPrefix) => {
         console.log('[CustomPayrollTable] 📥 processRawData called:', {
             hasData: !!data,
             dataKeys: data ? Object.keys(data) : [],
@@ -663,10 +676,21 @@ export default function CustomPayrollTable({
         if (!data) {
             console.warn('[CustomPayrollTable] ⚠️ processRawData: data is null/undefined');
             setDataReady(true);
+            setLoadingProgress({ stage: 'complete', message: '', totalGangs: 0, processedGangs: 0, totalEmployees: 0, processedEmployees: 0 });
             return;
         }
 
         try {
+            // Step 1: Process headers immediately (fast)
+            setLoadingProgress({
+                stage: 'processing',
+                message: 'Memproses header kolom...',
+                totalGangs: data.gangs?.length || 0,
+                processedGangs: 0,
+                totalEmployees: data.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0) || 0,
+                processedEmployees: 0
+            });
+
             const dynPot = data.dynamic_potongan_headers || [];
             const dynPrem = data.dynamic_premi_headers || [];
             const potTitleMap = data.potongan_title_map || {};
@@ -686,10 +710,11 @@ export default function CustomPayrollTable({
 
             setDynamicHeaders({ premi: premWithTitles, potongan: potWithTitles });
 
+            // Step 2: Flatten data
+            setLoadingProgress(prev => ({ ...prev, message: 'Meratakan data karyawan...' }));
             let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
 
             // --- CLIENT-SIDE FILTERING ---
-            // Apply gangPrefix filter (group filter) client-side
             if (currentGangPrefix) {
                 flatRows = flatRows.filter(r => {
                     const asist = getAsistensiLocal(r.gang_code);
@@ -697,24 +722,23 @@ export default function CustomPayrollTable({
                 });
             }
 
-            // Apply specific gangCode filter client-side
             if (currentGangCode && currentGangCode !== 'ALL') {
                 flatRows = flatRows.filter(r => r.gang_code === currentGangCode);
             }
 
-            // Calculate frontend grand total for filtered rows
-            const frontendGt = PayrollAggregator.calculateGrandTotal(flatRows);
-            frontendGt.emp_code = `${flatRows.length} Karyawan`;
+            // Step 3: Build gang groups
+            setLoadingProgress(prev => ({ ...prev, message: 'Mengelompokkan data per gang...' }));
+            const gangsMap = {};
+            flatRows.forEach(row => {
+                const g = row.gang_code;
+                if (!gangsMap[g]) gangsMap[g] = [];
+                gangsMap[g].push(row);
+            });
 
-            // Use backend grand_total only when showing ALL data (no client-side filter active)
-            const backendGrandTotal = data.grand_total;
-            if (backendGrandTotal && !currentGangPrefix && (!currentGangCode || currentGangCode === 'ALL')) {
-                setGrandTotal({ ...frontendGt, ...backendGrandTotal });
-            } else {
-                setGrandTotal(frontendGt);
-            }
-
-            // Build gang_totals map from backend
+            const gangKeys = Object.keys(gangsMap).sort();
+            const totalEmployees = flatRows.length;
+            
+            // Build backend gang totals map
             const backendGangTotalsMap = {};
             if (data.gangs) {
                 data.gangs.forEach(gang => {
@@ -724,27 +748,36 @@ export default function CustomPayrollTable({
                 });
             }
 
-            // Group rows by gang
-            const gangsMap = {};
-            flatRows.forEach(row => {
-                const g = row.gang_code;
-                if (!gangsMap[g]) gangsMap[g] = [];
-                gangsMap[g].push(row);
+            // Step 4: Progressive rendering - gang by gang
+            setLoadingProgress({
+                stage: 'rendering',
+                message: `Memproses ${gangKeys.length} gang...`,
+                totalGangs: gangKeys.length,
+                processedGangs: 0,
+                totalEmployees,
+                processedEmployees: 0
             });
 
             const processedRows = [];
             let globalNo = 1;
-            const gangKeys = Object.keys(gangsMap).sort();
+            let processedCount = 0;
 
-            gangKeys.forEach(gCode => {
+            // Process gangs in batches to avoid blocking UI
+            for (let i = 0; i < gangKeys.length; i++) {
+                const gCode = gangKeys[i];
                 const employees = gangsMap[gCode];
+                
+                // Sort employees
                 employees.sort((a, b) => {
                     const codeA = String(a.emp_code || a.nik || '').trim();
                     const codeB = String(b.emp_code || b.nik || '').trim();
                     return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
                 });
 
+                // Add gang header
                 processedRows.push({ type: 'gang_header', gang_code: gCode, id: `HEADER_${gCode}` });
+                
+                // Add employees
                 employees.forEach(emp => {
                     emp.no = globalNo++;
                     emp.type = 'employee';
@@ -752,7 +785,7 @@ export default function CustomPayrollTable({
                     processedRows.push(emp);
                 });
 
-                // Calculate frontend gang total
+                // Calculate gang total
                 let gangTotal = PayrollAggregator.calculateGangTotals(gCode, flatRows);
                 if (backendGangTotalsMap[gCode] && !currentGangPrefix && (!currentGangCode || currentGangCode === 'ALL')) {
                     gangTotal = { ...gangTotal, ...backendGangTotalsMap[gCode] };
@@ -763,15 +796,54 @@ export default function CustomPayrollTable({
                 gangTotal.nama = `TOTAL GANG ${gCode}`;
                 gangTotal.emp_code = `${employees.length} Kary.`;
                 processedRows.push(gangTotal);
+
+                processedCount += employees.length;
+
+                // Update progress every 2 gangs or if it's the last one
+                if (i % 2 === 1 || i === gangKeys.length - 1) {
+                    setLoadingProgress({
+                        stage: 'rendering',
+                        message: `Memproses gang ${i + 1}/${gangKeys.length}: ${gCode}`,
+                        totalGangs: gangKeys.length,
+                        processedGangs: i + 1,
+                        totalEmployees,
+                        processedEmployees: processedCount
+                    });
+
+                    // Yield to browser to render current rows
+                    if (i < gangKeys.length - 1) {
+                        setRows([...processedRows]); // Update rows progressively
+                        await new Promise(resolve => setTimeout(resolve, 50)); // 50ms yield
+                    }
+                }
+            }
+
+            // Step 5: Final updates
+            setLoadingProgress({
+                stage: 'complete',
+                message: 'Selesai!',
+                totalGangs: gangKeys.length,
+                processedGangs: gangKeys.length,
+                totalEmployees,
+                processedEmployees: processedCount
             });
 
-            // Data removed from localStorage to prevent UI blocking when switching groups.
-            // PayslipPrintPage will now fetch data directly from the API.
+            // Calculate grand total
+            const frontendGt = PayrollAggregator.calculateGrandTotal(flatRows);
+            frontendGt.emp_code = `${flatRows.length} Karyawan`;
 
+            const backendGrandTotal = data.grand_total;
+            if (backendGrandTotal && !currentGangPrefix && (!currentGangCode || currentGangCode === 'ALL')) {
+                setGrandTotal({ ...frontendGt, ...backendGrandTotal });
+            } else {
+                setGrandTotal(frontendGt);
+            }
+
+            // Set final rows (all processed)
             setRows(processedRows);
             setDataReady(true);
 
-            // Determine active dynamic premi/potongan fields
+            // Determine active dynamic fields
             const employeeRows = processedRows.filter(r => r.type === 'employee');
             const activePremi = Object.entries(premWithTitles).filter(([, field]) =>
                 employeeRows.some(row => {
@@ -791,9 +863,12 @@ export default function CustomPayrollTable({
 
             setAllEmployeeNiks(employeeRows.map(r => r.nik).filter(Boolean));
             setSelection([]);
+
+            console.log(`[CustomPayrollTable] ✅ Progressive rendering complete: ${gangKeys.length} gangs, ${processedCount} employees`);
         } catch (err) {
             console.error('[CustomPayrollTable] processRawData error:', err);
             setError(err.message);
+            setLoadingProgress({ stage: 'complete', message: '', totalGangs: 0, processedGangs: 0, totalEmployees: 0, processedEmployees: 0 });
         }
     }, [division, month, year, getAsistensiLocal]);
 
@@ -811,26 +886,33 @@ export default function CustomPayrollTable({
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        console.log('[CustomPayrollTable] 🔄 FETCH START:', { division, month, year, gangCode, gangPrefix });    
-        
+        console.log('[CustomPayrollTable] 🔄 FETCH START:', { division, month, year, gangCode, gangPrefix });
+
         setLoading(true);
         setError('');
         setDataReady(false);
         setRows([]);
         setGrandTotal(null);
-
+        setLoadingProgress({
+            stage: 'fetching',
+            message: 'Mengambil data dari server...',
+            totalGangs: 0,
+            processedGangs: 0,
+            totalEmployees: 0,
+            processedEmployees: 0
+        });
         try {
-            // Only send gang_prefix when showing ALL gangs.
-            // When specific gang selected, gangPrefix from filter may not match that gang's actual group.       
-            const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
-
+            // Always fetch based on current filters. No client-side caching of full division.
             let data;
             if (isProdMode()) {
+                // In production, we might still want to filter by gangPrefix if showing ALL gangs
+                const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
                 data = await getLockedRawTree(
                     token, division, month, year, false, // NEVER use history db
                     shouldSendGangPrefix ? (gangPrefix || null) : null
                 );
             } else {
+                const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
                 const prefixParam = shouldSendGangPrefix && gangPrefix ? `&gang_prefix=${gangPrefix}` : '';      
                 const historyParam = useHistoryDb ? `&use_history=true` : '';
                 const gangCodeParam = gangCode && gangCode !== 'ALL' ? `&gang_code=${gangCode}` : '';
@@ -856,7 +938,7 @@ export default function CustomPayrollTable({
             // Validate data structure
             if (!data || typeof data !== 'object') {
                 console.error('[CustomPayrollTable] ❌ Invalid data structure:', data);
-                throw new Error('Invalid data structure from API');
+                throw new Error('Invalid data structure dari API atau Sesi kedaluwarsa');
             }
 
             onDataLoaded?.(data);
@@ -870,9 +952,11 @@ export default function CustomPayrollTable({
             console.error('[CustomPayrollTable] ❌ Fetch error:', err);
             setError(err.message);
             setDataReady(true);
+            setLoadingProgress({ stage: 'complete', message: '', totalGangs: 0, processedGangs: 0, totalEmployees: 0, processedEmployees: 0 });
         } finally {
             if (abortControllerRef.current === controller) {
                 setLoading(false);
+                // Don't reset loadingProgress here - let it show complete state
             }
         }
     }, [division, month, year, gangCode, gangPrefix, token, useHistoryDb, gangLoading, processRawData, onDataLoaded]);
@@ -2343,6 +2427,62 @@ export default function CustomPayrollTable({
 
     return (
         <div className="payroll-table-container" style={{ fontSize: `${11 * scale}px` }} onMouseUp={handleMouseUp}>
+            {/* Loading Progress Bar - Above Header */}
+            {loading && loadingProgress.stage && (
+                <div style={{
+                    position: 'sticky',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    zIndex: 1001,
+                    backgroundColor: '#ffffff',
+                    borderBottom: '2px solid #e5e7eb',
+                    padding: '12px 20px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    marginBottom: rows.length > 0 ? '0' : '0'
+                }}>
+                    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    border: '3px solid #e5e7eb',
+                                    borderTop: '3px solid #3b82f6',
+                                    borderRadius: '50%',
+                                    animation: 'spin 1s linear infinite'
+                                }} />
+                                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
+                                    {loadingProgress.message || 'Memproses data...'}
+                                </span>
+                            </div>
+                            {loadingProgress.totalGangs > 0 && (
+                                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
+                                    {loadingProgress.processedGangs}/{loadingProgress.totalGangs} gang • {loadingProgress.processedEmployees}/{loadingProgress.totalEmployees} karyawan
+                                </span>
+                            )}
+                        </div>
+                        <div style={{
+                            width: '100%',
+                            height: '6px',
+                            backgroundColor: '#e5e7eb',
+                            borderRadius: '3px',
+                            overflow: 'hidden'
+                        }}>
+                            <div style={{
+                                height: '100%',
+                                width: loadingProgress.totalGangs > 0
+                                    ? `${(loadingProgress.processedGangs / loadingProgress.totalGangs) * 100}%`
+                                    : '100%',
+                                backgroundColor: loadingProgress.stage === 'fetching' ? '#3b82f6' : '#10b981',
+                                transition: 'width 0.3s ease',
+                                borderRadius: '3px'
+                            }} />
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Edit Mode Save Banner */}
             {isEditMode && (
                 <div style={{

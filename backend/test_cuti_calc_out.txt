@@ -1,0 +1,31 @@
+[HarvesterService] Staging DB disabled via DISABLE_STAGING_DB env flag
+[VirtualDivisionRegistry] Registered: INF - Infrastruktur
+[VirtualDivisionRegistry] Registered: NRS - Nursery
+[VirtualDivisionRegistry] Registered: WKS_PG - Workshop Parit Gunung (PGE)
+[VirtualDivisionRegistry] Registered: WKS_AR - Workshop Air Ruak (AB2)
+[VirtualDivisionRegistry] Registered: WORKSHOP - Workshop All
+[VirtualDivisionRegistry] Registered: ARC - Air Ruak Central
+[VirtualDivisionRegistry] Registered: MILL - Palm Oil Mill
+[PayrollComponentRegistry] Registered component: lembur (v1)
+[PayrollComponentRegistry] Registered component: premi (v1)
+[PayrollComponentRegistry] Registered component: tunjangan (v1)
+[PayrollComponentRegistry] Registered component: potongan (v1)
+[PayrollComponentRegistry] Registered component: pph21_ter (v1)
+[PayrollComponentRegistry] Registered component: gaji_pokok (v1)
+Starting test for cuti calculation...
+Extracting payroll data for 4/2024
+[GangService] fetchGangs triggered - Div: undefined, Search: undefined, Profile: SERVER_PROFILE_2, DB: db_ptrj
+[GangService] No division provided, returning empty.
+[EmployeeEstateService] Final maps: empcodeMap=3628, nikMap=1654
+[DEBUG_PPH] Emp: F0444 | Doc: "PPH 21" | Task: "(DE) POTONGAN PPH21 " | Key: "PPH21" | Amt: 15540
+[PtkpTaxService] Table history_ptkp_pajak assumed to exist (pre-created)
+Found 1 records.
+Records with Cuti Minggu or Libur Nasional: 1
+Records with Cuti Tahunan or Sakit/Haid: 1
+
+--- Sample records with Cuti Minggu/Nasional ---
+[F0444] undefined - HK: 30, Efektif: 23, Minggu: 4, Nasional: 0
+
+--- Sample records with Cuti Tahunan/Sakit ---
+[F0444] undefined - HK: 30, Efektif: 23, Tahunan: 3, Sakit: 0
+Test finished.

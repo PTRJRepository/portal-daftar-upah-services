@@ -279,6 +279,7 @@ export class PayrollService {
                 WHERE LFLN.EmpCode IN (${placeholders})
                   AND LF.DocDate >= @p${chunk.length}
                   AND LF.DocDate < @p${chunk.length + 1}
+                  AND CHARINDEX('_', LF.DocDate) = 0  -- Filter out ID codes like LF50317375_01, only use real dates
                 GROUP BY LFLN.EmpCode
             `, [...chunk, startDate, endDate]);
 

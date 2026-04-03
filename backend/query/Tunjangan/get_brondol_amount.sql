@@ -5,3 +5,4 @@ JOIN "PR_LOOSEFRUITLN_ARC" LFLN
 WHERE LFLN.EmpCode = ?
   AND LF.DocDate >= ?
   AND LF.DocDate < ?
+  AND CHARINDEX('_', LF.DocDate) = 0  -- Filter out ID codes like LF50317375_01, only use real dates
