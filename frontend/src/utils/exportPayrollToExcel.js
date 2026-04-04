@@ -116,13 +116,13 @@ function getTotalColumnStyle(field) {
  * Build merged header cells from column definitions
  * Returns: Array of { row, col, rowSpan, colSpan, label }
  */
-function buildHeaderMerges(columnDefs) {
+function buildHeaderMerges(enhancedColumnDefs) {
     const numRows = 4;
-    const numCols = columnDefs.length;
+    const numCols = enhancedColumnDefs.length;
     const grid = Array(numRows).fill(null).map(() => Array(numCols).fill(null));
 
     // Process each column's headers
-    columnDefs.forEach((col, colIdx) => {
+    enhancedColumnDefs.forEach((col, colIdx) => {
         const headers = col.headers;
 
         for (let row = 0; row < numRows; row++) {
@@ -193,6 +193,45 @@ function buildHeaderMerges(columnDefs) {
  * @param {Object} meta - Metadata: { division, gangCode, month, year }
  */
 export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
+    // === ENSURE ALL FIELDS FROM ROWS ARE INCLUDED IN EXPORT ===
+    // Collect all unique fields from rows data
+    const allFieldsInData = new Set();
+    rows.forEach(row => {
+        if (row.type === 'employee') {
+            Object.keys(row).forEach(key => {
+                // Skip internal/react keys
+                if (!key.startsWith('_') && key !== 'type' && key !== 'id') {
+                    allFieldsInData.add(key);
+                }
+            });
+        }
+    });
+
+    // Get fields already in columnDefs (original parameter, not enhanced yet)
+    const fieldsInColumnDefs = new Set(columnDefs.map(col => col.field));
+
+    // Find missing fields
+    const missingFields = [...allFieldsInData].filter(f => !fieldsInColumnDefs.has(f));
+
+    // Add missing fields to columnDefs with generic headers
+    const enhancedColumnDefs = [
+        ...columnDefs,
+        ...missingFields.map(field => ({
+            field,
+            headers: ['DATA TAMBAHAN', null, null, field.toUpperCase().replace(/_/g, ' ')],
+            w: 90,
+            className: 'text-right',
+            render: (row) => {
+                const val = row[field];
+                if (val === null || val === undefined || val === '') return '-';
+                if (typeof val === 'number') return Math.round(val);
+                return val;
+            }
+        }))
+    ];
+
+    console.log(`[Export] Added ${missingFields.length} missing fields to export:`, missingFields);
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'PT Rebinmas Jaya - Payroll System';
     workbook.created = new Date();
@@ -216,7 +255,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     const titleRow = worksheet.addRow([`DAFTAR UPAH - ${meta.division} - ${periodStr}`]);
     titleRow.height = 30;
     titleRow.getCell(1).font = { size: 16, bold: true, color: { argb: '1a365d' } };
-    worksheet.mergeCells(1, 1, 1, columnDefs.length);
+    worksheet.mergeCells(1, 1, 1, enhancedColumnDefs.length);
     titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
 
     // === SUB TITLE ROW ===
@@ -224,7 +263,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     const subTitleRow = worksheet.addRow([gangLabel]);
     subTitleRow.height = 20;
     subTitleRow.getCell(1).font = { size: 12, italic: true, color: { argb: '666666' } };
-    worksheet.mergeCells(2, 1, 2, columnDefs.length);
+    worksheet.mergeCells(2, 1, 2, enhancedColumnDefs.length);
     subTitleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Empty row
@@ -232,11 +271,11 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
 
     // === HEADERS (4 rows) ===
     const headerStartRow = 4;
-    const headerMerges = buildHeaderMerges(columnDefs);
+    const headerMerges = buildHeaderMerges(enhancedColumnDefs);
 
     // Add 4 empty header rows first
     for (let i = 0; i < 4; i++) {
-        const row = worksheet.addRow(Array(columnDefs.length).fill(''));
+        const row = worksheet.addRow(Array(enhancedColumnDefs.length).fill(''));
         row.height = 22;
     }
 
@@ -270,7 +309,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     });
 
     // === SET COLUMN WIDTHS ===
-    columnDefs.forEach((col, idx) => {
+    enhancedColumnDefs.forEach((col, idx) => {
         worksheet.getColumn(idx + 1).width = Math.max(col.w / 7, 8);
     });
 
@@ -280,11 +319,11 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     rows.forEach((row) => {
         if (row.type === 'gang_header') {
             // Gang header row - full width merge
-            const excelRow = worksheet.addRow(Array(columnDefs.length).fill(''));
+            const excelRow = worksheet.addRow(Array(enhancedColumnDefs.length).fill(''));
             excelRow.height = 24;
 
             const startRowNum = excelRow.number;
-            worksheet.mergeCells(startRowNum, 1, startRowNum, columnDefs.length);
+            worksheet.mergeCells(startRowNum, 1, startRowNum, enhancedColumnDefs.length);
 
             const cell = excelRow.getCell(1);
             cell.value = `🏭 GANG: ${row.gang_code}`;
@@ -301,7 +340,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
             };
         } else {
             // Data row (employee or gang_total)
-            const rowData = columnDefs.map((col) => {
+            const rowData = enhancedColumnDefs.map((col) => {
                 let val = row[col.field];
                 if (col.field === 'lembur_jam') {
                     return formatDecimal(val);
@@ -315,7 +354,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
             excelRow.height = 22;
 
             // Apply cell styles
-            columnDefs.forEach((col, idx) => {
+            enhancedColumnDefs.forEach((col, idx) => {
                 const cell = excelRow.getCell(idx + 1);
                 const colColor = getColumnColor(col.field);
                 const totalStyle = getTotalColumnStyle(col.field);
@@ -370,7 +409,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
 
     // === GRAND TOTAL ROW ===
     if (grandTotal) {
-        const gtRowData = columnDefs.map((col) => {
+        const gtRowData = enhancedColumnDefs.map((col) => {
             if (col.field === 'nama') return 'GRAND TOTAL';
             if (col.field === 'no') return '';
             let val = grandTotal[col.field];
@@ -381,7 +420,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
         const gtRow = worksheet.addRow(gtRowData);
         gtRow.height = 28;
 
-        columnDefs.forEach((col, idx) => {
+        enhancedColumnDefs.forEach((col, idx) => {
             const cell = gtRow.getCell(idx + 1);
             cell.fill = {
                 type: 'pattern',

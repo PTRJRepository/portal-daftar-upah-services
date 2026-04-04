@@ -176,7 +176,42 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
         // Upah Bersih Akhir
         cols.push({ field: 'upah_bersih', headerName: 'UPAH BERSIH', width: 18, isNumeric: true });
 
-        return cols.filter(c => hasData(c.field) || ['nik', 'nama', 'jabatan_estate', 'upah_dasar', 'gaji_pokok', 'upah_bersih'].includes(c.field));
+        // === ENSURE ALL FIELDS FROM ROWS ARE INCLUDED ===
+        // Detect all unique fields from employee rows
+        const allFieldsInData = new Set();
+        rows.forEach(r => {
+            if (!r.isHeader && !r.isTotal && r.type !== 'gang_header' && r.type !== 'gang_total') {
+                Object.keys(r).forEach(key => {
+                    if (!key.startsWith('_') && key !== 'type' && key !== 'id' && key !== 'isHeader' && key !== 'isTotal') {
+                        allFieldsInData.add(key);
+                    }
+                });
+            }
+        });
+
+        // Get fields already in cols
+        const fieldsAlreadyIncluded = new Set(cols.map(c => c.field));
+
+        // Add missing fields with generic header
+        const missingFields = [...allFieldsInData].filter(f => !fieldsAlreadyIncluded.has(f));
+        missingFields.forEach(field => {
+            const displayName = field.replace(/_/g, ' ').toUpperCase();
+            cols.push({
+                field,
+                headerName: displayName,
+                width: 12,
+                isNumeric: true
+            });
+        });
+
+        console.log(`[ExportPro] Added ${missingFields.length} missing fields:`, missingFields);
+
+        return cols.filter(c => {
+            // Include column if it has ANY value (including 0) OR is in mandatory list
+            const hasAnyValue = rows.some(r => r[c.field] !== null && r[c.field] !== undefined);
+            const isMandatory = ['EMP_CODE', 'nik', 'nama', 'jabatan_estate', 'upah_dasar', 'gaji_pokok', 'upah_bersih'].includes(c.field);
+            return hasAnyValue || isMandatory;
+        });
     };
 
     const flatCols = buildExportColumns(rows);
