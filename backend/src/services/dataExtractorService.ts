@@ -3613,6 +3613,7 @@ export class DataExtractorService {
 
         // Filter & sort employees
         const filteredEmployees = [];
+        let filteredOutCount = 0;
         for (const emp of employees) {
             const effective_hk = (emp.jumlah_hk || 0) - ((emp.cuti_minggu_hari || 0) + (emp.cuti_nasional_hari || 0));
             const totalCuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0) + (emp.cuti_minggu_hari || 0) + (emp.cuti_nasional_hari || 0);
@@ -3620,13 +3621,19 @@ export class DataExtractorService {
             const other_cuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0);
             const total_earnings = (emp.gaji_pokok || 0) + (emp.total_tunjangan || 0) + (emp.total_premi || 0) + (emp.lembur_jumlah || 0);
 
-            // Keep if: has effective work OR has other cuti OR has earnings OR has basic identity data
-            // Relaxed filter: show employees with basic data even if earnings are 0
-            const hasBasicData = emp.nama || emp.emp_name;
-            if (effective_hk > 0 || other_cuti > 0 || total_earnings > 0 || hasBasicData) {
+            // FILTER: Keep employee ONLY if they have:
+            // - Effective attendance (HK > 0 after deducting Sundays & National holidays)
+            // - OR other leave (annual leave, sick/menstrual)
+            // - OR earnings (salary, allowances, premiums, overtime)
+            // Filter OUT employees with ALL zeros (no activity)
+            if (effective_hk > 0 || other_cuti > 0 || total_earnings > 0) {
                 filteredEmployees.push(emp);
+            } else {
+                filteredOutCount++;
             }
         }
+
+        debug(CATEGORY, `📊 Filter result: ${filteredEmployees.length} kept, ${filteredOutCount} filtered out (no attendance)`);
 
         // Sort by name first (single sort pass)
         filteredEmployees.sort((a, b) => (a?.emp_name || a?.nama || '').localeCompare(b?.emp_name || b?.nama || ''));
