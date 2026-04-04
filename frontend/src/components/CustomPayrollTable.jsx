@@ -2226,7 +2226,8 @@ export default function CustomPayrollTable({
         }
 
         // Total Potongan Bersih (Always Shown) - sync with kontan edits
-        // Now includes total_pendapatan_lainnya (deduction to balance with UPAH KOTOR)
+        // Backend already includes pendapatan_lainnya in total_potongan_bersih
+        // DO NOT add it again - that would be double counting!
         // Adjust Level 1 header to preserve colspan merging (use empty string when expanded)
         cols.push({
             field: 'total_potongan_bersih',
@@ -2239,9 +2240,9 @@ export default function CustomPayrollTable({
                 const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
                 const baseKontan = Number(row.pendapatan_kontan || 0);
                 const baseVal = Number(row.total_potongan_bersih || 0);
-                const totalPendapatanLainnya = Number(row.total_pendapatan_lainnya || 0);
-                // Total Potongan = base + pendapatan_lainnya - kontan adjustment
-                const val = baseVal + totalPendapatanLainnya - baseKontan + (kontanVal || 0);
+                // FIX: Backend already includes pendapatan_lainnya in total_potongan_bersih
+                // Only adjust for kontan edit (if user changed it in edit mode)
+                const val = baseVal - baseKontan + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
             }
