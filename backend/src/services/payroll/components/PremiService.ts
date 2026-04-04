@@ -210,17 +210,25 @@ export class PremiService extends BasePayrollComponentService<PremiInput, PremiO
         const daysInMonth = new Date(year, month, 0).getDate();
         const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth}`;
 
+        // Query BOTH PR_ADTRANS (active) and PR_ADTRANS_ARC (archived) tables
         const rows = await db.query<{
             DocDesc: string;
             Amount: number;
         }>(`
             SELECT DocDesc, SUM(Amount) as Amount
-            FROM PR_ADTRANS
-            WHERE EmpCode = ?
-              AND TrxDate >= ? AND TrxDate <= ?
-              AND DocDesc LIKE '%PREMI%'
+            FROM (
+                SELECT DocDesc, Amount FROM PR_ADTRANS
+                WHERE EmpCode = ?
+                  AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE '%PREMI%'
+                UNION ALL
+                SELECT DocDesc, Amount FROM PR_ADTRANS_ARC
+                WHERE EmpCode = ?
+                  AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE '%PREMI%'
+            ) combined
             GROUP BY DocDesc
-        `, [emp_code, startDate, endDate]);
+        `, [emp_code, startDate, endDate, emp_code, startDate, endDate]);
 
         // Filter and categorize
         const result: Record<string, number> = {};
@@ -257,18 +265,26 @@ export class PremiService extends BasePayrollComponentService<PremiInput, PremiO
 
         const empList = emp_codes.map((e) => `'${e}'`).join(',');
 
+        // Query BOTH PR_ADTRANS (active) and PR_ADTRANS_ARC (archived) tables
         const rows = await db.query<{
             EmpCode: string;
             DocDesc: string;
             Amount: number;
         }>(`
             SELECT EmpCode, DocDesc, SUM(Amount) as Amount
-            FROM PR_ADTRANS
-            WHERE RTRIM(EmpCode) IN (${empList})
-              AND TrxDate >= ? AND TrxDate <= ?
-              AND DocDesc LIKE '%PREMI%'
+            FROM (
+                SELECT EmpCode, DocDesc, Amount FROM PR_ADTRANS
+                WHERE RTRIM(EmpCode) IN (${empList})
+                  AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE '%PREMI%'
+                UNION ALL
+                SELECT EmpCode, DocDesc, Amount FROM PR_ADTRANS_ARC
+                WHERE RTRIM(EmpCode) IN (${empList})
+                  AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE '%PREMI%'
+            ) combined
             GROUP BY EmpCode, DocDesc
-        `, [startDate, endDate]);
+        `, [startDate, endDate, startDate, endDate]);
 
         // Organize by employee
         const result: Record<string, Record<string, number>> = {};

@@ -213,13 +213,20 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
         const daysInMonth = new Date(year, month, 0).getDate();
         const endDate = year.toString() + "-" + startMonthStr + "-" + daysInMonth.toString();
 
+        // Query BOTH PR_ADTRANS (active) and PR_ADTRANS_ARC (archived) tables
         const queryStr = `
-            SELECT SUM(Amount) as Amount FROM PR_ADTRANS
-            WHERE RTRIM(EmpCode) = ? AND TrxDate >= ? AND TrxDate <= ?
-              AND DocDesc LIKE ?
+            SELECT SUM(Amount) as Amount FROM (
+                SELECT Amount FROM PR_ADTRANS
+                WHERE RTRIM(EmpCode) = ? AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE ?
+                UNION ALL
+                SELECT Amount FROM PR_ADTRANS_ARC
+                WHERE RTRIM(EmpCode) = ? AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE ?
+            ) combined
         `;
 
-        const rows = await db.query<{ Amount: number }>(queryStr, [empCode, startDate, endDate, "%" + pattern + "%"]);
+        const rows = await db.query<{ Amount: number }>(queryStr, [empCode, startDate, endDate, "%" + pattern + "%", empCode, startDate, endDate, "%" + pattern + "%"]);
 
         return Math.abs(rows[0]?.Amount || 0);
     }
@@ -245,15 +252,22 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
         // Exclude standard potongans
         const excludePatterns = ['POT', 'SPSI', 'BERAS', 'JABATAN', 'MASA', 'LEMBUR', 'PPH', 'PREMI', 'ASTEK', 'BPJS'];
 
+        // Query BOTH PR_ADTRANS (active) and PR_ADTRANS_ARC (archived) tables
         const queryStr = `
             SELECT DocDesc, SUM(Amount) as Amount
-            FROM PR_ADTRANS
-            WHERE RTRIM(EmpCode) = ? AND TrxDate >= ? AND TrxDate <= ?
-              AND DocDesc LIKE 'POT%'
+            FROM (
+                SELECT DocDesc, Amount FROM PR_ADTRANS
+                WHERE RTRIM(EmpCode) = ? AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE 'POT%'
+                UNION ALL
+                SELECT DocDesc, Amount FROM PR_ADTRANS_ARC
+                WHERE RTRIM(EmpCode) = ? AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE 'POT%'
+            ) combined
             GROUP BY DocDesc
         `;
 
-        const rows = await db.query<{ DocDesc: string; Amount: number }>(queryStr, [empCode, startDate, endDate]);
+        const rows = await db.query<{ DocDesc: string; Amount: number }>(queryStr, [empCode, startDate, endDate, empCode, startDate, endDate]);
 
         const result: Record<string, PayrollComponent<number>> = {};
         for (const row of rows) {

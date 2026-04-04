@@ -159,11 +159,19 @@ export class TunjanganService extends BasePayrollComponentService<TunjanganInput
         const daysInMonth = new Date(year, month, 0).getDate();
         const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth}`;
 
+        // Query BOTH PR_ADTRANS (active) and PR_ADTRANS_ARC (archived) tables
+        // This ensures we don't miss data that has been archived
         const rows = await db.query<{ Amount: number }>(`
-            SELECT SUM(Amount) as Amount FROM PR_ADTRANS
-            WHERE EmpCode = ? AND TrxDate >= ? AND TrxDate <= ?
-              AND DocDesc LIKE ?
-        `, [empCode, startDate, endDate, `%${pattern}%`]);
+            SELECT SUM(Amount) as Amount FROM (
+                SELECT Amount FROM PR_ADTRANS
+                WHERE EmpCode = ? AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE ?
+                UNION ALL
+                SELECT Amount FROM PR_ADTRANS_ARC
+                WHERE EmpCode = ? AND TrxDate >= ? AND TrxDate <= ?
+                  AND DocDesc LIKE ?
+            ) combined
+        `, [empCode, startDate, endDate, `%${pattern}%`, empCode, startDate, endDate, `%${pattern}%`]);
 
         return Math.abs(rows[0]?.Amount || 0);
     }

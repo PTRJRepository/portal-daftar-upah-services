@@ -814,10 +814,6 @@ export class DataExtractorService {
             const total_premi_temp = Object.values(empPremi).reduce((a, b) => a + b, 0);
             const total_earnings = (attData.total_amount_rp || 0) + total_premi_temp + empLemburDetails.jumlah + empJabatan + empMasaKerjaJumlah;
 
-
-
-            // Filter: Skip if Effective HK is 0 or less AND Total Earnings is 0 or less
-            if (effective_hk <= 0 && total_earnings <= 0) continue;
             const daysInMonth = new Date(year, month, 0).getDate();
 
             // Get data carefully computed by GajiPokokService
@@ -833,24 +829,20 @@ export class DataExtractorService {
                 || (emp.jabatan || "").trim();   // [FIX] Fallback terakhir dari HR_GANGLN.Jabatan
 
             // ============================================================
-            // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
-            // FILTER: Selalu exclude karyawan dengan kehadiran = 0
+            // [PERATURAN BISNIS - STRICT EFFECTIVE HK FILTER]
+            // FILTER: Selalu exclude karyawan dengan effective_hk = 0
             //
-            // kehadiran (hari_kerja) = hk - seluruh cuti
-            // - Jika kehadiran <= 0 DAN tidak ada cuti lain (tahunan/sakit)
-            //   DAN tidak ada earnings (premi+lembur+jabatan+masa_kerja) → EXCLUDE
-            // - Jika kehadiran <= 0 TAPI punya cuti lain (tahunan/sakit/haid)
-            //   → TETAP DIKELUARKAN (karena masih ada jatah cuti)
-            // - Jika kehadiran > 0 → SELALU DIKELUARKAN
+            // effective_hk = hk - (cuti_minggu + cuti_nasional)
+            // - Jika effective_hk <= 0 → EXCLUDE (strict, tanpa pengecualian)
             //
-            // ATURAN: kehadiran = 0 TANPA cuti lain TANPA earnings = TIDAK ADA
+            // ATURAN: effective_hk = 0 = TIDAK ADA → TIDAK MUNCUL
             // ============================================================
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
             const hari_kerja = Math.max(0, hk - totalCuti);
             const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
 
-            // IMPORTANT: selalu filter kehadiran = 0 (sesuai regulasi bisnis)
-            if (hari_kerja <= 0 && other_cuti == 0 && total_earnings <= 0) continue;
+            // STRICT: selalu filter effective_hk = 0 (tanpa pengecualian)
+            if (effective_hk <= 0) continue;
 
             const upah_pokok = attData.total_amount_rp || 0;
             // [PHASE 2.5] Brondol dual source tracking
@@ -1582,7 +1574,8 @@ export class DataExtractorService {
                     COALESCE(p.RiceRation, 0) as beras_rate,
                     em.AppJoinGrpDate as join_date,
                     e.ResAddress as res_address,
-                    e.HREmpType as hr_emp_type
+                    e.HREmpType as hr_emp_type,
+                    RTRIM(gl.Jabatan) as jabatan
                 FROM HR_EMPLOYEE e
                 INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
                 INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
@@ -1665,7 +1658,8 @@ export class DataExtractorService {
                 beras_rate: r.beras_rate || 0,
                 join_date: r.join_date || null,
                 res_address: r.res_address?.trim() || "",
-                hr_emp_type: r.hr_emp_type?.trim() || ""
+                hr_emp_type: r.hr_emp_type?.trim() || "",
+                jabatan: r.jabatan?.trim() || "" // Jabatan from HR_GANGLN (fallback when history_gang_member/employee_estate empty)
             };
         });
     }
@@ -3401,7 +3395,8 @@ export class DataExtractorService {
             const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
 
             // Calculate totals
-            const total_tunjangan = berasJumlah + jabatanJumlah + masaKerjaJumlah + (empLembur.jumlah || 0);
+            // [FIX] total_tunjangan TIDAK termasuk lembur - lembur adalah komponen terpisah
+            const total_tunjangan = berasJumlah + jabatanJumlah + masaKerjaJumlah;
             let total_premi = 0;
             for (const [key, val] of Object.entries(empPremi)) {
                 if (key !== "koreksi") total_premi += Number(val) || 0;
@@ -3432,7 +3427,7 @@ export class DataExtractorService {
             const gaji_pokok_ideal = upahDasar * hk_attendance; // upah_dasar × HK
             const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal; // Positive = overpaid, Negative = underpaid
 
-            const jumlah_upah_kotor = gaji_pokok_aktual + total_tunjangan + total_premi + pot_koreksi;
+            const jumlah_upah_kotor = gaji_pokok_aktual + total_tunjangan + (empLembur.jumlah || 0) + total_premi + pot_koreksi;
             const total_potongan = pot_astek + pot_bpjs + pot_spsi + pot_pph21 + other_potongan;
             const upah_bersih = jumlah_upah_kotor - total_potongan;
 
@@ -3445,11 +3440,11 @@ export class DataExtractorService {
 
             // Calculate penghasilan_bruto for PPH21 TER
             // Formula: gaji_pokok_aktual + total_tunjangan + lembur + total_premi + astek_084 + bpjs_kes_majikan
-            const penghasilan_bruto = gaji_pokok_aktual 
-                + total_tunjangan 
-                + (empLembur.jumlah || 0) 
-                + total_premi 
-                + (caruman.astek_majikan_jkk_jkm || 0) 
+            const penghasilan_bruto = gaji_pokok_aktual
+                + total_tunjangan
+                + (empLembur.jumlah || 0)
+                + total_premi
+                + (caruman.astek_majikan_jkk_jkm || 0)
                 + (caruman.bpjs_kes_majikan || 0);
 
             // Calculate PPh21 TER
@@ -3457,15 +3452,30 @@ export class DataExtractorService {
             let tarif_pajak_ter = 0;
             try {
                 const { pph21TerService } = await import('./pph21TerService');
-                console.log(`[DataExtractor] Phase 4 - Tax calc for ${empCode}: statusPTKP=${statusPTKP}, kategoriTER=${kategoriTER}, penghasilan_bruto=${penghasilan_bruto}`);
                 
+                // [DIAGNOSTIC] Log detailed tax calculation inputs
+                console.log(`[DataExtractor] Phase 4 - Tax calc for ${empCode}:`);
+                console.log(`  ├─ statusPTKP=${statusPTKP}, kategoriTER=${kategoriTER}`);
+                console.log(`  ├─ gaji_pokok_aktual=${gaji_pokok_aktual}`);
+                console.log(`  ├─ total_tunjangan=${total_tunjangan} (beras=${berasJumlah}, jabatan=${jabatanJumlah}, masaKerja=${masaKerjaJumlah})`);
+                console.log(`  ├─ lembur=${empLembur.jumlah || 0}`);
+                console.log(`  ├─ total_premi=${total_premi}`);
+                console.log(`  ├─ astek_majikan=${caruman.astek_majikan_jkk_jkm || 0}, bpjs_kes_majikan=${caruman.bpjs_kes_majikan || 0}`);
+                console.log(`  └─ penghasilan_bruto=${penghasilan_bruto}`);
+
                 const pphResult = pph21TerService.calculatePph21Ter(penghasilan_bruto, statusPTKP);
                 pph21_ter = pphResult.tax_amount || 0;
                 tarif_pajak_ter = pphResult.rate_percent || 0;
+
+                console.log(`[DataExtractor] Phase 4 - Tax result for ${empCode}: pph21_ter=${pph21_ter}, tarif_pajak_ter=${tarif_pajak_ter}%, ter_category=${pphResult.ter_category}`);
                 
-                console.log(`[DataExtractor] Phase 4 - Tax result: pph21_ter=${pph21_ter}, tarif_pajak_ter=${tarif_pajak_ter}%, ter_category=${pphResult.ter_category}`);
+                // [WARNING] If tax is 0 but employee has income, log warning
+                if (pph21_ter === 0 && penghasilan_bruto > 0) {
+                    console.warn(`[DataExtractor] ⚠️ WARNING: ${empCode} has income ${penghasilan_bruto} but tax is 0. PTKP=${statusPTKP}, TER=${kategoriTER}`);
+                }
             } catch (e: any) {
                 console.error(`[DataExtractor] Phase 4 - PPh21 TER calculation failed for ${empCode}:`, e.message);
+                console.error(`[DataExtractor] Stack:`, e.stack);
             }
 
             // Apply final data directly to emp object
@@ -3506,7 +3516,8 @@ export class DataExtractorService {
             emp.bpjs_kes = pot_bpjs; // BPJS Kesehatan total pekerja
             emp.spsi = pot_spsi;
             emp.pph21 = pot_pph21;
-            emp.pph21_ter = pot_pph21;
+            // [FIX] pph21_ter is the calculated TER tax - do NOT overwrite with pot_pph21
+            // pot_pph21 could be 0 if no PPh21 transaction exists in PR_ADTRANS, but TER calculation is still valid
             
             // BPJS detail breakdown (must match frontend columnDefs exactly)
             emp.pot_astek_maj = caruman.astek_majikan_jht || 0;
@@ -3621,19 +3632,16 @@ export class DataExtractorService {
             const other_cuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0);
             const total_earnings = (emp.gaji_pokok || 0) + (emp.total_tunjangan || 0) + (emp.total_premi || 0) + (emp.lembur_jumlah || 0);
 
-            // FILTER: Keep employee ONLY if they have:
-            // - Effective attendance (HK > 0 after deducting Sundays & National holidays)
-            // - OR other leave (annual leave, sick/menstrual)
-            // - OR earnings (salary, allowances, premiums, overtime)
-            // Filter OUT employees with ALL zeros (no activity)
-            if (effective_hk > 0 || other_cuti > 0 || total_earnings > 0) {
+            // STRICT FILTER: Keep employee ONLY if effective_hk > 0
+            // Filter OUT all employees with effective_hk <= 0 (regardless of other leave or earnings)
+            if (effective_hk > 0) {
                 filteredEmployees.push(emp);
             } else {
                 filteredOutCount++;
             }
         }
 
-        debug(CATEGORY, `📊 Filter result: ${filteredEmployees.length} kept, ${filteredOutCount} filtered out (no attendance)`);
+        debug(CATEGORY, `📊 Filter result: ${filteredEmployees.length} kept, ${filteredOutCount} filtered out (effective_hk = 0)`);
 
         // Sort by name first (single sort pass)
         filteredEmployees.sort((a, b) => (a?.emp_name || a?.nama || '').localeCompare(b?.emp_name || b?.nama || ''));
