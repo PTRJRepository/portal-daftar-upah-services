@@ -8,6 +8,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getGangAttendanceMatrix } from '../services/employeeDetailService'
+import { fetchGangs } from '../services/gangService'
 
 // Status config: label, color, background
 const STATUS_CONFIG = {
@@ -29,14 +30,45 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [expandedGangs, setExpandedGangs] = useState(new Set())
+    const [resolvedGangCodes, setResolvedGangCodes] = useState(null)
+
+    // Fetch gangs independently when gangCodes is empty but division is provided
+    useEffect(() => {
+        if (gangCodes && gangCodes.length > 0) {
+            setResolvedGangCodes(gangCodes)
+            return
+        }
+        if (!division || !token) {
+            setResolvedGangCodes([])
+            return
+        }
+
+        let cancelled = false
+        const loadGangs = async () => {
+            try {
+                const gangs = await fetchGangs(token, division, null, true)
+                if (!cancelled && gangs && gangs.length > 0) {
+                    setResolvedGangCodes(gangs.map(g => g.gang_code))
+                } else {
+                    setResolvedGangCodes([])
+                }
+            } catch (e) {
+                console.error('[GangAttendanceMatrix] Failed to load gangs:', e)
+                if (!cancelled) setResolvedGangCodes([])
+            }
+        }
+        loadGangs()
+        return () => { cancelled = true }
+    }, [gangCodes, division, token])
 
     const fetchData = useCallback(async () => {
-        if (!gangCodes || gangCodes.length === 0 || !month || !year) return
+        const codes = resolvedGangCodes
+        if (!codes || codes.length === 0 || !month || !year) return
 
         setLoading(true)
         setError(null)
         try {
-            const result = await getGangAttendanceMatrix(token, gangCodes, month, year, includeFaceVerification)
+            const result = await getGangAttendanceMatrix(token, codes, month, year, includeFaceVerification)
             setData(result)
             // Auto-expand all gangs
             if (result?.data) {
@@ -47,7 +79,7 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
         } finally {
             setLoading(false)
         }
-    }, [token, gangCodes, month, year, includeFaceVerification])
+    }, [token, resolvedGangCodes, month, year, includeFaceVerification])
 
     useEffect(() => {
         fetchData()
@@ -72,6 +104,24 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
     }
 
     if (!gangCodes || gangCodes.length === 0) {
+        // Check if we're still resolving gangs
+        if (resolvedGangCodes === null) {
+            return (
+                <div className="gam-inline-container">
+                    <div className="gam-header">
+                        <div className="gam-header-left">
+                            <h2>📋 Matrix Absensi Gang</h2>
+                            <span className="gam-period">{MONTHS[month - 1]} {year}</span>
+                            {division && <span className="gam-division-badge">{division}</span>}
+                        </div>
+                    </div>
+                    <div className="gam-loading">
+                        <div className="gam-spinner" />
+                        <p>Memuat daftar gang...</p>
+                    </div>
+                </div>
+            )
+        }
         return (
             <div className="gam-inline-container">
                 <div className="gam-header">
@@ -93,7 +143,7 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
         )
     }
 
-    if (loading) {
+    if (loading || resolvedGangCodes === null) {
         return (
             <div className="gam-inline-container">
                 <div className="gam-header">
@@ -105,8 +155,8 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 </div>
                 <div className="gam-loading">
                     <div className="gam-spinner" />
-                    <p>Memuat matrix absensi dari data historis...</p>
-                    <span className="gam-loading-detail">Mengambil data {gangCodes.length} gang...</span>
+                    <p>{resolvedGangCodes === null ? 'Memuat daftar gang...' : 'Memuat matrix absensi dari data historis...'}</p>
+                    {resolvedGangCodes !== null && <span className="gam-loading-detail">Mengambil data {resolvedGangCodes.length} gang...</span>}
                 </div>
             </div>
         )
