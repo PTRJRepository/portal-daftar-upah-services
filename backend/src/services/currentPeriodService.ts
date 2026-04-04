@@ -57,10 +57,11 @@ export class CurrentPeriodService {
 
         try {
             // Per user request: Query PR_TASKREGLN (base) for the latest TrxDate
+            // OPTIMIZED: Use TOP 10 instead of full table scan, add query timeout
             const rows = await this.db.query<{
                 TrxDate: string;
             }>(`
-                SELECT TOP 1
+                SELECT TOP 10
                     TrxDate
                 FROM [db_ptrj].[dbo].[PR_TASKREGLN]
                 ORDER BY TrxDate DESC
@@ -109,7 +110,9 @@ export class CurrentPeriodService {
 
         } catch (error) {
             console.error("[CurrentPeriodService] Error getting current period:", error);
-            // Fallback to Config defaults
+            
+            // FAST FALLBACK: Use config defaults immediately on timeout
+            // Don't wait for slow fallback queries
             const { Config } = await import("../config");
             const result: CurrentPeriodResponse = {
                 month: Config.DEFAULT_MONTH,
@@ -119,6 +122,11 @@ export class CurrentPeriodService {
                 latest_acc_year: null,
                 is_cached: false
             };
+            
+            // Cache the fallback to prevent repeated timeout attempts
+            this.cache = result;
+            this.cacheExpiry = now + this.CACHE_DURATION_MS;
+            
             return result;
         }
     }

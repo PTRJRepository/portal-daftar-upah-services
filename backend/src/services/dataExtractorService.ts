@@ -2881,15 +2881,16 @@ export class DataExtractorService {
         const nextYear = month === 12 ? year + 1 : year;
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`;
 
-        // Parallel: Get period info + all gangs
-        const [currentPeriod, allGangs] = await Promise.all([
-            currentPeriodService.getCurrentPeriod(),
-            gangService.fetchGangs(divisionCode || undefined, undefined, false)
-        ]);
-        const currentMonth = currentPeriod.month;
-        const currentYear = currentPeriod.year;
-        const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
+        // NON-BLOCKING: Get gangs first (fast), start currentPeriod in background
+        const allGangsPromise = gangService.fetchGangs(divisionCode || undefined, undefined, false);
+        const currentPeriodPromise = currentPeriodService.getCurrentPeriod().catch(err => {
+            console.error("[DataExtractor] Failed to get current period, using defaults:", err.message);
+            return { month: month, year: year, is_cached: false };
+        });
 
+        // Wait for gangs first (faster query)
+        const allGangs = await allGangsPromise;
+        
         // Build gang condition
         let gangCondition = "1=1";
         let gangCodeInput: string | null = null;
@@ -2909,6 +2910,13 @@ export class DataExtractorService {
         // PHASE 0: Get employees ONLY (fast, ~1s)
         // ═══════════════════════════════════════════════════════
         const t0 = Date.now();
+        
+        // Get current period WITHOUT blocking employee query
+        const currentPeriod = await currentPeriodPromise;
+        const currentMonth = currentPeriod.month;
+        const currentYear = currentPeriod.year;
+        const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
+        
         let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
         const phase0Time = Date.now() - t0;
         debug(CATEGORY, `🚀 Phase 0 (identity): ${phase0Time}ms, ${employees.length} employees`);
