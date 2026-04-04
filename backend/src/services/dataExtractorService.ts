@@ -3017,8 +3017,33 @@ export class DataExtractorService {
                 debug(CATEGORY, `⚠️ history_gang_member jabatan lookup skipped: ${e.message}`);
             }
 
-            // [JABATAN ESTATE] Get jabatan from employee_estate (extend_db_ptrj)
+            // [FALLBACK] If jabatan still empty, try employee_estate
             let jabatanEstateFound = 0;
+            try {
+                const extendDb = Database.getExtendedInstance();
+                const estateRows = await extendDb.query<any>(`
+                    SELECT RTRIM(empcode) as emp_code, RTRIM(jabatan) as jabatan
+                    FROM dbo.employee_estate
+                    WHERE RTRIM(empcode) IN (${empCodeList})
+                      AND jabatan IS NOT NULL AND RTRIM(jabatan) != ''
+                `);
+                const estateMap = new Map<string, string>();
+                for (const row of estateRows) {
+                    if (!estateMap.has(row.emp_code)) estateMap.set(row.emp_code, row.jabatan);
+                }
+                for (const emp of employees) {
+                    if (!emp.jabatan && estateMap.has(emp.emp_code)) {
+                        emp.jabatan = estateMap.get(emp.emp_code);
+                        jabatanEstateFound++;
+                    }
+                }
+                debug(CATEGORY, `📋 Jabatan from employee_estate (fallback): ${jabatanEstateFound}/${employees.length}`);
+            } catch (e) {
+                debug(CATEGORY, `⚠️ employee_estate jabatan fallback skipped: ${e.message}`);
+            }
+
+            // [JABATAN ESTATE] Get jabatan from employee_estate (extend_db_ptrj) for jabatan_estate field
+            let jabatanEstateSectionFound = 0;
             try {
                 const { EmployeeEstateService: EES } = await import("./employeeEstateService");
                 const jobTitlesResult = await EES.getEmployeeJobsWithNik();
@@ -3028,7 +3053,7 @@ export class DataExtractorService {
                     const estateJabatan = estateEmpMap[emp.emp_code] || estateNikMap[nikClean] || '';
                     if (estateJabatan) {
                         emp.jabatan_estate = estateJabatan;
-                        jabatanEstateFound++;
+                        jabatanEstateSectionFound++;
                     } else if (emp.jabatan) {
                         // Fallback to history_gang_member jabatan if estate is empty
                         emp.jabatan_estate = emp.jabatan;
@@ -3036,7 +3061,7 @@ export class DataExtractorService {
                         emp.jabatan_estate = '';
                     }
                 }
-                debug(CATEGORY, `📋 Jabatan estate from employee_estate: ${jabatanEstateFound}/${employees.length}`);
+                debug(CATEGORY, `📋 Jabatan estate from employee_estate: ${jabatanEstateSectionFound}/${employees.length}`);
             } catch (e) {
                 debug(CATEGORY, `⚠️ employee_estate jabatan lookup skipped: ${e.message}`);
             }
