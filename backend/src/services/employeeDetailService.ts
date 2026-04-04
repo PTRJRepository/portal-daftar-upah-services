@@ -650,6 +650,12 @@ export class EmployeeDetailService {
             overtime: overtimeData,
             harvest: harvestData,
             payroll_data: payrollData,
+            // Include shortage/excess details directly in response for easy access
+            shortage_details: payrollData?.shortage_details || [],
+            shortage_total_hours: payrollData?.shortage_total_hours || 0,
+            excess_details: payrollData?.excess_details || [],
+            excess_total_hours: payrollData?.excess_total_hours || 0,
+            koreksi_hk: payrollData?.koreksi_hk || 0,
             debug_info: debugInfo
         };
     }

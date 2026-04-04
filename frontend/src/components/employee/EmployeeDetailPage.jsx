@@ -591,51 +591,115 @@ export default function EmployeeDetailPage({
             {/* 2. ATTENDANCE & OVERTIME MATRICES (Below Payslip) */}
             <div className="matrix-sections-container">
 
-                {/* HK Discrepancy Banner */}
+                {/* HK Discrepancy Banner - IMPROVED VISIBILITY */}
                 {(getNum('koreksi_hk') !== 0) && (
                     <div style={{
-                        padding: '12px 16px',
-                        borderRadius: '8px',
-                        marginBottom: '12px',
+                        padding: '16px 20px',
+                        borderRadius: '10px',
+                        marginBottom: '16px',
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
+                        flexDirection: 'column',
+                        gap: '10px',
                         ...(getNum('koreksi_hk') < 0 ? {
                             backgroundColor: '#fef2f2',
-                            border: '2px solid #fecaca',
+                            border: '3px solid #ef4444',
                             color: '#991b1b'
                         } : {
                             backgroundColor: '#fff7ed',
-                            border: '2px solid #fed7aa',
+                            border: '3px solid #f97316',
                             color: '#9a3412'
                         })
                     }}>
-                        <span style={{ fontSize: '24px' }}>{getNum('koreksi_hk') < 0 ? '⚠️' : '🔴'}</span>
-                        <div>
-                            <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '2px' }}>
-                                {getNum('koreksi_hk') < 0
-                                    ? 'KURANG JAM / PEMBAYARAN TIDAK BENAR'
-                                    : 'SALAH SCAN / JAM LEBIH'
-                                }
-                            </div>
-                            <div style={{ fontSize: '12px', opacity: 0.9 }}>
-                                Koreksi HK: <strong>Rp {formatCurrency(Math.abs(getNum('koreksi_hk')))}</strong>
-                                {' | '}
-                                GP Ideal: Rp {formatCurrency(getNum('gaji_pokok_ideal'))}
-                                {' vs '}
-                                GP Aktual: Rp {formatCurrency(getNum('gaji_pokok_aktual'))}
-                            </div>
-                            {data.shortage_details && data.shortage_details.length > 0 && (
-                                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.8 }}>
-                                    📅 {data.shortage_details.length} hari kurang jam (Total: {(data.shortage_total_hours || 0).toFixed(1)} jam)
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span style={{ fontSize: '28px' }}>{getNum('koreksi_hk') < 0 ? '⚠️' : '🔴'}</span>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '4px' }}>
+                                    {getNum('koreksi_hk') < 0
+                                        ? 'KURANG JAM / PEMBAYARAN TIDAK BENAR'
+                                        : 'SALAH SCAN / JAM LEBIH'
+                                    }
                                 </div>
-                            )}
-                            {data.excess_details && data.excess_details.length > 0 && (
-                                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.8 }}>
-                                    📅 {data.excess_details.length} hari jam lebih (Total: +{(data.excess_total_hours || 0).toFixed(1)} jam)
+                                <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                                    Koreksi HK: <strong style={{ fontSize: '14px' }}>Rp {formatCurrency(Math.abs(getNum('koreksi_hk')))}</strong>
+                                    {' | '}
+                                    GP Ideal: Rp {formatCurrency(getNum('gaji_pokok_ideal'))}
+                                    {' vs '}
+                                    GP Aktual: Rp {formatCurrency(getNum('gaji_pokok_aktual'))}
                                 </div>
-                            )}
+                            </div>
                         </div>
+
+                        {/* Shortage Details - DETAILED BREAKDOWN */}
+                        {data.shortage_details && data.shortage_details.length > 0 && (
+                            <div style={{
+                                backgroundColor: 'rgba(255, 255, 255, 0.6)',
+                                borderRadius: '6px',
+                                padding: '10px 14px',
+                                marginTop: '4px'
+                            }}>
+                                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', color: '#dc2626' }}>
+                                    📅 Detail {data.shortage_details.length} Hari Kurang Jam (Total: {(data.shortage_total_hours || 0).toFixed(1)} jam):
+                                </div>
+                                <div style={{ display: 'grid', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                                    {data.shortage_details.map((detail, idx) => (
+                                        <div key={idx} style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '100px 1fr 80px 80px 80px',
+                                            gap: '8px',
+                                            fontSize: '11px',
+                                            padding: '6px 8px',
+                                            backgroundColor: '#fee2e2',
+                                            borderRadius: '4px',
+                                            border: '1px solid #fecaca'
+                                        }}>
+                                            <div style={{ fontWeight: 'bold' }}>{detail.date}</div>
+                                            <div>{detail.day_name}</div>
+                                            <div style={{ textAlign: 'right' }}>Actual: {detail.actual_hours}j</div>
+                                            <div style={{ textAlign: 'right' }}>Target: {detail.target_hours}j</div>
+                                            <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#dc2626' }}>
+                                                Kurang: -{detail.shortage_hours.toFixed(1)}j
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Excess Details */}
+                        {data.excess_details && data.excess_details.length > 0 && (
+                            <div style={{
+                                backgroundColor: 'rgba(255, 255, 255, 0.6)',
+                                borderRadius: '6px',
+                                padding: '10px 14px',
+                                marginTop: '4px'
+                            }}>
+                                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', color: '#ea580c' }}>
+                                    🔴 Detail {data.excess_details.length} Hari Jam Lebih (Total: +{(data.excess_total_hours || 0).toFixed(1)} jam):
+                                </div>
+                                <div style={{ display: 'grid', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                                    {data.excess_details.map((detail, idx) => (
+                                        <div key={idx} style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '100px 1fr 80px 80px 80px',
+                                            gap: '8px',
+                                            fontSize: '11px',
+                                            padding: '6px 8px',
+                                            backgroundColor: '#ffedd5',
+                                            borderRadius: '4px',
+                                            border: '1px solid #fed7aa'
+                                        }}>
+                                            <div style={{ fontWeight: 'bold' }}>{detail.date}</div>
+                                            <div>{detail.day_name}</div>
+                                            <div style={{ textAlign: 'right' }}>Actual: {detail.actual_hours}j</div>
+                                            <div style={{ textAlign: 'right' }}>Target: {detail.target_hours}j</div>
+                                            <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#ea580c' }}>
+                                                Lebih: +{detail.excess_hours.toFixed(1)}j
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -741,7 +805,7 @@ export default function EmployeeDetailPage({
                             })}
                         </div>
                     </div>
-                    {/* Attendance Summary */}
+                    {/* Attendance Summary - ENHANCED */}
                     <div className="attendance-summary">
                         <div className="summary-item success">
                             <span className="summary-value">{attendance.summary?.total_hadir || 0}</span>
@@ -758,6 +822,28 @@ export default function EmployeeDetailPage({
                         <div className="summary-item danger">
                             <span className="summary-value">{attendance.summary?.alpa || 0}</span>
                             <span className="summary-label">Alpa</span>
+                        </div>
+                        {(data.shortage_total_hours > 0 || data.excess_total_hours > 0) && (
+                            <>
+                                <div className="summary-item" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
+                                    <span className="summary-value" style={{ color: '#dc2626' }}>
+                                        {data.shortage_total_hours > 0 ? `-${data.shortage_total_hours.toFixed(1)}` : '0'}j
+                                    </span>
+                                    <span className="summary-label">Kurang Jam</span>
+                                </div>
+                                <div className="summary-item" style={{ backgroundColor: '#fff7ed', color: '#ea580c' }}>
+                                    <span className="summary-value" style={{ color: '#ea580c' }}>
+                                        {data.excess_total_hours > 0 ? `+${data.excess_total_hours.toFixed(1)}` : '0'}j
+                                    </span>
+                                    <span className="summary-label">Jam Lebih</span>
+                                </div>
+                            </>
+                        )}
+                        <div className="summary-item" style={{ backgroundColor: '#e0e7ff', color: '#3730a3' }}>
+                            <span className="summary-value" style={{ color: '#3730a3', fontWeight: 'bold' }}>
+                                {getNum('jumlah_hk') || attendance.summary?.total_hk || 0}
+                            </span>
+                            <span className="summary-label">Total HK</span>
                         </div>
                     </div>
                 </div>
