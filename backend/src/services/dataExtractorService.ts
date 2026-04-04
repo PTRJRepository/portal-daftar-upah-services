@@ -35,6 +35,11 @@ interface EmployeeRow {
     beras_rate: number;
     join_date: string | null;
     actual_nik?: string;
+    /** 
+     * Jabatan = ROLE TEXT (e.g. "Mandor", "Kerani", "Karyawan Panen")
+     * Source: extend_db_ptrj (employee_estate OR history_gang_member)
+     * NOT from HR_GANGLN - that table only has gang membership.
+     */
     jabatan?: string;
 }
 
@@ -118,7 +123,9 @@ interface PayrollRow {
     task_uom?: string;
     beras_rate: number;
     beras_jumlah: number;
+    /** Tunjangan jabatan RATE (uang/hari) from PR_ADTRANSLN where DocDesc LIKE '%JABATAN%' */
     jabatan_rate: number;
+    /** Tunjangan jabatan JUMLAH (total uang) from PR_ADTRANSLN - NOT role text! */
     jabatan_jumlah: number;
     masa_kerja_tahun: number;
     masa_kerja_rate: number;
@@ -2281,6 +2288,18 @@ export class DataExtractorService {
         return result;
     }
 
+    /**
+     * Get tunjangan (allowance) AMOUNT from PR_ADTRANSLN
+     * 
+     * NOTE: This returns MONEY amount, NOT jabatan role text.
+     * - "JABATAN" → tunjangan jabatan (uang) from PR_ADTRANSLN.Amount where DocDesc LIKE '%JABATAN%'
+     * - "MASA%KERJA" → tunjangan masa kerja (uang)
+     * 
+     * For jabatan ROLE TEXT (e.g. "Mandor", "Kerani"), see:
+     *   - employee_estate.jabatan (extend_db_ptrj)
+     *   - history_gang_member.jabatan (extend_db_ptrj)
+     *   NOT from HR_GANGLN (that table only has gang membership, not jabatan role).
+     */
     private async getTunjanganAmount(empCodes: string[], startDate: string, endDate: string, tunjanganType: string, serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
@@ -2993,6 +3012,11 @@ export class DataExtractorService {
             }
 
             // Try Jabatan from history_gang_member (extend_db_ptrj)
+            // NOTE: Jabatan (role text like "Mandor", "Kerani") is stored in extend_db_ptrj,
+            // NOT in HR_GANGLN. HR_GANGLN only has GangMember/GangCode (gang membership), not jabatan.
+            // Two sources for jabatan:
+            //   1. history_gang_member.jabatan - from manual seed/entry
+            //   2. employee_estate.jabatan - from employee estate management
             let jabatanFound = 0;
             try {
                 const extendDb = Database.getExtendedInstance();
@@ -3018,6 +3042,7 @@ export class DataExtractorService {
             }
 
             // [FALLBACK] If jabatan still empty, try employee_estate
+            // employee_estate is the PRIMARY source for jabatan (role text) when history_gang_member is not seeded
             let jabatanEstateFound = 0;
             try {
                 const extendDb = Database.getExtendedInstance();
@@ -3119,7 +3144,9 @@ export class DataExtractorService {
                 gang_code: emp.gang_code,
                 loc_code: emp.loc_code,
                 gender: emp.gender,
-                jabatan: emp.jabatan || '',  // Jabatan from history_gang_member
+                // Jabatan ROLE TEXT (e.g. "Mandor", "Kerani") from extend_db_ptrj
+                // NOT from HR_GANGLN - Phase 3 enriches this from employee_estate or history_gang_member
+                jabatan: emp.jabatan || '',
                 jabatan_estate: emp.jabatan_estate || emp.jabatan || '',  // Jabatan from employee_estate (extend_db_ptrj)
                 role: emp.role || '',        // Role from history
                 // Phase markers
