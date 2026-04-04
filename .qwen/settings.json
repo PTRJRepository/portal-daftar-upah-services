@@ -24,7 +24,11 @@
       "Bash(curl *)",
       "Bash(rmdir *)",
       "Bash(powershell *)",
-      "Bash(rm *)"
+      "Bash(rm *)",
+      "Bash(git *)",
+      "Bash(dir *)",
+      "Bash(tail *)",
+      "Bash(type *)"
     ]
   },
   "$version": 3

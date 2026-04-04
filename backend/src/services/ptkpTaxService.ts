@@ -228,7 +228,10 @@ export class PtkpTaxService {
                     RTRIM(g.LocCode) as division_code,
                     RTRIM(g.GangCode) as gang_code,
                     RTRIM(g.LocCode) as loc_code,
-                    COALESCE(p.RiceRation, 0) as beras_rate
+                    CASE 
+                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        ELSE COALESCE(p.RiceRation, 0)
+                    END as beras_rate
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                 LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
@@ -374,13 +377,16 @@ export class PtkpTaxService {
             } else {
                 // Get basic info from origin db to insert new record
                 const empInfo = await originDb.queryOne<{ emp_name: string, nik: string, division_code: string, gang_code: string, loc_code: string, beras_rate: number }>(`
-                    SELECT 
+                    SELECT
                         RTRIM(e.EmpName) as emp_name,
                         RTRIM(e.NewICNo) as nik,
                         RTRIM(g.LocCode) as division_code,
                         RTRIM(g.GangCode) as gang_code,
                         RTRIM(g.LocCode) as loc_code,
-                        COALESCE(p.RiceRation, 0) as beras_rate
+                        CASE 
+                            WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                            ELSE COALESCE(p.RiceRation, 0)
+                        END as beras_rate
                     FROM HR_EMPLOYEE e
                     LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                     LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
@@ -485,7 +491,10 @@ export class PtkpTaxService {
                 SELECT DISTINCT
                     RTRIM(e.EmpCode) as emp_code,
                     RTRIM(e.EmpName) as emp_name,
-                    COALESCE(p.RiceRation, 0) as beras_rate
+                    CASE 
+                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        ELSE COALESCE(p.RiceRation, 0)
+                    END as beras_rate
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                 WHERE e.Status = '1'

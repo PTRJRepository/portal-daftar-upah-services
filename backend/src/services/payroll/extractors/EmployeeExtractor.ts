@@ -128,7 +128,10 @@ export class EmployeeExtractor {
                     COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
                     RTRIM(g.Description) as gang_desc,
                     COALESCE(p.PayRate, 0) as pay_rate,
-                    COALESCE(p.RiceRation, 0) as beras_rate,
+                    CASE 
+                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        ELSE COALESCE(p.RiceRation, 0)
+                    END as beras_rate,
                     em.AppJoinGrpDate as join_date,
                     e.ResAddress as res_address,
                     e.HREmpType as hr_emp_type
@@ -154,7 +157,10 @@ export class EmployeeExtractor {
                     RTRIM(gl.GangCode) as gang_code,
                     RTRIM(g.Description) as gang_desc,
                     COALESCE(p.PayRate, 0) as pay_rate,
-                    COALESCE(p.RiceRation, 0) as beras_rate,
+                    CASE 
+                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        ELSE COALESCE(p.RiceRation, 0)
+                    END as beras_rate,
                     em.AppJoinGrpDate as join_date,
                     e.ResAddress as res_address,
                     e.HREmpType as hr_emp_type
@@ -186,7 +192,10 @@ export class EmployeeExtractor {
                         COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
                         RTRIM(g.Description) as gang_desc,
                         COALESCE(p.PayRate, 0) as pay_rate,
-                        COALESCE(p.RiceRation, 0) as beras_rate,
+                        CASE 
+                            WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                            ELSE COALESCE(p.RiceRation, 0)
+                        END as beras_rate,
                         em.AppJoinGrpDate as join_date,
                         e.ResAddress as res_address,
                         e.HREmpType as hr_emp_type

@@ -257,7 +257,11 @@ export class ReportService {
 
             // 10. Beras Rate (Master)
             this.db.query(this.reparam(`
-                SELECT DISTINCT e.EmpCode, COALESCE(p.RiceRation, 0) as beras_rate
+                SELECT DISTINCT e.EmpCode, 
+                    CASE 
+                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        ELSE COALESCE(p.RiceRation, 0)
+                    END as beras_rate
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                 LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode

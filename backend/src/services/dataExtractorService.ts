@@ -1544,7 +1544,10 @@ export class DataExtractorService {
                     COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
                     RTRIM(g.Description) as gang_desc,
                     COALESCE(p.PayRate, 0) as pay_rate,
-                    COALESCE(p.RiceRation, 0) as beras_rate,
+                    CASE 
+                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        ELSE COALESCE(p.RiceRation, 0)
+                    END as beras_rate,
                     em.AppJoinGrpDate as join_date,
                     e.ResAddress as res_address,
                     e.HREmpType as hr_emp_type
@@ -1572,7 +1575,10 @@ export class DataExtractorService {
                     RTRIM(gl.GangCode) as gang_code,
                     RTRIM(g.Description) as gang_desc,
                     COALESCE(p.PayRate, 0) as pay_rate,
-                    COALESCE(p.RiceRation, 0) as beras_rate,
+                    CASE 
+                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        ELSE COALESCE(p.RiceRation, 0)
+                    END as beras_rate,
                     em.AppJoinGrpDate as join_date,
                     e.ResAddress as res_address,
                     e.HREmpType as hr_emp_type
@@ -1606,7 +1612,10 @@ export class DataExtractorService {
                         COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
                         RTRIM(g.Description) as gang_desc,
                         COALESCE(p.PayRate, 0) as pay_rate,
-                        COALESCE(p.RiceRation, 0) as beras_rate,
+                        CASE 
+                            WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                            ELSE COALESCE(p.RiceRation, 0)
+                        END as beras_rate,
                         em.AppJoinGrpDate as join_date,
                         e.ResAddress as res_address,
                         e.HREmpType as hr_emp_type
@@ -3548,15 +3557,43 @@ export class DataExtractorService {
 
             // Group by emp_code
             const incomeByEmp = new Map<string, Array<{type: string, name: string, amount: number}>>();
+            let matchedByEmpCode = 0;
+            let matchedByNik = 0;
+            let unmatched = 0;
+            
             for (const row of incomeRows) {
-                // Try to match by emp_code first, then by nik
                 let key = row.emp_code;
-                if (!key && row.nik) {
-                    const emp = employees.find(e => e.actual_nik === row.nik);
-                    if (emp) key = emp.emp_code;
-                }
-                if (!key) continue;
+                let matched = false;
                 
+                // Try to match by emp_code first (RTRIM already done in SQL)
+                if (key && key.trim()) {
+                    const normalizedKey = key.trim().toUpperCase();
+                    // Find employee with matching emp_code
+                    const emp = employees.find(e => e.emp_code?.trim().toUpperCase() === normalizedKey);
+                    if (emp) {
+                        key = emp.emp_code;
+                        matchedByEmpCode++;
+                        matched = true;
+                    }
+                }
+                
+                // Fallback: match by NIK if emp_code didn't match
+                if (!matched && row.nik && row.nik.trim()) {
+                    const normalizedNik = row.nik.trim();
+                    const emp = employees.find(e => e.actual_nik === normalizedNik || e.new_nik === normalizedNik);
+                    if (emp) {
+                        key = emp.emp_code;
+                        matchedByNik++;
+                        matched = true;
+                    }
+                }
+                
+                if (!matched) {
+                    unmatched++;
+                    console.log(`[Phase 4b] ⚠️ Unmatched income: emp_code="${row.emp_code}", nik="${row.nik}", type="${row.income_type}", amount=${row.amount}`);
+                    continue;
+                }
+
                 if (!incomeByEmp.has(key)) incomeByEmp.set(key, []);
                 incomeByEmp.get(key)!.push({
                     type: row.income_type,
@@ -3564,8 +3601,11 @@ export class DataExtractorService {
                     amount: row.amount || 0
                 });
             }
+            
+            debug(CATEGORY, `💰 Matching: ${matchedByEmpCode} by emp_code, ${matchedByNik} by NIK, ${unmatched} unmatched`);
 
             // Attach to employees and calculate additional income
+            let totalEmployeesWithIncome = 0;
             for (const emp of employees) {
                 const incomes = incomeByEmp.get(emp.emp_code) || [];
                 emp.other_incomes = incomes;
@@ -3576,22 +3616,47 @@ export class DataExtractorService {
                     emp[fieldKey] = inc.amount;
                 }
 
-                // NOTE: total_pendapatan_lainnya sudah dihitung di Phase 4a dari PayrollCalculator
-                // dan sudah termasuk semua pendapatan lainnya (THR, Bonus, Custom, KONTAN)
-                // Tidak perlu dihitung ulang di sini untuk menghindari inkonsistensi
+                // Calculate total_pendapatan_lainnya (THR + Bonus + Custom + KONTAN)
+                const totalPendapatanLainnya = incomes.reduce((sum, inc) => sum + (inc.amount || 0), 0);
+                emp.total_pendapatan_lainnya = totalPendapatanLainnya;
+                emp.pendapatan_lainnya = totalPendapatanLainnya; // Alias for compatibility
 
-                // Update jumlah_upah_kotor to include pendapatan lainnya (jika belum termasuk)
-                // NOTE: PayrollCalculator sudah include pendapatan_lainnya di jumlah_upah_kotor
-                // Jadi tidak perlu ditambah lagi di sini
+                if (incomes.length > 0) {
+                    totalEmployeesWithIncome++;
+                    console.log(`[Phase 4b] ${emp.emp_code}: Found ${incomes.length} incomes, total=${totalPendapatanLainnya}`);
+                }
+
+                // Update jumlah_upah_kotor to include pendapatan lainnya
+                emp.jumlah_upah_kotor = (emp.jumlah_upah_kotor || 0) + totalPendapatanLainnya;
                 emp.upah_kotor_pajak = emp.jumlah_upah_kotor; // For PAJAK section
 
-                // [NEW] Include pendapatan_lainnya in total_potongan
-                // This ensures total_potongan reflects all deductions including other incomes
-                if (emp.total_pendapatan_lainnya && emp.total_pendapatan_lainnya > 0) {
-                    emp.total_potongan = (emp.total_potongan || 0) + emp.total_pendapatan_lainnya;
-                    emp.total_potongan_bersih = emp.total_potongan;
+                // Calculate penghasilan_bruto from jumlah_upah_kotor + astek_majikan + bpjs_majikan
+                const caruman = calculateAllCaruman(emp.pay_rate || 0, 0);
+                const astekMajikan = caruman.astek_majikan_jkk_jkm || 0;
+                const bpjsMajikan = caruman.bpjs_kes_majikan || 0;
+                emp.penghasilan_bruto = (emp.jumlah_upah_kotor || 0) + astekMajikan + bpjsMajikan;
+
+                // Calculate PPh21 TER
+                try {
+                    const { pph21TerService } = await import('./pph21TerService');
+                    const statusPTKP = emp.status_ptkp || dbPtkpMap.get(emp.emp_code?.toUpperCase()) || mapBerasRateToPTKP(emp.beras_rate || 0);
+                    const pphResult = pph21TerService.calculatePph21Ter(emp.penghasilan_bruto, statusPTKP);
+                    emp.pph21_ter = pphResult.tax_amount || 0;
+                    emp.tarif_pajak_ter = pphResult.rate_percent || 0;
+                } catch (e: any) {
+                    console.error(`[Phase 4b] PPh21 TER calculation failed for ${emp.emp_code}:`, e.message);
+                    emp.pph21_ter = 0;
+                    emp.tarif_pajak_ter = 0;
                 }
+
+                // Update total_potongan to include pendapatan_lainnya
+                emp.total_potongan = (emp.total_potongan || 0) + totalPendapatanLainnya;
+                emp.total_potongan_bersih = emp.total_potongan;
+
+                // Recalculate upah_bersih
+                emp.upah_bersih = (emp.jumlah_upah_kotor || 0) - (emp.total_potongan || 0);
             }
+            debug(CATEGORY, `💰 Other incomes: ${totalEmployeesWithIncome}/${employees.length} employees with income`);
             debug(CATEGORY, `💰 Other incomes attached to ${incomeByEmp.size} employees`);
         } catch (e) {
             debug(CATEGORY, `⚠️ Other income lookup skipped: ${e.message}`);
