@@ -79,8 +79,10 @@ export class EmployeeRepository {
         division?: string;
         religion?: string;
         status?: string;
+        sortBy?: string;
+        sortOrder?: string;
     } = {}): Promise<Employee[]> {
-        const { skip = 0, limit = 100, gangCode, division, religion, status } = options;
+        const { skip = 0, limit = 100, gangCode, division, religion, status, sortBy = "nama", sortOrder = "asc" } = options;
         const histDb = this.getHistoryDb();
 
         try {
@@ -113,6 +115,12 @@ export class EmployeeRepository {
 
             const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
+            // Validate and sanitize sort parameters
+            const validSortFields = ["nama", "nik", "emp_code"];
+            const sortField = validSortFields.includes(sortBy.toLowerCase()) ? sortBy.toLowerCase() : "nama";
+            const sortDirection = sortOrder.toLowerCase() === "desc" ? "DESC" : "ASC";
+            const sortColumn = sortField === "nik" || sortField === "emp_code" ? "emp_code" : "emp_name";
+
             // Get latest record per employee
             const sql = `
                 SELECT
@@ -131,7 +139,7 @@ export class EmployeeRepository {
                 AND period_year = (SELECT MAX(period_year) FROM dbo.history_hr_employee h2 WHERE h2.emp_code = h.emp_code)
                 AND period_month = (SELECT MAX(period_month) FROM dbo.history_hr_employee h3
                     WHERE h3.emp_code = h.emp_code AND h3.period_year = h.period_year)
-                ORDER BY emp_name
+                ORDER BY ${sortColumn} ${sortDirection}
             `;
 
             const rows = await histDb.query<any>(sql, params);
@@ -186,12 +194,12 @@ export class EmployeeRepository {
                 // Fallback to history DB if origin returns 0 rows
                 if (employees.length === 0) {
                     console.log(`[EmployeeRepository] Origin DB returned 0 rows, falling back to history DB`);
-                    employees = await this.listFromHistory({ skip, limit, gangCode, division, religion, status });
+                    employees = await this.listFromHistory({ skip, limit, gangCode, division, religion, status, sortBy, sortOrder });
                     dataSource = employees.length > 0 ? "history" : "origin";
                 }
             } else {
                 // Force history mode
-                employees = await this.listFromHistory({ skip, limit, gangCode, division, religion, status });
+                employees = await this.listFromHistory({ skip, limit, gangCode, division, religion, status, sortBy, sortOrder });
                 dataSource = employees.length > 0 ? "history" : "origin";
             }
 

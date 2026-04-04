@@ -342,7 +342,8 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     background: #fff;
                     border-radius: 12px;
                     border: 1px solid #e5e7eb;
-                    overflow: hidden;
+                    overflow-x: auto;
+                    overflow-y: hidden;
                     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
                 }
                 .gam-header {
