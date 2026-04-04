@@ -3175,6 +3175,7 @@ export class DataExtractorService {
             let jabatanEstateSectionFound = 0;
             try {
                 const { EmployeeEstateService: EES } = await import("./employeeEstateService");
+                debug(CATEGORY, `🔍 Attempting to get employee jobs with NIK...`);
                 // Timeout wrapper: 5 seconds max for this enrichment query
                 const timeoutMs = 5000;
                 const jobTitlesResult = await Promise.race([
@@ -3189,6 +3190,7 @@ export class DataExtractorService {
 
                 if (jobTitlesResult) {
                     const { empcodeMap: estateEmpMap, nikMap: estateNikMap } = jobTitlesResult;
+                    debug(CATEGORY, `📊 Loaded estate maps - empcodeMap: ${Object.keys(estateEmpMap).length} entries, nikMap: ${Object.keys(estateNikMap).length} entries`);
                     for (const emp of employees) {
                         const nikClean = (emp.actual_nik || '').trim().toUpperCase();
                         const estateJabatan = estateEmpMap[emp.emp_code] || estateNikMap[nikClean] || '';
@@ -3203,6 +3205,8 @@ export class DataExtractorService {
                         }
                     }
                     debug(CATEGORY, `📋 Jabatan estate from employee_estate: ${jabatanEstateSectionFound}/${employees.length}`);
+                } else {
+                    debug(CATEGORY, `⚠️ jobTitlesResult is null - no estate maps available`);
                 }
             } catch (e) {
                 debug(CATEGORY, `⚠️ employee_estate jabatan lookup skipped: ${e.message}`);

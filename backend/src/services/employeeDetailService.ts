@@ -615,10 +615,15 @@ export class EmployeeDetailService {
         }
 
         // Enrich employeeInfo.jabatan from payrollData (db_ptrj source)
+        console.log(`[EmployeeDetailService] Jabatan enrichment - payrollData.jabatan_estate=${payrollData?.jabatan_estate}, payrollData.task_desc=${payrollData?.task_desc}`);
         if (payrollData?.jabatan_estate) {
             employeeInfo.jabatan = payrollData.jabatan_estate;
+            console.log(`[EmployeeDetailService] ✅ Jabatan set from jabatan_estate: ${employeeInfo.jabatan}`);
         } else if (payrollData?.task_desc) {
             employeeInfo.jabatan = payrollData.task_desc;
+            console.log(`[EmployeeDetailService] ⚠️ Jabatan set from task_desc (fallback): ${employeeInfo.jabatan}`);
+        } else {
+            console.log(`[EmployeeDetailService] ❌ No jabatan found in payrollData`);
         }
 
         return {
