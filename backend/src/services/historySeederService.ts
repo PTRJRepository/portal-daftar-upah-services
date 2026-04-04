@@ -95,6 +95,7 @@ export class HistorySeederService {
      * Main method to seed payroll history data
      */
     public async seedPayrollHistory(options: SeederOptions): Promise<SeederResult> {
+        const startTime = Date.now();
         const result: SeederResult = {
             success: false,
             history_id: '',
@@ -112,6 +113,13 @@ export class HistorySeederService {
             },
             errors: []
         };
+
+        console.log(`[HistorySeeder] =======================================`);
+        console.log(`[HistorySeeder] Starting payroll history seeding`);
+        console.log(`[HistorySeeder] Period: ${options.periodMonth}/${options.periodYear}`);
+        console.log(`[HistorySeeder] Division: ${options.divisionCode || 'ALL'}, Gang: ${options.gangCode || 'ALL'}`);
+        console.log(`[HistorySeeder] Mode: ${options.seederMode || 'PAYROLL'}`);
+        console.log(`[HistorySeeder] =======================================`);
 
         try {
             // Reset progress
@@ -187,7 +195,19 @@ export class HistorySeederService {
             // 5. Save metadata
             await this.saveSeederMetadata(historyId, options, result);
 
+            const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
             result.success = result.errors.length === 0;
+            
+            console.log(`[HistorySeeder] =======================================`);
+            console.log(`[HistorySeeder] Seeding completed in ${totalTime}s`);
+            console.log(`[HistorySeeder] Success: ${result.success}`);
+            console.log(`[HistorySeeder] Total employees: ${result.total_employees}`);
+            console.log(`[HistorySeeder] Records: ${JSON.stringify(result.records_inserted)}`);
+            if (result.errors.length > 0) {
+                console.log(`[HistorySeeder] Errors: ${result.errors.join(', ')}`);
+            }
+            console.log(`[HistorySeeder] =======================================`);
+            
             HistorySeederService.updateProgress({ is_running: false, current_step: result.success ? '✅ Selesai!' : '⚠️ Selesai dengan error' });
 
         } catch (error: any) {

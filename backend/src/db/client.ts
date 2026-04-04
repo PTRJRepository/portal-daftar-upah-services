@@ -112,12 +112,13 @@ export class Database {
         return { sql, params: newParams };
     }
 
-    public async query<T = any>(sql: string, params?: any[] | Record<string, any>): Promise<T[]> {
+    public async query<T = any>(sql: string, params?: any[] | Record<string, any>, timeout?: number): Promise<T[]> {
         const { sql: preparedSql, params: preparedParams } = this.prepareParams(sql, params);
 
         let attempt = 0;
         let delay = 500;
         const maxRetries = Config.DB_QUERY_RETRIES;
+        const queryTimeout = timeout || this.timeout;
 
         while (attempt <= maxRetries) {
             try {
@@ -125,13 +126,17 @@ export class Database {
                     sql: preparedSql,
                     params: preparedParams,
                     server: this.serverProfile,
-                    database: this.databaseName
+                    database: this.databaseName,
+                    timeout: queryTimeout  // Pass custom timeout to gateway
                 };
 
                 // Debug log untuk setiap query (hanya jika LOG_LEVEL=DEBUG)
                 if (attempt === 0) {
-                    debug("DB_QUERY", `Query to ${this.serverProfile}/${this.databaseName}`);
+                    debug("DB_QUERY", `Query to ${this.serverProfile}/${this.databaseName} (timeout: ${queryTimeout}s)`);
                 }
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), queryTimeout * 1000);
 
                 const response = await fetch(`${this.baseUrl}/v1/query`, {
                     method: "POST",
@@ -140,7 +145,10 @@ export class Database {
                         "x-api-key": this.apiKey
                     },
                     body: JSON.stringify(body),
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
 
                 if (!response.ok) {
                     const errorText = await response.text();

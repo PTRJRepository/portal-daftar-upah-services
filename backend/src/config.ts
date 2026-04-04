@@ -35,8 +35,11 @@ export class Config {
 
     // Database Timeouts
     public static readonly DB_CONN_TIMEOUT: number = parseInt(env.DB_CONN_TIMEOUT || "60");
-    public static readonly DB_QUERY_TIMEOUT: number = parseInt(env.DB_QUERY_TIMEOUT || "30");
+    public static readonly DB_QUERY_TIMEOUT: number = parseInt(env.DB_QUERY_TIMEOUT || "60");  // Increased from 30 to 60
     public static readonly DB_QUERY_RETRIES: number = parseInt(env.DB_QUERY_RETRIES || "3");
+    
+    // Seeder-specific timeout (longer for heavy operations)
+    public static readonly DB_SEEDER_TIMEOUT: number = parseInt(env.DB_SEEDER_TIMEOUT || "180");
 
     // Extended Database (for aggregation history)
     public static readonly DB_EXTEND_DATABASE: string = env.DB_EXTEND_DATABASE || "extend_db_ptrj";
