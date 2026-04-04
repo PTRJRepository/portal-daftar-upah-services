@@ -268,14 +268,25 @@ export class DataExtractorService {
 
         // ============================================================
         // ============================================================
-        // [OPTIMIZATION] Parallelize: currentPeriod + gangService fetch together
+        // [OPTIMIZATION] Parallelize: gangService fetch + currentPeriod with timeout fallback
         // ============================================================
-        const [currentPeriod, allGangs] = await Promise.all([
-            currentPeriodService.getCurrentPeriod(),
-            gangService.fetchGangs(divisionCode || undefined, undefined, includeVirtualGangs)
-        ]);
-        const currentMonth = currentPeriod.month;
-        const currentYear = currentPeriod.year;
+        // Get gangs first (fast query)
+        const allGangs = await gangService.fetchGangs(divisionCode || undefined, undefined, includeVirtualGangs);
+
+        // Get current period - if it times out, fall back to using the requested period
+        let currentMonth: number;
+        let currentYear: number;
+        try {
+            const currentPeriod = await currentPeriodService.getCurrentPeriod();
+            currentMonth = currentPeriod.month;
+            currentYear = currentPeriod.year;
+        } catch (periodError: any) {
+            // If getCurrentPeriod fails (e.g., DB timeout), use the requested period as fallback
+            // This ensures the seeder can still work even if the DB is slow
+            console.warn(`[DataExtractor] getCurrentPeriod failed: ${periodError.message}. Using requested period ${month}/${year} as fallback.`);
+            currentMonth = month;
+            currentYear = year;
+        }
 
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
@@ -1534,62 +1545,72 @@ export class DataExtractorService {
             }
 
             // PR_GANGLN_ARC uses EmpCode column and MasterID to join with PR_GANG
-            rows = await db.query<any>(`
-                SELECT DISTINCT
-                    RTRIM(e.EmpCode) as emp_code,
-                    e.NewICNo as actual_nik,
-                    e.EmpName as emp_name,
-                    e.Gender as gender,
-                    RTRIM(e.LocCode) as loc_code,
-                    COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
-                    RTRIM(g.Description) as gang_desc,
-                    COALESCE(p.PayRate, 0) as pay_rate,
-                    CASE 
-                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
-                        ELSE COALESCE(p.RiceRation, 0)
-                    END as beras_rate,
-                    em.AppJoinGrpDate as join_date,
-                    e.ResAddress as res_address,
-                    e.HREmpType as hr_emp_type
-                FROM HR_EMPLOYEE e
-                INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
-                    AND gl.AccMonth = ?
-                    AND gl.AccYear = ?
-                INNER JOIN PR_GANG g ON g.ID = gl.MasterID
-                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
-                LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
-                WHERE ${historicalCondition}
-                ORDER BY emp_code
-            `, [accMonth, accYear]);
+            try {
+                rows = await db.query<any>(`
+                    SELECT DISTINCT
+                        RTRIM(e.EmpCode) as emp_code,
+                        e.NewICNo as actual_nik,
+                        e.EmpName as emp_name,
+                        e.Gender as gender,
+                        RTRIM(e.LocCode) as loc_code,
+                        COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
+                        RTRIM(g.Description) as gang_desc,
+                        COALESCE(p.PayRate, 0) as pay_rate,
+                        CASE
+                            WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
+                            ELSE COALESCE(p.RiceRation, 0)
+                        END as beras_rate,
+                        em.AppJoinGrpDate as join_date,
+                        e.ResAddress as res_address,
+                        e.HREmpType as hr_emp_type
+                    FROM HR_EMPLOYEE e
+                    INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
+                        AND gl.AccMonth = ?
+                        AND gl.AccYear = ?
+                    INNER JOIN PR_GANG g ON g.ID = gl.MasterID
+                    LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                    LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                    WHERE ${historicalCondition}
+                    ORDER BY emp_code
+                `, [accMonth, accYear]);
+            } catch (error: any) {
+                console.error(`[DataExtractor] Historical employee query failed: ${error.message}`);
+                throw new Error(`Failed to fetch historical employee data: ${error.message}`);
+            }
         } else {
             // For current/future data, use HR_GANGLN (current active data)
 
 
-            rows = await db.query<any>(`
-                SELECT DISTINCT
-                    RTRIM(e.EmpCode) as emp_code,
-                    ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
-                    e.EmpName as emp_name,
-                    e.Gender as gender,
-                    RTRIM(e.LocCode) as loc_code,
-                    RTRIM(gl.GangCode) as gang_code,
-                    RTRIM(g.Description) as gang_desc,
-                    COALESCE(p.PayRate, 0) as pay_rate,
-                    CASE 
-                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
-                        ELSE COALESCE(p.RiceRation, 0)
-                    END as beras_rate,
-                    em.AppJoinGrpDate as join_date,
-                    e.ResAddress as res_address,
-                    e.HREmpType as hr_emp_type
-                FROM HR_EMPLOYEE e
-                INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
-                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
-                LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
-                WHERE ${gangCondition}
-                ORDER BY emp_code
-            `);
+            try {
+                rows = await db.query<any>(`
+                    SELECT DISTINCT
+                        RTRIM(e.EmpCode) as emp_code,
+                        ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
+                        e.EmpName as emp_name,
+                        e.Gender as gender,
+                        RTRIM(e.LocCode) as loc_code,
+                        RTRIM(gl.GangCode) as gang_code,
+                        RTRIM(g.Description) as gang_desc,
+                        COALESCE(p.PayRate, 0) as pay_rate,
+                        CASE
+                            WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
+                            ELSE COALESCE(p.RiceRation, 0)
+                        END as beras_rate,
+                        em.AppJoinGrpDate as join_date,
+                        e.ResAddress as res_address,
+                        e.HREmpType as hr_emp_type
+                    FROM HR_EMPLOYEE e
+                    INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                    INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
+                    LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                    LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                    WHERE ${gangCondition}
+                    ORDER BY emp_code
+                `);
+            } catch (error: any) {
+                console.error(`[DataExtractor] Current employee query failed: ${error.message}`);
+                throw new Error(`Failed to fetch employee data: ${error.message}`);
+            }
 
             // [FALLBACK] If no data in base table (HR_GANGLN) for current period,
             // try ARC table (PR_GANGLN_ARC) as fallback - data may have been archived

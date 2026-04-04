@@ -124,12 +124,6 @@ export class HistorySeederService {
                 started_at: new Date().toISOString()
             });
 
-            // Check if history mode is enabled
-            if (!historyDatabaseService.isHistoryMode()) {
-                result.errors.push('History mode is not enabled. Set RUN_MODE=prod in .env');
-                return result;
-            }
-
             // Generate history_id
             const historyId = historyDatabaseService.generateHistoryId();
             result.history_id = historyId;
@@ -214,6 +208,9 @@ export class HistorySeederService {
         // IMPORTANT: Pass useHistoryDb=false to force reading from the LIVE database.
         // Without this, extractPayrollData intercepts historical periods and tries to
         // read from the history DB (which is empty — it's the DB we're trying to seed!).
+        console.log(`[HistorySeeder] Fetching payroll data for ${options.periodMonth}/${options.periodYear}...`);
+        console.log(`[HistorySeeder] Division: ${options.divisionCode || 'ALL'}, Gang: ${options.gangCode || 'ALL'}`);
+        
         const rawData = await dataExtractorService.extractPayrollData(
             options.periodMonth,
             options.periodYear,
