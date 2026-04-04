@@ -20,6 +20,15 @@ import { lemburCalculator } from "./lemburCalculator";
 // Status codes for the matrix cells
 export type AttendanceStatus = 'H' | 'C' | 'S' | 'M' | 'N' | 'A' | '-' | 'L';
 
+// Daily cell data with amount for tooltip display
+export interface DailyCell {
+    status: AttendanceStatus;
+    hours: number;
+    amount: number;
+    /** True if kurang jam (hours < target for regular workday) */
+    is_short?: boolean;
+}
+
 export interface GangMember {
     emp_code: string;
     emp_name: string;
@@ -36,7 +45,7 @@ export interface GangAttendanceRow {
     nik: string;
     gang_code: string;
     bank_acc_no: string;
-    daily: Record<number, AttendanceStatus>;  // 1-31 => status
+    daily: Record<number, DailyCell>;  // 1-31 => status with hours, amount, and is_short flag
     /** Face verification data from IT Solution API (absen_import). Key = day (1-31), value = hasWork (true/false) */
     face_verification?: Record<number, boolean>;
     summary: {
@@ -215,8 +224,8 @@ class GangAttendanceService {
      * RULE: emp_code is the authoritative key from HR_GANGLN.
      * All attendance records are joined/filtered by this emp_code.
      */
-    private async getBulkAttendanceFromMainDb(empCodes: string[], month: number, year: number): Promise<Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>> {
-        const result = new Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number }[]>();
+    private async getBulkAttendanceFromMainDb(empCodes: string[], month: number, year: number): Promise<Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number; amount: number }[]>> {
+        const result = new Map<string, { day: number; taskCode: string; isCutiTahunan: boolean; isCutiSakit: boolean; isCutiMinggu: boolean; isCutiNasional: boolean; isHariKerja: boolean; hours: number; amount: number }[]>();
         if (empCodes.length === 0) return result;
 
         const daysInMonth = new Date(year, month, 0).getDate();
@@ -238,12 +247,14 @@ class GangAttendanceService {
                     day_of_month: number;
                     TaskCode: string;
                     Hours: number;
+                    Amount: number;
                 }>(`
-                    SELECT EmpCode, day_of_month, TaskCode, Hours FROM (
+                    SELECT EmpCode, day_of_month, TaskCode, Hours, Amount FROM (
                         SELECT RTRIM(trl.EmpCode) as EmpCode,
                                DAY(trl.TrxDate) as day_of_month,
                                RTRIM(ISNULL(trl.TaskCode, '')) as TaskCode,
-                               ISNULL(trl.Hours, 0) as Hours
+                               ISNULL(trl.Hours, 0) as Hours,
+                               ISNULL(trl.Amount, 0) as Amount
                         FROM PR_TASKREGLN trl
                         JOIN PR_TASKREG trh ON trl.MasterID = trh.ID
                         WHERE RTRIM(trl.EmpCode) IN (${placeholders})
@@ -255,7 +266,8 @@ class GangAttendanceService {
                         SELECT RTRIM(trl.EmpCode) as EmpCode,
                                DAY(trl.TrxDate) as day_of_month,
                                RTRIM(ISNULL(trl.TaskCode, '')) as TaskCode,
-                               ISNULL(trl.Hours, 0) as Hours
+                               ISNULL(trl.Hours, 0) as Hours,
+                               ISNULL(trl.Amount, 0) as Amount
                         FROM PR_TASKREGLN_ARC trl
                         JOIN PR_TASKREG_ARC trh ON trl.MasterID = trh.ID
                         WHERE RTRIM(trl.EmpCode) IN (${placeholders})
@@ -281,7 +293,8 @@ class GangAttendanceService {
                         isCutiMinggu: tc.startsWith('GA9127'),
                         isCutiNasional: tc.startsWith('GA9128'),
                         isHariKerja: !tc.startsWith('GA912'),
-                        hours: row.Hours
+                        hours: row.Hours,
+                        amount: row.Amount
                     });
                 }
             } catch (e) {
@@ -427,7 +440,7 @@ class GangAttendanceService {
                 const records = attendanceData.get(empKey) || [];
 
                 // Initialize daily matrix
-                const daily: Record<number, AttendanceStatus> = {};
+                const daily: Record<number, DailyCell> = {};
                 const summary = {
                     hadir: 0,
                     cuti_tahunan: 0,
@@ -450,7 +463,20 @@ class GangAttendanceService {
                     const isHoliday = holidayDaySet.has(rec.day);
                     const status = this.resolveStatusFromFlags(rec, isSunday, isHoliday);
 
-                    daily[rec.day] = status;
+                    // Determine if Friday (short day - target 5 hours)
+                    const dateObj = new Date(year, month - 1, rec.day);
+                    const isFriday = dateObj.getDay() === 5;
+
+                    // Calculate is_short: hours > 0 but less than target
+                    const targetHours = isFriday ? 5 : 7;
+                    const isShort = status === 'H' && rec.hours > 0 && rec.hours < targetHours;
+
+                    daily[rec.day] = {
+                        status,
+                        hours: rec.hours || 0,
+                        amount: rec.amount || 0,
+                        is_short: isShort
+                    };
 
                     switch (status) {
                         case 'H': summary.hadir++; break;
@@ -468,16 +494,16 @@ class GangAttendanceService {
                         const isHoliday = holidayDaySet.has(d);
 
                         if (isSunday) {
-                            daily[d] = 'M';
+                            daily[d] = { status: 'M', hours: 0, amount: 0 };
                             summary.cuti_minggu++;
                         } else if (isHoliday) {
-                            daily[d] = 'N';
+                            daily[d] = { status: 'N', hours: 0, amount: 0 };
                             summary.libur_nasional++;
                         } else if (maxDataDay > 0 && d < maxDataDay) {
-                            daily[d] = 'A';
+                            daily[d] = { status: 'A', hours: 0, amount: 0 };
                             summary.alpa++;
                         } else {
-                            daily[d] = '-';
+                            daily[d] = { status: '-', hours: 0, amount: 0 };
                         }
                     }
                 }

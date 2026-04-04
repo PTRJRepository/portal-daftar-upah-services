@@ -738,6 +738,7 @@ export default function EmployeeDetailPage({
                                 const isSunday = dayOfWeek === 0
                                 const isHoliday = dayData.is_holiday
                                 const hours = dayData.hours || 0
+                                const amount = dayData.amount || 0
                                 const targetHours = isFriday ? 5 : 7
                                 const isShort = hours > 0 && hours < targetHours && !isSunday && !isHoliday
                                 const isExcess = hours > targetHours && !isSunday && !isHoliday
@@ -752,12 +753,12 @@ export default function EmployeeDetailPage({
                                     cellBg = '#fee2e2'
                                     cellColor = '#b91c1c'
                                     cellBorder = '2px solid #ef4444'
-                                    hkIcon = '⬇️'
+                                    hkIcon = '⚠️'
                                 } else if (isExcess) {
                                     cellBg = '#fff7ed'
                                     cellColor = '#9a3412'
                                     cellBorder = '2px solid #f97316'
-                                    hkIcon = '⬆️'
+                                    hkIcon = '🔴'
                                 }
 
                                 const shortage = isShort ? (targetHours - hours).toFixed(1) : 0
@@ -770,9 +771,10 @@ export default function EmployeeDetailPage({
                                         style={{
                                             background: cellBg,
                                             color: cellColor,
-                                            border: cellBorder
+                                            border: cellBorder,
+                                            cursor: 'pointer'
                                         }}
-                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''} (${hours} Jam, Target: ${targetHours} Jam)${dayData.amount ? ` - Rp ${formatCurrency(dayData.amount)}` : ''}${isShort ? ` - ⚠️ Kurang ${shortage} Jam` : ''}${isExcess ? ` - 🔴 Lebih ${excess} Jam (Salah Scan?)` : ''}`}
+                                        title={`Tanggal ${day}: ${dayData.status}${dayData.remarks ? ` - ${dayData.remarks}` : ''}\nJam: ${hours} / Target: ${targetHours}\nAmount: Rp ${formatCurrency(amount)}${isShort ? `\n⚠️ Kurang ${shortage} Jam` : ''}${isExcess ? `\n🔴 Lebih ${excess} Jam` : ''}`}
                                     >
                                         <div className="calendar-date">{day}</div>
                                         <div className="calendar-status">
@@ -780,24 +782,34 @@ export default function EmployeeDetailPage({
                                         </div>
                                         {hours > 0 && (
                                             <div style={{ fontSize: '0.6rem', marginTop: '1px', fontWeight: 'bold' }}>
-                                                {hours} Jam
+                                                {hours}j
                                                 {isShort && <span style={{ color: '#dc2626' }}> ⚠️</span>}
                                                 {isExcess && <span style={{ color: '#ea580c' }}> 🔴</span>}
                                             </div>
                                         )}
-                                        {(isShort || isExcess) && (
+                                        {/* Show amount for ALL days with data, not just non-shortage */}
+                                        {amount > 0 && (
                                             <div style={{
                                                 fontSize: '0.55rem',
                                                 fontWeight: 'bold',
-                                                color: isShort ? '#dc2626' : '#ea580c',
+                                                color: isShort ? '#dc2626' : isExcess ? '#ea580c' : '#047857',
                                                 marginTop: '1px'
                                             }}>
-                                                {isShort ? `-${shortage}j` : `+${excess}j`}
+                                                {formatCurrency(amount)}
                                             </div>
                                         )}
-                                        {dayData.amount !== undefined && !isShort && !isExcess && (
-                                            <div style={{ fontSize: '0.6rem', color: '#047857', fontWeight: 'bold' }}>
-                                                {dayData.amount > 0 ? `Rp ${formatCurrency(dayData.amount)}` : ''}
+                                        {/* Show shortage/excess indicator */}
+                                        {(isShort || isExcess) && (
+                                            <div style={{
+                                                fontSize: '0.5rem',
+                                                fontWeight: 'bold',
+                                                color: isShort ? '#dc2626' : '#ea580c',
+                                                marginTop: '1px',
+                                                backgroundColor: isShort ? 'rgba(220, 38, 38, 0.1)' : 'rgba(234, 88, 12, 0.1)',
+                                                borderRadius: '2px',
+                                                padding: '1px 2px'
+                                            }}>
+                                                {isShort ? `-${shortage}j` : `+${excess}j`}
                                             </div>
                                         )}
                                     </div>

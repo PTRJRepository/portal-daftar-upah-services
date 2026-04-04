@@ -2,6 +2,7 @@
  * GangAttendanceMatrix - Displays attendance matrix for all employees in a gang
  * Shows a grid with employee names as rows and days 1-31 as columns
  * Each cell is color-coded by attendance status
+ * Also shows payroll summary (upah kotor, koreksi, upah bersih) per employee
  * 
  * Data sourced from extend_db_ptrj (history_gang_member + history_taskreg)
  * EmpCode is the primary key — NIK and bank account derived from it
@@ -9,6 +10,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getGangAttendanceMatrix } from '../services/employeeDetailService'
 import { fetchGangs } from '../services/gangService'
+
+const API = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
 
 // Status config: label, color, background
 const STATUS_CONFIG = {
@@ -25,12 +28,20 @@ const STATUS_CONFIG = {
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
+// Helper: format currency
+const fmtCurrency = (val) => {
+    if (val === null || val === undefined || isNaN(val)) return '-'
+    return new Intl.NumberFormat('id-ID', { style: 'decimal', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(val)
+}
+
 export default function GangAttendanceMatrix({ token, gangCodes, month, year, division, includeFaceVerification = true }) {
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [expandedGangs, setExpandedGangs] = useState(new Set())
     const [resolvedGangCodes, setResolvedGangCodes] = useState(null)
+    const [payrollMap, setPayrollMap] = useState({}) // emp_code -> payroll detail
+    const [showPayroll, setShowPayroll] = useState(true) // toggle detail uang
 
     // Fetch gangs independently when gangCodes is empty but division is provided
     useEffect(() => {
@@ -61,6 +72,34 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
         return () => { cancelled = true }
     }, [gangCodes, division, token])
 
+    // Fetch payroll details from payroll_history_detail
+    const fetchPayrollDetails = useCallback(async (gangCodesList) => {
+        if (!gangCodesList || gangCodesList.length === 0 || !month || !year || !token) return
+        try {
+            const params = new URLSearchParams({
+                month: String(month),
+                year: String(year),
+                gang_codes: gangCodesList.join(',')
+            })
+            const resp = await fetch(`${API}/payroll/gang-payroll-summary?${params}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+            if (resp.ok) {
+                const json = await resp.json()
+                if (json.data) {
+                    const map = {}
+                    for (const row of json.data) {
+                        const key = (row.emp_code || '').trim().toUpperCase()
+                        map[key] = row
+                    }
+                    setPayrollMap(map)
+                }
+            }
+        } catch (e) {
+            console.warn('[GangAttendanceMatrix] payroll detail fetch failed:', e)
+        }
+    }, [token, month, year])
+
     const fetchData = useCallback(async () => {
         const codes = resolvedGangCodes
         if (!codes || codes.length === 0 || !month || !year) return
@@ -74,12 +113,14 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
             if (result?.data) {
                 setExpandedGangs(new Set(result.data.map(g => g.gang_code)))
             }
+            // Fetch payroll details in parallel
+            fetchPayrollDetails(codes)
         } catch (err) {
             setError(err.message || 'Gagal memuat data matrix absensi')
         } finally {
             setLoading(false)
         }
-    }, [token, resolvedGangCodes, month, year, includeFaceVerification])
+    }, [token, resolvedGangCodes, month, year, includeFaceVerification, fetchPayrollDetails])
 
     useEffect(() => {
         fetchData()
@@ -194,6 +235,13 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     <span className="gam-source-badge">📂 Data Historis (extend_db)</span>
                 </div>
                 <div className="gam-header-right">
+                    <button
+                        onClick={() => setShowPayroll(!showPayroll)}
+                        className="gam-toggle-payroll-btn"
+                        title={showPayroll ? 'Sembunyikan Detail Uang' : 'Tampilkan Detail Uang'}
+                    >
+                        💰 {showPayroll ? 'Sembunyikan Uang' : 'Detail Uang'}
+                    </button>
                     <button onClick={handlePrint} className="gam-print-btn" title="Cetak Matrix Absensi">
                         🖨️ Print
                     </button>
@@ -268,33 +316,58 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                                                         <th className="gam-th-sum" title="Sakit">S</th>
                                                         <th className="gam-th-sum" title="Alpa">A</th>
                                                         <th className="gam-th-sum" title="Total HK">HK</th>
+                                                        {showPayroll && (
+                                                            <>
+                                                                <th className="gam-th-money" title="Upah Kotor">Upah Kotor</th>
+                                                                <th className="gam-th-money gam-th-koreksi" title="Koreksi HK">Koreksi</th>
+                                                                <th className="gam-th-money gam-th-koreksi" title="Potongan Koreksi">Pot. Koreksi</th>
+                                                                <th className="gam-th-money" title="PPh21">PPh21</th>
+                                                                <th className="gam-th-money gam-th-upah-bersih" title="Upah Bersih">Upah Bersih</th>
+                                                            </>
+                                                        )}
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {gang.employees.map((emp, idx) => (
-                                                        <tr key={emp.emp_code}>
+                                                    {gang.employees.map((emp, idx) => {
+                                                        const empKey = (emp.emp_code || '').trim().toUpperCase()
+                                                        const payroll = payrollMap[empKey]
+                                                        const hasKoreksi = payroll && (Number(payroll.koreksi_hk) !== 0 || Number(payroll.pot_koreksi) !== 0)
+                                                        return (
+                                                        <tr key={emp.emp_code} className={hasKoreksi ? 'gam-row-koreksi' : ''}>
                                                             <td className="gam-td-no">{idx + 1}</td>
                                                             <td className="gam-td-empcode" title={`Rekening: ${emp.bank_acc_no || '-'}`}>
                                                                 {emp.emp_code}
                                                             </td>
                                                             <td className="gam-td-name" title={`${emp.emp_name} (${emp.emp_code})`}>
                                                                 {emp.emp_name}
+                                                                {hasKoreksi && <span className="gam-koreksi-badge" title="Ada Koreksi">⚠️</span>}
                                                             </td>
                                                             <td className="gam-td-nik">{emp.new_nik || emp.nik || '-'}</td>
                                                             {days.map(d => {
-                                                                const status = emp.daily?.[d] || '-'
+                                                                const dayData = emp.daily?.[d]
+                                                                const status = dayData?.status || '-'
                                                                 const cfg = STATUS_CONFIG[status] || STATUS_CONFIG['-']
                                                                 const faceVerif = emp.face_verification?.[d]
                                                                 const hasFaceData = faceVerif !== undefined
                                                                 const faceOk = faceVerif === true
+                                                                const isShort = dayData?.is_short
+                                                                // Override colors for kurang jam
+                                                                let cellBg = cfg.bg
+                                                                let cellColor = cfg.color
+                                                                let shortBadge = ''
+                                                                if (isShort) {
+                                                                    cellBg = '#fee2e2' // red background for kurang jam
+                                                                    cellColor = '#b91c1c' // dark red text
+                                                                    shortBadge = ' ⚠️'
+                                                                }
                                                                 return (
                                                                     <td key={d}
-                                                                        className={`gam-td-cell ${hasFaceData ? (faceOk ? 'gam-cell-face-ok' : 'gam-cell-face-no') : ''}`}
-                                                                        style={{ background: cfg.bg, color: cfg.color }}
-                                                                        title={`${emp.emp_name} - Tgl ${d}: ${cfg.label}${hasFaceData ? (faceOk ? ' [FACE OK]' : ' [NO FACE]') : ''}`}
+                                                                        className={`gam-td-cell ${hasFaceData ? (faceOk ? 'gam-cell-face-ok' : 'gam-cell-face-no') : ''} ${isShort ? 'gam-cell-short' : ''}`}
+                                                                        style={{ background: cellBg, color: cellColor }}
+                                                                        title={`${emp.emp_name} - Tgl ${d}: ${cfg.label}${hasFaceData ? (faceOk ? ' [FACE OK]' : ' [NO FACE]') : ''}${dayData?.hours ? ` (${dayData.hours} jam)` : ''}${dayData?.amount ? ` = Rp ${fmtCurrency(dayData.amount)}` : ''}${isShort ? ' ⚠️ KURANG JAM' : ''}`}
                                                                     >
                                                                         {hasFaceData && <span className={`gam-face-badge ${faceOk ? 'gam-face-badge-ok' : 'gam-face-badge-no'}`}>{faceOk ? 'V' : 'X'}</span>}
-                                                                        <span className="gam-cell-status">{cfg.short}</span>
+                                                                        <span className="gam-cell-status">{cfg.short}{shortBadge}</span>
                                                                     </td>
                                                                 )
                                                             })}
@@ -303,14 +376,28 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                                                             <td className="gam-td-sum gam-sum-sakit">{emp.summary?.cuti_sakit || 0}</td>
                                                             <td className="gam-td-sum gam-sum-alpa">{emp.summary?.alpa || 0}</td>
                                                             <td className="gam-td-sum gam-sum-hk">{emp.summary?.total_hk || 0}</td>
+                                                            {showPayroll && (
+                                                                <>
+                                                                    <td className="gam-td-money">{payroll ? fmtCurrency(payroll.jumlah_upah_kotor) : '-'}</td>
+                                                                    <td className={`gam-td-money ${hasKoreksi ? 'gam-td-koreksi-val' : ''}`} title={payroll ? `Koreksi HK: ${payroll.koreksi_hk || 0}` : ''}>
+                                                                        {payroll ? fmtCurrency(payroll.koreksi_hk) : '-'}
+                                                                    </td>
+                                                                    <td className={`gam-td-money ${hasKoreksi ? 'gam-td-koreksi-val' : ''}`} title={payroll ? `Pot Koreksi: ${payroll.pot_koreksi || 0}` : ''}>
+                                                                        {payroll ? fmtCurrency(payroll.pot_koreksi) : '-'}
+                                                                    </td>
+                                                                    <td className="gam-td-money">{payroll ? fmtCurrency(payroll.pph21_ter) : '-'}</td>
+                                                                    <td className="gam-td-money gam-td-upah-bersih">{payroll ? fmtCurrency(payroll.upah_bersih) : '-'}</td>
+                                                                </>
+                                                            )}
                                                         </tr>
-                                                    ))}
+                                                        )
+                                                    })}
                                                 </tbody>
                                                 <tfoot>
                                                     <tr className="gam-total-row">
                                                         <td colSpan={4} className="gam-td-total-label">TOTAL</td>
                                                         {days.map(d => {
-                                                            const hadirCount = gang.employees.filter(e => e.daily?.[d] === 'H').length
+                                                            const hadirCount = gang.employees.filter(e => e.daily?.[d]?.status === 'H').length
                                                             return (
                                                                 <td key={d} className="gam-td-total" title={`${hadirCount} hadir pada tgl ${d}`}>
                                                                     {hadirCount || ''}
@@ -322,6 +409,40 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                                                         <td className="gam-td-total">{gang.employees.reduce((s, e) => s + (e.summary?.cuti_sakit || 0), 0)}</td>
                                                         <td className="gam-td-total">{gang.employees.reduce((s, e) => s + (e.summary?.alpa || 0), 0)}</td>
                                                         <td className="gam-td-total">{gang.employees.reduce((s, e) => s + (e.summary?.total_hk || 0), 0)}</td>
+                                                        {showPayroll && (
+                                                            <>
+                                                                <td className="gam-td-total gam-td-money-total">
+                                                                    {fmtCurrency(gang.employees.reduce((s, e) => {
+                                                                        const p = payrollMap[(e.emp_code || '').trim().toUpperCase()]
+                                                                        return s + (p ? (Number(p.jumlah_upah_kotor) || 0) : 0)
+                                                                    }, 0))}
+                                                                </td>
+                                                                <td className="gam-td-total gam-td-money-total">
+                                                                    {fmtCurrency(gang.employees.reduce((s, e) => {
+                                                                        const p = payrollMap[(e.emp_code || '').trim().toUpperCase()]
+                                                                        return s + (p ? (Number(p.koreksi_hk) || 0) : 0)
+                                                                    }, 0))}
+                                                                </td>
+                                                                <td className="gam-td-total gam-td-money-total">
+                                                                    {fmtCurrency(gang.employees.reduce((s, e) => {
+                                                                        const p = payrollMap[(e.emp_code || '').trim().toUpperCase()]
+                                                                        return s + (p ? (Number(p.pot_koreksi) || 0) : 0)
+                                                                    }, 0))}
+                                                                </td>
+                                                                <td className="gam-td-total gam-td-money-total">
+                                                                    {fmtCurrency(gang.employees.reduce((s, e) => {
+                                                                        const p = payrollMap[(e.emp_code || '').trim().toUpperCase()]
+                                                                        return s + (p ? (Number(p.pph21_ter) || 0) : 0)
+                                                                    }, 0))}
+                                                                </td>
+                                                                <td className="gam-td-total gam-td-money-total gam-td-upah-bersih">
+                                                                    {fmtCurrency(gang.employees.reduce((s, e) => {
+                                                                        const p = payrollMap[(e.emp_code || '').trim().toUpperCase()]
+                                                                        return s + (p ? (Number(p.upah_bersih) || 0) : 0)
+                                                                    }, 0))}
+                                                                </td>
+                                                            </>
+                                                        )}
                                                     </tr>
                                                 </tfoot>
                                             </table>
@@ -441,10 +562,6 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 .gam-face-badge-no { color: #dc2626; }
                 .gam-cell-status { font-weight: 600; font-size: 10px; }
                 .gam-td-cell {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 1px;
                     min-width: 32px;
                     width: 32px;
                     max-width: 32px;
@@ -642,6 +759,8 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     border: 1px solid #f3f4f6;
                     cursor: default;
                     transition: transform 0.1s;
+                    min-width: 32px;
+                    max-width: 32px;
                 }
                 .gam-td-cell:hover {
                     transform: scale(1.3);
@@ -660,6 +779,80 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 .gam-sum-sakit { color: #dc2626; background: #fef2f2; }
                 .gam-sum-alpa { color: #dc2626; background: #fecaca; font-weight: 800; }
                 .gam-sum-hk { color: #1d4ed8; background: #eff6ff; font-weight: 800; }
+                /* Money columns */
+                .gam-th-money {
+                    min-width: 90px;
+                    max-width: 120px;
+                    background: #fefce8 !important;
+                    color: #854d0e !important;
+                    font-size: 9px !important;
+                    white-space: nowrap;
+                }
+                .gam-th-koreksi {
+                    background: #fff1f2 !important;
+                    color: #dc2626 !important;
+                }
+                .gam-th-upah-bersih {
+                    background: #ecfdf5 !important;
+                    color: #15803d !important;
+                }
+                .gam-td-money {
+                    text-align: right;
+                    font-size: 10px;
+                    font-weight: 600;
+                    padding: 3px 6px;
+                    color: #475569;
+                    white-space: nowrap;
+                    border-left: 1px solid #e5e7eb;
+                }
+                .gam-td-koreksi-val {
+                    color: #dc2626 !important;
+                    font-weight: 700;
+                    background: #fff1f2;
+                }
+                .gam-td-upah-bersih {
+                    color: #15803d !important;
+                    font-weight: 700;
+                    background: #f0fdf4;
+                }
+                .gam-td-money-total {
+                    text-align: right;
+                    font-size: 10px;
+                    padding: 3px 6px;
+                    white-space: nowrap;
+                }
+                .gam-row-koreksi {
+                    background: #fffbeb !important;
+                }
+                .gam-row-koreksi .gam-td-no,
+                .gam-row-koreksi .gam-td-empcode,
+                .gam-row-koreksi .gam-td-name,
+                .gam-row-koreksi .gam-td-nik {
+                    background: #fffbeb !important;
+                }
+                .gam-koreksi-badge {
+                    margin-left: 4px;
+                    font-size: 10px;
+                }
+                .gam-toggle-payroll-btn {
+                    padding: 6px 12px;
+                    background: #fefce8;
+                    border: 1px solid #fde68a;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #854d0e;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                    transition: all 0.2s;
+                }
+                .gam-toggle-payroll-btn:hover {
+                    background: #fef3c7;
+                    border-color: #f59e0b;
+                }
                 .gam-total-row td {
                     background: #f0fdf4 !important;
                     font-weight: 700;
@@ -843,8 +1036,11 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     .gam-face-badge { display: none !important; }
                     .gam-cell-status { font-size: 8px !important; }
                     .gam-th-sum, .gam-td-sum { min-width: 16px !important; font-size: 8px !important; padding: 1px !important; }
+                    /* Money columns in print */
+                    .gam-th-money, .gam-td-money { min-width: 50px !important; max-width: 70px !important; font-size: 7px !important; padding: 1px 2px !important; }
+                    .gam-koreksi-badge { display: none !important; }
 
-                    .gam-print-btn, .gam-toggle-icon {
+                    .gam-print-btn, .gam-toggle-icon, .gam-toggle-payroll-btn {
                         display: none !important;
                     }
                     .gam-gang-header {
