@@ -61,40 +61,41 @@ export class HarvesterService {
         };
 
         try {
-            // Logic Lama (Legacy)
+            // Logic Lama (Legacy) - OPTIMIZED
             // Query dari kedua tabel: aktif dan archive
             // PR_HARVESTERLN_ACC (aktif) dan PR_HARVESTERLN_ARC (archive)
+            // Added NOLOCK hint and use AccMonth/AccYear for better index usage
             const sql = `
                 SELECT
-                    EmpCode,
-                    SUM(0) as TotalBunches,
-                    0 as Ripe,
-                    0 as Unripe,
-                    0 as TotalRound,
+                    l.EmpCode,
+                    SUM(ISNULL(l.TotalBunches, 0)) as TotalBunches,
+                    SUM(ISNULL(l.Ripe, 0)) as Ripe,
+                    SUM(ISNULL(l.Unripe, 0)) as Unripe,
+                    SUM(ISNULL(l.TotalRound, 0)) as TotalRound,
                     COUNT(*) as TrxCount
-                FROM PR_HARVESTERLN_ACC
-                WHERE EmpCode = ?
-                    AND MONTH(TrxDate) = ?
-                    AND YEAR(TrxDate) = ?
-                GROUP BY EmpCode
+                FROM PR_HARVESTERLN_ACC l WITH (NOLOCK)
+                INNER JOIN PR_HARVESTER_ACC m WITH (NOLOCK) ON l.MasterID = m.ID
+                WHERE l.EmpCode = ?
+                    AND m.AccMonth = ? AND m.AccYear = ?
+                GROUP BY l.EmpCode
 
                 UNION ALL
 
                 SELECT
-                    EmpCode,
-                    SUM(0) as TotalBunches,
-                    0 as Ripe,
-                    0 as Unripe,
-                    0 as TotalRound,
+                    l.EmpCode,
+                    SUM(ISNULL(l.TotalBunches, 0)) as TotalBunches,
+                    SUM(ISNULL(l.Ripe, 0)) as Ripe,
+                    SUM(ISNULL(l.Unripe, 0)) as Unripe,
+                    SUM(ISNULL(l.TotalRound, 0)) as TotalRound,
                     COUNT(*) as TrxCount
-                FROM PR_HARVESTERLN_ARC
-                WHERE EmpCode = ?
-                    AND MONTH(TrxDate) = ?
-                    AND YEAR(TrxDate) = ?
-                GROUP BY EmpCode
+                FROM PR_HARVESTERLN_ARC l WITH (NOLOCK)
+                INNER JOIN PR_HARVESTER_ARC m WITH (NOLOCK) ON l.MasterID = m.ID
+                WHERE l.EmpCode = ?
+                    AND m.AccMonth = ? AND m.AccYear = ?
+                GROUP BY l.EmpCode
             `;
 
-            const results = await this.db.query<HarvestDataRaw>(sql, [empCode, month, year, empCode, month, year]);
+            const results = await this.db.query<HarvestDataRaw>(sql, [empCode, month, year, empCode, month, year], 90);
 
             if (results.length > 0) {
                 // Aggregate results karena UNION ALL bisa menghasilkan multiple baris
@@ -177,7 +178,8 @@ export class HarvesterService {
             console.log("[HarvesterService] Fetching bunches (LEGACY) for", empCodes.length, "employees, month:", month, "year:", year);
 
             // CHUNKING: SQL Server supports max 2100 params.
-            // Legacy query uses empCodes 3x (3 UNION ALLs) + 6 (month/year x3), so max chunk = floor((2100 - 6) / 3) ≈ 698
+            // Legacy query uses empCodes 1x + 2 (month/year), so max chunk = floor((2100 - 2) / 1) ≈ 2098
+            // Using conservative chunk size of 500 to avoid timeout
             const CHUNK_SIZE = 500;
             const allLegacyResults: HarvestDataRaw[] = [];
 
@@ -185,24 +187,25 @@ export class HarvesterService {
                 const chunk = empCodes.slice(ci, ci + CHUNK_SIZE);
                 const placeholders = chunk.map(() => "?").join(",");
 
-                // Use JOIN with master table (PR_HARVESTER_ARC) for date filtering
-                // since PR_HARVESTERLN_ARC may not have TrxDate column on all servers
+                // OPTIMIZED: Use JOIN with master table (PR_HARVESTER_ARC) for date filtering
+                // Added NOLOCK hint to prevent blocking during concurrent reads
                 const sql = `
-                    SELECT l.EmpCode, 
-                        SUM(ISNULL(l.TotalBunches, 0)) as TotalBunches, 
-                        SUM(ISNULL(l.Ripe, 0)) as Ripe, 
-                        SUM(ISNULL(l.Unripe, 0)) as Unripe, 
-                        0 as TotalRound, 
+                    SELECT l.EmpCode,
+                        SUM(ISNULL(l.TotalBunches, 0)) as TotalBunches,
+                        SUM(ISNULL(l.Ripe, 0)) as Ripe,
+                        SUM(ISNULL(l.Unripe, 0)) as Unripe,
+                        0 as TotalRound,
                         COUNT(*) as TrxCount
-                    FROM PR_HARVESTERLN_ARC l
-                    INNER JOIN PR_HARVESTER_ARC m ON l.MasterID = m.ID
-                    WHERE l.EmpCode IN (${placeholders}) 
+                    FROM PR_HARVESTERLN_ARC l WITH (NOLOCK)
+                    INNER JOIN PR_HARVESTER_ARC m WITH (NOLOCK) ON l.MasterID = m.ID
+                    WHERE l.EmpCode IN (${placeholders})
                         AND m.AccMonth = ? AND m.AccYear = ?
                     GROUP BY l.EmpCode
                 `;
 
                 const params = [...chunk, month, year];
-                const chunkResults = await this.db.query<HarvestDataRaw>(sql, params);
+                // Use longer timeout (120s) for large batch queries to prevent timeout on large datasets
+                const chunkResults = await this.db.query<HarvestDataRaw>(sql, params, 120);
                 allLegacyResults.push(...chunkResults);
             }
 
@@ -254,15 +257,15 @@ export class HarvesterService {
      */
     public async getGangBunchesFromMaster(gangCode: string, month: number, year: number): Promise<number> {
         try {
+            // OPTIMIZED: Added NOLOCK hint
             const sql = `
                 SELECT SUM(TotalBunches) as TotalBunches
-                FROM PR_HARVESTER_ARC
+                FROM PR_HARVESTER_ARC WITH (NOLOCK)
                 WHERE GangCode = ?
-                    AND MONTH(DocDate) = ?
-                    AND YEAR(DocDate) = ?
+                    AND AccMonth = ? AND AccYear = ?
             `;
 
-            const result = await this.db.query<{ TotalBunches: number }>(sql, [gangCode, month, year]);
+            const result = await this.db.query<{ TotalBunches: number }>(sql, [gangCode, month, year], 60);
 
             if (result.length > 0) {
                 return result[0].TotalBunches || 0;
@@ -282,7 +285,7 @@ export class HarvesterService {
      */
     public async getEmployeeBunchesExtended(empCode: string, gangCode: string, month: number, year: number): Promise<HarvestExtendedData | null> {
         try {
-            // Ambil dari line table (detail per karyawan)
+            // OPTIMIZED: Added NOLOCK hint and use AccMonth/AccYear for better index usage
             const lineSql = `
                 SELECT TOP 1
                     m.GangCode,
@@ -293,16 +296,16 @@ export class HarvesterService {
                     SUM(l.Unripe) as Unripe,
                     SUM(l.TotalRound) as TotalRound,
                     COUNT(*) as TrxCount
-                FROM PR_HARVESTERLN_ARC l
-                INNER JOIN PR_HARVESTER_ARC m ON l.MasterID = m.ID
+                FROM PR_HARVESTERLN_ARC l WITH (NOLOCK)
+                INNER JOIN PR_HARVESTER_ARC m WITH (NOLOCK) ON l.MasterID = m.ID
                 WHERE l.EmpCode = ?
                     AND m.GangCode = ?
-                    AND MONTH(l.TrxDate) = ?
-                    AND YEAR(l.TrxDate) = ?
+                    AND m.AccMonth = ?
+                    AND m.AccYear = ?
                 GROUP BY m.GangCode, m.DocDate, l.EmpCode
             `;
 
-            const results = await this.db.query<any>(lineSql, [empCode, gangCode, month, year]);
+            const results = await this.db.query<any>(lineSql, [empCode, gangCode, month, year], 90);
 
             if (results.length > 0) {
                 const row = results[0];
@@ -335,11 +338,7 @@ export class HarvesterService {
      */
     public async getDailyEmployeeHarvest(empCode: string, month: number, year: number): Promise<HarvestLineData[]> {
         try {
-            // Kita ambil data dari PR_HARVESTERLN_ARC yang digabung dengan PR_HARVESTER_ARC
-            // untuk mendapatkan info Gang dan Lokasi jika perlu.
-            // Fokus utama: TrxDate, TotalBunches, TotalWeight (jika ada)
-
-            // Note: TotalWeight mungkin null di database lama, kita handle di query
+            // OPTIMIZED: Added NOLOCK hint and use AccMonth/AccYear for better index usage
             const sql = `
                 SELECT
                     l.ID,
@@ -355,16 +354,17 @@ export class HarvesterService {
                     SUM(l.Unripe) as Unripe,
                     MAX(l.Rate) as Rate,
                     SUM(l.Amount) as Amount
-                FROM PR_HARVESTERLN_ARC l
-                INNER JOIN PR_HARVESTER_ARC m ON l.MasterID = m.ID
+                FROM PR_HARVESTERLN_ARC l WITH (NOLOCK)
+                INNER JOIN PR_HARVESTER_ARC m WITH (NOLOCK) ON l.MasterID = m.ID
                 WHERE l.EmpCode = ?
-                    AND MONTH(l.TrxDate) = ?
-                    AND YEAR(l.TrxDate) = ?
+                    AND m.AccMonth = ?
+                    AND m.AccYear = ?
                 GROUP BY l.ID, l.MasterID, l.EmpCode, l.EmpName, l.TrxDate, m.GangCode, m.LocCode
                 ORDER BY l.TrxDate
             `;
 
-            const results = await this.db.query<any>(sql, [empCode, month, year]);
+            // Use 90s timeout for individual employee harvest query
+            const results = await this.db.query<any>(sql, [empCode, month, year], 90);
 
             // Map result ke type HarvestLineData (atau subset yang kita butuhkan)
             return results.map(row => ({

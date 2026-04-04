@@ -194,6 +194,12 @@ export default function EmployeeDetailPage({
                 const data = await getEmployeeCheckroll(token, empCode, month, year, division);
 
                 console.log('[EmployeeDetailPage] Received Checkroll Data:', data)
+                
+                // Check if payroll data is empty
+                if (!data || (!data.payroll_data && !data.employee)) {
+                    throw new Error(`Tidak ditemukan data payroll untuk karyawan ${empCode} pada periode ${month}/${year}. Pastikan data sudah tersedia di database.`);
+                }
+                
                 setCheckrollData(data)
             } catch (e) {
                 console.error('Failed to load checkroll data:', e)
@@ -210,24 +216,45 @@ export default function EmployeeDetailPage({
     }
 
     if (error) {
+        // Check if it's specifically a history/seeding related error
         const isHistoricalMissing = error.toLowerCase().includes('tidak ditemukan') || error.includes('404');
+        const isSeedingRelated = error.toLowerCase().includes('seed') || error.toLowerCase().includes('historis');
+        
         return (
             <div className="payslip-wrapper" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="error-screen" style={{ textAlign: 'center', padding: '3rem', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                    <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>{isHistoricalMissing ? '⏳' : '❌'}</div>
+                <div className="error-screen" style={{ textAlign: 'center', padding: '3rem', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', maxWidth: '600px' }}>
+                    <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>{isHistoricalMissing && isSeedingRelated ? '⏳' : '❌'}</div>
                     <h2 style={{ color: '#1e293b', marginBottom: '1rem' }}>
-                        {isHistoricalMissing ? 'Data Historis Belum Tersedia' : 'Gagal Memuat Data'}
+                        {isHistoricalMissing && isSeedingRelated ? 'Data Periode Lalu Tidak Tersedia' : 'Gagal Memuat Data'}
                     </h2>
-                    <p style={{ color: '#64748b', marginBottom: '2rem', maxWidth: '400px', lineHeight: '1.6' }}>
-                        {isHistoricalMissing
-                            ? `Data penggajian untuk bulan ${getMonthName(month)} ${year} belum di-archive (Seeding) ke dalam database historis. Silakan minta Admin HR untuk melakukan "Aggregation Seeder" pada periode ini.`
+                    <p style={{ color: '#64748b', marginBottom: '2rem', lineHeight: '1.6' }}>
+                        {isHistoricalMissing && isSeedingRelated
+                            ? `Data penggajian untuk bulan ${getMonthName(month)} ${year} belum dapat ditampilkan.`
                             : error}
                     </p>
-                    <button onClick={onBack} style={{
-                        padding: '10px 24px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600'
-                    }}>
-                        Kembali ke Direktori
-                    </button>
+                    {isHistoricalMissing && isSeedingRelated && (
+                        <div style={{ textAlign: 'left', backgroundColor: '#fef3c7', padding: '1.5rem', borderRadius: '8px', border: '1px solid #f59e0b', marginBottom: '2rem' }}>
+                            <p style={{ color: '#92400e', fontWeight: '600', marginBottom: '0.5rem' }}>⚠️ Mengapa ini terjadi?</p>
+                            <p style={{ color: '#78350f', lineHeight: '1.6', fontSize: '0.9rem' }}>
+                                Database utama (<code>db_ptrj</code>) hanya menyimpan data operasional untuk <strong>bulan yang sedang berjalan</strong>. 
+                                Untuk periode yang sudah lewat, data harus di-seed (disalin) ke database historis (<code>extend_db_ptrj</code>) terlebih dahulu.
+                            </p>
+                        </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                        <button onClick={onBack} style={{
+                            padding: '10px 24px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600'
+                        }}>
+                            Kembali
+                        </button>
+                        {isHistoricalMissing && isSeedingRelated && (
+                            <button onClick={() => window.open('/aggregation-seeder', '_blank')} style={{
+                                padding: '10px 24px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600'
+                            }}>
+                                Buka Aggregation Seeder
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
         )

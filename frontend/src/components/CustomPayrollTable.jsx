@@ -1508,9 +1508,11 @@ export default function CustomPayrollTable({
                     const shortageInfo = row.shortage_details || [];
                     const shortageCount = shortageInfo.length;
                     const shortageTotalHours = row.shortage_total_hours || 0;
+                    const shortageDates = shortageInfo.map(d => d.date.split('-').pop()).join(', ');
 
                     let tooltipText = `⚠️ KURANG JAM KERJA\n`;
                     tooltipText += `Total Selisih: ${shortageTotalHours.toFixed(1)} jam\n`;
+                    tooltipText += `Tanggal: ${shortageDates}\n`;
                     tooltipText += `Jumlah Hari: ${shortageCount} hari\n\n`;
                     tooltipText += `Rincian:\n`;
                     shortageInfo.forEach((detail, idx) => {
@@ -1528,20 +1530,27 @@ export default function CustomPayrollTable({
                                 width: '100%',
                                 height: '100%',
                                 display: 'flex',
+                                flexDirection: 'column',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 fontSize: '11px',
                                 border: '2px solid #ef4444',
                                 borderRadius: '4px',
                                 animation: 'pulse-warning 2s infinite',
-                                gap: '2px'
+                                lineHeight: '1',
+                                overflow: 'hidden'
                             }}
                             title={tooltipText}
                         >
-                            <span style={{ fontSize: '14px' }}>⚠️</span>
-                            <span>{row.total_jam_kerja}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                <span style={{ fontSize: '12px' }}>⚠️</span>
+                                <span>{row.total_jam_kerja}</span>
+                            </div>
+                            <div style={{ fontSize: '8px', color: '#7f1d1d', fontWeight: 'bold', marginTop: '1px' }}>
+                                Tgl: {shortageDates}
+                            </div>
                             {shortageTotalHours > 0 && (
-                                <span style={{ fontSize: '9px', color: '#7f1d1d' }}>
+                                <span style={{ fontSize: '7px', color: '#7f1d1d', opacity: 0.8 }}>
                                     (-{shortageTotalHours.toFixed(1)}j)
                                 </span>
                             )}
@@ -1669,13 +1678,20 @@ export default function CustomPayrollTable({
                 if (val === null || val === undefined || val === 0) return '-';
                 const isKurang = val < 0;
                 const color = isKurang ? '#dc2626' : '#ea580c';
-                const label = isKurang ? 'Kurang Jam' : 'Salah Scan';
+
+                // Display shortage dates for "Kurang Jam" warning
+                let label = isKurang ? 'Kurang Jam' : 'Salah Scan';
+                if (isKurang && row.shortage_details?.length > 0) {
+                    const shortageDates = row.shortage_details.map(d => d.date.split('-').pop()).join(', ');
+                    label = `KJ: ${shortageDates}`;
+                }
+
                 return (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: '1.1' }}>
                         <span style={{ color, fontWeight: 'bold' }}>
                             {isKurang ? '-' : '+'}{formatNumber(Math.abs(val))}
                         </span>
-                        <span style={{ fontSize: '8px', color, opacity: 0.8 }}>
+                        <span style={{ fontSize: '8px', color, opacity: 0.9, whiteSpace: 'nowrap' }}>
                             ({label})
                         </span>
                     </div>

@@ -72,12 +72,45 @@ export class HistorySeederService {
         employees_processed: 0
     };
 
+    // Timeout protection (30 minutes max)
+    private static readonly MAX_RUN_TIME_MS = 30 * 60 * 1000; // 30 minutes
+    private static startTime: number | null = null;
+    private static timeoutCheckInterval: NodeJS.Timeout | null = null;
+
     public static getProgress(): SeederProgress {
+        // Check if seeder is stuck (running too long)
+        if (HistorySeederService.progress.is_running && HistorySeederService.startTime) {
+            const elapsed = Date.now() - HistorySeederService.startTime;
+            if (elapsed > HistorySeederService.MAX_RUN_TIME_MS) {
+                console.error(`[HistorySeeder] ⚠️ Seeder detected as STUCK! Running for ${Math.round(elapsed / 1000)}s (max: ${HistorySeederService.MAX_RUN_TIME_MS / 1000}s). Force resetting...`);
+                HistorySeederService.forceReset('Stuck timeout - auto reset');
+            }
+        }
         return { ...HistorySeederService.progress };
     }
 
     private static updateProgress(update: Partial<SeederProgress>) {
         Object.assign(HistorySeederService.progress, update, { last_update: new Date().toISOString() });
+    }
+
+    /**
+     * Force reset the seeder progress (for stuck seeder recovery)
+     */
+    public static forceReset(reason: string = 'Manual reset'): void {
+        console.warn(`[HistorySeeder] Force resetting progress. Reason: ${reason}`);
+        if (HistorySeederService.timeoutCheckInterval) {
+            clearInterval(HistorySeederService.timeoutCheckInterval);
+            HistorySeederService.timeoutCheckInterval = null;
+        }
+        HistorySeederService.startTime = null;
+        HistorySeederService.progress = {
+            is_running: false,
+            current_step: '⚠️ Reset: ' + reason,
+            gangs_total: 0,
+            gangs_done: 0,
+            employees_processed: 0,
+            last_update: new Date().toISOString()
+        };
     }
 
     private static instance: HistorySeederService;
@@ -114,6 +147,16 @@ export class HistorySeederService {
             errors: []
         };
 
+        // Check if another seeder is already running
+        if (HistorySeederService.progress.is_running) {
+            const elapsed = HistorySeederService.startTime 
+                ? Math.round((Date.now() - HistorySeederService.startTime) / 1000) 
+                : 0;
+            console.warn(`[HistorySeeder] ⚠️ Seeder already running for ${elapsed}s. Rejecting new request.`);
+            result.errors.push(`Seeder already running (started ${elapsed}s ago). Please wait or force reset.`);
+            return result;
+        }
+
         console.log(`[HistorySeeder] =======================================`);
         console.log(`[HistorySeeder] Starting payroll history seeding`);
         console.log(`[HistorySeeder] Period: ${options.periodMonth}/${options.periodYear}`);
@@ -122,6 +165,9 @@ export class HistorySeederService {
         console.log(`[HistorySeeder] =======================================`);
 
         try {
+            // Set start time for timeout protection
+            HistorySeederService.startTime = Date.now();
+
             // Reset progress
             HistorySeederService.updateProgress({
                 is_running: true,
@@ -214,7 +260,7 @@ export class HistorySeederService {
 
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
             result.success = result.errors.length === 0;
-            
+
             console.log(`[HistorySeeder] =======================================`);
             console.log(`[HistorySeeder] Seeding completed in ${totalTime}s`);
             console.log(`[HistorySeeder] Success: ${result.success}`);
@@ -224,12 +270,14 @@ export class HistorySeederService {
                 console.log(`[HistorySeeder] Errors: ${result.errors.join(', ')}`);
             }
             console.log(`[HistorySeeder] =======================================`);
-            
+
             HistorySeederService.updateProgress({ is_running: false, current_step: result.success ? '✅ Selesai!' : '⚠️ Selesai dengan error' });
+            HistorySeederService.startTime = null; // Reset timeout tracker
 
         } catch (error: any) {
             result.errors.push(`Fatal error: ${error.message}`);
             HistorySeederService.updateProgress({ is_running: false, current_step: `❌ Error: ${error.message}` });
+            HistorySeederService.startTime = null; // Reset timeout tracker
         }
 
         return result;

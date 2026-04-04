@@ -135,7 +135,6 @@ export class EmployeeDetailService {
                 MaritalStatus: string;
                 BirthPlace: string;
                 BirthDate: string;
-                Jabatan: string;
             }>(`
                 SELECT DISTINCT
                     e.EmpCode,
@@ -152,8 +151,7 @@ export class EmployeeDetailService {
                     e.Religion,
                     e.PlaceOfBirth as BirthPlace,
                     e.DOB as BirthDate,
-                    e.MaritalStatus,
-                    RTRIM(gl.Jabatan) as Jabatan
+                    e.MaritalStatus
                 FROM HR_EMPLOYEE e
                 LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
                 LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
@@ -187,7 +185,8 @@ export class EmployeeDetailService {
                 religion: row.Religion?.trim() || undefined,
                 birth_place: row.BirthPlace?.trim() || undefined,
                 birth_date: row.BirthDate || undefined,
-                jabatan: row.Jabatan?.trim() || undefined,
+                // jabatan will be enriched from payrollData.jabatan_estate in getEmployeeCheckroll
+                jabatan: undefined,
             };
         } catch (e) {
             console.error("[EmployeeDetailService] Failed to get employee info:", e);
@@ -558,39 +557,12 @@ export class EmployeeDetailService {
             return { emp_code: empCode, error: "Employee not found" };
         }
 
-        // OVERRIDE: Get upah_dasar from history table (extend_db_ptrj) instead of HR_PAYROLL
-        const historyUpahDasar = await this.getUpahDasarFromHistory(empCode, month, year);
-        if (historyUpahDasar !== null) {
-            employeeInfo.upah_dasar = historyUpahDasar;
-            console.log(`[EmployeeDetailService] Overriding upah_dasar with history value: ${historyUpahDasar}`);
-        }
-
-        // OVERRIDE: Get position (jabatan) from history table
-        const historyPosition = await this.getPositionFromHistory(empCode, month, year);
-        if (historyPosition !== null) {
-            employeeInfo.jabatan = historyPosition;
-            console.log(`[EmployeeDetailService] Overriding jabatan with history value: ${historyPosition}`);
-        }
-
-        // Get PTKP Status
+        // Get PTKP Status - Use ptkpTaxService (from db_ptrj) instead of history
         try {
-            const extDb = Database.getExtendedInstance();
-            const ptkpRows = await extDb.query<{ ptkp_pajak: string }>(`
-                SELECT TOP 1 ptkp_pajak
-                FROM history_hr_employee
-                WHERE RTRIM(emp_code) = RTRIM(?)
-                  AND period_year = ? AND period_month = ?
-            `, [empCode, year, month]);
-
-            if (ptkpRows.length > 0 && ptkpRows[0].ptkp_pajak) {
-                employeeInfo.status_ptkp = ptkpRows[0].ptkp_pajak;
-            } else {
-                // Fallback to ptkpTaxService
-                const ptkpRecords = await ptkpTaxService.getPtkpByYear(year);
-                const ptkpRecord = ptkpRecords.find(p => p.emp_code.trim() === empCode);
-                if (ptkpRecord) {
-                    employeeInfo.status_ptkp = ptkpRecord.ptkp_status;
-                }
+            const ptkpRecords = await ptkpTaxService.getPtkpByYear(year);
+            const ptkpRecord = ptkpRecords.find(p => p.emp_code.trim() === empCode);
+            if (ptkpRecord) {
+                employeeInfo.status_ptkp = ptkpRecord.ptkp_status;
             }
         } catch (e) {
             console.error("[EmployeeDetailService] Failed to get PTKP status:", e);
@@ -608,7 +580,8 @@ export class EmployeeDetailService {
 
         try {
             // Pass empCode as specificEmpCode (5th argument) to use optimized single-employee fetch
-            // Use Config.DB_PROFILE for payroll data
+            // Use Config.DB_PROFILE for payroll data - this reads from db_ptrj (production database)
+            // skipHarvest=true means we skip harvest data which is optional
             const payrollResult = await dataExtractorService.extractPayrollData(
                 month, year, "ALL", undefined, empCode, Config.DB_PROFILE, false, null, undefined, skipHarvest
             );
@@ -639,6 +612,13 @@ export class EmployeeDetailService {
         } catch (e: any) {
             console.error("[EmployeeDetailService] Failed to extract payroll data:", e);
             debugInfo.error = e.message || String(e);
+        }
+
+        // Enrich employeeInfo.jabatan from payrollData (db_ptrj source)
+        if (payrollData?.jabatan_estate) {
+            employeeInfo.jabatan = payrollData.jabatan_estate;
+        } else if (payrollData?.task_desc) {
+            employeeInfo.jabatan = payrollData.task_desc;
         }
 
         return {

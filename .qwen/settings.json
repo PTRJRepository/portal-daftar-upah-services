@@ -29,7 +29,8 @@
       "Bash(dir *)",
       "Bash(tail *)",
       "Bash(type *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(tasklist)"
     ]
   },
   "$version": 3

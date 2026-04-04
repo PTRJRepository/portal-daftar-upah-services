@@ -54,6 +54,30 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
         return HistorySeederService.getProgress();
     })
 
+    // Force reset seeder (for stuck seeder recovery)
+    .post("/seed/reset", async ({ body, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const { reason } = body;
+        console.log(`[HistoryRoutes] Force resetting seeder. Reason: ${reason || 'Not provided'}`);
+        
+        HistorySeederService.forceReset(reason || 'Manual reset from API');
+        
+        return {
+            success: true,
+            message: 'Seeder has been reset successfully',
+            reason: reason || 'Manual reset'
+        };
+    }, {
+        body: t.Object({
+            reason: t.Optional(t.String())
+        })
+    })
+
     // Seed history data
     .post("/seed", async ({ body, headers, set }) => {
         // Verify authentication

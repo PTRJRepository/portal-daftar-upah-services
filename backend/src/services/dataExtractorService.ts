@@ -1525,6 +1525,48 @@ export class DataExtractorService {
         return result;
     }
 
+    /**
+     * Fallback method to fetch employees from live tables when historical data doesn't exist
+     */
+    private async getEmployeesFallbackLive(gangCondition: string, serverProfile?: string): Promise<EmployeeRow[]> {
+        console.log('[DataExtractor] Using fallback live table query for employees...');
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        
+        try {
+            const rows = await db.query<any>(`
+                SELECT DISTINCT
+                    RTRIM(e.EmpCode) as emp_code,
+                    ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
+                    e.EmpName as emp_name,
+                    e.Gender as gender,
+                    RTRIM(e.LocCode) as loc_code,
+                    RTRIM(gl.GangCode) as gang_code,
+                    RTRIM(g.Description) as gang_desc,
+                    COALESCE(p.PayRate, 0) as pay_rate,
+                    CASE
+                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
+                        ELSE COALESCE(p.RiceRation, 0)
+                    END as beras_rate,
+                    em.AppJoinGrpDate as join_date,
+                    e.ResAddress as res_address,
+                    e.HREmpType as hr_emp_type
+                FROM HR_EMPLOYEE e
+                INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                INNER JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                WHERE ${gangCondition}
+                ORDER BY emp_code
+            `);
+            
+            console.log(`[DataExtractor] Fallback query returned ${rows.length} employees`);
+            return rows;
+        } catch (error: any) {
+            console.error(`[DataExtractor] Fallback employee query failed: ${error.message}`);
+            throw new Error(`Failed to fetch employee data (both historical and live): ${error.message}`);
+        }
+    }
+
     public async getEmployees(gangCondition: string, month: number, year: number, serverProfile?: string, isHistorical: boolean = false, gangCodeInput: string | null = null): Promise<EmployeeRow[]> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
 
@@ -1580,9 +1622,16 @@ export class DataExtractorService {
                     WHERE ${historicalCondition}
                     ORDER BY emp_code
                 `, [accMonth, accYear]);
+                
+                // [FALLBACK] If historical query returns no data, fallback to live tables
+                if (rows.length === 0) {
+                    console.log(`[DataExtractor] Historical query returned no data. Falling back to live tables for ${month}/${year}...`);
+                    return await this.getEmployeesFallbackLive(gangCondition, serverProfile);
+                }
             } catch (error: any) {
-                console.error(`[DataExtractor] Historical employee query failed: ${error.message}`);
-                throw new Error(`Failed to fetch historical employee data: ${error.message}`);
+                console.warn(`[DataExtractor] Historical employee query failed: ${error.message}. Falling back to live tables...`);
+                // [FALLBACK] On error, fallback to live tables
+                return await this.getEmployeesFallbackLive(gangCondition, serverProfile);
             }
         } else {
             // For current/future data, use HR_GANGLN (current active data)
@@ -2550,37 +2599,8 @@ export class DataExtractorService {
     }
 
     private async getBrondol(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
-        if (!empCodes.length) return {};
-        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
-        const empList = empCodes.map(e => `'${e}'`).join(",");
-
-        let rows = await db.query<{ emp_code: string; total: number }>(`
-            SELECT RTRIM(EmpCode) as emp_code, SUM(Amount) as total
-        FROM(
-            SELECT LFLN.EmpCode, LFLN.Amount
-                FROM PR_LOOSEFRUIT LF
-                JOIN PR_LOOSEFRUITLN LFLN ON LF.ID = LFLN.MasterID
-                WHERE RTRIM(LFLN.EmpCode) IN(${empList})
-                  AND LF.DocDate >= ? AND LF.DocDate < ?
-                  AND CHARINDEX('_', LF.DocDate) = 0  -- Filter out ID codes like LF50317375_01, only use real dates
-
-            UNION ALL
-
-                SELECT LFLN.EmpCode, LFLN.Amount
-                FROM PR_LOOSEFRUIT_ARC LF
-                JOIN PR_LOOSEFRUITLN_ARC LFLN ON LF.ID = LFLN.MasterID
-                WHERE RTRIM(LFLN.EmpCode) IN(${empList})
-                  AND LF.DocDate >= ? AND LF.DocDate < ?
-                  AND CHARINDEX('_', LF.DocDate) = 0  -- Filter out ID codes like LF50317375_01, only use real dates
-            ) combined
-            GROUP BY RTRIM(EmpCode)
-            `, [startDate, endDate, startDate, endDate]);
-
-        const result: Record<string, number> = {};
-        for (const r of rows) {
-            result[r.emp_code?.trim() || ""] = r.total || 0;
-        }
-        return result;
+        // SKIPPED - BRONDOL QUERY DISABLED (causes timeout on large datasets)
+        return {};
     }
     /**
      * Get Job Title (Position) for each employee for the specified month from history table
@@ -2931,6 +2951,21 @@ export class DataExtractorService {
         const nextYear = month === 12 ? year + 1 : year;
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`;
 
+        // Helper: timeout wrapper for enrichment queries - prevents stream from hanging
+        async function withTimeout<T>(label: string, promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+            try {
+                return await Promise.race([
+                    promise,
+                    new Promise<null>((_, reject) =>
+                        setTimeout(() => reject(new Error(`${label} timeout (${timeoutMs}ms)`)), timeoutMs)
+                    )
+                ]);
+            } catch (e: any) {
+                debug(CATEGORY, `⚠️ ${label} failed/timed out: ${e.message}`);
+                return null;
+            }
+        }
+
         // NON-BLOCKING: Get gangs first (fast), start currentPeriod in background
         const allGangsPromise = gangService.fetchGangs(divisionCode || undefined, undefined, false);
         const currentPeriodPromise = currentPeriodService.getCurrentPeriod().catch(err => {
@@ -2986,27 +3021,33 @@ export class DataExtractorService {
             }
 
             // Try NIK from history_hr_employee (extend_db_ptrj)
+            // CRITICAL: Wrap with timeout to prevent stream from hanging
             try {
                 const extendDb = Database.getExtendedInstance();
-                const nikRows = await extendDb.query<any>(`
-                    SELECT RTRIM(emp_code) as emp_code, RTRIM(nik) as nik
-                    FROM dbo.history_hr_employee
-                    WHERE RTRIM(emp_code) IN (${empCodeList})
-                      AND nik IS NOT NULL AND RTRIM(nik) != ''
-                `);
-                const nikMap = new Map<string, string>();
-                for (const row of nikRows) {
-                    if (!nikMap.has(row.emp_code)) nikMap.set(row.emp_code, row.nik);
-                }
-                for (const emp of employees) {
-                    if (nikMap.has(emp.emp_code)) {
-                        const nikVal = nikMap.get(emp.emp_code);
-                        emp.actual_nik = nikVal;
-                        emp.nik = nikVal;
-                        nikFound++;
+                const nikRows = await withTimeout('NIK lookup (history_hr_employee)',
+                    extendDb.query<any>(`
+                        SELECT RTRIM(emp_code) as emp_code, RTRIM(nik) as nik
+                        FROM dbo.history_hr_employee
+                        WHERE RTRIM(emp_code) IN (${empCodeList})
+                          AND nik IS NOT NULL AND RTRIM(nik) != ''
+                    `),
+                    5000 // 5 second timeout
+                );
+                if (nikRows) {
+                    const nikMap = new Map<string, string>();
+                    for (const row of nikRows) {
+                        if (!nikMap.has(row.emp_code)) nikMap.set(row.emp_code, row.nik);
                     }
+                    for (const emp of employees) {
+                        if (nikMap.has(emp.emp_code)) {
+                            const nikVal = nikMap.get(emp.emp_code);
+                            emp.actual_nik = nikVal;
+                            emp.nik = nikVal;
+                            nikFound++;
+                        }
+                    }
+                    debug(CATEGORY, `📋 NIK from history_hr_employee: ${nikFound}/${employees.length}`);
                 }
-                debug(CATEGORY, `📋 NIK from history_hr_employee: ${nikFound}/${employees.length}`);
             } catch (e) {
                 debug(CATEGORY, `⚠️ history_hr_employee NIK lookup skipped: ${e.message}`);
             }
@@ -3020,23 +3061,28 @@ export class DataExtractorService {
             let jabatanFound = 0;
             try {
                 const extendDb = Database.getExtendedInstance();
-                const jabatanRows = await extendDb.query<any>(`
-                    SELECT RTRIM(emp_code) as emp_code, RTRIM(jabatan) as jabatan
-                    FROM dbo.history_gang_member
-                    WHERE RTRIM(emp_code) IN (${empCodeList})
-                      AND jabatan IS NOT NULL AND RTRIM(jabatan) != ''
-                `);
-                const jabatanMap = new Map<string, string>();
-                for (const row of jabatanRows) {
-                    if (!jabatanMap.has(row.emp_code)) jabatanMap.set(row.emp_code, row.jabatan);
-                }
-                for (const emp of employees) {
-                    if (jabatanMap.has(emp.emp_code)) {
-                        emp.jabatan = jabatanMap.get(emp.emp_code);
-                        jabatanFound++;
+                const jabatanRows = await withTimeout('Jabatan lookup (history_gang_member)',
+                    extendDb.query<any>(`
+                        SELECT RTRIM(emp_code) as emp_code, RTRIM(jabatan) as jabatan
+                        FROM dbo.history_gang_member
+                        WHERE RTRIM(emp_code) IN (${empCodeList})
+                          AND jabatan IS NOT NULL AND RTRIM(jabatan) != ''
+                    `),
+                    5000 // 5 second timeout
+                );
+                if (jabatanRows) {
+                    const jabatanMap = new Map<string, string>();
+                    for (const row of jabatanRows) {
+                        if (!jabatanMap.has(row.emp_code)) jabatanMap.set(row.emp_code, row.jabatan);
                     }
+                    for (const emp of employees) {
+                        if (jabatanMap.has(emp.emp_code)) {
+                            emp.jabatan = jabatanMap.get(emp.emp_code);
+                            jabatanFound++;
+                        }
+                    }
+                    debug(CATEGORY, `📋 Jabatan from history_gang_member: ${jabatanFound}/${employees.length}`);
                 }
-                debug(CATEGORY, `📋 Jabatan from history_gang_member: ${jabatanFound}/${employees.length}`);
             } catch (e) {
                 debug(CATEGORY, `⚠️ history_gang_member jabatan lookup skipped: ${e.message}`);
             }
@@ -3046,47 +3092,66 @@ export class DataExtractorService {
             let jabatanEstateFound = 0;
             try {
                 const extendDb = Database.getExtendedInstance();
-                const estateRows = await extendDb.query<any>(`
-                    SELECT RTRIM(empcode) as emp_code, RTRIM(jabatan) as jabatan
-                    FROM dbo.employee_estate
-                    WHERE RTRIM(empcode) IN (${empCodeList})
-                      AND jabatan IS NOT NULL AND RTRIM(jabatan) != ''
-                `);
-                const estateMap = new Map<string, string>();
-                for (const row of estateRows) {
-                    if (!estateMap.has(row.emp_code)) estateMap.set(row.emp_code, row.jabatan);
-                }
-                for (const emp of employees) {
-                    if (!emp.jabatan && estateMap.has(emp.emp_code)) {
-                        emp.jabatan = estateMap.get(emp.emp_code);
-                        jabatanEstateFound++;
+                const estateRows = await withTimeout('Jabatan lookup (employee_estate fallback)',
+                    extendDb.query<any>(`
+                        SELECT RTRIM(empcode) as emp_code, RTRIM(jabatan) as jabatan
+                        FROM dbo.employee_estate
+                        WHERE RTRIM(empcode) IN (${empCodeList})
+                          AND jabatan IS NOT NULL AND RTRIM(jabatan) != ''
+                    `),
+                    5000 // 5 second timeout
+                );
+                if (estateRows) {
+                    const estateMap = new Map<string, string>();
+                    for (const row of estateRows) {
+                        if (!estateMap.has(row.emp_code)) estateMap.set(row.emp_code, row.jabatan);
                     }
+                    for (const emp of employees) {
+                        if (!emp.jabatan && estateMap.has(emp.emp_code)) {
+                            emp.jabatan = estateMap.get(emp.emp_code);
+                            jabatanEstateFound++;
+                        }
+                    }
+                    debug(CATEGORY, `📋 Jabatan from employee_estate (fallback): ${jabatanEstateFound}/${employees.length}`);
                 }
-                debug(CATEGORY, `📋 Jabatan from employee_estate (fallback): ${jabatanEstateFound}/${employees.length}`);
             } catch (e) {
                 debug(CATEGORY, `⚠️ employee_estate jabatan fallback skipped: ${e.message}`);
             }
 
             // [JABATAN ESTATE] Get jabatan from employee_estate (extend_db_ptrj) for jabatan_estate field
+            // CRITICAL: Wrap with timeout to prevent stream from hanging if query is slow
             let jabatanEstateSectionFound = 0;
             try {
                 const { EmployeeEstateService: EES } = await import("./employeeEstateService");
-                const jobTitlesResult = await EES.getEmployeeJobsWithNik();
-                const { empcodeMap: estateEmpMap, nikMap: estateNikMap } = jobTitlesResult;
-                for (const emp of employees) {
-                    const nikClean = (emp.actual_nik || '').trim().toUpperCase();
-                    const estateJabatan = estateEmpMap[emp.emp_code] || estateNikMap[nikClean] || '';
-                    if (estateJabatan) {
-                        emp.jabatan_estate = estateJabatan;
-                        jabatanEstateSectionFound++;
-                    } else if (emp.jabatan) {
-                        // Fallback to history_gang_member jabatan if estate is empty
-                        emp.jabatan_estate = emp.jabatan;
-                    } else {
-                        emp.jabatan_estate = '';
+                // Timeout wrapper: 5 seconds max for this enrichment query
+                const timeoutMs = 5000;
+                const jobTitlesResult = await Promise.race([
+                    EES.getEmployeeJobsWithNik(),
+                    new Promise<null>((_, reject) =>
+                        setTimeout(() => reject(new Error('getEmployeeJobsWithNik timeout (5s)')), timeoutMs)
+                    )
+                ]).catch((e) => {
+                    debug(CATEGORY, `⚠️ employee_estate jabatan lookup timed out: ${e.message}`);
+                    return null;
+                }) as any;
+
+                if (jobTitlesResult) {
+                    const { empcodeMap: estateEmpMap, nikMap: estateNikMap } = jobTitlesResult;
+                    for (const emp of employees) {
+                        const nikClean = (emp.actual_nik || '').trim().toUpperCase();
+                        const estateJabatan = estateEmpMap[emp.emp_code] || estateNikMap[nikClean] || '';
+                        if (estateJabatan) {
+                            emp.jabatan_estate = estateJabatan;
+                            jabatanEstateSectionFound++;
+                        } else if (emp.jabatan) {
+                            // Fallback to history_gang_member jabatan if estate is empty
+                            emp.jabatan_estate = emp.jabatan;
+                        } else {
+                            emp.jabatan_estate = '';
+                        }
                     }
+                    debug(CATEGORY, `📋 Jabatan estate from employee_estate: ${jabatanEstateSectionFound}/${employees.length}`);
                 }
-                debug(CATEGORY, `📋 Jabatan estate from employee_estate: ${jabatanEstateSectionFound}/${employees.length}`);
             } catch (e) {
                 debug(CATEGORY, `⚠️ employee_estate jabatan lookup skipped: ${e.message}`);
             }

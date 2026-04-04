@@ -23,6 +23,7 @@ import {
     checkHistoryHealth,
     seedPayrollHistory,
     getSeederProgress,
+    resetSeeder,
     formatMonthName,
     previewPtkpTax,
     updatePtkpTax
@@ -87,7 +88,14 @@ export default function AggregationSeederPage({ onBack }) {
     // Check connection on mount
     useEffect(() => {
         async function checkConnection() {
-            if (!token) return;
+            if (!token) {
+                addLog('❌ ERROR: No authentication token found! Please login first.', 'error');
+                addLog('💡 Solution: Login to the payroll application (Port 8002) first, then try again.', 'warn');
+                setConnectionStatus('error');
+                setHistoryConnectionStatus('error');
+                return;
+            }
+
             setConnectionStatus('checking');
             setHistoryConnectionStatus('checking');
             addLog('🔌 Checking database connections...');
@@ -286,6 +294,15 @@ export default function AggregationSeederPage({ onBack }) {
     // Run history seeder (terpisah dari aggregation seeder)
     const handleRunHistorySeeder = async () => {
         if (isHistoryRunning) return;
+        
+        // Check authentication first
+        if (!token) {
+            addLog('❌ ERROR: Not authenticated!', 'error');
+            addLog('💡 Please login to the payroll application first (Port 8002)', 'warn');
+            alert('⚠️ Anda belum login!\n\nSilakan login ke aplikasi payroll di Port 8002 terlebih dahulu, kemudian coba lagi.');
+            return;
+        }
+        
         if (historyConnectionStatus !== 'connected') {
             addLog('❌ History database not connected. Cannot run history seeder.', 'error');
             return;
@@ -356,6 +373,29 @@ export default function AggregationSeederPage({ onBack }) {
             addLog(`❌ Error: ${e.message}`, 'error');
         } finally {
             setIsHistoryRunning(false);
+        }
+    };
+
+    // Force reset stuck seeder
+    const handleResetSeeder = async () => {
+        if (!window.confirm('⚠️ Apakah Anda yakin ingin mereset seeder yang sedang berjalan?\n\nIni akan membatalkan proses seeding yang sedang berjalan dan memungkinkan Anda untuk memulai ulang.')) {
+            return;
+        }
+
+        addLog('='.repeat(40), 'info');
+        addLog('🔄 Force resetting History Seeder...', 'warn');
+
+        try {
+            const result = await resetSeeder(token, 'Manual reset from UI by user');
+            if (result.success) {
+                addLog('✅ Seeder has been reset successfully', 'success');
+                addLog(`📝 Reason: ${result.reason || 'Manual reset'}`, 'info');
+                setSeederProgress(null);
+            } else {
+                addLog(`❌ Failed to reset seeder: ${result.error}`, 'error');
+            }
+        } catch (e) {
+            addLog(`❌ Reset error: ${e.message}`, 'error');
         }
     };
 
@@ -665,6 +705,24 @@ export default function AggregationSeederPage({ onBack }) {
                     >
                         {isHistoryRunning ? '⏳ Saving History...' : '💾 Save to History'}
                     </button>
+
+                    {/* Reset Button - Show only when seeder is stuck or running */}
+                    {(isHistoryRunning || (seederProgress && seederProgress.is_running)) && (
+                        <button
+                            onClick={handleResetSeeder}
+                            className="agg-btn"
+                            style={{
+                                backgroundColor: '#f59e0b',
+                                borderColor: '#d97706',
+                                color: 'white',
+                                marginTop: '8px',
+                                width: '100%'
+                            }}
+                            title="Force reset seeder yang sedang berjalan (untuk stuck seeder)"
+                        >
+                            ⚠️ Reset Stuck Seeder
+                        </button>
+                    )}
 
                     <hr className="agg-divider" />
 

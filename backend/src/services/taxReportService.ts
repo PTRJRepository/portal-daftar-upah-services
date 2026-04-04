@@ -409,15 +409,30 @@ class TaxReportService {
     }
 
     /**
-     * Fetch payroll data, ALWAYS from history database explicitly requested by user for performance.
+     * Fetch payroll data from history database, with fallback to origin data (dataExtractorService)
+     * when no history data exists for the period.
      */
     private async fetchPayrollData(month: number, year: number, gangCode: string, divisionCode?: string) {
         let isSourceCurrent = false;
 
-        console.log(`[TaxReportService] Using HISTORY database for (${month}/${year}).`);
+        console.log(`[TaxReportService] Fetching data for (${month}/${year}) - trying HISTORY first.`);
         const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
             month, year, gangCode, divisionCode
         );
+
+        // Fallback to origin data if no history exists
+        if (!historyData || historyData.data_rows.length === 0) {
+            console.log(`[TaxReportService] No history data for (${month}/${year}) - falling back to ORIGIN data.`);
+            isSourceCurrent = true;
+
+            // Fetch from origin database via dataExtractorService
+            const originData = await DataExtractorService.getInstance().extractPayrollData(
+                month, year, gangCode, divisionCode, null, undefined, false, undefined, undefined, true, true
+            );
+
+            return { data: originData, isSourceCurrent };
+        }
+
         return { data: historyData, isSourceCurrent };
     }
 

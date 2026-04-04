@@ -27,6 +27,8 @@ export interface DailyCell {
     amount: number;
     /** True if kurang jam (hours < target for regular workday) */
     is_short?: boolean;
+    /** True if amount < upah_dasar (Kurang HK) */
+    is_low_hk?: boolean;
 }
 
 export interface GangMember {
@@ -45,6 +47,7 @@ export interface GangAttendanceRow {
     nik: string;
     gang_code: string;
     bank_acc_no: string;
+    upah_dasar: number;  // Added for Kurang HK warning
     daily: Record<number, DailyCell>;  // 1-31 => status with hours, amount, and is_short flag
     /** Face verification data from IT Solution API (absen_import). Key = day (1-31), value = hasWork (true/false) */
     face_verification?: Record<number, boolean>;
@@ -184,8 +187,8 @@ class GangAttendanceService {
      * Resolve bank account (BankAccNo) from HR_PAYROLL by EmpCode (batch)
      * emp_code is the authoritative key from HR_GANGLN; bank is resolved from it.
      */
-    private async resolveBankByEmpCodes(empCodes: string[]): Promise<Map<string, { bank_acc_no: string; bank_code: string }>> {
-        const result = new Map<string, { bank_acc_no: string; bank_code: string }>();
+    private async resolveBankByEmpCodes(empCodes: string[]): Promise<Map<string, { bank_acc_no: string; bank_code: string; upah_dasar: number }>> {
+        const result = new Map<string, { bank_acc_no: string; bank_code: string; upah_dasar: number }>();
         if (empCodes.length === 0) return result;
 
         // Always trim all empCodes to ensure consistent key matching
@@ -197,21 +200,23 @@ class GangAttendanceService {
             const chunk = cleanCodes.slice(i, i + CHUNK);
             const placeholders = chunk.map(() => '?').join(',');
             try {
-                const rows = await this.db.query<{ EmpCode: string; BankAccNo: string; BankCode: string }>(`
+                const rows = await this.db.query<{ EmpCode: string; BankAccNo: string; BankCode: string; PayRate: number }>(`
                     SELECT RTRIM(EmpCode) as EmpCode,
                            RTRIM(ISNULL(BankAccNo, '')) as BankAccNo,
-                           RTRIM(ISNULL(BankCode, '')) as BankCode
+                           RTRIM(ISNULL(BankCode, '')) as BankCode,
+                           ISNULL(PayRate, 0) as PayRate
                     FROM HR_PAYROLL
                     WHERE RTRIM(EmpCode) IN (${placeholders})
                 `, chunk);
                 for (const r of rows) {
                     result.set(r.EmpCode.trim().toUpperCase(), {
                         bank_acc_no: r.BankAccNo?.trim() || '',
-                        bank_code: r.BankCode?.trim() || ''
+                        bank_code: r.BankCode?.trim() || '',
+                        upah_dasar: r.PayRate || 0
                     });
                 }
             } catch (e) {
-                console.error("[GangAttendanceService] Error resolving bank accounts:", e);
+                console.error("[GangAttendanceService] Error resolving bank accounts and payrates:", e);
             }
         }
         return result;
@@ -438,6 +443,8 @@ class GangAttendanceService {
             const employees: GangAttendanceRow[] = gangMembers.map(member => {
                 const empKey = member.emp_code.toUpperCase();
                 const records = attendanceData.get(empKey) || [];
+                const empBankData = bankMap.get(empKey);
+                const upahDasar = empBankData?.upah_dasar || 0;
 
                 // Initialize daily matrix
                 const daily: Record<number, DailyCell> = {};
@@ -496,16 +503,20 @@ class GangAttendanceService {
                     const targetHours = isFriday ? 5 : 7;
                     const isShort = status === 'H' && acc.hours > 0 && acc.hours < targetHours;
 
+                    // [NEW] Kurang HK: amount earned < upah_dasar
+                    const isLowHk = status === 'H' && acc.amount > 0 && upahDasar > 0 && acc.amount < upahDasar;
+
                     // DEBUG
-                    if (isShort) {
-                        console.log(`[DEBUG] ${member.emp_name} day ${day}: status=${status}, hours=${acc.hours}/${targetHours}, is_short=${isShort}`);
+                    if (isShort || isLowHk) {
+                        console.log(`[DEBUG] ${member.emp_name} day ${day}: status=${status}, hours=${acc.hours}/${targetHours}, is_short=${isShort}, amount=${acc.amount}/${upahDasar}, is_low_hk=${isLowHk}`);
                     }
 
                     daily[day] = {
                         status,
                         hours: acc.hours,
                         amount: acc.amount,
-                        is_short: isShort
+                        is_short: isShort,
+                        is_low_hk: isLowHk
                     };
                 }
 
@@ -547,6 +558,7 @@ class GangAttendanceService {
                     nik: member.nik,
                     gang_code: member.gang_code,
                     bank_acc_no: member.bank_acc_no,
+                    upah_dasar: upahDasar,
                     daily,
                     face_verification: Object.keys(face_verification).length > 0 ? face_verification : undefined,
                     summary

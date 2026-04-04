@@ -271,6 +271,12 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                             <strong>{cfg.short}</strong> {cfg.label}
                         </span>
                     ))}
+                    <span className="gam-legend-item" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
+                        <strong>WRN</strong> Kurang Jam
+                    </span>
+                    <span className="gam-legend-item" style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' }}>
+                        <strong>HK!</strong> Kurang HK (Pay &lt; Dasar)
+                    </span>
                     {includeFaceVerification && (
                         <>
                             <span className="gam-legend-divider" />
@@ -364,16 +370,62 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                                                                 const hasFaceData = faceVerif !== undefined
                                                                 const faceOk = faceVerif === true
                                                                 const isShort = dayData?.is_short
-                                                                // Symbol for kurang jam
-                                                                const shortSymbol = isShort ? ' ▼' : ''
+                                                                const isLowHk = dayData?.is_low_hk
+
+                                                                // Display Logic:
+                                                                // 1. If showPayroll is ON -> show amount in K (e.g. 150)
+                                                                // 2. Else If isLowHk -> HK! or d-HK
+                                                                // 3. Else If isShort -> WRN or d-WRN
+                                                                // 4. Else -> status (H, C, etc)
+                                                                let displayValue = cfg.short;
+                                                                if (showPayroll && dayData?.amount) {
+                                                                    displayValue = Math.round(dayData.amount / 1000).toString();
+                                                                } else if (isLowHk) {
+                                                                    displayValue = `HK!`;
+                                                                } else if (isShort) {
+                                                                    displayValue = `${d}-WRN`;
+                                                                }
+
+                                                                // Styling Logic
+                                                                let cellBg = cfg.bg;
+                                                                let cellColor = cfg.color;
+                                                                let fontSize = '10px';
+
+                                                                if (isLowHk) {
+                                                                    cellBg = '#fee2e2';
+                                                                    cellColor = '#991b1b';
+                                                                    fontSize = '9px';
+                                                                } else if (isShort) {
+                                                                    cellBg = '#fef3c7';
+                                                                    cellColor = '#92400e';
+                                                                    fontSize = '8px';
+                                                                }
+
+                                                                if (showPayroll && dayData?.amount) {
+                                                                    fontSize = '9px';
+                                                                    if (displayValue.length > 3) fontSize = '7px';
+                                                                }
+
+                                                                const tooltip = `${emp.emp_name} - Tgl ${d}: ${cfg.label}` +
+                                                                    (hasFaceData ? (faceOk ? ' [FACE OK]' : ' [NO FACE]') : '') +
+                                                                    (dayData?.hours ? ` (${dayData.hours} jam)` : '') +
+                                                                    (dayData?.amount ? ` = Rp ${fmtCurrency(dayData.amount)}` : '') +
+                                                                    (emp.upah_dasar ? ` [Dasar: Rp ${fmtCurrency(emp.upah_dasar)}]` : '') +
+                                                                    (isShort ? ' [WARNING: KURANG JAM]' : '') +
+                                                                    (isLowHk ? ' [WARNING: KURANG HK (Upah < Dasar)]' : '');
+
                                                                 return (
                                                                     <td key={d}
-                                                                        className={`gam-td-cell ${hasFaceData ? (faceOk ? 'gam-cell-face-ok' : 'gam-cell-face-no') : ''}`}
-                                                                        style={{ background: cfg.bg, color: cfg.color }}
-                                                                        title={`${emp.emp_name} - Tgl ${d}: ${cfg.label}${hasFaceData ? (faceOk ? ' [FACE OK]' : ' [NO FACE]') : ''}${dayData?.hours ? ` (${dayData.hours} jam)` : ''}${dayData?.amount ? ` = Rp ${fmtCurrency(dayData.amount)}` : ''}${isShort ? ' ▼ KURANG JAM' : ''}`}
+                                                                        className={`gam-td-cell ${hasFaceData ? (faceOk ? 'gam-cell-face-ok' : 'gam-cell-face-no') : ''} ${isShort ? 'gam-cell-short' : ''} ${isLowHk ? 'gam-cell-low-hk' : ''}`}
+                                                                        style={{ 
+                                                                            background: cellBg, 
+                                                                            color: cellColor,
+                                                                            fontSize: fontSize
+                                                                        }}
+                                                                        title={tooltip}
                                                                     >
                                                                         {hasFaceData && <span className={`gam-face-badge ${faceOk ? 'gam-face-badge-ok' : 'gam-face-badge-no'}`}>{faceOk ? 'V' : 'X'}</span>}
-                                                                        <span className="gam-cell-status">{cfg.short}{shortSymbol}</span>
+                                                                        <span className="gam-cell-status">{displayValue}</span>
                                                                     </td>
                                                                 )
                                                             })}
@@ -767,6 +819,10 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     transition: transform 0.1s;
                     min-width: 32px;
                     max-width: 32px;
+                }
+                .gam-cell-short {
+                    padding-left: 1px !important;
+                    padding-right: 1px !important;
                 }
                 .gam-td-cell:hover {
                     transform: scale(1.3);

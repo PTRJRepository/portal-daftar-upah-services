@@ -99,6 +99,32 @@ export async function getSeederProgress(token) {
 }
 
 /**
+ * Force reset stuck seeder
+ * @param {string} token - Auth token
+ * @param {string} reason - Reason for reset (optional)
+ */
+export async function resetSeeder(token, reason = 'Manual reset from UI') {
+    const baseUrl = getBackendUrl();
+    const url = `${baseUrl}/payroll/history/seed/reset`;
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reason }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || `Failed to reset seeder: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+/**
  * Update PTKP Tax for a period year
  * @param {string} token - Auth token
  * @param {number} periodYear - Year to update
