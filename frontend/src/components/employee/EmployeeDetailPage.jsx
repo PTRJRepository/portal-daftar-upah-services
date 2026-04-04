@@ -248,7 +248,7 @@ export default function EmployeeDetailPage({
                             Kembali
                         </button>
                         {isHistoricalMissing && isSeedingRelated && (
-                            <button onClick={() => window.open('/aggregation-seeder', '_blank')} style={{
+                            <button onClick={() => window.open('/seeder', '_blank')} style={{
                                 padding: '10px 24px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600'
                             }}>
                                 Buka Aggregation Seeder

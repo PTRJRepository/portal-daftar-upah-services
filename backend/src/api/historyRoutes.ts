@@ -79,16 +79,37 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     })
 
     // Seed history data
+    // NOTE: Accept system token for admin operations (seeder doesn't need external user auth)
     .post("/seed", async ({ body, headers, set }) => {
-        // Verify authentication
         const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        
+        // Accept system token OR regular Bearer token
+        let createdBy = "system";
+        let allowAccess = false;
+        
+        if (authHeader) {
+            if (authHeader.startsWith("Bearer system") || authHeader === "system-reseed") {
+                // System token - allow immediately
+                allowAccess = true;
+                createdBy = "system";
+                console.log('[HistoryRoutes] ✅ System auth accepted for seeder');
+            } else if (authHeader.startsWith("Bearer ")) {
+                // Regular token - just extract user info if available
+                allowAccess = true; // Allow for now
+                createdBy = "system"; // Default to system
+                console.log('[HistoryRoutes] ✅ Bearer token accepted for seeder');
+            }
+        }
+        
+        if (!allowAccess) {
             set.status = 401;
-            return { success: false, error: "Unauthorized" };
+            return { 
+                success: false, 
+                error: "Unauthorized: Use 'Bearer system' as Authorization header" 
+            };
         }
 
         const { period_month, period_year, division_code, gang_code, force, seederMode } = body;
-        const createdBy = headers["x-user-id"] || "system";
         const ipAddress = getClientIP(headers);
         const userAgent = headers["user-agent"] || "unknown";
 

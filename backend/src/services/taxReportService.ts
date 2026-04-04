@@ -423,6 +423,7 @@ class TaxReportService {
         // Fallback to origin data if no history exists
         if (!historyData || historyData.data_rows.length === 0) {
             console.log(`[TaxReportService] No history data for (${month}/${year}) - falling back to ORIGIN data.`);
+            console.log(`[TaxReportService] Fallback params: month=${month}, year=${year}, gangCode=${gangCode}, divisionCode=${divisionCode}`);
             isSourceCurrent = true;
 
             // Fetch from origin database via dataExtractorService
@@ -430,6 +431,7 @@ class TaxReportService {
                 month, year, gangCode, divisionCode, null, undefined, false, undefined, undefined, true, true
             );
 
+            console.log(`[TaxReportService] Origin data result: ${originData?.data_rows?.length || 0} rows`);
             return { data: originData, isSourceCurrent };
         }
 
@@ -467,6 +469,8 @@ class TaxReportService {
         const { data: historyData, isSourceCurrent } = await this.fetchPayrollData(
             month, year, gangCode || 'ALL', effectiveDivisionCode || undefined
         );
+
+        console.log(`[TaxReportService] getMonthlyTaxReport received data: ${historyData?.data_rows?.length || 0} rows, isSourceCurrent=${isSourceCurrent}`);
 
         if (!historyData || historyData.data_rows.length === 0) {
             return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [], data_source: isSourceCurrent ? 'current' : 'history' };
@@ -619,6 +623,12 @@ class TaxReportService {
                 empOtherIncomes.push({ type: 'BONUS', name: 'Exgratia (Static)', amount: exgratiaAmount });
             }
 
+            // Calculate total non-regular income (pendapatan tidak tetap / lainnya)
+            // Use row's pre-computed field if available (from origin dataExtractor), otherwise sum components
+            const rowPendapatanLainnya = row.total_pendapatan_lainnya || row.pendapatan_lainnya || 0;
+            const computedPendapatanLainnya = thrAmount + exgratiaAmount + otherIncomeAmount;
+            const pendapatan_tidak_tetap_thp = rowPendapatanLainnya > 0 ? rowPendapatanLainnya : computedPendapatanLainnya;
+
             penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
 
             // Purely calculated PPh21 (TER)
@@ -753,7 +763,9 @@ class TaxReportService {
                 carumanBase: carumanBase,
                 thr_amount: thrAmount,
                 exgratia_amount: exgratiaAmount,
-                other_incomes: empOtherIncomes
+                other_incomes: empOtherIncomes,
+                // Total non-regular income for display (THR, Bonus, Custom, dll)
+                pendapatan_tidak_tetap_thp
             };
         });
 
@@ -782,6 +794,7 @@ class TaxReportService {
             );
         }
 
+        console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${isSourceCurrent ? 'current' : 'history'}`);
         return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
     }
 

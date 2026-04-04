@@ -279,6 +279,7 @@ export class DataExtractorService {
         // ============================================================
         // Get gangs first (fast query)
         const allGangs = await gangService.fetchGangs(divisionCode || undefined, undefined, includeVirtualGangs);
+        console.log(`[DataExtractor] allGangs.length=${allGangs.length}, divisionCode=${divisionCode}, gangCode=${gangCode}`);
 
         // Get current period - if it times out, fall back to using the requested period
         let currentMonth: number;
@@ -297,6 +298,7 @@ export class DataExtractorService {
 
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
+        console.log(`[DataExtractor] Period check: year=${year}, currentYear=${currentYear}, month=${month}, currentMonth=${currentMonth}, isHistorical=${isHistorical}`);
 
         // [OPTIMIZATION] Cache check for all periods (historical + current)
         // TTL determined by getPayrollCacheTtl: 1 hour for historical, 60s for current
@@ -403,6 +405,7 @@ export class DataExtractorService {
         const startTotal = performance.now();
         let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
         debug(CATEGORY, `Phase 0 - getEmployees: ${(performance.now() - startTotal).toFixed(0)}ms, found ${employees.length} employees`);
+        console.log(`[DataExtractor] getEmployees returned ${employees.length} employees, gangCondition=${gangCondition}`);
 
         // Apply gangPrefix (Group/Asistensi) filter for LIVE path
         if (gangPrefix && employees.length > 0) {
@@ -420,6 +423,7 @@ export class DataExtractorService {
         }
 
         if (employees.length === 0) {
+            console.log(`[DataExtractor] No employees found! gangCondition=${gangCondition}, gangCode=${gangCode}, divisionCode=${divisionCode}, isHistorical=${isHistorical}`);
             return {
                 data_rows: [],
                 dynamic_premi_headers: [],
@@ -1569,6 +1573,7 @@ export class DataExtractorService {
 
     public async getEmployees(gangCondition: string, month: number, year: number, serverProfile?: string, isHistorical: boolean = false, gangCodeInput: string | null = null): Promise<EmployeeRow[]> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        console.log(`[DataExtractor.getEmployees] isHistorical=${isHistorical}, gangCondition=${gangCondition}`);
 
 
         let rows: any[];
@@ -1622,7 +1627,8 @@ export class DataExtractorService {
                     WHERE ${historicalCondition}
                     ORDER BY emp_code
                 `, [accMonth, accYear]);
-                
+
+                console.log(`[DataExtractor] Historical query for ${accMonth}/${accYear} returned ${rows.length} rows`);
                 // [FALLBACK] If historical query returns no data, fallback to live tables
                 if (rows.length === 0) {
                     console.log(`[DataExtractor] Historical query returned no data. Falling back to live tables for ${month}/${year}...`);
@@ -1663,6 +1669,7 @@ export class DataExtractorService {
                     WHERE ${gangCondition}
                     ORDER BY emp_code
                 `);
+                console.log(`[DataExtractor] Current employee query: gangCondition=${gangCondition}, returned ${rows.length} rows`);
             } catch (error: any) {
                 console.error(`[DataExtractor] Current employee query failed: ${error.message}`);
                 throw new Error(`Failed to fetch employee data: ${error.message}`);
@@ -2599,8 +2606,53 @@ export class DataExtractorService {
     }
 
     private async getBrondol(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
-        // SKIPPED - BRONDOL QUERY DISABLED (causes timeout on large datasets)
-        return {};
+        if (!empCodes.length) return {};
+        
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        const empList = empCodes.map(e => `'${e}'`).join(",");
+
+        try {
+            // Query PR_LOOSEFRUIT (active + archived) for brondol premium amounts
+            // This is the source of truth for brondol (loose fruit) premiums
+            const rows = await db.query<any>(`
+                SELECT EmpCode, TotalAmount
+                FROM (
+                    SELECT 
+                        RTRIM(l.EmpCode) as EmpCode,
+                        SUM(ISNULL(l.Amount, 0)) as TotalAmount,
+                        ROW_NUMBER() OVER (PARTITION BY RTRIM(l.EmpCode) ORDER BY SUM(ISNULL(l.Amount, 0)) DESC) as rn
+                    FROM PR_LOOSEFRUITLN l
+                    INNER JOIN PR_LOOSEFRUIT m ON l.MasterID = m.ID
+                    WHERE RTRIM(l.EmpCode) IN (${empList})
+                      AND m.DocDate >= ? AND m.DocDate < ?
+                    GROUP BY RTRIM(l.EmpCode)
+
+                    UNION ALL
+
+                    SELECT 
+                        RTRIM(l.EmpCode) as EmpCode,
+                        SUM(ISNULL(l.Amount, 0)) as TotalAmount,
+                        ROW_NUMBER() OVER (PARTITION BY RTRIM(l.EmpCode) ORDER BY SUM(ISNULL(l.Amount, 0)) DESC) as rn
+                    FROM PR_LOOSEFRUITLN_ARC l
+                    INNER JOIN PR_LOOSEFRUIT_ARC m ON l.MasterID = m.ID
+                    WHERE RTRIM(l.EmpCode) IN (${empList})
+                      AND m.DocDate >= ? AND m.DocDate < ?
+                    GROUP BY RTRIM(l.EmpCode)
+                ) Combined
+                WHERE rn = 1
+            `, [startDate, endDate, startDate, endDate], 120);
+
+            const result: Record<string, number> = {};
+            for (const row of rows) {
+                if (row.EmpCode && row.TotalAmount) {
+                    result[row.EmpCode.trim()] = parseFloat(row.TotalAmount) || 0;
+                }
+            }
+            return result;
+        } catch (e) {
+            console.error("[DataExtractor] Failed to get brondol from PR_LOOSEFRUIT:", e);
+            return {};
+        }
     }
     /**
      * Get Job Title (Position) for each employee for the specified month from history table
