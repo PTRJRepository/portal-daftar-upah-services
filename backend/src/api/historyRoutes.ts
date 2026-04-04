@@ -83,6 +83,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
             const result = await historySeederService.seedPayrollHistory(options);
 
+            console.log(`[HistoryRoutes] Seeder result:`, JSON.stringify(result, null, 2));
+
             if (!result.success) {
                 set.status = 500;
             }
@@ -102,10 +104,12 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
             };
         } catch (error: any) {
             console.error("[HistoryRoutes] Seed error:", error);
+            console.error("[HistoryRoutes] Error stack:", error.stack);
             set.status = 500;
             return {
                 success: false,
-                error: error.message || "Failed to seed history"
+                error: error.message || "Failed to seed history",
+                details: error.stack
             };
         }
     }, {

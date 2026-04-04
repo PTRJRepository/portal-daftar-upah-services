@@ -1695,3 +1695,66 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         const { cacheService } = await import("../services/cacheService");
         return cacheService.getStats();
     })
+
+    /**
+     * Gang Payroll Summary - used by GangAttendanceMatrix to show money columns
+     * Returns: emp_code, jumlah_upah_kotor, koreksi_hk, pot_koreksi, pph21_ter, upah_bersih
+     * Source: db_ptrj via dataExtractorService (same data source as the main payroll table)
+     */
+    .get("/gang-payroll-summary", async ({ query, set }): Promise<any> => {
+        try {
+            const { dataExtractorService } = await import("../services/dataExtractorService");
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const gangCodes = (query.gang_codes || '').split(',').map((c: string) => c.trim()).filter(Boolean);
+
+            if (!month || !year || gangCodes.length === 0) {
+                set.status = 400;
+                return { error: "month, year, and gang_codes are required" };
+            }
+
+            // Use dataExtractorService which queries db_ptrj
+            // Extract payroll data for ALL gangs, then filter by requested gangCodes
+            const skipHarvest = true;
+            const result = await dataExtractorService.extractPayrollData(
+                month, year, "ALL", undefined, null, Config.DB_PROFILE, false, null, undefined, skipHarvest
+            );
+
+            // Filter to only the requested gang codes and extract summary fields
+            const gangCodesSet = new Set(gangCodes.map((c: string) => c.trim().toUpperCase()));
+            const data = result.data_rows
+                .filter((row: any) => gangCodesSet.has((row.gang_code || '').trim().toUpperCase()))
+                .map((row: any) => ({
+                    emp_code: (row.emp_code || row.nik || '').trim(),
+                    gang_code: (row.gang_code || '').trim(),
+                    jumlah_upah_kotor: Number(row.jumlah_upah_kotor) || 0,
+                    koreksi_hk: Number(row.koreksi_hk) || 0,
+                    pot_koreksi: Number(row.pot_koreksi) || 0,
+                    pph21_ter: Number(row.pph21_ter || row.pot_pph21) || 0,
+                    upah_bersih: Number(row.upah_bersih) || 0,
+                    gaji_pokok_aktual: Number(row.gaji_pokok_aktual) || 0,
+                    total_tunjangan: Number(row.total_tunjangan) || 0,
+                    total_premi: Number(row.total_premi) || 0,
+                }));
+
+            return {
+                data,
+                meta: {
+                    month,
+                    year,
+                    total_employees: data.length,
+                    gang_codes: gangCodes
+                }
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] gang-payroll-summary error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            gang_codes: t.String()
+        })
+    })

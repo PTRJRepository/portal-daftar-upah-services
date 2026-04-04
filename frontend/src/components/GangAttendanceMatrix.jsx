@@ -109,6 +109,19 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
         try {
             const result = await getGangAttendanceMatrix(token, codes, month, year, includeFaceVerification)
             setData(result)
+            // DEBUG: Check for short days in fetched data
+            if (result?.data) {
+                for (const gang of result.data) {
+                    for (const emp of gang.employees || []) {
+                        const shortDays = Object.entries(emp.daily || {})
+                            .filter(([_, d]) => d?.is_short)
+                            .map(([day, d]) => `day${day}:${d.status},${d.hours}h,is_short=${d.is_short}`)
+                        if (shortDays.length > 0) {
+                            console.log(`[FRONTEND DEBUG] ${emp.emp_name} short days:`, shortDays.join(', '))
+                        }
+                    }
+                }
+            }
             // Auto-expand all gangs
             if (result?.data) {
                 setExpandedGangs(new Set(result.data.map(g => g.gang_code)))
@@ -351,23 +364,16 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                                                                 const hasFaceData = faceVerif !== undefined
                                                                 const faceOk = faceVerif === true
                                                                 const isShort = dayData?.is_short
-                                                                // Override colors for kurang jam
-                                                                let cellBg = cfg.bg
-                                                                let cellColor = cfg.color
-                                                                let shortBadge = ''
-                                                                if (isShort) {
-                                                                    cellBg = '#fee2e2' // red background for kurang jam
-                                                                    cellColor = '#b91c1c' // dark red text
-                                                                    shortBadge = ' ⚠️'
-                                                                }
+                                                                // Symbol for kurang jam
+                                                                const shortSymbol = isShort ? ' ▼' : ''
                                                                 return (
                                                                     <td key={d}
-                                                                        className={`gam-td-cell ${hasFaceData ? (faceOk ? 'gam-cell-face-ok' : 'gam-cell-face-no') : ''} ${isShort ? 'gam-cell-short' : ''}`}
-                                                                        style={{ background: cellBg, color: cellColor }}
-                                                                        title={`${emp.emp_name} - Tgl ${d}: ${cfg.label}${hasFaceData ? (faceOk ? ' [FACE OK]' : ' [NO FACE]') : ''}${dayData?.hours ? ` (${dayData.hours} jam)` : ''}${dayData?.amount ? ` = Rp ${fmtCurrency(dayData.amount)}` : ''}${isShort ? ' ⚠️ KURANG JAM' : ''}`}
+                                                                        className={`gam-td-cell ${hasFaceData ? (faceOk ? 'gam-cell-face-ok' : 'gam-cell-face-no') : ''}`}
+                                                                        style={{ background: cfg.bg, color: cfg.color }}
+                                                                        title={`${emp.emp_name} - Tgl ${d}: ${cfg.label}${hasFaceData ? (faceOk ? ' [FACE OK]' : ' [NO FACE]') : ''}${dayData?.hours ? ` (${dayData.hours} jam)` : ''}${dayData?.amount ? ` = Rp ${fmtCurrency(dayData.amount)}` : ''}${isShort ? ' ▼ KURANG JAM' : ''}`}
                                                                     >
                                                                         {hasFaceData && <span className={`gam-face-badge ${faceOk ? 'gam-face-badge-ok' : 'gam-face-badge-no'}`}>{faceOk ? 'V' : 'X'}</span>}
-                                                                        <span className="gam-cell-status">{cfg.short}{shortBadge}</span>
+                                                                        <span className="gam-cell-status">{cfg.short}{shortSymbol}</span>
                                                                     </td>
                                                                 )
                                                             })}

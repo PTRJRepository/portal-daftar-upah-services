@@ -28,7 +28,8 @@
       "Bash(git *)",
       "Bash(dir *)",
       "Bash(tail *)",
-      "Bash(type *)"
+      "Bash(type *)",
+      "Bash(node *)"
     ]
   },
   "$version": 3

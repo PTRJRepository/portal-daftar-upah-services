@@ -180,7 +180,15 @@ export class HistorySeederService {
                     HistorySeederService.updateProgress({ gangs_done: payrollData.length, current_step: 'Menyimpan data transaksi...' });
 
                     // 3. Seed transaction data
-                    await this.seedTransactionData(historyId, options, result);
+                    console.log(`[HistorySeeder] Starting transaction seeding...`);
+                    try {
+                        await this.seedTransactionData(historyId, options, result);
+                        console.log(`[HistorySeeder] Transaction seeding completed`);
+                    } catch (error: any) {
+                        console.error(`[HistorySeeder] Error in seedTransactionData:`, error);
+                        console.error(`[HistorySeeder] Error stack:`, error.stack);
+                        result.errors.push(`Error seeding transactions: ${error.message}`);
+                    }
 
                     // 4. Seed gang member data
                     await this.seedGangMemberData(historyId, options, result);
@@ -561,12 +569,18 @@ export class HistorySeederService {
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-01`;
 
         // Get employee codes for this division/gang
+        console.log(`[HistorySeeder] Getting employee codes for ${options.divisionCode}...`);
         const empCodes = await this.withRetry(
             () => this.getEmployeeCodes(options),
             'getEmployeeCodes'
         );
 
-        if (empCodes.length === 0) return;
+        console.log(`[HistorySeeder] Found ${empCodes.length} employee codes`);
+
+        if (empCodes.length === 0) {
+            console.log(`[HistorySeeder] No employee codes found, skipping transaction seeding`);
+            return;
+        }
 
         // Chunk empCodes to avoid SQL timeout on large IN clauses
         const CHUNK_SIZE = 100;
@@ -583,23 +597,23 @@ export class HistorySeederService {
                     const empList = chunk.map(e => `'${e}'`).join(',');
                     return await db.query<any>(`
                         SELECT
-                            tr.ID as master_id, tr.RegNo, tr.RegDate, tr.EmpCode,
-                            trl.ID as line_id, trl.Line, trl.TrxDate, trl.TaskCode,
-                            trl.Hours, trl.OT, trl.Rate, trl.Amount, trl.TappingType
-                        FROM PR_TASKREG tr
-                        JOIN PR_TASKREGLN trl ON tr.ID = trl.MasterID
-                        WHERE tr.EmpCode IN (${empList})
+                            tr.ID as master_id, tr.RegNo, tr.RegDate,
+                            trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode,
+                            trl.Hours, trl.OT, trl.Rate, trl.Amount
+                        FROM PR_TASKREGLN trl
+                        JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                        WHERE trl.EmpCode IN (${empList})
                           AND trl.TrxDate >= '${startDate}' AND trl.TrxDate < '${endDate}'
 
                         UNION ALL
 
                         SELECT
-                            tr.ID as master_id, tr.RegNo, tr.RegDate, tr.EmpCode,
-                            trl.ID as line_id, trl.Line, trl.TrxDate, trl.TaskCode,
-                            trl.Hours, trl.OT, trl.Rate, trl.Amount, trl.TappingType
-                        FROM PR_TASKREG_ARC tr
-                        JOIN PR_TASKREGLN_ARC trl ON tr.ID = trl.MasterID
-                        WHERE tr.EmpCode IN (${empList})
+                            tr.ID as master_id, tr.RegNo, tr.RegDate,
+                            trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode,
+                            trl.Hours, trl.OT, trl.Rate, trl.Amount
+                        FROM PR_TASKREGLN_ARC trl
+                        JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                        WHERE trl.EmpCode IN (${empList})
                           AND trl.TrxDate >= '${startDate}' AND trl.TrxDate < '${endDate}'
                     `, []);
                 }, 'seedTransactionData Taskreg chunk');
@@ -613,14 +627,14 @@ export class HistorySeederService {
                         reg_date: row.RegDate,
                         emp_code: row.EmpCode?.trim(),
                         original_line_id: row.line_id,
-                        line_no: row.Line,
+                        line_no: undefined,  // Column 'Line' doesn't exist in PR_TASKREGLN
                         trx_date: row.TrxDate,
                         task_code: row.TaskCode?.trim(),
                         hours: row.Hours || 0,
                         ot: row.OT === 1 || row.OT === true,
                         rate: row.Rate,
                         amount: row.Amount || 0,
-                        tapping_type: row.TappingType?.trim(),
+                        tapping_type: '',
                         is_cuti_tahunan: false,
                         is_cuti_sakit: false,
                         is_cuti_minggu: false,
@@ -647,25 +661,25 @@ export class HistorySeederService {
                     const empList = chunk.map(e => `'${e}'`).join(',');
                     return await db.query<any>(`
                         SELECT
-                            t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc, t.EmpCode,
-                            ln.ID as line_id, ln.Line, ln.TaskCode, ln.Amount, ln.Qty, ln.UOM,
+                            t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc,
+                            ln.ID as line_id, ln.EmpCode, ln.TaskCode, ln.Amount,
                             tc.TaskDesc
-                        FROM PR_ADTRANS t
-                        JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                        FROM PR_ADTRANSLN ln
+                        JOIN PR_ADTRANS t ON t.ID = ln.MasterID
                         LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
-                        WHERE t.EmpCode IN (${empList})
+                        WHERE ln.EmpCode IN (${empList})
                           AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
 
                         UNION ALL
 
                         SELECT
-                            t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc, t.EmpCode,
-                            ln.ID as line_id, ln.Line, ln.TaskCode, ln.Amount, ln.Qty, ln.UOM,
+                            t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc,
+                            ln.ID as line_id, ln.EmpCode, ln.TaskCode, ln.Amount,
                             tc.TaskDesc
-                        FROM PR_ADTRANS_ARC t
-                        JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                        FROM PR_ADTRANSLN_ARC ln
+                        JOIN PR_ADTRANS_ARC t ON t.ID = ln.MasterID
                         LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
-                        WHERE t.EmpCode IN (${empList})
+                        WHERE ln.EmpCode IN (${empList})
                           AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
                     `, []);
                 }, 'seedTransactionData ADTrans chunk');
@@ -706,12 +720,12 @@ export class HistorySeederService {
                         doc_desc: row.DocDesc?.trim(),
                         emp_code: row.EmpCode?.trim(),
                         original_line_id: row.line_id,
-                        line_no: row.Line,
+                        line_no: undefined,  // Column 'Line' doesn't exist in PR_ADTRANSLN
                         task_code: row.TaskCode?.trim(),
                         task_desc: row.TaskDesc?.trim(),
                         amount: row.Amount || 0,
-                        quantity: row.Qty,
-                        uom: row.UOM?.trim(),
+                        quantity: undefined,  // Column 'Qty' doesn't exist in PR_ADTRANSLN
+                        uom: '',
                         category,
                         sub_category: subCategory,
                         is_dynamic: false,
@@ -748,13 +762,11 @@ export class HistorySeederService {
             let sql = `
                 SELECT
                     g.GangCode, g.Description as GangDesc, g.LocCode,
-                    gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate, e.NewICNo,
-                    COALESCE(ee.jabatan, '') as Jabatan
+                    gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate, e.NewICNo
                 FROM HR_GANG g
                 JOIN HR_GANGLN gl ON g.GangCode = gl.GangCode
                 JOIN HR_EMPLOYEE e ON gl.GangMember = e.EmpCode
                 LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
-                LEFT JOIN employee_estate ee ON RTRIM(ee.empcode) = RTRIM(e.EmpCode)
                 WHERE 1=1
             `;
 
@@ -795,9 +807,9 @@ export class HistorySeederService {
                     emp_code: latestEmpCode?.trim(),
                     emp_name: row.EmpName?.trim(),
                     nik: row.NewICNo?.trim(),
-                    jabatan: row.Jabatan?.trim() || '',  // Jabatan from employee_estate
-                    period_month: options.month,
-                    period_year: options.year,
+                    jabatan: '',  // Jabatan will be enriched separately
+                    period_month: options.periodMonth,
+                    period_year: options.periodYear,
                     join_date: row.AppJoinGrpDate,
                     is_active: true,
                     source_table: 'HR_GANGLN'
@@ -1022,7 +1034,7 @@ export class HistorySeederService {
         const db = Database.getInstance();
 
         let sql = `
-            SELECT DISTINCT RTRIM(e.EmpCode) as emp_code
+            SELECT RTRIM(e.EmpCode) as emp_code
             FROM HR_EMPLOYEE e
             INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
             INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
@@ -1046,7 +1058,9 @@ export class HistorySeederService {
         }
 
         const rows = await db.query<{ emp_code: string }>(sql, empCodeParams);
-        return rows.map(r => r.emp_code);
+        // Remove duplicates in JavaScript instead of SQL
+        const uniqueEmpCodes = [...new Set(rows.map(r => r.emp_code))];
+        return uniqueEmpCodes;
     }
 
     /**

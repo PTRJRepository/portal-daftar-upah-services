@@ -543,3 +543,6 @@ For questions about this project:
 2. Check `asknowledge/` for THR/Tax documentation
 3. Review `CLAUDE.md` for additional context
 4. Check `_dev_utils/planning/` for feature plans
+
+## Qwen Added Memories
+- IMPORTANT: Jabatan (role/position name) comes from extend_db_ptrj tables (employee_estate, history_gang_member), NOT from HR_GANGLN. When user says "jabatan" = role/position text (e.g. "Mandor", "Kerani"). When user says "tunjangan jabatan" = money amount from PR_ADTRANSLN.Amount where DocDesc LIKE '%JABATAN%'.

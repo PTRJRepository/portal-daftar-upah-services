@@ -451,32 +451,25 @@ class GangAttendanceService {
                     total_hk: 0
                 };
 
-                // Days with data
+                // Days with data - accumulate hours/amount for multiple records per day
                 const daysWithData = new Set<number>();
+                const dayAccumulators: Record<number, { hours: number; amount: number }> = {};
                 let maxDataDay = 0;
 
                 for (const rec of records) {
                     daysWithData.add(rec.day);
                     if (rec.day > maxDataDay) maxDataDay = rec.day;
 
+                    // Accumulate hours and amount per day
+                    if (!dayAccumulators[rec.day]) {
+                        dayAccumulators[rec.day] = { hours: 0, amount: 0 };
+                    }
+                    dayAccumulators[rec.day].hours += rec.hours || 0;
+                    dayAccumulators[rec.day].amount += rec.amount || 0;
+
                     const isSunday = sundaySet.has(rec.day);
                     const isHoliday = holidayDaySet.has(rec.day);
                     const status = this.resolveStatusFromFlags(rec, isSunday, isHoliday);
-
-                    // Determine if Friday (short day - target 5 hours)
-                    const dateObj = new Date(year, month - 1, rec.day);
-                    const isFriday = dateObj.getDay() === 5;
-
-                    // Calculate is_short: hours > 0 but less than target
-                    const targetHours = isFriday ? 5 : 7;
-                    const isShort = status === 'H' && rec.hours > 0 && rec.hours < targetHours;
-
-                    daily[rec.day] = {
-                        status,
-                        hours: rec.hours || 0,
-                        amount: rec.amount || 0,
-                        is_short: isShort
-                    };
 
                     switch (status) {
                         case 'H': summary.hadir++; break;
@@ -485,6 +478,35 @@ class GangAttendanceService {
                         case 'M': summary.cuti_minggu++; break;
                         case 'N': summary.libur_nasional++; break;
                     }
+                }
+
+                // Build daily cells with accumulated hours/amount and is_short calculation
+                for (const day of daysWithData) {
+                    const rec = records.find(r => r.day === day)!; // Get first record for status info
+                    const isSunday = sundaySet.has(day);
+                    const isHoliday = holidayDaySet.has(day);
+                    const status = this.resolveStatusFromFlags(rec, isSunday, isHoliday);
+                    const acc = dayAccumulators[day];
+
+                    // Determine if Friday (short day - target 5 hours)
+                    const dateObj = new Date(year, month - 1, day);
+                    const isFriday = dateObj.getDay() === 5;
+
+                    // Calculate is_short: hours > 0 but less than target (7 for regular, 5 for Friday)
+                    const targetHours = isFriday ? 5 : 7;
+                    const isShort = status === 'H' && acc.hours > 0 && acc.hours < targetHours;
+
+                    // DEBUG
+                    if (isShort) {
+                        console.log(`[DEBUG] ${member.emp_name} day ${day}: status=${status}, hours=${acc.hours}/${targetHours}, is_short=${isShort}`);
+                    }
+
+                    daily[day] = {
+                        status,
+                        hours: acc.hours,
+                        amount: acc.amount,
+                        is_short: isShort
+                    };
                 }
 
                 // Fill missing days

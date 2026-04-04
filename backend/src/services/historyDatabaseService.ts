@@ -804,14 +804,13 @@ export class HistoryDatabaseService {
                     total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
                     dynamic_potongan_data, total_upah_kotor, total_upah_bersih,
                     total_ffb_weight, total_weight_tbs, informasi_tambahan,
-                    created_by, source_endpoint, is_locked, lock_reason
+                    created_by, source_endpoint, is_locked, lock_reason, created_at
                 ) OUTPUT INSERTED.id VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `, [
                 data.history_id, data.period_month, data.period_year, data.division_code, data.gang_code, data.gang_description,
@@ -824,7 +823,7 @@ export class HistoryDatabaseService {
                 data.total_bpjs_pekerja, data.total_bpjs_majikan, data.total_spsi,
                 data.dynamic_potongan_data, data.total_upah_kotor, data.total_upah_bersih,
                 data.total_ffb_weight, data.total_weight_tbs, data.informasi_tambahan,
-                data.created_by, data.source_endpoint, data.is_locked || false, data.lock_reason
+                data.created_by, data.source_endpoint, data.is_locked || false, data.lock_reason, new Date()
             ]);
             return result[0]?.id;
         }
@@ -1634,13 +1633,13 @@ export class HistoryDatabaseService {
             const result = await db.query(`
                 INSERT INTO dbo.history_gang_member(
                     history_id, gang_code, gang_description, division_code, loc_code, emp_code,
-                    emp_name, nik, jabatan, join_date, is_active, period_month, period_year, source_table
+                    emp_name, jabatan, join_date, is_active, period_month, period_year, source_table
                 ) OUTPUT INSERTED.id VALUES(
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `, [
                 data.history_id, data.gang_code, data.gang_description, data.division_code,
-                data.loc_code, data.emp_code, data.emp_name, data.nik || null, data.jabatan || null,
+                data.loc_code, data.emp_code, data.emp_name, data.jabatan || null,
                 data.join_date, data.is_active, data.period_month, data.period_year, data.source_table
             ]);
 

@@ -274,7 +274,7 @@ export const generateMonthlyTaxExcel = async (
     // ─────────────────────────────────────────────────────────
     // Data rows (row 5 onwards)
     // ─────────────────────────────────────────────────────────
-    const numFormat = '#,##0';
+    const numFormat = '#.##0';
     const DATA_START = 5;
     let currentRowIndex = DATA_START;
 
@@ -870,7 +870,7 @@ export const generateDecemberTaxExcel = async (
         cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
     };
 
-    const numFormat = '#,##0';
+    const numFormat = '#.##0';
 
     // ==========================================
     // SHEET 1: PAJAK DESEMBER
