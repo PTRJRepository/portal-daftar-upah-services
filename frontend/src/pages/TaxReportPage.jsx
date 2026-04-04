@@ -359,15 +359,16 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                         </tbody>
                         <tfoot>
                             <tr>
-                                <td colSpan={7} className="text-right"><strong>TOTAL</strong></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + e.upah_kotor, 0))}</td>
-                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + e.penghasilan_bruto, 0))}</td>
+                                <td colSpan={7} className="text-right"><strong>GRAND TOTAL</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.hk || 0), 0))}</strong></td>
+                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + (e.upah_dasar || 0), 0))}</td>
+                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + (e.gaji_pokok_ideal || 0), 0))}</td>
+                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + ((e.upah_dasar || 0) * 30), 0))}</td>
+                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + (e.gaji_pokok_aktual || 0), 0))}</td>
+                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + (e.koreksi_hk || 0), 0))}</td>
+                                <td className="text-right" style={{ color: '#059669', fontWeight: '600' }}>{formatNumber(data.employees.reduce((s, e) => s + (e.pendapatan_tidak_tetap_thp || 0), 0))}</td>
+                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.upah_kotor || 0), 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.penghasilan_bruto || 0), 0))}</strong></td>
                                 <td></td>
                                 <td className="text-right"><strong>{formatNumber(data.total_pph21)}</strong></td>
                             </tr>
