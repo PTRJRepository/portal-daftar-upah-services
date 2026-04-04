@@ -1574,8 +1574,7 @@ export class DataExtractorService {
                     COALESCE(p.RiceRation, 0) as beras_rate,
                     em.AppJoinGrpDate as join_date,
                     e.ResAddress as res_address,
-                    e.HREmpType as hr_emp_type,
-                    RTRIM(gl.Jabatan) as jabatan
+                    e.HREmpType as hr_emp_type
                 FROM HR_EMPLOYEE e
                 INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
                 INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
@@ -1659,7 +1658,7 @@ export class DataExtractorService {
                 join_date: r.join_date || null,
                 res_address: r.res_address?.trim() || "",
                 hr_emp_type: r.hr_emp_type?.trim() || "",
-                jabatan: r.jabatan?.trim() || "" // Jabatan from HR_GANGLN (fallback when history_gang_member/employee_estate empty)
+                jabatan: "" // Jabatan will be resolved from employee_estate/positionHistory later
             };
         });
     }
