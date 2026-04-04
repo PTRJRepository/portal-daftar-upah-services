@@ -1813,7 +1813,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           )}
         </React.Fragment>
       ) : viewMode === 'attendance' ? (
-        <GangAttendanceMatrix token={authToken} gangCodes={matrixGangCodes} month={activeMonth} year={activeYear} division={finalDivision} />
+        <GangAttendanceMatrix token={authToken} gangCodes={matrixGangCodes} month={activeMonth} year={activeYear} division={finalDivision} includeFaceVerification={false} />
       ) : viewMode === 'overtime' ? (
         <GangOvertimeMatrix token={authToken} gangCodes={matrixGangCodes} month={activeMonth} year={activeYear} division={finalDivision} />
       ) : (

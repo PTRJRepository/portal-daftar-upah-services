@@ -373,16 +373,17 @@ class GangAttendanceService {
             this.resolveBankByEmpCodes(allEmpCodes)
         ]);
 
-        // 5. Fetch face verification data from IT Solution API (if enabled)
+        // 5. Face verification DISABLED - skip IT Solution API call
+        // Focus on correct attendance data first
         const divisionCodes = [...new Set(members.map(m => m.division_code))];
         let faceVerificationMap = new Map<string, { daily: Record<number, { hasWork: boolean }> }>();
-        if (includeFaceVerification) {
-            try {
-                faceVerificationMap = await faceVerificationService.getFaceVerification(divisionCodes, month, year);
-            } catch (e) {
-                console.warn(`[GangAttendanceService] Face verification fetch failed:`, e);
-            }
-        }
+        // if (includeFaceVerification) {
+        //     try {
+        //         faceVerificationMap = await faceVerificationService.getFaceVerification(divisionCodes, month, year);
+        //     } catch (e) {
+        //         console.warn(`[GangAttendanceService] Face verification fetch failed:`, e);
+        //     }
+        // }
 
         // 6. Enrich members with NIK and bank account data
         for (const member of members) {
