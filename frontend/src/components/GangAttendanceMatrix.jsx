@@ -439,7 +439,17 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 .gam-face-badge-ok { color: #059669; }
                 .gam-face-badge-no { color: #dc2626; }
                 .gam-cell-status { font-weight: 600; font-size: 10px; }
-                .gam-td-cell { display: flex; align-items: center; justify-content: center; gap: 1px; }
+                .gam-td-cell {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 1px;
+                    min-width: 32px;
+                    width: 32px;
+                    max-width: 32px;
+                    padding: 2px;
+                    text-align: center;
+                }
                 tbody tr:nth-child(even) .gam-td-no,
                 tbody tr:nth-child(even) .gam-td-empcode,
                 tbody tr:nth-child(even) .gam-td-name,
@@ -495,11 +505,12 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                 }
                 .gam-table-wrapper {
                     overflow-x: auto;
-                    /* Removed max-height and overflow-y to allow natural vertical expansion */
+                    overflow-y: visible;
                     width: 100%;
                 }
                 .gam-table {
-                    width: 100%;
+                    width: max-content;
+                    min-width: 100%;
                     border-collapse: collapse;
                     font-size: 11px;
                     white-space: nowrap;
@@ -554,8 +565,11 @@ export default function GangAttendanceMatrix({ token, gangCodes, month, year, di
                     background: #f9fafb !important;
                 }
                 .gam-th-day {
-                    min-width: 26px;
-                    width: 26px;
+                    min-width: 32px;
+                    width: 32px;
+                    max-width: 32px;
+                    text-align: center;
+                    padding: 4px 2px;
                 }
                 .gam-th-sum {
                     min-width: 30px;

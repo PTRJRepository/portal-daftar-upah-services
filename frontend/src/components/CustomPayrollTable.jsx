@@ -205,6 +205,8 @@ export default function CustomPayrollTable({
     const [streamEnabled, setStreamEnabled] = useState(true); // Always use streaming
 
     // Use SSE streaming for progressive data delivery
+    // CRITICAL FIX: Remove gangLoading from enabled condition to allow streaming to start immediately
+    // gangLoading was preventing stream from starting on some computers/virtual divisions
     const stream = usePayrollStream({
         token,
         division,
@@ -212,7 +214,7 @@ export default function CustomPayrollTable({
         year,
         gangPrefix,
         gangCode,
-        enabled: !!token && !!division && !!month && !!year && !gangLoading && streamEnabled
+        enabled: !!token && !!division && !!month && !!year && streamEnabled
     });
 
     // Sync stream grand total to component state
@@ -271,6 +273,16 @@ export default function CustomPayrollTable({
         }
         return loadingProgress;
     }, [stream.progress, loadingProgress]);
+
+    // Determine if we should show the table (even if streaming is still in progress)
+    const shouldShowTable = useMemo(() => {
+        // Show table if we have any stream data
+        if (stream.gangs && stream.gangs.length > 0) return true;
+        // Show table if we have rows from legacy fetch
+        if (rows.length > 0 && dataReady) return true;
+        // Don't show table if still in early loading phase with no data
+        return false;
+    }, [stream.gangs, rows, dataReady]);
 
     const streamRows = useMemo(() => {
         console.log('[CustomPayrollTable] streamRows recomputing: stream.gangs.length =', stream.gangs?.length);
@@ -2518,12 +2530,17 @@ export default function CustomPayrollTable({
         />
     );
 
+    // Show main table if we have stream data OR legacy data
+    // This allows progressive rendering - table appears as soon as first gang arrives
+    if (shouldShowTable) {
+        // Continue to render table below
+    }
     // Show "Belum Tersedia" ONLY when:
     // 1. Loading is complete (loading = false)
     // 2. Data has been fetched (dataReady = true)
     // 3. But no rows returned (displayRows.length = 0)
     // This means: data was fetched but genuinely empty, not still loading
-    if (!loading && dataReady && displayRows.length === 0) {
+    else if (!loading && dataReady && displayRows.length === 0) {
         const MONTHS_LABEL = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
         // Error state with retry button

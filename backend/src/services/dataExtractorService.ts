@@ -3631,10 +3631,13 @@ export class DataExtractorService {
                 emp.upah_kotor_pajak = emp.jumlah_upah_kotor; // For PAJAK section
 
                 // Calculate penghasilan_bruto from jumlah_upah_kotor + astek_majikan + bpjs_majikan
-                const caruman = calculateAllCaruman(emp.pay_rate || 0, 0);
+                // Use upah_dasar and masa_kerja_jumlah to match taxReportService calculation
+                // NOTE: pot_koreksi must be SUBTRACTED because it's already included in jumlah_upah_kotor
+                // This matches the taxReportService formula: (components) - pot_koreksi
+                const caruman = calculateAllCaruman(emp.upah_dasar || emp.pay_rate || 0, emp.masa_kerja_jumlah || 0);
                 const astekMajikan = caruman.astek_majikan_jkk_jkm || 0;
                 const bpjsMajikan = caruman.bpjs_kes_majikan || 0;
-                emp.penghasilan_bruto = (emp.jumlah_upah_kotor || 0) + astekMajikan + bpjsMajikan;
+                emp.penghasilan_bruto = (emp.jumlah_upah_kotor || 0) - (emp.pot_koreksi || 0) + astekMajikan + bpjsMajikan;
 
                 // Calculate PPh21 TER
                 try {
