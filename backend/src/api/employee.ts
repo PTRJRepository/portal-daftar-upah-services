@@ -42,13 +42,15 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
         const religion = query.religion || undefined;
         const status = query.status || undefined;
         const forceHistory = query.force_history === "true";
+        const sortBy = query.sort_by || "nama"; // default: nama
+        const sortOrder = query.sort_order || "asc"; // default: asc
 
         // Strictly lock division for Kerani
         if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
             division = currentUser.divisions[0];
         }
 
-        console.log(`[API /list] Calling repository with:`, { gangCode, division, religion, status, forceHistory });
+        console.log(`[API /list] Calling repository with:`, { gangCode, division, religion, status, forceHistory, sortBy, sortOrder });
         const result = await employeeRepository.list({
             gangCode: gangCode,
             division: division,
@@ -56,7 +58,9 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             status: status,
             skip: parseInt(query.skip || "0"),
             limit: parseInt(query.limit || "500"),
-            forceHistory
+            forceHistory,
+            sortBy,
+            sortOrder
         });
         console.log(`[API /list] Repository returned ${result.employees.length} employees from ${result.dataSource}`);
         return { count: result.employees.length, data: result.employees, dataSource: result.dataSource };
@@ -68,7 +72,9 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
             status: t.Optional(t.String()),
             skip: t.Optional(t.String()),
             limit: t.Optional(t.String()),
-            force_history: t.Optional(t.String())
+            force_history: t.Optional(t.String()),
+            sort_by: t.Optional(t.String()),
+            sort_order: t.Optional(t.String())
         })
     })
     // --- Search Employees ---

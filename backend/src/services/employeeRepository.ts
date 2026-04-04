@@ -167,11 +167,13 @@ export class EmployeeRepository {
         religion?: string;
         status?: string;
         forceHistory?: boolean;
+        sortBy?: string;
+        sortOrder?: string;
     } = {}): Promise<{ employees: Employee[]; dataSource: string }> {
-        const { skip = 0, limit = 100, gangCode, locCode, division, religion, status, forceHistory = false } = options;
+        const { skip = 0, limit = 100, gangCode, locCode, division, religion, status, forceHistory = false, sortBy = "nama", sortOrder = "asc" } = options;
 
         try {
-            console.log(`[EmployeeRepository] list() called with:`, { gangCode, division, religion, status, skip, limit, forceHistory });
+            console.log(`[EmployeeRepository] list() called with:`, { gangCode, division, religion, status, skip, limit, forceHistory, sortBy, sortOrder });
             const gc = gangCode?.trim().toUpperCase() || null;
 
             let employees: Employee[] = [];
@@ -229,9 +231,19 @@ export class EmployeeRepository {
         division?: string;
         religion?: string;
         status?: string;
+        sortBy?: string;
+        sortOrder?: string;
     } = {}): Promise<Employee[]> {
-        const { gangCode, division } = options;
+        const { gangCode, division, sortBy = "nama", sortOrder = "asc" } = options;
         const gc = gangCode?.trim().toUpperCase() || null;
+
+        // Validate and sanitize sort parameters to prevent SQL injection
+        const validSortFields = ["nama", "nik", "emp_code"];
+        const sortField = validSortFields.includes(sortBy.toLowerCase()) ? sortBy.toLowerCase() : "nama";
+        const sortDirection = sortOrder.toLowerCase() === "desc" ? "DESC" : "ASC";
+
+        // Map sort field to SQL column
+        const sortColumn = sortField === "nik" || sortField === "emp_code" ? "e.EmpCode" : "e.EmpName";
 
         if (gc === "ALL" || !gc) {
             let params: any[] = [];
@@ -261,7 +273,7 @@ export class EmployeeRepository {
                 JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                 LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
                 ${whereClause}
-                ORDER BY e.EmpName
+                ORDER BY ${sortColumn} ${sortDirection}
             `;
 
             const rows = await this.db.query<any>(sql, params);
@@ -296,7 +308,7 @@ export class EmployeeRepository {
                 JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
                 LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
                 WHERE g.GangCode = ?
-                ORDER BY e.EmpName
+                ORDER BY ${sortColumn} ${sortDirection}
             `, [gc]);
 
             return rows.map((r: any) => ({
