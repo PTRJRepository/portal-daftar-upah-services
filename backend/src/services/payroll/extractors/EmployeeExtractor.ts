@@ -129,7 +129,7 @@ export class EmployeeExtractor {
                     RTRIM(g.Description) as gang_desc,
                     COALESCE(p.PayRate, 0) as pay_rate,
                     CASE 
-                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
                         ELSE COALESCE(p.RiceRation, 0)
                     END as beras_rate,
                     em.AppJoinGrpDate as join_date,
@@ -158,7 +158,7 @@ export class EmployeeExtractor {
                     RTRIM(g.Description) as gang_desc,
                     COALESCE(p.PayRate, 0) as pay_rate,
                     CASE 
-                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
                         ELSE COALESCE(p.RiceRation, 0)
                     END as beras_rate,
                     em.AppJoinGrpDate as join_date,
@@ -193,7 +193,7 @@ export class EmployeeExtractor {
                         RTRIM(g.Description) as gang_desc,
                         COALESCE(p.PayRate, 0) as pay_rate,
                         CASE 
-                            WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                            WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
                             ELSE COALESCE(p.RiceRation, 0)
                         END as beras_rate,
                         em.AppJoinGrpDate as join_date,

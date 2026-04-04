@@ -509,7 +509,7 @@ export class OtherIncomesService {
                         RTRIM(p.BankCode) as BankCode,
                         COALESCE(p.PayRate, 0) as PayRate,
                         CASE 
-                            WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                            WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
                             ELSE COALESCE(p.RiceRation, 0)
                         END as RiceRation,
                         gl.GangCode as GangCode,

@@ -229,7 +229,7 @@ export class PtkpTaxService {
                     RTRIM(g.GangCode) as gang_code,
                     RTRIM(g.LocCode) as loc_code,
                     CASE 
-                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
                         ELSE COALESCE(p.RiceRation, 0)
                     END as beras_rate
                 FROM HR_EMPLOYEE e
@@ -384,7 +384,7 @@ export class PtkpTaxService {
                         RTRIM(g.GangCode) as gang_code,
                         RTRIM(g.LocCode) as loc_code,
                         CASE 
-                            WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                            WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
                             ELSE COALESCE(p.RiceRation, 0)
                         END as beras_rate
                     FROM HR_EMPLOYEE e
@@ -492,7 +492,7 @@ export class PtkpTaxService {
                     RTRIM(e.EmpCode) as emp_code,
                     RTRIM(e.EmpName) as emp_name,
                     CASE 
-                        WHEN UPPER(CAST(p.RiceRation AS VARCHAR)) = 'BERASBHL' THEN 0
+                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
                         ELSE COALESCE(p.RiceRation, 0)
                     END as beras_rate
                 FROM HR_EMPLOYEE e
