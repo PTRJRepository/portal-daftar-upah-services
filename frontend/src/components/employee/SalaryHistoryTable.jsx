@@ -324,7 +324,7 @@ export default function SalaryHistoryTable({ empCode, months = 12, onPeriodClick
                                         {expandedColumns.pajak && <>
                                             <td className="sht-td-dim">{row.status_ptkp || '-'}</td>
                                             <td className="sht-td-dim">{row.kategori_ter || '-'}</td>
-                                            <td className="sht-td-num sht-td-dim">{row.tarif_pajak_ter || 0}%</td>
+                                            <td className="sht-td-num sht-td-dim">{Number(row.tarif_pajak_ter || 0).toFixed(2)}%</td>
                                             <td className="sht-td-num sht-td-dim">{fmt(row.pph21_ter)}</td>
                                         </>}
 

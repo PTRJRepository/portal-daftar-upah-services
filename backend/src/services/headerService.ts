@@ -285,21 +285,6 @@ export class HeaderService {
                     { field: "total_tunjangan", headerName: "Total" }
                 ]
             },
-            // [DYNAMIC] Pendapatan Lainnya - THR, Bonus, Custom + dynamically discovered types
-            {
-                field: "pendapatan_lainnya",
-                headerName: "PENDAPATAN LAINNYA",
-                children: [
-                    { field: "pendapatan_thr", headerName: "THR" },
-                    { field: "pendapatan_bonus", headerName: "Bonus" },
-                    { field: "pendapatan_custom", headerName: "Custom" },
-                    ...dynPendapatan.map(p => ({
-                        field: `pendapatan_${p.type.toLowerCase()}`,
-                        headerName: p.name
-                    })),
-                    { field: "pendapatan_lainnya", headerName: "Total" }
-                ]
-            },
             {
                 field: "premi_group",
                 headerName: "PREMI",
@@ -310,6 +295,23 @@ export class HeaderService {
                         headerName: h.replace(/^(TUNJANGAN\s+)?PREMI\s*/i, "").trim() || `Premi ${i + 1}`
                     })),
                     { field: "total_premi", headerName: "Total" }
+                ]
+            },
+            // [DYNAMIC] Pendapatan Lainnya - THR, Bonus, Custom, Kontan + dynamically discovered types
+            // Moved before POTONGAN as requested
+            {
+                field: "pendapatan_lainnya",
+                headerName: "PENDAPATAN LAINNYA",
+                children: [
+                    { field: "pendapatan_thr", headerName: "THR" },
+                    { field: "pendapatan_bonus", headerName: "Bonus" },
+                    { field: "pendapatan_kontan", headerName: "Kontan" },
+                    { field: "pendapatan_custom", headerName: "Custom" },
+                    ...dynPendapatan.map(p => ({
+                        field: `pendapatan_${p.type.toLowerCase()}`,
+                        headerName: p.name
+                    })),
+                    { field: "total_pendapatan_lainnya", headerName: "Total" }
                 ]
             },
             {
@@ -350,12 +352,11 @@ export class HeaderService {
             { field: "jumlah_hk", headerName: "JML HK" },
             { field: "gaji_pokok", headerName: "Gaji Pokok" },
             { field: "total_tunjangan", headerName: "Total Tunjangan" },
+            { field: "total_premi", headerName: "Total Premi" },
             // [DYNAMIC] Pendapatan Lainnya
             { field: "pendapatan_thr", headerName: "THR" },
             { field: "pendapatan_bonus", headerName: "Bonus" },
             { field: "pendapatan_lainnya", headerName: "Total Pendapatan Lain" },
-            { field: "total_premi", headerName: "Total Premi" },
-            { field: "jumlah_upah_kotor", headerName: "Jml Upah Kotor" },
             { field: "total_potongan", headerName: "Total Potongan" },
             { field: "upah_bersih", headerName: "Upah Bersih" }
         ];

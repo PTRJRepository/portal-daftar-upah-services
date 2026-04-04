@@ -196,13 +196,12 @@ export class PayrollCalculator {
 
         // ─────────────────────────────────────────────────────────
         // 6. PENGHASILAN BRUTO (Gross Income for PPh21 TER)
-        //    = UPAH KOTOR + pot_koreksi + pendapatan_lainnya
-        //      + astek_majikan + bpjs_majikan
+        //    = JUMLAH UPAH KOTOR + astek_majikan + bpjs_majikan
+        //    where: JUMLAH UPAH KOTOR = upah_kotor + pot_koreksi + pendapatan_lainnya
+        //    This ensures penghasilan_bruto ALWAYS includes pendapatan_lainnya (THR, Bonus, Custom, KONTAN)
         // ─────────────────────────────────────────────────────────
         const penghasilan_bruto =
-            komponen_kotor.subtotal
-            + input.pot_koreksi
-            + input.pendapatan_lainnya
+            jumlah_upah_kotor
             + input.astek_majikan
             + input.bpjs_majikan;
 

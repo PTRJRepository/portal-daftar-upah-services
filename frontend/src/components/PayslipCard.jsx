@@ -300,7 +300,7 @@ export default function PayslipCard({ data, month, year }) {
                                             <div className="payslip-tax-breakdown">
                                                 Dasar Pengenaan Pajak (Bruto):<br />
                                                 Rp{formatCurrency(payroll.penghasilan_bruto)}<br />
-                                                Tarif TER ({payroll.status_ptkp}): {payroll.tarif_pajak_ter}%<br />
+                                                Tarif TER ({payroll.status_ptkp}): {Number(payroll.tarif_pajak_ter).toFixed(2)}%<br />
                                                 Pajak = Bruto x Tarif
                                             </div>
                                         )}

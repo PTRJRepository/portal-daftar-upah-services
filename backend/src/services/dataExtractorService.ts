@@ -1450,6 +1450,7 @@ export class DataExtractorService {
                     ])
                 ),
                 pendapatan_lainnya: pendapatan_lainnya_amount,
+                total_pendapatan_lainnya: pendapatan_lainnya_amount, // Same as pendapatan_lainnya for display
                 // REMOVED: pot_pendapatan_lainnya - sudah masuk PayrollCalculator via pendapatan_lainnya
                 // Jika di-output lagi di sini, maka akan double-count di upstream services (reportService, dll)
                 // REMOVED: premi: empPremi - causes double-counting in frontend
@@ -3445,45 +3446,8 @@ export class DataExtractorService {
             const statusPTKP = dbPtkpMap.get(empCode.toUpperCase()) || mapBerasRateToPTKP(berasRate);
             const kategoriTER = mapPTKPToTER(statusPTKP);
 
-            // Calculate penghasilan_bruto for PPH21 TER
-            // Formula: gaji_pokok_aktual + total_tunjangan + lembur + total_premi + astek_084 + bpjs_kes_majikan
-            const penghasilan_bruto = gaji_pokok_aktual
-                + total_tunjangan
-                + (empLembur.jumlah || 0)
-                + total_premi
-                + (caruman.astek_majikan_jkk_jkm || 0)
-                + (caruman.bpjs_kes_majikan || 0);
-
-            // Calculate PPh21 TER
-            let pph21_ter = 0;
-            let tarif_pajak_ter = 0;
-            try {
-                const { pph21TerService } = await import('./pph21TerService');
-                
-                // [DIAGNOSTIC] Log detailed tax calculation inputs
-                console.log(`[DataExtractor] Phase 4 - Tax calc for ${empCode}:`);
-                console.log(`  ├─ statusPTKP=${statusPTKP}, kategoriTER=${kategoriTER}`);
-                console.log(`  ├─ gaji_pokok_aktual=${gaji_pokok_aktual}`);
-                console.log(`  ├─ total_tunjangan=${total_tunjangan} (beras=${berasJumlah}, jabatan=${jabatanJumlah}, masaKerja=${masaKerjaJumlah})`);
-                console.log(`  ├─ lembur=${empLembur.jumlah || 0}`);
-                console.log(`  ├─ total_premi=${total_premi}`);
-                console.log(`  ├─ astek_majikan=${caruman.astek_majikan_jkk_jkm || 0}, bpjs_kes_majikan=${caruman.bpjs_kes_majikan || 0}`);
-                console.log(`  └─ penghasilan_bruto=${penghasilan_bruto}`);
-
-                const pphResult = pph21TerService.calculatePph21Ter(penghasilan_bruto, statusPTKP);
-                pph21_ter = pphResult.tax_amount || 0;
-                tarif_pajak_ter = pphResult.rate_percent || 0;
-
-                console.log(`[DataExtractor] Phase 4 - Tax result for ${empCode}: pph21_ter=${pph21_ter}, tarif_pajak_ter=${tarif_pajak_ter}%, ter_category=${pphResult.ter_category}`);
-                
-                // [WARNING] If tax is 0 but employee has income, log warning
-                if (pph21_ter === 0 && penghasilan_bruto > 0) {
-                    console.warn(`[DataExtractor] ⚠️ WARNING: ${empCode} has income ${penghasilan_bruto} but tax is 0. PTKP=${statusPTKP}, TER=${kategoriTER}`);
-                }
-            } catch (e: any) {
-                console.error(`[DataExtractor] Phase 4 - PPh21 TER calculation failed for ${empCode}:`, e.message);
-                console.error(`[DataExtractor] Stack:`, e.stack);
-            }
+            // NOTE: penghasilan_bruto will be calculated by PayrollCalculator in Phase 4b
+            // which includes pendapatan_lainnya (THR, Bonus, Custom, KONTAN) for accurate tax calculation
 
             // Apply final data directly to emp object
             emp.hari_kerja = hari_kerja;
@@ -3502,9 +3466,7 @@ export class DataExtractorService {
             
             // Total tunjangan for display
             emp.total_tunjangan_display = total_tunjangan;
-            emp.penghasilan_bruto = penghasilan_bruto; // For PAJAK section
-            emp.pph21_ter = pph21_ter; // PPh21 TER tax amount
-            emp.tarif_pajak_ter = tarif_pajak_ter; // TER tax rate percentage
+            // NOTE: penghasilan_bruto, pph21_ter, tarif_pajak_ter will be set by PayrollCalculator in Phase 4b
             emp.upah_kotor_pajak = jumlah_upah_kotor; // For PAJAK section (before pendapatan lainnya added)
 
             emp.jumlah_upah_kotor = jumlah_upah_kotor;
@@ -3614,15 +3576,21 @@ export class DataExtractorService {
                     emp[fieldKey] = inc.amount;
                 }
 
-                // Total pendapatan lainnya (excluding kontan which is handled separately)
-                const otherIncomeTotal = incomes
-                    .filter(i => i.type !== 'KONTAN' && i.type !== 'KONTANAN')
-                    .reduce((sum, i) => sum + i.amount, 0);
-                emp.total_pendapatan_lainnya = otherIncomeTotal;
-                
-                // Update jumlah_upah_kotor to include pendapatan lainnya
-                emp.jumlah_upah_kotor = (emp.jumlah_upah_kotor || 0) + otherIncomeTotal;
+                // NOTE: total_pendapatan_lainnya sudah dihitung di Phase 4a dari PayrollCalculator
+                // dan sudah termasuk semua pendapatan lainnya (THR, Bonus, Custom, KONTAN)
+                // Tidak perlu dihitung ulang di sini untuk menghindari inkonsistensi
+
+                // Update jumlah_upah_kotor to include pendapatan lainnya (jika belum termasuk)
+                // NOTE: PayrollCalculator sudah include pendapatan_lainnya di jumlah_upah_kotor
+                // Jadi tidak perlu ditambah lagi di sini
                 emp.upah_kotor_pajak = emp.jumlah_upah_kotor; // For PAJAK section
+
+                // [NEW] Include pendapatan_lainnya in total_potongan
+                // This ensures total_potongan reflects all deductions including other incomes
+                if (emp.total_pendapatan_lainnya && emp.total_pendapatan_lainnya > 0) {
+                    emp.total_potongan = (emp.total_potongan || 0) + emp.total_pendapatan_lainnya;
+                    emp.total_potongan_bersih = emp.total_potongan;
+                }
             }
             debug(CATEGORY, `💰 Other incomes attached to ${incomeByEmp.size} employees`);
         } catch (e) {

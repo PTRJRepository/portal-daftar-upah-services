@@ -28,7 +28,7 @@ const formatNumber = (amount) => {
 
 const formatPercent = (val) => {
     if (val == null || val === 0) return '0%'
-    return `${val}%`
+    return `${Number(val).toFixed(2)}%`
 }
 
 // PTKP Status color mapping

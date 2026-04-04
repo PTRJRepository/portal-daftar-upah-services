@@ -1115,7 +1115,9 @@ export default function CustomPayrollTable({
 
             // Discover dynamic pendapatan_* fields by scanning rows (not in headers map)
             // EXCLUDE: pendapatan_tidak_tetap (duplikat dari pendapatan_thr + pendapatan_kontan, tidak boleh tampil sebagai kolom)
-            const excludedPendapatan = ['pendapatan_tidak_tetap', 'pendapatan_lainnya'];
+            // EXCLUDE: pendapatan_lainnya (total, akan ditampilkan terpisah)
+            // EXCLUDE: pendapatan_kontan (sudah punya kolom sendiri di UPAH KOTOR)
+            const excludedPendapatan = ['pendapatan_tidak_tetap', 'pendapatan_lainnya', 'pendapatan_kontan'];
             const allPendapatanKeys = new Set();
             employeeRows.forEach(row => {
                 Object.keys(row).forEach(key => {
@@ -1402,9 +1404,9 @@ export default function CustomPayrollTable({
                     w: 80,
                     className: 'text-center',
                     render: (row) => {
-                        const val = row.tarif_pajak_ter || 0;
+                        const val = Number(row.tarif_pajak_ter) || 0;
                         if (val === 0) return '0%';
-                        return `${val}%`;
+                        return `${val.toFixed(2)}%`;
                     }
                 }
             ] : []),
@@ -1924,22 +1926,6 @@ export default function CustomPayrollTable({
             }
         });
 
-        cols.push({
-            field: 'pendapatan_lainnya',
-            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'TOTAL LAINNYA (+)'],
-            w: 95,
-            className: 'text-right font-bold',
-            render: (row) => {
-                const empCode = row.emp_code || row.nik;
-                const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
-                const kontanVal = kontanEdit ? kontanEdit.value : (Number(row.pendapatan_kontan || 0));
-                const baseKontan = Number(row.pendapatan_kontan || 0);
-                const val = Number(row.pendapatan_lainnya || 0) - baseKontan + (kontanVal || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
-            }
-        });
-
         // POTONGAN UPAH KOTOR - KOREKSI columns (all variations)
         // Display each KOREKSI variation as a separate column
         const koreksiFields = Object.entries(dynamicHeaders.potongan)
@@ -2194,6 +2180,39 @@ export default function CustomPayrollTable({
 
         }
 
+        // PENDAPATAN LAINNYA (THR, Bonus, Custom, KONTAN) - shown BEFORE Total Potongan
+        // This includes ALL other incomes that are added to gross pay and deducted in total_potongan
+        const activePendapatan = activePendapatanFields.filter(f => f !== 'pendapatan_lainnya');
+        if (activePendapatan.length > 0 || isEditMode) {
+            // Individual income types (THR, Bonus, Custom, KONTAN)
+            for (const field of activePendapatan) {
+                const baseType = field.replace('pendapatan_', '');
+                const displayName = baseType.toUpperCase() + ' (+)';
+                cols.push({
+                    field,
+                    headers: ['PENDAPATAN LAINNYA', null, null, displayName],
+                    w: 90,
+                    className: 'text-right font-bold',
+                    render: (row) => {
+                        const val = Number(row[field] || 0);
+                        if (val === 0) return '-';
+                        return formatNumber(val);
+                    }
+                });
+            }
+            // Total Pendapatan Lainnya (summary)
+            cols.push({
+                field: 'total_pendapatan_lainnya',
+                headers: ['PENDAPATAN LAINNYA', null, null, 'TOTAL LAINNYA (+)'],
+                w: 100,
+                className: 'text-right font-bold',
+                render: (row) => {
+                    const val = Number(row.total_pendapatan_lainnya || 0);
+                    return formatNumber(val);
+                }
+            });
+        }
+
         // Total Potongan Bersih (Always Shown) - sync with kontan edits
         // Now includes total_pendapatan_lainnya (deduction to balance with UPAH KOTOR)
         // Adjust Level 1 header to preserve colspan merging (use empty string when expanded)
@@ -2215,39 +2234,6 @@ export default function CustomPayrollTable({
                 return formatNumber(val);
             }
         });
-
-        // PENDAPATAN LAINNYA (THR, Bonus, Custom) - shown in POTONGAN UPAH BERSIH section
-        // These are DEDUCTED here to balance with UPAH KOTOR (added above, deducted below)
-        const activePendapatan = activePendapatanFields.filter(f => f !== 'pendapatan_lainnya');
-        if (activePendapatan.length > 0 || isEditMode) {
-            for (const field of activePendapatan) {
-                const baseType = field.replace('pendapatan_', '');
-                const displayName = baseType.toUpperCase() + ' (-)';
-                cols.push({
-                    field,
-                    headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, displayName],
-                    w: 90,
-                    className: 'text-right',
-                    render: (row) => {
-                        const val = Number(row[field] || 0);
-                        if (val === 0) return '-';
-                        return formatNumber(val);
-                    }
-                });
-            }
-            // Total Pendapatan Lainnya (as deduction)
-            cols.push({
-                field: 'total_pendapatan_lainnya',
-                headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, 'TOTAL LAINNYA (-)'],
-                w: 100,
-                className: 'text-right font-bold',
-                render: (row) => {
-                    const val = Number(row.total_pendapatan_lainnya || 0);
-                    if (val === 0) return '-';
-                    return formatNumber(val);
-                }
-            });
-        }
 
         // TOTAL UPAH (Summary group) - Upah Bersih
         // Note: Kontan adds to both UPAH KOTOR (+) and POTONGAN BERSIH (+) equally,

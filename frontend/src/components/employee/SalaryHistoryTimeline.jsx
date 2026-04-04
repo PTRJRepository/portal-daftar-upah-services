@@ -317,7 +317,7 @@ export default function SalaryHistoryTimeline({ empCode, months = 12 }) {
                                         <Row label="Upah Kotor Pajak" value={item.upah_kotor_pajak} />
                                         <Row label="ASTEK 0.84%" value={item.astek_084} isMuted />
                                         <Row label="BPJS Kes. Majikan 4%" value={item.bpjs_kesehatan_majikan_4_pct} isMuted />
-                                        <Row label="Tarif TER" value={`${item.tarif_pajak_ter || 0}%`} />
+                                        <Row label="Tarif TER" value={`${Number(item.tarif_pajak_ter || 0).toFixed(2)}%`} />
                                         <Row label="PPH21 TER" value={item.pph21_ter} isTotal />
                                     </DetailSection>
 

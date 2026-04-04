@@ -505,7 +505,7 @@ export default function PayrollHistoryComparison({
                                                             <div className="phc-detail-grid">
                                                                 <div><span>PTKP:</span> {item.daftar_upah?.status_ptkp || '-'}</div>
                                                                 <div><span>Kategori TER:</span> {item.daftar_upah?.kategori_ter || '-'}</div>
-                                                                <div><span>Tarif:</span> {item.daftar_upah?.tarif_pajak_ter || 0}%</div>
+                                                                <div><span>Tarif:</span> {Number(item.daftar_upah?.tarif_pajak_ter || 0).toFixed(2)}%</div>
                                                                 <div><span>PPH21 TER:</span> {formatCurrency(item.daftar_upah?.pph21_ter)}</div>
                                                             </div>
                                                         </div>

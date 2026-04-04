@@ -1086,7 +1086,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
                                             <td><strong>Penghasilan Bruto</strong></td>
                                             <td className="text-right"><strong>{formatNumber(popupData.penghasilan_bruto || 0)}</strong></td>
                                         </tr>
-                                        <tr><td>Tarif TER</td><td className="text-right">{formatPercent(popupData.tarif_pajak_ter || 0)}%</td></tr>
+                                        <tr><td>Tarif TER</td><td className="text-right">{formatPercent(popupData.tarif_pajak_ter || 0)}</td></tr>
                                         <tr className="pph21-popup-result">
                                             <td><strong>PPh21 TER</strong></td>
                                             <td className="text-right"><strong>{formatNumber(popupData.pph21_ter || 0)}</strong></td>
@@ -1095,7 +1095,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
                                 </table>
 
                                 <div className="pph21-popup-formula">
-                                    <em>Formula: PPh21 = Penghasilan Bruto × Tarif TER ({formatPercent(popupData.tarif_pajak_ter || 0)}%)</em>
+                                    <em>Formula: PPh21 = Penghasilan Bruto × Tarif TER ({formatPercent(popupData.tarif_pajak_ter || 0)})</em>
                                 </div>
                             </div>
                         ) : null}
