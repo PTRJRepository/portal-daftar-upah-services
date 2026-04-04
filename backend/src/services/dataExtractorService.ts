@@ -3436,6 +3436,9 @@ export class DataExtractorService {
             const total_potongan = pot_astek + pot_bpjs + pot_spsi + pot_pph21 + other_potongan;
             const upah_bersih = jumlah_upah_kotor - total_potongan;
 
+            // Pendapatan lainnya will be added here (but tracked separately for balance)
+            // Note: total_pendapatan_lainnya is set in Phase 4b after other incomes lookup
+
             // Use cached PTKP or default based on beras rate
             const statusPTKP = dbPtkpMap.get(empCode.toUpperCase()) || mapBerasRateToPTKP(berasRate);
             const kategoriTER = mapPTKPToTER(statusPTKP);
@@ -3485,6 +3488,7 @@ export class DataExtractorService {
             emp.penghasilan_bruto = penghasilan_bruto; // For PAJAK section
             emp.pph21_ter = pph21_ter; // PPh21 TER tax amount
             emp.tarif_pajak_ter = tarif_pajak_ter; // TER tax rate percentage
+            emp.upah_kotor_pajak = jumlah_upah_kotor; // For PAJAK section (before pendapatan lainnya added)
 
             emp.jumlah_upah_kotor = jumlah_upah_kotor;
             
@@ -3597,6 +3601,10 @@ export class DataExtractorService {
                     .filter(i => i.type !== 'KONTAN' && i.type !== 'KONTANAN')
                     .reduce((sum, i) => sum + i.amount, 0);
                 emp.total_pendapatan_lainnya = otherIncomeTotal;
+                
+                // Update jumlah_upah_kotor to include pendapatan lainnya
+                emp.jumlah_upah_kotor = (emp.jumlah_upah_kotor || 0) + otherIncomeTotal;
+                emp.upah_kotor_pajak = emp.jumlah_upah_kotor; // For PAJAK section
             }
             debug(CATEGORY, `💰 Other incomes attached to ${incomeByEmp.size} employees`);
         } catch (e) {

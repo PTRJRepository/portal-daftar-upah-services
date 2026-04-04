@@ -303,6 +303,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     // Pendapatan Lainnya (standard types)
                     'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
                     'pendapatan_lainnya', 'pot_pendapatan_lainnya',
+                    // Tax-related fields for aggregation
+                    'penghasilan_bruto', 'upah_kotor_pajak',
                     // Harvest items
                     'bunches_total', 'bunches_ripe', 'bunches_unripe',
                     'bunches_underripe', 'bunches_overripe', 'bunches_rotten', 'bunches_abnormal',
@@ -531,7 +533,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     'upah_bersih', 'koreksi_hk',
                     // Pendapatan Lainnya (standard types)
                     'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
-                    'pendapatan_lainnya', 'pot_pendapatan_lainnya'
+                    'pendapatan_lainnya', 'pot_pendapatan_lainnya',
+                    // Tax-related fields
+                    'penghasilan_bruto', 'upah_kotor_pajak',
+                    // Harvest items
+                    'bunches_total', 'bunches_ripe', 'bunches_unripe',
+                    'bunches_underripe', 'bunches_overripe', 'bunches_rotten', 'bunches_abnormal',
+                    'loose_fruit', 'bunches_transactions'
                 ];
 
                 // [FIX] Collect ALL dynamic field names (premi, potongan, pendapatan) upfront
@@ -1326,6 +1334,74 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     let lastMeta: any = null;
                     let lastPhase = '';
                     const streamStartTime = Date.now();
+
+                    // Helper function to calculate totals for streaming endpoint
+                    // Must be defined inside start() to access gangs Map directly
+                    const calculateGangTotals = (employees: any[]) => {
+                        // Filter active employees (hari_kerja > 0)
+                        const activeEmployees = employees.filter((emp: any) => {
+                            const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
+                            const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
+                            return hari_kerja > 0;
+                        });
+
+                        const totals: Record<string, number> = {};
+                        const numericFields = [
+                            'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
+                            'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
+                            'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
+                            'potongan_upah_kotor_total', 'jumlah_upah_kotor',
+                            'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
+                            'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
+                            'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
+                            'upah_bersih', 'koreksi_hk',
+                            // Pendapatan Lainnya
+                            'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
+                            'pendapatan_lainnya', 'pot_pendapatan_lainnya',
+                            // Tax-related fields
+                            'penghasilan_bruto', 'upah_kotor_pajak',
+                            // Harvest items
+                            'bunches_total', 'bunches_ripe', 'bunches_unripe',
+                            'bunches_underripe', 'bunches_overripe', 'bunches_rotten', 'bunches_abnormal',
+                            'loose_fruit', 'bunches_transactions'
+                        ];
+
+                        // Initialize totals
+                        for (const field of numericFields) {
+                            totals[field] = 0;
+                        }
+                        totals['employee_count'] = activeEmployees.length;
+
+                        // Sum all numeric fields from active employees
+                        for (const emp of activeEmployees) {
+                            for (const field of numericFields) {
+                                const val = emp[field];
+                                if (val !== null && val !== undefined) {
+                                    totals[field] += parseFloat(val) || 0;
+                                }
+                            }
+
+                            // Also sum dynamic premi fields (premi_*) and dynamic potongan fields
+                            for (const key of Object.keys(emp)) {
+                                if (key.startsWith('premi_') && key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'premi_koreksi') {
+                                    const val = emp[key];
+                                    if (val !== null && val !== undefined && typeof val === 'number') {
+                                        if (!totals[key]) totals[key] = 0;
+                                        totals[key] += val;
+                                    }
+                                }
+                                if (key.startsWith('KOREKSI') || key.startsWith('POTONGAN')) {
+                                    const val = emp[key];
+                                    if (val !== null && val !== undefined && typeof val === 'number') {
+                                        if (!totals[key]) totals[key] = 0;
+                                        totals[key] += val;
+                                    }
+                                }
+                            }
+                        }
+
+                        return totals;
+                    };
                     const allDynamicPremiHeaders = new Set<string>();
                     const allDynamicPotonganHeaders = new Set<string>();
                     let globalPremiTitleMap: Record<string, string> = {};
@@ -1441,19 +1517,28 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         if (phase === 'complete') {
                             console.log(`[Stream] ✅ Complete: ${meta.message}`);
 
-                            // Send final filtered & sorted gangs
+                            // Calculate grand total from all employees across all gangs
+                            const allEmployees: any[] = [];
+                            for (const [, employees] of gangs) {
+                                allEmployees.push(...employees);
+                            }
+                            const grandTotal = calculateGangTotals(allEmployees);
+
+                            // Send final filtered & sorted gangs with gang_totals
                             for (const [gangCodeKey, employees] of gangs) {
                                 const idx = gangOrder.indexOf(gangCodeKey);
                                 const slimEmployees = employees.map((emp: any) => {
                                     const { _phase, _enriched, _loading, ...rest } = emp;
                                     return slimEmployee(rest);
                                 });
+                                const gangTotals = calculateGangTotals(employees);
 
                                 controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
                                     gang_code: gangCodeKey,
                                     employees: slimEmployees,
                                     gang_index: idx >= 0 ? idx : gangIndex++,
                                     employees_count: employees.length,
+                                    gang_totals: gangTotals,
                                     phase: 'complete',
                                     is_complete: true
                                 })}\n\n`));
@@ -1477,6 +1562,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
                             controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({
                                 message: meta.message,
+                                grand_total: grandTotal,
                                 total_execution_ms: Date.now() - streamStartTime,
                                 total_gangs: meta.total_gangs,
                                 total_employees: meta.total_employees

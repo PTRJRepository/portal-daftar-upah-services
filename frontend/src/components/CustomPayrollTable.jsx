@@ -1991,7 +1991,7 @@ export default function CustomPayrollTable({
         cols.push({ field: 'potongan_upah_kotor_total', headers: ['POTONGAN UPAH KOTOR', null, null, 'TOTAL KOREKSI'], w: 95, className: 'text-right font-bold' });
 
         // UPAH KOTOR (separate group, not child of POTONGAN UPAH KOTOR) - sync with kontan
-        // Includes total_pendapatan_lainnya (then deducted in Potongan section for balance)
+        // Backend now includes total_pendapatan_lainnya in jumlah_upah_kotor
         cols.push({
             field: 'jumlah_upah_kotor',
             headers: ['UPAH KOTOR', '', null, 'JUMLAH'],
@@ -2002,10 +2002,8 @@ export default function CustomPayrollTable({
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
                 const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
                 const baseKontan = Number(row.pendapatan_kontan || 0);
-                const baseUpahKotor = Number(row.jumlah_upah_kotor || 0);
-                const totalPendapatanLainnya = Number(row.total_pendapatan_lainnya || 0);
-                // Upah Kotor = base + total pendapatan lainnya + kontan adjustment
-                const val = baseUpahKotor + totalPendapatanLainnya - baseKontan + (kontanVal || 0);
+                // Backend already includes pendapatan_lainnya, just adjust for kontan
+                const val = Number(row.jumlah_upah_kotor || 0) - baseKontan + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
             }
