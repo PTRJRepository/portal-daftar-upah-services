@@ -2270,13 +2270,15 @@ export default function CustomPayrollTable({
         return cols;
     }, [dynamicHeaders, activePremiFields, activePotFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells]);
 
-    // === EXPORT TO EXCEL HANDLER ===
+    // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
     const handleExportToExcel = useCallback(async () => {
         if (rows.length === 0) {
             alert('Tidak ada data untuk di-export');
             return null;
         }
         try {
+            // Use columnDefs yang ada (sudah mencakup semua kolom yang visible)
+            // Export akan menyertakan semua field yang ada di rows data
             const fileName = await exportPayrollToExcel(rows, columnDefs, grandTotal, {
                 division,
                 gangCode,

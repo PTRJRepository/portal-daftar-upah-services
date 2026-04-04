@@ -145,9 +145,18 @@ export class HistorySeederService {
             if (seederMode === 'ALL' || seederMode === 'PAYROLL') {
                 // 1. Get payroll data from real-time database
                 HistorySeederService.updateProgress({ current_step: 'Mengambil data payroll live...' });
-                const payrollData = await this.fetchPayrollData(options);
+                let payrollData: any[] = [];
+                try {
+                    payrollData = await this.fetchPayrollData(options);
+                    console.log(`[HistorySeeder] fetchPayrollData returned ${payrollData.length} gangs`);
+                } catch (fetchError: any) {
+                    console.error(`[HistorySeeder] fetchPayrollData failed: ${fetchError.message}`);
+                    result.errors.push(`Fetch payroll data failed: ${fetchError.message}`);
+                    return result;
+                }
 
                 if (!payrollData || payrollData.length === 0) {
+                    console.warn(`[HistorySeeder] No payroll data found for period ${options.periodMonth}/${options.periodYear}`);
                     if (seederMode === 'PAYROLL') {
                         result.errors.push('No payroll data found for the specified period');
                         return result;
@@ -219,6 +228,32 @@ export class HistorySeederService {
     }
 
     /**
+     * Helper: Retry a function with exponential backoff on timeout
+     */
+    private async withRetry<T>(fn: () => Promise<T>, context: string, maxRetries: number = 3): Promise<T> {
+        let lastError: any;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                return await fn();
+            } catch (error: any) {
+                lastError = error;
+                const isTimeout = error.message?.includes('timed out') ||
+                    error.message?.includes('timeout') ||
+                    error.message?.includes('Gateway returned 500');
+
+                if (isTimeout && attempt < maxRetries) {
+                    const delay = attempt * 2000; // 2s, 4s, 6s
+                    console.warn(`[HistorySeeder] ${context} timeout (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    throw error;
+                }
+            }
+        }
+        throw lastError;
+    }
+
+    /**
      * Fetch payroll data from real-time database
      */
     private async fetchPayrollData(options: SeederOptions): Promise<any[]> {
@@ -230,17 +265,21 @@ export class HistorySeederService {
         // read from the history DB (which is empty — it's the DB we're trying to seed!).
         console.log(`[HistorySeeder] Fetching payroll data for ${options.periodMonth}/${options.periodYear}...`);
         console.log(`[HistorySeeder] Division: ${options.divisionCode || 'ALL'}, Gang: ${options.gangCode || 'ALL'}`);
-        
-        const rawData = await dataExtractorService.extractPayrollData(
-            options.periodMonth,
-            options.periodYear,
-            options.gangCode || 'ALL',
-            options.divisionCode,
-            null,
-            Config.DB_PROFILE,
-            false,  // includeVirtualGangs
-            false   // useHistoryDb — always read from live DB for seeding
-        );
+
+        console.log(`[HistorySeeder] Calling extractPayrollData...`);
+        const rawData = await this.withRetry(async () => {
+            return await dataExtractorService.extractPayrollData(
+                options.periodMonth,
+                options.periodYear,
+                options.gangCode || 'ALL',
+                options.divisionCode,
+                null,
+                Config.DB_PROFILE,
+                false,  // includeVirtualGangs
+                false   // useHistoryDb — always read from live DB for seeding
+            );
+        }, 'extractPayrollData');
+        console.log(`[HistorySeeder] extractPayrollData completed, ${rawData.data_rows?.length || 0} rows`);
 
         // Group by gang
         const gangMap = new Map<string, any[]>();
@@ -507,6 +546,7 @@ export class HistorySeederService {
 
     /**
      * Seed transaction data (Taskreg and ADTrans)
+     * Uses chunking to avoid SQL Server timeout on large IN clauses
      */
     private async seedTransactionData(
         historyId: string,
@@ -521,155 +561,175 @@ export class HistorySeederService {
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-01`;
 
         // Get employee codes for this division/gang
-        const empCodes = await this.getEmployeeCodes(options);
+        const empCodes = await this.withRetry(
+            () => this.getEmployeeCodes(options),
+            'getEmployeeCodes'
+        );
 
         if (empCodes.length === 0) return;
 
-        const empList = empCodes.map(e => `'${e}'`).join(',');
+        // Chunk empCodes to avoid SQL timeout on large IN clauses
+        const CHUNK_SIZE = 100;
+        const chunks: string[][] = [];
+        for (let i = 0; i < empCodes.length; i += CHUNK_SIZE) {
+            chunks.push(empCodes.slice(i, i + CHUNK_SIZE));
+        }
+        console.log(`[HistorySeeder] Seeding transactions in ${chunks.length} chunks (${CHUNK_SIZE} empCodes each)`);
 
-        // 1. Seed Taskreg data
+        // 1. Seed Taskreg data - fetch AND save in same chunk
         try {
-            const taskregRows = await db.query<any>(`
-                SELECT 
-                    tr.ID as master_id, tr.RegNo, tr.RegDate, tr.EmpCode,
-                    trl.ID as line_id, trl.Line, trl.TrxDate, trl.TaskCode, 
-                    trl.Hours, trl.OT, trl.Rate, trl.Amount, trl.TappingType
-                FROM PR_TASKREG tr
-                JOIN PR_TASKREGLN trl ON tr.ID = trl.MasterID
-                WHERE tr.EmpCode IN (${empList})
-                  AND trl.TrxDate >= '${startDate}' AND trl.TrxDate < '${endDate}'
-                
-                UNION ALL
-                
-                SELECT 
-                    tr.ID as master_id, tr.RegNo, tr.RegDate, tr.EmpCode,
-                    trl.ID as line_id, trl.Line, trl.TrxDate, trl.TaskCode,
-                    trl.Hours, trl.OT, trl.Rate, trl.Amount, trl.TappingType
-                FROM PR_TASKREG_ARC tr
-                JOIN PR_TASKREGLN_ARC trl ON tr.ID = trl.MasterID
-                WHERE tr.EmpCode IN (${empList})
-                  AND trl.TrxDate >= '${startDate}' AND trl.TrxDate < '${endDate}'
-            `);
+            for (const chunk of chunks) {
+                const taskregRows = await this.withRetry(async () => {
+                    const empList = chunk.map(e => `'${e}'`).join(',');
+                    return await db.query<any>(`
+                        SELECT
+                            tr.ID as master_id, tr.RegNo, tr.RegDate, tr.EmpCode,
+                            trl.ID as line_id, trl.Line, trl.TrxDate, trl.TaskCode,
+                            trl.Hours, trl.OT, trl.Rate, trl.Amount, trl.TappingType
+                        FROM PR_TASKREG tr
+                        JOIN PR_TASKREGLN trl ON tr.ID = trl.MasterID
+                        WHERE tr.EmpCode IN (${empList})
+                          AND trl.TrxDate >= '${startDate}' AND trl.TrxDate < '${endDate}'
 
-            for (const row of taskregRows) {
-                const taskregData: HistoryTaskreg = {
-                    history_id: historyId,
-                    original_master_id: row.master_id,
-                    reg_no: row.RegNo,
-                    reg_date: row.RegDate,
-                    emp_code: row.EmpCode?.trim(),
-                    original_line_id: row.line_id,
-                    line_no: row.Line,
-                    trx_date: row.TrxDate,
-                    task_code: row.TaskCode?.trim(),
-                    hours: row.Hours || 0,
-                    ot: row.OT === 1 || row.OT === true,
-                    rate: row.Rate,
-                    amount: row.Amount || 0,
-                    tapping_type: row.TappingType?.trim(),
-                    is_cuti_tahunan: false, // Will be determined by task code
-                    is_cuti_sakit: false,
-                    is_cuti_minggu: false,
-                    is_cuti_nasional: false,
-                    is_hari_kerja: true,
-                    is_lembur: row.OT === 1 || row.OT === true,
-                    period_month: options.periodMonth,
-                    period_year: options.periodYear,
-                    source_table: row.master_id > 1000000000 ? 'PR_TASKREG_ARC' : 'PR_TASKREG'
-                };
+                        UNION ALL
 
-                await historyDatabaseService.saveTaskregHistory(taskregData);
-                result.records_inserted.taskreg++;
+                        SELECT
+                            tr.ID as master_id, tr.RegNo, tr.RegDate, tr.EmpCode,
+                            trl.ID as line_id, trl.Line, trl.TrxDate, trl.TaskCode,
+                            trl.Hours, trl.OT, trl.Rate, trl.Amount, trl.TappingType
+                        FROM PR_TASKREG_ARC tr
+                        JOIN PR_TASKREGLN_ARC trl ON tr.ID = trl.MasterID
+                        WHERE tr.EmpCode IN (${empList})
+                          AND trl.TrxDate >= '${startDate}' AND trl.TrxDate < '${endDate}'
+                    `, []);
+                }, 'seedTransactionData Taskreg chunk');
+
+                // Save each row
+                for (const row of taskregRows) {
+                    const taskregData: HistoryTaskreg = {
+                        history_id: historyId,
+                        original_master_id: row.master_id,
+                        reg_no: row.RegNo,
+                        reg_date: row.RegDate,
+                        emp_code: row.EmpCode?.trim(),
+                        original_line_id: row.line_id,
+                        line_no: row.Line,
+                        trx_date: row.TrxDate,
+                        task_code: row.TaskCode?.trim(),
+                        hours: row.Hours || 0,
+                        ot: row.OT === 1 || row.OT === true,
+                        rate: row.Rate,
+                        amount: row.Amount || 0,
+                        tapping_type: row.TappingType?.trim(),
+                        is_cuti_tahunan: false,
+                        is_cuti_sakit: false,
+                        is_cuti_minggu: false,
+                        is_cuti_nasional: false,
+                        is_hari_kerja: true,
+                        is_lembur: row.OT === 1 || row.OT === true,
+                        period_month: options.periodMonth,
+                        period_year: options.periodYear,
+                        source_table: row.master_id > 1000000000 ? 'PR_TASKREG_ARC' : 'PR_TASKREG'
+                    };
+                    await historyDatabaseService.saveTaskregHistory(taskregData);
+                    result.records_inserted.taskreg++;
+                }
             }
+            console.log(`[HistorySeeder] Taskreg seeding completed`);
         } catch (error: any) {
             result.errors.push(`Error seeding taskreg: ${error.message}`);
         }
 
-        // 2. Seed ADTrans data
+        // 2. Seed ADTrans data - fetch AND save in same chunk
         try {
-            const adtransRows = await db.query<any>(`
-                SELECT 
-                    t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc, t.EmpCode,
-                    ln.ID as line_id, ln.Line, ln.TaskCode, ln.Amount, ln.Qty, ln.UOM,
-                    tc.TaskDesc
-                FROM PR_ADTRANS t
-                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-                LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
-                WHERE t.EmpCode IN (${empList})
-                  AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
-                
-                UNION ALL
-                
-                SELECT 
-                    t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc, t.EmpCode,
-                    ln.ID as line_id, ln.Line, ln.TaskCode, ln.Amount, ln.Qty, ln.UOM,
-                    tc.TaskDesc
-                FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-                LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
-                WHERE t.EmpCode IN (${empList})
-                  AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
-            `);
+            for (const chunk of chunks) {
+                const adtransRows = await this.withRetry(async () => {
+                    const empList = chunk.map(e => `'${e}'`).join(',');
+                    return await db.query<any>(`
+                        SELECT
+                            t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc, t.EmpCode,
+                            ln.ID as line_id, ln.Line, ln.TaskCode, ln.Amount, ln.Qty, ln.UOM,
+                            tc.TaskDesc
+                        FROM PR_ADTRANS t
+                        JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                        LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
+                        WHERE t.EmpCode IN (${empList})
+                          AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
 
-            for (const row of adtransRows) {
-                const docDesc = (row.DocDesc || '').toUpperCase();
-                const taskDesc = (row.TaskDesc || '').toUpperCase();
+                        UNION ALL
 
-                // Determine category
-                let category = 'OTHER';
-                let subCategory: string | undefined;
+                        SELECT
+                            t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc, t.EmpCode,
+                            ln.ID as line_id, ln.Line, ln.TaskCode, ln.Amount, ln.Qty, ln.UOM,
+                            tc.TaskDesc
+                        FROM PR_ADTRANS_ARC t
+                        JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                        LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
+                        WHERE t.EmpCode IN (${empList})
+                          AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
+                    `, []);
+                }, 'seedTransactionData ADTrans chunk');
 
-                if (docDesc.includes('PREMI') || docDesc.includes('PRUN') || docDesc.includes('INSENTIF') || docDesc.includes('PANEN') || docDesc.includes('KINERJA')) {
-                    category = 'PREMI';
-                    if (docDesc.includes('BRONDOL')) subCategory = 'BRONDOL';
-                    else if (docDesc.includes('PRUN')) subCategory = 'PRUNING';
-                    else if (docDesc.includes('INSENTIF')) subCategory = 'INSENTIF';
-                    else if (docDesc.includes('KINERJA')) subCategory = 'KINERJA';
-                } else if (docDesc.includes('BERAS') || docDesc.includes('JABATAN') || docDesc.includes('MASA KERJA') || docDesc.includes('LEMBUR')) {
-                    category = 'TUNJANGAN';
-                    if (docDesc.includes('BERAS')) subCategory = 'BERAS';
-                    else if (docDesc.includes('JABATAN')) subCategory = 'JABATAN';
-                    else if (docDesc.includes('MASA')) subCategory = 'MASA_KERJA';
-                    else if (docDesc.includes('LEMBUR')) subCategory = 'LEMBUR';
-                } else if (docDesc.includes('KOREKSI') || docDesc.includes('POT') || docDesc.includes('PPH') || docDesc.includes('SPSI') || docDesc.includes('BPJS')) {
-                    category = 'POTONGAN';
-                    if (docDesc.includes('KOREKSI')) subCategory = 'KOREKSI';
-                    else if (docDesc.includes('PPH')) subCategory = 'PPH21';
-                    else if (docDesc.includes('SPSI')) subCategory = 'SPSI';
-                    else if (docDesc.includes('BPJS')) subCategory = 'BPJS';
+                // Save each row
+                for (const row of adtransRows) {
+                    const docDesc = (row.DocDesc || '').toUpperCase();
+                    const taskDesc = (row.TaskDesc || '').toUpperCase();
+
+                    let category = 'OTHER';
+                    let subCategory: string | undefined;
+
+                    if (docDesc.includes('PREMI') || docDesc.includes('PRUN') || docDesc.includes('INSENTIF') || docDesc.includes('PANEN') || docDesc.includes('KINERJA')) {
+                        category = 'PREMI';
+                        if (docDesc.includes('BRONDOL')) subCategory = 'BRONDOL';
+                        else if (docDesc.includes('PRUN')) subCategory = 'PRUNING';
+                        else if (docDesc.includes('INSENTIF')) subCategory = 'INSENTIF';
+                        else if (docDesc.includes('KINERJA')) subCategory = 'KINERJA';
+                    } else if (docDesc.includes('BERAS') || docDesc.includes('JABATAN') || docDesc.includes('MASA KERJA') || docDesc.includes('LEMBUR')) {
+                        category = 'TUNJANGAN';
+                        if (docDesc.includes('BERAS')) subCategory = 'BERAS';
+                        else if (docDesc.includes('JABATAN')) subCategory = 'JABATAN';
+                        else if (docDesc.includes('MASA')) subCategory = 'MASA_KERJA';
+                        else if (docDesc.includes('LEMBUR')) subCategory = 'LEMBUR';
+                    } else if (docDesc.includes('KOREKSI') || docDesc.includes('POT') || docDesc.includes('PPH') || docDesc.includes('SPSI') || docDesc.includes('BPJS')) {
+                        category = 'POTONGAN';
+                        if (docDesc.includes('KOREKSI')) subCategory = 'KOREKSI';
+                        else if (docDesc.includes('PPH')) subCategory = 'PPH21';
+                        else if (docDesc.includes('SPSI')) subCategory = 'SPSI';
+                        else if (docDesc.includes('BPJS')) subCategory = 'BPJS';
+                    }
+
+                    const adtransData: HistoryAdtrans = {
+                        history_id: historyId,
+                        original_master_id: row.master_id,
+                        doc_no: row.DocNo?.trim(),
+                        doc_date: row.DocDate,
+                        doc_desc: row.DocDesc?.trim(),
+                        emp_code: row.EmpCode?.trim(),
+                        original_line_id: row.line_id,
+                        line_no: row.Line,
+                        task_code: row.TaskCode?.trim(),
+                        task_desc: row.TaskDesc?.trim(),
+                        amount: row.Amount || 0,
+                        quantity: row.Qty,
+                        uom: row.UOM?.trim(),
+                        category,
+                        sub_category: subCategory,
+                        is_dynamic: false,
+                        is_premi_pph: taskDesc.includes('ACCRUALS-CHECKROLL'),
+                        is_koreksi: docDesc.includes('KOREKSI'),
+                        is_potongan: docDesc.includes('POT') || docDesc.includes('POTONGAN'),
+                        is_premi: docDesc.includes('PREMI'),
+                        period_month: options.periodMonth,
+                        period_year: options.periodYear,
+                        source_table: row.master_id > 1000000000 ? 'PR_ADTRANS_ARC' : 'PR_ADTRANS'
+                    };
+                    await historyDatabaseService.saveAdtransHistory(adtransData);
+                    result.records_inserted.adtrans++;
                 }
-
-                const adtransData: HistoryAdtrans = {
-                    history_id: historyId,
-                    original_master_id: row.master_id,
-                    doc_no: row.DocNo?.trim(),
-                    doc_date: row.DocDate,
-                    doc_desc: row.DocDesc?.trim(),
-                    emp_code: row.EmpCode?.trim(),
-                    original_line_id: row.line_id,
-                    line_no: row.Line,
-                    task_code: row.TaskCode?.trim(),
-                    task_desc: row.TaskDesc?.trim(),
-                    amount: row.Amount || 0,
-                    quantity: row.Qty,
-                    uom: row.UOM?.trim(),
-                    category,
-                    sub_category: subCategory,
-                    is_dynamic: false,
-                    is_premi_pph: taskDesc.includes('ACCRUALS-CHECKROLL'),
-                    is_koreksi: docDesc.includes('KOREKSI'),
-                    is_potongan: docDesc.includes('POT') || docDesc.includes('POTONGAN'),
-                    is_premi: docDesc.includes('PREMI'),
-                    period_month: options.periodMonth,
-                    period_year: options.periodYear,
-                    source_table: row.master_id > 1000000000 ? 'PR_ADTRANS_ARC' : 'PR_ADTRANS'
-                };
-
-                await historyDatabaseService.saveAdtransHistory(adtransData);
-                result.records_inserted.adtrans++;
             }
+            console.log(`[HistorySeeder] ADTrans seeding completed`);
         } catch (error: any) {
-            result.errors.push(`Error seeding adtrans: ${error.message}`);
+            result.errors.push(`Error seeding ADTrans: ${error.message}`);
         }
     }
 

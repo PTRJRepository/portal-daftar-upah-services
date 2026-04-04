@@ -381,13 +381,12 @@ export class HistoryDatabaseService {
     /**
      * Get database instance for payroll/daftar upah data
      * - History mode (prod): extend_db_ptrj
-     * - Dev mode: db_ptrj (default)
+     * - Dev mode: extend_db_ptrj (always use extend_db for history tables)
      */
     public getPayrollDatabase(): Database {
-        if (this.isHistoryMode()) {
-            return Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
-        }
-        return Database.getInstance();
+        // Always use extend_db_ptrj for history tables regardless of RUN_MODE
+        // History tables (payroll_history_header, payroll_history_detail) only exist in extend_db_ptrj
+        return Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
     }
 
     /**

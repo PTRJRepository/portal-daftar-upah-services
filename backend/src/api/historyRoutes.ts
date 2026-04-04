@@ -63,15 +63,6 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
             return { success: false, error: "Unauthorized" };
         }
 
-        // Check if history mode is enabled
-        if (!historyDatabaseService.isHistoryMode()) {
-            set.status = 400;
-            return {
-                success: false,
-                error: "History mode is not enabled. Set RUN_MODE=prod in .env"
-            };
-        }
-
         const { period_month, period_year, division_code, gang_code, force, seederMode } = body;
         const createdBy = headers["x-user-id"] || "system";
         const ipAddress = getClientIP(headers);
