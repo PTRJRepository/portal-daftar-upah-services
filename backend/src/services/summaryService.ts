@@ -1532,6 +1532,75 @@ WHERE 1 = 1
             };
         }
     }
+
+    /**
+     * Update a single cell value in daftar_upah_aggregation_history for a specific gang
+     */
+    public async updateGangCell(
+        month: number,
+        year: number,
+        gang_code: string,
+        field: string,
+        value: number
+    ): Promise<boolean> {
+        // Validate field name to prevent SQL injection
+        const allowedFields = [
+            'total_employees',
+            'total_hk',
+            'total_lembur',
+            'total_pph21',
+            'total_spsi',
+            'total_upah_bersih',
+            'total_premi',
+            'total_premi_insentif',
+            'total_premi_kinerja',
+            'total_premi_brondol',
+            'total_premi_prunning',
+            'total_gaji_pokok',
+            'total_beras',
+            'total_jabatan',
+            'total_masa_kerja',
+            'total_tunjangan',
+            'total_upah_kotor',
+            'total_potongan',
+            'total_bpjs_pekerja',
+            'total_bpjs_majikan',
+            'total_hari_kerja',
+            'total_cuti_tahunan',
+            'total_cuti_sakit',
+            'total_cuti_minggu',
+            'total_cuti_nasional',
+            'total_upah_dasar',
+            'total_upah_pokok',
+            'total_ffb_weight',
+            'total_weight_tbs',
+            'total_koreksi'
+        ];
+
+        if (!allowedFields.includes(field)) {
+            throw new Error(`Invalid field: ${field}. Allowed fields: ${allowedFields.join(', ')}`);
+        }
+
+        try {
+            // Update the specific field in daftar_upah_aggregation_history
+            const result = await this.extendDb.query(`
+                UPDATE dbo.daftar_upah_aggregation_history
+                SET ${field} = ?, updated_at = GETDATE()
+                WHERE period_month = ? AND period_year = ? AND gang_code = ?
+            `, [value, month, year, gang_code]);
+
+            if (result.affectedRows === 0) {
+                warn(CATEGORY, `No record found for gang ${gang_code} in ${month}/${year}`);
+                return false;
+            }
+
+            info(CATEGORY, `Updated ${field}=${value} for gang ${gang_code} in ${month}/${year}`);
+            return true;
+        } catch (error: any) {
+            logError(CATEGORY, `Failed to update gang cell:`, error);
+            throw error;
+        }
+    }
 }
 
 export const summaryService = SummaryService.getInstance();

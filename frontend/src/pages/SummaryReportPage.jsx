@@ -5,8 +5,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Printer, RefreshCw, ArrowLeft } from 'lucide-react';
-import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, validateAggregation, seedAggregation } from '../services/summaryReportService';
+import { Printer, RefreshCw, ArrowLeft, Save } from 'lucide-react';
+import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, validateAggregation, seedAggregation, updateGangCell } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintSignature from '../components/common/PrintSignature';
@@ -361,6 +361,70 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         }
     }, [token, division, month, year, reportMode]);
 
+    // Handle saving all edited cells
+    const handleSaveEdits = useCallback(async () => {
+        if (!token || Object.keys(editedCells).length === 0) return;
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const editEntries = Object.entries(editedCells);
+            const totalEdits = editEntries.length;
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (let i = 0; i < editEntries.length; i++) {
+                const [editKey, value] = editEntries[i];
+                
+                // Find the first underscore to extract gang_code
+                const firstUnderscore = editKey.indexOf('_');
+                if (firstUnderscore === -1) {
+                    console.error(`Invalid edit key format: ${editKey}`);
+                    errorCount++;
+                    continue;
+                }
+                
+                const gangCode = editKey.substring(0, firstUnderscore);
+                const fullField = editKey.substring(firstUnderscore + 1);
+
+                try {
+                    const result = await updateGangCell(token, {
+                        month,
+                        year,
+                        gang_code: gangCode,
+                        field: fullField,
+                        value
+                    });
+
+                    if (result.success) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                        console.error(`Failed to update ${editKey}:`, result.error);
+                    }
+                } catch (err) {
+                    errorCount++;
+                    console.error(`Error updating ${editKey}:`, err);
+                }
+            }
+
+            if (errorCount === 0) {
+                // All edits successful - refresh data and clear edited cells
+                setEditedCells({});
+                setEditMode(false);
+                await fetchData();
+            } else {
+                setError(`Saved ${successCount}/${totalEdits} edits. ${errorCount} failed.`);
+            }
+        } catch (e) {
+            console.error('Error saving edits:', e);
+            setError('Failed to save edits: ' + e.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token, editedCells, month, year, fetchData]);
+
     // Fetch data when filters change
     useEffect(() => {
         fetchData();
@@ -631,6 +695,21 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     >
                         {editMode ? 'Selesai Edit' : 'Edit Nilai'}
                     </button>
+                    {editMode && Object.keys(editedCells).length > 0 && (
+                        <button
+                            onClick={handleSaveEdits}
+                            className="wsp-btn-primary"
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                backgroundColor: '#10b981',
+                                color: '#fff',
+                                borderColor: '#059669'
+                            }}
+                            disabled={loading}
+                        >
+                            <Save size={18} /> Simpan ({Object.keys(editedCells).length})
+                        </button>
+                    )}
                 </div>
             </div>
 

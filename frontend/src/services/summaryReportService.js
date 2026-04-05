@@ -391,6 +391,36 @@ export async function fetchAnalysisReport(token, { month, year, type = 'all', us
     return response.data;
 }
 
+/**
+ * Update a single cell value in gang summary data
+ * @param {string} token - Auth token
+ * @param {Object} params - parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @param {string} params.gang_code - Gang code
+ * @param {string} params.field - Field name to update
+ * @param {number} params.value - New value
+ * @returns {Promise<Object>} Result
+ */
+export async function updateGangCell(token, { month, year, gang_code, field, value }) {
+    const url = `${BACKEND_BASE}/payroll/summary/update-gang`;
+
+    const response = await axios.post(url, {
+        month,
+        year,
+        gang_code,
+        field,
+        value
+    }, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
 export default {
     fetchDivisionSummary,
     fetchAvailablePeriods,
@@ -407,7 +437,8 @@ export default {
     updateDeductions,
     fetchDeductionAdjustments,
     updateLuasArea,
-    fetchLuasAreaAdjustments
+    fetchLuasAreaAdjustments,
+    updateGangCell
 };
 
 /**
@@ -456,3 +487,21 @@ export async function validateAggregation(token, { month, year, division }) {
 }
 
 
+
+/**
+ * Seed aggregation data for all divisions
+ */
+export async function seedAggregation(token, { month, year, force = true }) {
+    const response = await axios.post(`${BACKEND_BASE}/payroll/aggregation/seed`, {
+        month,
+        year,
+        force
+    }, {
+        headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        }
+    });
+
+    return response.data;
+}

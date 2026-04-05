@@ -356,6 +356,24 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             year: t.String()
         })
     })
+    // --- Update Gang-Level Summary Cell ---
+    .post("/update-gang", async ({ body }) => {
+        const { month, year, gang_code, field, value } = body;
+        try {
+            const success = await summaryService.updateGangCell(month, year, gang_code, field, value);
+            return { success, message: 'Cell updated successfully' };
+        } catch (error: any) {
+            return { success: false, error: error.message || 'Failed to update cell' };
+        }
+    }, {
+        body: t.Object({
+            month: t.Number(),
+            year: t.Number(),
+            gang_code: t.String(),
+            field: t.String(),
+            value: t.Number()
+        })
+    })
     // --- Detailed Gang Analysis ---
     .get("/gang-analysis-detail", async ({ query }) => {
         const month = parseInt(query.month);
