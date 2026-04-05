@@ -184,6 +184,14 @@ function ViewModeToggle({ viewMode, onChange, disabled }) {
     )
 }
 
+const IconSeed = () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 22V8" />
+        <path d="M5 12l7-8 7 8" />
+        <rect x="3" y="16" width="18" height="6" rx="2" />
+    </svg>
+)
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function ReportToolbar({
     division,
@@ -220,7 +228,10 @@ export default function ReportToolbar({
     fontSize = 100,
     onFontIncrease = null,
     onFontDecrease = null,
-    onFontReset = null
+    onFontReset = null,
+    // Seed data props
+    onSeedData = null,
+    isSeeding = false
 }) {
     // Helper to extract Asistensi (Group)
     // Rule: K2 gangs belong to Group 1 (special estate classification).
@@ -255,6 +266,40 @@ export default function ReportToolbar({
             padding: '6px 0',
             backgroundColor: 'transparent',
         }}>
+            {/* DEBUG: Console log to verify component renders */}
+            {console.log('[ReportToolbar] Rendering... onSeedData:', typeof onSeedData, 'isSeeding:', isSeeding)}
+            
+            {/* ── SEED DATA BUTTON - PALING AWAL, PASTI MUNCUL ────────── */}
+            <button
+                onClick={() => {
+                    console.log('[SEED BUTTON] CLICKED!');
+                    if (onSeedData) {
+                        onSeedData();
+                    } else {
+                        alert('SEED DATA BUTTON WORKS! Handler belum di-setup.');
+                    }
+                }}
+                disabled={isSeeding}
+                style={{
+                    height: '40px',
+                    padding: '0 16px',
+                    background: '#059669',
+                    color: '#ffffff',
+                    border: '2px solid #047857',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '900',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    zIndex: 9999
+                }}
+            >
+                <IconSeed /> SEED DATA
+            </button>
+
             {/* ── Nav Buttons ──────────────────────────────────────────── */}
             <div style={{ display: 'flex', gap: '4px' }}>
                 {onBack && (
@@ -384,6 +429,44 @@ export default function ReportToolbar({
             {onViewModeChange && (
                 <ViewModeToggle viewMode={viewMode} onChange={onViewModeChange} disabled={disableControls} />
             )}
+
+            {/* ── Seed Data Button - SELALU MUNCUL ────────────────── */}
+            <button
+                onClick={onSeedData || (() => alert('Seed Data handler belum di-setup di MainPage'))}
+                disabled={isSeeding}
+                title="Seed Data ke Aggregation"
+                style={{
+                    height: '34px',
+                    padding: '0 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background: isSeeding ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                    color: isSeeding ? '#92400e' : '#ffffff',
+                    border: `1px solid ${isSeeding ? '#fde68a' : '#047857'}`,
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: isSeeding ? 'wait' : 'pointer',
+                    transition: 'all 0.2s',
+                    whiteSpace: 'nowrap',
+                    opacity: isSeeding ? 0.7 : 1,
+                    marginLeft: '8px'
+                }}
+                onMouseOver={(e) => { if (!isSeeding) { e.currentTarget.style.background = 'linear-gradient(135deg, #047857 0%, #065f46 100%)'; } }}
+                onMouseOut={(e) => { if (!isSeeding) { e.currentTarget.style.background = 'linear-gradient(135deg, #059669 0%, #047857 100%)'; } }}
+            >
+                {isSeeding ? (
+                    <>
+                        <IconRefresh spinning={true} /> Seeding...
+                    </>
+                ) : (
+                    <>
+                        <IconSeed /> Seed Data
+                    </>
+                )}
+            </button>
 
             {/* ── Employee Sort Buttons ────────────────────────────── */}
             {showEmployeeSort && onEmployeeSort && (

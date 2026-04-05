@@ -125,6 +125,45 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
             force: t.Optional(t.Boolean())
         })
     })
+    // Seed based on exact UI filters (ensures 100% match with Daftar Upah)
+    .post("/seed-ui", async ({ body, headers, set }) => {
+        const authHeader = headers["authorization"];
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const { division, month, year, gangCode, gangPrefix } = body;
+
+        try {
+            const { seedFromUI } = await import("./uiBasedSeeder");
+            const result = await seedFromUI(division, month, year, gangCode, gangPrefix);
+
+            return {
+                success: result.success,
+                data: {
+                    total_gangs: result.total_gangs,
+                    total_employees: result.total_employees,
+                    results: result.results,
+                    grand_total: result.grand_total
+                }
+            };
+        } catch (error: any) {
+            console.error("[UI Seeder] Error:", error);
+            return {
+                success: false,
+                error: error.message || "Failed to seed from UI"
+            };
+        }
+    }, {
+        body: t.Object({
+            division: t.String(),
+            month: t.Numeric(),
+            year: t.Numeric(),
+            gangCode: t.Optional(t.String()),
+            gangPrefix: t.Optional(t.String())
+        })
+    })
     .post("/seed-tonase", async ({ body, headers, set }) => {
         // Seed ONLY tonase (FFB weight) from db_ptrj_mill (server_3)
         const authHeader = headers["authorization"];

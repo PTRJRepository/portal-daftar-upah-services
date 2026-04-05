@@ -187,6 +187,70 @@ export default function MainPage({ lockedDiv = null }) {
     setRefreshTrigger(prev => prev + 1)
   }
 
+  // Seed aggregation handler - uses EXACT same data as UI
+  const [isSeeding, setIsSeeding] = useState(false)
+  const [seedingStatus, setSeedingStatus] = useState('')
+  const handleSeedData = async () => {
+    if (!token) return
+    if (!window.confirm(`Seed data PERSIS seperti yang tampil di UI untuk ${MONTHS[month-1]} ${year}?`)) return
+    
+    setIsSeeding(true)
+    setSeedingStatus('Extracting data from UI...')
+    
+    try {
+      // Use seed-ui endpoint with EXACT same parameters as current UI view
+      const response = await fetch('/payroll/aggregation/seed-ui', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          division: division || 'ALL',
+          month,
+          year,
+          gangCode: gang || null,  // Current gang filter
+          gangPrefix: gangPrefix || null  // Current group filter
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        const gangCount = result.data?.total_gangs || 0
+        const empCount = result.data?.total_employees || 0
+        setSeedingStatus(`Success! ${gangCount} gangs, ${empCount} employees seeded`)
+
+        // Show breakdown and grand total
+        if (result.data?.grand_total) {
+          const gt = result.data.grand_total
+          console.log('Seeded gangs:', result.data.results?.map(r => `${r.gang_code}: ${r.upah_bersih.toLocaleString('id-ID')}`).join(', '))
+          console.log('Grand Total:', {
+            employees: gt.total_employees,
+            hk: gt.total_hk,
+            gaji_pokok: gt.total_gaji_pokok,
+            tunjangan: gt.total_tunjangan,
+            premi: gt.total_premi,
+            potongan: gt.total_potongan,
+            upah_bersih: gt.total_upah_bersih
+          })
+        }
+
+        setTimeout(() => {
+          setSeedingStatus('')
+          handleRefresh()
+        }, 3000)
+      } else {
+        setSeedingStatus(`Error: ${result.error || 'Unknown error'}`)
+      }
+    } catch (e) {
+      console.error('UI Seed error:', e)
+      setSeedingStatus(`Error: ${e.message}`)
+    } finally {
+      setIsSeeding(false)
+    }
+  }
+
   // Employee sorting handler
   const handleEmployeeSort = (field) => {
     if (employeeSortBy === field) {
@@ -1375,6 +1439,31 @@ export default function MainPage({ lockedDiv = null }) {
                     </button>
 
                     <button
+                      onClick={handleSeedData}
+                      disabled={isSeeding}
+                      style={{
+                        padding: '0.9rem',
+                        backgroundColor: isSeeding ? '#fef3c7' : '#10b981',
+                        color: isSeeding ? '#92400e' : '#ffffff',
+                        border: `1px solid ${isSeeding ? '#fde68a' : '#059669'}`,
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        cursor: isSeeding ? 'wait' : 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        opacity: isSeeding ? 0.7 : 1
+                      }}
+                      onMouseOver={(e) => { if (!isSeeding) { e.currentTarget.style.backgroundColor = '#059669'; e.currentTarget.style.color = '#ffffff'; }}}
+                      onMouseOut={(e) => { if (!isSeeding) { e.currentTarget.style.backgroundColor = '#10b981'; e.currentTarget.style.color = '#ffffff'; }}}
+                    >
+                      {isSeeding ? '⏳ Seeding...' : '🚀 Seed Data'}
+                    </button>
+
+                    <button
                       onClick={handleShowAggregationSeeder}
                       style={{
                         padding: '0.9rem',
@@ -1424,6 +1513,37 @@ export default function MainPage({ lockedDiv = null }) {
         zIndex: 50,
         boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
       }}>
+
+        {/* Seeding Status Indicator */}
+        {seedingStatus && (
+          <div style={{
+            position: 'absolute',
+            top: '50px',
+            left: 0,
+            right: 0,
+            padding: '0.5rem 1.5rem',
+            backgroundColor: seedingStatus.includes('Success') || seedingStatus.includes('berhasil') ? '#d1fae5' : seedingStatus.includes('Error') || seedingStatus.includes('Gagal') ? '#fee2e2' : '#fef3c7',
+            borderBottom: `1px solid ${seedingStatus.includes('Success') || seedingStatus.includes('berhasil') ? '#10b981' : seedingStatus.includes('Error') || seedingStatus.includes('Gagal') ? '#ef4444' : '#f59e0b'}`,
+            zIndex: 49,
+            fontWeight: '600',
+            fontSize: '0.85rem',
+            color: seedingStatus.includes('Success') || seedingStatus.includes('berhasil') ? '#065f46' : seedingStatus.includes('Error') || seedingStatus.includes('Gagal') ? '#991b1b' : '#92400e',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            {seedingStatus.includes('berhasil') ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+            ) : seedingStatus.includes('Gagal') || seedingStatus.includes('Error') ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+            )}
+            {seedingStatus}
+          </div>
+        )}
 
         {/* Brand & Title */}
         <div className="flex-center gap-4">
@@ -1490,6 +1610,8 @@ export default function MainPage({ lockedDiv = null }) {
             onFontIncrease={handleFontIncrease}
             onFontDecrease={handleFontDecrease}
             onFontReset={handleFontReset}
+            onSeedData={handleSeedData}
+            isSeeding={isSeeding}
           />
         </div>
 
