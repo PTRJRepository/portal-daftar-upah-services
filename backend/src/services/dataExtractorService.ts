@@ -900,7 +900,9 @@ export class DataExtractorService {
             const gaji_pokok_ideal = gpResult?.gaji_pokok_ideal?.value || 0;
             const gaji_pokok_aktual = gpResult?.gaji_pokok_aktual?.value || 0;
             const gaji_pokok = gaji_pokok_aktual;
-            const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlahPure;
+            // [FIX] total_tunjangan TIDAK termasuk lembur - lembur adalah komponen terpisah
+            // lembur akan ditambahkan secara terpisah di PayrollCalculator
+            const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah;
 
             // PREMI CALCULATION - Ensure everything is summed into total_premi
             // [PHASE 2.5] Brondol is now combined at line 570 (empBrondol = empBrondolTotal)
@@ -1313,7 +1315,7 @@ export class DataExtractorService {
                     lembur_jumlah: empLemburJumlahPure,
                     total_tunjangan,
                     total_premi,
-                    pot_koreksi,
+                    pot_koreksi: -pot_koreksi, // [FIX] Negate because koreksi is a deduction
                     pendapatan_lainnya: pendapatan_lainnya_amount,
                     // Deductions
                     pot_astek_pekerja,
@@ -3617,13 +3619,12 @@ export class DataExtractorService {
             // Deductions
             const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
+            // [FIX] pot_koreksi menggunakan Math.abs untuk konsistensi dengan streaming path
+            // KOREKSI selalu disimpan sebagai nilai positif (abs), akan di-negatif di PayrollCalculator
             let pot_koreksi = 0;
             for (const [key, val] of Object.entries(empPotongan)) {
-                // KOREKSI should be NEGATIVE (it's a deduction from gross pay)
-                if (key.startsWith("KOREKSI")) pot_koreksi += (val as number);
+                if (key.startsWith("KOREKSI")) pot_koreksi += Math.abs(val as number);
             }
-            // Ensure pot_koreksi is negative (if it's positive, make it negative)
-            if (pot_koreksi > 0) pot_koreksi = -pot_koreksi;
 
             const caruman = calculateAllCaruman(upahDasar, masaKerjaJumlah);
             const pot_astek = caruman.astek_pekerja_jht;
@@ -3638,7 +3639,8 @@ export class DataExtractorService {
             const gaji_pokok_ideal = upahDasar * hk_attendance; // upah_dasar × HK
             const koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal; // Positive = overpaid, Negative = underpaid
 
-            const jumlah_upah_kotor = gaji_pokok_aktual + total_tunjangan + (empLembur.jumlah || 0) + total_premi + pot_koreksi;
+            // [FIX] pot_koreksi adalah pengurangan dari gross, harus dikurangi
+            const jumlah_upah_kotor = gaji_pokok_aktual + total_tunjangan + (empLembur.jumlah || 0) + total_premi - pot_koreksi;
             const total_potongan = pot_astek + pot_bpjs + pot_spsi + pot_pph21 + other_potongan;
             const upah_bersih = jumlah_upah_kotor - total_potongan;
 
@@ -3824,28 +3826,6 @@ export class DataExtractorService {
                 emp.jumlah_upah_kotor = (emp.jumlah_upah_kotor || 0) + totalPendapatanLainnya;
                 emp.upah_kotor_pajak = emp.jumlah_upah_kotor; // For PAJAK section
 
-                // Calculate penghasilan_bruto from jumlah_upah_kotor + astek_majikan + bpjs_majikan
-                // Use upah_dasar and masa_kerja_jumlah to match taxReportService calculation
-                // NOTE: pot_koreksi must be SUBTRACTED because it's already included in jumlah_upah_kotor
-                // This matches the taxReportService formula: (components) - pot_koreksi
-                const caruman = calculateAllCaruman(emp.upah_dasar || emp.pay_rate || 0, emp.masa_kerja_jumlah || 0);
-                const astekMajikan = caruman.astek_majikan_jkk_jkm || 0;
-                const bpjsMajikan = caruman.bpjs_kes_majikan || 0;
-                emp.penghasilan_bruto = (emp.jumlah_upah_kotor || 0) - (emp.pot_koreksi || 0) + astekMajikan + bpjsMajikan;
-
-                // Calculate PPh21 TER
-                try {
-                    const { pph21TerService } = await import('./pph21TerService');
-                    const statusPTKP = emp.status_ptkp || dbPtkpMap.get(emp.emp_code?.toUpperCase()) || mapBerasRateToPTKP(emp.beras_rate || 0);
-                    const pphResult = pph21TerService.calculatePph21Ter(emp.penghasilan_bruto, statusPTKP);
-                    emp.pph21_ter = pphResult.tax_amount || 0;
-                    emp.tarif_pajak_ter = pphResult.rate_percent || 0;
-                } catch (e: any) {
-                    console.error(`[Phase 4b] PPh21 TER calculation failed for ${emp.emp_code}:`, e.message);
-                    emp.pph21_ter = 0;
-                    emp.tarif_pajak_ter = 0;
-                }
-
                 // Update total_potongan to include pendapatan_lainnya
                 emp.total_potongan = (emp.total_potongan || 0) + totalPendapatanLainnya;
                 emp.total_potongan_bersih = emp.total_potongan;
@@ -3858,6 +3838,41 @@ export class DataExtractorService {
         } catch (e) {
             debug(CATEGORY, `⚠️ Other income lookup skipped: ${e.message}`);
         }
+
+        // [CRITICAL FIX] Calculate PPh21 TER for ALL employees (not just those with other incomes)
+        // This must run for every employee to ensure history data has correct tax values
+        debug(CATEGORY, `🧮 Calculating PPh21 TER for all ${employees.length} employees...`);
+        let employeesWithTax = 0;
+        for (const emp of employees) {
+            // Calculate penghasilan_bruto from jumlah_upah_kotor + astek_majikan + bpjs_majikan
+            // jumlah_upah_kotor already includes: gaji_pokok + tunjangan + lembur + premi + pot_koreksi + pendapatan_lainnya
+            // So we just need to add employer BPJS portions for tax calculation
+            const caruman = calculateAllCaruman(emp.upah_dasar || emp.pay_rate || 0, emp.masa_kerja_jumlah || 0);
+            const astekMajikan = caruman.astek_majikan_jkk_jkm || 0;
+            const bpjsMajikan = caruman.bpjs_kes_majikan || 0;
+            
+            // ALWAYS recalculate penghasilan_bruto to ensure it includes astek_majikan + bpjs_majikan
+            emp.penghasilan_bruto = (emp.jumlah_upah_kotor || 0) + astekMajikan + bpjsMajikan;
+
+            // Calculate PPh21 TER
+            try {
+                const { pph21TerService } = await import('./pph21TerService');
+                const statusPTKP = emp.status_ptkp || dbPtkpMap.get(emp.emp_code?.toUpperCase()) || mapBerasRateToPTKP(emp.beras_rate || 0);
+                const pphResult = pph21TerService.calculatePph21Ter(emp.penghasilan_bruto, statusPTKP);
+                emp.pph21_ter = pphResult.tax_amount || 0;
+                emp.tarif_pajak_ter = pphResult.rate_percent || 0;
+                
+                if (emp.pph21_ter > 0) {
+                    employeesWithTax++;
+                }
+            } catch (e: any) {
+                console.error(`[Phase 4b] PPh21 TER calculation failed for ${emp.emp_code}:`, e.message);
+                emp.pph21_ter = 0;
+                emp.tarif_pajak_ter = 0;
+            }
+        }
+        debug(CATEGORY, `✅ PPh21 TER calculated: ${employeesWithTax}/${employees.length} employees with tax > 0`);
+
 
         // Filter & sort employees
         const filteredEmployees = [];

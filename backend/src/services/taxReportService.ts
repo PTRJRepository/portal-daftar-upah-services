@@ -248,6 +248,7 @@ export interface MonthlyTaxRow {
 
     pot_spsi?: number;
     pot_koreksi?: number;
+    pot_pph21?: number;
     total_potongan_kotor?: number;
 
     bpjs_kes_majikan?: number;
@@ -471,6 +472,23 @@ class TaxReportService {
         );
 
         console.log(`[TaxReportService] getMonthlyTaxReport received data: ${historyData?.data_rows?.length || 0} rows, isSourceCurrent=${isSourceCurrent}`);
+        
+        // DEBUG: Log sample data to verify structure
+        if (historyData?.data_rows?.length > 0) {
+            const sampleRow = historyData.data_rows[0];
+            console.log('[TaxReportService] Sample data row:', {
+                emp_code: sampleRow.emp_code,
+                emp_name: sampleRow.nama || sampleRow.emp_name,
+                gaji_pokok_aktual: sampleRow.gaji_pokok_aktual || sampleRow.gaji_pokok,
+                upah_dasar: sampleRow.upah_dasar,
+                tunjangan_beras: sampleRow.beras_jumlah,
+                tunjangan_jabatan: sampleRow.jabatan_jumlah,
+                tunjangan_masa_kerja: sampleRow.masa_kerja_jumlah,
+                tunjangan_lembur: sampleRow.lembur_jumlah,
+                total_premi: sampleRow.total_premi,
+                pot_koreksi: sampleRow.pot_koreksi
+            });
+        }
 
         if (!historyData || historyData.data_rows.length === 0) {
             return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [], data_source: isSourceCurrent ? 'current' : 'history' };
@@ -631,12 +649,64 @@ class TaxReportService {
 
             penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
 
-            // Purely calculated PPh21 (TER)
-            const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
-            const pph21 = pphResult.tax_amount;
-            const tarifPajakTer = pphResult.rate_percent;
+            // DEBUG: Log penghasilan bruto calculation
+            if (idx < 3) {
+                console.log(`[TaxReportService] Employee #${idx + 1} (${row.emp_code}) - Income calculation:`, {
+                    gaji_pokok_aktual: gajiPokokAktual,
+                    tunjangan_beras: tunjanganBeras,
+                    tunjangan_jabatan: tunjanganJabatan,
+                    tunjangan_masa_kerja: tunjanganMasaKerja,
+                    tunjangan_lembur: tunjanganLembur,
+                    total_premi: totalPremi,
+                    astek084: astek084,
+                    bpjs_kes_majikan: bpjsKesehatanMajikan4Pct,
+                    pot_koreksi: row.pot_koreksi || 0,
+                    thr_amount: thrAmount,
+                    exgratia_amount: exgratiaAmount,
+                    other_income_amount: otherIncomeAmount,
+                    row_pph21_ter: row.pph21_ter,
+                    row_pot_pph21: row.pot_pph21,
+                    penghasilan_bruto_WITH_THR: penghasilanBruto,
+                    penghasilan_bruto_WITHOUT_THR: penghasilanBruto - thrAmount - exgratiaAmount - otherIncomeAmount
+                });
+            }
+
+            // [FIX] Use stored PPh21 from payroll calculation (pph21_ter or pot_pph21)
+            // instead of recalculating with potentially different THR/other incomes.
+            // This ensures tax report matches the original payroll calculation.
+            const storedPph21Ter = row.pph21_ter || row.pot_pph21 || 0;
+            
+            let pph21: number;
+            let tarifPajakTer: number;
+            
+            if (storedPph21Ter > 0) {
+                // Use stored tax value from original payroll calculation
+                pph21 = storedPph21Ter;
+                // Calculate effective rate for display
+                tarifPajakTer = penghasilanBruto > 0 ? (pph21 / penghasilanBruto) * 100 : 0;
+            } else {
+                // No stored value - calculate fresh (for current period or missing data)
+                const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
+                pph21 = pphResult.tax_amount;
+                tarifPajakTer = pphResult.rate_percent;
+            }
 
             totalPph21 += pph21;
+
+            // DEBUG: Log first 3 employees to verify PPh21 calculation
+            if (idx < 3) {
+                console.log(`[TaxReportService] Employee #${idx + 1} (${row.emp_code}) - PPh21:`, {
+                    penghasilan_bruto_with_thr: penghasilanBruto,
+                    penghasilan_bruto_without_thr: penghasilanBruto - thrAmount - exgratiaAmount - otherIncomeAmount,
+                    stored_pph21_ter: row.pph21_ter,
+                    stored_pot_pph21: row.pot_pph21,
+                    final_pph21_used: pph21,
+                    ptkp: masterPtkp,
+                    kategori_ter: kategoriTer,
+                    tarif_persen: tarifPajakTer,
+                    using_stored_value: storedPph21Ter > 0
+                });
+            }
 
             // Discover dynamic premi fields from row keys (e.g. premi_brondol, premi_pruning, etc.)
             const premiDetail: Record<string, number> = {};
@@ -752,6 +822,7 @@ class TaxReportService {
 
                 pot_spsi: row.pot_spsi || 0,
                 pot_koreksi: row.pot_koreksi || 0,
+                pot_pph21: row.pot_pph21 || 0,
                 total_potongan_kotor: row.pot_koreksi || 0,
 
                 bpjs_kes_majikan: bpjsKesehatanMajikan4Pct,
@@ -793,6 +864,17 @@ class TaxReportService {
                 console.error('[TaxReport] Failed to auto-save derived jabatans:', e)
             );
         }
+
+        // DEBUG: Summary of PPh21 TER calculation
+        const employeesWithPph21 = employees.filter(e => e.pph21_ter > 0).length;
+        const employeesWithZeroPph21 = employees.length - employeesWithPph21;
+        console.log(`[TaxReportService] PPh21 TER Summary:`, {
+            total_employees: employees.length,
+            employees_with_pph21: employeesWithPph21,
+            employees_with_zero_pph21: employeesWithZeroPph21,
+            total_pph21_ter: totalPph21,
+            data_source: isSourceCurrent ? 'current' : 'history'
+        });
 
         console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${isSourceCurrent ? 'current' : 'history'}`);
         return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
