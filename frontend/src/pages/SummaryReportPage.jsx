@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Printer, RefreshCw, ArrowLeft } from 'lucide-react';
-import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, validateAggregation } from '../services/summaryReportService';
+import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, validateAggregation, seedAggregation } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintSignature from '../components/common/PrintSignature';
@@ -32,6 +32,92 @@ const COMPANY_INFO = {
 const getCompanyInfo = (division) => {
     return COMPANY_INFO[division] || COMPANY_INFO.DEFAULT;
 };
+
+// Helper function to format numbers with Indonesian locale
+const formatNumber = (value) => {
+    if (value === null || value === undefined || value === '') return '-';
+    const num = Number(value);
+    if (isNaN(num)) return '-';
+    return new Intl.NumberFormat('id-ID', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(Math.round(num));
+};
+
+// Editable cell component for inline editing
+function EditableCell({ editMode, value, onSave, isCurrency }) {
+    const [editing, setEditing] = useState(false);
+    const [inputVal, setInputVal] = useState(String(value || 0));
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        if (!editing) setInputVal(String(value || 0));
+    }, [value, editing]);
+
+    const handleDoubleClick = () => {
+        if (editMode) {
+            setEditing(true);
+            setTimeout(() => inputRef.current?.select(), 50);
+        }
+    };
+
+    const handleBlur = () => {
+        setEditing(false);
+        const num = parseFloat(inputVal) || 0;
+        if (num !== Number(value)) {
+            onSave(num);
+        }
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            inputRef.current?.blur();
+        } else if (e.key === 'Escape') {
+            setInputVal(String(value || 0));
+            setEditing(false);
+        }
+    };
+
+    if (editMode) {
+        return (
+            <td
+                className={`text-right ${isCurrency && Number(value) > 0 ? 'val-positive' : !Number(value) ? 'val-zero' : ''}`}
+                style={{ fontWeight: isCurrency ? 600 : 400, cursor: 'text', backgroundColor: editing ? '#fffbeb' : '#f0f9ff' }}
+                onDoubleClick={handleDoubleClick}
+            >
+                {editing ? (
+                    <input
+                        ref={inputRef}
+                        type="number"
+                        value={inputVal}
+                        onChange={e => setInputVal(e.target.value)}
+                        onBlur={handleBlur}
+                        onKeyDown={handleKeyDown}
+                        style={{
+                            width: '100%',
+                            border: 'none',
+                            background: 'transparent',
+                            textAlign: 'right',
+                            fontSize: 'inherit',
+                            fontFamily: 'inherit',
+                            color: 'inherit',
+                            outline: 'none'
+                        }}
+                        autoFocus
+                    />
+                ) : (
+                    <span style={{ color: '#1e40af', fontSize: '11px', opacity: 0.7 }}>{formatNumber(value)} ✏️</span>
+                )}
+            </td>
+        );
+    }
+
+    return (
+        <td className={`text-right ${isCurrency && Number(value) > 0 ? 'val-positive' : !Number(value) ? 'val-zero' : ''}`} style={{ fontWeight: isCurrency ? 600 : 400 }}>
+            {formatNumber(value)}
+        </td>
+    );
+}
 
 export default function SummaryReportPage({ onBack, initialDivision, initialMonth, initialYear }) {
     const { token, user } = useAuth();
@@ -63,6 +149,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
     // State
     const [loading, setLoading] = useState(false);
+    const [editMode, setEditMode] = useState(false);
+    const [editedCells, setEditedCells] = useState({}); // { `${gang_code}_${field}`: value }
 
     // Helper to extract Asistensi (Group)
     // Rule: K2 gangs belong to Group 1 (special estate classification).
@@ -77,6 +165,16 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return match ? match[0] : null;
     }, []);
 
+    // Handle inline edit of cell value
+    const handleCellEdit = useCallback((gangCode, field, newValue) => {
+        const editKey = `${gangCode}_${field}`;
+        const numValue = parseFloat(newValue) || 0;
+        setEditedCells(prev => ({
+            ...prev,
+            [editKey]: numValue
+        }));
+    }, []);
+
     // Calculate available groups for filter
     const availableGroups = useMemo(() => {
         const groups = new Set();
@@ -89,12 +187,23 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
     // Merge summary data with gang descriptions
     const mergedSummaryData = useMemo(() => {
-        return summaryData.map(row => ({
-            ...row,
-            // Use real-time gang description if available, otherwise use stored description, fallback to gang_code
-            gang_description: gangDescriptions[row.gang_code] || row.gang_description || row.gang_code
-        }));
-    }, [summaryData, gangDescriptions]);
+        return summaryData.map(row => {
+            // Apply edited values if any
+            const editableFields = ['total_upah_bersih', 'total_premi', 'total_lembur', 'total_pph21', 'total_spsi', 'total_employees', 'total_hk'];
+            const editedRow = { ...row };
+            editableFields.forEach(field => {
+                const editKey = `${row.gang_code}_${field}`;
+                if (editedCells[editKey] !== undefined) {
+                    editedRow[field] = editedCells[editKey];
+                }
+            });
+            return {
+                ...editedRow,
+                // Use real-time gang description if available, otherwise use stored description, fallback to gang_code
+                gang_description: gangDescriptions[row.gang_code] || row.gang_description || row.gang_code
+            };
+        });
+    }, [summaryData, gangDescriptions, editedCells]);
 
     // Filter summary data by group
     const filteredSummaryData = useMemo(() => {
@@ -102,9 +211,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return mergedSummaryData.filter(row => getAsistensi(row.gang_code, division) === groupFilter);
     }, [mergedSummaryData, groupFilter, division, getAsistensi]);
 
-    // Recalculate Grand Total based on filtered data
+    // Recalculate Grand Total based on filtered data (always recalculate to include edited values)
     const filteredGrandTotal = useMemo(() => {
-        if (!groupFilter) return grandTotal;
         if (!filteredSummaryData.length) return null;
 
         const totals = {
@@ -143,9 +251,11 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         });
 
         return totals;
-    }, [filteredSummaryData, groupFilter, grandTotal]);
+    }, [filteredSummaryData]);
     const [error, setError] = useState('');
     const [showSeederModal, setShowSeederModal] = useState(false);
+    const [isSeeding, setIsSeeding] = useState(false);
+    const [seedingProgress, setSeedingProgress] = useState(null);
     const [validating, setValidating] = useState(false);
     const [validationResult, setValidationResult] = useState(null);
     const [showValidation, setShowValidation] = useState(false);
@@ -256,6 +366,62 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         fetchData();
     }, [fetchData]);
 
+    // Handle Seed All - uses EXACT same data as UI
+    const handleSeedAll = async () => {
+        if (!token) return;
+        if (!window.confirm(`Seed data PERSIS seperti yang tampil di UI untuk ${month}/${year}?`)) return;
+        
+        setIsSeeding(true);
+        setSeedingProgress('🔄 Mengekstrak data dari UI...');
+        
+        try {
+            // Use seed-ui endpoint with EXACT same parameters as current UI view
+            const response = await fetch('/payroll/aggregation/seed-ui', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    division: division || 'ALL',
+                    month,
+                    year,
+                    gangCode: null,  // ALL gangs in division
+                    gangPrefix: null  // ALL groups
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                const gangCount = result.data?.total_gangs || 0;
+                const empCount = result.data?.total_employees || 0;
+                setSeedingProgress(`✅ Seeding berhasil! ${gangCount} gangs, ${empCount} karyawan`);
+                
+                // Show breakdown
+                if (result.data?.results) {
+                    console.log('Seeded gangs:');
+                    result.data.results.forEach(r => {
+                        console.log(`  ${r.gang_code}: ${r.upah_bersih.toLocaleString('id-ID')}`);
+                    });
+                }
+                
+                // Refresh data setelah seeding
+                setTimeout(() => {
+                    fetchData();
+                    setSeedingProgress(null);
+                }, 2000);
+            } else {
+                setSeedingProgress(`❌ Gagal: ${result.error || 'Unknown error'}`);
+            }
+        } catch (e) {
+            console.error('UI Seed error:', e);
+            setSeedingProgress(`❌ Error: ${e.message}`);
+        } finally {
+            setIsSeeding(false);
+        }
+    };
+
     // Handle Validation
     const handleValidate = async () => {
         setValidating(true);
@@ -280,17 +446,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         } finally {
             setValidating(false);
         }
-    };
-
-    // Formatters
-    const formatNumber = (value) => {
-        if (value === null || value === undefined || value === '') return '-';
-        const num = Number(value);
-        if (isNaN(num)) return '-';
-        return new Intl.NumberFormat('id-ID', {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(Math.round(num));
     };
 
     const getMonthName = (m) => {
@@ -457,11 +612,34 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     <button onClick={handleExport} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} disabled={loading || summaryData.length === 0}>
                         Download CSV
                     </button>
+                    <button onClick={handleSeedAll} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isSeeding ? '#fef3c7' : '#10b981', color: isSeeding ? '#92400e' : '#fff', borderColor: isSeeding ? '#fde68a' : '#059669' }} disabled={isSeeding || loading}>
+                        <RefreshCw size={18} className={isSeeding ? 'animate-spin' : ''} />
+                        {isSeeding ? 'Seeding UI Data...' : 'Seed UI Data'}
+                    </button>
                     <button onClick={() => setShowSeederModal(true)} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>
                         <RefreshCw size={18} /> Sync Data
                     </button>
+                    <button
+                        onClick={() => setEditMode(prev => !prev)}
+                        className="wsp-btn-secondary"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            backgroundColor: editMode ? '#dbeafe' : '#f3f4f6',
+                            color: editMode ? '#1e40af' : '#374151',
+                            borderColor: editMode ? '#93c5fd' : '#d1d5db'
+                        }}
+                    >
+                        {editMode ? 'Selesai Edit' : 'Edit Nilai'}
+                    </button>
                 </div>
             </div>
+
+            {/* Seeding Progress */}
+            {seedingProgress && (
+                <div style={{ margin: '0 1rem 1rem', padding: '1rem', backgroundColor: seedingProgress.includes('✅') ? '#d1fae5' : seedingProgress.includes('❌') ? '#fee2e2' : '#fef3c7', border: `1px solid ${seedingProgress.includes('✅') ? '#10b981' : seedingProgress.includes('❌') ? '#ef4444' : '#f59e0b'}`, borderRadius: '8px' }}>
+                    <div style={{ fontWeight: '600', color: seedingProgress.includes('✅') ? '#065f46' : seedingProgress.includes('❌') ? '#991b1b' : '#92400e' }}>{seedingProgress}</div>
+                </div>
+            )}
 
             {/* Content */}
             {loading ? (
@@ -585,8 +763,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                         reportMode === 'payroll' ? (
                                             <tr key={idx}>
                                                 <td className="text-left">{row.gang_description || row.gang_code}</td>
-                                                <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`}>{formatNumber(row.total_employees)}</td>
-                                                <td className={`text-right ${!Number(row.total_hk) && 'val-zero'}`}>{formatNumber(row.total_hk)}</td>
+                                                <EditableCell editMode={editMode} value={row.total_employees} onSave={(v) => handleCellEdit(row.gang_code, 'total_employees', v)} />
+                                                <EditableCell editMode={editMode} value={row.total_hk} onSave={(v) => handleCellEdit(row.gang_code, 'total_hk', v)} />
 
                                                 {/* Dynamic Premi Cols */}
                                                 {dynamicPremiHeaders.map(header => {
@@ -603,13 +781,11 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                     {formatNumber(row.total_premi)}
                                                 </td>
 
-                                                <td className={`text-right ${!Number(row.total_lembur) && 'val-zero'}`}>{formatNumber(row.total_lembur)}</td>
-                                                <td className={`text-right ${!Number(row.total_pph21) && 'val-zero'}`}>{formatNumber(row.total_pph21)}</td>
-                                                <td className={`text-right ${!Number(row.total_spsi) && 'val-zero'}`}>{formatNumber(row.total_spsi)}</td>
+                                                <EditableCell editMode={editMode} value={row.total_lembur} onSave={(v) => handleCellEdit(row.gang_code, 'total_lembur', v)} />
+                                                <EditableCell editMode={editMode} value={row.total_pph21} onSave={(v) => handleCellEdit(row.gang_code, 'total_pph21', v)} />
+                                                <EditableCell editMode={editMode} value={row.total_spsi} onSave={(v) => handleCellEdit(row.gang_code, 'total_spsi', v)} />
 
-                                                <td className={`text-right ${!Number(row.total_upah_bersih) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 600 }}>
-                                                    {formatNumber(row.total_upah_bersih)}
-                                                </td>
+                                                <EditableCell editMode={editMode} value={row.total_upah_bersih} onSave={(v) => handleCellEdit(row.gang_code, 'total_upah_bersih', v)} isCurrency />
                                             </tr>
                                         ) : (
                                             <tr key={idx} style={{ borderBottom: '1pt solid #000', backgroundColor: idx % 2 === 0 ? '#fff' : '#f2f2f2', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
