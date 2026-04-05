@@ -208,7 +208,14 @@ export default function ReportToolbar({
     useHistory = false,
     onHistoryChange = null,
     isDownloadingExcel = false,
-    onDownloadExcel = null
+    onDownloadExcel = null,
+    // Employee sorting props
+    employeeSortBy = 'name',
+    employeeSortOrder = 'asc',
+    onEmployeeSort = null,
+    showEmployeeSort = false,
+    // Daftar Upah table sort props
+    showDaftarUpahSort = false
 }) {
     // Helper to extract Asistensi (Group)
     // Rule: K2 gangs belong to Group 1 (special estate classification).
@@ -371,6 +378,104 @@ export default function ReportToolbar({
             {/* ── View Mode Toggle ─────────────────────────────────── */}
             {onViewModeChange && (
                 <ViewModeToggle viewMode={viewMode} onChange={onViewModeChange} disabled={disableControls} />
+            )}
+
+            {/* ── Employee Sort Buttons ────────────────────────────── */}
+            {showEmployeeSort && onEmployeeSort && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Sort:</span>
+                    {[
+                        ['name', 'Nama'],
+                        ['emp_code', 'EmpCode'],
+                        ['hk', 'HK']
+                    ].map(([field, label]) => {
+                        const isActive = employeeSortBy === field
+                        return (
+                            <button
+                                key={field}
+                                onClick={() => onEmployeeSort(field)}
+                                disabled={disableControls}
+                                style={{
+                                    height: '34px',
+                                    padding: '0 10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    cursor: disableControls ? 'not-allowed' : 'pointer',
+                                    transition: 'all 0.15s',
+                                    whiteSpace: 'nowrap',
+                                    fontFamily: 'inherit',
+                                    border: `1px solid ${isActive ? '#7c3aed' : '#cbd5e1'}`,
+                                    background: isActive ? '#7c3aed' : '#ffffff',
+                                    color: isActive ? '#ffffff' : '#475569',
+                                    opacity: disableControls ? 0.5 : 1
+                                }}
+                                title={`Sort by ${label} ${isActive ? (employeeSortOrder === 'asc' ? '↑' : '↓') : ''}`}
+                            >
+                                {label}
+                                {isActive && (
+                                    <span style={{ fontSize: '10px', marginLeft: '2px' }}>
+                                        {employeeSortOrder === 'asc' ? '↑' : '↓'}
+                                    </span>
+                                )}
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
+
+            {/* ── Daftar Upah Sort Buttons (Table Mode) ────────────── */}
+            {(viewMode === 'table' || viewMode === null) && onEmployeeSort && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Sort:</span>
+                    {[
+                        ['name', 'Nama'],
+                        ['emp_code', 'EmpCode'],
+                        ['nik', 'NIK']
+                    ].map(([field, label]) => {
+                        const isActive = employeeSortBy === field
+                        return (
+                            <button
+                                key={field}
+                                onClick={() => onEmployeeSort(field)}
+                                disabled={disableControls}
+                                style={{
+                                    height: '34px',
+                                    padding: '0 10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    cursor: disableControls ? 'not-allowed' : 'pointer',
+                                    transition: 'all 0.15s',
+                                    whiteSpace: 'nowrap',
+                                    fontFamily: 'inherit',
+                                    border: `1px solid ${isActive ? '#1e3a8a' : '#cbd5e1'}`,
+                                    background: isActive ? '#1e3a8a' : '#ffffff',
+                                    color: isActive ? '#ffffff' : '#475569',
+                                    opacity: disableControls ? 0.5 : 1
+                                }}
+                                title={`Sort by ${label} ${isActive ? (employeeSortOrder === 'asc' ? '↑' : '↓') : ''}`}
+                            >
+                                {label}
+                                {isActive && (
+                                    <span style={{ fontSize: '10px', marginLeft: '2px' }}>
+                                        {employeeSortOrder === 'asc' ? '↑' : '↓'}
+                                    </span>
+                                )}
+                            </button>
+                        )
+                    })}
+                    {/* DEBUG */}
+                    <span style={{ fontSize: '9px', color: '#999' }}>vMode={viewMode}</span>
+                </div>
             )}
 
             {/* ── Action Buttons ─────────────────────────────────────── */}

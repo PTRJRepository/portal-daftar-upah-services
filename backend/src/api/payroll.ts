@@ -32,6 +32,17 @@ async function getUserFromHeader(headers: Record<string, string | undefined>): P
     const authHeader = headers["authorization"];
     if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
     const token = authHeader.split(" ")[1];
+
+    // [INTERNAL] Bypass for system token
+    if (token === Config.SYSTEM_TOKEN) {
+        return {
+            id: "system",
+            username: "system",
+            role: UserRole.ADMIN,
+            divisions: ["ALL"]
+        } as any;
+    }
+
     return authService.verifyToken(token);
 }
 

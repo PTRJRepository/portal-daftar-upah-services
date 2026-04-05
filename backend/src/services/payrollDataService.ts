@@ -137,33 +137,95 @@ export class PayrollDataService {
     }
 
     /**
-     * Fetch payroll data using the raw-tree endpoint via HTTP
+     * Fetch payroll data using DataExtractorService directly (internal)
      */
     private static async fetchRawTreeData(division: string, month: number, year: number, authToken: string, includeVirtual: boolean = false) {
-        console.log(`[PayrollDataService] Fetching raw tree data for ${division} (${month}/${year}) includeVirtual=${includeVirtual}...`);
-
-        const url = `http://localhost:${Config.PORT}/backend/upah/payroll/locked/report/raw-tree?div=${division}&month=${month}&year=${year}&include_virtual=${includeVirtual}`;
+        console.log(`[PayrollDataService] Extracting raw data for ${division} (${month}/${year}) includeVirtual=${includeVirtual}...`);
 
         try {
-            const response = await fetch(url, {
-                method: "GET",
-                headers: {
-                    "Authorization": authToken
-                }
-            });
+            const dataExtractor = DataExtractorService.getInstance();
+            
+            // Call service directly instead of HTTP
+            // Skip harvest is true for aggregation seeder
+            const result = await dataExtractor.extractPayrollData(
+                month, 
+                year, 
+                "ALL", 
+                division, 
+                null, 
+                Config.DB_PROFILE, 
+                includeVirtual, 
+                false, 
+                undefined, 
+                true
+            );
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch raw-tree data: ${response.status} ${response.statusText} - ${errorText}`);
+            // Group by gang and calculate totals manually to match the raw-tree endpoint response format
+            const gangsMap: Record<string, any[]> = {};
+            for (const row of result.data_rows) {
+                const gang = row.gang_code || "UNKNOWN";
+                if (!gangsMap[gang]) gangsMap[gang] = [];
+                gangsMap[gang].push(row);
             }
 
-            const result: any = await response.json();
+            const calculateTotals = (employees: any[]) => {
+                const activeEmployees = employees.filter((emp: any) => {
+                    const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
+                    const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
+                    return hari_kerja > 0;
+                });
+
+                const totals: Record<string, number> = {};
+                const numericFields = [
+                    'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
+                    'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_tahun', 'masa_kerja_jumlah', 'lembur_jumlah',
+                    'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
+                    'potongan_upah_kotor_total', 'jumlah_upah_kotor',
+                    'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
+                    'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
+                    'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
+                    'upah_bersih', 'koreksi_hk', 'pph21_ter', 'tarif_pajak_ter'
+                ];
+
+                for (const field of numericFields) totals[field] = 0;
+                totals['employee_count'] = activeEmployees.length;
+
+                for (const emp of activeEmployees) {
+                    for (const field of numericFields) {
+                        const val = emp[field];
+                        if (val !== null && val !== undefined) totals[field] += parseFloat(val) || 0;
+                    }
+                    
+                    // Sum dynamic premi and potongan
+                    for (const key of Object.keys(emp)) {
+                        if ((key.startsWith('premi_') && !['premi_brondol', 'premi_pph', 'premi_koreksi'].includes(key)) ||
+                            key.startsWith('KOREKSI') || key.startsWith('POTONGAN')) {
+                            const val = emp[key];
+                            if (typeof val === 'number') {
+                                if (!totals[key]) totals[key] = 0;
+                                totals[key] += val;
+                            }
+                        }
+                    }
+                }
+                return totals;
+            };
+
+            const gangsList = Object.entries(gangsMap).map(([gang_code, employees]) => ({
+                gang_code,
+                gang_totals: calculateTotals(employees)
+            }));
+
             return {
                 success: true,
-                data: result
+                data: {
+                    gangs: gangsList,
+                    premi_title_map: result.premi_title_map || {},
+                    potongan_title_map: result.potongan_title_map || {}
+                }
             };
         } catch (error: any) {
-            console.error(`[PayrollDataService] Fetch error:`, error);
+            console.error(`[PayrollDataService] Extraction error:`, error);
             throw error;
         }
     }

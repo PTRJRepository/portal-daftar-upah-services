@@ -259,6 +259,8 @@ export interface MonthlyTaxRow {
     thr_amount?: number;
     exgratia_amount?: number;
     other_incomes?: { type: string; name: string; amount: number }[];
+    pendapatan_tidak_tetap_thp?: number; // Total non-regular income for display
+    pendapatan_lainnya?: number; // Actual pendapatan_lainnya used in tax calculation
 }
 
 export interface AnnualIncomeRow {
@@ -555,9 +557,15 @@ class TaxReportService {
             const bpjsKesehatanMajikan4Pct = pph21Caruman.bpjs_kes_majikan_4;
             const carumanBase = pph21Caruman.base;
 
+            // Get pendapatan_lainnya from row data (from dataExtractorService or history)
+            // This includes THR, Bonus, Custom income that was already calculated in the payroll data
+            let rowPendapatanLainnya = row.total_pendapatan_lainnya || row.pendapatan_lainnya || 0;
+
             let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                 gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, row.pot_koreksi || 0
+                tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, 
+                row.pot_koreksi || 0,
+                rowPendapatanLainnya // Include pendapatan_lainnya from row data
             );
 
             let thrAmount = 0;
@@ -625,13 +633,24 @@ class TaxReportService {
 
             // Calculate total non-regular income (pendapatan tidak tetap / lainnya)
             // Use row's pre-computed field if available (from origin dataExtractor), otherwise sum components
-            const rowPendapatanLainnya = row.total_pendapatan_lainnya || row.pendapatan_lainnya || 0;
+            const rowPendapatanLainnyaValue = row.total_pendapatan_lainnya || row.pendapatan_lainnya || 0;
             const computedPendapatanLainnya = thrAmount + exgratiaAmount + otherIncomeAmount;
-            const pendapatan_tidak_tetap_thp = rowPendapatanLainnya > 0 ? rowPendapatanLainnya : computedPendapatanLainnya;
+            
+            // Use row value if available, otherwise use computed (fallback for missing data)
+            const pendapatan_tidak_tetap_thp = rowPendapatanLainnyaValue > 0 ? rowPendapatanLainnyaValue : computedPendapatanLainnya;
 
-            penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
+            // If row doesn't have pendapatan_lainnya (e.g., from history data),
+            // we need to add the computed value to penghasilanBruto
+            if (rowPendapatanLainnyaValue === 0 && computedPendapatanLainnya > 0) {
+                // History data doesn't include pendapatan_lainnya, add it now
+                penghasilanBruto += computedPendapatanLainnya;
+                // Update rowPendapatanLainnya to reflect what we're actually using
+                rowPendapatanLainnya = computedPendapatanLainnya;
+            }
+            // NOTE: If rowPendapatanLainnyaValue > 0, it's already included in penghasilanBruto
+            // from calculatePenghasilanBruto() above, so we DON'T add it again.
 
-            // Purely calculated PPh21 (TER)
+            // Purely calculated PPh21 (TER) - using penghasilanBruto that already includes all income
             const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
             const pph21 = pphResult.tax_amount;
             const tarifPajakTer = pphResult.rate_percent;
@@ -765,7 +784,9 @@ class TaxReportService {
                 exgratia_amount: exgratiaAmount,
                 other_incomes: empOtherIncomes,
                 // Total non-regular income for display (THR, Bonus, Custom, dll)
-                pendapatan_tidak_tetap_thp
+                pendapatan_tidak_tetap_thp,
+                // Include the actual pendapatan_lainnya used in tax calculation
+                pendapatan_lainnya: rowPendapatanLainnya
             };
         });
 

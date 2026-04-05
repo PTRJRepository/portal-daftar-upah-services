@@ -136,6 +136,10 @@ export default function MainPage({ lockedDiv = null }) {
   // Matrix View State
   const [activeMatrixView, setActiveMatrixView] = useState(null) // null | 'attendance' | 'overtime' | 'employee' | 'pajak'
 
+  // Employee sorting state (for employee info view)
+  const [employeeSortBy, setEmployeeSortBy] = useState('name') // 'name' | 'emp_code' | 'hk'
+  const [employeeSortOrder, setEmployeeSortOrder] = useState('asc') // 'asc' | 'desc'
+
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
 
@@ -181,6 +185,16 @@ export default function MainPage({ lockedDiv = null }) {
   // Refresh handler
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1)
+  }
+
+  // Employee sorting handler
+  const handleEmployeeSort = (field) => {
+    if (employeeSortBy === field) {
+      setEmployeeSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setEmployeeSortBy(field)
+      setEmployeeSortOrder('asc')
+    }
   }
 
   // Font Size handlers (relative adjustment)
@@ -1466,6 +1480,11 @@ export default function MainPage({ lockedDiv = null }) {
             currentProductionMonth={currentProductionMonth}
             currentProductionYear={currentProductionYear}
             useHistoryDb={isHistorical}
+            employeeSortBy={employeeSortBy}
+            employeeSortOrder={employeeSortOrder}
+            onEmployeeSort={handleEmployeeSort}
+            showEmployeeSort={activeMatrixView === 'employee'}
+            showDaftarUpahSort={!activeMatrixView}
           />
         </div>
 
@@ -1707,6 +1726,9 @@ export default function MainPage({ lockedDiv = null }) {
                   year={year}
                   division={division}
                   onViewEmployeeDetail={handleViewEmployeeDetail}
+                  sortBy={employeeSortBy}
+                  sortOrder={employeeSortOrder}
+                  onSortChange={handleEmployeeSort}
                 />
               </div>
               <div style={{ display: activeMatrixView === 'pajak' ? 'flex' : 'none', width: '100%', height: '100%', overflow: 'hidden', flexDirection: 'column', position: 'relative' }}>
@@ -1741,6 +1763,8 @@ export default function MainPage({ lockedDiv = null }) {
                 isEditMode={isEditMode}
                 useHistoryDb={isHistorical}
                 onRefresh={() => setRefreshTrigger(prev => prev + 1)}
+                sortBy={activeMatrixView === 'employee' ? undefined : employeeSortBy}
+                sortOrder={activeMatrixView === 'employee' ? undefined : employeeSortOrder}
               />
             </div>
           </div>

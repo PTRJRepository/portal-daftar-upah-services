@@ -251,6 +251,7 @@ export class HeaderService {
         const columns: ColumnDef[] = [
             { field: "no", headerName: "No" },
             { field: "nik", headerName: "NIK" },
+            { field: "emp_code", headerName: "EMP Code" },
             { field: "nama", headerName: "Nama" },
             { field: "jenis_kelamin", headerName: "JK" },
             { field: "gang_code", headerName: "Gang" },

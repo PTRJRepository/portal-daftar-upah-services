@@ -832,7 +832,10 @@ export async function seedAggregationToDb(division: string | undefined, month: n
         }
     }
 
-    return results;
+    return {
+        total_divisions: results.filter(r => r.status === 'SUCCESS').length,
+        processed: results
+    };
 }
 
 

@@ -858,10 +858,11 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             if (col.headerName === 'IDENTITAS' || (col.children && col.children.some(c => c.field === 'nik'))) {
               const kids = col.children || []
               const nikCol = kids.find(c => c.field === 'nik')
+              const empCodeCol = kids.find(c => c.field === 'emp_code')
               const namaCol = kids.find(c => c.field === 'nama')
               const lpCol = kids.find(c => c.field === 'jenis_kelamin')
 
-              const usedFields = new Set(['nik', 'nama', 'jenis_kelamin', 'no'])
+              const usedFields = new Set(['nik', 'nama', 'jenis_kelamin', 'no', 'emp_code'])
 
               const otherCols = kids.filter(c => !usedFields.has(c.field))
 
@@ -923,11 +924,40 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                   );
                 };
               }
-              if (namaCol) { namaCol.pinned = 'left'; namaCol.width = 220; }
+
+              // Configure emp_code column with default sort
+              if (empCodeCol) {
+                empCodeCol.width = 100;
+                empCodeCol.minWidth = 80;
+                empCodeCol.sort = 'asc'; // Default sort by emp_code ascending
+              } else {
+                // Create emp_code column if it doesn't exist in backend response
+                const newEmpCodeCol = {
+                  headerName: 'EMP Code',
+                  field: 'emp_code',
+                  width: 100,
+                  minWidth: 80,
+                  sort: 'asc', // Default sort by emp_code ascending
+                  type: 'textColumn',
+                  cellStyle: { textAlign: 'left' }
+                };
+                // We'll add it manually if backend doesn't provide it
+                kids.push(newEmpCodeCol);
+              }
+
+              if (namaCol) { 
+                namaCol.pinned = 'left'; 
+                namaCol.width = 220;
+                // Make name column sortable with visual indicator
+                namaCol.sortable = true;
+              }
               if (lpCol) { lpCol.width = 50; lpCol.minWidth = 50; }
 
               const newChildren = []
               if (nikCol) newChildren.push(nikCol)
+              // Add emp_code column right after nik
+              const finalEmpCodeCol = kids.find(c => c.field === 'emp_code')
+              if (finalEmpCodeCol) newChildren.push(finalEmpCodeCol)
               if (namaCol) newChildren.push(namaCol)
               newChildren.push({ ...seqCol, pinned: undefined })
               if (lpCol) newChildren.push(lpCol)

@@ -44,13 +44,18 @@ function formatNumber(n) {
     return Number(n).toLocaleString('id-ID')
 }
 
-export default function GangEmployeeInfo({ token, gangCodes, month, year, division, onViewEmployeeDetail = null }) {
+export default function GangEmployeeInfo({ token, gangCodes, month, year, division, onViewEmployeeDetail = null, sortBy: parentSortBy, sortOrder: parentSortOrder, onSortChange }) {
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [search, setSearch] = useState('')
-    const [sortBy, setSortBy] = useState('name') // 'name' | 'emp_code' | 'hk'
-    const [sortOrder, setSortOrder] = useState('asc')
+    
+    // Use parent sorting if provided, otherwise fallback to local state
+    const [localSortBy, setLocalSortBy] = useState('name')
+    const [localSortOrder, setLocalSortOrder] = useState('asc')
+    
+    const sortBy = parentSortBy || localSortBy
+    const sortOrder = parentSortOrder || localSortOrder
 
     const fetchData = useCallback(async () => {
         if (!gangCodes || gangCodes.length === 0 || !month || !year) return
@@ -133,11 +138,17 @@ export default function GangEmployeeInfo({ token, gangCodes, month, year, divisi
     }, [allEmployees])
 
     const handleSort = (field) => {
-        if (sortBy === field) {
-            setSortOrder(o => o === 'asc' ? 'desc' : 'asc')
+        if (onSortChange) {
+            // Use parent callback
+            onSortChange(field)
         } else {
-            setSortBy(field)
-            setSortOrder('asc')
+            // Use local state
+            if (localSortBy === field) {
+                setLocalSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+            } else {
+                setLocalSortBy(field)
+                setLocalSortOrder('asc')
+            }
         }
     }
 
@@ -283,27 +294,6 @@ export default function GangEmployeeInfo({ token, gangCodes, month, year, divisi
                         onFocus={e => e.target.style.borderColor = '#1e3a8a'}
                         onBlur={e => e.target.style.borderColor = '#e2e8f0'}
                     />
-                </div>
-
-                {/* Sort */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '500' }}>Sort:</span>
-                    {[['name', 'Nama'], ['emp_code', 'EmpCode'], ['hk', 'HK']].map(([field, label]) => (
-                        <button
-                            key={field}
-                            onClick={() => handleSort(field)}
-                            style={{
-                                padding: '0.3rem 0.6rem', fontSize: '0.72rem', fontWeight: '600',
-                                border: '1px solid', borderRadius: '6px', cursor: 'pointer',
-                                transition: 'all 0.15s',
-                                borderColor: sortBy === field ? '#1e3a8a' : '#e2e8f0',
-                                background: sortBy === field ? '#1e3a8a' : 'white',
-                                color: sortBy === field ? 'white' : '#475569'
-                            }}
-                        >
-                            {label} {sortBy === field ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
-                        </button>
-                    ))}
                 </div>
 
                 {/* Result count */}

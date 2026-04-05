@@ -139,7 +139,9 @@ export default function CustomPayrollTable({
     gangLoading = false,  // Pass gangLoading from parent to prevent fetch during gang load
     initialData = null,   // Cached raw API response from parent
     onDataLoaded = null,   // Callback to notify parent of loaded data
-    onRefresh = null      // Callback to trigger parent refresh (for saving)
+    onRefresh = null,      // Callback to trigger parent refresh (for saving)
+    sortBy = 'name',       // 'name' | 'emp_code' | 'nik'
+    sortOrder = 'asc'      // 'asc' | 'desc'
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -425,10 +427,12 @@ export default function CustomPayrollTable({
     // Use displayRows as the single source of truth for rendering
     // It merges stream data with edit overlays when needed
     const displayRows = useMemo(() => {
+        let resultRows;
+        
         if (stream.gangs && stream.gangs.length > 0 && rows.length > 0) {
             // Merge stream rows with any pending edits
             if (Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0) {
-                return rows.map(row => {
+                resultRows = rows.map(row => {
                     if (row.type !== 'employee') return row;
                     const empCode = row.emp_code || row.nik;
                     const editKey = `${empCode}`;
@@ -441,14 +445,43 @@ export default function CustomPayrollTable({
                         ...(kontanEdit ? { pendapatan_kontanan: kontanEdit.value } : {})
                     };
                 });
+            } else {
+                resultRows = rows;
             }
-            return rows;
+        } else if (stream.gangs && stream.gangs.length > 0) {
+            resultRows = streamRows;
+        } else {
+            resultRows = rows;
         }
-        if (stream.gangs && stream.gangs.length > 0) {
-            return streamRows;
-        }
-        return rows;
-    }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells]);
+
+        // Apply sorting for employee rows
+        const employeeRows = resultRows.filter(r => r.type === 'employee');
+        const nonEmployeeRows = resultRows.filter(r => r.type !== 'employee');
+
+        employeeRows.sort((a, b) => {
+            let valA, valB;
+
+            if (sortBy === 'name') {
+                valA = (a.emp_name || '').toLowerCase();
+                valB = (b.emp_name || '').toLowerCase();
+            } else if (sortBy === 'emp_code') {
+                valA = (a.emp_code || '').toLowerCase();
+                valB = (b.emp_code || '').toLowerCase();
+            } else if (sortBy === 'nik') {
+                valA = (a.nik || '').toLowerCase();
+                valB = (b.nik || '').toLowerCase();
+            } else {
+                return 0;
+            }
+
+            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // Return non-employee rows first (headers/totals), then sorted employee rows
+        return [...nonEmployeeRows, ...employeeRows];
+    }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells, sortBy, sortOrder]);
 
     // Toggle handlers
     const toggleGroup = useCallback((group) => {
