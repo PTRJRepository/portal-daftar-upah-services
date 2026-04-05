@@ -144,8 +144,7 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 data: {
                     total_gangs: result.total_gangs,
                     total_employees: result.total_employees,
-                    results: result.results,
-                    grand_total: result.grand_total
+                    results: result.results
                 }
             };
         } catch (error: any) {

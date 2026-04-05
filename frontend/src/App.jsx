@@ -255,18 +255,9 @@ const OperationalReportWrapper = () => {
         const empCount = result.data?.total_employees || 0
         setSeedingStatus(`Success! ${gangCount} gangs, ${empCount} employees seeded`)
 
-        if (result.data?.grand_total) {
-          const gt = result.data.grand_total
-          console.log('Seeded gangs:', result.data.results?.map(r => `${r.gang_code}: ${r.upah_bersih.toLocaleString('id-ID')}`).join(', '))
-          console.log('Grand Total:', {
-            employees: gt.total_employees,
-            hk: gt.total_hk,
-            gaji_pokok: gt.total_gaji_pokok,
-            tunjangan: gt.total_tunjangan,
-            premi: gt.total_premi,
-            potongan: gt.total_potongan,
-            upah_bersih: gt.total_upah_bersih
-          })
+        // Show breakdown in console
+        if (result.data?.results) {
+          console.log('Seeded gangs:', result.data.results.map(r => `${r.gang_code}: ${r.upah_bersih.toLocaleString('id-ID')}`).join(', '))
         }
 
         setTimeout(() => {

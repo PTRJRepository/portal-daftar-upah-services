@@ -1,18 +1,18 @@
 /**
  * SEEDER BERBASIS UI - Mengekstrak data PERSIS seperti yang tampil di Daftar Upah
- * 
+ *
  * Menggunakan parameter yang SAMA dengan UI:
  * - Division (dari filter UI)
  * - Month/Year (dari period slider)
  * - Gang (jika dipilih)
  * - GangPrefix/Group (jika dipilih)
- * 
- * Hasil: Agregasi yang 100% MATCH dengan Daftar Upah
+ *
+ * Hasil: Agregasi per gang yang 100% MATCH dengan Daftar Upah
  */
 
 import { Database } from "../db/client";
 import { dataExtractorService } from "../services/dataExtractorService";
-import { divisionDefinition } from "../services/divisionDefinition";
+import { AggregationRecord } from "../services/payrollDataService";
 
 interface SeedResult {
     gang_code: string;
@@ -22,48 +22,13 @@ interface SeedResult {
     error?: string;
 }
 
-interface GrandTotal {
-    total_employees: number;
-    total_hk: number;
-    total_hari_kerja: number;
-    total_gaji_pokok: number;
-    total_beras: number;
-    total_jabatan: number;
-    total_masa_kerja: number;
-    total_lembur: number;
-    total_tunjangan: number;
-    total_premi_brondol: number;
-    total_premi_prunning: number;
-    total_premi_insentif: number;
-    total_premi_kinerja: number;
-    total_premi: number;
-    total_koreksi: number;
-    total_upah_kotor: number;
-    total_potongan: number;
-    total_pph21: number;
-    total_bpjs_kes_pekerja: number;
-    total_bpjs_kes_majikan: number;
-    total_bpjs_pensiun_pekerja: number;
-    total_bpjs_pensiun_majikan: number;
-    total_spsi: number;
-    total_upah_bersih: number;
-    // Dynamic premi totals
-    dynamic_premi_1: number;
-    dynamic_premi_2: number;
-    dynamic_premi_3: number;
-    dynamic_premi_4: number;
-    dynamic_premi_5: number;
-    dynamic_premi_6: number;
-    dynamic_premi_7: number;
-}
-
 export async function seedFromUI(
     division: string,
     month: number,
     year: number,
     gangCode: string | null = null,
     gangPrefix: string | null = null
-): Promise<{ success: boolean; results: SeedResult[]; total_gangs: number; total_employees: number; grand_total: GrandTotal }> {
+): Promise<{ success: boolean; results: SeedResult[]; total_gangs: number; total_employees: number }> {
 
     console.log(`🎨 UI-BASED SEEDER`);
     console.log(`   Division: ${division}`);
@@ -77,7 +42,6 @@ export async function seedFromUI(
 
     try {
         // Step 1: Fetch data EXACTLY like UI does
-        // This uses the SAME dataExtractorService with SAME parameters as Daftar Upah
         const result = await dataExtractorService.extractPayrollData(
             month,
             year,
@@ -88,14 +52,14 @@ export async function seedFromUI(
             false,   // includeVirtual - SAME as UI
             false,   // useHistoryDb - SAME as UI
             gangPrefix, // gangPrefix/group - SAME as UI filter
-            true     // skipHarvest - for speed (panen data not needed for summary)
+            true     // skipHarvest - for speed
         );
 
         const rows = result.data_rows || [];
         console.log(`📊 Fetched ${rows.length} employees from UI data\n`);
 
         if (rows.length === 0) {
-            return { success: false, results: [], total_gangs: 0, total_employees: 0, grand_total: createEmptyGrandTotal() };
+            return { success: false, results: [], total_gangs: 0, total_employees: 0 };
         }
 
         // Step 2: Group by gang (exactly as displayed in UI)
@@ -108,25 +72,13 @@ export async function seedFromUI(
 
         console.log(`📋 Found ${Object.keys(gangsMap).length} gangs\n`);
 
-        // Step 3: Calculate grand total across ALL gangs first
-        const grandTotal = calculateGrandTotal(rows);
-
-        console.log(`📊 GRAND TOTAL:`);
-        console.log(`   Employees: ${grandTotal.total_employees}`);
-        console.log(`   Total HK: ${grandTotal.total_hk}`);
-        console.log(`   Gaji Pokok: ${grandTotal.total_gaji_pokok.toLocaleString('id-ID')}`);
-        console.log(`   Total Tunjangan: ${grandTotal.total_tunjangan.toLocaleString('id-ID')}`);
-        console.log(`   Total Premi: ${grandTotal.total_premi.toLocaleString('id-ID')}`);
-        console.log(`   Total Potongan: ${grandTotal.total_potongan.toLocaleString('id-ID')}`);
-        console.log(`   Upah Bersih: ${grandTotal.total_upah_bersih.toLocaleString('id-ID')}`);
-
-        // Step 3: Calculate totals EXACTLY as shown in UI
+        // Step 3: Calculate and insert per-gang totals
         for (const [gangCode, employees] of Object.entries(gangsMap)) {
             try {
-                // Calculate totals from employee data (same as payrollDataService but using UI data)
-                const totals = calculateUITotals(employees);
+                // Calculate aggregation record from employee data
+                const aggregation = calculateGangAggregation(gangCode, employees);
 
-                console.log(`  Gang ${gangCode}: ${employees.length} emp | bersih: ${totals.upah_bersih.toLocaleString('id-ID')}`);
+                console.log(`  Gang ${gangCode}: ${employees.length} emp | bersih: ${aggregation.total_upah_bersih.toLocaleString('id-ID')}`);
 
                 // Step 4: DELETE existing record to prevent duplication
                 await extDb.query(`
@@ -134,7 +86,7 @@ export async function seedFromUI(
                     WHERE period_month = ? AND period_year = ? AND gang_code = ?
                 `, [month, year, gangCode]);
 
-                // Step 5: INSERT new record with UI-calculated values
+                // Step 5: INSERT new record using EXACT schema from PayrollDataService
                 await extDb.query(`
                     INSERT INTO dbo.daftar_upah_aggregation_history (
                         period_month, period_year, division_code, gang_code, gang_description,
@@ -151,26 +103,51 @@ export async function seedFromUI(
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, GETDATE(), GETDATE(), ?
+                        ?, ?, GETDATE(), GETDATE(), ?
                     )
                 `, [
                     month, year, division,
-                    gangCode, employees[0]?.gang_description || gangCode,
-                    employees.length, totals.jumlah_hk, totals.hari_kerja,
-                    0, 0, 0, 0,
-                    0, totals.gaji_pokok, totals.gaji_pokok,
-                    totals.beras_jumlah, totals.jabatan_jumlah, totals.masa_kerja_jumlah, totals.lembur_jumlah, totals.total_tunjangan,
-                    totals.premi_brondol, 0, 0, 0, totals.total_premi,
-                    totals.total_potongan, totals.pot_pph21, totals.pot_bpjs_pekerja_total, 0, totals.pot_spsi,
-                    totals.jumlah_upah_kotor, totals.upah_bersih, 0, 0,
-                    JSON.stringify([]), "", totals.pot_koreksi,
+                    aggregation.gang_code,
+                    aggregation.gang_description,
+                    aggregation.total_employees,
+                    aggregation.total_hk,
+                    aggregation.total_hari_kerja,
+                    aggregation.total_cuti_tahunan,
+                    aggregation.total_cuti_sakit,
+                    aggregation.total_cuti_minggu,
+                    aggregation.total_cuti_nasional,
+                    aggregation.total_upah_dasar,
+                    aggregation.total_upah_pokok,
+                    aggregation.total_gaji_pokok,
+                    aggregation.total_beras,
+                    aggregation.total_jabatan,
+                    aggregation.total_masa_kerja,
+                    aggregation.total_lembur,
+                    aggregation.total_tunjangan,
+                    aggregation.total_premi_brondol,
+                    aggregation.total_premi_prunning,
+                    aggregation.total_premi_insentif,
+                    aggregation.total_premi_kinerja,
+                    aggregation.total_premi,
+                    aggregation.total_potongan,
+                    aggregation.total_pph21,
+                    aggregation.total_bpjs_pekerja,
+                    aggregation.total_bpjs_majikan,
+                    aggregation.total_spsi,
+                    aggregation.total_upah_kotor,
+                    aggregation.total_upah_bersih,
+                    aggregation.total_ffb_weight,
+                    aggregation.total_weight_tbs,
+                    aggregation.dynamic_premi_data,
+                    aggregation.informasi_tambahan,
+                    aggregation.total_koreksi,
                     'ui_based_seeder'
                 ]);
 
                 results.push({
                     gang_code: gangCode,
                     employees: employees.length,
-                    upah_bersih: totals.upah_bersih,
+                    upah_bersih: aggregation.total_upah_bersih,
                     status: 'success'
                 });
             } catch (error: any) {
@@ -185,67 +162,6 @@ export async function seedFromUI(
             }
         }
 
-        // Step 6: INSERT grand total record for the division (ALL gangs combined)
-        try {
-            console.log(`\n📊 Inserting grand total for division ${division}...`);
-
-            // Delete existing division grand total record
-            await extDb.query(`
-                DELETE FROM dbo.daftar_upah_aggregation_history
-                WHERE period_month = ? AND period_year = ? AND gang_code = ?
-            `, [month, year, `DIVISI_${division}`]);
-
-            // Insert grand total
-            await extDb.query(`
-                INSERT INTO dbo.daftar_upah_aggregation_history (
-                    period_month, period_year, division_code, gang_code, gang_description,
-                    total_employees, total_hk, total_hari_kerja,
-                    total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu, total_cuti_nasional,
-                    total_upah_dasar, total_upah_pokok, total_gaji_pokok,
-                    total_beras, total_jabatan, total_masa_kerja, total_lembur, total_tunjangan,
-                    total_premi_brondol, total_premi_prunning, total_premi_insentif, total_premi_kinerja, total_premi,
-                    total_potongan, total_pph21, total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
-                    total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
-                    dynamic_premi_data, informasi_tambahan, total_koreksi,
-                    created_at, updated_at, source_endpoint
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, GETDATE(), GETDATE(), ?
-                )
-            `, [
-                month, year, division,
-                `DIVISI_${division}`, `GRAND TOTAL - ${division}`,
-                grandTotal.total_employees, grandTotal.total_hk, grandTotal.total_hari_kerja,
-                0, 0, 0, 0,
-                0, grandTotal.total_gaji_pokok, grandTotal.total_gaji_pokok,
-                grandTotal.total_beras, grandTotal.total_jabatan, grandTotal.total_masa_kerja,
-                grandTotal.total_lembur, grandTotal.total_tunjangan,
-                grandTotal.total_premi_brondol, grandTotal.total_premi_prunning,
-                grandTotal.total_premi_insentif, grandTotal.total_premi_kinerja, grandTotal.total_premi,
-                grandTotal.total_potongan, grandTotal.total_pph21,
-                grandTotal.total_bpjs_kes_pekerja, grandTotal.total_bpjs_kes_majikan, grandTotal.total_spsi,
-                grandTotal.total_upah_kotor, grandTotal.total_upah_bersih, 0, 0,
-                JSON.stringify({
-                    dynamic_premi_1: grandTotal.dynamic_premi_1,
-                    dynamic_premi_2: grandTotal.dynamic_premi_2,
-                    dynamic_premi_3: grandTotal.dynamic_premi_3,
-                    dynamic_premi_4: grandTotal.dynamic_premi_4,
-                    dynamic_premi_5: grandTotal.dynamic_premi_5,
-                    dynamic_premi_6: grandTotal.dynamic_premi_6,
-                    dynamic_premi_7: grandTotal.dynamic_premi_7
-                }),
-                `Grand Total for Division ${division}`,
-                grandTotal.total_koreksi,
-                'ui_based_seeder_grand_total'
-            ]);
-
-            console.log(`✅ Grand total inserted for division ${division}`);
-        } catch (error: any) {
-            console.error(`❌ Error inserting grand total: ${error.message}`);
-        }
-
         const successCount = results.filter(r => r.status === 'success').length;
         const totalEmployees = results.reduce((sum, r) => sum + r.employees, 0);
 
@@ -255,8 +171,7 @@ export async function seedFromUI(
             success: successCount > 0,
             results,
             total_gangs: successCount,
-            total_employees: totalEmployees,
-            grand_total: grandTotal
+            total_employees: totalEmployees
         };
     } catch (error: any) {
         console.error(`❌ Seeder error: ${error.message}`);
@@ -264,156 +179,145 @@ export async function seedFromUI(
             success: false,
             results,
             total_gangs: 0,
-            total_employees: 0,
-            grand_total: createEmptyGrandTotal()
+            total_employees: 0
         };
     }
 }
 
 /**
- * Calculate totals EXACTLY as displayed in UI
- * This matches the UI calculation logic 100%
+ * Calculate aggregation record for a single gang
+ * Matches the AggregationRecord interface from PayrollDataService exactly
  */
-function calculateUITotals(employees: any[]) {
-    const totals: Record<string, number> = {
-        jumlah_hk: 0,
-        hari_kerja: 0,
-        gaji_pokok: 0,
-        beras_jumlah: 0,
-        jabatan_jumlah: 0,
-        masa_kerja_jumlah: 0,
-        lembur_jumlah: 0,
-        total_tunjangan: 0,
-        premi_brondol: 0,
-        total_premi: 0,
-        pot_koreksi: 0,
-        jumlah_upah_kotor: 0,
-        total_potongan: 0,
-        pot_pph21: 0,
-        pot_bpjs_pekerja_total: 0,
-        pot_spsi: 0,
-        upah_bersih: 0
-    };
+function calculateGangAggregation(gangCode: string, employees: any[]): AggregationRecord {
+    // Accumulators
+    let totalEmployees = employees.length;
+    let totalHk = 0;
+    let totalHariKerja = 0;
+    let totalCutiTahunan = 0;
+    let totalCutiSakit = 0;
+    let totalCutiMinggu = 0;
+    let totalCutiNasional = 0;
+    let totalUpahDasar = 0;
+    let totalUpahPokok = 0;
+    let totalGajiPokok = 0;
+    let totalBeras = 0;
+    let totalJabatan = 0;
+    let totalMasaKerja = 0;
+    let totalLembur = 0;
+    let totalTunjangan = 0;
+    let totalPremiBrondol = 0;
+    let totalPremiPrunning = 0;
+    let totalPremiInsentif = 0;
+    let totalPremiKinerja = 0;
+    let totalPremi = 0;
+    let totalPotongan = 0;
+    let totalPph21 = 0;
+    let totalBpjsPekerja = 0;
+    let totalBpjsMajikan = 0;
+    let totalSpsi = 0;
+    let totalUpahKotor = 0;
+    let totalUpahBersih = 0;
+    let totalKoreksi = 0;
+    let totalFfbWeight = 0;
+    let totalWeightTbs = 0;
 
-    for (const emp of employees) {
-        totals.jumlah_hk += emp.jumlah_hk || 0;
-        totals.hari_kerja += emp.hari_kerja || 0;
-        totals.gaji_pokok += emp.gaji_pokok || 0;
-        totals.beras_jumlah += emp.beras_jumlah || 0;
-        totals.jabatan_jumlah += emp.jabatan_jumlah || 0;
-        totals.masa_kerja_jumlah += emp.masa_kerja_jumlah || 0;
-        totals.lembur_jumlah += emp.lembur_jumlah || 0;
-        totals.total_tunjangan += emp.total_tunjangan || 0;
-        totals.premi_brondol += emp.premi_brondol || 0;
-        totals.total_premi += emp.total_premi || 0;
-        totals.pot_koreksi += emp.pot_koreksi || 0;
-        totals.jumlah_upah_kotor += emp.jumlah_upah_kotor || 0;
-        totals.total_potongan += emp.total_potongan || 0;
-        totals.pot_pph21 += emp.pot_pph21 || 0;
-        totals.pot_bpjs_pekerja_total += emp.pot_bpjs_pekerja_total || 0;
-        totals.pot_spsi += emp.pot_spsi || 0;
-        totals.upah_bersih += emp.upah_bersih || 0;
-    }
-
-    return totals;
-}
-
-/**
- * Create empty grand total object
- */
-function createEmptyGrandTotal(): GrandTotal {
-    return {
-        total_employees: 0,
-        total_hk: 0,
-        total_hari_kerja: 0,
-        total_gaji_pokok: 0,
-        total_beras: 0,
-        total_jabatan: 0,
-        total_masa_kerja: 0,
-        total_lembur: 0,
-        total_tunjangan: 0,
-        total_premi_brondol: 0,
-        total_premi_prunning: 0,
-        total_premi_insentif: 0,
-        total_premi_kinerja: 0,
-        total_premi: 0,
-        total_koreksi: 0,
-        total_upah_kotor: 0,
-        total_potongan: 0,
-        total_pph21: 0,
-        total_bpjs_kes_pekerja: 0,
-        total_bpjs_kes_majikan: 0,
-        total_bpjs_pensiun_pekerja: 0,
-        total_bpjs_pensiun_majikan: 0,
-        total_spsi: 0,
-        total_upah_bersih: 0,
-        dynamic_premi_1: 0,
-        dynamic_premi_2: 0,
-        dynamic_premi_3: 0,
-        dynamic_premi_4: 0,
-        dynamic_premi_5: 0,
-        dynamic_premi_6: 0,
-        dynamic_premi_7: 0
-    };
-}
-
-/**
- * Calculate grand total across all employees (aggregated across all gangs)
- * Matches the aggregation table schema exactly
- */
-function calculateGrandTotal(employees: any[]): GrandTotal {
-    const grand: GrandTotal = createEmptyGrandTotal();
+    // Dynamic premi accumulator
+    const dynamicPremiMap: Record<string, number> = {};
 
     for (const emp of employees) {
         // Basic counts
-        grand.total_employees += 1;
-        grand.total_hk += emp.jumlah_hk || 0;
-        grand.total_hari_kerja += emp.hari_kerja || 0;
+        totalHk += emp.jumlah_hk || 0;
+        totalHariKerja += emp.hari_kerja || 0;
 
-        // Gaji Pokok
-        grand.total_gaji_pokok += emp.gaji_pokok || 0;
+        // Cuti
+        totalCutiTahunan += emp.cuti_tahunan_hari || 0;
+        totalCutiSakit += emp.cuti_sakit_haid_hari || 0;
+        totalCutiMinggu += emp.cuti_minggu_hari || 0;
+        totalCutiNasional += emp.cuti_nasional_hari || 0;
 
-        // Tunjangan components
-        grand.total_beras += emp.beras_jumlah || 0;
-        grand.total_jabatan += emp.jabatan_jumlah || 0;
-        grand.total_masa_kerja += emp.masa_kerja_jumlah || 0;
-        grand.total_lembur += emp.lembur_jumlah || 0;
-        grand.total_tunjangan += emp.total_tunjangan || 0;
+        // Gaji
+        totalUpahDasar += emp.upah_dasar || 0;
+        totalUpahPokok += emp.upah_pokok || 0;
+        totalGajiPokok += emp.gaji_pokok || 0;
 
-        // Premi components
-        grand.total_premi_brondol += emp.premi_brondol || 0;
-        grand.total_premi_prunning += emp.premi_prunning || 0;
-        grand.total_premi_insentif += emp.premi_insentif || 0;
-        grand.total_premi_kinerja += emp.premi_kinerja || 0;
-        grand.total_premi += emp.total_premi || 0;
+        // Tunjangan
+        totalBeras += emp.beras_jumlah || 0;
+        totalJabatan += emp.jabatan_jumlah || 0;
+        totalMasaKerja += emp.masa_kerja_jumlah || 0;
+        totalLembur += emp.lembur_jumlah || 0;
+        totalTunjangan += emp.total_tunjangan || 0;
 
-        // Dynamic premi
-        grand.dynamic_premi_1 += emp.premi_dynamic_1 || 0;
-        grand.dynamic_premi_2 += emp.premi_dynamic_2 || 0;
-        grand.dynamic_premi_3 += emp.premi_dynamic_3 || 0;
-        grand.dynamic_premi_4 += emp.premi_dynamic_4 || 0;
-        grand.dynamic_premi_5 += emp.premi_dynamic_5 || 0;
-        grand.dynamic_premi_6 += emp.premi_dynamic_6 || 0;
-        grand.dynamic_premi_7 += emp.premi_dynamic_7 || 0;
+        // Premi
+        totalPremiBrondol += emp.premi_brondol || 0;
+        totalPremiPrunning += emp.premi_prunning || 0;
+        totalPremi += emp.total_premi || 0;
+
+        // Collect dynamic premi values
+        for (let i = 1; i <= 7; i++) {
+            const key = `premi_dynamic_${i}`;
+            const val = emp[key] || 0;
+            if (val !== 0) {
+                dynamicPremiMap[key] = (dynamicPremiMap[key] || 0) + val;
+            }
+        }
+
+        // Potongan
+        totalPotongan += emp.total_potongan || 0;
+        totalPph21 += emp.pot_pph21 || 0;
+        totalBpjsPekerja += emp.bpjs_pek || 0;
+        totalBpjsMajikan += emp.bpjs_maj || 0;
+        totalSpsi += emp.pot_spsi || 0;
+
+        // Upah
+        totalUpahKotor += emp.jumlah_upah_kotor || 0;
+        totalUpahBersih += emp.upah_bersih || 0;
 
         // Koreksi
-        grand.total_koreksi += emp.pot_koreksi || 0;
-
-        // Upah Kotor
-        grand.total_upah_kotor += emp.jumlah_upah_kotor || 0;
-
-        // Potongan components
-        grand.total_potongan += emp.total_potongan || 0;
-        grand.total_pph21 += emp.pot_pph21 || 0;
-        grand.total_bpjs_kes_pekerja += emp.bpjs_kes_pekerja || emp.pot_bpjs_kesehatan_pekerja || emp.bpjs_pek || 0;
-        grand.total_bpjs_kes_majikan += emp.bpjs_kes_majikan || emp.pot_bpjs_kesehatan_majikan || emp.bpjs_maj || 0;
-        grand.total_bpjs_pensiun_pekerja += emp.bpjs_pensiun_pekerja || emp.pot_bpjs_pensiun_pekerja || 0;
-        grand.total_bpjs_pensiun_majikan += emp.bpjs_pensiun_majikan || emp.pot_bpjs_pensiun_majikan || 0;
-        grand.total_spsi += emp.pot_spsi || 0;
-
-        // Upah Bersih
-        grand.total_upah_bersih += emp.upah_bersih || 0;
+        totalKoreksi += emp.pot_koreksi || 0;
     }
 
-    return grand;
+    // Build dynamic_premi_data JSON
+    const dynamicPremiData = JSON.stringify(dynamicPremiMap);
+
+    // Extract insufic, kinerja from dynamic_premi if present
+    // (These are summed from the dynamic premis based on their headers in UI)
+    totalPremiInsentif = dynamicPremiMap['premi_insentif'] || dynamicPremiMap['premi_i'] || 0;
+    totalPremiKinerja = dynamicPremiMap['premi_kinerja'] || dynamicPremiMap['premi_k'] || 0;
+
+    return {
+        gang_code: gangCode,
+        gang_description: employees[0]?.gang_description || employees[0]?.gang || gangCode,
+        total_employees: totalEmployees,
+        total_hk: totalHk,
+        total_hari_kerja: totalHariKerja,
+        total_cuti_tahunan: totalCutiTahunan,
+        total_cuti_sakit: totalCutiSakit,
+        total_cuti_minggu: totalCutiMinggu,
+        total_cuti_nasional: totalCutiNasional,
+        total_upah_dasar: totalUpahDasar,
+        total_upah_pokok: totalUpahPokok,
+        total_gaji_pokok: totalGajiPokok,
+        total_beras: totalBeras,
+        total_jabatan: totalJabatan,
+        total_masa_kerja: totalMasaKerja,
+        total_lembur: totalLembur,
+        total_tunjangan: totalTunjangan,
+        total_premi_brondol: totalPremiBrondol,
+        total_premi_prunning: totalPremiPrunning,
+        total_premi_insentif: totalPremiInsentif,
+        total_premi_kinerja: totalPremiKinerja,
+        total_premi: totalPremi,
+        total_potongan: totalPotongan,
+        total_pph21: totalPph21,
+        total_bpjs_pekerja: totalBpjsPekerja,
+        total_bpjs_majikan: totalBpjsMajikan,
+        total_spsi: totalSpsi,
+        total_upah_kotor: totalUpahKotor,
+        total_upah_bersih: totalUpahBersih,
+        total_ffb_weight: totalFfbWeight,
+        total_weight_tbs: totalWeightTbs,
+        dynamic_premi_data: dynamicPremiData,
+        informasi_tambahan: '',
+        total_koreksi: totalKoreksi
+    };
 }
