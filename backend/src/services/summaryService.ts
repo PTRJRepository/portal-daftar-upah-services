@@ -1,5 +1,6 @@
 import { Database } from "../db/client";
 import { divisionDefinition } from "./divisionDefinition";
+import { divisionConfigService } from "./config/DivisionConfigService";
 import { gangService } from "./gangService";
 import { join } from "path";
 import { file } from "bun";
@@ -53,7 +54,8 @@ export class SummaryService {
     private _useHistoryDb: boolean = false;
 
     private constructor() {
-        // Enforce DB_PROFILE for summary reports
+        // Use db_ptrj for HR tables (HR_GANG, HR_EMPLOYEE, etc.)
+        // Use extend_db_ptrj for aggregation history
         this.db = Database.getInstance(undefined, Config.DB_PROFILE);
         this.extendDb = Database.getInstance("extend_db_ptrj", Config.DB_EXTEND_PROFILE);
         this.millDb = Database.getMillInstance();
@@ -147,18 +149,16 @@ export class SummaryService {
      */
     private async getGangToDivisionMap(): Promise<Record<string, string>> {
         try {
-            const queryDb = this.getDbForQuery();
-            const gangRows = await queryDb.query<{ GangCode: string; LocCode: string }>(`
-                SELECT RTRIM(GangCode) as GangCode, RTRIM(LocCode) as LocCode
-                FROM dbo.HR_GANG
-                WHERE GangCode IS NOT NULL AND LocCode IS NOT NULL
-            `);
+            // Use DivisionConfigService for virtual division gang mappings
+            // This avoids querying HR_GANG from db_ptrj which can be slow
             const map: Record<string, string> = {};
-            for (const row of gangRows) {
-                const gc = row.GangCode?.trim();
-                const lc = row.LocCode?.trim();
-                if (gc && lc) map[gc] = lc;
+            
+            // Get all divisions from config
+            const allDivisions = divisionConfigService.getAllDivisionsForAPI();
+            for (const div of allDivisions) {
+                map[div.code] = div.code;
             }
+            
             return map;
         } catch (e) {
             logError(CATEGORY, "Failed to get gang-to-division map:", e);
@@ -1070,26 +1070,29 @@ COUNT(DISTINCT e.EmpCode) as total_employees,
      * Get premi headers for a specific division (LocCode)
      */
     public async getPremiHeadersForDivision(locCode: string, month: number, year: number): Promise<string[]> {
-        const startDate = `${year} -${month.toString().padStart(2, "0")}-01`;
+        const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const endDate = month === 12
             ? `${year + 1}-01-01`
-            : `${year} -${(month + 1).toString().padStart(2, "0")}-01`;
+            : `${year}-${(month + 1).toString().padStart(2, "0")}-01`;
 
         try {
-            const rows = await this.db.query<{ DocDesc: string }>(`
-                SELECT DISTINCT t.DocDesc
-                FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-                JOIN HR_GANGLN g ON t.EmpCode = g.GangMember
-                JOIN HR_GANG hg ON hg.GangCode = g.GangCode
-                WHERE hg.LocCode = ?
-    AND t.DocDate >= ? AND t.DocDate < ?
-        AND UPPER(t.DocDesc) LIKE '%PREMI%'
-                  AND ln.Amount > 0
-                ORDER BY t.DocDesc
-    `, [locCode, startDate, endDate]);
+            // Use extend_db_ptrj instead of db_ptrj for faster access
+            const rows = await this.extendDb.query<{ DocDesc: string }>(`
+                SELECT DISTINCT h.premi_type
+                FROM dbo.daftar_upah_aggregation_history h
+                WHERE h.period_month = ? AND h.period_year = ?
+                  AND h.division_code = ?
+                ORDER BY h.premi_type
+            `, [month, year, locCode]);
 
-            return rows.map(r => r.DocDesc?.trim()).filter(Boolean);
+            // Extract unique premi types from dynamic_premi_data
+            const headers: string[] = [];
+            for (const row of rows) {
+                if (row.DocDesc && !headers.includes(row.DocDesc)) {
+                    headers.push(row.DocDesc);
+                }
+            }
+            return headers;
         } catch (e) {
             logError(CATEGORY, "Failed to get premi headers for division:", e);
             return [];
@@ -1097,9 +1100,12 @@ COUNT(DISTINCT e.EmpCode) as total_employees,
     }
 
     public async getDivisionSummary(divisionCode?: string, month?: number, year?: number) {
+        // [FIX] Fetch gang descriptions separately (HR_GANG is in different database)
+        const gangDescs = await this.getAllGangDescriptions();
+        
         let query = `
 SELECT
-id, period_month, period_year, division_code, gang_code,
+    id, period_month, period_year, division_code, gang_code,
     gang_description, total_employees, total_hk, total_hari_kerja,
     total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu,
     total_cuti_nasional, total_upah_dasar, total_upah_pokok,
@@ -1111,9 +1117,9 @@ id, period_month, period_year, division_code, gang_code,
     total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
     total_upah_kotor, total_upah_bersih, total_ffb_weight, total_weight_tbs,
     created_at, updated_at, source_endpoint
-            FROM dbo.daftar_upah_aggregation_history
-            WHERE 1 = 1
-    `;
+FROM dbo.daftar_upah_aggregation_history
+WHERE 1 = 1
+        `;
 
         const params: any[] = [];
 
@@ -1145,6 +1151,13 @@ id, period_month, period_year, division_code, gang_code,
         query += " ORDER BY division_code, gang_code";
 
         const rows = await this.extendDb.query<any>(query, params);
+        
+        // [FIX] Override gang_description with real descriptions from HR_GANG
+        for (const row of rows) {
+            if (row.gang_code && gangDescs[row.gang_code]) {
+                row.gang_description = gangDescs[row.gang_code];
+            }
+        }
 
         // Patterns to EXCLUDE from dynamic premi headers display
         // The user requested to include FULL premiums breakdown, including prunning, kinerja, insentif, and tiket.
@@ -1192,6 +1205,34 @@ id, period_month, period_year, division_code, gang_code,
                 if (!Array.isArray(dynamicPremi)) {
                     dynamicPremi = [];
                 }
+
+                // [FIX] Deduplicate dynamicPremi - merge all 'brondol' entries into one
+                const deduplicatedPremi: any[] = [];
+                const premiMap = new Map<string, number>();
+                
+                for (const item of dynamicPremi) {
+                    const header = (item.header || '').toUpperCase().trim();
+                    const total = parseFloat(item.total || 0);
+                    
+                    // Merge all brondol entries into one
+                    if (header.includes('BRONDOL')) {
+                        const existing = premiMap.get('BRONDOL') || 0;
+                        premiMap.set('BRONDOL', existing + total);
+                    } else {
+                        // Keep other premi items as-is
+                        deduplicatedPremi.push(item);
+                    }
+                }
+                
+                // Add merged brondol entry
+                if (premiMap.has('BRONDOL') && premiMap.get('BRONDOL')! > 0) {
+                    deduplicatedPremi.unshift({ 
+                        header: 'BRONDOL', 
+                        total: premiMap.get('BRONDOL') 
+                    });
+                }
+                
+                dynamicPremi = deduplicatedPremi;
 
                 const t_brondol = parseFloat(row.total_premi_brondol || 0);
                 if (t_brondol > 0) {
@@ -1257,11 +1298,26 @@ id, period_month, period_year, division_code, gang_code,
 
         const headerList = Array.from(allHeaders).sort();
         const filteredHeaderList = Array.from(filteredHeaders).sort();
+        
+        // [FIX] Remove duplicate 'brondol' headers (case-insensitive)
+        const uniqueFilteredHeaders: string[] = [];
+        const seenBrondol = new Set<string>();
+        for (const header of filteredHeaderList) {
+            const normalized = header.toLowerCase().trim();
+            if (normalized.includes('brondol')) {
+                if (!seenBrondol.has('brondol')) {
+                    seenBrondol.add('brondol');
+                    uniqueFilteredHeaders.push(header);
+                }
+            } else {
+                uniqueFilteredHeaders.push(header);
+            }
+        }
 
         // Attach headers to first row (convention used by frontend)
         if (results.length > 0) {
             results[0]._premi_headers = headerList;
-            results[0]._premi_headers_filtered = filteredHeaderList;
+            results[0]._premi_headers_filtered = uniqueFilteredHeaders;
         }
 
         // Calculate Grand Total
@@ -1287,8 +1343,8 @@ id, period_month, period_year, division_code, gang_code,
                 total_premi_kinerja: acc.total_premi_kinerja + rowTotalPremiKinerja,
                 total_premi_prunning: acc.total_premi_prunning + rowTotalPremiPrunning,
                 total_koreksi: acc.total_koreksi + (Number(row.total_koreksi) || 0),
-                // Calculate totals for each filtered dynamic premi header
-                dynamic_premi_totals: filteredHeaderList.reduce((dynAcc, header) => {
+                // Calculate totals for each filtered dynamic premi header (using unique headers)
+                dynamic_premi_totals: uniqueFilteredHeaders.reduce((dynAcc, header) => {
                     dynAcc[header] = (dynAcc[header] || 0) + getDynamicPremiValue(row, header);
                     return dynAcc;
                 }, { ...(acc.dynamic_premi_totals || {}) } as Record<string, number>)
@@ -1312,37 +1368,34 @@ id, period_month, period_year, division_code, gang_code,
         return {
             data: results,
             grand_total: grandTotal,
-            filtered_headers: filteredHeaderList
+            filtered_headers: uniqueFilteredHeaders
         };
     }
 
     /**
-     * Get all gang descriptions (real-time from HR_GANG in db_ptrj)
+     * Get all gang descriptions from extend_db_ptrj (history_hr_gang)
      * Returns a map: gang_code -> description
      */
     public async getAllGangDescriptions(): Promise<Record<string, string>> {
         try {
-            // Fetch from HR_GANG — uses origin db_ptrj or extend_db_ptrj based on useHistoryDb flag
-            const queryDb = this.getDbForQuery();
-            const gangRows = await queryDb.query<{ GangCode: string; Description: string | null }>(`
-                SELECT RTRIM(GangCode) as GangCode, Description
-                FROM dbo.HR_GANG
-                WHERE GangCode IS NOT NULL
-    `);
+            // Fetch from history_hr_gang in extend_db_ptrj
+            const gangRows = await this.extendDb.query<{ gang_code: string; gang_description: string }>(`
+                SELECT DISTINCT gang_code, gang_description
+                FROM dbo.history_hr_gang
+                WHERE gang_code IS NOT NULL
+            `);
 
             // Build result map: gang_code -> description
             const result: Record<string, string> = {};
             for (const row of gangRows) {
-                const gangCode = row.GangCode?.trim() || "";
-                const gangDesc = row.Description?.trim() || "";
-
-                // Use description if available, otherwise use gang code as fallback
+                const gangCode = row.gang_code?.trim() || "";
+                const gangDesc = row.gang_description?.trim() || "";
                 result[gangCode] = gangDesc || gangCode;
             }
 
             return result;
         } catch (error: any) {
-            logError(CATEGORY, "Failed to get gang descriptions:", error);
+            logError(CATEGORY, "Failed to get gang descriptions from history_hr_gang:", error);
             return {};
         }
     }

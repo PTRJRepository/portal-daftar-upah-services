@@ -215,7 +215,12 @@ export default function ReportToolbar({
     onEmployeeSort = null,
     showEmployeeSort = false,
     // Daftar Upah table sort props
-    showDaftarUpahSort = false
+    showDaftarUpahSort = false,
+    // Font size controls
+    fontSize = 100,
+    onFontIncrease = null,
+    onFontDecrease = null,
+    onFontReset = null
 }) {
     // Helper to extract Asistensi (Group)
     // Rule: K2 gangs belong to Group 1 (special estate classification).
@@ -429,7 +434,7 @@ export default function ReportToolbar({
             )}
 
             {/* ── Daftar Upah Sort Buttons (Table Mode) ────────────── */}
-            {(viewMode === 'table' || viewMode === null) && onEmployeeSort && (
+            {showDaftarUpahSort && onEmployeeSort && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Sort:</span>
                     {[
@@ -473,8 +478,62 @@ export default function ReportToolbar({
                             </button>
                         )
                     })}
-                    {/* DEBUG */}
-                    <span style={{ fontSize: '9px', color: '#999' }}>vMode={viewMode}</span>
+                </div>
+            )}
+
+            {/* ── Font Size Controls ─────────────────────────────────── */}
+            {(showDaftarUpahSort || showEmployeeSort) && onFontIncrease && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #e5e7eb', background: '#fafafa' }}>
+                    <span style={{ fontSize: '11px', color: '#6b7280', fontWeight: '500', marginRight: '4px' }}>Aa</span>
+                    <button
+                        onClick={onFontDecrease}
+                        disabled={fontSize <= 60}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: fontSize <= 60 ? 'not-allowed' : 'pointer',
+                            fontSize: '14px',
+                            padding: '2px 6px',
+                            color: fontSize <= 60 ? '#9ca3af' : '#374151',
+                            fontWeight: '600'
+                        }}
+                        title="Perkecil Font"
+                    >
+                        −
+                    </button>
+                    <button
+                        onClick={onFontReset}
+                        style={{
+                            background: fontSize === 100 ? '#1e3a8a' : '#ffffff',
+                            color: fontSize === 100 ? '#ffffff' : '#374151',
+                            border: '1px solid #d1d5db',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            padding: '2px 8px',
+                            borderRadius: '3px',
+                            fontWeight: '600',
+                            minWidth: '45px'
+                        }}
+                        title="Reset ke 100%"
+                    >
+                        {fontSize}%
+                    </button>
+                    <button
+                        onClick={onFontIncrease}
+                        disabled={fontSize >= 150}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: fontSize >= 150 ? 'not-allowed' : 'pointer',
+                            fontSize: '14px',
+                            padding: '2px 6px',
+                            color: fontSize >= 150 ? '#9ca3af' : '#374151',
+                            fontWeight: '600'
+                        }}
+                        title="Perbesar Font"
+                    >
+                        +
+                    </button>
                 </div>
             )}
 

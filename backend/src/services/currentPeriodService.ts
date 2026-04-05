@@ -33,7 +33,7 @@ export class CurrentPeriodService {
     private readonly CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
     private constructor() {
-        this.db = Database.getInstance();
+        this.db = Database.getExtendedInstance();
     }
 
     public static getInstance(): CurrentPeriodService {
@@ -56,26 +56,25 @@ export class CurrentPeriodService {
         }
 
         try {
-            // Per user request: Query PR_TASKREGLN (base) for the latest TrxDate
-            // OPTIMIZED: Use TOP 10 instead of full table scan, add query timeout
+            // ALWAYS use extend_db_ptrj (SERVER_PROFILE_1) for fast access
+            // Query daftar_upah_aggregation_history for latest period
             const rows = await this.db.query<{
-                TrxDate: string;
+                period_month: number;
+                period_year: number;
             }>(`
-                SELECT TOP 10
-                    TrxDate
-                FROM [db_ptrj].[dbo].[PR_TASKREGLN]
-                ORDER BY TrxDate DESC
+                SELECT TOP 1
+                    period_month,
+                    period_year
+                FROM dbo.daftar_upah_aggregation_history
+                ORDER BY period_year DESC, period_month DESC
             `);
 
             if (!rows || rows.length === 0) {
-                // Fallback to current calendar date if no data found
-                const today = new Date();
-                const fallbackMonth = today.getMonth() + 1;
-                const fallbackYear = today.getFullYear();
-
+                // No data in extend_db_ptrj, use config defaults
+                const { Config } = await import("../config");
                 const result: CurrentPeriodResponse = {
-                    month: fallbackMonth,
-                    year: fallbackYear,
+                    month: Config.DEFAULT_MONTH,
+                    year: Config.DEFAULT_YEAR,
                     latest_trx_date: null,
                     latest_acc_month: null,
                     latest_acc_year: null,
@@ -88,18 +87,16 @@ export class CurrentPeriodService {
             }
 
             const latest = rows[0];
-            const latestTrxDate = new Date(latest.TrxDate);
-
-            // Use TrxDate directly to determine the latest calendar period (base)
-            // No need to +1 month since we are using the live transaction table
-            const currentMonth = latestTrxDate.getMonth() + 1;
-            const currentYear = latestTrxDate.getFullYear();
+            
+            // Use period_month and period_year directly from aggregation history
+            const currentMonth = latest.period_month;
+            const currentYear = latest.period_year;
 
             const result: CurrentPeriodResponse = {
                 month: currentMonth,
                 year: currentYear,
-                latest_trx_date: latest.TrxDate,
-                latest_acc_month: null, // Acc columns not available here
+                latest_trx_date: null,
+                latest_acc_month: null,
                 latest_acc_year: null,
                 is_cached: false
             };
@@ -109,10 +106,9 @@ export class CurrentPeriodService {
             return result;
 
         } catch (error) {
-            console.error("[CurrentPeriodService] Error getting current period:", error);
-            
-            // FAST FALLBACK: Use config defaults immediately on timeout
-            // Don't wait for slow fallback queries
+            // ANY error (timeout, connection, etc) -> IMMEDIATE fallback to SERVER_PROFILE_1 defaults
+            console.error("[CurrentPeriodService] Error (using extend_db_ptrj fallback):", error.message);
+
             const { Config } = await import("../config");
             const result: CurrentPeriodResponse = {
                 month: Config.DEFAULT_MONTH,
@@ -122,11 +118,11 @@ export class CurrentPeriodService {
                 latest_acc_year: null,
                 is_cached: false
             };
-            
-            // Cache the fallback to prevent repeated timeout attempts
+
+            // Cache the fallback to prevent repeated failed attempts
             this.cache = result;
             this.cacheExpiry = now + this.CACHE_DURATION_MS;
-            
+
             return result;
         }
     }

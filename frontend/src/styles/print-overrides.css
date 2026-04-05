@@ -1,10 +1,20 @@
-/* 
-  Global Print Overrides 
-  This stylesheet ensures that the sidebar and other non-content elements 
+/*
+  Global Print Overrides
+  This stylesheet ensures that the sidebar, header, and other non-content elements
   are hidden during printing.
 */
 
 @media print {
+    /* Hide the header/topbar with admin icon */
+    .no-print,
+    header,
+    [class*="header"],
+    [class*="topbar"],
+    [class*="navbar"],
+    div[style*="z-index: 30"],
+    div[style*="height: 56px"] {
+        display: none !important;
+    }
 
     /* Hide the sidebar - Looking for the 0f172a background and fixed/absolute positioning */
     div[style*="background-color: rgb(15, 23, 42)"],

@@ -169,8 +169,10 @@ export class PayrollDataService {
             }
 
             const calculateTotals = (employees: any[]) => {
+                // [FIX] Use EXACT SAME filtering as live Daftar Upah UI & dataExtractorService
+                // Filter: EXCLUDE if hari_kerja <= 0 (subtracts ALL leave types)
                 const activeEmployees = employees.filter((emp: any) => {
-                    const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
+                    const totalCuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0) + (emp.cuti_minggu_hari || 0) + (emp.cuti_nasional_hari || 0);
                     const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
                     return hari_kerja > 0;
                 });
@@ -195,15 +197,20 @@ export class PayrollDataService {
                         const val = emp[field];
                         if (val !== null && val !== undefined) totals[field] += parseFloat(val) || 0;
                     }
-                    
-                    // Sum dynamic premi and potongan
+
+                    // Sum dynamic premi and potongan separately
                     for (const key of Object.keys(emp)) {
-                        if ((key.startsWith('premi_') && !['premi_brondol', 'premi_pph', 'premi_koreksi'].includes(key)) ||
+                        if ((key.startsWith('premi_') && !['premi_brondol', 'premi_pph', 'premi_koreksi', 'total_premi'].includes(key)) ||
                             key.startsWith('KOREKSI') || key.startsWith('POTONGAN')) {
                             const val = emp[key];
                             if (typeof val === 'number') {
                                 if (!totals[key]) totals[key] = 0;
                                 totals[key] += val;
+                                
+                                // [FIX] ALSO add dynamic premi to total_premi (matches Daftar Upah)
+                                if (key.startsWith('premi_')) {
+                                    totals.total_premi += val;
+                                }
                             }
                         }
                     }
@@ -311,9 +318,13 @@ export class PayrollDataService {
             total_premi_prunning: totalPremiPrunning,
             total_premi_insentif: totalPremiInsentif,
             total_premi_kinerja: totalPremiKinerja,
-            total_premi: totalPremi,
+            // [FIX] Use totals.total_premi directly from employee data (matches Daftar Upah)
+            // DO NOT recalculate from dynamicPremiList - it may differ due to missing/duplicate items
+            total_premi: totals.total_premi || totalPremi,
             total_potongan: totals.total_potongan || 0,
-            total_pph21: totals.pph21_ter || totals.pot_pph21 || 0,
+            // [FIX] Use pph21_ter (calculated TER tax) not pot_pph21 (from PR_ADTRANS deduction)
+            // pph21_ter is the correct tax amount calculated using TER method in Phase 4b
+            total_pph21: totals.pph21_ter || 0,
             total_bpjs_pekerja: totals.pot_bpjs_pekerja_total || 0,
             total_bpjs_majikan: totals.pot_astek_maj || 0,
             total_spsi: totals.pot_spsi || 0,

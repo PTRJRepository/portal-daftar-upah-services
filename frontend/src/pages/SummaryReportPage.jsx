@@ -226,7 +226,19 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 if (result.success) {
                     setSummaryData(result.data || []);
                     setGrandTotal(result.grand_total || null);
-                    setFilteredHeaders(result.filtered_headers || []);
+                    
+                    // [FIX] Remove duplicate headers (especially 'brondol')
+                    const rawHeaders = result.filtered_headers || [];
+                    const uniqueHeaders = [];
+                    const seen = new Set();
+                    for (const header of rawHeaders) {
+                        const normalized = header.toLowerCase().trim();
+                        if (!seen.has(normalized)) {
+                            seen.add(normalized);
+                            uniqueHeaders.push(header);
+                        }
+                    }
+                    setFilteredHeaders(uniqueHeaders);
                 } else {
                     setError('Failed to fetch summary data');
                 }

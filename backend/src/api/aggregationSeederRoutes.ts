@@ -22,7 +22,48 @@ interface SeedResult {
     status: string;
 }
 
+// Global progress tracker
+let seederProgress: {
+    is_running: boolean;
+    current_division: string;
+    current_gang: string;
+    divisions_total: number;
+    divisions_done: number;
+    current_batch: number;
+    total_batches: number;
+    started_at: string | null;
+    last_update: string;
+    message: string;
+} = {
+    is_running: false,
+    current_division: '',
+    current_gang: '',
+    divisions_total: 0,
+    divisions_done: 0,
+    current_batch: 0,
+    total_batches: 0,
+    started_at: null,
+    last_update: '',
+    message: 'Idle'
+};
+
+function updateProgress(update: Partial<typeof seederProgress>) {
+    Object.assign(seederProgress, update, { last_update: new Date().toISOString() });
+    console.log(`[SeederProgress] ${update.message || update.current_division || 'Updating...'}`);
+}
+
+export { seederProgress, updateProgress };
+
 export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregation" })
+    .get("/progress", async () => {
+        return {
+            success: true,
+            progress: seederProgress,
+            elapsed_seconds: seederProgress.started_at 
+                ? Math.floor((Date.now() - new Date(seederProgress.started_at).getTime()) / 1000)
+                : 0
+        };
+    })
     .get("/health", async () => {
         const db = Database.getExtendedInstance();
         try {
@@ -50,11 +91,21 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
             return { success: false, error: "Unauthorized" };
         }
 
-        const { division, month, year, force } = body;
+        const { division, month, year, force, useParallel } = body;
 
         try {
-            // Seed hanya ke aggregation table (existing behavior)
-            const result = await seedAggregationToDb(division, month, year, authHeader, force || false);
+            let result;
+            
+            // Use parallel seeder if requested (faster)
+            if (useParallel !== false) {  // Default to parallel
+                const { seedAggregationParallel } = await import("./parallelAggregationSeeder");
+                const divisions = division ? [division] : await fetchAvailableDivisions();
+                result = await seedAggregationParallel(divisions, month, year, authHeader, force || false);
+            } else {
+                // Fallback to old sequential method (for compatibility)
+                result = await seedAggregationToDb(division, month, year, authHeader, force || false);
+            }
+            
             return {
                 success: true,
                 data: result
@@ -785,11 +836,14 @@ export async function seedAggregationToDb(division: string | undefined, month: n
             let totalEmployees = 0;
 
             for (const record of allRecords) {
+                // DEBUG: Log PPh21 values being stored
+                console.log(`[AggregationSeeder] ${record.gang_code}: total_pph21=${record.total_pph21}, pot_pph21 source`);
+
                 // Insert into DB
                 // Note: We use targetDivisionCode (e.g. ESTATE_A_VIRTUAL) even if data came from source (ESTATE_A_1)
-                // This matches previous logic? 
+                // This matches previous logic?
                 // Wait, previous logic: "targetDivisionCode = div" (virtual)
-                // And inside loop: "Iterate source divisions" -> "fetchRawTreeData(sourceDiv)" 
+                // And inside loop: "Iterate source divisions" -> "fetchRawTreeData(sourceDiv)"
                 // -> "insertOrUpdateAggregation(targetDivisionCode, ..., record)"
                 // Yes, so we map all records to the targetDivisionCode.
 
@@ -897,7 +951,14 @@ async function insertOrUpdateAggregation(
     const dbDivisionCode = DIVISION_CODE_MAP[division] || division;
 
     try {
-        // APPEND-ONLY: Always INSERT a new record (never UPDATE existing)
+        // [FIX] Delete existing records for this gang/period to prevent duplication
+        // This ensures idempotent seeding - running seeder multiple times produces same result
+        await db.query(`
+            DELETE FROM dbo.daftar_upah_aggregation_history
+            WHERE period_month = ? AND period_year = ? AND division_code = ? AND gang_code = ?
+        `, [month, year, dbDivisionCode, aggregation.gang_code]);
+
+        // INSERT new record with latest data
         // GETDATE() is used directly in SQL for timestamp fields
         await db.query(`
             INSERT INTO dbo.daftar_upah_aggregation_history (
@@ -913,8 +974,9 @@ async function insertOrUpdateAggregation(
                 created_at, updated_at, source_endpoint
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, GETDATE(), GETDATE(), ?
             )
         `, [
             month,

@@ -241,20 +241,20 @@ export class AggregationService {
         }
 
         // Rule 2: Calculate upah_bersih if missing
-        // Formula matches dataExtractorService.ts:400
-        // upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
+        // Formula MUST match dataExtractorService.ts:3666
+        // upah_bersih = jumlah_upah_kotor - total_potongan
         let calculatedCount = 0;
         for (const row of filteredRows) {
             const upahBersih = this.getNumericValue(row, 'upah_bersih');
             if (upahBersih === 0) {
                 const jumlahUpahKotor = this.getNumericValue(row, 'jumlah_upah_kotor');
                 const totalPotonganBersih = this.calculateRowTotalPotonganBersih(row);
-                const potPremiPph = this.getNumericValue(row, 'premi_pph');
 
                 let calculatedUpahBersih = 0;
                 if (jumlahUpahKotor > 0) {
-                    // Use the standard formula: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
-                    calculatedUpahBersih = jumlahUpahKotor - totalPotonganBersih + potPremiPph;
+                    // Use the standard formula: upah_bersih = jumlah_upah_kotor - total_potongan
+                    // DO NOT add premi_pph - it's already included in jumlah_upah_kotor
+                    calculatedUpahBersih = jumlahUpahKotor - totalPotonganBersih;
                 } else {
                     // Fallback: calculate from scratch if jumlah_upah_kotor is not available
                     const gajiPokok = this.getNumericValue(row, 'gaji_pokok');
@@ -262,15 +262,13 @@ export class AggregationService {
                     const totalPremi = this.calculateRowTotalPremi(row);
                     const potKoreksi = this.getNumericValue(row, 'koreksi');
                     const pendapatanLainya = this.getNumericValue(row, 'pot_pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_thr');
-                    
-                    // [FIXED 2026-04-03] SIGN ERROR FIX: potKoreksi di-ADD ke gross (sesuai PayrollCalculator)
+
                     // koreksi adalah bagian dari penghasilan, di-add ke jumlah_upah_kotor untuk tampilan
                     // koreksi TIDAK masuk total_potongan (avoid double deduction)
                     const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanLainya) + potKoreksi;
-                    
-                    // [FIXED 2026-04-03] formula now matches PayrollCalculator exactly:
-                    // upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
-                    calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph;
+
+                    // upah_bersih = jumlah_upah_kotor - total_potongan
+                    calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih;
                 }
 
                 row['upah_bersih'] = calculatedUpahBersih;

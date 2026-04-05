@@ -501,6 +501,8 @@ class TaxReportService {
         const newJabatansToSave: any[] = [];
 
         let totalPph21 = 0;
+        let diffCount = 0;
+        let totalDiff = 0;
 
         // Load THR and Exgratia for the specific month if it matches the active THR month
         const activeThr = loadActiveThrPeriode();
@@ -541,6 +543,12 @@ class TaxReportService {
             const empCodeTrimmed = row.emp_code?.trim() || '';
             const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
             const kategoriTer = mapPTKPToTER(masterPtkp);
+
+            // [DEBUG] Log first row's available fields to understand data structure
+            if (idx === 0) {
+                console.log(`[TAX_REPORT_DEBUG] First row keys:`, Object.keys(row).filter(k => k.includes('pph') || k.includes('ptkp') || k.includes('beras') || k.includes('status')));
+                console.log(`[TAX_REPORT_DEBUG] First row pph21_ter=${row.pph21_ter}, status_ptkp=${row.status_ptkp}, beras_rate=${row.beras_rate}`);
+            }
 
             // Fetch breakdown for pure calculation
             const gajiPokokAktual = row.gaji_pokok_aktual || row.gaji_pokok || 0;
@@ -656,6 +664,16 @@ class TaxReportService {
             const tarifPajakTer = pphResult.rate_percent;
 
             totalPph21 += pph21;
+
+            // [DEBUG] Always log every employee's pph21 calculation for comparison
+            if (idx < 5 || row.pph21_ter !== undefined) {
+                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: TaxReport_pph21=${pph21}, row_pph21_ter=${row.pph21_ter || 'N/A'}, diff=${row.pph21_ter ? pph21 - row.pph21_ter : 'N/A'}, bruto=${penghasilanBruto}, PTKP=${masterPtkp}, TER=${pphResult.ter_category}, rate=${pphResult.rate_percent}%`);
+                if (row.pph21_ter !== undefined && row.pph21_ter !== pph21) {
+                    diffCount++;
+                    totalDiff += (pph21 - (row.pph21_ter || 0));
+                    console.log(`[TAX_REPORT_DEBUG] *** DIFF FOUND: Components: gaji=${gajiPokokAktual}, beras=${tunjanganBeras}, jab=${tunjanganJabatan}, msk=${tunjanganMasaKerja}, lembur=${tunjanganLembur}, premi=${totalPremi}, potKor=${row.pot_koreksi || 0}, pendLain=${rowPendapatanLainnya}, astek=${astek084}, bpjs=${bpjsKesehatanMajikan4Pct}`);
+                }
+            }
 
             // Discover dynamic premi fields from row keys (e.g. premi_brondol, premi_pruning, etc.)
             const premiDetail: Record<string, number> = {};
@@ -815,7 +833,10 @@ class TaxReportService {
             );
         }
 
-        console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${isSourceCurrent ? 'current' : 'history'}`);
+        console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${isSourceCurrent ? 'current' : 'history'}, diffCount=${diffCount}, totalDiff=${totalDiff}`);
+        if (diffCount > 0) {
+            console.log(`[TaxReportService] *** WARNING: ${diffCount} employees have different PPh21 between TaxReport and Daftar Upah! Total difference: ${totalDiff}`);
+        }
         return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
     }
 

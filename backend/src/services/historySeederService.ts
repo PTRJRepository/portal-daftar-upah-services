@@ -255,8 +255,17 @@ export class HistorySeederService {
             const historyId = historyDatabaseService.generateHistoryId();
             result.history_id = historyId;
 
-            // Removed deleteHistoryForPeriodAndLocation to prevent wiping out manual edits during reseeding.
-            // Using UPSERT logic in save methods instead.
+            // [FIX] Delete existing history for this division/period/gang to prevent duplication
+            // This ensures idempotent seeding - running seeder multiple times produces same result
+            if (options.force) {
+                console.log(`[HistorySeeder] Deleting existing history for ${options.divisionCode || 'ALL'}/${options.gangCode || 'ALL'} (${options.periodMonth}/${options.periodYear})...`);
+                await historyDatabaseService.deleteHistoryForPeriodAndLocation(
+                    options.periodMonth, 
+                    options.periodYear, 
+                    options.divisionCode, 
+                    options.gangCode
+                );
+            }
 
             const seederMode = options.seederMode || 'PAYROLL';
 
@@ -528,9 +537,8 @@ export class HistorySeederService {
             totals.total_koreksi += emp.pot_koreksi || 0;
             totals.total_potongan += emp.total_potongan || 0;
             
-            // [FIX] Use pph21_ter (calculated TER) instead of pot_pph21 (manual input)
-            // if available, to ensure tax data is always visible in history header.
-            totals.total_pph21 += emp.pph21_ter || emp.pot_pph21 || 0;
+            // Use pot_pph21 from database (actual deduction from PR_ADTRANS)
+            totals.total_pph21 += emp.pot_pph21 || 0;
             
             totals.total_bpjs_pekerja += emp.pot_bpjs_pekerja_total || 0;
             totals.total_bpjs_majikan += (emp.pot_bpjs_kesehatan_majikan || 0) + (emp.pot_bpjs_pensiun_majikan || 0) + (emp.pot_astek_majikan || 0);

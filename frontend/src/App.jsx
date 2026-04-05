@@ -65,6 +65,10 @@ const OperationalReportWrapper = () => {
   const [gangPrefix, setGangPrefix] = useState('');
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'attendance' | 'overtime' | 'employee-directory'
   const [hrSearchNik, setHrSearchNik] = useState('');
+  
+  // Employee sorting state
+  const [employeeSortBy, setEmployeeSortBy] = useState('name'); // 'name' | 'emp_code' | 'nik'
+  const [employeeSortOrder, setEmployeeSortOrder] = useState('asc'); // 'asc' | 'desc'
 
   // Using location.pathname as key FORCES remount when navigating, solving 'stuck' UI
   // Note: We return the actual content here, or wrap it.
@@ -120,6 +124,15 @@ const OperationalReportWrapper = () => {
   const handleFontIncrease = () => setFontSize(prev => Math.min(prev + 10, 150))
   const handleFontDecrease = () => setFontSize(prev => Math.max(prev - 10, 60))
   const handleFontReset = () => setFontSize(100)
+  
+  const handleEmployeeSort = (field) => {
+    if (employeeSortBy === field) {
+      setEmployeeSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setEmployeeSortBy(field)
+      setEmployeeSortOrder('asc')
+    }
+  }
 
   const handleExportExcel = async () => {
     if (!exportHandler) {
@@ -381,6 +394,52 @@ const OperationalReportWrapper = () => {
                 👥 Info Karyawan
               </button>
             </div>
+
+            {/* Sort Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '600' }}>Sort:</span>
+              {[
+                ['name', 'Nama'],
+                ['emp_code', 'EmpCode'],
+                ['nik', 'NIK']
+              ].map(([field, label]) => {
+                const isActive = employeeSortBy === field
+                return (
+                  <button
+                    key={field}
+                    onClick={() => handleEmployeeSort(field)}
+                    style={{
+                      height: '30px',
+                      padding: '0 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      borderRadius: '6px',
+                      fontSize: '0.72rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                      whiteSpace: 'nowrap',
+                      border: `1px solid ${isActive ? '#1e40af' : '#e2e8f0'}`,
+                      background: isActive ? '#1e40af' : '#f8fafc',
+                      color: isActive ? '#ffffff' : '#475569'
+                    }}
+                    title={`Sort by ${label} ${isActive ? (employeeSortOrder === 'asc' ? '↑' : '↓') : ''}`}
+                  >
+                    {label}
+                    {isActive && (
+                      <span style={{ fontSize: '9px', marginLeft: '2px' }}>
+                        {employeeSortOrder === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Divider */}
+            <div style={{ width: '1px', height: '28px', backgroundColor: '#e2e8f0', margin: '0 4px' }}></div>
           </div>
 
           {/* Right: Action Buttons */}
@@ -726,6 +785,8 @@ const OperationalReportWrapper = () => {
             isEditMode={isEditMode}
             useHistoryDb={useHistoryDb}
             gangPrefix={gangPrefix || null}
+            sortBy={employeeSortBy}
+            sortOrder={employeeSortOrder}
           />
         ) : viewMode === 'employee-directory' ? (
           <GangEmployeeInfo
@@ -735,6 +796,9 @@ const OperationalReportWrapper = () => {
             year={year}
             division={division}
             onViewEmployeeDetail={handleViewEmployeeDetail}
+            sortBy={employeeSortBy}
+            sortOrder={employeeSortOrder}
+            onSortChange={handleEmployeeSort}
           />
         ) : viewMode === 'attendance' ? (
           <GangAttendanceMatrix

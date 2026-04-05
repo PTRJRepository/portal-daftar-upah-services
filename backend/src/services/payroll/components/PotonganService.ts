@@ -250,7 +250,7 @@ export class PotonganService extends BasePayrollComponentService<PotonganInput, 
         const endDate = year.toString() + "-" + startMonthStr + "-" + daysInMonth.toString();
 
         // Exclude standard potongans
-        const excludePatterns = ['POT', 'SPSI', 'BERAS', 'JABATAN', 'MASA', 'LEMBUR', 'PPH', 'PREMI', 'ASTEK', 'BPJS'];
+        const excludePatterns = ['POT', 'SPSI', 'BERAS', 'JABATAN', 'MASA', 'LEMBUR', 'PPH', 'PREMI', 'ASTEK', 'BPJS', 'ADJ'];
 
         // Query BOTH PR_ADTRANS (active) and PR_ADTRANS_ARC (archived) tables
         const queryStr = `

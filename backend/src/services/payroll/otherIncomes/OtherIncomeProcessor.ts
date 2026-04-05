@@ -211,6 +211,7 @@ export class OtherIncomeProcessor {
             JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
             WHERE t.DocDate >= ? AND t.DocDate < ?
               AND t.DocType IN ('UPAH LEBIH', 'UPAH LAIN', 'POTONGAN TAMBAHAN')
+              AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
               ${gangCondition}
             ORDER BY ln.EmpCode, t.DocDesc
         `;

@@ -37,7 +37,7 @@ const C = {
 
 function TopBar({ user, collapsed, onToggle, periodDisplay }) {
     return (
-        <div style={{
+        <div className="no-print" style={{
             height: '56px',
             backgroundColor: C.topbarBg,
             borderBottom: `2px solid ${C.topbarBorder}`,

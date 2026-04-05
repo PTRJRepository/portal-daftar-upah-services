@@ -426,9 +426,11 @@ export default function CustomPayrollTable({
 
     // Use displayRows as the single source of truth for rendering
     // It merges stream data with edit overlays when needed
+    // STRATEGI: Sorting employees WITHIN each gang, bukan global
+    // Ini menjaga struktur: header gang → employees (sorted) → total gang
     const displayRows = useMemo(() => {
         let resultRows;
-        
+
         if (stream.gangs && stream.gangs.length > 0 && rows.length > 0) {
             // Merge stream rows with any pending edits
             if (Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0) {
@@ -454,34 +456,89 @@ export default function CustomPayrollTable({
             resultRows = rows;
         }
 
-        // Apply sorting for employee rows
-        const employeeRows = resultRows.filter(r => r.type === 'employee');
-        const nonEmployeeRows = resultRows.filter(r => r.type !== 'employee');
+        // Cek apakah streaming masih berjalan
+        const isStreaming = !stream.isComplete || (stream.progress && stream.progress.stage !== 'complete');
+        
+        // Jika masih streaming ATAU tidak ada sorting, return as-is
+        if (isStreaming || !sortBy) {
+            return resultRows;
+        }
 
-        employeeRows.sort((a, b) => {
-            let valA, valB;
+        // Setelah streaming selesai DAN ada sorting aktif:
+        // Sort employees WITHIN each gang group
+        // Struktur data: [{type: 'header'}, {type: 'employee'} x N, {type: 'total'}, ...]
+        // Kita perlu sort employees di antara header dan total untuk setiap gang
+        
+        const sortedRows = [];
+        let currentGangEmployees = [];
+        let inEmployeeSection = false;
 
-            if (sortBy === 'name') {
-                valA = (a.emp_name || '').toLowerCase();
-                valB = (b.emp_name || '').toLowerCase();
-            } else if (sortBy === 'emp_code') {
-                valA = (a.emp_code || '').toLowerCase();
-                valB = (b.emp_code || '').toLowerCase();
-            } else if (sortBy === 'nik') {
-                valA = (a.nik || '').toLowerCase();
-                valB = (b.nik || '').toLowerCase();
+        for (let i = 0; i < resultRows.length; i++) {
+            const row = resultRows[i];
+            
+            if (row.type === 'employee') {
+                // Kumpulkan semua employees
+                currentGangEmployees.push(row);
+                inEmployeeSection = true;
             } else {
-                return 0;
+                // Bukan employee row (header/total/separator)
+                // Jika sebelumnya ada employee section, sort dan masukkan
+                if (currentGangEmployees.length > 0) {
+                    currentGangEmployees.sort((a, b) => {
+                        let valA, valB;
+
+                        if (sortBy === 'name') {
+                            valA = (a.emp_name || '').toLowerCase();
+                            valB = (b.emp_name || '').toLowerCase();
+                        } else if (sortBy === 'emp_code') {
+                            valA = (a.emp_code || '').toLowerCase();
+                            valB = (b.emp_code || '').toLowerCase();
+                        } else if (sortBy === 'nik') {
+                            valA = (a.nik || '').toLowerCase();
+                            valB = (b.nik || '').toLowerCase();
+                        } else {
+                            return 0;
+                        }
+
+                        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                        return 0;
+                    });
+                    sortedRows.push(...currentGangEmployees);
+                    currentGangEmployees = [];
+                }
+                sortedRows.push(row);
+                inEmployeeSection = false;
             }
+        }
 
-            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-            return 0;
-        });
+        // Jika ada employee section tersisa di akhir
+        if (currentGangEmployees.length > 0) {
+            currentGangEmployees.sort((a, b) => {
+                let valA, valB;
 
-        // Return non-employee rows first (headers/totals), then sorted employee rows
-        return [...nonEmployeeRows, ...employeeRows];
-    }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells, sortBy, sortOrder]);
+                if (sortBy === 'name') {
+                    valA = (a.emp_name || '').toLowerCase();
+                    valB = (b.emp_name || '').toLowerCase();
+                } else if (sortBy === 'emp_code') {
+                    valA = (a.emp_code || '').toLowerCase();
+                    valB = (b.emp_code || '').toLowerCase();
+                } else if (sortBy === 'nik') {
+                    valA = (a.nik || '').toLowerCase();
+                    valB = (b.nik || '').toLowerCase();
+                } else {
+                    return 0;
+                }
+
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+            sortedRows.push(...currentGangEmployees);
+        }
+
+        return sortedRows;
+    }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells, stream.isComplete, stream.progress, sortBy, sortOrder]);
 
     // Toggle handlers
     const toggleGroup = useCallback((group) => {
@@ -2322,14 +2379,15 @@ export default function CustomPayrollTable({
 
     // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
     const handleExportToExcel = useCallback(async () => {
-        if (rows.length === 0) {
+        if (displayRows.length === 0) {
             alert('Tidak ada data untuk di-export');
             return null;
         }
         try {
             // Use columnDefs yang ada (sudah mencakup semua kolom yang visible)
             // Export akan menyertakan semua field yang ada di rows data
-            const fileName = await exportPayrollToExcel(rows, columnDefs, grandTotal, {
+            // PENTING: Gunakan displayRows yang sudah ter-sortir, bukan rows asli
+            const fileName = await exportPayrollToExcel(displayRows, columnDefs, grandTotal, {
                 division,
                 gangCode,
                 month,
@@ -2341,7 +2399,7 @@ export default function CustomPayrollTable({
             alert('Gagal export ke Excel: ' + err.message);
             return null;
         }
-    }, [rows, columnDefs, grandTotal, division, gangCode, month, year]);
+    }, [displayRows, columnDefs, grandTotal, division, gangCode, month, year]);
 
     // Expose export function to parent
     useEffect(() => {

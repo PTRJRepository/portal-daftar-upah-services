@@ -1480,11 +1480,16 @@ export default function MainPage({ lockedDiv = null }) {
             currentProductionMonth={currentProductionMonth}
             currentProductionYear={currentProductionYear}
             useHistoryDb={isHistorical}
+            viewMode={activeMatrixView || 'table'}
             employeeSortBy={employeeSortBy}
             employeeSortOrder={employeeSortOrder}
             onEmployeeSort={handleEmployeeSort}
             showEmployeeSort={activeMatrixView === 'employee'}
-            showDaftarUpahSort={!activeMatrixView}
+            showDaftarUpahSort={true}
+            fontSize={fontSize}
+            onFontIncrease={handleFontIncrease}
+            onFontDecrease={handleFontDecrease}
+            onFontReset={handleFontReset}
           />
         </div>
 
@@ -1508,8 +1513,8 @@ export default function MainPage({ lockedDiv = null }) {
             </div>
           )}
 
-          {/* Font Size Controls */}
-          {isReportGenerated && (
+          {/* Font Size Controls - hidden in table mode, handled by toolbar */}
+          {isReportGenerated && activeMatrixView && (
             <div style={{
               display: 'flex',
               alignItems: 'center',

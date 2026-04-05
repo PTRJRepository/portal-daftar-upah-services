@@ -89,6 +89,7 @@ export class HeaderService {
                     WHERE g.GangCode = ?
                       AND t.DocDate >= ? AND t.DocDate < ?
                       AND UPPER(t.DocDesc) LIKE '%PREMI%'
+                      AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
                       AND ln.Amount > 0
                     ORDER BY t.DocDesc
                 `
@@ -98,6 +99,7 @@ export class HeaderService {
                     JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
                     WHERE t.DocDate >= ? AND t.DocDate < ?
                       AND UPPER(t.DocDesc) LIKE '%PREMI%'
+                      AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
                       AND ln.Amount > 0
                     ORDER BY t.DocDesc
                 `;
@@ -138,6 +140,7 @@ export class HeaderService {
                     WHERE g.GangCode = ?
                       AND t.DocDate >= ? AND t.DocDate < ?
                       AND UPPER(t.DocDesc) LIKE '%POT%'
+                      AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
                       AND ln.Amount < 0
                     ORDER BY t.DocDesc
                 `
@@ -147,6 +150,7 @@ export class HeaderService {
                     JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
                     WHERE t.DocDate >= ? AND t.DocDate < ?
                       AND UPPER(t.DocDesc) LIKE '%POT%'
+                      AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
                       AND ln.Amount < 0
                     ORDER BY t.DocDesc
                 `;
@@ -154,8 +158,8 @@ export class HeaderService {
             const params = gangCode ? [gangCode, startDate, endDate] : [startDate, endDate];
             const rows = await this.db.query<{ DocDesc: string }>(sql, params);
 
-            // Filter out PPH21, SPSI, BPJS, koreksi
-            const excluded = ["pph21", "spsi", "bpjs", "astek", "koreksi", "sehat"];
+            // Filter out PPH21, SPSI, BPJS, koreksi, ADJ
+            const excluded = ["pph21", "spsi", "bpjs", "astek", "koreksi", "sehat", "adj"];
             const headers = rows
                 .map(r => r.DocDesc?.trim())
                 .filter(h => {

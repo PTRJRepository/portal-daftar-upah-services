@@ -105,7 +105,7 @@ export class PremiumExtractor {
         const empList = empCodes.map(e => `'${e}'`).join(',');
 
         /**
-         * Query DocDesc containing 'PREMI' but EXCLUDING 'PPH'
+         * Query DocDesc containing 'PREMI' but EXCLUDING 'PPH' and 'ADJ'
          *
          * INNER JOIN HR_GANGLN ensures only valid gang members are processed.
          * This prevents orphaned adtrans records for employees not in the current gang.
@@ -127,6 +127,7 @@ export class PremiumExtractor {
                   AND t.DocDate < ?
                   AND UPPER(t.DocDesc) LIKE '%PREMI%'
                   AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
 
                 UNION ALL
 
@@ -137,6 +138,7 @@ export class PremiumExtractor {
                   AND t.DocDate < ?
                   AND UPPER(t.DocDesc) LIKE '%PREMI%'
                   AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
+                  AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
             ) t
             JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
             LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
