@@ -1,0 +1,91 @@
+{
+  "generated_at": "2026-04-05T04:28:22.497Z",
+  "period": {
+    "month": 3,
+    "year": 2026
+  },
+  "grand_total": {
+    "employees": 1661,
+    "total_gross_income": 15069479800.613586,
+    "total_pph21_ter": 257858814
+  },
+  "divisions": [
+    {
+      "division_code": "PG1A",
+      "employee_count": 227,
+      "total_gross_income": 2174362163.202312,
+      "total_pph21_ter": 41150225,
+      "status": "success"
+    },
+    {
+      "division_code": "PG1B",
+      "employee_count": 209,
+      "total_gross_income": 1730318155.9404047,
+      "total_pph21_ter": 25081077,
+      "status": "success"
+    },
+    {
+      "division_code": "PG2A",
+      "employee_count": 185,
+      "total_gross_income": 1593551687.9282079,
+      "total_pph21_ter": 24054641,
+      "status": "success"
+    },
+    {
+      "division_code": "PG2B",
+      "employee_count": 126,
+      "total_gross_income": 1224328566.1208093,
+      "total_pph21_ter": 22254328,
+      "status": "success"
+    },
+    {
+      "division_code": "PGE",
+      "employee_count": 0,
+      "total_gross_income": 0,
+      "total_pph21_ter": 0,
+      "status": "none"
+    },
+    {
+      "division_code": "AB1",
+      "employee_count": 141,
+      "total_gross_income": 1326539139.2080925,
+      "total_pph21_ter": 24454390,
+      "status": "success"
+    },
+    {
+      "division_code": "AB2",
+      "employee_count": 127,
+      "total_gross_income": 1161333523.0057805,
+      "total_pph21_ter": 19696416,
+      "status": "success"
+    },
+    {
+      "division_code": "ARA",
+      "employee_count": 141,
+      "total_gross_income": 1287402517.5143352,
+      "total_pph21_ter": 22797337,
+      "status": "success"
+    },
+    {
+      "division_code": "ARC",
+      "employee_count": 270,
+      "total_gross_income": 2457836582.2832375,
+      "total_pph21_ter": 44472716,
+      "status": "success"
+    },
+    {
+      "division_code": "DME",
+      "employee_count": 189,
+      "total_gross_income": 1678994674.884393,
+      "total_pph21_ter": 25071992,
+      "status": "success"
+    },
+    {
+      "division_code": "IJL",
+      "employee_count": 46,
+      "total_gross_income": 434812790.52601165,
+      "total_pph21_ter": 8825692,
+      "status": "success"
+    }
+  ]
+}

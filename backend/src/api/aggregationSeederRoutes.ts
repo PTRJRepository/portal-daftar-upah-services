@@ -798,6 +798,27 @@ export async function seedAggregationToDb(division: string | undefined, month: n
                 totalEmployees += record.total_employees;
             }
 
+            // [FIX] Trigger detailed history seeding for this division
+            // This ensures that pages requiring detailed history (like Report Pajak) have data.
+            // Note: We seed 'div' which is the internal division code (e.g. PG1A)
+            try {
+                if (div !== 'MILL') {
+                    console.log(`[AggregationSeeder] Auto-triggering history seeder for ${div}...`);
+                    const { historySeederService } = await import("../services/historySeederService");
+                    await historySeederService.seedPayrollHistory({
+                        periodMonth: month,
+                        periodYear: year,
+                        divisionCode: div,
+                        seederMode: 'PAYROLL',
+                        force: true
+                    });
+                    console.log(`[AggregationSeeder] History seeding complete for ${div}`);
+                }
+            } catch (historyError: any) {
+                console.error(`[AggregationSeeder] History seeding failed for ${div}:`, historyError.message);
+                // We don't fail the whole aggregation seeder if history seeder fails
+            }
+
             results.push({
                 division: div,
                 gang: `Count: ${savedCount}`,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReport } from '../context/ReportContext';
-import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport, fetchDecemberTaxReport, downloadMonthlyTaxReportExcel, downloadDecemberTaxReportExcel } from '../services/taxReportService';
+import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport, fetchDecemberTaxReport, downloadMonthlyTaxReportExcel, downloadDecemberTaxReportExcel, exportPajakJson } from '../services/taxReportService';
 import { fetchDivisions, fetchGangs } from '../services/gangService';
 import { Calculator, BarChart2, CalendarDays, Activity, FileWarning, Search, ChevronDown, ChevronRight, DollarSign, Download, Filter } from 'lucide-react';
 import { useCurrentPeriod } from '../hooks/useCurrentPeriod';
@@ -57,6 +57,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [downloadingExcel, setDownloadingExcel] = useState(false);
+    const [exportingJson, setExportingJson] = useState(false);
     const [expandedRows, setExpandedRows] = useState(new Set());
 
     const toggleRow = (empCode) => {
@@ -85,6 +86,17 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         setError(null);
         try {
             const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix);
+            console.log('[TaxReportPage] Monthly tax data loaded:', {
+                employeeCount: result?.employees?.length || 0,
+                total_pph21_from_backend: result?.total_pph21,
+                sample_employee: result?.employees?.[0] ? {
+                    emp_name: result.employees[0].emp_name,
+                    pph21_ter: result.employees[0].pph21_ter,
+                    penghasilan_bruto: result.employees[0].penghasilan_bruto,
+                    tarif_pajak_ter: result.employees[0].tarif_pajak_ter
+                } : null,
+                calculated_total_pph21_ter: result?.employees?.reduce((s, e) => s + (e.pph21_ter || 0), 0)
+            });
             setData(result);
         } catch (err) {
             setError(err.message);
@@ -101,6 +113,17 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
             alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
         } finally {
             setDownloadingExcel(false);
+        }
+    };
+
+    const handleExportJson = async () => {
+        setExportingJson(true);
+        try {
+            await exportPajakJson(token, year, month, gang || 'ALL');
+        } catch (err) {
+            alert('Gagal export JSON: ' + (err.message || 'Unknown error'));
+        } finally {
+            setExportingJson(false);
         }
     };
 
@@ -122,29 +145,51 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     return (
         <div>
             {/* Export & Actions */}
-            <div className="tax-report-actions-bar" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1rem' }}>
+            <div className="tax-report-actions-bar" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1rem', gap: '8px' }}>
                 {data && data.employees.length > 0 && (
-                    <button
-                        onClick={handleDownloadExcel}
-                        disabled={downloadingExcel}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            backgroundColor: '#10b981',
-                            color: 'white',
-                            border: 'none',
-                            padding: '8px 16px',
-                            borderRadius: '6px',
-                            fontWeight: '600',
-                            cursor: downloadingExcel ? 'not-allowed' : 'pointer',
-                            opacity: downloadingExcel ? 0.7 : 1,
-                            transition: 'background-color 0.2s'
-                        }}
-                    >
-                        <Download size={16} />
-                        {downloadingExcel ? 'Mengunduh...' : 'Unduh Excel (Formula)'}
-                    </button>
+                    <>
+                        <button
+                            onClick={handleExportJson}
+                            disabled={exportingJson}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                backgroundColor: exportingJson ? '#94a3b8' : '#6366f1',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 16px',
+                                borderRadius: '6px',
+                                fontWeight: '600',
+                                cursor: exportingJson ? 'not-allowed' : 'pointer',
+                                opacity: exportingJson ? 0.7 : 1,
+                                transition: 'background-color 0.2s'
+                            }}
+                        >
+                            {exportingJson ? '⏳ Exporting...' : '📤 Export JSON'}
+                        </button>
+                        <button
+                            onClick={handleDownloadExcel}
+                            disabled={downloadingExcel}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                backgroundColor: downloadingExcel ? '#94a3b8' : '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 16px',
+                                borderRadius: '6px',
+                                fontWeight: '600',
+                                cursor: downloadingExcel ? 'not-allowed' : 'pointer',
+                                opacity: downloadingExcel ? 0.7 : 1,
+                                transition: 'background-color 0.2s'
+                            }}
+                        >
+                            <Download size={16} />
+                            {downloadingExcel ? 'Mengunduh...' : 'Unduh Excel (Formula)'}
+                        </button>
+                    </>
                 )}
             </div>
 
@@ -370,7 +415,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                 <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.upah_kotor || 0), 0))}</strong></td>
                                 <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.penghasilan_bruto || 0), 0))}</strong></td>
                                 <td></td>
-                                <td className="text-right"><strong>{formatNumber(data.total_pph21)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.pph21_ter || 0), 0))}</strong></td>
                             </tr>
                         </tfoot>
                     </table>

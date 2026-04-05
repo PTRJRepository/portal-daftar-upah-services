@@ -150,3 +150,41 @@ export async function downloadDecemberTaxReportExcel(token, year, division, gang
     window.URL.revokeObjectURL(url);
     document.body.removeChild(link);
 }
+
+/**
+ * Export PPh21 TER + PPh21 Input JSON by gang
+ * Downloads as JSON file automatically
+ */
+export async function exportPajakJson(token, year, month, gang) {
+    const params = { year: String(year), month: String(month) };
+    if (gang && gang !== 'ALL') params.gang = gang;
+
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    const response = await axios.get('/payroll/export/pajak', {
+        params,
+        headers,
+        responseType: 'blob',
+        timeout: 120000,
+    });
+
+    // Extract filename from Content-Disposition header
+    let fileName = `PAJAK_${gang || 'ALL'}_${month}_${year}.json`;
+    const contentDisposition = response.headers['content-disposition'];
+    if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+        const matches = filenameRegex.exec(contentDisposition);
+        if (matches != null && matches[1]) {
+            fileName = matches[1].replace(/['"]/g, '');
+        }
+    }
+
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(link);
+}

@@ -99,10 +99,10 @@ test('TOTAL POTONGAN = bpjs_kes + bpjs_pensiun + astek + spsi + pph', () =>
     assert('total_potongan', baseCalc.total_potongan, BASE_TOTAL_POT)
 );
 
-test('UPAH BERSIH = UPAH_KOTOR - TOTAL_POTONGAN + premi_pph', () => {
-    const expected = BASE_UPAH_KOTOR - BASE_TOTAL_POT + base.pot_premi_pph;
+test('UPAH BERSIH = JUMLAH UPAH KOTOR - TOTAL_POTONGAN + premi_pph', () => {
+    const expected = BASE_JUMLAH - BASE_TOTAL_POT + base.pot_premi_pph;
     return assert('upah_bersih', baseCalc.upah_bersih, expected) &&
-        assert('balance', baseCalc.upah_bersih, baseCalc.upah_kotor - baseCalc.total_potongan + base.pot_premi_pph);
+        assert('balance', baseCalc.upah_bersih, baseCalc.jumlah_upah_kotor - baseCalc.total_potongan + base.pot_premi_pph);
 });
 
 // Komponen breakdown

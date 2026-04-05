@@ -3859,6 +3859,38 @@ export class DataExtractorService {
             debug(CATEGORY, `⚠️ Other income lookup skipped: ${e.message}`);
         }
 
+        // [CRITICAL FIX] Calculate PPh21 TER for ALL employees (not just those with other incomes)
+        // This ensures history data has correct tax values for every employee
+        debug(CATEGORY, `🧮 Calculating PPh21 TER for all ${employees.length} employees...`);
+        let employeesWithTax = 0;
+        for (const emp of employees) {
+            // Calculate penghasilan_bruto if not already set
+            if (!emp.penghasilan_bruto || emp.penghasilan_bruto === 0) {
+                const caruman = calculateAllCaruman(emp.upah_dasar || emp.pay_rate || 0, emp.masa_kerja_jumlah || 0);
+                const astekMajikan = caruman.astek_majikan_jkk_jkm || 0;
+                const bpjsMajikan = caruman.bpjs_kes_majikan || 0;
+                emp.penghasilan_bruto = (emp.jumlah_upah_kotor || 0) + astekMajikan + bpjsMajikan;
+            }
+
+            // Calculate PPh21 TER
+            try {
+                const { pph21TerService } = await import('./pph21TerService');
+                const statusPTKP = emp.status_ptkp || dbPtkpMap.get(emp.emp_code?.toUpperCase()) || mapBerasRateToPTKP(emp.beras_rate || 0);
+                const pphResult = pph21TerService.calculatePph21Ter(emp.penghasilan_bruto, statusPTKP);
+                emp.pph21_ter = pphResult.tax_amount || 0;
+                emp.tarif_pajak_ter = pphResult.rate_percent || 0;
+                
+                if (emp.pph21_ter > 0) {
+                    employeesWithTax++;
+                }
+            } catch (e: any) {
+                console.error(`[Phase 4b] PPh21 TER calculation failed for ${emp.emp_code}:`, e.message);
+                emp.pph21_ter = 0;
+                emp.tarif_pajak_ter = 0;
+            }
+        }
+        debug(CATEGORY, `✅ PPh21 TER calculated: ${employeesWithTax}/${employees.length} employees with tax > 0`);
+
         // Filter & sort employees
         const filteredEmployees = [];
         let filteredOutCount = 0;

@@ -189,7 +189,7 @@ class Pph21TerService {
 
     /**
      * Calculate Penghasilan Bruto for PPh21 TER calculation
-     * This includes ASTEK and BPJS Majikan portions
+     * This includes ASTEK Majikan and BPJS Kesehatan Majikan portions
      *
      * @param gajiPokokAktual - Actual base salary
      * @param berasJumlah - Rice allowance
@@ -197,8 +197,8 @@ class Pph21TerService {
      * @param masaKerjaJumlah - Longevity allowance
      * @param lemburJumlah - Overtime amount
      * @param totalPremi - Total premium
-     * @param astekPekerja - ASTEK/BPJS Pensiun pekerja (0.84%)
-     * @param bpjsKesehatanMajikan - BPJS Kesehatan majikan (4%)
+     * @param astekMajikan - ASTEK/BPJS Pensiun majikan (0.84%) - EMPLOYER portion
+     * @param bpjsKesehatanMajikan - BPJS Kesehatan majikan (4%) - EMPLOYER portion
      * @returns Penghasilan Bruto for tax calculation
      */
     public calculatePenghasilanBruto(
@@ -208,22 +208,26 @@ class Pph21TerService {
         masaKerjaJumlah: number,
         lemburJumlah: number,
         totalPremi: number,
-        astekPekerja: number,
+        astekMajikan: number,
         bpjsKesehatanMajikan: number,
-        potKoreksi: number = 0
+        potKoreksi: number = 0,
+        pendapatanLainnya: number = 0
     ): number {
-        // KOREKSI (koreksi panen, koreksi HK) dikurangkan dari penghasilan bruto karena
-        // koreksi = koreksi kelebihan pembayaran, bukan penghasilan baru.
-        // POTONGAN (SPSI, astek pekerja, bpjs pekerja) TIDAK dikurangkan dari bruto.
+        // PENGHASILAN BRUTO untuk PPh21 TER:
+        // = gaji pokok + tunjangan (beras, jabatan, masa kerja) + lembur + premi
+        // + astek majikan (0.84%) + bpjs kesehatan majikan (4%)
+        // + pot_koreksi (sudah termasuk dalam jumlah_upah_kotor)
+        // + pendapatan_lainnya (THR, bonus, dll)
         return gajiPokokAktual +
             berasJumlah +
             jabatanJumlah +
             masaKerjaJumlah +
             lemburJumlah +
             totalPremi +
-            astekPekerja +
-            bpjsKesehatanMajikan -
-            potKoreksi;
+            astekMajikan +
+            bpjsKesehatanMajikan +
+            potKoreksi +
+            pendapatanLainnya;
     }
 }
 
@@ -250,13 +254,15 @@ export const calculatePenghasilanBruto = (
     masaKerjaJumlah: number,
     lemburJumlah: number,
     totalPremi: number,
-    astekPekerja: number,
+    astekMajikan: number,
     bpjsKesehatanMajikan: number,
-    potKoreksi: number = 0
+    potKoreksi: number = 0,
+    pendapatanLainnya: number = 0
 ) => {
     return Pph21TerService.getInstance().calculatePenghasilanBruto(
         gajiPokokAktual, berasJumlah, jabatanJumlah, masaKerjaJumlah,
-        lemburJumlah, totalPremi, astekPekerja, bpjsKesehatanMajikan, potKoreksi
+        lemburJumlah, totalPremi, astekMajikan, bpjsKesehatanMajikan,
+        potKoreksi, pendapatanLainnya
     );
 };
 

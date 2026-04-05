@@ -1,0 +1,93 @@
+{
+  "timestamp": "2026-04-05T04:35:19.973Z",
+  "database": "10.0.0.2:1888/db_ptrj",
+  "grand_total": {
+    "employees": 1661,
+    "updated": 1574,
+    "not_found": 0,
+    "zero_tax": 87,
+    "errors": 0
+  },
+  "divisions": [
+    {
+      "division_code": "AB1",
+      "total_employees": 141,
+      "total_updated": 134,
+      "total_not_found": 0,
+      "total_zero_tax": 7,
+      "total_errors": 0
+    },
+    {
+      "division_code": "AB2",
+      "total_employees": 127,
+      "total_updated": 122,
+      "total_not_found": 0,
+      "total_zero_tax": 5,
+      "total_errors": 0
+    },
+    {
+      "division_code": "ARA",
+      "total_employees": 141,
+      "total_updated": 130,
+      "total_not_found": 0,
+      "total_zero_tax": 11,
+      "total_errors": 0
+    },
+    {
+      "division_code": "ARC",
+      "total_employees": 270,
+      "total_updated": 254,
+      "total_not_found": 0,
+      "total_zero_tax": 16,
+      "total_errors": 0
+    },
+    {
+      "division_code": "DME",
+      "total_employees": 189,
+      "total_updated": 183,
+      "total_not_found": 0,
+      "total_zero_tax": 6,
+      "total_errors": 0
+    },
+    {
+      "division_code": "IJL",
+      "total_employees": 46,
+      "total_updated": 44,
+      "total_not_found": 0,
+      "total_zero_tax": 2,
+      "total_errors": 0
+    },
+    {
+      "division_code": "PG1A",
+      "total_employees": 227,
+      "total_updated": 225,
+      "total_not_found": 0,
+      "total_zero_tax": 2,
+      "total_errors": 0
+    },
+    {
+      "division_code": "PG1B",
+      "total_employees": 209,
+      "total_updated": 189,
+      "total_not_found": 0,
+      "total_zero_tax": 20,
+      "total_errors": 0
+    },
+    {
+      "division_code": "PG2A",
+      "total_employees": 185,
+      "total_updated": 168,
+      "total_not_found": 0,
+      "total_zero_tax": 17,
+      "total_errors": 0
+    },
+    {
+      "division_code": "PG2B",
+      "total_employees": 126,
+      "total_updated": 125,
+      "total_not_found": 0,
+      "total_zero_tax": 1,
+      "total_errors": 0
+    }
+  ]
+}

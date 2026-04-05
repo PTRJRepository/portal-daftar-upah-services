@@ -30,7 +30,12 @@
       "Bash(tail *)",
       "Bash(type *)",
       "Bash(node *)",
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "Bash(echo *)",
+      "Bash(2. *)",
+      "Bash(select-object *)",
+      "Bash(@echo *)",
+      "Bash(select-string *)"
     ]
   },
   "$version": 3

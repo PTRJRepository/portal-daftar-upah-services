@@ -576,7 +576,7 @@ def calculate_gang_aggregation(employees: List[Dict], gang_code: str, gang_desc:
         "total_premi": total_premi_calc,  # Uses calculated total (excludes tiket, koreksi)
         "dynamic_premi_data": dynamic_premi_json,  # NEW: JSON string of all dynamic premi
         "total_potongan": safe_sum("total_potongan"),
-        "total_pph21": safe_sum("pot_pph21"),
+        "total_pph21": safe_sum("pph21_ter") or safe_sum("pot_pph21"),
         "total_bpjs_pekerja": safe_sum("pot_bpjs_kesehatan_pekerja") + safe_sum("pot_bpjs_pensiun_pekerja"),
         "total_bpjs_majikan": safe_sum("pot_bpjs_kesehatan_majikan") + safe_sum("pot_bpjs_pensiun_majikan"),
         "total_spsi": safe_sum("pot_spsi"),

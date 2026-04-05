@@ -6,6 +6,7 @@ import { headerService } from "../services/headerService";
 import { payrollService } from "../services/payrollService";
 import { AuthService } from "../services/authService";
 import { currentPeriodService } from "../services/currentPeriodService";
+import { taxReportService } from "../services/taxReportService";
 import { User, UserRole } from "../types/user";
 
 
@@ -293,13 +294,15 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 const totals: Record<string, number> = {};
                 const numericFields = [
                     'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
-                    'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
+                    'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_tahun', 'masa_kerja_jumlah', 'lembur_jumlah',
                     'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
                     'potongan_upah_kotor_total', 'jumlah_upah_kotor',
                     'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
                     'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                     'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
                     'upah_bersih', 'koreksi_hk',
+                    // [PHASE 4b] Calculated Tax Fields
+                    'pph21_ter', 'tarif_pajak_ter',
                     // Pendapatan Lainnya (standard types)
                     'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
                     'pendapatan_lainnya', 'pot_pendapatan_lainnya',
@@ -524,13 +527,15 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 const totals: Record<string, number> = {};
                 const numericFields = [
                     'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
-                    'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
+                    'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_tahun', 'masa_kerja_jumlah', 'lembur_jumlah',
                     'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
                     'potongan_upah_kotor_total', 'jumlah_upah_kotor',
                     'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
                     'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                     'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
                     'upah_bersih', 'koreksi_hk',
+                    // [PHASE 4b] Calculated Tax Fields
+                    'pph21_ter', 'tarif_pajak_ter',
                     // Pendapatan Lainnya (standard types)
                     'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
                     'pendapatan_lainnya', 'pot_pendapatan_lainnya',
@@ -1348,13 +1353,15 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         const totals: Record<string, number> = {};
                         const numericFields = [
                             'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
-                            'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
+                            'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_tahun', 'masa_kerja_jumlah', 'lembur_jumlah',
                             'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
                             'potongan_upah_kotor_total', 'jumlah_upah_kotor',
                             'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
                             'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                             'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
                             'upah_bersih', 'koreksi_hk',
+                            // [PHASE 4b] Calculated Tax Fields
+                            'pph21_ter', 'tarif_pajak_ter',
                             // Pendapatan Lainnya
                             'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
                             'pendapatan_lainnya', 'pot_pendapatan_lainnya',
@@ -1756,5 +1763,86 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             month: t.String(),
             year: t.String(),
             gang_codes: t.String()
+        })
+    })
+
+    // ================================================================
+    // GET /payroll/export/pajak
+    // Export PPh21 TER calculation + PPh21 input (pot_pph21) per emp_code
+    // Query params: month, year, gang (optional, default ALL)
+    // ================================================================
+    .get("/export/pajak", async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month as string);
+            const year = parseInt(query.year as string);
+            const gang = query.gang as string || undefined;
+
+            if (!month || !year || month < 1 || month > 12) {
+                set.status = 400;
+                return { error: "Invalid month or year" };
+            }
+
+            const result = await taxReportService.getMonthlyTaxReport(year, month, undefined, gang);
+
+            // Build emp_code → pajak mapping
+            const employeesMap: Record<string, any> = {};
+            for (const emp of result.employees) {
+                employeesMap[emp.emp_code] = {
+                    emp_code: emp.emp_code,
+                    emp_name: emp.emp_name,
+                    nik: emp.nik,
+                    gang_code: emp.gang_code,
+                    jabatan: emp.jabatan,
+                    status_ptkp: emp.status_ptkp,
+                    kategori_ter: emp.kategori_ter,
+                    // Calculated TER
+                    penghasilan_bruto: emp.penghasilan_bruto,
+                    tarif_pajak_ter: emp.tarif_pajak_ter,
+                    pph21_ter: emp.pph21_ter,
+                    // Input PPh21 from PR_ADTRANS (pot_pph21 in potongan upah bersih)
+                    pph21_input: emp.pot_pph21 ?? null,
+                    // Selisih = input - ter
+                    selisih: (emp.pot_pph21 ?? 0) - (emp.pph21_ter ?? 0),
+                    // Income
+                    upah_kotor: emp.upah_kotor,
+                    total_tunjangan: emp.total_tunjangan,
+                    total_premi: emp.total_premi,
+                    hk: emp.hk,
+                    // Potongan components
+                    pot_spsi: emp.pot_spsi,
+                    pot_koreksi: emp.pot_koreksi,
+                    bpjs_kes_majikan: emp.bpjs_kes_majikan,
+                    astek_jht_majikan: emp.astek_jht_majikan,
+                };
+            }
+
+            const payload = {
+                tipe: "pajak_export",
+                periode: { bulan: month, tahun: year },
+                gang: gang || "ALL",
+                generated_at: new Date().toISOString(),
+                data_source: result.data_source,
+                total_pph21_ter: result.total_pph21,
+                total_pph21_input: result.employees.reduce((s, e) => s + (e.pot_pph21 ?? 0), 0),
+                employee_count: result.employees.length,
+                employees: employeesMap,
+            };
+
+            // Set headers for JSON download
+            const filename = `PAJAK_${gang || "ALL"}_${month}_${year}.json`;
+            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+            set.headers["Content-Type"] = "application/json";
+
+            return payload;
+        } catch (e: any) {
+            console.error("[PayrollRoutes] /export/pajak error:", e);
+            set.status = 500;
+            return { error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            gang: t.Optional(t.String()),
         })
     })

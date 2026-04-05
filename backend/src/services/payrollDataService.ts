@@ -251,7 +251,7 @@ export class PayrollDataService {
             total_premi_kinerja: totalPremiKinerja,
             total_premi: totalPremi,
             total_potongan: totals.total_potongan || 0,
-            total_pph21: totals.pot_pph21 || 0,
+            total_pph21: totals.pph21_ter || totals.pot_pph21 || 0,
             total_bpjs_pekerja: totals.pot_bpjs_pekerja_total || 0,
             total_bpjs_majikan: totals.pot_astek_maj || 0,
             total_spsi: totals.pot_spsi || 0,

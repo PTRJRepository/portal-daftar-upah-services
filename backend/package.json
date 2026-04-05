@@ -20,9 +20,10 @@
         "exceljs": "^4.4.0",
         "googleapis": "^171.4.0",
         "jose": "^5.2.0",
-        "mssql": "^10.0.1"
+        "mssql": "^12.2.1"
     },
     "devDependencies": {
+        "@types/mssql": "^9.1.11",
         "bun-types": "latest",
         "typescript": "^5.0.0"
     }

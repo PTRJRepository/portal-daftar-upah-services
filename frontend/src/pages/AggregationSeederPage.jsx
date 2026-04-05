@@ -120,7 +120,8 @@ export default function AggregationSeederPage({ onBack }) {
                 const result = await checkHistoryHealth(token);
                 if (result.success) {
                     setHistoryConnectionStatus('connected');
-                    addLog(`✅ History DB connection OK (${result.mode} mode)`, 'success');
+                    const modeDisplay = result.mode || result.run_mode || (result.history_mode ? 'history' : 'realtime');
+                    addLog(`✅ History DB connection OK (${modeDisplay} mode)`, 'success');
                 } else {
                     setHistoryConnectionStatus('error');
                     addLog(`❌ History DB connection failed: ${result.message}`, 'error');
@@ -183,6 +184,7 @@ export default function AggregationSeederPage({ onBack }) {
         addLog(`📊 Division: ${division === 'ALL' ? 'All Divisions' : division}`);
 
         try {
+            addLog('📡 Fetching data and auto-triggering history seeder (needed for Pajak)...', 'info');
             const result = await seedAggregation(
                 token,
                 month,

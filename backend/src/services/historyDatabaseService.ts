@@ -810,7 +810,7 @@ export class HistoryDatabaseService {
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?
                 )
             `, [
                 data.history_id, data.period_month, data.period_year, data.division_code, data.gang_code, data.gang_description,
@@ -931,57 +931,87 @@ export class HistoryDatabaseService {
             resolvedNewNik = data.new_nik;
         }
 
-        const result = await db.query(`
+        const columnMap: Record<string, any> = {
+            history_id: data.history_id,
+            master_id: data.master_id,
+            emp_code: data.emp_code,
+            emp_name: data.emp_name,
+            nik: existing ? existing.nik : data.nik,
+            new_nik: resolvedNewNik,
+            gender: data.gender,
+            gang_code: data.gang_code,
+            division_code: data.division_code,
+            loc_code: data.loc_code,
+            status_ptkp: data.status_ptkp,
+            kategori_ter: data.kategori_ter,
+            hari_kerja: data.hari_kerja,
+            cuti_tahunan_hari: data.cuti_tahunan_hari,
+            cuti_sakit_haid_hari: data.cuti_sakit_haid_hari,
+            cuti_minggu_hari: data.cuti_minggu_hari,
+            cuti_nasional_hari: data.cuti_nasional_hari,
+            jumlah_hk: data.jumlah_hk,
+            total_jam_kerja: data.total_jam_kerja,
+            upah_dasar: data.upah_dasar,
+            upah_pokok: data.upah_pokok,
+            gaji_pokok: data.gaji_pokok,
+            gaji_pokok_ideal: data.gaji_pokok_ideal,
+            gaji_pokok_aktual: data.gaji_pokok_aktual,
+            koreksi_hk: data.koreksi_hk,
+            beras_rate: data.beras_rate,
+            beras_jumlah: data.beras_jumlah,
+            jabatan_rate: data.jabatan_rate,
+            jabatan_jumlah: data.jabatan_jumlah,
+            masa_kerja_tahun: data.masa_kerja_tahun,
+            masa_kerja_rate: data.masa_kerja_rate,
+            masa_kerja_jumlah: data.masa_kerja_jumlah,
+            lembur_jam: data.lembur_jam,
+            lembur_rate: data.lembur_rate,
+            lembur_jumlah: data.lembur_jumlah,
+            lembur_records: data.lembur_records,
+            total_tunjangan: data.total_tunjangan,
+            premi_brondol: data.premi_brondol,
+            premi_pph: data.premi_pph,
+            total_premi: data.total_premi,
+            premi_detail: data.premi_detail,
+            pot_spsi: data.pot_spsi,
+            pot_pph21: data.pot_pph21,
+            pot_koreksi: data.pot_koreksi,
+            pot_bpjs_kesehatan_pekerja: data.pot_bpjs_kesehatan_pekerja,
+            pot_bpjs_kesehatan_majikan: data.pot_bpjs_kesehatan_majikan,
+            pot_bpjs_pensiun_pekerja: data.pot_bpjs_pensiun_pekerja,
+            pot_bpjs_pensiun_majikan: data.pot_bpjs_pensiun_majikan,
+            pot_bpjs_pekerja_total: data.pot_bpjs_pekerja_total,
+            pot_astek_pekerja: data.pot_astek_pekerja,
+            pot_astek_majikan: data.pot_astek_majikan,
+            pot_astek_jumlah: data.pot_astek_jumlah,
+            potongan_detail: data.potongan_detail,
+            total_potongan: data.total_potongan,
+            total_potongan_bersih: data.total_potongan_bersih,
+            jumlah_upah_kotor: data.jumlah_upah_kotor,
+            upah_kotor_pajak: data.upah_kotor_pajak,
+            penghasilan_bruto: data.penghasilan_bruto,
+            tarif_pajak_ter: data.tarif_pajak_ter,
+            pph21_ter: data.pph21_ter,
+            upah_bersih: data.upah_bersih,
+            task_code: data.task_code,
+            task_desc: data.task_desc,
+            shortage_details: data.shortage_details,
+            shortage_total_hours: data.shortage_total_hours
+        };
+
+        const columns = Object.keys(columnMap);
+        const placeholders = columns.map(() => '?').join(', ');
+        const params = Object.values(columnMap);
+
+        const sql = `
             INSERT INTO dbo.payroll_history_detail (
-                history_id, master_id, emp_code, emp_name, nik, new_nik, gender, gang_code, division_code, loc_code,
-                status_ptkp, kategori_ter, hari_kerja, cuti_tahunan_hari, cuti_sakit_haid_hari,
-                cuti_minggu_hari, cuti_nasional_hari, jumlah_hk, total_jam_kerja, upah_dasar,
-                upah_pokok, gaji_pokok, gaji_pokok_ideal, gaji_pokok_aktual, koreksi_hk,
-                beras_rate, beras_jumlah, jabatan_rate, jabatan_jumlah, masa_kerja_tahun,
-                masa_kerja_rate, masa_kerja_jumlah, lembur_jam, lembur_rate, lembur_jumlah,
-                lembur_records, total_tunjangan,
-                premi_brondol, premi_pph, total_premi, premi_detail,
-                pot_spsi, pot_pph21, pot_koreksi, pot_bpjs_kesehatan_pekerja, pot_bpjs_kesehatan_majikan,
-                pot_bpjs_pensiun_pekerja, pot_bpjs_pensiun_majikan, pot_bpjs_pekerja_total,
-                pot_astek_pekerja, pot_astek_majikan, pot_astek_jumlah, potongan_detail,
-                total_potongan, total_potongan_bersih, jumlah_upah_kotor, upah_kotor_pajak,
-                penghasilan_bruto, tarif_pajak_ter, pph21_ter, upah_bersih, task_code, task_desc,
-                shortage_details, shortage_total_hours
+                ${columns.join(',\n                ')}
             ) OUTPUT INSERTED.id VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?,
-                ?, ?
+                ${placeholders}
             )
-        `, [
-            data.history_id, data.master_id, data.emp_code, data.emp_name,
-            existing ? existing.nik : data.nik,  // JANGAN overwrite NIK lama
-            resolvedNewNik,
-            data.gender, data.gang_code, data.division_code, data.loc_code,
-            data.status_ptkp, data.kategori_ter, data.hari_kerja, data.cuti_tahunan_hari, data.cuti_sakit_haid_hari,
-            data.cuti_minggu_hari, data.cuti_nasional_hari, data.jumlah_hk, data.total_jam_kerja, data.upah_dasar,
-            data.upah_pokok, data.gaji_pokok, data.gaji_pokok_ideal, data.gaji_pokok_aktual, data.koreksi_hk,
-            data.beras_rate, data.beras_jumlah, data.jabatan_rate, data.jabatan_jumlah, data.masa_kerja_tahun,
-            data.masa_kerja_rate, data.masa_kerja_jumlah, data.lembur_jam, data.lembur_rate, data.lembur_jumlah,
-            data.lembur_records, data.total_tunjangan,
-            data.premi_brondol, data.premi_pph, data.total_premi, data.premi_detail,
-            data.pot_spsi, data.pot_pph21, data.pot_koreksi, data.pot_bpjs_kesehatan_pekerja, data.pot_bpjs_kesehatan_majikan,
-            data.pot_bpjs_pensiun_pekerja, data.pot_bpjs_pensiun_majikan, data.pot_bpjs_pekerja_total,
-            data.pot_astek_pekerja, data.pot_astek_majikan, data.pot_astek_jumlah, data.potongan_detail,
-            data.total_potongan, data.total_potongan_bersih, data.jumlah_upah_kotor, data.upah_kotor_pajak,
-            data.penghasilan_bruto, data.tarif_pajak_ter, data.pph21_ter, data.upah_bersih,
-            data.task_code, data.task_desc, data.shortage_details, data.shortage_total_hours
-        ]);
+        `;
+
+        const result = await db.query(sql, params);
         return result[0]?.id;
     }
 

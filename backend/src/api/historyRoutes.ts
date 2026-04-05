@@ -41,6 +41,7 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
             success: true,
             history_mode: isHistoryMode,
             run_mode: Config.RUN_MODE,
+            mode: Config.RUN_MODE, // Added for frontend compatibility
             databases: {
                 payroll: isHistoryMode ? Config.DB_EXTEND_DATABASE : Config.DEFAULT_DATABASE,
                 transaction: isHistoryMode ? process.env.DB_EXTEND_TRANS_DATABASE : Config.DEFAULT_DATABASE

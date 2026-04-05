@@ -142,19 +142,92 @@ export class HistorySeederService {
                 detail: 0,
                 taskreg: 0,
                 adtrans: 0,
-                gang_member: 0
+                gang_member: 0,
+                hr_employee: 0,
+                hr_gang: 0
             },
             errors: []
         };
 
         // Check if another seeder is already running
-        if (HistorySeederService.progress.is_running) {
+        if (HistorySeederService.progress.is_running && !options.force) {
             const elapsed = HistorySeederService.startTime 
                 ? Math.round((Date.now() - HistorySeederService.startTime) / 1000) 
                 : 0;
             console.warn(`[HistorySeeder] ⚠️ Seeder already running for ${elapsed}s. Rejecting new request.`);
             result.errors.push(`Seeder already running (started ${elapsed}s ago). Please wait or force reset.`);
             return result;
+        }
+
+        // [OPTIMIZATION] If divisionCode is 'ALL', process divisions one by one
+        // to prevent timeout and memory issues in extractPayrollData
+        if ((!options.divisionCode || options.divisionCode === 'ALL') && (options.gangCode === 'ALL' || !options.gangCode)) {
+            console.log(`[HistorySeeder] 🔄 Processing ALL divisions iteratively...`);
+            HistorySeederService.updateProgress({
+                is_running: true,
+                current_step: 'Memulai seeding seluruh divisi...',
+                period: `${options.periodMonth}/${options.periodYear}`,
+                current_division: 'ALL',
+                started_at: new Date().toISOString()
+            });
+
+            try {
+                const { gangService } = await import("./gangService");
+                const allDivisions = await gangService.getAllDivisions();
+                console.log(`[HistorySeeder] Found ${allDivisions.length} divisions to process: ${allDivisions.join(', ')}`);
+
+                for (let i = 0; i < allDivisions.length; i++) {
+                    const div = allDivisions[i];
+                    HistorySeederService.updateProgress({
+                        current_step: `Processing division ${div} (${i + 1}/${allDivisions.length})...`,
+                        current_division: div,
+                        is_running: true // Keep running status
+                    });
+
+                    // Recursive call for single division
+                    const divOptions = { ...options, divisionCode: div, force: true };
+                    // Temporarily set progress to false so the recursive call isn't rejected
+                    const oldProgress = { ...HistorySeederService.progress };
+                    HistorySeederService.progress.is_running = false;
+                    
+                    const divResult = await this.seedPayrollHistory(divOptions);
+                    
+                    // Restore overall running status
+                    HistorySeederService.progress.is_running = true;
+
+                    // Accumulate results
+                    if (divResult.success) {
+                        result.total_employees += divResult.total_employees;
+                        result.records_inserted.master += divResult.records_inserted.master;
+                        result.records_inserted.detail += divResult.records_inserted.detail;
+                        result.records_inserted.taskreg += divResult.records_inserted.taskreg;
+                        result.records_inserted.adtrans += divResult.records_inserted.adtrans;
+                        result.records_inserted.gang_member += divResult.records_inserted.gang_member;
+                        result.records_inserted.hr_employee += divResult.records_inserted.hr_employee || 0;
+                        result.records_inserted.hr_gang += divResult.records_inserted.hr_gang || 0;
+                    } else if (divResult.errors.length > 0) {
+                        result.errors.push(`[${div}] ${divResult.errors.join('; ')}`);
+                    }
+
+                    // Optional short delay between divisions
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+
+                result.success = true;
+                result.history_id = 'BATCH-' + Date.now().toString(36).toUpperCase();
+                const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                HistorySeederService.updateProgress({
+                    is_running: false,
+                    current_step: `✅ Selesai! Seeding ${allDivisions.length} divisi berhasil dalam ${totalTime}s.`,
+                    current_division: 'DONE'
+                });
+                return result;
+            } catch (error: any) {
+                console.error(`[HistorySeeder] Batch seeding failed:`, error);
+                HistorySeederService.updateProgress({ is_running: false, current_step: `❌ Gagal: ${error.message}` });
+                result.errors.push(`Batch seeding failed: ${error.message}`);
+                return result;
+            }
         }
 
         console.log(`[HistorySeeder] =======================================`);
@@ -454,7 +527,11 @@ export class HistorySeederService {
             totals.total_premi += emp.total_premi || 0;
             totals.total_koreksi += emp.pot_koreksi || 0;
             totals.total_potongan += emp.total_potongan || 0;
-            totals.total_pph21 += emp.pot_pph21 || 0;
+            
+            // [FIX] Use pph21_ter (calculated TER) instead of pot_pph21 (manual input)
+            // if available, to ensure tax data is always visible in history header.
+            totals.total_pph21 += emp.pph21_ter || emp.pot_pph21 || 0;
+            
             totals.total_bpjs_pekerja += emp.pot_bpjs_pekerja_total || 0;
             totals.total_bpjs_majikan += (emp.pot_bpjs_kesehatan_majikan || 0) + (emp.pot_bpjs_pensiun_majikan || 0) + (emp.pot_astek_majikan || 0);
             totals.total_spsi += emp.pot_spsi || 0;
@@ -645,7 +722,7 @@ export class HistorySeederService {
                     const empList = chunk.map(e => `'${e}'`).join(',');
                     return await db.query<any>(`
                         SELECT
-                            tr.ID as master_id, tr.RegNo, tr.RegDate,
+                            tr.ID as master_id, tr.DocID as RegNo, tr.DocDate as RegDate,
                             trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode,
                             trl.Hours, trl.OT, trl.Rate, trl.Amount
                         FROM PR_TASKREGLN trl
@@ -656,7 +733,7 @@ export class HistorySeederService {
                         UNION ALL
 
                         SELECT
-                            tr.ID as master_id, tr.RegNo, tr.RegDate,
+                            tr.ID as master_id, tr.DocID as RegNo, tr.DocDate as RegDate,
                             trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode,
                             trl.Hours, trl.OT, trl.Rate, trl.Amount
                         FROM PR_TASKREGLN_ARC trl
@@ -709,25 +786,25 @@ export class HistorySeederService {
                     const empList = chunk.map(e => `'${e}'`).join(',');
                     return await db.query<any>(`
                         SELECT
-                            t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc,
-                            ln.ID as line_id, ln.EmpCode, ln.TaskCode, ln.Amount,
+                            t.ID as master_id, t.DocID as DocNo, t.DocDate, t.DocDesc, t.EmpCode,
+                            ln.ID as line_id, ln.TaskCode, ln.Amount,
                             tc.TaskDesc
                         FROM PR_ADTRANSLN ln
                         JOIN PR_ADTRANS t ON t.ID = ln.MasterID
                         LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
-                        WHERE ln.EmpCode IN (${empList})
+                        WHERE t.EmpCode IN (${empList})
                           AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
 
                         UNION ALL
 
                         SELECT
-                            t.ID as master_id, t.DocNo, t.DocDate, t.DocDesc,
-                            ln.ID as line_id, ln.EmpCode, ln.TaskCode, ln.Amount,
+                            t.ID as master_id, t.DocID as DocNo, t.DocDate, t.DocDesc, t.EmpCode,
+                            ln.ID as line_id, ln.TaskCode, ln.Amount,
                             tc.TaskDesc
                         FROM PR_ADTRANSLN_ARC ln
                         JOIN PR_ADTRANS_ARC t ON t.ID = ln.MasterID
                         LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
-                        WHERE ln.EmpCode IN (${empList})
+                        WHERE t.EmpCode IN (${empList})
                           AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
                     `, []);
                 }, 'seedTransactionData ADTrans chunk');

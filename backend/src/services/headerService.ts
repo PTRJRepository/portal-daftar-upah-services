@@ -280,7 +280,14 @@ export class HeaderService {
                 children: [
                     { field: "beras_jumlah", headerName: "Beras" },
                     { field: "jabatan_jumlah", headerName: "Jabatan" },
-                    { field: "masa_kerja_jumlah", headerName: "Masa Kerja" },
+                    {
+                        field: "masa_kerja",
+                        headerName: "Masa Kerja",
+                        children: [
+                            { field: "masa_kerja_tahun", headerName: "Lama" },
+                            { field: "masa_kerja_jumlah", headerName: "Jumlah" }
+                        ]
+                    },
                     { field: "lembur_jumlah", headerName: "Lembur" },
                     { field: "total_tunjangan", headerName: "Total" }
                 ]
