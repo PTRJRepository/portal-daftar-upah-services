@@ -9,6 +9,9 @@ import DashboardLayout from './layouts/DashboardLayout'
 import ReportToolbar from './components/common/ReportToolbar'
 import './styles/print-overrides.css'
 
+const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+
 // Lazy load pages - TEMPORARILY STATIC
 import DashboardHome from './pages/DashboardHome'
 import EmployeeDetailRoute from './pages/EmployeeDetailRoute'
@@ -65,10 +68,14 @@ const OperationalReportWrapper = () => {
   const [gangPrefix, setGangPrefix] = useState('');
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'attendance' | 'overtime' | 'employee-directory'
   const [hrSearchNik, setHrSearchNik] = useState('');
-  
+
   // Employee sorting state
   const [employeeSortBy, setEmployeeSortBy] = useState('name'); // 'name' | 'emp_code' | 'nik'
   const [employeeSortOrder, setEmployeeSortOrder] = useState('asc'); // 'asc' | 'desc'
+
+  // Seed data state
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [seedingStatus, setSeedingStatus] = useState('');
 
   // Using location.pathname as key FORCES remount when navigating, solving 'stuck' UI
   // Note: We return the actual content here, or wrap it.
@@ -217,6 +224,65 @@ const OperationalReportWrapper = () => {
     }
   };
 
+  // Seed data handler
+  const handleSeedData = async () => {
+    if (!token) return
+    if (!window.confirm(`Seed data PERSIS seperti yang tampil di UI untuk ${MONTHS[month-1]} ${year}?`)) return
+
+    setIsSeeding(true)
+    setSeedingStatus('Extracting data from UI...')
+
+    try {
+      const response = await fetch('/payroll/aggregation/seed-ui', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          division: division || 'ALL',
+          month,
+          year,
+          gangCode: gang || null,
+          gangPrefix: gangPrefix || null
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        const gangCount = result.data?.total_gangs || 0
+        const empCount = result.data?.total_employees || 0
+        setSeedingStatus(`Success! ${gangCount} gangs, ${empCount} employees seeded`)
+
+        if (result.data?.grand_total) {
+          const gt = result.data.grand_total
+          console.log('Seeded gangs:', result.data.results?.map(r => `${r.gang_code}: ${r.upah_bersih.toLocaleString('id-ID')}`).join(', '))
+          console.log('Grand Total:', {
+            employees: gt.total_employees,
+            hk: gt.total_hk,
+            gaji_pokok: gt.total_gaji_pokok,
+            tunjangan: gt.total_tunjangan,
+            premi: gt.total_premi,
+            potongan: gt.total_potongan,
+            upah_bersih: gt.total_upah_bersih
+          })
+        }
+
+        setTimeout(() => {
+          setSeedingStatus('')
+        }, 3000)
+      } else {
+        setSeedingStatus(`Error: ${result.error || 'Unknown error'}`)
+      }
+    } catch (e) {
+      console.error('UI Seed error:', e)
+      setSeedingStatus(`Error: ${e.message}`)
+    } finally {
+      setIsSeeding(false)
+    }
+  }
+
   // Generate last 3 months for quick select
   const previousPeriods = useMemo(() => {
     const periods = [];
@@ -255,6 +321,33 @@ const OperationalReportWrapper = () => {
         gap: '0',
         flexShrink: 0
       }}>
+
+        {/* Seeding Status Indicator */}
+        {seedingStatus && (
+          <div style={{
+            padding: '0.5rem 0',
+            backgroundColor: seedingStatus.includes('Success') || seedingStatus.includes('berhasil') ? '#d1fae5' : seedingStatus.includes('Error') || seedingStatus.includes('Gagal') ? '#fee2e2' : '#fef3c7',
+            borderBottom: `1px solid ${seedingStatus.includes('Success') || seedingStatus.includes('berhasil') ? '#10b981' : seedingStatus.includes('Error') || seedingStatus.includes('Gagal') ? '#ef4444' : '#f59e0b'}`,
+            fontWeight: '600',
+            fontSize: '0.85rem',
+            color: seedingStatus.includes('Success') || seedingStatus.includes('berhasil') ? '#065f46' : seedingStatus.includes('Error') || seedingStatus.includes('Gagal') ? '#991b1b' : '#92400e',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            {seedingStatus.includes('berhasil') ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+            ) : seedingStatus.includes('Gagal') || seedingStatus.includes('Error') ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+            )}
+            {seedingStatus}
+          </div>
+        )}
+
         {/* Top Row: Title & Right Actions */}
         <div style={{
           display: 'flex',
@@ -444,6 +537,48 @@ const OperationalReportWrapper = () => {
 
           {/* Right: Action Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Seed Data Button */}
+            <button
+              onClick={handleSeedData}
+              disabled={isSeeding}
+              style={{
+                height: '34px',
+                padding: '0 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                background: isSeeding ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                color: isSeeding ? '#92400e' : '#ffffff',
+                border: `1px solid ${isSeeding ? '#fde68a' : '#047857'}`,
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: isSeeding ? 'wait' : 'pointer',
+                transition: 'all 0.2s',
+                whiteSpace: 'nowrap',
+                opacity: isSeeding ? 0.7 : 1
+              }}
+              onMouseOver={(e) => { if (!isSeeding) { e.currentTarget.style.background = 'linear-gradient(135deg, #047857 0%, #065f46 100%)'; } }}
+              onMouseOut={(e) => { if (!isSeeding) { e.currentTarget.style.background = 'linear-gradient(135deg, #059669 0%, #047857 100%)'; } }}
+            >
+              {isSeeding ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg> Seeding...
+                </>
+              ) : (
+                <>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22V8" />
+                    <path d="M5 12l7-8 7 8" />
+                    <rect x="3" y="16" width="18" height="6" rx="2" />
+                  </svg> Seed Data
+                </>
+              )}
+            </button>
+
             {/* Font Controls */}
             <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
               <button onClick={handleFontDecrease} style={{ padding: '0.4rem 0.6rem', background: 'white', border: 'none', borderRight: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.85rem', color: '#64748b' }}>A-</button>
