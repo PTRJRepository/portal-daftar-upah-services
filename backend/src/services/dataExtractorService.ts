@@ -2111,7 +2111,6 @@ export class DataExtractorService {
                   AND UPPER(t.DocDesc) NOT LIKE '%POTONGAN%'
                   AND UPPER(t.DocDesc) NOT LIKE '%KOREKSI%'
                   AND UPPER(t.DocDesc) NOT LIKE '%SPSI%'
-                  AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
                   AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
               )` : `(
                   (
@@ -2130,7 +2129,6 @@ export class DataExtractorService {
                   AND UPPER(t.DocDesc) NOT LIKE '%POTONGAN%'
                   AND UPPER(t.DocDesc) NOT LIKE '%KOREKSI%'
                   AND UPPER(t.DocDesc) NOT LIKE '%SPSI%'
-                  AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
                   AND (mt.TaskDesc IS NULL OR mt.TaskDesc <> 'ACCRUALS-CHECKROLL')
               )`}
               AND ln.Amount > 0
@@ -2179,8 +2177,7 @@ export class DataExtractorService {
 
         // [OPTIMIZATION] Single query: main potongan + PREMI_PPH (ACCRUALS-CHECKROLL) combined
         // row_type: 'P' = regular potongan, 'X' = PREMI_PPH
-        // [FIX] Use LEFT JOIN instead of INNER JOIN to include all employees with potongan,
-        // even if they're not currently in HR_GANGLN (may have moved gangs, resigned, etc.)
+        // [CRITICAL] INNER JOIN HR_GANGLN ensures only valid gang members from HR_GANGLN are processed
         let rows = await db.query<{ emp_code: string; doc_desc: string; task_code: string | null; task_desc: string | null; amount: number; row_type: string }>(`
             SELECT
                 RTRIM(t.EmpCode) as emp_code,
@@ -2192,7 +2189,7 @@ export class DataExtractorService {
             FROM (
                 SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
                 FROM PR_ADTRANS t
-                LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(t.EmpCode)
+                INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(t.EmpCode)
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
 
@@ -2200,7 +2197,7 @@ export class DataExtractorService {
 
                 SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
                 FROM PR_ADTRANS_ARC t
-                LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(t.EmpCode)
+                INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(t.EmpCode)
                 WHERE RTRIM(t.EmpCode) IN (${empList})
                   AND t.DocDate >= ? AND t.DocDate < ?
             ) t
@@ -2236,10 +2233,6 @@ export class DataExtractorService {
 
         const amounts: Record<string, Record<string, number>> = {};
         const titleMap: Record<string, string> = {};
-
-        // DEBUG: Track PPH21 records found
-        let pph21Count = 0;
-        let pph21Total = 0;
 
         for (const r of rows) {
             const emp = r.emp_code?.trim() || "";
@@ -3183,13 +3176,12 @@ export class DataExtractorService {
             try {
                 const { EmployeeEstateService: EES } = await import("./employeeEstateService");
                 debug(CATEGORY, `🔍 Attempting to get employee jobs with NIK...`);
-                // Timeout wrapper: 15 seconds max for this enrichment query
-                // [FIX] Increased from 5s to 15s - employee_estate table can have many rows
-                const timeoutMs = 15000;
+                // Timeout wrapper: 5 seconds max for this enrichment query
+                const timeoutMs = 5000;
                 const jobTitlesResult = await Promise.race([
                     EES.getEmployeeJobsWithNik(),
                     new Promise<null>((_, reject) =>
-                        setTimeout(() => reject(new Error(`getEmployeeJobsWithNik timeout (${timeoutMs}ms)`)), timeoutMs)
+                        setTimeout(() => reject(new Error('getEmployeeJobsWithNik timeout (5s)')), timeoutMs)
                     )
                 ]).catch((e) => {
                     debug(CATEGORY, `⚠️ employee_estate jabatan lookup timed out: ${e.message}`);
@@ -3214,25 +3206,10 @@ export class DataExtractorService {
                     }
                     debug(CATEGORY, `📋 Jabatan estate from employee_estate: ${jabatanEstateSectionFound}/${employees.length}`);
                 } else {
-                    debug(CATEGORY, `⚠️ jobTitlesResult is null - using HR_GANGLN.jabatan as fallback for all employees`);
-                    // [FIX] When getEmployeeJobsWithNik() times out, fall back to HR_GANGLN.jabatan
-                    // This ensures jabatan_estate is always populated consistently
-                    for (const emp of employees) {
-                        const fallbackJabatan = (emp.jabatan || '').trim();
-                        if (fallbackJabatan) {
-                            emp.jabatan_estate = fallbackJabatan;
-                        }
-                    }
+                    debug(CATEGORY, `⚠️ jobTitlesResult is null - no estate maps available`);
                 }
             } catch (e) {
                 debug(CATEGORY, `⚠️ employee_estate jabatan lookup skipped: ${e.message}`);
-                // [FIX] On exception, fall back to HR_GANGLN.jabatan to ensure consistency
-                for (const emp of employees) {
-                    const fallbackJabatan = (emp.jabatan || '').trim();
-                    if (fallbackJabatan) {
-                        emp.jabatan_estate = fallbackJabatan;
-                    }
-                }
             }
 
             // Log enrichment result
@@ -3848,13 +3825,13 @@ export class DataExtractorService {
                 emp.upah_kotor_pajak = emp.jumlah_upah_kotor; // For PAJAK section
 
                 // Calculate penghasilan_bruto from jumlah_upah_kotor + astek_majikan + bpjs_majikan
-                // NOTE: pot_koreksi is ALREADY included in jumlah_upah_kotor (as negative value)
-                // So we do NOT subtract it again - that would be double-counting
-                // Formula matches PayrollCalculator: penghasilan_bruto = jumlah_upah_kotor + astek_m + bpjs_m
+                // Use upah_dasar and masa_kerja_jumlah to match taxReportService calculation
+                // NOTE: pot_koreksi must be SUBTRACTED because it's already included in jumlah_upah_kotor
+                // This matches the taxReportService formula: (components) - pot_koreksi
                 const caruman = calculateAllCaruman(emp.upah_dasar || emp.pay_rate || 0, emp.masa_kerja_jumlah || 0);
                 const astekMajikan = caruman.astek_majikan_jkk_jkm || 0;
                 const bpjsMajikan = caruman.bpjs_kes_majikan || 0;
-                emp.penghasilan_bruto = (emp.jumlah_upah_kotor || 0) + astekMajikan + bpjsMajikan;
+                emp.penghasilan_bruto = (emp.jumlah_upah_kotor || 0) - (emp.pot_koreksi || 0) + astekMajikan + bpjsMajikan;
 
                 // Calculate PPh21 TER
                 try {
