@@ -467,8 +467,18 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
   }, [finalDivision, authToken, allGangs, gangFilter.filters])
 
-  // Helper to calculate total row for a gang
-  const calculateTotalRow = useCallback((filteredRows, gang) => {
+  // Helper to calculate total row for a gang - NOW USES BACKEND TOTALS WHEN AVAILABLE
+  const calculateTotalRow = useCallback((filteredRows, gang, backendGangTotal = null) => {
+    // If backend provides pre-calculated totals, use them directly
+    if (backendGangTotal) {
+      return {
+        ...backendGangTotal,
+        isTotal: true,
+        gang_code: gang
+      };
+    }
+
+    // Fallback to frontend calculation if backend total not available
     const agg = (field) => Math.round(filteredRows.reduce((a, b) => a + Number(b[field] || 0), 0))
 
     // Helper function to aggregate nested other_incomes array
@@ -526,8 +536,15 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     return totalRow
   }, [customPendapatanTypes])
 
-  // Helper to update Grand Total incrementally
-  const updateGrandTotal = useCallback((allRows) => {
+  // Helper to update Grand Total incrementally - NOW USES BACKEND TOTALS WHEN AVAILABLE
+  const updateGrandTotal = useCallback((allRows, backendGrandTotal = null) => {
+    // If backend provides pre-calculated grand total, use it directly
+    if (backendGrandTotal) {
+      setPinnedBottom([{ ...backendGrandTotal, isGrandTotal: true }]);
+      return;
+    }
+
+    // Fallback to frontend calculation if backend total not available
     const dataRows = allRows.filter(r => !r.isHeader && !r.isTotal)
     if (dataRows.length === 0) {
       setPinnedBottom([])
@@ -1054,7 +1071,24 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
         if (String(finalGangCode).toUpperCase() === 'ALL') {
           await renderDivisionIncremental(activeToken, finalDivision, activeMonth, activeYear, allGangs)
         } else {
-          const data = await fetchReportRowsSimple(activeToken, { month: activeMonth, year: activeYear, gang_code: finalGangCode, division: finalDivision, skip: 0, limit: INFINITE_BATCH_SIZE, use_history: useHistory })
+          const response = await fetchReportRowsSimple(activeToken, { month: activeMonth, year: activeYear, gang_code: finalGangCode, division: finalDivision, skip: 0, limit: INFINITE_BATCH_SIZE, use_history: useHistory }, true)
+          
+          // Extract data and backend totals from response
+          const data = response?.data || response
+          const backendGrandTotal = response?.grand_total
+          const backendGangs = response?.gangs || []
+
+          // [DEBUG] Log backend totals
+          console.log('[Report] Backend totals:', {
+            hasGrandTotal: !!backendGrandTotal,
+            upah_bersih: backendGrandTotal?.upah_bersih,
+            jumlah_upah_kotor: backendGrandTotal?.jumlah_upah_kotor,
+            total_potongan: backendGrandTotal?.total_potongan,
+            pendapatan_thr: backendGrandTotal?.pendapatan_thr,
+            pendapatan_kontan: backendGrandTotal?.pendapatan_kontan,
+            pendapatan_lainnya: backendGrandTotal?.pendapatan_lainnya,
+            gangsCount: backendGangs?.length || 0
+          });
 
           const computed = applyComputeToRows(data, computeRulesRef.current)
           // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER] Safety net: exclude 0 HK
@@ -1069,80 +1103,85 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           setFirstBatchReady(safe.length > 0)
           setDataReady(true) // [FIX] Data is now confirmed ready - grid can safely render
 
-          const agg = (field) => Math.round(safe.reduce((a, b) => a + Number(b[field] || 0), 0))
-
-          // Helper for nested aggregation
-          const aggNested = (objProp, key) => Math.round(safe.reduce((a, b) => {
-            const val = (b[objProp] && b[objProp][key]) ? Number(b[objProp][key]) : 0
-            return a + val
-          }, 0))
-
-          // Helper function to aggregate nested other_incomes array for Grand Total
-          const aggOtherIncomesGrand = (type) => {
-            return safe.reduce((sum, row) => {
-              if (row.other_incomes && Array.isArray(row.other_incomes)) {
-                const found = row.other_incomes.find(oi => oi.type === type);
-                if (found) sum += Number(found.amount || 0);
-              }
-              return sum;
-            }, 0);
-          };
-
-          if (safe.length > 0) {
-            const grand = {
-              no: '', jenis_kelamin: '', nik: '', nama: 'GRAND TOTAL',
-              upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
-              cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
-              gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
-              // [DYNAMIC] Pendapatan Lainnya
-              pendapatan_thr: Math.round(aggOtherIncomesGrand('THR')),
-              pendapatan_bonus: Math.round(aggOtherIncomesGrand('BONUS')),
-              pendapatan_custom: Math.round(aggOtherIncomesGrand('CUSTOM')),
-              // Dynamic custom types aggregation
-              ...Object.fromEntries(
-                customPendapatanTypes.map(t => [`pendapatan_${t.type.toLowerCase()}`, agg(`pendapatan_${t.type.toLowerCase()}`)])
-              ),
-              pendapatan_lainnya: agg('pendapatan_lainnya'),
-              premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
-              pot_koreksi: agg('pot_koreksi'),
-              total_premi: agg('total_premi'),
-              jumlah_upah_kotor: agg('jumlah_upah_kotor'),
-              pot_pph21: agg('pot_pph21'), pot_kontan: agg('pot_kontan'), pot_thr: agg('pot_thr'), pot_pinjam: agg('pot_pinjam'), pot_kl: agg('pot_kl'), pot_bpjs_kes: agg('pot_bpjs_kes'),
-              pot_astek: agg('pot_astek'), pot_astek_maj: agg('pot_astek_maj'), pot_astek_jumlah: agg('pot_astek_jumlah'),
-              pot_bpjs_pek: agg('pot_bpjs_pek'), pot_bpjs_maj: agg('pot_bpjs_maj'),
-              pot_bpjs_kesehatan_pekerja: agg('pot_bpjs_kesehatan_pekerja'),
-              pot_bpjs_kesehatan_majikan: agg('pot_bpjs_kesehatan_majikan'),
-              pot_bpjs_pensiun_pekerja: agg('pot_bpjs_pensiun_pekerja'),
-              pot_bpjs_pensiun_majikan: agg('pot_bpjs_pensiun_majikan'),
-              pot_bpjs_jumlah: agg('pot_bpjs_jumlah'),
-              pot_bpjs_pekerja_total: agg('pot_bpjs_pekerja_total'),
-              pot_spsi: agg('pot_spsi'),
-              total_potongan: agg('total_potongan'), upah_bersih: agg('upah_bersih'),
-              premi: {} // Initialize nested premi object
-            }
-
-            // Aggregate nested premi fields
-            const premiKeys = new Set()
-            safe.forEach(r => {
-              if (r.premi) Object.keys(r.premi).forEach(k => premiKeys.add(k))
-            })
-            
-            premiKeys.forEach(k => {
-              const val = aggNested('premi', k)
-              grand.premi[k] = val
-            })
-
-            // Add dynamic potongan from nested structure
-            if (safe[0] && safe[0].potongan_upah_kotor && safe[0].potongan_upah_kotor.dynamic) {
-              Object.keys(safe[0].potongan_upah_kotor.dynamic).forEach(key => {
-                const f = `potongan_upah_kotor.dynamic.${key}`
-                const sum = agg(f)
-                if (sum > 0) grand[f] = sum
-              })
-            }
-            setPinnedBottom([grand])
+          // [NEW] Use backend grand total if available, otherwise fallback to frontend calculation
+          if (backendGrandTotal) {
+            updateGrandTotal(safe, backendGrandTotal)
           } else {
-            setPinnedBottom([])
+            const agg = (field) => Math.round(safe.reduce((a, b) => a + Number(b[field] || 0), 0))
+
+            // Helper for nested aggregation
+            const aggNested = (objProp, key) => Math.round(safe.reduce((a, b) => {
+              const val = (b[objProp] && b[objProp][key]) ? Number(b[objProp][key]) : 0
+              return a + val
+            }, 0))
+
+            // Helper function to aggregate nested other_incomes array for Grand Total
+            const aggOtherIncomesGrand = (type) => {
+              return safe.reduce((sum, row) => {
+                if (row.other_incomes && Array.isArray(row.other_incomes)) {
+                  const found = row.other_incomes.find(oi => oi.type === type);
+                  if (found) sum += Number(found.amount || 0);
+                }
+                return sum;
+              }, 0);
+            };
+
+            if (safe.length > 0) {
+              const grand = {
+                no: '', jenis_kelamin: '', nik: '', nama: 'GRAND TOTAL',
+                upah_dasar: '', hari_kerja: agg('hari_kerja'), upah_pokok: agg('upah_pokok'),
+                cuti_tahunan_hari: agg('cuti_tahunan_hari'), cuti_sakit_haid_hari: agg('cuti_sakit_haid_hari'), cuti_minggu_hari: agg('cuti_minggu_hari'), cuti_nasional_hari: agg('cuti_nasional_hari'), jumlah_hk: agg('jumlah_hk'),
+                gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
+                // [DYNAMIC] Pendapatan Lainnya
+                pendapatan_thr: Math.round(aggOtherIncomesGrand('THR')),
+                pendapatan_bonus: Math.round(aggOtherIncomesGrand('BONUS')),
+                pendapatan_custom: Math.round(aggOtherIncomesGrand('CUSTOM')),
+                // Dynamic custom types aggregation
+                ...Object.fromEntries(
+                  customPendapatanTypes.map(t => [`pendapatan_${t.type.toLowerCase()}`, agg(`pendapatan_${t.type.toLowerCase()}`)])
+                ),
+                pendapatan_lainnya: agg('pendapatan_lainnya'),
+                premi_brondol: agg('premi_brondol'), premi_pruning: agg('premi_pruning'), premi_angkut_material: agg('premi_angkut_material'), premi_angkut_tbs: agg('premi_angkut_tbs'), premi_harvesting: agg('premi_harvesting'), premi_harvesting_incentive: agg('premi_harvesting_incentive'), premi_pupuk: agg('premi_pupuk'),
+                pot_koreksi: agg('pot_koreksi'),
+                total_premi: agg('total_premi'),
+                jumlah_upah_kotor: agg('jumlah_upah_kotor'),
+                pot_pph21: agg('pot_pph21'), pot_kontan: agg('pot_kontan'), pot_thr: agg('pot_thr'), pot_pinjam: agg('pot_pinjam'), pot_kl: agg('pot_kl'), pot_bpjs_kes: agg('pot_bpjs_kes'),
+                pot_astek: agg('pot_astek'), pot_astek_maj: agg('pot_astek_maj'), pot_astek_jumlah: agg('pot_astek_jumlah'),
+                pot_bpjs_pek: agg('pot_bpjs_pek'), pot_bpjs_maj: agg('pot_bpjs_maj'),
+                pot_bpjs_kesehatan_pekerja: agg('pot_bpjs_kesehatan_pekerja'),
+                pot_bpjs_kesehatan_majikan: agg('pot_bpjs_kesehatan_majikan'),
+                pot_bpjs_pensiun_pekerja: agg('pot_bpjs_pensiun_pekerja'),
+                pot_bpjs_pensiun_majikan: agg('pot_bpjs_pensiun_majikan'),
+                pot_bpjs_jumlah: agg('pot_bpjs_jumlah'),
+                pot_bpjs_pekerja_total: agg('pot_bpjs_pekerja_total'),
+                pot_spsi: agg('pot_spsi'),
+                total_potongan: agg('total_potongan'), upah_bersih: agg('upah_bersih'),
+                premi: {} // Initialize nested premi object
+              }
+
+              // Aggregate nested premi fields
+              const premiKeys = new Set()
+              safe.forEach(r => {
+                if (r.premi) Object.keys(r.premi).forEach(k => premiKeys.add(k))
+              })
+
+              premiKeys.forEach(k => {
+                const val = aggNested('premi', k)
+                grand.premi[k] = val
+              })
+
+              // Add dynamic potongan from nested structure
+              if (safe[0] && safe[0].potongan_upah_kotor && safe[0].potongan_upah_kotor.dynamic) {
+                Object.keys(safe[0].potongan_upah_kotor.dynamic).forEach(key => {
+                  const f = `potongan_upah_kotor.dynamic.${key}`
+                  const sum = agg(f)
+                  if (sum > 0) grand[f] = sum
+                })
+              }
+              setPinnedBottom([grand])
+            } else {
+              setPinnedBottom([])
+            }
           }
         }
       } catch (e) {

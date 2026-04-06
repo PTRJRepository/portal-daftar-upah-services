@@ -447,8 +447,46 @@ export class DivisionConfigService {
             params = [];
         } else {
             // For real divisions - also use aliases
+            // ⚠️ CRITICAL: EXCLUDE virtual division gangs
+            // This ensures virtual divisions are SEPARATE from their parent divisions
             const aliases = this.getAliases(division.code);
             const placeholders = aliases.map(() => '?').join(',');
+
+            // Build exclusion list based on virtual divisions that source from this division
+            const gangsToExclude: string[] = [];
+            const virtualDivs = this.getVirtualDivisions();
+            virtualDivs.forEach(vDiv => {
+                if (vDiv.sourceDivision === division.code && vDiv.gangPattern) {
+                    // Extract gang codes from pattern for known virtual divisions
+                    if (vDiv.code === 'INF' || vDiv.code === 'INFRA') {
+                        gangsToExclude.push('IN', 'INT');
+                    } else if (vDiv.code === 'WKS_PG') {
+                        gangsToExclude.push('AMC');
+                    } else if (vDiv.code === 'WKS_AR') {
+                        gangsToExclude.push('HMC');
+                    } else if (vDiv.code === 'NRS') {
+                        gangsToExclude.push('B2N');
+                    }
+                }
+            });
+
+            // Build query with or without exclusion clause
+            let excludeClause = '';
+            let queryParams: any[] = [...aliases];
+
+            if (gangsToExclude.length > 0) {
+                const excludePlaceholders = gangsToExclude.map(() => '?').join(',');
+                excludeClause = `AND GangCode NOT IN (${excludePlaceholders})`;
+                queryParams = [...aliases, ...gangsToExclude];
+            } else {
+                excludeClause = '';
+                queryParams = aliases;
+            }
+
+            console.log(`[DivisionConfigService] Query for ${division.code}:`);
+            console.log(`[DivisionConfigService]   Aliases: ${JSON.stringify(aliases)}`);
+            console.log(`[DivisionConfigService]   Excluded gangs: ${JSON.stringify(gangsToExclude)}`);
+
             query = `
                 SELECT
                     GangCode as gang_code,
@@ -456,9 +494,12 @@ export class DivisionConfigService {
                     LocCode as loc_code
                 FROM HR_GANG
                 WHERE RTRIM(LocCode) IN (${placeholders})
+                  ${excludeClause}
+                  AND Description NOT LIKE '%WORKSHOP%'
+                  AND Description NOT LIKE '%INFRA%'
                 ORDER BY GangCode
             `;
-            params = aliases;
+            params = queryParams;
         }
 
         console.log(`[DivisionConfigService] Executing query for ${divisionCode} with aliases: ${JSON.stringify(params)}`);

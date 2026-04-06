@@ -169,12 +169,15 @@ export class PayrollDataService {
             }
 
             const calculateTotals = (employees: any[]) => {
-                // [FIX] Use EXACT SAME filtering as live Daftar Upah UI & dataExtractorService
-                // Filter: EXCLUDE if hari_kerja <= 0 (subtracts ALL leave types)
+                // [FIX] Use EXACT SAME filtering as dataExtractorService (which feeds Daftar Upah)
+                // dataExtractorService uses: effective_hk = hk - (minggu + nasional)
+                // Include employee if effective_hk > 0
                 const activeEmployees = employees.filter((emp: any) => {
-                    const totalCuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0) + (emp.cuti_minggu_hari || 0) + (emp.cuti_nasional_hari || 0);
-                    const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
-                    return hari_kerja > 0;
+                    const minggu = emp.cuti_minggu_hari || 0;
+                    const nasional = emp.cuti_nasional_hari || 0;
+                    const hk = parseFloat(emp.jumlah_hk) || 0;
+                    const effective_hk = hk - (minggu + nasional);
+                    return effective_hk > 0;
                 });
 
                 const totals: Record<string, number> = {};
@@ -277,7 +280,6 @@ export class PayrollDataService {
         let totalPremiInsentif = 0;
         let totalPremiKinerja = 0;
         let totalPremiPrunning = 0;
-        let totalKoreksi = 0;
 
         for (const item of dynamicPremiList) {
             const headerLower = item.header.toLowerCase();
@@ -291,10 +293,12 @@ export class PayrollDataService {
             if ((headerLower.includes('prun') || headerLower.includes('pruning')) && !headerLower.includes('brondol')) {
                 totalPremiPrunning += item.total;
             }
-            if (headerLower.includes('koreksi') && !headerLower.includes('koreksi_hk')) {
-                totalKoreksi += item.total;
-            }
         }
+
+        // [FIX] total_koreksi comes from totals.pot_koreksi (already summed in calculateTotals)
+        // It is NOT a dynamic premi - it's a separate deduction field starting with 'pot_'
+        // The old code incorrectly searched dynamicPremiList for "koreksi" header which doesn't exist
+        const totalKoreksi = totals.pot_koreksi || 0;
 
         return {
             gang_code: gangCode,

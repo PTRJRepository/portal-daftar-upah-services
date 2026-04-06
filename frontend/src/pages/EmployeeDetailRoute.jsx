@@ -9,6 +9,8 @@ export default function EmployeeDetailRoute() {
     const [loadingParams, setLoadingParams] = useState(true)
 
     useEffect(() => {
+        let cancelled = false;
+
         const fetchParams = async () => {
             const urlParams = new URLSearchParams(window.location.search)
             // Read 'nik' param which now contains emp_code (like B0075) or could still be a KTP NIK
@@ -42,15 +44,26 @@ export default function EmployeeDetailRoute() {
                 }
 
                 if (month && year) {
-                    setParams({ empIdentifier, month, year, division });
+                    if (!cancelled) {
+                        setParams({ empIdentifier, month, year, division });
+                    }
                 }
             }
-            setLoadingParams(false);
+            if (!cancelled) {
+                setLoadingParams(false);
+            }
         };
 
         if (token && !authLoading) {
             fetchParams();
+        } else {
+            // If no token or still loading, still need to set loadingParams to false to avoid infinite loading
+            setLoadingParams(false);
         }
+
+        return () => {
+            cancelled = true;
+        };
     }, [token, authLoading])
 
     if (authLoading || loadingParams) {

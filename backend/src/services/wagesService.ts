@@ -96,6 +96,8 @@ export interface WagesComparison {
         // Summary
         jumlah_upah_kotor: number;
         upah_bersih: number;
+        // Tonase
+        tonase: number;
         // Pajak info
         status_ptkp?: string;
         kategori_ter?: string;
@@ -460,6 +462,8 @@ class WagesService {
                 // Summary
                 jumlah_upah_kotor: Number(payroll.jumlah_upah_kotor) || 0,
                 upah_bersih: Number(payroll.upah_bersih) || 0,
+                // Tonase
+                tonase: Number(payroll.total_ffb_weight) || Number(payroll.total_weight_tbs) || 0,
                 // Pajak info
                 status_ptkp: payroll.status_ptkp || '-',
                 kategori_ter: payroll.kategori_ter || '-',

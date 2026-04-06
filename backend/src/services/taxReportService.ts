@@ -501,8 +501,6 @@ class TaxReportService {
         const newJabatansToSave: any[] = [];
 
         let totalPph21 = 0;
-        let diffCount = 0;
-        let totalDiff = 0;
 
         // Load THR and Exgratia for the specific month if it matches the active THR month
         const activeThr = loadActiveThrPeriode();
@@ -658,21 +656,20 @@ class TaxReportService {
             // NOTE: If rowPendapatanLainnyaValue > 0, it's already included in penghasilanBruto
             // from calculatePenghasilanBruto() above, so we DON'T add it again.
 
-            // Purely calculated PPh21 (TER) - using penghasilanBruto that already includes all income
-            const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
-            const pph21 = pphResult.tax_amount;
-            const tarifPajakTer = pphResult.rate_percent;
+            // Use PRE-CALCULATED pph21_ter from row data (from dataExtractorService/origin)
+            // This ensures the Excel export matches exactly what the UI displays
+            const pph21 = row.pph21_ter !== undefined && row.pph21_ter !== null && row.pph21_ter !== 0
+                ? row.pph21_ter
+                : pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp).tax_amount;
+            const rowPtkpStatus = row.status_ptkp || masterPtkp;
+            const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, rowPtkpStatus);
+            const tarifPajakTer = row.tarif_pajak_ter || pphResult.rate_percent;
 
             totalPph21 += pph21;
 
             // [DEBUG] Always log every employee's pph21 calculation for comparison
             if (idx < 5 || row.pph21_ter !== undefined) {
-                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: TaxReport_pph21=${pph21}, row_pph21_ter=${row.pph21_ter || 'N/A'}, diff=${row.pph21_ter ? pph21 - row.pph21_ter : 'N/A'}, bruto=${penghasilanBruto}, PTKP=${masterPtkp}, TER=${pphResult.ter_category}, rate=${pphResult.rate_percent}%`);
-                if (row.pph21_ter !== undefined && row.pph21_ter !== pph21) {
-                    diffCount++;
-                    totalDiff += (pph21 - (row.pph21_ter || 0));
-                    console.log(`[TAX_REPORT_DEBUG] *** DIFF FOUND: Components: gaji=${gajiPokokAktual}, beras=${tunjanganBeras}, jab=${tunjanganJabatan}, msk=${tunjanganMasaKerja}, lembur=${tunjanganLembur}, premi=${totalPremi}, potKor=${row.pot_koreksi || 0}, pendLain=${rowPendapatanLainnya}, astek=${astek084}, bpjs=${bpjsKesehatanMajikan4Pct}`);
-                }
+                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: Using row_pph21_ter=${row.pph21_ter || 'N/A'}, TaxReport_pph21=${pph21}, bruto=${penghasilanBruto}, PTKP=${masterPtkp}, TER=${pphResult.ter_category}, rate=${pphResult.rate_percent}%`);
             }
 
             // Discover dynamic premi fields from row keys (e.g. premi_brondol, premi_pruning, etc.)
@@ -766,8 +763,8 @@ class TaxReportService {
                 kategori_ter: kategoriTer,
                 gang_code: row.gang_code || '',
                 upah_kotor: row.jumlah_upah_kotor || row.upah_kotor || 0,
-                penghasilan_bruto: penghasilanBruto,
-                tarif_pajak_ter: tarifPajakTer,
+                penghasilan_bruto: row.penghasilan_bruto || penghasilanBruto,
+                tarif_pajak_ter: row.tarif_pajak_ter || tarifPajakTer,
                 pph21_ter: pph21,
                 component_metadata: TAX_COMPONENT_METADATA,
 
@@ -833,10 +830,7 @@ class TaxReportService {
             );
         }
 
-        console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${isSourceCurrent ? 'current' : 'history'}, diffCount=${diffCount}, totalDiff=${totalDiff}`);
-        if (diffCount > 0) {
-            console.log(`[TaxReportService] *** WARNING: ${diffCount} employees have different PPh21 between TaxReport and Daftar Upah! Total difference: ${totalDiff}`);
-        }
+        console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${isSourceCurrent ? 'current' : 'history'}`);
         return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
     }
 

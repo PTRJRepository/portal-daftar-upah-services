@@ -58,9 +58,11 @@ export async function fetchReportRows(token, { month, year, gang_code, division,
 
 /**
  * Fetch payroll rows for a specific gang.
- * Uses /payroll/report endpoint which returns { data: [...], ... }
+ * Uses /payroll/report endpoint which returns { data: [...], gangs: [...], grand_total: {...}, ... }
+ * 
+ * ALWAYS returns full response with totals for proper aggregation
  */
-export async function fetchReportRowsSimple(token, { month, year, gang_code, division, skip = 0, limit = 50, use_history = null, server_profile = null, summary_only = null }) {
+export async function fetchReportRowsSimple(token, { month, year, gang_code, division, skip = 0, limit = 50, use_history = null, server_profile = null, summary_only = null }, returnFullResponse = true) {
   const params = {}
   const norm = normalizeMonthYear(month, year)
   if (norm.month) params.month = norm.month
@@ -78,7 +80,12 @@ export async function fetchReportRowsSimple(token, { month, year, gang_code, div
 
   try {
     const r = await requestWithRetry('/payroll/report', config, 2, 500, 120000)
-    // Endpoint returns { data: [...], meta: {...}, ... } - extract the data array
+    // Endpoint returns { data: [...], gangs: [...], grand_total: {...}, meta: {...}, ... }
+    if (returnFullResponse) {
+      // Return full response with backend-calculated totals
+      return r.data || {}
+    }
+    // Legacy behavior: extract just the data array
     return r.data?.data ?? []
   } catch (error) {
     console.error('[PayrollService] fetchReportRowsSimple failed:', error)

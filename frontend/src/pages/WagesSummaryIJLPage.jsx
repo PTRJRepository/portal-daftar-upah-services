@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary } from '../services/summaryReportService';
+import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary, fetchVirtualDivisions } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import PrintSignature from '../components/common/PrintSignature';
@@ -21,6 +21,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
     // Filters - Use initial props if provided
     const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
+    const [divisionType, setDivisionType] = useState('all'); // 'all', 'real', or 'virtual'
 
     // Sync state with props when they change (fix navigation freeze)
     useEffect(() => {
@@ -32,6 +33,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
     const [periods, setPeriods] = useState([]);
     const [summaryData, setSummaryData] = useState([]);
     // grandTotal from API is ignored for IJL specific calculation
+    const [virtualDivisions, setVirtualDivisions] = useState([]);
 
     // Comparison State - Initialize from URL param
     const [comparisonMode, setComparisonMode] = useState(searchParams.get('mode') === 'comparison');
@@ -125,7 +127,11 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                     setError('Failed to fetch comparison data');
                 }
             } else {
-                const result = await fetchAllDivisionsTotals(token, { month, year });
+                const result = await fetchAllDivisionsTotals(token, { 
+                    month, 
+                    year,
+                    includeVirtual: divisionType !== 'real' // 'all' or 'virtual' -> true
+                });
                 if (result.success) {
                     setSummaryData(result.data || []);
                 } else {
@@ -138,11 +144,25 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
         } finally {
             setLoading(false);
         }
-    }, [token, month, year, comparisonMode]);
+    }, [token, month, year, comparisonMode, divisionType]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Load virtual divisions
+    useEffect(() => {
+        async function loadVirtualDivisions() {
+            if (!token) return;
+            try {
+                const result = await fetchVirtualDivisions(token);
+                setVirtualDivisions(result.divisions || []);
+            } catch (e) {
+                console.error('Failed to load virtual divisions:', e);
+            }
+        }
+        loadVirtualDivisions();
+    }, [token]);
 
     // --- IJL FILTERING LOGIC ---
 
@@ -500,6 +520,23 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                 <div className="left-section">
                     {onBack && <button onClick={onBack} className="wsp-btn" title="Kembali ke Menu Utama">Kembali</button>}
                     <div className="wsp-filter-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                        {/* Division Type Selector (All/Real/Virtual) */}
+                        <select 
+                            value={divisionType} 
+                            onChange={(e) => setDivisionType(e.target.value)} 
+                            className="wsp-select"
+                            style={{
+                                backgroundColor: divisionType === 'virtual' ? '#fef3c7' : divisionType === 'real' ? '#eef2ff' : '#dcfce7',
+                                color: divisionType === 'virtual' ? '#92400e' : divisionType === 'real' ? '#4f46e5' : '#166534',
+                                borderColor: divisionType === 'virtual' ? '#fde68a' : divisionType === 'real' ? '#c7d2fe' : '#86efac',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            <option value="all">Semua Divisi</option>
+                            <option value="real">Divisi Utama Saja</option>
+                            <option value="virtual">Divisi Virtual Saja</option>
+                        </select>
+                        
                         <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="wsp-select">
                             {monthOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>

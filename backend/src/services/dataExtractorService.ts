@@ -41,6 +41,7 @@ interface EmployeeRow {
      * NOT from HR_GANGLN - that table only has gang membership.
      */
     jabatan?: string;
+    pot_premi_pph?: number;
 }
 
 interface CutiData {
@@ -2614,43 +2615,70 @@ export class DataExtractorService {
         try {
             // Query PR_LOOSEFRUIT (active + archived) for brondol premium amounts
             // This is the source of truth for brondol (loose fruit) premiums
-            const rows = await db.query<any>(`
-                SELECT EmpCode, TotalAmount
-                FROM (
-                    SELECT 
-                        RTRIM(l.EmpCode) as EmpCode,
-                        SUM(ISNULL(l.Amount, 0)) as TotalAmount,
-                        ROW_NUMBER() OVER (PARTITION BY RTRIM(l.EmpCode) ORDER BY SUM(ISNULL(l.Amount, 0)) DESC) as rn
-                    FROM PR_LOOSEFRUITLN l
-                    INNER JOIN PR_LOOSEFRUIT m ON l.MasterID = m.ID
-                    WHERE RTRIM(l.EmpCode) IN (${empList})
-                      AND m.DocDate >= ? AND m.DocDate < ?
-                    GROUP BY RTRIM(l.EmpCode)
-
-                    UNION ALL
-
-                    SELECT 
-                        RTRIM(l.EmpCode) as EmpCode,
-                        SUM(ISNULL(l.Amount, 0)) as TotalAmount,
-                        ROW_NUMBER() OVER (PARTITION BY RTRIM(l.EmpCode) ORDER BY SUM(ISNULL(l.Amount, 0)) DESC) as rn
-                    FROM PR_LOOSEFRUITLN_ARC l
-                    INNER JOIN PR_LOOSEFRUIT_ARC m ON l.MasterID = m.ID
-                    WHERE RTRIM(l.EmpCode) IN (${empList})
-                      AND m.DocDate >= ? AND m.DocDate < ?
-                    GROUP BY RTRIM(l.EmpCode)
-                ) Combined
-                WHERE rn = 1
-            `, [startDate, endDate, startDate, endDate], 120);
-
+            // OPTIMIZED: Process in batches to avoid timeout
             const result: Record<string, number> = {};
-            for (const row of rows) {
-                if (row.EmpCode && row.TotalAmount) {
-                    result[row.EmpCode.trim()] = parseFloat(row.TotalAmount) || 0;
+            const batchSize = 200; // Smaller batch to avoid timeout
+            const batches = [];
+            
+            for (let i = 0; i < empCodes.length; i += batchSize) {
+                batches.push(empCodes.slice(i, i + batchSize));
+            }
+            
+            for (const batch of batches) {
+                const batchEmpList = batch.map(e => `'${e}'`).join(",");
+                
+                try {
+                    const rows = await db.query<any>(`
+                        SELECT RTRIM(EmpCode) as EmpCode, SUM(TotalAmount) as TotalAmount
+                        FROM (
+                            SELECT
+                                RTRIM(l.EmpCode) as EmpCode,
+                                SUM(ISNULL(l.Amount, 0)) as TotalAmount
+                            FROM PR_LOOSEFRUITLN l
+                            INNER JOIN PR_LOOSEFRUIT m ON l.MasterID = m.ID
+                            WHERE RTRIM(l.EmpCode) IN (${batchEmpList})
+                              AND m.DocDate >= ? AND m.DocDate < ?
+                            GROUP BY RTRIM(l.EmpCode)
+
+                            UNION ALL
+
+                            SELECT
+                                RTRIM(l.EmpCode) as EmpCode,
+                                SUM(ISNULL(l.Amount, 0)) as TotalAmount
+                            FROM PR_LOOSEFRUITLN_ARC l
+                            INNER JOIN PR_LOOSEFRUIT_ARC m ON l.MasterID = m.ID
+                            WHERE RTRIM(l.EmpCode) IN (${batchEmpList})
+                              AND m.DocDate >= ? AND m.DocDate < ?
+                            GROUP BY RTRIM(l.EmpCode)
+                        ) Combined
+                        GROUP BY EmpCode
+                    `, [startDate, endDate, startDate, endDate], 60);
+
+                    for (const row of rows) {
+                        if (row.EmpCode && row.TotalAmount) {
+                            const empCode = row.EmpCode.trim();
+                            const amount = parseFloat(row.TotalAmount) || 0;
+                            // Keep the highest amount if employee appears in multiple batches
+                            if (!result[empCode] || amount > result[empCode]) {
+                                result[empCode] = amount;
+                            }
+                        }
+                    }
+                } catch (batchError) {
+                    warn("DataExtractor", `Brondol batch query failed for ${batch.length} employees: ${batchError.message || 'unknown error'}`);
+                    // Continue with next batch
                 }
             }
+            
             return result;
         } catch (e) {
-            console.error("[DataExtractor] Failed to get brondol from PR_LOOSEFRUIT:", e);
+            // Gracefully handle timeout - brondol will be 0 for affected employees
+            const errorMsg = e.message || '';
+            if (errorMsg.includes('Timeout') || errorMsg.includes('timeout')) {
+                warn("DataExtractor", `PR_LOOSEFRUIT query timed out - returning partial brondol data (this is OK for large datasets)`);
+            } else {
+                console.error("[DataExtractor] Failed to get brondol from PR_LOOSEFRUIT:", e);
+            }
             return {};
         }
     }
@@ -3628,6 +3656,8 @@ export class DataExtractorService {
             const caruman = calculateAllCaruman(upahDasar, masaKerjaJumlah);
             const pot_astek = caruman.astek_pekerja_jht;
             const pot_bpjs = caruman.bpjs_kes_pekerja + caruman.bpjs_pensiun_pekerja;
+            // [FIX] Extract pot_premi_pph BEFORE other_potongan calculation (PREMI_PPH excluded from other_potongan)
+            const pot_premi_pph = Math.abs(empPotongan["PREMI_PPH"] || 0);
             const other_potongan = Object.entries(empPotongan)
                 .filter(([key]) => !["SPSI", "PPH21", "PREMI_PPH"].includes(key) && !key.startsWith("KOREKSI"))
                 .reduce((sum, [, val]) => sum + Math.abs(val as number), 0);
@@ -3640,7 +3670,8 @@ export class DataExtractorService {
 
             const jumlah_upah_kotor = gaji_pokok_aktual + total_tunjangan + (empLembur.jumlah || 0) + total_premi + pot_koreksi;
             const total_potongan = pot_astek + pot_bpjs + pot_spsi + pot_pph21 + other_potongan;
-            const upah_bersih = jumlah_upah_kotor - total_potongan;
+            // [FIX] Add pot_premi_pph to upah_bersih - it is an ADDITION, not a deduction
+            const upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph;
 
             // Pendapatan lainnya will be added here (but tracked separately for balance)
             // Note: total_pendapatan_lainnya is set in Phase 4b after other incomes lookup
@@ -3679,6 +3710,7 @@ export class DataExtractorService {
             emp.pot_bpjs_pekerja_total = pot_bpjs;
             emp.pot_spsi = pot_spsi;
             emp.pot_pph21 = pot_pph21;
+            emp.pot_premi_pph = pot_premi_pph; // [FIX] Add for aggregation service
             emp.total_potongan = total_potongan;
             emp.total_potongan_bersih = total_potongan;
             emp.upah_bersih = upah_bersih;

@@ -48,8 +48,17 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     })
     // --- Divisions ---
     .get("/divisions", async () => {
-        const divisions = await summaryService.getDivisionsFromHrGang();
+        // UPDATED: Include virtual divisions by default for comprehensive reporting
+        const divisions = await summaryService.getDivisionsFromHrGang(true);
         return { success: true, count: divisions.length, divisions };
+    })
+    // --- Virtual Divisions ---
+    .get("/virtual-divisions", async () => {
+        // Get only virtual divisions for separate dropdown
+        const allDivisions = await summaryService.getDivisionsFromHrGang(true);
+        const realDivisions = await summaryService.getDivisionsFromHrGang(false);
+        const virtualDivisions = allDivisions.filter(d => !realDivisions.includes(d));
+        return { success: true, count: virtualDivisions.length, divisions: virtualDivisions };
     })
     // --- Gangs by LocCode ---
     .get("/gangs/:loc_code", async ({ params }) => {
@@ -63,14 +72,15 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
         message: "Connection OK"
     }))
     // --- All Divisions Summary ---
-    .get("/all-divisions", async ({ query }) => {
+    .get("/all-divisions", async ({ query, set }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
-        const useHistory = query.use_history === 'true';
+        const includeVirtual = query.include_virtual === 'true'; // Optional parameter to include virtual divisions
 
         try {
-            summaryService.setUseHistoryDb(useHistory);
-            const data = await summaryService.getAllDivisionsPremiTotals(month, year);
+            // ⚠️ OPTIMIZED: Summary Report ALWAYS uses extend_db_ptrj (SERVER_PROFILE_1)
+            // includeVirtual controls whether virtual divisions (INF, NRS, WKS_PG, WKS_AR, ARC, MILL) are included
+            const data = await summaryService.getAllDivisionsPremiTotals(month, year, includeVirtual);
 
             // Calculate Grand Total
             const gt = data.reduce((acc, curr) => ({
@@ -102,20 +112,35 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
                     is_grand_total: true
                 }
             };
-        } finally {
-            summaryService.setUseHistoryDb(false);
+        } catch (error: any) {
+            console.error("[SummaryRoutes] Error in all-divisions report:", error);
+            console.error("[SummaryRoutes] Error details:", {
+                message: error.message,
+                stack: error.stack?.substring(0, 500),
+                month,
+                year,
+                includeVirtual
+            });
+            set.status = 500;
+            return { 
+                success: false, 
+                error: error.message || "Failed to fetch all divisions summary",
+                details: process.env.RUN_MODE === 'dev' ? error.stack : undefined
+            };
         }
     }, {
         query: t.Object({
             month: t.String(),
             year: t.String(),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            include_virtual: t.Optional(t.String()) // Set to 'true' to include virtual divisions
         })
     })
     // --- Division Detail Summary ---
     .get("/division", async ({ query }) => {
         const { division, month, year } = query;
         const useHistory = query.use_history === 'true';
+        const includeVirtual = query.include_virtual === 'true'; // Support virtual divisions
 
         try {
             summaryService.setUseHistoryDb(useHistory);
@@ -123,7 +148,8 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             const result = await summaryService.getDivisionSummary(
                 division || undefined,
                 month ? parseInt(month) : undefined,
-                year ? parseInt(year) : undefined
+                year ? parseInt(year) : undefined,
+                includeVirtual // Pass includeVirtual flag
             );
             return {
                 success: true,
@@ -140,11 +166,12 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             division: t.Optional(t.String()),
             month: t.Optional(t.String()),
             year: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            include_virtual: t.Optional(t.String()) // Set to 'true' to include virtual divisions
         })
     })
     // --- Comparison Report ---
-    .get("/comparison", async ({ query }) => {
+    .get("/comparison", async ({ query, set }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
         const useHistory = query.use_history === 'true';
@@ -153,6 +180,20 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             summaryService.setUseHistoryDb(useHistory);
             const result = await summaryService.getAllDivisionsComparison(month, year);
             return { success: true, ...result };
+        } catch (error: any) {
+            console.error("[SummaryRoutes] Error in comparison report:", error);
+            console.error("[SummaryRoutes] Error details:", {
+                message: error.message,
+                stack: error.stack?.substring(0, 500),
+                month,
+                year
+            });
+            set.status = 500;
+            return { 
+                success: false, 
+                error: error.message || "Failed to fetch comparison report",
+                details: process.env.RUN_MODE === 'dev' ? error.stack : undefined
+            };
         } finally {
             summaryService.setUseHistoryDb(false);
         }

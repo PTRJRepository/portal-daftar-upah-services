@@ -23,13 +23,14 @@ const BACKEND_BASE = getBackendBase();
  * @param {number} [params.year] - Year filter
  * @returns {Promise<Object>} Summary data response
  */
-export async function fetchDivisionSummary(token, { division, month, year, useHistory = false }) {
+export async function fetchDivisionSummary(token, { division, month, year, useHistory = false, includeVirtual = false }) {
     const params = new URLSearchParams();
 
     if (division) params.append('division', division);
     if (month) params.append('month', month.toString());
     if (year) params.append('year', year.toString());
     if (useHistory) params.append('use_history', 'true');
+    if (includeVirtual) params.append('include_virtual', 'true');
 
     const url = `${BACKEND_BASE}/payroll/summary/division?${params.toString()}`;
 
@@ -64,12 +65,30 @@ export async function fetchAvailablePeriods(token, division = null) {
 }
 
 /**
- * Fetch divisions with available data
+ * Fetch divisions with available data (REAL divisions only, excluding virtual)
  * @param {string} token - Auth token
  * @returns {Promise<Object>} Divisions data
  */
 export async function fetchDivisionsWithData(token) {
     const url = `${BACKEND_BASE}/payroll/summary/divisions`;
+
+    const response = await axios.get(url, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
+/**
+ * Fetch VIRTUAL divisions list (for separate dropdown)
+ * @param {string} token - Auth token
+ * @returns {Promise<Object>} Virtual divisions data
+ */
+export async function fetchVirtualDivisions(token) {
+    const url = `${BACKEND_BASE}/payroll/summary/virtual-divisions`;
 
     const response = await axios.get(url, {
         headers: {
@@ -126,9 +145,10 @@ export async function fetchGangsByLocCode(token, locCode) {
  * @param {number} params.year - Year
  * @returns {Promise<Object>} All divisions summary data
  */
-export async function fetchAllDivisionsTotals(token, { month, year, useHistory = false }) {
+export async function fetchAllDivisionsTotals(token, { month, year, useHistory = false, includeVirtual = false }) {
     let url = `${BACKEND_BASE}/payroll/summary/all-divisions?month=${month}&year=${year}`;
     if (useHistory) url += '&use_history=true';
+    if (includeVirtual) url += '&include_virtual=true';
 
     const response = await axios.get(url, {
         headers: {
@@ -425,6 +445,7 @@ export default {
     fetchDivisionSummary,
     fetchAvailablePeriods,
     fetchDivisionsWithData,
+    fetchVirtualDivisions,
     checkSummaryHealth,
     fetchGangsByLocCode,
     fetchAllDivisionsTotals,

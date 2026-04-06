@@ -325,19 +325,18 @@ export class DashboardService {
 
             const whereClause = whereConditions.join(' AND ');
 
-            // Query for gang-level data with description from HR_GANG
+            // Query for gang-level data (gang_description already stored in aggregation table)
             const query = `
                 SELECT
                     agg.gang_code,
                     agg.division_code,
-                    g.Description as gang_description,
+                    agg.gang_description,
                     SUM(ISNULL(agg.total_upah_bersih, 0)) as total_cost,
                     SUM(ISNULL(agg.total_hk, 0)) as total_hk,
                     SUM(ISNULL(agg.total_employees, 0)) as headcount
                 FROM dbo.daftar_upah_aggregation_history agg
-                LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
                 WHERE ${whereClause}
-                GROUP BY agg.gang_code, agg.division_code, g.Description
+                GROUP BY agg.gang_code, agg.division_code, agg.gang_description
                 ORDER BY agg.division_code, agg.gang_code
             `;
 
@@ -422,9 +421,8 @@ export class DashboardService {
                 SELECT DISTINCT
                     agg.gang_code,
                     agg.division_code,
-                    g.Description as gang_description
+                    agg.gang_description
                 FROM dbo.daftar_upah_aggregation_history agg
-                LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
                 WHERE agg.period_month = ? AND agg.period_year = ?
                 AND agg.gang_code IS NOT NULL
                 AND agg.gang_code != ''
@@ -550,17 +548,16 @@ export class DashboardService {
         const query = `
             SELECT
                 agg.gang_code,
-                RTRIM(g.Description) as gang_description,
+                agg.gang_description,
                 SUM(ISNULL(agg.total_upah_bersih, 0)) as total_wage,
                 SUM(ISNULL(agg.total_lembur, 0)) as total_ot,
                 SUM(ISNULL(agg.total_premi, 0)) as total_premi,
                 SUM(ISNULL(agg.total_hk, 0)) as total_hk,
                 SUM(ISNULL(agg.total_employees, 0)) as headcount
             FROM dbo.daftar_upah_aggregation_history agg
-            LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
             WHERE agg.period_month = ? AND agg.period_year = ?
             ${divisionCode && divisionCode !== 'ALL' ? `AND agg.division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
-            GROUP BY agg.gang_code, g.Description
+            GROUP BY agg.gang_code, agg.gang_description
             ORDER BY agg.gang_code
         `;
 
@@ -841,7 +838,7 @@ export class DashboardService {
         let sql = `
             SELECT
                 agg.gang_code,
-                RTRIM(g.Description) as gang_description,
+                agg.gang_description,
                 SUM(ISNULL(agg.total_upah_bersih, 0)) as total_wage,
                 SUM(ISNULL(agg.total_hk, 0)) as total_hk,
                 SUM(ISNULL(agg.total_employees, 0)) as headcount,
@@ -849,7 +846,6 @@ export class DashboardService {
                 SUM(ISNULL(agg.total_premi, 0)) as total_premi,
                 SUM(ISNULL(agg.total_ffb_weight, 0)) as total_production_db
             FROM dbo.daftar_upah_aggregation_history agg
-            LEFT JOIN db_ptrj.dbo.HR_GANG g ON RTRIM(agg.gang_code) = RTRIM(g.GangCode)
             WHERE agg.period_month = ? AND agg.period_year = ?
         `;
 
@@ -869,7 +865,7 @@ export class DashboardService {
         }
 
         sql += `
-            GROUP BY agg.gang_code, g.Description
+            GROUP BY agg.gang_code, agg.gang_description
             HAVING SUM(ISNULL(agg.total_employees, 0)) >= 0
             ORDER BY total_wage DESC
         `;

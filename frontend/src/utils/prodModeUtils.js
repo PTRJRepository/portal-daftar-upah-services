@@ -29,15 +29,24 @@ export const isProdMode = () => {
  * Get the base path for the application
  * In proxy mode (port 3001, VITE_BACKEND_HOST set, or production build), returns '/upah'
  * In direct mode, returns ''
+ *
+ * NOTE: Cache the base path on first call because window.location.pathname might not be
+ * stable during initial React render (e.g., in new tabs opening via window.open)
  */
+let cachedBasePath = null;
 export const getBasePath = () => {
+    if (cachedBasePath !== null) {
+        return cachedBasePath;
+    }
     // If the browser URL actually starts with /upah, we must be in proxy mode
     // and React Router needs /upah as its basename. Otherwise, if testing locally
     // at root (e.g., /login), the basename must be empty string to avoid Router crash.
     if (window.location.pathname.startsWith('/upah')) {
-        return '/upah'
+        cachedBasePath = '/upah';
+    } else {
+        cachedBasePath = '';
     }
-    return ''
+    return cachedBasePath;
 }
 
 /**

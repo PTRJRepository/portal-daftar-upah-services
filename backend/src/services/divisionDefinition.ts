@@ -306,21 +306,60 @@ export class DivisionDefinition {
      */
     private async getRealDivisionGangs(locCode: string, excludeVirtual: boolean = true): Promise<Gang[]> {
         const db = Database.getInstance();
-        const cleanedLoc = locCode.toUpperCase();
+        
+        // CRITICAL: Use aliases instead of canonical code, because LocCode in HR_GANG may be stored as 'P1A' not 'PG1A'
+        const aliases = divisionConfigService.getAliases(locCode);
+        const placeholders = aliases.map(() => '?').join(',');
+        
+        // Build exclusion list for virtual gangs
+        const gangsToExclude: string[] = [];
+        const virtualDivs = divisionConfigService.getVirtualDivisions();
+        virtualDivs.forEach(vDiv => {
+            if (vDiv.sourceDivision === locCode && vDiv.gangPattern) {
+                if (vDiv.code === 'INF' || vDiv.code === 'INFRA') {
+                    gangsToExclude.push('IN', 'INT');
+                } else if (vDiv.code === 'WKS_PG') {
+                    gangsToExclude.push('AMC');
+                } else if (vDiv.code === 'WKS_AR') {
+                    gangsToExclude.push('HMC');
+                } else if (vDiv.code === 'NRS') {
+                    gangsToExclude.push('B2N');
+                }
+            }
+        });
+
+        let excludeClause = '';
+        let queryParams: any[] = [...aliases];
+        
+        if (gangsToExclude.length > 0) {
+            const excludePlaceholders = gangsToExclude.map(() => '?').join(',');
+            excludeClause = `AND [GangCode] NOT IN (${excludePlaceholders})`;
+            queryParams = [...aliases, ...gangsToExclude];
+        }
+
+        console.log(`[DivisionDefinition] getRealDivisionGangs for ${locCode}:`);
+        console.log(`[DivisionDefinition]   Aliases: ${JSON.stringify(aliases)}`);
+        console.log(`[DivisionDefinition]   Excluded: ${JSON.stringify(gangsToExclude)}`);
 
         const rows = await db.query<{ GangCode: string, Description: string, LocCode: string }>(`
             SELECT [GangCode], [Description], [LocCode]
             FROM [dbo].[HR_GANG]
-            WHERE RTRIM(LTRIM(UPPER(LocCode))) = ?
+            WHERE RTRIM(LTRIM(UPPER(LocCode))) IN (${placeholders})
+              ${excludeClause}
+              AND [Description] NOT LIKE '%WORKSHOP%'
+              AND [Description] NOT LIKE '%INFRA%'
             ORDER BY [GangCode]
-        `, [cleanedLoc]);
+        `, queryParams);
+
+        console.log(`[DivisionDefinition]   Returned ${rows.length} gangs`);
 
         const results: Gang[] = [];
         for (const row of rows) {
             const gangCode = row.GangCode ? row.GangCode.trim() : "";
             const description = row.Description ? row.Description.trim() : "";
 
-            if (excludeVirtual && this.gangBelongsToVirtual(gangCode, cleanedLoc, description)) {
+            // Double-check exclusion in case pattern matching missed something
+            if (excludeVirtual && this.gangBelongsToVirtual(gangCode, locCode, description)) {
                 continue;
             }
 

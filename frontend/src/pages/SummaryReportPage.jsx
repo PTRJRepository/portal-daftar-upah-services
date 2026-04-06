@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Printer, RefreshCw, ArrowLeft, Save } from 'lucide-react';
-import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, validateAggregation, seedAggregation, updateGangCell } from '../services/summaryReportService';
+import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, fetchVirtualDivisions, validateAggregation, seedAggregation, updateGangCell } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintSignature from '../components/common/PrintSignature';
@@ -127,6 +127,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [month, setMonth] = useState(initialMonth || 11);  // Default to 11
     const [year, setYear] = useState(initialYear || new Date().getFullYear());
     const [reportMode, setReportMode] = useState('payroll'); // 'payroll' or 'thr'
+    const [divisionType, setDivisionType] = useState('all'); // 'all', 'real', or 'virtual'
 
     // Sync state with props when they change (fix navigation freeze)
     useEffect(() => {
@@ -140,6 +141,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
     // Data
     const [divisions, setDivisions] = useState([]);
+    const [virtualDivisions, setVirtualDivisions] = useState([]);
     const [periods, setPeriods] = useState([]);
     const [summaryData, setSummaryData] = useState([]);
     const [gangDescriptions, setGangDescriptions] = useState({});
@@ -295,6 +297,20 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         loadDivisions();
     }, [token]);
 
+    // Load virtual divisions
+    useEffect(() => {
+        async function loadVirtualDivisions() {
+            if (!token) return;
+            try {
+                const result = await fetchVirtualDivisions(token);
+                setVirtualDivisions(result.divisions || []);
+            } catch (e) {
+                console.error('Failed to load virtual divisions:', e);
+            }
+        }
+        loadVirtualDivisions();
+    }, [token]);
+
     // Load available periods when division changes
     useEffect(() => {
         async function loadPeriods() {
@@ -330,13 +346,14 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 const result = await fetchDivisionSummary(token, {
                     division: division || undefined,
                     month: month || undefined,
-                    year: year || undefined
+                    year: year || undefined,
+                    includeVirtual: divisionType !== 'real' // 'all' or 'virtual' -> true
                 });
 
                 if (result.success) {
                     setSummaryData(result.data || []);
                     setGrandTotal(result.grand_total || null);
-                    
+
                     // [FIX] Remove duplicate headers (especially 'brondol')
                     const rawHeaders = result.filtered_headers || [];
                     const uniqueHeaders = [];
@@ -359,7 +376,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         } finally {
             setLoading(false);
         }
-    }, [token, division, month, year, reportMode]);
+    }, [token, division, month, year, reportMode, divisionType]);
 
     // Handle saving all edited cells
     const handleSaveEdits = useCallback(async () => {
@@ -638,6 +655,33 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             <option value="payroll">Mode Payroll</option>
                             <option value="thr">Mode THR</option>
                         </select>
+                        
+                        {/* Division Type Selector (All/Real/Virtual) */}
+                        <select
+                            value={divisionType}
+                            onChange={e => {
+                                setDivisionType(e.target.value);
+                                setDivision(''); // Reset division when switching type
+                                setGroupFilter('');
+                            }}
+                            className="wsp-btn-secondary"
+                            style={{
+                                cursor: 'pointer',
+                                outline: 'none',
+                                backgroundColor: divisionType === 'virtual' ? '#fef3c7' : divisionType === 'real' ? '#eef2ff' : '#dcfce7',
+                                color: divisionType === 'virtual' ? '#92400e' : divisionType === 'real' ? '#4f46e5' : '#166534',
+                                borderColor: divisionType === 'virtual' ? '#fde68a' : divisionType === 'real' ? '#c7d2fe' : '#86efac',
+                                fontWeight: 'bold',
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                height: '36px'
+                            }}
+                        >
+                            <option value="all">Semua Divisi</option>
+                            <option value="real">Divisi Utama Saja</option>
+                            <option value="virtual">Divisi Virtual Saja</option>
+                        </select>
+                        
                         <select
                             value={division}
                             onChange={e => {
@@ -647,8 +691,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             className="report-filter-badge"
                             style={{ cursor: 'pointer', outline: 'none' }}
                         >
-                            <option value="">Semua Divisi</option>
-                            {divisions.map(d => (
+                            <option value="">Semua {divisionType === 'virtual' ? 'Divisi Virtual' : divisionType === 'real' ? 'Divisi Utama' : 'Divisi'}</option>
+                            {(divisionType === 'all' ? [...divisions, ...virtualDivisions] : divisionType === 'virtual' ? virtualDivisions : divisions).map(d => (
                                 <option key={d} value={d}>{d}</option>
                             ))}
                         </select>

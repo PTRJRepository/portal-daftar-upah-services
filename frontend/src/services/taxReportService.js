@@ -188,3 +188,47 @@ export async function exportPajakJson(token, year, month, gang) {
     window.URL.revokeObjectURL(url);
     document.body.removeChild(link);
 }
+
+/**
+ * Download tax report (PPH21) Excel from Operational page
+ * Uses the same /tax-report/monthly/excel endpoint with gang/division from current context
+ */
+export async function downloadTaxReportExcel(token, year, month, division, gang, gangPrefix) {
+    const params = { year, month };
+    if (division) params.division = division;
+    if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
+
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    const response = await axios.get('/tax-report/monthly/excel', {
+        params,
+        headers,
+        responseType: 'blob',
+        timeout: 120000,
+    });
+
+    // Create a download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+
+    // Extract filename from Content-Disposition header
+    let fileName = `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`;
+    const contentDisposition = response.headers['content-disposition'];
+    if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+        const matches = filenameRegex.exec(contentDisposition);
+        if (matches != null && matches[1]) {
+            fileName = matches[1].replace(/['"]/g, '');
+        }
+    }
+
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+
+    // Cleanup
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(link);
+}

@@ -3095,7 +3095,14 @@ export default function CustomPayrollTable({
                                 className={`${rowClass} ${isHighlight ? 'row-highlighted' : ''}`}
                                 onClick={() => setHighlightedRowId(row.id)}
                                 onContextMenu={(e) => handleContextMenu(e, row)}
-                                onDoubleClick={() => row.type === 'employee' && onViewEmployeeDetail?.(row)}
+                                onDoubleClick={() => {
+                                    if (row.type !== 'employee') return
+                                    if (!onViewEmployeeDetail) {
+                                        console.error('[CustomPayrollTable] onViewEmployeeDetail is not defined')
+                                        return
+                                    }
+                                    onViewEmployeeDetail(row)
+                                }}
                             >
                                 {columnDefs.map((col, cIdx) => {
                                     let displayVal = row[col.field];

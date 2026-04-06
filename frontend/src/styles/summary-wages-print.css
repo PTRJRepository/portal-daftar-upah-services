@@ -176,17 +176,20 @@
 .sw-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     color: #0f172a;
+    line-height: 1.2;
 }
 
 .sw-table th,
 .sw-table td {
     border: 1px solid #cbd5e1;
-    padding: 0.5rem 0.75rem;
+    padding: 0.3rem 0.4rem;
     text-align: left;
-    white-space: nowrap;
-    /* Default for numeric/code cells */
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.25;
 }
 
 /* Allow description cells to wrap */
@@ -194,8 +197,9 @@
 .sw-table th.text-left {
     white-space: normal !important;
     word-wrap: break-word;
-    min-width: 150px;
-    line-height: 1.4;
+    min-width: 120px;
+    max-width: 180px;
+    line-height: 1.3;
 }
 
 /* Column Group Headers (Level 1) */
@@ -207,6 +211,12 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-color: #94a3b8;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.7rem;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.2 !important;
 }
 
 /* Sub-Column Headers (Level 2) */
@@ -215,9 +225,14 @@
     color: #334155;
     font-weight: 700;
     text-align: center;
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     text-transform: uppercase;
     border-color: #94a3b8;
+    padding: 0.35rem 0.4rem;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.2 !important;
 }
 
 /* Data Rows */
@@ -243,7 +258,10 @@
 .sw-table th.text-right {
     text-align: right;
     font-family: 'Roboto Mono', monospace;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
 .sw-table td.text-center,
@@ -260,6 +278,11 @@
     border-bottom: 1px solid #94a3b8;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    padding: 0.4rem 0.5rem;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
 /* Sub-Total Row */
@@ -268,6 +291,8 @@
     font-weight: 700;
     color: #000;
     border-top: 1px solid #94a3b8;
+    font-size: 0.7rem;
+    padding: 0.35rem 0.4rem;
 }
 
 /* Grand Total Row */
@@ -275,8 +300,12 @@
     background: #0f172a;
     color: #fff;
     font-weight: 800;
-    font-size: 0.9rem;
+    font-size: 0.75rem;
     border-color: #0f172a;
+    padding: 0.4rem 0.5rem;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
 /* Zero Values - Muted */
@@ -458,9 +487,13 @@
         background: #e2e8f0 !important;
         color: #000 !important;
         border: 1px solid #000 !important;
-        padding: 0.2rem 0.15rem !important;
-        font-size: 0.7rem !important;
+        padding: 0.25rem 0.2rem !important;
+        font-size: 0.65rem !important;
         /* Increased for readability */
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        line-height: 1.2 !important;
     }
 
     .sw-table thead tr.sw-header-cols th {
@@ -468,8 +501,12 @@
         color: #000 !important;
         border: 1px solid #000 !important;
         padding: 0.2rem 0.15rem !important;
-        font-size: 0.65rem !important;
+        font-size: 0.6rem !important;
         /* Increased for readability */
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        line-height: 1.15 !important;
     }
 
     .sw-table tbody tr {
@@ -485,10 +522,14 @@
     .sw-table th.text-right,
     .sw-table td.text-center,
     .sw-table th.text-center {
-        padding: 0.1rem 0.08rem !important;
+        padding: 0.15rem 0.12rem !important;
         border: 1px solid #000 !important;
         text-align: center !important;
-        font-size: 0.55rem !important;
+        font-size: 0.6rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        line-height: 1.2 !important;
     }
 
     /* First column - left aligned */
@@ -503,6 +544,11 @@
         font-weight: 800 !important;
         color: #000 !important;
         border: 1px solid #000 !important;
+        font-size: 0.65rem !important;
+        padding: 0.25rem 0.2rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
     }
 
     .sw-table tr.subtotal td {
@@ -510,14 +556,23 @@
         font-weight: 700 !important;
         color: #000 !important;
         border: 1px solid #000 !important;
+        font-size: 0.6rem !important;
+        padding: 0.2rem 0.15rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
     }
 
     .sw-table tr.grand-total td {
         background: #000 !important;
         color: #fff !important;
         font-weight: 800 !important;
-        font-size: 0.75rem !important;
+        font-size: 0.65rem !important;
         /* Increased for readability */
+        padding: 0.25rem 0.2rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
     }
 
     .sw-footer {

@@ -38,6 +38,7 @@ import WagesComparisonPage from './pages/WagesComparisonPage'
 import ImpactReportPage from './pages/ImpactReportPage'
 import TaxReportPage from './pages/TaxReportPage'
 import OtherIncomesPage from './pages/OtherIncomesPage'
+import { downloadTaxReportExcel } from './services/taxReportService'
 import ProductivityReportPage from './pages/ProductivityReportPage'
 import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
@@ -62,6 +63,7 @@ const OperationalReportWrapper = () => {
   const [fontSize, setFontSize] = useState(100);
   const [exportHandler, setExportHandler] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
+  const [taxExportLoading, setTaxExportLoading] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [useHistoryDb, setUseHistoryDb] = useState(false);
@@ -152,6 +154,29 @@ const OperationalReportWrapper = () => {
     } finally {
       setExportLoading(false)
     }
+  }
+
+  const handleExportTaxExcel = async () => {
+    setTaxExportLoading(true)
+    try {
+      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix)
+    } catch (err) {
+      alert('Gagal mengunduh pajak: ' + (err.message || 'Unknown error'))
+    } finally {
+      setTaxExportLoading(false)
+    }
+  }
+
+  const handleOpenTaxReport = () => {
+    const params = new URLSearchParams({
+      division: division || '',
+      month: String(month),
+      year: String(year),
+      gang: gang || '',
+      gangPrefix: gangPrefix || ''
+    });
+    const taxPath = buildAppPath(`/report-pajak?${params.toString()}`);
+    window.open(taxPath, '_blank', 'noopener,noreferrer');
   }
 
   const handleToggleEmployeeSelection = (nik) => {
@@ -666,6 +691,52 @@ const OperationalReportWrapper = () => {
               }}
             >
               {exportLoading ? '...' : '⬇️ Export'}
+            </button>
+
+            {/* Export Pajak */}
+            <button
+              onClick={handleExportTaxExcel}
+              disabled={taxExportLoading}
+              style={{
+                padding: '0.4rem 0.85rem',
+                backgroundColor: taxExportLoading ? '#f1f5f9' : '#dc2626',
+                color: taxExportLoading ? '#94a3b8' : 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '0.78rem',
+                cursor: taxExportLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s'
+              }}
+              title="Unduh Laporan Pajak PPH21 (Format Standar Pajak)"
+            >
+              {taxExportLoading ? '⏳' : '📋'}
+              {taxExportLoading ? '...' : 'Pajak'}
+            </button>
+
+            {/* Lihat Laporan Pajak */}
+            <button
+              onClick={handleOpenTaxReport}
+              style={{
+                padding: '0.4rem 0.85rem',
+                backgroundColor: '#fef3c7',
+                color: '#92400e',
+                border: '1px solid #fbbf24',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s'
+              }}
+              title="Buka halaman laporan pajak lengkap dengan kalkulasi PPH21"
+            >
+              🔍 Pajak
             </button>
           </div>
         </div>

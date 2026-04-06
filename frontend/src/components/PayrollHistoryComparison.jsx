@@ -156,21 +156,23 @@ export default function PayrollHistoryComparison({
     
     const handleExport = () => {
         if (!filteredData.length) return;
-        
+
         // Create CSV content
         const headers = [
             'NIK', 'Nama', 'Gang', 'Divisi',
-            'HK (Daftar Upah)', 'HK (Wages)', 'HK Diff',
+            'HK (Daftar Upah)', 'Tonase (Kg)',
+            'HK (Wages)', 'HK Diff',
             'Upah Bersih (Daftar Upah)', 'Upah Bersih (Wages)', 'Upah Diff',
             'Status'
         ];
-        
+
         const rows = filteredData.map(item => [
             item.nik || '',
             item.nama || '',
             item.gang_code || '',
             item.division_code || '',
             item.daftar_upah?.jumlah_hk || 0,
+            item.daftar_upah?.tonase || 0,
             item.wages?.jumlah_hk || 0,
             item.comparison?.hk_difference || 0,
             item.daftar_upah?.upah_bersih || 0,
@@ -367,13 +369,14 @@ export default function PayrollHistoryComparison({
                             <th rowSpan="2">NIK</th>
                             <th rowSpan="2">Nama</th>
                             <th rowSpan="2">Gang</th>
-                            <th colSpan="6" className="phc-th-group">DAFTAR UPAH</th>
+                            <th colSpan="7" className="phc-th-group">DAFTAR UPAH</th>
                             <th colSpan="3" className="phc-th-group wages">WAGES</th>
                             <th colSpan="3" className="phc-th-group comparison">PERBANDINGAN</th>
                             <th rowSpan="2">Status</th>
                         </tr>
                         <tr className="phc-header-cols">
                             <th>HK</th>
+                            <th>Tonase</th>
                             <th>Gaji Pokok</th>
                             <th>Tunjangan</th>
                             <th>Premi</th>
@@ -390,8 +393,8 @@ export default function PayrollHistoryComparison({
                     <tbody>
                         {filteredData.length === 0 ? (
                             <tr className="phc-empty-row">
-                                <td colSpan="16" className="phc-empty-cell">
-                                    {comparisonData?.data?.length === 0 
+                                <td colSpan="17" className="phc-empty-cell">
+                                    {comparisonData?.data?.length === 0
                                         ? 'Tidak ada data untuk periode ini'
                                         : 'Tidak ada data yang sesuai filter'}
                                 </td>
@@ -400,7 +403,7 @@ export default function PayrollHistoryComparison({
                             filteredData.map((item, idx) => {
                                 const badge = getStatusBadge(item.comparison?.status);
                                 const isExpanded = expandedRows[item.emp_code];
-                                
+
                                 return (
                                     <React.Fragment key={item.emp_code || idx}>
                                         <tr className={`phc-data-row ${item.comparison?.status?.toLowerCase()}`}>
@@ -408,20 +411,21 @@ export default function PayrollHistoryComparison({
                                             <td>{item.nik || '-'}</td>
                                             <td className="phc-td-name">{item.nama || '-'}</td>
                                             <td>{item.gang_code || '-'}</td>
-                                            
+
                                             {/* Daftar Upah columns */}
                                             <td className="phc-td-num">{formatNumber(item.daftar_upah?.jumlah_hk)}</td>
+                                            <td className="phc-td-num">{formatNumber(item.daftar_upah?.tonase, 2)}</td>
                                             <td className="phc-td-num">{formatCurrency(item.daftar_upah?.gaji_pokok)}</td>
                                             <td className="phc-td-num">{formatCurrency(item.daftar_upah?.total_tunjangan)}</td>
                                             <td className="phc-td-num">{formatCurrency(item.daftar_upah?.total_premi)}</td>
                                             <td className="phc-td-num phc-td-neg">{formatCurrency(item.daftar_upah?.total_potongan)}</td>
                                             <td className="phc-td-num phc-td-highlight">{formatCurrency(item.daftar_upah?.upah_bersih)}</td>
-                                            
+
                                             {/* Wages columns */}
                                             <td className="phc-td-num">{formatNumber(item.wages?.jumlah_hk)}</td>
                                             <td className="phc-td-num phc-td-highlight">{formatCurrency(item.wages?.upah_bersih)}</td>
                                             <td className="phc-td-dim">{item.wages?.wages_no || '-'}</td>
-                                            
+
                                             {/* Comparison columns */}
                                             <td className={`phc-td-num ${item.comparison?.hk_difference !== 0 ? 'phc-td-diff' : ''}`}>
                                                 {item.comparison?.hk_difference > 0 ? '+' : ''}{formatNumber(item.comparison?.hk_difference)}
@@ -430,21 +434,21 @@ export default function PayrollHistoryComparison({
                                                 {item.comparison?.amount_difference > 0 ? '+' : ''}{formatCurrency(item.comparison?.amount_difference)}
                                             </td>
                                             <td>
-                                                <button 
+                                                <button
                                                     className="phc-expand-btn"
                                                     onClick={() => toggleRow(item.emp_code)}
                                                 >
                                                     {isExpanded ? '▼' : '▶'}
                                                 </button>
                                             </td>
-                                            
+
                                             {/* Status badge */}
                                             <td>
-                                                <span 
+                                                <span
                                                     className="phc-status-badge"
-                                                    style={{ 
-                                                        backgroundColor: badge.bgColor, 
-                                                        color: badge.color 
+                                                    style={{
+                                                        backgroundColor: badge.bgColor,
+                                                        color: badge.color
                                                     }}
                                                 >
                                                     {badge.icon} {badge.label}
@@ -455,18 +459,19 @@ export default function PayrollHistoryComparison({
                                         {/* Expanded detail row */}
                                         {isExpanded && (
                                             <tr className="phc-detail-row">
-                                                <td colSpan="16" className="phc-detail-cell">
+                                                <td colSpan="17" className="phc-detail-cell">
                                                     <div className="phc-detail-content">
                                                         {/* Daftar Upah Detail - Full Breakdown */}
                                                         <div className="phc-detail-section">
                                                             <h4>📋 Detail Daftar Upah</h4>
                                                             <div className="phc-detail-grid">
                                                                 <div className="phc-detail-group-header" style={{ gridColumn: 'span 2' }}>
-                                                                    <strong>Absensi</strong>
+                                                                    <strong>Absensi & Produksi</strong>
                                                                 </div>
                                                                 <div><span>HK:</span> <strong>{formatNumber(item.daftar_upah?.jumlah_hk)}</strong></div>
+                                                                <div><span>Tonase:</span> <strong>{formatNumber(item.daftar_upah?.tonase, 2)} Ton</strong></div>
                                                                 <div><span>Upah Dasar:</span> {formatCurrency(item.daftar_upah?.upah_dasar)}</div>
-                                                                
+
                                                                 <div className="phc-detail-group-header" style={{ gridColumn: 'span 2' }}>
                                                                     <strong>Penggajian</strong>
                                                                 </div>

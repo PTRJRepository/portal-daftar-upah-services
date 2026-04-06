@@ -19,6 +19,49 @@ import { User } from "../types/user";
 
 const authService = AuthService.getInstance();
 
+// Helper to fetch tonase from mill database
+async function fetchTonaseForWagesComparison(month: number, year: number): Promise<Record<string, number>> {
+    const result: Record<string, number> = {};
+    try {
+        const millDb = Database.getMillInstance();
+        
+        const rows = await millDb.query<{ CustomerCode: string; SupplierName: string; total_weight: string }>(`
+            SELECT
+                T.[CustomerCode],
+                S.[Name] AS SupplierName,
+                SUM(CAST(T.[NetWeight] AS DECIMAL(18,2))) / 1000.0 AS total_weight
+            FROM [dbo].[WM_TICKET] T
+            LEFT JOIN [dbo].[PU_SUPPLIER] S ON T.[CustomerCode] = S.[SupplierCode]
+            WHERE T.[CustomerCode] LIKE 'PTRJ%'
+              AND MONTH(T.[DateReceived]) = ?
+              AND YEAR(T.[DateReceived]) = ?
+              AND T.[ProductCode] = 'FFB'
+            GROUP BY T.[CustomerCode], S.[Name]
+        `, [month, year]);
+
+        const divisionCodes = ['P1A', 'P1B', 'P2A', 'P2B', 'AB1', 'AB2', 'ARC', 'DME', 'ARA', 'IJL', 'INF', 'NRS', 'WKS_PG', 'WKS_AR'];
+
+        for (const divCode of divisionCodes) {
+            let divTonase = 0;
+            for (const row of rows) {
+                const supplierName = (row.SupplierName || '').toUpperCase();
+                const customerCode = (row.CustomerCode || '').toUpperCase();
+                const weight = parseFloat(row.total_weight) || 0;
+
+                if (supplierName.includes(divCode) || customerCode.includes(divCode)) {
+                    divTonase += weight;
+                }
+            }
+            if (divTonase > 0) {
+                result[divCode] = divTonase;
+            }
+        }
+    } catch (error: any) {
+        console.error("[WagesRoutes] Error fetching tonase:", error.message);
+    }
+    return result;
+}
+
 // Helper to get user from header
 async function getUserFromHeader(headers: Record<string, string | undefined>): Promise<User | null> {
     const authHeader = headers["authorization"];
@@ -315,7 +358,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
 
             if (!payrollResult || !payrollResult.data_rows) {
                 set.status = 404;
-                return { 
+                return {
                     error: "No payroll data found for this period",
                     period: { month, year, label: `${getMonthName(month)} ${year}` }
                 };
@@ -323,6 +366,18 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
 
             const payrollData = payrollResult.data_rows;
             console.log(`[WagesComparison] Found ${payrollData.length} payroll records`);
+
+            // Step 1.5: Fetch tonase data and merge with payroll data
+            console.log(`[WagesComparison] Fetching tonase data...`);
+            const tonaseData = await fetchTonaseForWagesComparison(month, year);
+            console.log(`[WagesComparison] Got tonase for ${Object.keys(tonaseData).length} divisions`);
+
+            // Merge tonase into payroll data
+            payrollData.forEach((row: any) => {
+                const divCode = row.division_code || '';
+                row.total_ffb_weight = tonaseData[divCode] || 0;
+                row.total_weight_tbs = tonaseData[divCode] || 0;
+            });
 
             // Step 2: Compare with wages
             console.log(`[WagesComparison] Comparing with wages data...`);
@@ -389,12 +444,19 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 return { error: "Employee not found in payroll data" };
             }
 
+            // Add tonase data to employee payroll record
+            const tonaseData = await fetchTonaseForWagesComparison(month, year);
+            const divCode = employeePayroll.division_code || '';
+            employeePayroll.total_ffb_weight = tonaseData[divCode] || 0;
+            employeePayroll.total_weight_tbs = tonaseData[divCode] || 0;
+
             // Get wages for this employee
             const wages = await wagesService.getWagesByEmployee(empCode, month, year);
 
             // Build comparison
             const daftarUpah = {
                 jumlah_hk: Number(employeePayroll.jumlah_hk) || 0,
+                tonase: Number(employeePayroll.total_ffb_weight) || Number(employeePayroll.total_weight_tbs) || 0,
                 gaji_pokok: Number(employeePayroll.gaji_pokok) || 0,
                 total_tunjangan: Number(employeePayroll.total_tunjangan) || 0,
                 total_premi: Number(employeePayroll.total_premi) || 0,
@@ -486,6 +548,14 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
             );
 
             const payrollData = payrollResult?.data_rows || [];
+
+            // Add tonase data to payroll records
+            const tonaseData = await fetchTonaseForWagesComparison(month, year);
+            payrollData.forEach((row: any) => {
+                const divCode = row.division_code || '';
+                row.total_ffb_weight = tonaseData[divCode] || 0;
+                row.total_weight_tbs = tonaseData[divCode] || 0;
+            });
 
             // Get comparison
             const comparison = await wagesService.comparePayrollWithWages(

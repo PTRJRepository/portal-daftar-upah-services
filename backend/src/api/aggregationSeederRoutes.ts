@@ -735,11 +735,9 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
 // Helper functions removed as they are now in PayrollDataService
 
 export async function seedAggregationToDb(division: string | undefined, month: number, year: number, authToken: string, force: boolean = false) {
-    // When no division specified, get REAL divisions only (exclude virtual).
-    // Virtual divisions (WKS_PG, WKS_AR, NRS, INF, etc.) are derived at READ time
-    // by the summary service from the real source divisions' gangs.
-    // Seeding virtual divisions separately would store gangs under virtual codes,
-    // preventing correct re-mapping at read time.
+    // UPDATED: Now includes BOTH real and virtual divisions
+    // Virtual divisions (WKS_PG, WKS_AR, NRS, INF, etc.) are now seeded separately
+    // so they appear as distinct rows in reports, not computed at read time
     const divisions = division ? [division] : await fetchAvailableDivisions();
 
     // Determine target divisions based on what data exists
@@ -748,12 +746,10 @@ export async function seedAggregationToDb(division: string | undefined, month: n
     if (division) {
         divisionsToProcess = divisions.filter(d => d === division);
     } else {
-        // For bulk seeding: skip virtual divisions — the summary service groups
-        // gangs into virtual divisions at read time using HR_GANG patterns.
-        // Seeding only real divisions ensures gangs like AMC, HMC, B2N, INF, INT
-        // are stored under their real source division (P1A, P1B, AB2).
-        divisionsToProcess = divisions.filter(d => !divisionDefinition.isVirtualDivision(d));
-        console.log(`[AggregationSeeder] Bulk seeding ${divisionsToProcess.length} real divisions (skipping virtual): ${divisionsToProcess.join(', ')}`);
+        // UPDATED: Include ALL divisions (real + virtual) for comprehensive reporting
+        // This ensures virtual divisions have their own aggregated data in the database
+        divisionsToProcess = divisions;
+        console.log(`[AggregationSeeder] Bulk seeding ${divisionsToProcess.length} divisions (real + virtual): ${divisionsToProcess.join(', ')}`);
     }
 
     const results: SeedResult[] = [];
@@ -770,20 +766,9 @@ export async function seedAggregationToDb(division: string | undefined, month: n
         let divisionsToQuery: string[];
         let targetDivisionCode: string; // The division code to use when inserting to aggregation
 
-        if (isVirtual) {
-            // For virtual divisions, we still rely on PayrollDataService to handle the source querying
-            // But for the seeder, we iterate differently.
-            // Actually PayrollDataService handles the mapping of division -> records.
-            // So we can simplify this loop significantly.
-
-            // However, to minimize risk of changing logic, I will keep the outer loop structure 
-            // but use PayrollDataService to fetch the data.
-
-            // Virtual division logic is now encapsulated in PayrollDataService.fetchPayrollData
-            // But we need to know the target division code.
-            targetDivisionCode = div;
-            console.log(`[AggregationSeeder] Virtual division ${div} processing...`);
-        } else if (div === 'MILL') {
+        // NOTE: MILL must be checked BEFORE virtual division check because
+        // DivisionConfigService classifies MILL as type='virtual', but it needs special handling
+        if (div === 'MILL') {
             // MILL SPECIAL LOGIC
             console.log(`[AggregationSeeder] Processing MILL division using VenusHR data...`);
             try {
@@ -843,58 +828,133 @@ export async function seedAggregationToDb(division: string | undefined, month: n
                 results.push({ division: div, gang: "MILL_GENERAL", employees_processed: 0, status: "ERROR: " + e.message });
                 continue;
             }
+        } else if (isVirtual) {
+            // For virtual divisions, we still rely on PayrollDataService to handle the source querying
+            // But for the seeder, we iterate differently.
+            // Actually PayrollDataService handles the mapping of division -> records.
+            // So we can simplify this loop significantly.
+
+            // However, to minimize risk of changing logic, I will keep the outer loop structure
+            // but use PayrollDataService to fetch the data.
+
+            // Virtual division logic is now encapsulated in PayrollDataService.fetchPayrollData
+            // But we need to know the target division code.
+            targetDivisionCode = div;
+            console.log(`[AggregationSeeder] Virtual division ${div} processing...`);
+
+            // Use PayrollDataService to fetch data
+            // For virtual divisions, it returns data for all source divisions.
+            // For normal divisions, it returns data for just that division.
+            // We need to aggregate them if it's a virtual division?
+            // PayrollDataService.fetchPayrollData returns Record<sourceDiv, AggregationRecord[]>
+
+            try {
+                const payrollData = await PayrollDataService.fetchPayrollData(div, month, year, authToken);
+
+                // Collect all records from all returned source divisions
+                let allRecords: AggregationRecord[] = [];
+                Object.values(payrollData).forEach(records => {
+                    allRecords = [...allRecords, ...records];
+                });
+
+                if (allRecords.length === 0) {
+                    console.log(`[AggregationSeeder] No data found for ${div}`);
+                    results.push({ division: div, gang: "ALL", employees_processed: 0, status: "SKIPPED: No data" });
+                    continue;
+                }
+
+                console.log(`[AggregationSeeder] Fetched ${allRecords.length} records for ${div}`);
+
+                let savedCount = 0;
+                let totalEmployees = 0;
+
+                for (const record of allRecords) {
+                    // DEBUG: Log PPh21 values being stored
+                    console.log(`[AggregationSeeder] ${record.gang_code}: total_pph21=${record.total_pph21}, pot_pph21 source`);
+
+                    // Insert into DB
+                    // Note: We use targetDivisionCode (e.g. ESTATE_A_VIRTUAL) even if data came from source (ESTATE_A_1)
+                    // This matches previous logic?
+                    // Wait, previous logic: "targetDivisionCode = div" (virtual)
+                    // And inside loop: "Iterate source divisions" -> "fetchRawTreeData(sourceDiv)"
+                    // -> "insertOrUpdateAggregation(targetDivisionCode, ..., record)"
+                    // Yes, so we map all records to the targetDivisionCode.
+
+                    await insertOrUpdateAggregation(targetDivisionCode, month, year, record, sourceEndpoint);
+                    savedCount++;
+                    totalEmployees += record.total_employees;
+                }
+
+                // [FIX] Trigger detailed history seeding for this division
+                // This ensures that pages requiring detailed history (like Report Pajak) have data.
+                // Note: We seed 'div' which is the internal division code (e.g. PG1A)
+                try {
+                    if (div !== 'MILL') {
+                        console.log(`[AggregationSeeder] Auto-triggering history seeder for ${div}...`);
+                        const { historySeederService } = await import("../services/historySeederService");
+                        await historySeederService.seedPayrollHistory({
+                            periodMonth: month,
+                            periodYear: year,
+                            divisionCode: div,
+                            seederMode: 'PAYROLL',
+                            force: true
+                        });
+                        console.log(`[AggregationSeeder] History seeding complete for ${div}`);
+                    }
+                } catch (historyError: any) {
+                    console.error(`[AggregationSeeder] History seeding failed for ${div}:`, historyError.message);
+                    // We don't fail the whole aggregation seeder if history seeder fails
+                }
+
+                results.push({
+                    division: div,
+                    gang: `Count: ${savedCount}`,
+                    employees_processed: totalEmployees,
+                    status: "SUCCESS"
+                });
+
+            } catch (error: any) {
+                console.error(`[AggregationSeeder] Error processing ${div}:`, error);
+                results.push({ division: div, gang: "ALL", employees_processed: 0, status: "ERROR: " + error.message });
+            }
         } else {
             targetDivisionCode = div;
-        }
 
-        // Use PayrollDataService to fetch data
-        // For virtual divisions, it returns data for all source divisions.
-        // For normal divisions, it returns data for just that division.
-        // We need to aggregate them if it's a virtual division? 
-        // PayrollDataService.fetchPayrollData returns Record<sourceDiv, AggregationRecord[]>
-
-        try {
-            const payrollData = await PayrollDataService.fetchPayrollData(div, month, year, authToken);
-
-            // Collect all records from all returned source divisions
-            let allRecords: AggregationRecord[] = [];
-            Object.values(payrollData).forEach(records => {
-                allRecords = [...allRecords, ...records];
-            });
-
-            if (allRecords.length === 0) {
-                console.log(`[AggregationSeeder] No data found for ${div}`);
-                results.push({ division: div, gang: "ALL", employees_processed: 0, status: "SKIPPED: No data" });
-                continue;
-            }
-
-            console.log(`[AggregationSeeder] Fetched ${allRecords.length} records for ${div}`);
-
-            let savedCount = 0;
-            let totalEmployees = 0;
-
-            for (const record of allRecords) {
-                // DEBUG: Log PPh21 values being stored
-                console.log(`[AggregationSeeder] ${record.gang_code}: total_pph21=${record.total_pph21}, pot_pph21 source`);
-
-                // Insert into DB
-                // Note: We use targetDivisionCode (e.g. ESTATE_A_VIRTUAL) even if data came from source (ESTATE_A_1)
-                // This matches previous logic?
-                // Wait, previous logic: "targetDivisionCode = div" (virtual)
-                // And inside loop: "Iterate source divisions" -> "fetchRawTreeData(sourceDiv)"
-                // -> "insertOrUpdateAggregation(targetDivisionCode, ..., record)"
-                // Yes, so we map all records to the targetDivisionCode.
-
-                await insertOrUpdateAggregation(targetDivisionCode, month, year, record, sourceEndpoint);
-                savedCount++;
-                totalEmployees += record.total_employees;
-            }
-
-            // [FIX] Trigger detailed history seeding for this division
-            // This ensures that pages requiring detailed history (like Report Pajak) have data.
-            // Note: We seed 'div' which is the internal division code (e.g. PG1A)
+            // Use PayrollDataService to fetch data
+            // For normal divisions, it returns data for just that division.
             try {
-                if (div !== 'MILL') {
+                const payrollData = await PayrollDataService.fetchPayrollData(div, month, year, authToken);
+
+                // Collect all records from all returned source divisions
+                let allRecords: AggregationRecord[] = [];
+                Object.values(payrollData).forEach(records => {
+                    allRecords = [...allRecords, ...records];
+                });
+
+                if (allRecords.length === 0) {
+                    console.log(`[AggregationSeeder] No data found for ${div}`);
+                    results.push({ division: div, gang: "ALL", employees_processed: 0, status: "SKIPPED: No data" });
+                    continue;
+                }
+
+                console.log(`[AggregationSeeder] Fetched ${allRecords.length} records for ${div}`);
+
+                let savedCount = 0;
+                let totalEmployees = 0;
+
+                for (const record of allRecords) {
+                    // DEBUG: Log PPh21 values being stored
+                    console.log(`[AggregationSeeder] ${record.gang_code}: total_pph21=${record.total_pph21}, pot_pph21 source`);
+
+                    // Insert into DB
+                    await insertOrUpdateAggregation(targetDivisionCode, month, year, record, sourceEndpoint);
+                    savedCount++;
+                    totalEmployees += record.total_employees;
+                }
+
+                // [FIX] Trigger detailed history seeding for this division
+                // This ensures that pages requiring detailed history (like Report Pajak) have data.
+                try {
                     console.log(`[AggregationSeeder] Auto-triggering history seeder for ${div}...`);
                     const { historySeederService } = await import("../services/historySeederService");
                     await historySeederService.seedPayrollHistory({
@@ -905,22 +965,22 @@ export async function seedAggregationToDb(division: string | undefined, month: n
                         force: true
                     });
                     console.log(`[AggregationSeeder] History seeding complete for ${div}`);
+                } catch (historyError: any) {
+                    console.error(`[AggregationSeeder] History seeding failed for ${div}:`, historyError.message);
+                    // We don't fail the whole aggregation seeder if history seeder fails
                 }
-            } catch (historyError: any) {
-                console.error(`[AggregationSeeder] History seeding failed for ${div}:`, historyError.message);
-                // We don't fail the whole aggregation seeder if history seeder fails
+
+                results.push({
+                    division: div,
+                    gang: `Count: ${savedCount}`,
+                    employees_processed: totalEmployees,
+                    status: "SUCCESS"
+                });
+
+            } catch (error: any) {
+                console.error(`[AggregationSeeder] Error processing ${div}:`, error);
+                results.push({ division: div, gang: "ALL", employees_processed: 0, status: "ERROR: " + error.message });
             }
-
-            results.push({
-                division: div,
-                gang: `Count: ${savedCount}`,
-                employees_processed: totalEmployees,
-                status: "SUCCESS"
-            });
-
-        } catch (error: any) {
-            console.error(`[AggregationSeeder] Error processing ${div}:`, error);
-            results.push({ division: div, gang: "ALL", employees_processed: 0, status: "ERROR: " + error.message });
         }
     }
 
@@ -946,10 +1006,10 @@ export async function seedAggregationToDb(division: string | undefined, month: n
 
 
 async function fetchAvailableDivisions(): Promise<string[]> {
-    // Get real divisions only + MILL. Virtual divisions (WKS_PG, WKS_AR, NRS, INF)
-    // are derived from the real source divisions at read time by the summary service.
-    const realDivisions = await divisionDefinition.getAllDivisions(false);
-    return [...realDivisions, 'MILL']; // MILL is special, not virtual but needs manual seeding
+    // UPDATED: Get ALL divisions (real + virtual) + MILL
+    // Virtual divisions are now seeded separately for distinct reporting
+    const allDivisions = await divisionDefinition.getAllDivisions(true); // true = include virtual
+    return [...allDivisions, 'MILL']; // MILL is special
 }
 
 async function checkDivisionHasData(division: string, month: number, year: number): Promise<boolean> {

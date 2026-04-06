@@ -12,15 +12,15 @@
  *    = gaji_pokok_aktual + total_tunjangan + total_premi
  *
  * 2. JUMLAH UPAH KOTOR (Daftar Upah Display)
- *    = UPAH KOTOR + pot_koreksi + pendapatan_lainnya
- *    NOTE: koreksi & lainnya di-ADD ke gross untuk TAMPILAN saja.
+ *    = UPAH KOTOR - pot_koreksi + pendapatan_lainnya
+ *    NOTE: koreksi di-SUBTRACT dari gross, lainnya di-ADD ke gross untuk TAMPILAN saja.
  *
  * 3. PENGHASILAN BRUTO (For PPh21 TER)
- *    = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + astek_majikan + bpjs_majikan
+ *    = UPAH KOTOR - pot_koreksi + pendapatan_lainnya + astek_majikan + bpjs_majikan
  *    NOTE: koreksi & lainnya adalah bagian dari penghasilan kena pajak.
  *
  * 4. UPAH KOTOR PAJAK (For header/tampilan pajak)
- *    = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + bpjs_pekerja
+ *    = UPAH KOTOR - pot_koreksi + pendapatan_lainnya + bpjs_pekerja
  *
  * 5. TOTAL POTONGAN (Total Deductions from Take-Home Pay)
  *    = astek_pekerja + bpjs_kes_pekerja + bpjs_pensiun_pekerja + spsi + pph21 + other_potongan + pendapatan_lainnya
@@ -31,7 +31,7 @@
  *
  * 6. UPAH BERSIH (Take-Home Pay)
  *    = jumlah_upah_kotor - total_potongan + premi_pph
- *    = (upah_kotor + pot_koreksi + pendapatan_lainnya) - total_potongan + premi_pph
+ *    = (upah_kotor - pot_koreksi + pendapatan_lainnya) - total_potongan + premi_pph
  *
  *    premi_pph = ADDITION (penambah upah bersih), bukan potongan.
  */
@@ -75,8 +75,8 @@ export function calculateKomponenKotor(input: {
 
     const subtotal = gaji_pokok_aktual + tunjangan + lembur_jumlah + total_premi;
 
-    // koreksi & lainnya di-ADD untuk Grand Subtotal (jumlah_upah_kotor)
-    const grand_subtotal = subtotal + pot_koreksi + pendapatan_lainnya;
+    // koreksi di-SUBTRACT, lainnya di-ADD untuk Grand Subtotal (jumlah_upah_kotor)
+    const grand_subtotal = subtotal - pot_koreksi + pendapatan_lainnya;
 
     return {
         gaji_pokok: gaji_pokok_aktual,
@@ -93,17 +93,17 @@ export function calculateKomponenKotor(input: {
 /**
  * Calculate JUMLAH UPAH KOTOR (Daftar Upah Display)
  *
- * = UPAH KOTOR + pot_koreksi + pendapatan_lainnya
- * NOTE: koreksi & lainnya di-ADD ke gross untuk TAMPILAN saja.
+ * = UPAH KOTOR - pot_koreksi + pendapatan_lainnya
+ * NOTE: koreksi di-SUBTRACT, lainnya di-ADD ke gross untuk TAMPILAN saja.
  *
  * @param upahKotor - Base gross (gaji + tunjangan + premi, without koreksi/lainnya)
  * @param potKoreksi - Koreksi amount
  * @param pendapatanLainnya - THR + Bonus + Custom + KONTAN
  * @returns jumlah_upah_kotor
  */
-export function calculateJumlahUpahKotor(upahKotor: number, potKoreksi: number, pendapatanLainnya: number): number {
-    return upahKotor + potKoreksi + pendapatanLainnya;
-}
+ export function calculateJumlahUpahKotor(upahKotor: number, potKoreksi: number, pendapatanLainnya: number): number {
+    return upahKotor - potKoreksi + pendapatanLainnya;
+ }
 
 /**
  * Calculate Component Potongan breakdown
@@ -168,7 +168,7 @@ export function calculateTotalPotongan(input: {
 /**
  * Calculate UPAH KOTOR PAJAK (Taxable Gross for header/pajak display)
  *
- * = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + bpjs_pekerja
+ * = UPAH KOTOR - pot_koreksi + pendapatan_lainnya + bpjs_pekerja
  *
  * @param upahKotor - Base gross
  * @param potKoreksi - Koreksi amount
@@ -182,13 +182,13 @@ export function calculateUpahKotorPajak(
     pendapatanLainnya: number,
     bpjsPekerja: number
 ): number {
-    return upahKotor + potKoreksi + pendapatanLainnya + bpjsPekerja;
+    return upahKotor - potKoreksi + pendapatanLainnya + bpjsPekerja;
 }
 
 /**
  * Calculate PENGHASILAN BRUTO (Gross Income for PPh21 TER)
  *
- * = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + astek_majikan + bpjs_majikan
+ * = UPAH KOTOR - pot_koreksi + pendapatan_lainnya + astek_majikan + bpjs_majikan
  *
  * @param upahKotor - Base gross
  * @param potKoreksi - Koreksi amount
@@ -204,7 +204,7 @@ export function calculatePenghasilanBruto(
     astekMajikan: number,
     bpjsMajikan: number
 ): number {
-    return upahKotor + potKoreksi + pendapatanLainnya + astekMajikan + bpjsMajikan;
+    return upahKotor - potKoreksi + pendapatanLainnya + astekMajikan + bpjsMajikan;
 }
 
 /**
@@ -224,7 +224,7 @@ export function calculateTotalPotonganBersih(totalPotongan: number, potPremiPph:
  * Calculate UPAH BERSIH (Take-Home Pay)
  *
  * = jumlah_upah_kotor - total_potongan + premi_pph
- * = (upah_kotor + pot_koreksi + pendapatan_lainnya) - total_potongan + premi_pph
+ * = (upah_kotor - pot_koreksi + pendapatan_lainnya) - total_potongan + premi_pph
  *
  * NOTE: premi_pph = ADDITION (penambah upah bersih), bukan potongan.
  *

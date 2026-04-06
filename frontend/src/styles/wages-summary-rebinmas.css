@@ -184,6 +184,11 @@
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+    /* Text wrapping */
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.2 !important;
 }
 
 .wages-summary-grid-container .ag-theme-alpine .ag-header-group-cell {
@@ -191,9 +196,21 @@
     font-size: 12px;
     text-transform: uppercase;
     background: #2c5282 !important;
+    /* Text wrapping */
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
 /* Cell Styles */
+.wages-summary-grid-container .ag-cell {
+    /* Text wrapping */
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.3 !important;
+}
+
 .wages-summary-grid-container .cell-description {
     font-weight: 500;
     color: #1a365d;

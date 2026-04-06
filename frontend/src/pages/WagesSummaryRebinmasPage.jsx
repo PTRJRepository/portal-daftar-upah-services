@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Printer, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary, updatePPH21, updateSPSI } from '../services/summaryReportService';
+import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary, fetchVirtualDivisions, updatePPH21, updateSPSI } from '../services/summaryReportService';
 import { fetchWagesRecapAll } from '../services/wagesService';
 import { otherIncomesService } from '../services/otherIncomesService';
 import { generatePDF } from '../utils/pdfGenerator';
@@ -17,6 +17,7 @@ import PrintModeSelector from '../components/common/PrintModeSelector';
 import PrintSignature from '../components/common/PrintSignature';
 import { initPrintMode } from '../utils/printOptimizer';
 import '../styles/wages-summary-professional.css';
+import '../styles/wages-summary-print-simple.css';
 
 export default function WagesSummaryRebinmasPage({ onBack }) {
     const { token, user } = useAuth();
@@ -25,11 +26,13 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     // Filters - Default to current month
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
+    const [divisionType, setDivisionType] = useState('all'); // 'all', 'real', or 'virtual'
 
     // Data
     const [periods, setPeriods] = useState([]);
     const [summaryData, setSummaryData] = useState([]);
     const [grandTotal, setGrandTotal] = useState(null);
+    const [virtualDivisions, setVirtualDivisions] = useState([]);
 
     // Comparison State
     const [comparisonMode, setComparisonMode] = useState(searchParams.get('mode') === 'comparison');
@@ -97,6 +100,8 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             if (comparisonMode) {
                 const result = await fetchComparisonSummary(token, { month, year, useHistory });
                 if (result.success) {
+                    console.log('[WagesComparison] Comparison data received:', result);
+                    console.log('[WagesComparison] Sample division data:', result.divisions?.[0]);
                     setComparisonData(result);
                 } else {
                     setError('Failed to fetch comparison data');
@@ -113,7 +118,12 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     setError('Failed to fetch THR recap data');
                 }
             } else {
-                const result = await fetchAllDivisionsTotals(token, { month, year, useHistory });
+                const result = await fetchAllDivisionsTotals(token, { 
+                    month, 
+                    year, 
+                    useHistory,
+                    includeVirtual: divisionType !== 'real' // 'all' or 'virtual' -> true
+                });
                 if (result.success) {
                     setSummaryData(result.data || []);
                     setGrandTotal(result.grand_total || null);
@@ -127,7 +137,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         } finally {
             setLoading(false);
         }
-    }, [token, month, year, comparisonMode, thrMode, thrIjlFilter, useHistory]);
+    }, [token, month, year, comparisonMode, thrMode, thrIjlFilter, useHistory, divisionType]);
 
     // Handle Thumbprint Change
     const handleThumbprintChange = (divisionKey, value) => {
@@ -211,6 +221,20 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Load virtual divisions
+    useEffect(() => {
+        async function loadVirtualDivisions() {
+            if (!token) return;
+            try {
+                const result = await fetchVirtualDivisions(token);
+                setVirtualDivisions(result.divisions || []);
+            } catch (e) {
+                console.error('Failed to load virtual divisions:', e);
+            }
+        }
+        loadVirtualDivisions();
+    }, [token]);
 
     // Format number with thousand separators
     const formatNumber = (value, decimals = 0) => {
@@ -430,6 +454,13 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         const totalInsentif = filteredDivisions.reduce((sum, d) => sum + (d.total_insentif_current || 0), 0);
         const totalKinerja = filteredDivisions.reduce((sum, d) => sum + (d.total_kinerja_current || 0), 0);
 
+        // Tonase (TBS) totals
+        const totalTonase = {
+            previous: filteredDivisions.reduce((sum, d) => sum + (d.previous_month?.tbs_weight || 0), 0),
+            current: filteredDivisions.reduce((sum, d) => sum + (d.current_month?.tbs_weight || 0), 0)
+        };
+        const tonaseDiff = totalTonase.current - totalTonase.previous;
+
         return (
             <>
                 {/* Main KPI Row */}
@@ -500,6 +531,31 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <div className={`wsp-kpi-diff ${lemburDiff > 0 ? 'pos' : lemburDiff < 0 ? 'neg' : 'neutral'}`}>
                             <span>Variance:</span>
                             <strong>Rp {formatNumber(lemburDiff)} {lemburDiff > 0 ? '▲' : lemburDiff < 0 ? '▼' : ''}</strong>
+                        </div>
+                    </div>
+
+                    {/* Total Tonase TBS */}
+                    <div className="wsp-kpi-card comparison-card" style={{ borderLeft: '4px solid #10b981' }}>
+                        <div className="wsp-kpi-label flex items-center gap-2">
+                            <span>🌴</span> Total Tonase TBS
+                        </div>
+                        <div className="wsp-kpi-compare-row">
+                            <div className="wsp-kpi-trend-box prev">
+                                <div className="trend-label">{prevLabel}</div>
+                                <div className="trend-value">
+                                    {formatNumber(totalTonase.previous, 2)} <span style={{ fontSize: '0.75rem' }}>Ton</span>
+                                </div>
+                            </div>
+                            <div className="wsp-kpi-trend-box curr">
+                                <div className="trend-label">{currLabel}</div>
+                                <div className="trend-value">
+                                    {formatNumber(totalTonase.current, 2)} <span style={{ fontSize: '0.75rem' }}>Ton</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className={`wsp-kpi-diff ${tonaseDiff > 0 ? 'pos' : tonaseDiff < 0 ? 'neg' : 'neutral'}`}>
+                            <span>Variance:</span>
+                            <strong>{formatNumber(tonaseDiff, 2)} Ton {tonaseDiff > 0 ? '▲' : tonaseDiff < 0 ? '▼' : ''}</strong>
                         </div>
                     </div>
                 </div>
@@ -670,14 +726,16 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
 
                                     {/* Previous Month */}
                                     <td className="text-right">{formatNumber(prevGaji)}</td>
-                                    <td className="text-right border-right-section">{formatNumber(row.previous_month?.tbs_weight, 3)}</td>
+                                    <td className={`text-right border-right-section ${(row.previous_month?.tbs_weight || 0) > 0 ? 'tonase-highlight' : ''}`}>
+                                        {formatNumber(row.previous_month?.tbs_weight, 3)}
+                                    </td>
 
                                     {/* Current Month */}
                                     <td className="text-right font-semibold">
                                         {formatNumber(currGaji)}
                                         {renderTrendArrow(currGaji, prevGaji, 'cost')}
                                     </td>
-                                    <td className="text-right border-right-section">
+                                    <td className={`text-right border-right-section font-semibold ${(row.current_month?.tbs_weight || 0) > 0 ? 'tonase-highlight' : ''}`}>
                                         {formatNumber(row.current_month?.tbs_weight, 3)}
                                         {renderTrendArrow(row.current_month?.tbs_weight, row.previous_month?.tbs_weight, 'yield')}
                                     </td>
@@ -707,9 +765,9 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             <td className="text-right">{formatNumber(grandTotal.total_pph21_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_spsi_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_gaji)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.prev_tbs, 3)}</td>
+                            <td className={`text-right ${grandTotal.prev_tbs > 0 ? 'tonase-highlight' : ''}`}>{formatNumber(grandTotal.prev_tbs, 3)}</td>
                             <td className="text-right">{formatNumber(grandTotal.curr_gaji)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.curr_tbs, 3)}</td>
+                            <td className={`text-right ${grandTotal.curr_tbs > 0 ? 'tonase-highlight' : ''}`}>{formatNumber(grandTotal.curr_tbs, 3)}</td>
                             <td className={`text-right font-bold ${grandTotal.selisih > 0 ? 'text-diff-neg' : grandTotal.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
                                 <span style={{ marginRight: '4px' }}>
                                     {grandTotal.selisih > 0 ? '▲' : grandTotal.selisih < 0 ? '▼' : ''}
@@ -924,6 +982,27 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     <h1>Wages Summary (Rebinmas)</h1>
                     <p>Laporan rincian upah lengkap untuk entitas PT Rebinmas Jaya.</p>
                     <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                        {/* Division Type Selector (All/Real/Virtual) */}
+                        <select
+                            value={divisionType}
+                            onChange={(e) => {
+                                setDivisionType(e.target.value);
+                            }}
+                            className="report-filter-badge"
+                            style={{ 
+                                cursor: 'pointer', 
+                                outline: 'none',
+                                backgroundColor: divisionType === 'virtual' ? '#fef3c7' : divisionType === 'real' ? '#eef2ff' : '#dcfce7',
+                                color: divisionType === 'virtual' ? '#92400e' : divisionType === 'real' ? '#4f46e5' : '#166534',
+                                borderColor: divisionType === 'virtual' ? '#fde68a' : divisionType === 'real' ? '#c7d2fe' : '#86efac',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            <option value="all">Semua Divisi</option>
+                            <option value="real">Divisi Utama Saja</option>
+                            <option value="virtual">Divisi Virtual Saja</option>
+                        </select>
+                        
                         <select
                             value={month}
                             onChange={(e) => setMonth(parseInt(e.target.value))}
@@ -1068,6 +1147,50 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     ) : (
                         /* Paper Document */
                         <div className="wsp-document" id="wsp-report-content">
+                            {/* Print Styles - Inline for guaranteed effect */}
+                            <style>{`
+                                @media print {
+                                    @page { size: A4 landscape; margin: 8mm; }
+                                    .no-print, .report-header-web, button, select, input { display: none !important; }
+                                    .print-only { display: block !important; }
+                                    *, *::before, *::after { box-shadow: none !important; text-shadow: none !important; }
+                                    body { background: white !important; margin: 0 !important; padding: 0 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                                    .wsp-container { padding: 0 !important; background: white !important; }
+                                    .wsp-document { border: 2px solid black !important; padding: 10px !important; }
+                                    .wsp-letterhead { text-align: center !important; margin-bottom: 15px !important; padding-bottom: 10px !important; border-bottom: 2px solid black !important; }
+                                    .wsp-logo { width: 50px !important; margin-bottom: 5px !important; }
+                                    .wsp-company-name { font-size: 18px !important; font-weight: bold !important; color: black !important; }
+                                    .wsp-report-title { font-size: 14px !important; font-weight: bold !important; color: black !important; }
+                                    .wsp-report-period { font-size: 12px !important; color: black !important; }
+                                    .wsp-kpi-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; margin-bottom: 15px !important; }
+                                    .wsp-kpi-card { border: 1px solid black !important; padding: 8px !important; text-align: center !important; }
+                                    .wsp-kpi-label { font-size: 9px !important; font-weight: bold !important; text-transform: uppercase !important; margin-bottom: 3px !important; }
+                                    .wsp-kpi-value { font-size: 13px !important; font-weight: bold !important; }
+                                    .wsp-table-wrapper { border: 1px solid black !important; margin-bottom: 15px !important; }
+                                    .wsp-table { width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; }
+                                    .wsp-table th { background: #e8e8e8 !important; border: 1px solid black !important; padding: 5px 3px !important; font-weight: bold !important; text-align: center !important; }
+                                    .wsp-table thead tr.wsp-header-master th { background: #d8d8d8 !important; font-size: 11px !important; padding: 6px 4px !important; }
+                                    .wsp-table thead tr.wsp-header-sub th { background: #f0f0f0 !important; font-size: 9px !important; padding: 4px 3px !important; }
+                                    .wsp-table td { border: 1px solid black !important; padding: 4px 3px !important; font-size: 10px !important; vertical-align: middle !important; }
+                                    .wsp-table td.text-right { text-align: right !important; font-family: 'Courier New', monospace !important; }
+                                    .wsp-table td.text-left { text-align: left !important; }
+                                    .wsp-table td:first-child { text-align: left !important; font-weight: bold !important; }
+                                    .div-code { font-size: 10px !important; font-weight: bold !important; }
+                                    .div-desc { font-size: 9px !important; margin-top: 2px !important; }
+                                    .wsp-table tr.estate-header td { background: #e0e0e0 !important; font-weight: bold !important; font-size: 11px !important; padding: 6px 5px !important; }
+                                    .wsp-table tr.subtotal td { background: #f0f0f0 !important; font-weight: bold !important; }
+                                    .wsp-table tfoot tr.wsp-grand-total td { background: #1a1a1a !important; color: white !important; font-weight: bold !important; font-size: 11px !important; padding: 6px 4px !important; border: 2px solid black !important; }
+                                    .wsp-table td.val-zero { color: #999 !important; }
+                                    .sticky-col, .th-sticky-col { position: static !important; }
+                                    .wsp-signature-section { display: flex !important; justify-content: space-between !important; margin-top: 20px !important; padding-top: 10px !important; border-top: 1px solid black !important; }
+                                    .wsp-signature-block { text-align: center !important; flex: 1 !important; }
+                                    .wsp-signature-title { font-size: 10px !important; font-weight: bold !important; margin-bottom: 30px !important; }
+                                    .wsp-signature-name { font-size: 10px !important; font-weight: bold !important; border-top: 1px solid black !important; padding-top: 3px !important; display: inline-block !important; min-width: 120px !important; }
+                                    .wsp-footer { margin-top: 15px !important; padding-top: 8px !important; border-top: 1px solid black !important; font-size: 9px !important; color: #333 !important; }
+                                    .wsp-letterhead { page-break-after: avoid !important; }
+                                    .wsp-table thead { page-break-after: avoid !important; }
+                                }
+                            `}</style>
                             {/* Letterhead */}
                             <div className="wsp-letterhead">
                                 <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />

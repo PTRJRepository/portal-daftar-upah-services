@@ -166,7 +166,7 @@ export class SummaryService {
         }
     }
 
-    public async getAllDivisionsPremiTotals(month: number, year: number): Promise<DivisionSummary[]> {
+    public async getAllDivisionsPremiTotals(month: number, year: number, includeVirtual: boolean = true): Promise<DivisionSummary[]> {
         const startTime = Date.now();
         debug(CATEGORY, `Computing totals for ${month}-${year} directly from database...`);
 
@@ -178,6 +178,7 @@ export class SummaryService {
         ]);
 
         // Fetch per-gang rows - direct table access (no version_index column exists)
+        // Include ALL gangs (AMC, HMC, B2N, INF, INT included) - STEP 2 will extract virtual divisions
         const query = `
             SELECT
                 h.gang_code,
@@ -273,24 +274,47 @@ export class SummaryService {
 
         // STEP 2: Build virtual division rows by extracting matching gangs from real divisions
         // Virtual divisions: INF (from P1A), NRS (from P1B), WKS_PG (from P1A), WKS_AR (from AB2)
+        // ARC and MILL are detected as "virtual" but are actually real divisions with their own LocCode
         const virtualDivAgg: Record<string, AggBucket> = {};
         const virtualGangAssignments: Record<string, Set<string>> = {}; // virtualDiv -> Set<gangCode>
 
+        console.log(`[SummaryService] STEP 2 - Processing ${gangRowData.length} gangs for virtual division extraction`);
+        console.log(`[SummaryService] STEP 2 - Sample gangs: ${gangRowData.slice(0, 5).map(g => g.gangCode).join(', ')}`);
+        
+        // Log if virtual gangs exist in the data
+        const virtualGangsInData = gangRowData.filter(g => ['AMC', 'HMC', 'B2N', 'INF', 'INT'].includes(g.gangCode));
+        console.log(`[SummaryService] STEP 2 - Virtual gangs found in data: ${virtualGangsInData.map(g => `${g.gangCode}(${g.sourceLoc})`).join(', ') || 'NONE'}`);
+
+        // Virtual division codes that should be extracted
+        const virtualDivisionCodes = new Set(['INF', 'NRS', 'WKS_PG', 'WKS_AR', 'WORKSHOP']);
+
         // For each gang, check if it belongs to a virtual division (excluding WORKSHOP which is computed)
         for (const { gangCode, sourceLoc, gangDesc, row } of gangRowData) {
-            // Skip WORKSHOP — it's a computed aggregate of WKS_PG + WKS_AR
             let virtualDiv: string | null = null;
 
-            // Check for virtual division using full logic (source_division + pattern)
-            virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            // PRIORITY 1: If sourceLoc IS a virtual division, use it directly
+            if (virtualDivisionCodes.has(sourceLoc)) {
+                virtualDiv = sourceLoc;
+                console.log(`[SummaryService] ✅ ${gangCode.padEnd(8)} (source=${sourceLoc}) → ${virtualDiv} (source is virtual)`);
+            } else {
+                // PRIORITY 2: Check for virtual division using full logic (source_division + pattern)
+                virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
 
-            // Fallback: pattern-only detection if gang not in gangDivMap
-            if (!virtualDiv && !gangDivMap[gangCode]) {
-                virtualDiv = divisionDefinition.getVirtualDivisionByPatternOnly(gangCode, gangDesc);
+                // PRIORITY 3: Fallback pattern-only detection
+                if (!virtualDiv && !gangDivMap[gangCode]) {
+                    virtualDiv = divisionDefinition.getVirtualDivisionByPatternOnly(gangCode, gangDesc);
+                }
             }
 
-            // Skip WORKSHOP (computed aggregate), ARC (not a sub-extraction)
-            if (virtualDiv === 'WORKSHOP') continue;
+            // Log specific virtual gang candidates
+            if (['AMC', 'HMC', 'B2N', 'INF', 'INT'].includes(gangCode) || 
+                ['INF', 'NRS', 'WKS_PG', 'WKS_AR'].includes(virtualDiv || '')) {
+                console.log(`[SummaryService] 🔍 ${gangCode.padEnd(8)} (source=${sourceLoc.padEnd(6)}, desc=${gangDesc.padEnd(30)}) → virtualDiv=${virtualDiv || 'NONE'}`);
+            }
+
+            // Skip ARC and MILL - they are real divisions, should not be extracted as virtual
+            // Skip WORKSHOP - it's computed from WKS_PG + WKS_AR
+            if (virtualDiv === 'WORKSHOP' || virtualDiv === 'ARC' || virtualDiv === 'MILL') continue;
 
             if (virtualDiv) {
                 if (!virtualDivAgg[virtualDiv]) {
@@ -302,12 +326,15 @@ export class SummaryService {
                     virtualGangAssignments[virtualDiv] = new Set();
                 }
                 virtualGangAssignments[virtualDiv].add(gangCode);
+                
+                console.log(`[SummaryService] ✅ ${gangCode} (source=${sourceLoc}) → ${virtualDiv}`);
             }
         }
 
-        debug(CATEGORY, `Step 2 - Virtual divisions built: ${Object.keys(virtualDivAgg).join(', ')}`);
+        console.log(`[SummaryService] STEP 2 - Virtual divisions built: ${Object.keys(virtualDivAgg).join(', ')}`);
         for (const [vd, gangs] of Object.entries(virtualGangAssignments)) {
-            debug(CATEGORY, `  Virtual ${vd}: ${gangs.size} gangs → [${Array.from(gangs).join(', ')}]`);
+            const bucket = virtualDivAgg[vd];
+            console.log(`[SummaryService]   ${vd}: ${gangs.size} gangs, emp=${bucket.total_employees}, upah=${bucket.total_upah_bersih.toFixed(0)}`);
         }
 
         // STEP 3: Subtract virtual gang data from parent real divisions
@@ -339,16 +366,70 @@ export class SummaryService {
             'WKS_AR': 'AB2'
         };
 
+        debug(CATEGORY, `Step 3 - Before subtraction:`);
+        debug(CATEGORY, `  virtualDivAgg keys: ${Object.keys(virtualDivAgg).join(', ')}`);
+        debug(CATEGORY, `  virtualToSourceMap entries: ${Object.keys(virtualToSourceMap).join(', ')}`);
+
         for (const [virtDiv, sourceDiv] of Object.entries(virtualToSourceMap)) {
             if (virtualDivAgg[virtDiv] && realDivAgg[sourceDiv]) {
                 const childGangs = virtualGangAssignments[virtDiv] || new Set();
+                debug(CATEGORY, `  Subtracting ${virtDiv} (${childGangs.size} gangs) from ${sourceDiv}`);
                 subtractBucket(realDivAgg[sourceDiv], virtualDivAgg[virtDiv], childGangs);
-                debug(CATEGORY, `Step 3 - Subtracted ${virtDiv} (${childGangs.size} gangs) from ${sourceDiv}`);
+                debug(CATEGORY, `    ${sourceDiv} after: emp=${realDivAgg[sourceDiv].total_employees}, upah=${realDivAgg[sourceDiv].total_upah_bersih}`);
+            } else {
+                debug(CATEGORY, `  ⚠️  Skipping ${virtDiv}→${sourceDiv}: virtualDivAgg[${virtDiv}]=${!!virtualDivAgg[virtDiv]}, realDivAgg[${sourceDiv}]=${!!realDivAgg[sourceDiv]}`);
             }
         }
 
-        // STEP 4: WORKSHOP row removed — frontend already computes GRAND TOTAL WORKSHOP
-        // from WKS_PG + WKS_AR via the group subtotal logic.
+        // STEP 4: Build computed virtual divisions that don't come from gang patterns
+        
+        // WORKSHOP = WKS_PG + WKS_AR (sum both workshop virtual divisions)
+        if (virtualDivAgg['WKS_PG'] || virtualDivAgg['WKS_AR']) {
+            if (!virtualDivAgg['WORKSHOP']) {
+                virtualDivAgg['WORKSHOP'] = createEmptyBucket();
+            }
+            const workshopBucket = virtualDivAgg['WORKSHOP'];
+            
+            if (virtualDivAgg['WKS_PG']) {
+                const wksPg = virtualDivAgg['WKS_PG'];
+                workshopBucket.total_premi += wksPg.total_premi;
+                workshopBucket.total_employees += wksPg.total_employees;
+                workshopBucket.total_hk += wksPg.total_hk;
+                workshopBucket.total_upah_bersih += wksPg.total_upah_bersih;
+                workshopBucket.total_pph21 += wksPg.total_pph21;
+                workshopBucket.total_spsi += wksPg.total_spsi;
+                workshopBucket.total_lembur += wksPg.total_lembur;
+                workshopBucket.total_premi_brondol += wksPg.total_premi_brondol;
+                workshopBucket.total_premi_prunning += wksPg.total_premi_prunning;
+                workshopBucket.total_premi_insentif += wksPg.total_premi_insentif;
+                workshopBucket.total_premi_kinerja += wksPg.total_premi_kinerja;
+                workshopBucket.total_koreksi += wksPg.total_koreksi;
+                workshopBucket.total_ffb_weight += wksPg.total_ffb_weight;
+                workshopBucket.total_weight_tbs += wksPg.total_weight_tbs;
+                wksPg.gang_codes.forEach(gc => workshopBucket.gang_codes.add(gc));
+            }
+            
+            if (virtualDivAgg['WKS_AR']) {
+                const wksAr = virtualDivAgg['WKS_AR'];
+                workshopBucket.total_premi += wksAr.total_premi;
+                workshopBucket.total_employees += wksAr.total_employees;
+                workshopBucket.total_hk += wksAr.total_hk;
+                workshopBucket.total_upah_bersih += wksAr.total_upah_bersih;
+                workshopBucket.total_pph21 += wksAr.total_pph21;
+                workshopBucket.total_spsi += wksAr.total_spsi;
+                workshopBucket.total_lembur += wksAr.total_lembur;
+                workshopBucket.total_premi_brondol += wksAr.total_premi_brondol;
+                workshopBucket.total_premi_prunning += wksAr.total_premi_prunning;
+                workshopBucket.total_premi_insentif += wksAr.total_premi_insentif;
+                workshopBucket.total_premi_kinerja += wksAr.total_premi_kinerja;
+                workshopBucket.total_koreksi += wksAr.total_koreksi;
+                workshopBucket.total_ffb_weight += wksAr.total_ffb_weight;
+                workshopBucket.total_weight_tbs += wksAr.total_weight_tbs;
+                wksAr.gang_codes.forEach(gc => workshopBucket.gang_codes.add(gc));
+            }
+            
+            debug(CATEGORY, `Step 4 - WORKSHOP computed: ${workshopBucket.gang_codes.size} gangs, premi=${workshopBucket.total_premi}`);
+        }
 
 
 
@@ -362,13 +443,77 @@ export class SummaryService {
 
         // STEP 6: Merge real + virtual into final divAgg for result building
         const divAgg: Record<string, AggBucket> = { ...realDivAgg };
-        for (const [vd, bucket] of Object.entries(virtualDivAgg)) {
-            divAgg[vd] = bucket;
+        
+        debug(CATEGORY, `Step 6 - includeVirtual=${includeVirtual}, realDivAgg keys: ${Object.keys(realDivAgg).join(', ')}`);
+        debug(CATEGORY, `Step 6 - virtualDivAgg keys: ${Object.keys(virtualDivAgg).join(', ')}`);
+        
+        // Only include virtual divisions if requested
+        if (includeVirtual) {
+            // Add virtual divisions that were built in STEP 2
+            for (const [vd, bucket] of Object.entries(virtualDivAgg)) {
+                divAgg[vd] = bucket;
+                debug(CATEGORY, `Step 6 - ✅ Added ${vd} from STEP 2: emp=${bucket.total_employees}, upah=${bucket.total_upah_bersih}`);
+            }
+            
+            debug(CATEGORY, `Step 6 - After adding from virtualDivAgg: ${Object.keys(divAgg).join(', ')}`);
+            
+            // Ensure ALL expected virtual divisions exist (even if empty)
+            // This guarantees they appear in the report
+            const expectedVirtualDivs = ['INF', 'NRS', 'WKS_PG', 'WKS_AR', 'MILL'];
+            for (const vd of expectedVirtualDivs) {
+                if (!divAgg[vd]) {
+                    divAgg[vd] = createEmptyBucket();
+                    debug(CATEGORY, `Step 6 - ✅ Created empty virtual division: ${vd}`);
+                } else {
+                    debug(CATEGORY, `Step 6 - ⏭️  ${vd} already exists with data, skipping creation`);
+                }
+            }
+            
+            // Ensure WORKSHOP exists (compute from WKS_PG + WKS_AR)
+            if (!divAgg['WORKSHOP']) {
+                divAgg['WORKSHOP'] = createEmptyBucket();
+                const workshopBucket = divAgg['WORKSHOP'];
+                
+                // Sum WKS_PG if exists
+                if (divAgg['WKS_PG']) {
+                    const wksPg = divAgg['WKS_PG'];
+                    Object.keys(workshopBucket).forEach(key => {
+                        if (key === 'gang_codes') {
+                            wksPg.gang_codes.forEach((gc: string) => workshopBucket.gang_codes.add(gc));
+                        } else if (typeof workshopBucket[key as keyof AggBucket] === 'number') {
+                            (workshopBucket[key as keyof AggBucket] as number) += (wksPg[key as keyof AggBucket] as number) || 0;
+                        }
+                    });
+                    debug(CATEGORY, `Step 6 - Added WKS_PG to WORKSHOP: emp=${wksPg.total_employees}, upah=${wksPg.total_upah_bersih}`);
+                }
+                
+                // Sum WKS_AR if exists
+                if (divAgg['WKS_AR']) {
+                    const wksAr = divAgg['WKS_AR'];
+                    Object.keys(workshopBucket).forEach(key => {
+                        if (key === 'gang_codes') {
+                            wksAr.gang_codes.forEach((gc: string) => workshopBucket.gang_codes.add(gc));
+                        } else if (typeof workshopBucket[key as keyof AggBucket] === 'number') {
+                            (workshopBucket[key as keyof AggBucket] as number) += (wksAr[key as keyof AggBucket] as number) || 0;
+                        }
+                    });
+                    debug(CATEGORY, `Step 6 - Added WKS_AR to WORKSHOP: emp=${wksAr.total_employees}, upah=${wksAr.total_upah_bersih}`);
+                }
+                
+                debug(CATEGORY, `Step 6 - ✅ WORKSHOP created: ${workshopBucket.gang_codes.size} gangs, emp=${workshopBucket.total_employees}`);
+            } else {
+                debug(CATEGORY, `Step 6 - ⏭️  WORKSHOP already exists, skipping`);
+            }
+        } else {
+            debug(CATEGORY, `Step 6 - includeVirtual=false, skipping virtual divisions`);
         }
 
         // Remove any real divisions that have zero or negative employees after subtraction
-        // BUT always keep P1A and P1B even if they have 0 employees (they should still appear)
-        const keepAlways = new Set(['P1A', 'P1B']);
+        // BUT always keep certain divisions even if they have 0 employees
+        const keepAlways = new Set([
+            'P1A', 'P1B', 'ARC', 'MILL',  // Real divisions
+            'INF', 'NRS', 'WKS_PG', 'WKS_AR', 'WORKSHOP'  // Virtual divisions
+        ]);
         for (const div of Object.keys(divAgg)) {
             if (!keepAlways.has(div) && divAgg[div].total_employees <= 0 && divAgg[div].total_upah_bersih <= 0 && divAgg[div].gang_codes.size === 0) {
                 delete divAgg[div];
@@ -443,9 +588,7 @@ export class SummaryService {
 
         const finalResults = await deductionAdjustmentService.applyAdjustmentsToDivisionData(month, year, results);
 
-        // Store in TTL cache
-        this.premiTotalsCache.set(cacheKey, { data: finalResults, timestamp: Date.now() });
-        debug(CATEGORY, `getAllDivisionsPremiTotals ${cacheKey} completed in ${Date.now() - startTime}ms, cached.`);
+        debug(CATEGORY, `getAllDivisionsPremiTotals completed in ${Date.now() - startTime}ms`);
 
         return finalResults;
     }
@@ -599,29 +742,55 @@ export class SummaryService {
         const prevMonth = month === 1 ? 12 : month - 1;
         const prevYear = month === 1 ? year - 1 : year;
 
+        debug(CATEGORY, `Starting comparison for ${month}/${year} (prev: ${prevMonth}/${prevYear})`);
+
+        // Get current month data - may be empty if not seeded yet
         const currentData = await this.getAllDivisionsPremiTotals(month, year);
+        
+        // If no data exists for current month, return empty result gracefully
+        if (!currentData || currentData.length === 0) {
+            warn(CATEGORY, `No aggregation data found for ${month}/${year}, returning empty comparison`);
+            return {
+                current_period: { month, year },
+                previous_period: { month: prevMonth, year: prevYear },
+                kpi_summary: {
+                    estate_gaji: { current: 0, previous: 0 },
+                    mill_gaji: { current: 0, previous: 0 },
+                    tbs_weight: { current: 0, previous: 0 },
+                    total_premi: { current: 0, previous: 0 },
+                    total_lembur: { current: 0, previous: 0 }
+                },
+                divisions: []
+            };
+        }
+
         let previousData: any[] = [];
 
-        if (prevMonth === 11 && prevYear === 2025) {
-            const override = await this.loadNovember2025OverrideData();
-            if (override.length > 0) {
-                // Map override JSON to Summary structure
-                // Simplified mapping for now, assuming JSON matches what Python expected
-                // In Python code: estate_division_code -> division_code
-                previousData = override.map(item => ({
-                    division_code: item.estate_division_code,
-                    total_employees: item.workers || 0,
-                    total_upah_bersih: item.total_upah_bersih || 0,
-                    total_ffb_weight: 0, // Would need fetching from DB if critical, simplified to 0
-                    total_premi: item.total_premi || 0,
-                    total_lembur: item.total_lembur || 0,
-                    total_premi_prunning: item.pruning || 0
-                }));
+        try {
+            if (prevMonth === 11 && prevYear === 2025) {
+                const override = await this.loadNovember2025OverrideData();
+                if (override.length > 0) {
+                    // Map override JSON to Summary structure
+                    // Simplified mapping for now, assuming JSON matches what Python expected
+                    // In Python code: estate_division_code -> division_code
+                    previousData = override.map(item => ({
+                        division_code: item.estate_division_code,
+                        total_employees: item.workers || 0,
+                        total_upah_bersih: item.total_upah_bersih || 0,
+                        total_ffb_weight: 0, // Would need fetching from DB if critical, simplified to 0
+                        total_premi: item.total_premi || 0,
+                        total_lembur: item.total_lembur || 0,
+                        total_premi_prunning: item.pruning || 0
+                    }));
+                } else {
+                    previousData = await this.getAllDivisionsPremiTotals(prevMonth, prevYear);
+                }
             } else {
                 previousData = await this.getAllDivisionsPremiTotals(prevMonth, prevYear);
             }
-        } else {
-            previousData = await this.getAllDivisionsPremiTotals(prevMonth, prevYear);
+        } catch (error: any) {
+            warn(CATEGORY, `Failed to load previous month (${prevMonth}/${prevYear}) data:`, error.message);
+            previousData = [];
         }
 
         // Fetch previous month's thumbprint data from JSON file
@@ -1126,6 +1295,9 @@ WHERE 1 = 1
         if (divisionCode) {
             // Since division_code may be 'ALL', filter by gang_code instead
             const gangs = await divisionDefinition.getGangsForDivision(divisionCode);
+            console.log(`[SummaryService] getDivisionSummary for ${divisionCode}: ${gangs.length} gangs`);
+            console.log(`[SummaryService] Gang codes: [${gangs.map(g => g.gang_code).join(', ')}]`);
+            
             if (gangs.length > 0) {
                 const placeholders = gangs.map(() => '?').join(',');
                 query += ` AND gang_code IN(${placeholders})`;

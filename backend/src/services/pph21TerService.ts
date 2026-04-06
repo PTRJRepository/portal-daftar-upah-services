@@ -216,7 +216,7 @@ class Pph21TerService {
         // PENGHASILAN BRUTO untuk PPh21 TER:
         // = gaji pokok + tunjangan (beras, jabatan, masa kerja) + lembur + premi
         // + astek majikan (0.84%) + bpjs kesehatan majikan (4%)
-        // + pot_koreksi (sudah termasuk dalam jumlah_upah_kotor)
+        // + pot_koreksi (deducted from gross)
         // + pendapatan_lainnya (THR, bonus, dll)
         return gajiPokokAktual +
             berasJumlah +
@@ -225,7 +225,7 @@ class Pph21TerService {
             lemburJumlah +
             totalPremi +
             astekMajikan +
-            bpjsKesehatanMajikan +
+            bpjsKesehatanMajikan -
             potKoreksi +
             pendapatanLainnya;
     }

@@ -105,7 +105,7 @@ export const generateMonthlyTaxExcel = async (
     // Dynamic premi cols (19 .. 18+N) → URAIAN PREMI
     //  18+N+1: TOTAL PREMI
     // Fixed after premi:
-    //  POT KOREKSI, THR, EXGRATIA, BPJS KES 4%, ASTEK 0.84%, UPAH KOTOR, PENGHASILAN BRUTO, TARIF TER, PPH21
+    //  POT KOREKSI, THR, KONTANAN, BPJS KES 4%, ASTEK 0.84%, UPAH KOTOR, PENGHASILAN BRUTO, TARIF TER, PPH21
 
     const COL_NO = 1;
     const COL_EMP_CODE = 2;
@@ -212,7 +212,7 @@ export const generateMonthlyTaxExcel = async (
     if (COL_THR !== COL_EXGRATIA) {
         sheet.mergeCells(`${L(COL_THR)}3:${L(COL_EXGRATIA)}3`);
     }
-    sheet.getCell(`${L(COL_THR)}3`).value = 'PEND. LAINNYA';
+    sheet.getCell(`${L(COL_THR)}3`).value = 'PENDAPATAN\nLAINNYA';
     applyHeaderStyle(sheet.getCell(`${L(COL_THR)}3`), 'FEF3C7', '0F172A');
 
     // JAMINAN MAJIKAN
@@ -256,7 +256,7 @@ export const generateMonthlyTaxExcel = async (
     subHeaders.push({ col: COL_TOTAL_PREMI, label: 'TOTAL PREMI\n(SUM Premi)', bg: 'CBD5E1', fg: '0F172A' });
     subHeaders.push({ col: COL_POT_KOREKSI, label: 'POT KOREKSI (-)', bg: 'FCA5A5', fg: '0F172A' });
     subHeaders.push({ col: COL_THR, label: 'THR', bg: 'FEF3C7', fg: '0F172A' });
-    subHeaders.push({ col: COL_EXGRATIA, label: 'EXGRATIA', bg: 'FEF3C7', fg: '0F172A' });
+    subHeaders.push({ col: COL_EXGRATIA, label: 'KONTANAN', bg: 'FEF3C7', fg: '0F172A' });
     subHeaders.push({ col: COL_BPJS_KES, label: `BPJS KES\n${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%\n(×GPStandar+MK)`, bg: 'F1F5F9', fg: '0F172A' });
     subHeaders.push({ col: COL_ASTEK, label: `ASTEK\n${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%\n(×GPStandar+MK)`, bg: 'F1F5F9', fg: '0F172A' });
     subHeaders.push({ col: COL_UPAH_KOTOR, label: 'UPAH KOTOR\n(Aktual+Tunj+Premi-Pot)', bg: '0F172A', fg: 'FFFFFF' });
@@ -656,7 +656,7 @@ export const generateMonthlyTaxExcel = async (
     stdHeaders.push({ header: 'Potongan\nKoreksi (-)', width: 15 });
     stdHeaders.push({ header: 'POT. ALPA\n& CTH (-)', width: 15 });
     stdHeaders.push({ header: 'THR', width: 15, meta_key: 'thr' });
-    stdHeaders.push({ header: 'Bonus', width: 15, meta_key: 'bonus' });
+    stdHeaders.push({ header: 'KONTANAN', width: 15, meta_key: 'bonus' });
     stdHeaders.push({ header: 'Penghasilan\nBruto', width: 18 });
     stdHeaders.push({ header: 'Tarif\nTER', width: 10 });
     stdHeaders.push({ header: 'PPh 21', width: 15, meta_key: 'pph21' });
