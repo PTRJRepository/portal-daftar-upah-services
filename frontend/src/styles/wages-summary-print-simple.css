@@ -176,11 +176,27 @@
     }
 
     .wsp-table thead {
-        display: table-header-group !important; /* Repeat headers on every page */
+        display: table-header-group !important;
+        visibility: visible !important;
+        position: relative !important;
+    }
+
+    .wsp-table thead tr {
+        display: table-row !important;
+        visibility: visible !important;
+    }
+
+    .wsp-table thead tr.wsp-header-master,
+    .wsp-table thead tr.wsp-header-sub {
+        display: table-row !important;
+        visibility: visible !important;
+        page-break-after: avoid !important;
     }
 
     /* All headers */
     .wsp-table th {
+        display: table-cell !important;
+        visibility: visible !important;
         background: #e8e8e8 !important;
         border: 1px solid black !important;
         padding: 5px 3px !important;
@@ -188,21 +204,31 @@
         text-align: center !important;
         font-size: 10px !important;
         color: black !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
-    /* Master header row */
+    /* Master header row - larger font */
     .wsp-table thead tr.wsp-header-master th {
+        display: table-cell !important;
+        visibility: visible !important;
         background: #d8d8d8 !important;
         font-size: 11px !important;
         font-weight: bold !important;
         padding: 6px 4px !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
-    /* Sub header row */
+    /* Sub header row - smaller font */
     .wsp-table thead tr.wsp-header-sub th {
+        display: table-cell !important;
+        visibility: visible !important;
         background: #f0f0f0 !important;
         font-size: 9px !important;
         padding: 4px 3px !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
     /* All table cells */
