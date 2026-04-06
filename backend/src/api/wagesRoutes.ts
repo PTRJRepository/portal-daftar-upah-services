@@ -161,7 +161,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
             }
 
             // List of divisions to include (real divisions + virtual divisions)
-            // NOTE: WORKSHOP is computed from WKS_PG + WKS_AR, not queried directly
+            // NOTE: WORKSHOP is computed from WKS_PG + WKS_AR, NOT queried
             const realDivisions = ['P1A', 'P1B', 'P2A', 'P2B', 'AB1', 'AB2', 'ARC', 'ARA', 'DME', 'IJL'];
             const virtualDivisions = ['INF', 'NRS', 'WKS_PG', 'WKS_AR']; // WORKSHOP excluded - computed later
             const divisions = [...realDivisions, ...virtualDivisions];
@@ -169,16 +169,21 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
             // Use extend_db_ptrj database to get aggregation data
             const extendDb = Database.getExtendedInstance();
 
-            // Get all gang codes for each division (excluding WORKSHOP to prevent duplicates)
+            // Get all gang codes for each division (EXCLUDING WORKSHOP to prevent duplicates)
             const divisionGangs: Record<string, string[]> = {};
             for (const divCode of divisions) {
                 const gangs = await divisionDefinition.getGangsForDivision(divCode);
                 divisionGangs[divCode] = gangs.map(g => g.gang_code);
             }
 
-            // Build query to get all data for these gangs
+            // Build query to get all data for these gangs (NO WORKSHOP gangs!)
             const allGangs = Object.values(divisionGangs).flat();
-            if (allGangs.length === 0) {
+            
+            // Filter out any WORKSHOP gangs (AMC, HMC) to prevent duplicates
+            const workshopGangs = new Set(['AMC', 'HMC']);
+            const filteredGangs = allGangs.filter(g => !workshopGangs.has(g));
+            
+            if (filteredGangs.length === 0) {
                 return {
                     success: true,
                     period: { month, year, label: `${getMonthName(month)} ${year}` },
@@ -198,7 +203,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 };
             }
 
-            const placeholders = allGangs.map(() => '?').join(',');
+            const placeholders = filteredGangs.map(() => '?').join(',');
             const query_sql = `
                 SELECT
                     division_code, gang_code,
@@ -216,7 +221,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 GROUP BY division_code, gang_code
             `;
 
-            const rows = await extendDb.query<any>(query_sql, [month, year, ...allGangs]);
+            const rows = await extendDb.query<any>(query_sql, [month, year, ...filteredGangs]);
 
             // Group by division - IMPORTANT: Use the division code from our predefined list,
             // NOT from the database row's division_code (which may differ)
