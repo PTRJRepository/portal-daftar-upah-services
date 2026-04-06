@@ -701,23 +701,30 @@ class TaxReportService {
             }
 
             // Calculate total non-regular income (pendapatan tidak tetap / lainnya)
-            // Use row's pre-computed field if available (from origin dataExtractor), otherwise sum components
+            // Use row's pre-computed field if available (from origin dataExtractor or history)
+            // This is the CANONICAL value - do NOT use fallback formula calculations
             const rowPendapatanLainnyaValue = row.total_pendapatan_lainnya || row.pendapatan_lainnya || 0;
-            const computedPendapatanLainnya = thrAmount + exgratiaAmount + otherIncomeAmount;
-            
-            // Use row value if available, otherwise use computed (fallback for missing data)
-            const pendapatan_tidak_tetap_thp = rowPendapatanLainnyaValue > 0 ? rowPendapatanLainnyaValue : computedPendapatanLainnya;
 
-            // If row doesn't have pendapatan_lainnya (e.g., from history data),
-            // we need to add the computed value to penghasilanBruto
-            if (rowPendapatanLainnyaValue === 0 && computedPendapatanLainnya > 0) {
-                // History data doesn't include pendapatan_lainnya, add it now
-                penghasilanBruto += computedPendapatanLainnya;
-                // Update rowPendapatanLainnya to reflect what we're actually using
-                rowPendapatanLainnya = computedPendapatanLainnya;
+            // [CRITICAL] Only add pendapatan_lainnya to penghasilanBruto if:
+            // 1. row value exists (already included in DataExtractorService calculation), OR
+            // 2. Database has explicit OtherIncomes records (from OtherIncomesService)
+            // DO NOT add fallback-calculated THR/bonus values (thrAmount, exgratiaAmount)
+            // as these are provisional and may not reflect actual determined values
+            const dbPendapatanLainnya = thrAmount + exgratiaAmount + otherIncomeAmount;
+
+            // Only use database values, not fallback formula values
+            // If rowPendapatanLainnyaValue > 0, it's already in penghasilanBruto from DataExtractorService
+            // If rowPendapatanLainnyaValue === 0 but db has values, use those
+            // Otherwise, don't add anything (no phantom THR/bonus)
+            if (rowPendapatanLainnyaValue === 0 && dbPendapatanLainnya > 0) {
+                // Database has explicit OtherIncomes records - use them
+                penghasilanBruto += dbPendapatanLainnya;
+                rowPendapatanLainnya = dbPendapatanLainnya;
+            } else if (rowPendapatanLainnyaValue > 0) {
+                // Row has value - it's already included in the stored penghasilan_bruto
+                // No additional action needed
             }
-            // NOTE: If rowPendapatanLainnyaValue > 0, it's already included in penghasilanBruto
-            // from calculatePenghasilanBruto() above, so we DON'T add it again.
+            // If both are 0, no pendapatan_lainnya to add
 
             // [CRITICAL FIX] Use PRE-CALCULATED values from row data (UI Daftar Upah source)
             // This ensures Excel export matches EXACTLY what the UI displays
@@ -870,10 +877,10 @@ class TaxReportService {
                 thr_amount: thrAmount,
                 exgratia_amount: exgratiaAmount,
                 other_incomes: empOtherIncomes,
-                // Total non-regular income for display (THR, Bonus, Custom, dll)
-                pendapatan_tidak_tetap_thp,
                 // Include the actual pendapatan_lainnya used in tax calculation
-                pendapatan_lainnya: rowPendapatanLainnya
+                pendapatan_lainnya: rowPendapatanLainnya,
+                // Total non-regular income for display (for display purposes only)
+                pendapatan_tidak_tetap_thp: rowPendapatanLainnya
             };
         });
 

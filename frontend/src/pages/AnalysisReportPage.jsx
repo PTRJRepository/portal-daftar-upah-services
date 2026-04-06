@@ -8,6 +8,22 @@ import PrintSignature from '../components/common/PrintSignature';
 import { initPrintMode } from '../utils/printOptimizer';
 import '../styles/wages-summary-professional.css';
 
+// Company information for consistent header branding
+const COMPANY_INFO = {
+    ijl: {
+        name: 'PT. IMPIAN JAYA LESTARI',
+        logo: '/images/ijl-logo.png',
+        logoFallback: '/images/rebinmas.webp'
+    },
+    all: {
+        name: 'PT. REBINMAS JAYA',
+        logo: '/images/rebinmas.webp',
+        logoFallback: '/images/rebinmas.webp'
+    }
+};
+
+const getCompanyInfo = (type) => COMPANY_INFO[type] || COMPANY_INFO.all;
+
 export default function AnalysisReportPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
     const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
@@ -128,6 +144,9 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
     const prevYearShort = reportData ? reportData.previous_period?.year.toString().substring(2) : '';
     const currYearShort = reportData ? reportData.current_period?.year.toString().substring(2) : '';
 
+    const companyInfo = getCompanyInfo(filterType);
+    const periodLabel = reportData ? `${getMonthName(reportData.previous_period?.month)} ${reportData.previous_period?.year} vs ${getMonthName(reportData.current_period?.month)} ${reportData.current_period?.year}` : '';
+
     return (
         <div className="wsp-container" style={{ padding: '1.5rem', backgroundColor: '#f8fafc' }}>
             {/* Header / Action Bar */}
@@ -227,15 +246,40 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
             {/* Main Document */}
             {!loading && !error && reportData && (
                 <div className="wsp-document" id="wsp-report-content">
-                    {/* Letterhead */}
-                    <div className="wsp-letterhead">
-                        <img src="/images/rebinmas.webp" alt="Logo" className="wsp-logo" />
-                        <h1 className="wsp-company-name">
-                            {filterType === 'ijl' ? 'PT. IMPIAN JAYA LESTARI' : 'PT. REBINMAS JAYA'}
-                        </h1>
-                        <div className="wsp-report-title">Monthly Progress & Cost Analysis Report</div>
-                        <div className="wsp-report-period">
-                            Perbandingan: <strong>{getMonthName(reportData.previous_period?.month)} {reportData.previous_period?.year}</strong> vs <strong>{getMonthName(reportData.current_period?.month)} {reportData.current_period?.year}</strong>
+                    {/* Standardized Professional Header (3-Column Layout) */}
+                    <div className="wsp-report-header">
+                        {/* Left Section: Logo */}
+                        <div className="wsp-logo-section">
+                            <img
+                                src={companyInfo.logo}
+                                alt={companyInfo.name}
+                                className="wsp-logo"
+                                onError={(e) => {
+                                    if (companyInfo.logoFallback) e.target.src = companyInfo.logoFallback;
+                                }}
+                            />
+                        </div>
+
+                        {/* Center Section: Company & Report Title */}
+                        <div className="wsp-title-section">
+                            <h1 className="wsp-company-name">{companyInfo.name}</h1>
+                            <h2 className="wsp-report-title">Monthly Progress & Cost Analysis Report</h2>
+                        </div>
+
+                        {/* Right Section: Metadata */}
+                        <div className="wsp-meta-section">
+                            <div className="wsp-meta-row">
+                                <span className="wsp-meta-label">Analysis:</span>
+                                <span className="wsp-meta-value">PREMI & LEMBUR</span>
+                            </div>
+                            <div className="wsp-meta-row">
+                                <span className="wsp-meta-label">Period:</span>
+                                <span className="wsp-meta-value" style={{ fontSize: '0.7rem' }}>{periodLabel}</span>
+                            </div>
+                            <div className="wsp-meta-row">
+                                <span className="wsp-meta-label">Filter:</span>
+                                <span className="wsp-meta-value">{filterType === 'all' ? 'ALL DIVISIONS' : filterType === 'ijl' ? 'IJL ONLY' : 'REBINMAS'}</span>
+                            </div>
                         </div>
                     </div>
 
@@ -380,50 +424,50 @@ const SummaryPremiOTTable = ({ data, totals, prevMonthLabel, currMonthLabel, for
             <span>Summary Premi & OT Progress</span>
             <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Unit: IDR (Rupiah)</span>
         </div>
-        <div className="wsp-table-wrapper" style={{ border: '1px solid #000' }}>
-            <table className="wsp-table" style={{ borderCollapse: 'collapse' }}>
+        <div className="wsp-table-wrapper">
+            <table className="wsp-table">
                 <thead>
-                    <tr className="wsp-header-cols">
-                        <th rowSpan="2" style={{ border: '1px solid #000', textAlign: 'left', width: '180px' }}>ESTATE/DIVISION</th>
-                        <th colSpan="2" style={{ border: '1px solid #000' }}>{prevMonthLabel}</th>
-                        <th colSpan="2" style={{ border: '1px solid #000' }}>{currMonthLabel}</th>
-                        <th colSpan="2" style={{ border: '1px solid #000' }}>Progress (Variance)</th>
+                    <tr className="wsp-header-master">
+                        <th rowSpan="2" style={{ textAlign: 'left', width: '220px' }}>ESTATE / DIVISION</th>
+                        <th colSpan="2">{prevMonthLabel}</th>
+                        <th colSpan="2">{currMonthLabel}</th>
+                        <th colSpan="2">PROGRESS (VARIANCE)</th>
                     </tr>
-                    <tr className="wsp-header-cols">
-                        <th style={{ border: '1px solid #000', width: '110px' }}>PREMI</th>
-                        <th style={{ border: '1px solid #000', width: '110px' }}>OT</th>
-                        <th style={{ border: '1px solid #000', width: '110px' }}>PREMI</th>
-                        <th style={{ border: '1px solid #000', width: '110px' }}>OT</th>
-                        <th style={{ border: '1px solid #000' }}>Premi Diff</th>
-                        <th style={{ border: '1px solid #000' }}>OT Diff</th>
+                    <tr className="wsp-header-sub">
+                        <th style={{ width: '110px' }}>PREMI</th>
+                        <th style={{ width: '110px' }}>OT</th>
+                        <th style={{ width: '110px' }}>PREMI</th>
+                        <th style={{ width: '110px' }}>OT</th>
+                        <th>PREMI DIFF</th>
+                        <th>OT DIFF</th>
                     </tr>
                 </thead>
                 <tbody>
                     {data.map((row, idx) => (
                         <tr key={idx}>
-                            <td className="text-left font-bold" style={{ border: '1px solid #000', textTransform: 'uppercase' }}>{row.description || row.division_code}</td>
-                            <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(row.prev_premi)}</td>
-                            <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(row.prev_ot)}</td>
-                            <td className="text-right font-bold" style={{ border: '1px solid #000' }}>{formatCurrency(row.curr_premi)}</td>
-                            <td className="text-right font-bold" style={{ border: '1px solid #000' }}>{formatCurrency(row.curr_ot)}</td>
-                            <td className={`text-right font-bold ${getDiffClass(row.diff_premi)}`} style={{ border: '1px solid #000' }}>
+                            <td className="text-left font-bold">{row.description || row.division_code}</td>
+                            <td className="text-right">{formatCurrency(row.prev_premi)}</td>
+                            <td className="text-right">{formatCurrency(row.prev_ot)}</td>
+                            <td className="text-right font-bold" style={{ backgroundColor: '#f8fafc' }}>{formatCurrency(row.curr_premi)}</td>
+                            <td className="text-right font-bold" style={{ backgroundColor: '#f8fafc' }}>{formatCurrency(row.curr_ot)}</td>
+                            <td className={`text-right font-bold ${getDiffClass(row.diff_premi)}`}>
                                 {formatCurrency(row.diff_premi)}
                             </td>
-                            <td className={`text-right font-bold ${getDiffClass(row.diff_ot)}`} style={{ border: '1px solid #000' }}>
+                            <td className={`text-right font-bold ${getDiffClass(row.diff_ot)}`}>
                                 {formatCurrency(row.diff_ot)}
                             </td>
                         </tr>
                     ))}
                 </tbody>
                 <tfoot>
-                    <tr className="wsp-grand-total" style={{ fontWeight: 800 }}>
-                        <td className="text-right" style={{ border: '1px solid #000', paddingRight: '15px' }}>TOTAL C/ROLL</td>
-                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.prev_premi)}</td>
-                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.prev_ot)}</td>
-                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.curr_premi)}</td>
-                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.curr_ot)}</td>
-                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.diff_premi)}</td>
-                        <td className="text-right" style={{ border: '1px solid #000' }}>{formatCurrency(totals.diff_ot)}</td>
+                    <tr className="wsp-grand-total">
+                        <td className="text-right" style={{ paddingRight: '15px' }}>TOTAL C/ROLL</td>
+                        <td className="text-right">{formatCurrency(totals.prev_premi)}</td>
+                        <td className="text-right">{formatCurrency(totals.prev_ot)}</td>
+                        <td className="text-right">{formatCurrency(totals.curr_premi)}</td>
+                        <td className="text-right">{formatCurrency(totals.curr_ot)}</td>
+                        <td className="text-right" style={{ background: '#1e293b', color: '#fff' }}>{formatCurrency(totals.diff_premi)}</td>
+                        <td className="text-right" style={{ background: '#1e293b', color: '#fff' }}>{formatCurrency(totals.diff_ot)}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -437,29 +481,29 @@ const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, formatCurrenc
             <span>Uraian Premi Seluruh Variasi (Current Month)</span>
             <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Rincian Lengkap Seluruh Premi</span>
         </div>
-        <div className="wsp-table-wrapper" style={{ border: '1px solid #000', overflowX: 'auto' }}>
-            <table className="wsp-table" style={{ borderCollapse: 'collapse', minWidth: '100%' }}>
+        <div className="wsp-table-wrapper" style={{ overflowX: 'auto' }}>
+            <table className="wsp-table">
                 <thead>
-                    <tr className="wsp-header-cols">
-                        <th style={{ border: '1px solid #000', textAlign: 'left', width: '150px', position: 'sticky', left: 0, zIndex: 5, background: '#f8fafc' }}>DIVISI</th>
+                    <tr className="wsp-header-master">
+                        <th style={{ textAlign: 'left', width: '150px', position: 'sticky', left: 0, zIndex: 5 }}>DIVISI</th>
                         {headers.map(h => (
-                            <th key={h} style={{ border: '1px solid #000', minWidth: '100px', fontSize: '0.65rem' }}>{h.replace('PREMI_', '').replace(/_/g, ' ')}</th>
+                            <th key={h} style={{ minWidth: '100px', fontSize: '0.65rem' }}>{h.replace('PREMI_', '').replace(/_/g, ' ')}</th>
                         ))}
-                        <th style={{ border: '1px solid #000', minWidth: '120px', background: '#ecf2ff' }}>TOTAL PREMI</th>
+                        <th style={{ minWidth: '120px', background: '#334155', color: 'white' }}>TOTAL PREMI</th>
                     </tr>
                 </thead>
                 <tbody>
                     {data.map((row, idx) => (
                         <tr key={idx}>
-                            <td className="text-left font-bold" style={{ border: '1px solid #000', position: 'sticky', left: 0, zIndex: 4, background: idx % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                            <td className="text-left font-bold" style={{ position: 'sticky', left: 0, zIndex: 4, background: idx % 2 === 0 ? '#fff' : '#f8fafc' }}>
                                 {row.division_code}
                             </td>
                             {headers.map(h => (
-                                <td key={h} className="text-right" style={{ border: '1px solid #000' }}>
+                                <td key={h} className="text-right">
                                     {formatCurrency(row.premi_breakdown[h])}
                                 </td>
                             ))}
-                            <td className="text-right font-bold" style={{ border: '1px solid #000', background: '#f0f7ff' }}>
+                            <td className="text-right font-bold" style={{ background: '#f8fafc' }}>
                                 {formatCurrency(row.curr_premi)}
                             </td>
                         </tr>
@@ -467,13 +511,13 @@ const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, formatCurrenc
                 </tbody>
                 <tfoot>
                     <tr className="wsp-grand-total">
-                        <td className="text-left sticky-col" style={{ border: '1px solid #000', position: 'sticky', left: 0, zIndex: 5 }}>TOTAL</td>
+                        <td className="text-left sticky-col" style={{ position: 'sticky', left: 0, zIndex: 5 }}>TOTAL</td>
                         {headers.map(h => (
-                            <td key={h} className="text-right" style={{ border: '1px solid #000' }}>
+                            <td key={h} className="text-right">
                                 {formatCurrency(breakdownTotals[h])}
                             </td>
                         ))}
-                        <td className="text-right" style={{ border: '1px solid #000' }}>
+                        <td className="text-right" style={{ background: '#1e293b', color: '#fff' }}>
                             {formatCurrency(headers.reduce((sum, h) => sum + breakdownTotals[h], 0))}
                         </td>
                     </tr>

@@ -497,25 +497,24 @@
     }
 
     .sw-table thead tr.sw-header-group th {
-        background: #e2e8f0 !important;
+        background: white !important;
         color: #000 !important;
         border: 1px solid #000 !important;
         padding: 0.25rem 0.2rem !important;
         font-size: 0.65rem !important;
-        /* Increased for readability */
         white-space: normal !important;
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;
         line-height: 1.2 !important;
+        border-bottom: 2px solid #000 !important;
     }
 
     .sw-table thead tr.sw-header-cols th {
-        background: #f1f5f9 !important;
+        background: white !important;
         color: #000 !important;
         border: 1px solid #000 !important;
         padding: 0.2rem 0.15rem !important;
         font-size: 0.6rem !important;
-        /* Increased for readability */
         white-space: normal !important;
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;

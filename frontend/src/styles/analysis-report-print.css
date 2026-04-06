@@ -123,21 +123,18 @@
 /* Print Overrides */
 @media print {
     .sw-table th.header-premi {
-        background: #fef3c7 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        background: white !important;
+        border: 1px solid #000 !important;
     }
-    
+
     .sw-table th.header-ot {
-        background: #dbeafe !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        background: white !important;
+        border: 1px solid #000 !important;
     }
 
     .sw-table th.header-pruning {
-        background: #dcfce7 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        background: white !important;
+        border: 1px solid #000 !important;
     }
 
     /* Ensure table headers display */
