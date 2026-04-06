@@ -31,6 +31,7 @@ export default function PayslipPrintPage() {
     const year = parseInt(searchParams.get('year')) || new Date().getFullYear();
     const division = searchParams.get('division') || '';
     const dataKey = searchParams.get('data_key') || '';  // sessionStorage key for UI data
+    const useHistory = searchParams.get('use_history') === 'true';
 
     // Helper function to transform UI row data to PayslipCard format
     function transformUIToPayslipFormat(row, month, year) {
@@ -95,14 +96,14 @@ export default function PayslipPrintPage() {
                     }
                 }
 
-                // OPTIMIZATION 2: Check if data exists in localStorage from CustomPayrollTable
-                const storageKey = `payroll_cache_${division}_${month}_${year}`;
+                // OPTIMIZATION: Check if data exists in localStorage from CustomPayrollTable
+                const storageKey = `payroll_cache_${division}_${month}_${year}_${useHistory ? 'hist' : 'origin'}`;
                 const cached = localStorage.getItem(storageKey);
 
                 if (cached) {
                     const { data: employeeDataMap, timestamp } = JSON.parse(cached);
-                    // Check if cache is fresh (less than 15 minutes old)
-                    const isFresh = Date.now() - timestamp < 15 * 60 * 1000;
+                    // Check if cache is fresh (less than 60 minutes old instead of 15)
+                    const isFresh = Date.now() - timestamp < 60 * 60 * 1000;
 
                     if (isFresh) {
                         const localResults = [];
@@ -113,13 +114,14 @@ export default function PayslipPrintPage() {
                             const row = employeeDataMap[upperCode];
                             if (row) {
                                 // Transform row into the format PayslipCard expects
+                                // Matching CustomPayrollTable row fields to PayslipCard requirements
                                 localResults.push({
                                     emp_code: row.emp_code || row.nik,
                                     month,
                                     year,
                                     employee: {
-                                        nama: row.nama,
-                                        jabatan: row.jabatan_estate || row.task_desc,
+                                        nama: row.emp_name || row.nama,
+                                        jabatan: row.jabatan_estate || row.task_desc || row.jabatan,
                                         gang_code: row.gang_code
                                     },
                                     attendance: {
@@ -132,7 +134,15 @@ export default function PayslipPrintPage() {
                                             alpa: row.alpa || 0
                                         }
                                     },
-                                    payroll_data: row
+                                    payroll_data: {
+                                        ...row,
+                                        // Ensure calculated fields are easily accessible
+                                        status_ptkp: row.status_ptkp,
+                                        kategori_ter: row.kategori_ter,
+                                        tarif_pajak_ter: row.tarif_pajak_ter,
+                                        penghasilan_bruto: row.penghasilan_bruto || row.jumlah_upah_kotor,
+                                        pph21_ter: row.pph21_ter || row.pot_pph21
+                                    }
                                 });
                             } else {
                                 missingInCache.push(code);
@@ -146,11 +156,12 @@ export default function PayslipPrintPage() {
                             setLoading(false);
                             return;
                         }
+
+                        // If some were missing, we proceed to batch fetch for those
                     }
                 }
 
-                // FALLBACK: Fetch from API (slowest option)
-                console.log('[PayslipPrintPage] ⚠️ Fetching data from API (no cache found)...');
+                console.log('[PayslipPrintPage] Fetching data from API...');
                 const result = await getBatchEmployeeCheckroll(token, empCodes, month, year);
 
                 if (result.success) {
@@ -168,7 +179,7 @@ export default function PayslipPrintPage() {
         }
 
         loadData();
-    }, [token, empCodes.join(','), month, year, dataKey]);
+    }, [token, empCodes.join(','), month, year, useHistory]);
 
     const handlePrint = () => {
         window.print();

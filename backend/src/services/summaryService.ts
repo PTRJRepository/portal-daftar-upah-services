@@ -143,22 +143,42 @@ export class SummaryService {
     }
 
     /**
-     * Build a gangCode -> LocCode (division) lookup from HR_GANG.
+     * Build a gangCode -> LocCode (division) lookup from history_hr_gang.
      * Used to derive the REAL division for each gang since
-     * daftar_upah_aggregation_history stores division_code = 'ALL'.
+     * daftar_upah_aggregation_history often stores division_code = 'ALL'.
      */
     private async getGangToDivisionMap(): Promise<Record<string, string>> {
         try {
-            // Use DivisionConfigService for virtual division gang mappings
-            // This avoids querying HR_GANG from db_ptrj which can be slow
             const map: Record<string, string> = {};
             
-            // Get all divisions from config
+            // 1. Get all base divisions from config first
             const allDivisions = divisionConfigService.getAllDivisionsForAPI();
             for (const div of allDivisions) {
-                map[div.code] = div.code;
+                map[div.code.toUpperCase()] = div.code.toUpperCase();
+                // Also add aliases to map to canonical
+                for (const alias of div.aliases) {
+                    map[alias.toUpperCase()] = div.code.toUpperCase();
+                }
             }
             
+            // 2. Query history_hr_gang to get the actual LocCode for every gang ever seen
+            // This ensures we can resolve 'ALL' division_code to a real division
+            const gangRows = await this.extendDb.query<{ gang_code: string; loc_code: string }>(`
+                SELECT DISTINCT gang_code, loc_code
+                FROM dbo.history_hr_gang
+                WHERE gang_code IS NOT NULL AND loc_code IS NOT NULL
+            `);
+            
+            for (const row of gangRows) {
+                const gangCode = row.gang_code?.trim().toUpperCase();
+                const locCode = row.loc_code?.trim().toUpperCase();
+                if (gangCode && locCode) {
+                    // Normalize locCode via config if possible
+                    map[gangCode] = divisionConfigService.resolveCode(locCode);
+                }
+            }
+            
+            debug(CATEGORY, `Built gang-to-division map with ${Object.keys(map).length} entries`);
             return map;
         } catch (e) {
             logError(CATEGORY, "Failed to get gang-to-division map:", e);
@@ -242,8 +262,8 @@ export class SummaryService {
             bucket.total_premi_insentif += parseFloat(row.total_premi_insentif || 0);
             bucket.total_premi_kinerja += parseFloat(row.total_premi_kinerja || 0);
             bucket.total_koreksi += parseFloat(row.total_koreksi || 0);
-            bucket.total_ffb_weight = Math.max(bucket.total_ffb_weight, parseFloat(row.total_ffb_weight || 0));
-            bucket.total_weight_tbs = Math.max(bucket.total_weight_tbs, parseFloat(row.total_weight_tbs || 0));
+            bucket.total_ffb_weight += parseFloat(row.total_ffb_weight || 0);
+            bucket.total_weight_tbs += parseFloat(row.total_weight_tbs || 0);
         };
 
         // STEP 1: Aggregate ALL gangs to their REAL division (from HR_GANG LocCode)
@@ -359,11 +379,36 @@ export class SummaryService {
         };
 
         // Map virtual divisions to their source real divisions for subtraction
+        // IMPORTANT: Need to resolve aliases (PG1A -> P1A, PG1B -> P1B) to match actual stored division codes
+        const resolveDivisionAlias = (canonicalCode: string): string => {
+            // Check if the canonical code exists in realDivAgg
+            if (realDivAgg[canonicalCode]) return canonicalCode;
+            
+            // Try common aliases for P1A
+            if (canonicalCode === 'P1A') {
+                if (realDivAgg['PG1A']) return 'PG1A';
+                if (realDivAgg['P1a']) return 'P1a';
+                if (realDivAgg['pg1a']) return 'pg1a';
+                if (realDivAgg['PLASMA1A']) return 'PLASMA1A';
+            }
+            
+            // Try common aliases for P1B
+            if (canonicalCode === 'P1B') {
+                if (realDivAgg['PG1B']) return 'PG1B';
+                if (realDivAgg['P1b']) return 'P1b';
+                if (realDivAgg['pg1b']) return 'pg1b';
+                if (realDivAgg['PLASMA1B']) return 'PLASMA1B';
+            }
+            
+            // Fallback: return original if nothing found
+            return canonicalCode;
+        };
+        
         const virtualToSourceMap: Record<string, string> = {
-            'INF': 'P1A',
-            'NRS': 'P1B',
-            'WKS_PG': 'P1A',
-            'WKS_AR': 'AB2'
+            'INF': resolveDivisionAlias('P1A'),
+            'NRS': resolveDivisionAlias('P1B'),
+            'WKS_PG': resolveDivisionAlias('P1A'),
+            'WKS_AR': resolveDivisionAlias('AB2')
         };
 
         debug(CATEGORY, `Step 3 - Before subtraction:`);
@@ -522,11 +567,38 @@ export class SummaryService {
 
         debug(CATEGORY, `Step 6 - Final divisions: ${Object.keys(divAgg).join(', ')} `);
 
+        // Step 6.5: Normalize division codes (convert aliases like PG1A -> P1A)
+        const normalizedDivAgg: Record<string, AggBucket> = {};
+        const aliasMap: Record<string, string> = {
+            'PG1A': 'P1A', 'P1a': 'P1A', 'pg1a': 'P1A', 'PLASMA1A': 'P1A',
+            'PG1B': 'P1B', 'P1b': 'P1B', 'pg1b': 'P1B', 'PLASMA1B': 'P1B',
+            'PG2A': 'P2A', 'P2a': 'P2A', 'pg2a': 'P2A', 'PLASMA2A': 'P2A',
+            'PG2B': 'P2B', 'P2b': 'P2B', 'pg2b': 'P2B', 'PLASMA2B': 'P2B',
+        };
+        
+        for (const [divCode, bucket] of Object.entries(divAgg)) {
+            const normalizedCode = aliasMap[divCode] || divCode;
+            if (normalizedDivAgg[normalizedCode]) {
+                // Merge if already exists (shouldn't happen, but just in case)
+                Object.keys(bucket).forEach(key => {
+                    if (key === 'gang_codes') {
+                        (bucket[key as keyof AggBucket] as Set<string>).forEach((gc: string) => {
+                            (normalizedDivAgg[normalizedCode][key as keyof AggBucket] as Set<string>).add(gc);
+                        });
+                    } else if (typeof bucket[key as keyof AggBucket] === 'number') {
+                        (normalizedDivAgg[normalizedCode][key as keyof AggBucket] as number) += (bucket[key as keyof AggBucket] as number);
+                    }
+                });
+            } else {
+                normalizedDivAgg[normalizedCode] = bucket;
+            }
+        }
+        
         const results: DivisionSummary[] = [];
 
         // Define order for sorting: Real divisions first, then Virtual in specified order
         const virtualOrder = divisionDefinition.VIRTUAL_DIVISION_ORDER;
-        const sortedDivs = Object.keys(divAgg).sort((a, b) => {
+        const sortedDivs = Object.keys(normalizedDivAgg).sort((a, b) => {
             const idxA = virtualOrder.indexOf(a);
             const idxB = virtualOrder.indexOf(b);
             if (idxA !== -1 && idxB !== -1) return idxA - idxB;
@@ -536,7 +608,7 @@ export class SummaryService {
         });
 
         for (const div of sortedDivs) {
-            const row = divAgg[div];
+            const row = normalizedDivAgg[div];
             let totalPremi = row.total_premi;
             let totalLembur = row.total_lembur;
 
@@ -556,10 +628,27 @@ export class SummaryService {
             const upah = row.total_upah_bersih;
             const thumbValue = thumbprintData[div] || 0;
             const selisih = thumbValue > 0 ? (upah - thumbValue) : 0;
+            
+            // Get description, trying both normalized and original codes
+            let description = descriptions[div];
+            if (!description) {
+                // Try to find in alias map (e.g., if descriptions has PG1A but we normalized to P1A)
+                const reverseAliasMap: Record<string, string> = {
+                    'P1A': 'PG1A', 'P1B': 'PG1B', 'P2A': 'PG2A', 'P2B': 'PG2B'
+                };
+                const originalCode = reverseAliasMap[div];
+                if (originalCode) {
+                    description = descriptions[originalCode];
+                }
+            }
+            if (!description) {
+                // Fallback to division code
+                description = div;
+            }
 
             results.push({
                 division_code: div,
-                description: descriptions[div] || div,
+                description: description,
                 total_premi: totalPremiDisplay,
                 total_premi_excluding_special: totalPremiDisplay, // Simplified as requested
                 total_employees: row.total_employees,

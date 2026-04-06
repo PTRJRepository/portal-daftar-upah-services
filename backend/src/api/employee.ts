@@ -8,6 +8,7 @@ import { dataExtractorService } from "../services/dataExtractorService";
 import { employeeCareerHistoryService } from "../services/employeeCareerHistoryService";
 import { Config } from "../config";
 import { User } from "../types/user";
+import { divisionDefinition } from "../services/divisionDefinition";
 
 const authService = AuthService.getInstance();
 
@@ -177,8 +178,8 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
         const errors: any[] = [];
         const notFound: { empCode: string, reason: string }[] = [];
 
-        // Fix: DB Instance
-        const db = (await import('../db/client')).Database.getInstance();
+        // Fix: Use already imported Database class
+        const db = Database.getInstance();
 
         // OPTIMIZATION: Batch NIK Resolution - single query for all NIKs
         const nikToResolve = empCodes.filter(code => typeof code === 'string' && code.trim() !== "" && /^\d{10,}$/.test(code.trim()));
@@ -249,9 +250,7 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
                 
                 if (row.LocCode) {
                     const locCode = row.LocCode.trim();
-                    // CRITICAL FIX: Use divisionDefinition to resolve proper division code (e.g. PG1A)
-                    // instead of naive substring slicing (substring(0,2) -> PG)
-                    const { divisionDefinition } = require('../services/divisionDefinition');
+                    // CRITICAL FIX: Use divisionDefinition (already imported or via service)
                     const div = divisionDefinition.resolveDivisionCode(locCode);
                     if (div) divisions.add(div);
                 }

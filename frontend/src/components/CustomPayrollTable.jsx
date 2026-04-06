@@ -424,38 +424,6 @@ export default function CustomPayrollTable({
         }
     }, [streamRows]);
 
-    /**
-     * OPTIMIZATION: Cache displayed data in localStorage for instant retrieval in Print Page
-     * This allows the Print Page to skip the expensive batch-checkroll API call.
-     */
-    useEffect(() => {
-        if (!displayRows || displayRows.length === 0 || !dataReady) return;
-
-        // Extract only employee rows (ignore headers/totals)
-        const employeeDataMap = {};
-        displayRows.forEach(row => {
-            if (row.type === 'employee') {
-                const key = (row.emp_code || row.nik || '').toUpperCase();
-                if (key) {
-                    employeeDataMap[key] = row;
-                }
-            }
-        });
-
-        if (Object.keys(employeeDataMap).length > 0) {
-            const storageKey = `payroll_cache_${division}_${month}_${year}_${useHistoryDb ? 'hist' : 'origin'}`;
-            try {
-                localStorage.setItem(storageKey, JSON.stringify({
-                    data: employeeDataMap,
-                    timestamp: Date.now()
-                }));
-                // console.log(`[CustomPayrollTable] Cached ${Object.keys(employeeDataMap).length} employees for print optimization`);
-            } catch (e) {
-                console.warn('[CustomPayrollTable] Failed to save payroll cache to localStorage (possibly quota exceeded)');
-            }
-        }
-    }, [displayRows, dataReady, division, month, year, useHistoryDb]);
-
     // Use displayRows as the single source of truth for rendering
     // It merges stream data with edit overlays when needed
     // STRATEGI: Sorting employees WITHIN each gang, bukan global
@@ -571,6 +539,38 @@ export default function CustomPayrollTable({
 
         return sortedRows;
     }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells, stream.isComplete, stream.progress, sortBy, sortOrder]);
+
+    /**
+     * OPTIMIZATION: Cache displayed data in localStorage for instant retrieval in Print Page
+     * This allows the Print Page to skip the expensive batch-checkroll API call.
+     */
+    useEffect(() => {
+        if (!displayRows || displayRows.length === 0 || !dataReady) return;
+
+        // Extract only employee rows (ignore headers/totals)
+        const employeeDataMap = {};
+        displayRows.forEach(row => {
+            if (row.type === 'employee') {
+                const key = (row.emp_code || row.nik || '').toUpperCase();
+                if (key) {
+                    employeeDataMap[key] = row;
+                }
+            }
+        });
+
+        if (Object.keys(employeeDataMap).length > 0) {
+            const storageKey = `payroll_cache_${division}_${month}_${year}_${useHistoryDb ? 'hist' : 'origin'}`;
+            try {
+                localStorage.setItem(storageKey, JSON.stringify({
+                    data: employeeDataMap,
+                    timestamp: Date.now()
+                }));
+                // console.log(`[CustomPayrollTable] Cached ${Object.keys(employeeDataMap).length} employees for print optimization`);
+            } catch (e) {
+                console.warn('[CustomPayrollTable] Failed to save payroll cache to localStorage (possibly quota exceeded)');
+            }
+        }
+    }, [displayRows, dataReady, division, month, year, useHistoryDb]);
 
     // Toggle handlers
     const toggleGroup = useCallback((group) => {

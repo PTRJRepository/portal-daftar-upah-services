@@ -160,13 +160,16 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 return { error: "Invalid month or year" };
             }
 
-            // List of divisions to include (excluding MILL)
-            const divisions = ['P1A', 'P1B', 'P2A', 'P2B', 'AB1', 'AB2', 'ARC', 'ARA', 'DME', 'IJL'];
+            // List of divisions to include (real divisions + virtual divisions)
+            // Similar to summaryService.getAllDivisionsPremiTotals
+            const realDivisions = ['P1A', 'P1B', 'P2A', 'P2B', 'AB1', 'AB2', 'ARC', 'ARA', 'DME', 'IJL'];
+            const virtualDivisions = ['INF', 'NRS', 'WKS_PG', 'WKS_AR', 'WORKSHOP'];
+            const divisions = [...realDivisions, ...virtualDivisions];
 
             // Use extend_db_ptrj database to get aggregation data
             const extendDb = Database.getExtendedInstance();
 
-            // Get all gang codes for each division
+            // Get all gang codes for each division (both real and virtual)
             const divisionGangs: Record<string, string[]> = {};
             for (const divCode of divisions) {
                 const gangs = await divisionDefinition.getGangsForDivision(divCode);
@@ -215,7 +218,8 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
 
             const rows = await extendDb.query<any>(query_sql, [month, year, ...allGangs]);
 
-            // Group by division
+            // Group by division - IMPORTANT: Use the division code from our predefined list,
+            // NOT from the database row's division_code (which may differ)
             const divAggregation: Record<string, any> = {};
             for (const divCode of divisions) {
                 divAggregation[divCode] = {
@@ -230,17 +234,24 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 };
             }
 
+            // For each row, find which division this gang belongs to and sum there
             for (const row of rows) {
-                const divCode = row.division_code;
-                if (divAggregation[divCode]) {
-                    divAggregation[divCode].total_karyawan += (row.total_karyawan || 0);
-                    divAggregation[divCode].total_hk += (row.total_hk || 0);
-                    divAggregation[divCode].total_upah_pokok += (row.total_upah_pokok || 0);
-                    divAggregation[divCode].total_tunjangan += (row.total_tunjangan || 0);
-                    divAggregation[divCode].total_premi += (row.total_premi || 0);
-                    divAggregation[divCode].total_lembur += (row.total_lembur || 0);
-                    divAggregation[divCode].total_potongan += (row.total_potongan || 0);
-                    divAggregation[divCode].total_upah_bersih += (row.total_upah_bersih || 0);
+                const gangCode = row.gang_code;
+                
+                // Find which division this gang belongs to
+                for (const divCode of divisions) {
+                    if (divisionGangs[divCode].includes(gangCode)) {
+                        // This gang belongs to this division, add its values
+                        divAggregation[divCode].total_karyawan += (row.total_karyawan || 0);
+                        divAggregation[divCode].total_hk += (row.total_hk || 0);
+                        divAggregation[divCode].total_upah_pokok += (row.total_upah_pokok || 0);
+                        divAggregation[divCode].total_tunjangan += (row.total_tunjangan || 0);
+                        divAggregation[divCode].total_premi += (row.total_premi || 0);
+                        divAggregation[divCode].total_lembur += (row.total_lembur || 0);
+                        divAggregation[divCode].total_potongan += (row.total_potongan || 0);
+                        divAggregation[divCode].total_upah_bersih += (row.total_upah_bersih || 0);
+                        break; // Stop searching once we found the division
+                    }
                 }
             }
 

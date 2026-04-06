@@ -121,13 +121,25 @@ export default function PayslipCard({ data, month, year }) {
 
     // Potongan Upah Bersih
     const potBersihList = [
-        { label: 'BPJS Kes', value: getNum('pot_bpjs_kesehatan_pekerja') || getNum('pot_bpjs_kesehatan') },
-        { label: 'BPJS Pens', value: getNum('pot_bpjs_pensiun_pekerja') || getNum('pot_bpjs_pensiun') },
-        { label: 'Astek', value: getNum('pot_astek') || getNum('pot_astek_jumlah') },
+        { label: 'BPJS Kes (1%)', value: getNum('pot_bpjs_kesehatan_pekerja') || getNum('pot_bpjs_kesehatan') },
+        { label: 'BPJS Pens (1%)', value: getNum('pot_bpjs_pensiun_pekerja') || getNum('pot_bpjs_pensiun') },
+        { label: 'Astek (2%)', value: getNum('pot_astek') || getNum('pot_astek_jumlah') || getNum('pot_jht') },
         { label: 'SPSI', value: getNum('pot_spsi') },
         { label: 'PPh 21', value: getNum('pot_pph21') || getNum('pph21_ter') },
         { label: 'Potongan PPh21', value: getNum('POTONGAN_PPH21') },
     ].filter(item => item.value > 0)
+
+    // Dynamic deductions from 'potongan_' fields in payroll record
+    Object.entries(payroll).forEach(([key, val]) => {
+        if (key.startsWith('potongan_') && typeof val === 'number' && val > 0) {
+            const label = key.replace('potongan_', '').replace(/_/g, ' ').toUpperCase()
+            // Avoid duplicates with hardcoded list
+            const isDuplicate = ['PPJK', 'BPJS', 'ASTEK', 'SPSI', 'PPH21'].some(k => label.includes(k))
+            if (!isDuplicate && !potBersihList.some(p => p.label.toUpperCase() === label)) {
+                potBersihList.push({ label, value: val })
+            }
+        }
+    })
 
     const premiPph = getNum('premi_pph') || getNum('PREMI_PPH');
     if (premiPph > 0) {
@@ -141,7 +153,6 @@ export default function PayslipCard({ data, month, year }) {
     const upahBersih = getNum('upah_bersih') || (jumlahUpahKotor - totalPotongan)
 
     // --- THR & OTHER INCOMES ---
-    // Support both API format (other_incomes array) and UI format (flat thr_*, bonus_* fields)
     let thrList = []
     let bonusList = []
     let customList = []
@@ -151,7 +162,7 @@ export default function PayslipCard({ data, month, year }) {
         const otherIncomes = payroll.other_incomes
         thrList = otherIncomes.filter(inc => inc.type === 'THR' || inc.name?.toUpperCase().includes('THR'))
         bonusList = otherIncomes.filter(inc => inc.type === 'BONUS' || inc.name?.toUpperCase().includes('BONUS'))
-        customList = otherIncomes.filter(inc => inc.type === 'CUSTOM' || (!thrList.includes(inc) && !bonusList.includes(inc)))
+        customList = otherIncomes.filter(inc => inc.type === 'CUSTOM' || (!thrList.includes(inc) && !bonusList.includes(inc) && inc.amount > 0))
     } else {
         // UI format: flat fields like thr_jumlah, bonus_jumlah, etc
         const thrAmount = getNum('thr_jumlah') || getNum('pendapatan_thr')
@@ -329,10 +340,24 @@ export default function PayslipCard({ data, month, year }) {
                                         {/* Display Tax Calculation Breakdown below the PPh21 row */}
                                         {isTax && (payroll.tarif_pajak_ter > 0 || payroll.pph21_ter > 0) && (
                                             <div className="payslip-tax-breakdown">
-                                                Dasar Pengenaan Pajak (Bruto):<br />
-                                                Rp{formatCurrency(payroll.penghasilan_bruto)}<br />
-                                                Tarif TER ({payroll.status_ptkp}): {Number(payroll.tarif_pajak_ter).toFixed(2)}%<br />
-                                                Pajak = Bruto x Tarif
+                                                <div style={{ borderBottom: '0.5px dashed #ccc', margin: '1mm 0', paddingBottom: '0.5mm', fontWeight: 'bold' }}>
+                                                    Detail Kalkulasi PPh21 (TER):
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>Bruto (DPP):</span>
+                                                    <span>Rp{formatCurrency(payroll.penghasilan_bruto)}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>Tarif {payroll.kategori_ter || 'TER'} ({payroll.status_ptkp}):</span>
+                                                    <span>{Number(payroll.tarif_pajak_ter).toFixed(2)}%</span>
+                                                </div>
+                                                <div style={{ borderTop: '0.5px solid #666', marginTop: '0.5mm', paddingTop: '0.5mm', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                                                    <span>Pajak Terhutang:</span>
+                                                    <span>Rp{formatCurrency(payroll.pph21_ter)}</span>
+                                                </div>
+                                                <div style={{ fontSize: '7px', fontStyle: 'italic', color: '#666', marginTop: '0.5mm' }}>
+                                                    * Rumus: Bruto x Tarif Efektif Rata-rata
+                                                </div>
                                             </div>
                                         )}
                                     </React.Fragment>

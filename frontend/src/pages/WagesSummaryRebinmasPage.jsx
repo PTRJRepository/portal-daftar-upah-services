@@ -384,7 +384,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
         );
 
         return {
-            divisions: filteredData.length,
+            divisions: filteredData.reduce((sum, d) => sum + (d.total_gangs || 0), 0),
             workers: filteredData.reduce((sum, d) => sum + (d.total_employees || 0), 0),
             hk: filteredData.reduce((sum, d) => sum + (d.total_hk || 0), 0),
             netPay: filteredData.reduce((sum, d) => sum + (d.total_manual || 0), 0)
@@ -1188,7 +1188,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             ) : comparisonMode ? renderComparisonKPI() : (
                                 <div className="wsp-kpi-grid">
                                     <div className="wsp-kpi-card">
-                                        <div className="wsp-kpi-label">Total Divisi</div>
+                                        <div className="wsp-kpi-label">Total Gang</div>
                                         <div className="wsp-kpi-value">{formatNumber(kpiTotals.divisions)}</div>
                                     </div>
                                     <div className="wsp-kpi-card">
