@@ -576,10 +576,14 @@ export class SummaryService {
             'PG2B': 'P2B', 'P2b': 'P2B', 'pg2b': 'P2B', 'PLASMA2B': 'P2B',
         };
         
+        debug(CATEGORY, `Step 6.5 - Normalizing division codes`);
+        debug(CATEGORY, `  Before normalization: ${Object.keys(divAgg).join(', ')}`);
+        
         for (const [divCode, bucket] of Object.entries(divAgg)) {
             const normalizedCode = aliasMap[divCode] || divCode;
             if (normalizedDivAgg[normalizedCode]) {
                 // Merge if already exists (shouldn't happen, but just in case)
+                debug(CATEGORY, `  ⚠️  Merging duplicate: ${divCode} → ${normalizedCode} (already exists)`);
                 Object.keys(bucket).forEach(key => {
                     if (key === 'gang_codes') {
                         (bucket[key as keyof AggBucket] as Set<string>).forEach((gc: string) => {
@@ -591,8 +595,13 @@ export class SummaryService {
                 });
             } else {
                 normalizedDivAgg[normalizedCode] = bucket;
+                if (divCode !== normalizedCode) {
+                    debug(CATEGORY, `  ✓ Normalized: ${divCode} → ${normalizedCode}`);
+                }
             }
         }
+        
+        debug(CATEGORY, `  After normalization: ${Object.keys(normalizedDivAgg).join(', ')}`);
         
         const results: DivisionSummary[] = [];
 

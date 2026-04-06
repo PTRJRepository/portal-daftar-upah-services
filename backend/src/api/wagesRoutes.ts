@@ -161,15 +161,15 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
             }
 
             // List of divisions to include (real divisions + virtual divisions)
-            // Similar to summaryService.getAllDivisionsPremiTotals
+            // NOTE: WORKSHOP is computed from WKS_PG + WKS_AR, not queried directly
             const realDivisions = ['P1A', 'P1B', 'P2A', 'P2B', 'AB1', 'AB2', 'ARC', 'ARA', 'DME', 'IJL'];
-            const virtualDivisions = ['INF', 'NRS', 'WKS_PG', 'WKS_AR', 'WORKSHOP'];
+            const virtualDivisions = ['INF', 'NRS', 'WKS_PG', 'WKS_AR']; // WORKSHOP excluded - computed later
             const divisions = [...realDivisions, ...virtualDivisions];
 
             // Use extend_db_ptrj database to get aggregation data
             const extendDb = Database.getExtendedInstance();
 
-            // Get all gang codes for each division (both real and virtual)
+            // Get all gang codes for each division (excluding WORKSHOP to prevent duplicates)
             const divisionGangs: Record<string, string[]> = {};
             for (const divCode of divisions) {
                 const gangs = await divisionDefinition.getGangsForDivision(divCode);
@@ -235,10 +235,11 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
             }
 
             // For each row, find which division this gang belongs to and sum there
+            // IMPORTANT: Each gang should only be counted ONCE for its PRIMARY division
             for (const row of rows) {
                 const gangCode = row.gang_code;
-                
-                // Find which division this gang belongs to
+
+                // Find which division this gang belongs to (PRIMARY only, skip WORKSHOP)
                 for (const divCode of divisions) {
                     if (divisionGangs[divCode].includes(gangCode)) {
                         // This gang belongs to this division, add its values
@@ -250,10 +251,24 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                         divAggregation[divCode].total_lembur += (row.total_lembur || 0);
                         divAggregation[divCode].total_potongan += (row.total_potongan || 0);
                         divAggregation[divCode].total_upah_bersih += (row.total_upah_bersih || 0);
-                        break; // Stop searching once we found the division
+                        break; // Stop searching once we found the PRIMARY division
                     }
                 }
             }
+
+            // Compute WORKSHOP as WKS_PG + WKS_AR (to avoid duplication from aggregation table)
+            const wksPg = divAggregation['WKS_PG'] || {};
+            const wksAr = divAggregation['WKS_AR'] || {};
+            divAggregation['WORKSHOP'] = {
+                total_karyawan: (wksPg.total_karyawan || 0) + (wksAr.total_karyawan || 0),
+                total_hk: (wksPg.total_hk || 0) + (wksAr.total_hk || 0),
+                total_upah_pokok: (wksPg.total_upah_pokok || 0) + (wksAr.total_upah_pokok || 0),
+                total_tunjangan: (wksPg.total_tunjangan || 0) + (wksAr.total_tunjangan || 0),
+                total_premi: (wksPg.total_premi || 0) + (wksAr.total_premi || 0),
+                total_lembur: (wksPg.total_lembur || 0) + (wksAr.total_lembur || 0),
+                total_potongan: (wksPg.total_potongan || 0) + (wksAr.total_potongan || 0),
+                total_upah_bersih: (wksPg.total_upah_bersih || 0) + (wksAr.total_upah_bersih || 0)
+            };
 
             // Build division data array - Normalize division codes (PG1A -> P1A, etc.)
             const divisionData: any[] = [];
