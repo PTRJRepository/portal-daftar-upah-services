@@ -208,7 +208,8 @@ const OperationalReportWrapper = () => {
       emp_codes: selectedEmployees.join(','),
       month: month,
       year: year,
-      division: division
+      division: division,
+      use_history: useHistoryDb ? 'true' : 'false'
     });
 
     const printPath = buildAppPath(`/payslip-print?${params.toString()}`);

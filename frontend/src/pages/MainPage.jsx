@@ -142,6 +142,7 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
+  const [employeeDataMap, setEmployeeDataMap] = useState({}) // Store all employee data from UI
 
   // Handle toggle single employee selection
   const handleToggleEmployeeSelection = (nik) => {
@@ -171,11 +172,26 @@ export default function MainPage({ lockedDiv = null }) {
       return
     }
 
+    // OPTIMIZATION: Pass employee data directly from UI via sessionStorage
+    // This avoids re-fetching from API which causes long loading times
+    const selectedData = {}
+    selectedEmployees.forEach(empCode => {
+      const upperCode = empCode.toUpperCase()
+      if (employeeDataMap[upperCode]) {
+        selectedData[upperCode] = employeeDataMap[upperCode]
+      }
+    })
+
+    // Store in sessionStorage for the payslip page to read
+    const storageKey = `payslip_data_${month}_${year}_${Date.now()}`
+    sessionStorage.setItem(storageKey, JSON.stringify(selectedData))
+
     const params = new URLSearchParams({
       emp_codes: selectedEmployees.join(','),
       month: month,
       year: year,
-      division: division
+      division: division,
+      data_key: storageKey  // Pass the sessionStorage key
     })
 
     const payslipPath = buildAppPath(`/payslip-print?${params.toString()}`)
@@ -1884,6 +1900,17 @@ export default function MainPage({ lockedDiv = null }) {
                 onOpenHrProfile={handleOpenHrProfile}
                 fontSize={fontSize}
                 onExportReady={(handler) => setExportHandler(() => handler)}
+                onDataReady={(employeeData) => {
+                  // Build employee data map from UI data
+                  const dataMap = {}
+                  employeeData.forEach(row => {
+                    const empCode = (row.emp_code || row.nik || '').toUpperCase()
+                    if (empCode) {
+                      dataMap[empCode] = row
+                    }
+                  })
+                  setEmployeeDataMap(dataMap)
+                }}
                 refreshTrigger={refreshTrigger}
                 selectedEmployees={selectedEmployees}
                 onToggleEmployeeSelection={handleToggleEmployeeSelection}

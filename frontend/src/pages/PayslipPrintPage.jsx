@@ -30,6 +30,32 @@ export default function PayslipPrintPage() {
     const month = parseInt(searchParams.get('month')) || new Date().getMonth() + 1;
     const year = parseInt(searchParams.get('year')) || new Date().getFullYear();
     const division = searchParams.get('division') || '';
+    const dataKey = searchParams.get('data_key') || '';  // sessionStorage key for UI data
+
+    // Helper function to transform UI row data to PayslipCard format
+    function transformUIToPayslipFormat(row, month, year) {
+        return {
+            emp_code: row.emp_code || row.nik,
+            month,
+            year,
+            employee: {
+                nama: row.nama || row.EmpName,
+                jabatan: row.jabatan_estate || row.task_desc || row.jabatan || '-',
+                gang_code: row.gang_code || row.GangCode
+            },
+            attendance: {
+                summary: {
+                    total_hadir: row.hari_kerja || row.kehadiran || 0,
+                    cuti_tahunan: row.cuti_tahunan_hari || 0,
+                    cuti_sakit: row.cuti_sakit_haid_hari || 0,
+                    cuti_minggu: row.cuti_minggu_hari || 0,
+                    libur: row.cuti_nasional_hari || 0,
+                    alpa: row.alpa || 0
+                }
+            },
+            payroll_data: row  // Pass all UI data directly
+        };
+    }
 
     useEffect(() => {
         async function loadData() {
@@ -43,7 +69,33 @@ export default function PayslipPrintPage() {
             setError('');
 
             try {
-                // OPTIMIZATION: Check if data exists in localStorage from CustomPayrollTable
+                // OPTIMIZATION 1: Try to read data from sessionStorage (passed from UI)
+                // This is MUCH faster than re-fetching from API
+                if (dataKey) {
+                    const storedData = sessionStorage.getItem(dataKey);
+                    if (storedData) {
+                        const employeeDataMap = JSON.parse(storedData);
+                        console.log('[PayslipPrintPage] ✅ Using fast sessionStorage data from UI');
+
+                        const results = [];
+                        empCodes.forEach(code => {
+                            const upperCode = code.toUpperCase();
+                            const row = employeeDataMap[upperCode];
+                            if (row) {
+                                // Transform UI row format to PayslipCard format
+                                results.push(transformUIToPayslipFormat(row, month, year));
+                            }
+                        });
+
+                        if (results.length > 0) {
+                            setPayslipData(results);
+                            setLoading(false);
+                            return;
+                        }
+                    }
+                }
+
+                // OPTIMIZATION 2: Check if data exists in localStorage from CustomPayrollTable
                 const storageKey = `payroll_cache_${division}_${month}_${year}`;
                 const cached = localStorage.getItem(storageKey);
 
@@ -94,13 +146,11 @@ export default function PayslipPrintPage() {
                             setLoading(false);
                             return;
                         }
-
-                        // If some were missing, we could potentially fetch only those, 
-                        // but for simplicity, if cache is incomplete we just proceed to batch fetch
                     }
                 }
 
-                console.log('[PayslipPrintPage] Fetching data from API...');
+                // FALLBACK: Fetch from API (slowest option)
+                console.log('[PayslipPrintPage] ⚠️ Fetching data from API (no cache found)...');
                 const result = await getBatchEmployeeCheckroll(token, empCodes, month, year);
 
                 if (result.success) {
@@ -118,7 +168,7 @@ export default function PayslipPrintPage() {
         }
 
         loadData();
-    }, [token, empCodes.join(','), month, year]);
+    }, [token, empCodes.join(','), month, year, dataKey]);
 
     const handlePrint = () => {
         window.print();

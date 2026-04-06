@@ -139,6 +139,7 @@ export default function CustomPayrollTable({
     gangLoading = false,  // Pass gangLoading from parent to prevent fetch during gang load
     initialData = null,   // Cached raw API response from parent
     onDataLoaded = null,   // Callback to notify parent of loaded data
+    onDataReady = null,    // Callback to expose displayRows data to parent
     onRefresh = null,      // Callback to trigger parent refresh (for saving)
     sortBy = 'name',       // 'name' | 'emp_code' | 'nik'
     sortOrder = 'asc'      // 'asc' | 'desc'
@@ -413,8 +414,7 @@ export default function CustomPayrollTable({
         }
     }, [stream.error]);
 
-    // When streaming is active, keep rows in sync with streamRows for edit mode compatibility
-    // But don't overwrite rows if user has made edits (to preserve optimistic updates)
+    // Update rows when streaming or legacy fetch is active
     useEffect(() => {
         const hasEdits = Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0;
         if (stream.gangs && stream.gangs.length > 0 && streamRows.length > 0) {
@@ -423,6 +423,38 @@ export default function CustomPayrollTable({
             }
         }
     }, [streamRows]);
+
+    /**
+     * OPTIMIZATION: Cache displayed data in localStorage for instant retrieval in Print Page
+     * This allows the Print Page to skip the expensive batch-checkroll API call.
+     */
+    useEffect(() => {
+        if (!displayRows || displayRows.length === 0 || !dataReady) return;
+
+        // Extract only employee rows (ignore headers/totals)
+        const employeeDataMap = {};
+        displayRows.forEach(row => {
+            if (row.type === 'employee') {
+                const key = (row.emp_code || row.nik || '').toUpperCase();
+                if (key) {
+                    employeeDataMap[key] = row;
+                }
+            }
+        });
+
+        if (Object.keys(employeeDataMap).length > 0) {
+            const storageKey = `payroll_cache_${division}_${month}_${year}_${useHistoryDb ? 'hist' : 'origin'}`;
+            try {
+                localStorage.setItem(storageKey, JSON.stringify({
+                    data: employeeDataMap,
+                    timestamp: Date.now()
+                }));
+                // console.log(`[CustomPayrollTable] Cached ${Object.keys(employeeDataMap).length} employees for print optimization`);
+            } catch (e) {
+                console.warn('[CustomPayrollTable] Failed to save payroll cache to localStorage (possibly quota exceeded)');
+            }
+        }
+    }, [displayRows, dataReady, division, month, year, useHistoryDb]);
 
     // Use displayRows as the single source of truth for rendering
     // It merges stream data with edit overlays when needed
@@ -567,6 +599,14 @@ export default function CustomPayrollTable({
         setAllEmployeeNiks(empCodeList);
         // NOTE: Don't call onSelectAllEmployees here - let user manually select employees
     }, [displayRows]);
+
+    // Expose displayRows data to parent via callback
+    useEffect(() => {
+        if (onDataReady && displayRows && displayRows.length > 0) {
+            const employeeData = displayRows.filter(r => r.type === 'employee');
+            onDataReady(employeeData);
+        }
+    }, [displayRows, onDataReady]);
 
     // Handle checkbox toggle
     const handleCheckboxChange = (nik) => {

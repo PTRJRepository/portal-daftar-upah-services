@@ -80,11 +80,19 @@ export default function PayslipCard({ data, month, year }) {
     const premiList = []
     if (getNum('premi_brondol') > 0) premiList.push({ label: 'Brondol', value: getNum('premi_brondol') })
 
-    // Dynamic premiums from premi object
+    // Dynamic premiums from premi object (API format)
     if (payroll.premi && typeof payroll.premi === 'object') {
         Object.entries(payroll.premi).forEach(([key, val]) => {
             if (key !== 'brondol' && key !== 'koreksi' && val > 0) {
                 const label = key.replace(/premi_/i, '').replace(/_/g, ' ').toUpperCase()
+                premiList.push({ label, value: val })
+            }
+        })
+    } else {
+        // Fallback: Handle flat premi_* fields from UI data
+        Object.entries(payroll).forEach(([key, val]) => {
+            if (key.startsWith('premi_') && key !== 'premi_brondol' && key !== 'premi_pph' && typeof val === 'number' && val > 0) {
+                const label = key.replace('premi_', '').replace(/_/g, ' ').toUpperCase()
                 premiList.push({ label, value: val })
             }
         })
@@ -133,10 +141,33 @@ export default function PayslipCard({ data, month, year }) {
     const upahBersih = getNum('upah_bersih') || (jumlahUpahKotor - totalPotongan)
 
     // --- THR & OTHER INCOMES ---
-    const otherIncomes = payroll.other_incomes || []
-    const thrList = otherIncomes.filter(inc => inc.type === 'THR' || inc.name?.toUpperCase().includes('THR'))
-    const bonusList = otherIncomes.filter(inc => inc.type === 'BONUS' || inc.name?.toUpperCase().includes('BONUS'))
-    const customList = otherIncomes.filter(inc => inc.type === 'CUSTOM' || (!thrList.includes(inc) && !bonusList.includes(inc)))
+    // Support both API format (other_incomes array) and UI format (flat thr_*, bonus_* fields)
+    let thrList = []
+    let bonusList = []
+    let customList = []
+
+    if (payroll.other_incomes && Array.isArray(payroll.other_incomes)) {
+        // API format: nested other_incomes array
+        const otherIncomes = payroll.other_incomes
+        thrList = otherIncomes.filter(inc => inc.type === 'THR' || inc.name?.toUpperCase().includes('THR'))
+        bonusList = otherIncomes.filter(inc => inc.type === 'BONUS' || inc.name?.toUpperCase().includes('BONUS'))
+        customList = otherIncomes.filter(inc => inc.type === 'CUSTOM' || (!thrList.includes(inc) && !bonusList.includes(inc)))
+    } else {
+        // UI format: flat fields like thr_jumlah, bonus_jumlah, etc
+        const thrAmount = getNum('thr_jumlah') || getNum('pendapatan_thr')
+        const bonusAmount = getNum('bonus_jumlah') || getNum('pendapatan_bonus')
+        const customAmount = getNum('pendapatan_tidak_tetap') || getNum('pendapatan_kontan')
+
+        if (thrAmount > 0) {
+            thrList = [{ name: 'THR', amount: thrAmount, type: 'THR' }]
+        }
+        if (bonusAmount > 0) {
+            bonusList = [{ name: 'Bonus', amount: bonusAmount, type: 'BONUS' }]
+        }
+        if (customAmount > 0) {
+            customList = [{ name: 'Pendapatan Lainnya', amount: customAmount, type: 'CUSTOM' }]
+        }
+    }
 
     return (
         <div className="payslip-card">
