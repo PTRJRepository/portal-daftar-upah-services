@@ -255,7 +255,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 }
             }
 
-            // Build division data array
+            // Build division data array - Normalize division codes (PG1A -> P1A, etc.)
             const divisionData: any[] = [];
             let grandTotal = {
                 total_karyawan: 0,
@@ -267,9 +267,32 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 total_potongan: 0,
                 total_upah_bersih: 0
             };
+            
+            // Alias normalization map
+            const aliasMap: Record<string, string> = {
+                'PG1A': 'P1A', 'P1a': 'P1A', 'pg1a': 'P1A', 'PLASMA1A': 'P1A',
+                'PG1B': 'P1B', 'P1b': 'P1B', 'pg1b': 'P1B', 'PLASMA1B': 'P1B',
+                'PG2A': 'P2A', 'P2a': 'P2A', 'pg2a': 'P2A', 'PLASMA2A': 'P2A',
+                'PG2B': 'P2B', 'P2b': 'P2B', 'pg2b': 'P2B', 'PLASMA2B': 'P2B',
+            };
+            
+            // Normalize division codes
+            const normalizedAggregation: Record<string, any> = {};
+            for (const [divCode, totals] of Object.entries(divAggregation)) {
+                const normalizedCode = aliasMap[divCode] || divCode;
+                if (normalizedAggregation[normalizedCode]) {
+                    // Merge if already exists
+                    Object.keys(totals).forEach(key => {
+                        if (typeof totals[key] === 'number') {
+                            normalizedAggregation[normalizedCode][key] += totals[key];
+                        }
+                    });
+                } else {
+                    normalizedAggregation[normalizedCode] = { ...totals };
+                }
+            }
 
-            for (const divCode of divisions) {
-                const totals = divAggregation[divCode];
+            for (const [divCode, totals] of Object.entries(normalizedAggregation)) {
                 if (totals.total_karyawan > 0 || totals.total_upah_bersih > 0) {
                     divisionData.push({
                         division: divCode,
