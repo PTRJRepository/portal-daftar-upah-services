@@ -111,78 +111,59 @@ export class SummaryService {
         return await thumbprintService.getThumbprintData(month, year);
     }
 
-    private async getDivisionDescriptions(): Promise<Record<string, string>> {
-        try {
-            const rows = await this.extendDb.query<{ Divisi: string, Description: string }>(`
-                SELECT [Divisi], [Description] FROM [dbo].[Divisi_Description]
-                WHERE [Divisi] IS NOT NULL ORDER BY [Divisi]
-            `);
-            const map: Record<string, string> = {};
-            for (const row of rows) {
-                if (row.Divisi) {
-                    map[row.Divisi.trim()] = row.Description ? row.Description.trim() : row.Divisi.trim();
-                }
-            }
-
-            // Add virtual division descriptions from divisionDefinition
-            const allDivs = await divisionDefinition.getAllDivisions(true);
-            for (const div of allDivs) {
-                if (!map[div]) {
-                    const config = divisionDefinition.getVirtualDivisionConfig(div);
-                    if (config) {
-                        map[div] = config.name;
-                    }
-                }
-            }
-
-            return map;
-        } catch (e) {
-            logError(CATEGORY, "Error getting descriptions:", e);
-            return {};
-        }
-    }
-
     /**
-     * Build a gangCode -> LocCode (division) lookup from history_hr_gang.
-     * Used to derive the REAL division for each gang since
-     * daftar_upah_aggregation_history often stores division_code = 'ALL'.
+     * Optimized single-shot metadata fetching for aggregation.
+     * Returns a map of gang-to-division canonical mappings, gang descriptions, and division descriptions.
      */
-    private async getGangToDivisionMap(): Promise<Record<string, string>> {
+    private async getMetadataForAggregation(): Promise<{ 
+        gangDivMap: Record<string, string>, 
+        gangDescs: Record<string, string>,
+        divDescs: Record<string, string>
+    }> {
         try {
-            const map: Record<string, string> = {};
-            
-            // 1. Get all base divisions from config first
+            // Parallelize lookup queries
+            const [divDescRows, gangRows] = await Promise.all([
+                this.extendDb.query<any>(`SELECT [Divisi], [Description] FROM [dbo].[Divisi_Description]`),
+                this.extendDb.query<any>(`SELECT DISTINCT gang_code, loc_code, gang_description FROM dbo.history_hr_gang`)
+            ]);
+
+            const gangDivMap: Record<string, string> = {};
+            const gangDescs: Record<string, string> = {};
+            const divDescs: Record<string, string> = {};
+
+            // 1. Base division mappings from config
             const allDivisions = divisionConfigService.getAllDivisionsForAPI();
             for (const div of allDivisions) {
-                map[div.code.toUpperCase()] = div.code.toUpperCase();
-                // Also add aliases to map to canonical
+                const canonical = div.code.toUpperCase();
+                gangDivMap[canonical] = canonical;
+                divDescs[canonical] = div.name;
                 for (const alias of div.aliases) {
-                    map[alias.toUpperCase()] = div.code.toUpperCase();
+                    gangDivMap[alias.toUpperCase()] = canonical;
                 }
             }
-            
-            // 2. Query history_hr_gang to get the actual LocCode for every gang ever seen
-            // This ensures we can resolve 'ALL' division_code to a real division
-            const gangRows = await this.extendDb.query<{ gang_code: string; loc_code: string }>(`
-                SELECT DISTINCT gang_code, loc_code
-                FROM dbo.history_hr_gang
-                WHERE gang_code IS NOT NULL AND loc_code IS NOT NULL
-            `);
-            
+
+            // 2. Load division descriptions from DB
+            for (const row of divDescRows) {
+                if (row.Divisi) {
+                    divDescs[row.Divisi.trim().toUpperCase()] = (row.Description || row.Divisi).trim();
+                }
+            }
+
+            // 3. Load gang-to-division (loc_code) and gang descriptions from history
             for (const row of gangRows) {
-                const gangCode = row.gang_code?.trim().toUpperCase();
-                const locCode = row.loc_code?.trim().toUpperCase();
-                if (gangCode && locCode) {
-                    // Normalize locCode via config if possible
-                    map[gangCode] = divisionConfigService.resolveCode(locCode);
+                const gc = row.gang_code?.trim().toUpperCase();
+                const lc = row.loc_code?.trim().toUpperCase();
+                const gd = row.gang_description?.trim();
+                if (gc) {
+                    if (lc) gangDivMap[gc] = divisionConfigService.resolveCode(lc);
+                    if (gd) gangDescs[gc] = gd;
                 }
             }
-            
-            debug(CATEGORY, `Built gang-to-division map with ${Object.keys(map).length} entries`);
-            return map;
+
+            return { gangDivMap, gangDescs, divDescs };
         } catch (e) {
-            logError(CATEGORY, "Failed to get gang-to-division map:", e);
-            return {};
+            logError(CATEGORY, "Failed to get metadata for aggregation:", e);
+            return { gangDivMap: {}, gangDescs: {}, divDescs: {} };
         }
     }
 
@@ -190,12 +171,8 @@ export class SummaryService {
         const startTime = Date.now();
         debug(CATEGORY, `Computing totals for ${month}-${year} directly from database...`);
 
-        // Parallelize lookup queries
-        const [descriptions, gangDivMap, allGangDescs] = await Promise.all([
-            this.getDivisionDescriptions(),
-            this.getGangToDivisionMap(),
-            this.getAllGangDescriptions()
-        ]);
+        // Optimized Metadata Lookup
+        const { gangDivMap, gangDescs, divDescs } = await this.getMetadataForAggregation();
 
         // Fetch per-gang rows - direct table access (no version_index column exists)
         // Include ALL gangs (AMC, HMC, B2N, INF, INT included) - STEP 2 will extract virtual divisions
@@ -272,18 +249,33 @@ export class SummaryService {
         const gangRowData: { gangCode: string; sourceLoc: string; gangDesc: string; row: any }[] = [];
 
         for (const row of rows) {
-            const gangCode = row.gang_code?.trim() || '';
+            const gangCode = row.gang_code?.trim().toUpperCase() || '';
             if (!gangCode) continue;
 
-            const storedDivCode = row.division_code?.trim() || '';
-            const sourceLoc = gangDivMap[gangCode] || storedDivCode;
-
+            const storedDivCode = row.division_code?.trim().toUpperCase() || '';
+            const rawLoc = gangDivMap[gangCode] || storedDivCode;
+            const gangDesc = gangDescs[gangCode] || '';
+            
+            // To prevent duplication, we must find the PARENT (source) real division for this gang.
+            // Even if the gang is virtual, we aggregate it to the real division first in Step 1,
+            // then Step 2/3 extracts and subtracts it.
+            let sourceLoc = divisionConfigService.resolveCode(rawLoc);
+            
+            // If the resolved location is already a virtual division (like INF), 
+            // we must find its source real division (like PG1A) so subtraction works.
+            const virtualDivCode = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
+            if (virtualDivCode) {
+                const config = divisionDefinition.getVirtualDivisionConfig(virtualDivCode);
+                if (config?.source_division) {
+                    sourceLoc = divisionConfigService.resolveCode(config.source_division);
+                }
+            }
+            
             if (!sourceLoc || sourceLoc === 'ALL' || sourceLoc === 'UNKNOWN') continue;
 
-            const gangDesc = allGangDescs[gangCode] || '';
             gangRowData.push({ gangCode, sourceLoc, gangDesc, row });
 
-            // Always aggregate to real division
+            // Always aggregate to real division (canonical)
             if (!realDivAgg[sourceLoc]) {
                 realDivAgg[sourceLoc] = createEmptyBucket();
             }
@@ -379,36 +371,12 @@ export class SummaryService {
         };
 
         // Map virtual divisions to their source real divisions for subtraction
-        // IMPORTANT: Need to resolve aliases (PG1A -> P1A, PG1B -> P1B) to match actual stored division codes
-        const resolveDivisionAlias = (canonicalCode: string): string => {
-            // Check if the canonical code exists in realDivAgg
-            if (realDivAgg[canonicalCode]) return canonicalCode;
-            
-            // Try common aliases for P1A
-            if (canonicalCode === 'P1A') {
-                if (realDivAgg['PG1A']) return 'PG1A';
-                if (realDivAgg['P1a']) return 'P1a';
-                if (realDivAgg['pg1a']) return 'pg1a';
-                if (realDivAgg['PLASMA1A']) return 'PLASMA1A';
-            }
-            
-            // Try common aliases for P1B
-            if (canonicalCode === 'P1B') {
-                if (realDivAgg['PG1B']) return 'PG1B';
-                if (realDivAgg['P1b']) return 'P1b';
-                if (realDivAgg['pg1b']) return 'pg1b';
-                if (realDivAgg['PLASMA1B']) return 'PLASMA1B';
-            }
-            
-            // Fallback: return original if nothing found
-            return canonicalCode;
-        };
-        
+        // Using canonical codes directly since everything is already normalized
         const virtualToSourceMap: Record<string, string> = {
-            'INF': resolveDivisionAlias('P1A'),
-            'NRS': resolveDivisionAlias('P1B'),
-            'WKS_PG': resolveDivisionAlias('P1A'),
-            'WKS_AR': resolveDivisionAlias('AB2')
+            'INF': 'PG1A',
+            'NRS': 'PG1B',
+            'WKS_PG': 'PG1A',
+            'WKS_AR': 'AB2'
         };
 
         debug(CATEGORY, `Step 3 - Before subtraction:`);
@@ -496,8 +464,30 @@ export class SummaryService {
         if (includeVirtual) {
             // Add virtual divisions that were built in STEP 2
             for (const [vd, bucket] of Object.entries(virtualDivAgg)) {
-                divAgg[vd] = bucket;
-                debug(CATEGORY, `Step 6 - ✅ Added ${vd} from STEP 2: emp=${bucket.total_employees}, upah=${bucket.total_upah_bersih}`);
+                // To prevent duplication in the report, we skip the aggregate 'WORKSHOP' 
+                // if we are already showing individual WKS_PG / WKS_AR rows.
+                if (vd === 'WORKSHOP' && (virtualDivAgg['WKS_PG'] || virtualDivAgg['WKS_AR'])) {
+                    debug(CATEGORY, `Step 6 - ⏭️  Skipping aggregate WORKSHOP to avoid duplication with ${Object.keys(virtualDivAgg).filter(k => k.startsWith('WKS_')).join(', ')}`);
+                    continue;
+                }
+
+                // MERGE if already exists in realDivAgg (to prevent "double" entries if gang was born in virtual div)
+                if (divAgg[vd]) {
+                    Object.keys(bucket).forEach(key => {
+                        const k = key as keyof AggBucket;
+                        if (k === 'gang_codes') {
+                            (bucket[k] as Set<string>).forEach((gc: string) => {
+                                (divAgg[vd].gang_codes).add(gc);
+                            });
+                        } else if (typeof bucket[k] === 'number') {
+                            (divAgg[vd][k] as number) += (bucket[k] as number) || 0;
+                        }
+                    });
+                    debug(CATEGORY, `Step 6 - 🔀 Merged virtual ${vd} into existing real bucket: emp=${divAgg[vd].total_employees}`);
+                } else {
+                    divAgg[vd] = bucket;
+                    debug(CATEGORY, `Step 6 - ✅ Added virtual ${vd} to report: emp=${bucket.total_employees}`);
+                }
             }
             
             debug(CATEGORY, `Step 6 - After adding from virtualDivAgg: ${Object.keys(divAgg).join(', ')}`);
@@ -514,58 +504,12 @@ export class SummaryService {
                 }
             }
             
-            // Ensure WORKSHOP exists (compute from WKS_PG + WKS_AR)
-            if (!divAgg['WORKSHOP']) {
-                divAgg['WORKSHOP'] = createEmptyBucket();
-                const workshopBucket = divAgg['WORKSHOP'];
-                
-                // Sum WKS_PG if exists
-                if (divAgg['WKS_PG']) {
-                    const wksPg = divAgg['WKS_PG'];
-                    Object.keys(workshopBucket).forEach(key => {
-                        if (key === 'gang_codes') {
-                            wksPg.gang_codes.forEach((gc: string) => workshopBucket.gang_codes.add(gc));
-                        } else if (typeof workshopBucket[key as keyof AggBucket] === 'number') {
-                            (workshopBucket[key as keyof AggBucket] as number) += (wksPg[key as keyof AggBucket] as number) || 0;
-                        }
-                    });
-                    debug(CATEGORY, `Step 6 - Added WKS_PG to WORKSHOP: emp=${wksPg.total_employees}, upah=${wksPg.total_upah_bersih}`);
-                }
-                
-                // Sum WKS_AR if exists
-                if (divAgg['WKS_AR']) {
-                    const wksAr = divAgg['WKS_AR'];
-                    Object.keys(workshopBucket).forEach(key => {
-                        if (key === 'gang_codes') {
-                            wksAr.gang_codes.forEach((gc: string) => workshopBucket.gang_codes.add(gc));
-                        } else if (typeof workshopBucket[key as keyof AggBucket] === 'number') {
-                            (workshopBucket[key as keyof AggBucket] as number) += (wksAr[key as keyof AggBucket] as number) || 0;
-                        }
-                    });
-                    debug(CATEGORY, `Step 6 - Added WKS_AR to WORKSHOP: emp=${wksAr.total_employees}, upah=${wksAr.total_upah_bersih}`);
-                }
-                
-                debug(CATEGORY, `Step 6 - ✅ WORKSHOP created: ${workshopBucket.gang_codes.size} gangs, emp=${workshopBucket.total_employees}`);
-            } else {
-                debug(CATEGORY, `Step 6 - ⏭️  WORKSHOP already exists, skipping`);
-            }
+            // WORKSHOP row is skipped here because WKS_PG and WKS_AR already represent the data.
+            // If we needed a single Workshop row, we would hide the others.
+            // Since the user reported "duplication", we remove the aggregate version.
         } else {
             debug(CATEGORY, `Step 6 - includeVirtual=false, skipping virtual divisions`);
         }
-
-        // Remove any real divisions that have zero or negative employees after subtraction
-        // BUT always keep certain divisions even if they have 0 employees
-        const keepAlways = new Set([
-            'P1A', 'P1B', 'ARC', 'MILL',  // Real divisions
-            'INF', 'NRS', 'WKS_PG', 'WKS_AR', 'WORKSHOP'  // Virtual divisions
-        ]);
-        for (const div of Object.keys(divAgg)) {
-            if (!keepAlways.has(div) && divAgg[div].total_employees <= 0 && divAgg[div].total_upah_bersih <= 0 && divAgg[div].gang_codes.size === 0) {
-                delete divAgg[div];
-            }
-        }
-
-        debug(CATEGORY, `Step 6 - Final divisions: ${Object.keys(divAgg).join(', ')} `);
 
         // Step 6.5: Normalize division codes (convert aliases like PG1A -> P1A)
         const normalizedDivAgg: Record<string, AggBucket> = {};
@@ -576,33 +520,39 @@ export class SummaryService {
             'PG2B': 'P2B', 'P2b': 'P2B', 'pg2b': 'P2B', 'PLASMA2B': 'P2B',
         };
         
-        debug(CATEGORY, `Step 6.5 - Normalizing division codes`);
-        debug(CATEGORY, `  Before normalization: ${Object.keys(divAgg).join(', ')}`);
-        
         for (const [divCode, bucket] of Object.entries(divAgg)) {
             const normalizedCode = aliasMap[divCode] || divCode;
             if (normalizedDivAgg[normalizedCode]) {
-                // Merge if already exists (shouldn't happen, but just in case)
-                debug(CATEGORY, `  ⚠️  Merging duplicate: ${divCode} → ${normalizedCode} (already exists)`);
+                // Merge if already exists
                 Object.keys(bucket).forEach(key => {
-                    if (key === 'gang_codes') {
-                        (bucket[key as keyof AggBucket] as Set<string>).forEach((gc: string) => {
-                            (normalizedDivAgg[normalizedCode][key as keyof AggBucket] as Set<string>).add(gc);
+                    const k = key as keyof AggBucket;
+                    if (k === 'gang_codes') {
+                        (bucket[k] as Set<string>).forEach((gc: string) => {
+                            (normalizedDivAgg[normalizedCode][k] as Set<string>).add(gc);
                         });
-                    } else if (typeof bucket[key as keyof AggBucket] === 'number') {
-                        (normalizedDivAgg[normalizedCode][key as keyof AggBucket] as number) += (bucket[key as keyof AggBucket] as number);
+                    } else if (typeof bucket[k] === 'number') {
+                        (normalizedDivAgg[normalizedCode][k] as number) += (bucket[k] as number);
                     }
                 });
             } else {
                 normalizedDivAgg[normalizedCode] = bucket;
-                if (divCode !== normalizedCode) {
-                    debug(CATEGORY, `  ✓ Normalized: ${divCode} → ${normalizedCode}`);
-                }
             }
         }
-        
-        debug(CATEGORY, `  After normalization: ${Object.keys(normalizedDivAgg).join(', ')}`);
-        
+
+        // Remove any real divisions that have zero or negative employees after subtraction
+        // BUT always keep certain divisions even if they have 0 employees
+        const keepAlways = new Set([
+            'P1A', 'P1B', 'ARC', 'MILL',  // Real divisions
+            'INF', 'NRS', 'WKS_PG', 'WKS_AR'  // Virtual divisions
+        ]);
+        for (const div of Object.keys(normalizedDivAgg)) {
+            if (!keepAlways.has(div) && normalizedDivAgg[div].total_employees <= 0 && normalizedDivAgg[div].total_upah_bersih <= 0 && normalizedDivAgg[div].gang_codes.size === 0) {
+                delete normalizedDivAgg[div];
+            }
+        }
+
+        debug(CATEGORY, `Step 6.5 - Final divisions after normalization: ${Object.keys(normalizedDivAgg).join(', ')} `);
+
         const results: DivisionSummary[] = [];
 
         // Define order for sorting: Real divisions first, then Virtual in specified order
@@ -638,22 +588,8 @@ export class SummaryService {
             const thumbValue = thumbprintData[div] || 0;
             const selisih = thumbValue > 0 ? (upah - thumbValue) : 0;
             
-            // Get description, trying both normalized and original codes
-            let description = descriptions[div];
-            if (!description) {
-                // Try to find in alias map (e.g., if descriptions has PG1A but we normalized to P1A)
-                const reverseAliasMap: Record<string, string> = {
-                    'P1A': 'PG1A', 'P1B': 'PG1B', 'P2A': 'PG2A', 'P2B': 'PG2B'
-                };
-                const originalCode = reverseAliasMap[div];
-                if (originalCode) {
-                    description = descriptions[originalCode];
-                }
-            }
-            if (!description) {
-                // Fallback to division code
-                description = div;
-            }
+            // Get description, exactly as resolved (canonical) or alias
+            const description = divDescs[div] || div;
 
             results.push({
                 division_code: div,
@@ -736,8 +672,7 @@ export class SummaryService {
     // --- Comparison Logic ---
 
     private async getBackfillData(month: number, year: number): Promise<Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }>> {
-        const gangDivMap = await this.getGangToDivisionMap();
-        const allGangDescs = await this.getAllGangDescriptions();
+        const { gangDivMap, gangDescs } = await this.getMetadataForAggregation();
         const rows = await this.extendDb.query<any>(`
             SELECT h.gang_code, h.division_code, h.dynamic_premi_data, h.informasi_tambahan
             FROM dbo.daftar_upah_aggregation_history h
@@ -746,10 +681,11 @@ export class SummaryService {
         const result: Record<string, { pruning: number, insentif: number, kinerja: number, lembur: number }> = {};
 
         for (const row of rows) {
-            const gangCode = row.gang_code?.trim() || '';
-            const gangDesc = allGangDescs[gangCode] || '';
-            // Derive division from gang_code via HR_GANG lookup
-            const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || '';
+            const gangCode = row.gang_code?.trim().toUpperCase() || '';
+            const gangDesc = gangDescs[gangCode] || '';
+            // Derive division from gang_code via metadata lookup
+            const rawLoc = gangDivMap[gangCode] || row.division_code?.trim().toUpperCase() || '';
+            const sourceLoc = divisionConfigService.resolveCode(rawLoc);
 
             // Check virtual division first
             let virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
@@ -942,11 +878,11 @@ export class SummaryService {
                 trend
             });
         }
-
-        // Totals
+            // Totals
         const sumField = (rows: any[], fieldPath: string[]) => rows.reduce((acc, row) => {
             let val = row;
             for (const key of fieldPath) val = val?.[key];
+            const anyRows = rows as any;
             return acc + (val || 0);
         }, 0);
 
@@ -1010,8 +946,7 @@ export class SummaryService {
     }
 
     private async getDynamicPremiInsentifPanen(month: number, year: number): Promise<Record<string, { insentif_panen: number }>> {
-        const gangDivMap = await this.getGangToDivisionMap();
-        const allGangDescs = await this.getAllGangDescriptions();
+        const { gangDivMap, gangDescs } = await this.getMetadataForAggregation();
         const rows = await this.extendDb.query<any>(`
             SELECT h.gang_code, h.division_code, h.dynamic_premi_data, h.informasi_tambahan
             FROM dbo.daftar_upah_aggregation_history h
@@ -1020,9 +955,10 @@ export class SummaryService {
 
         const result: Record<string, any> = {};
         for (const row of rows) {
-            const gangCode = row.gang_code?.trim() || '';
-            const sourceLoc = gangDivMap[gangCode] || row.division_code?.trim() || '';
-            const gangDesc = allGangDescs[gangCode] || '';
+            const gangCode = row.gang_code?.trim().toUpperCase() || '';
+            const rawLoc = gangDivMap[gangCode] || row.division_code?.trim().toUpperCase() || '';
+            const sourceLoc = divisionConfigService.resolveCode(rawLoc);
+            const gangDesc = gangDescs[gangCode] || '';
 
             // Check for virtual division (with source_division validation)
             let virtualDiv = divisionDefinition.getVirtualDivisionForGang(gangCode, sourceLoc, gangDesc);
@@ -1210,7 +1146,7 @@ export class SummaryService {
         const allPremiHeaders = Array.from(premiHeadersSet).sort();
 
         // Build premi & OT analysis table (Month-to-Month comparison)
-        const premiOtRows = [];
+        const premiOtRows: any[] = [];
         for (const curr of currentDivs) {
             const prev = prevLookup.get(curr.division_code) || {};
 
@@ -1330,7 +1266,8 @@ COUNT(DISTINCT e.EmpCode) as total_employees,
      * Get division descriptions as a map (API access)
      */
     public async getDivisionDescriptionsMap(): Promise<Record<string, string>> {
-        return this.getDivisionDescriptions();
+        const { divDescs } = await this.getMetadataForAggregation();
+        return divDescs;
     }
 
     /**
@@ -1859,7 +1796,8 @@ WHERE 1 = 1
                 WHERE period_month = ? AND period_year = ? AND gang_code = ?
             `, [value, month, year, gang_code]);
 
-            if (result.affectedRows === 0) {
+            const finalRes = result as any;
+            if (finalRes.affectedRows === 0) {
                 warn(CATEGORY, `No record found for gang ${gang_code} in ${month}/${year}`);
                 return false;
             }
