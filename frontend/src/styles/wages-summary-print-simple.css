@@ -308,6 +308,17 @@
         position: static !important;
     }
 
+    /* Group separators - clearer boundaries between header groups */
+    .wsp-table th.th-group-manpower,
+    .wsp-table th.th-group-deductions,
+    .wsp-table th.th-group-income {
+        border-right: 2px solid black !important;
+    }
+    
+    .wsp-table td.border-right-section {
+        border-right: 2px solid black !important;
+    }
+
     /* Signature section */
     .wsp-signature-section {
         display: flex !important;

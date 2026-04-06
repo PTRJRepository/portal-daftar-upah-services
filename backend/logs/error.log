@@ -1,5 +1,6 @@
-[2026-04-06T09:14:53.737Z] === LOGS CLEARED ON STARTUP ===
+[2026-04-06T11:56:54.324Z] === LOGS CLEARED ON STARTUP ===
 
-[2026-04-06T09:15:07.195Z] [09:15:07.195] [WARN] [HTTP] SLOW GET /tax-report/monthly 6747ms
-[2026-04-06T09:15:29.463Z] [09:15:29.463] [WARN] [HTTP] SLOW GET /tax-report/monthly 28868ms
-[2026-04-06T09:16:49.496Z] [09:16:49.496] [WARN] [HTTP] SLOW POST /payroll/employee/batch-checkroll 53004ms
+[2026-04-06T11:56:57.795Z] [11:56:57.795] [ERROR] [SummaryService] Failed to parse informasi_tambahan for MILL:  Error: JSON Parse error: Unexpected identifier "Source"
+[2026-04-06T11:56:57.796Z]   at <parse> (:0)
+[2026-04-06T11:56:57.796Z]   at parse (unknown)
+[2026-04-06T11:56:57.796Z]   at getBackfillData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\summaryService.ts:723:86)
