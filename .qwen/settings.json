@@ -35,7 +35,8 @@
       "Bash(2. *)",
       "Bash(select-object *)",
       "Bash(@echo *)",
-      "Bash(select-string *)"
+      "Bash(select-string *)",
+      "Bash(move *)"
     ]
   },
   "$version": 3

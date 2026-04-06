@@ -85,10 +85,19 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         setLoading(true);
         setError(null);
         try {
+            console.log('[TaxReportPage] Loading monthly tax report with params:', {
+                year,
+                month,
+                division,
+                gang,
+                gangPrefix,
+                monthName: MONTH_NAMES[month - 1]
+            });
             const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix);
             console.log('[TaxReportPage] Monthly tax data loaded:', {
                 employeeCount: result?.employees?.length || 0,
                 total_pph21_from_backend: result?.total_pph21,
+                data_source: result?.data_source,
                 sample_employee: result?.employees?.[0] ? {
                     emp_name: result.employees[0].emp_name,
                     pph21_ter: result.employees[0].pph21_ter,
@@ -127,7 +136,10 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         }
     };
 
-    useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => {
+        console.log('[TaxReportPage] useEffect triggered - calling loadData');
+        loadData();
+    }, [loadData]);
 
     if (loading) return (
         <div className="tax-report-loading">
@@ -141,6 +153,29 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
             <p>{error}</p>
         </div>
     );
+
+    if (!data || data.employees.length === 0) {
+        return (
+            <div className="tax-report-empty">
+                <h3>📊 Tidak Ada Data</h3>
+                <p>Tidak ada data pajak untuk periode yang dipilih.</p>
+                <div style={{ marginTop: '1rem', textAlign: 'left', maxWidth: '500px' }}>
+                    <p><strong>Possible reasons:</strong></p>
+                    <ul style={{ marginLeft: '1.5rem', marginTop: '0.5rem' }}>
+                        <li>Belum memilih <strong>Divisi</strong> - silakan pilih divisi di toolbar atas</li>
+                        <li>Belum ada data payroll untuk periode {MONTH_NAMES[month - 1]} {year}</li>
+                        <li>Data payroll belum di-extract atau di-seed ke database</li>
+                    </ul>
+                    <p style={{ marginTop: '1rem' }}><strong>Troubleshooting:</strong></p>
+                    <ul style={{ marginLeft: '1.5rem', marginTop: '0.5rem' }}>
+                        <li>Pastikan divisi sudah dipilih di filter atas</li>
+                        <li>Cek halaman "Daftar Upah" apakah ada data untuk periode yang sama</li>
+                        <li>Jika data ada di Daftar Upah tapi tidak muncul di sini, coba refresh halaman</li>
+                    </ul>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div>

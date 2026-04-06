@@ -411,33 +411,52 @@ class TaxReportService {
     }
 
     /**
-     * Fetch payroll data from history database, with fallback to origin data (dataExtractorService)
-     * when no history data exists for the period.
+     * Fetch payroll data — HISTORY data as primary source for past months, with fallback to LIVE data
+     * when history is not available. This ensures seeded data is always preferred for archived periods.
      */
-    private async fetchPayrollData(month: number, year: number, gangCode: string, divisionCode?: string) {
+    private async fetchPayrollData(month: number, year: number, gangCode: string, divisionCode?: string, gangPrefix?: string) {
         let isSourceCurrent = false;
 
-        console.log(`[TaxReportService] Fetching data for (${month}/${year}) - trying HISTORY first.`);
-        const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
-            month, year, gangCode, divisionCode
-        );
+        // Determine if this is a historical request by comparing with current date
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1; // JS months are 0-indexed
+        const currentYear = now.getFullYear();
+        const isHistoricalRequest = year < currentYear || (year === currentYear && month < currentMonth);
 
-        // Fallback to origin data if no history exists
-        if (!historyData || historyData.data_rows.length === 0) {
-            console.log(`[TaxReportService] No history data for (${month}/${year}) - falling back to ORIGIN data.`);
-            console.log(`[TaxReportService] Fallback params: month=${month}, year=${year}, gangCode=${gangCode}, divisionCode=${divisionCode}`);
-            isSourceCurrent = true;
-
-            // Fetch from origin database via dataExtractorService
-            const originData = await DataExtractorService.getInstance().extractPayrollData(
-                month, year, gangCode, divisionCode, null, undefined, false, undefined, undefined, true, true
+        // For historical periods (past months), try HISTORY data FIRST
+        if (isHistoricalRequest) {
+            console.log(`[TaxReportService] Historical period detected (${month}/${year}) - checking HISTORY data first.`);
+            const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
+                month, year, gangCode, divisionCode
             );
 
-            console.log(`[TaxReportService] Origin data result: ${originData?.data_rows?.length || 0} rows`);
-            return { data: originData, isSourceCurrent };
+            if (historyData && historyData.data_rows.length > 0) {
+                console.log(`[TaxReportService] History data found: ${historyData.data_rows.length} rows - using HISTORY as primary source.`);
+                return { data: historyData, isSourceCurrent: false };
+            }
+            console.log(`[TaxReportService] No HISTORY data for (${month}/${year}) - falling back to LIVE data.`);
+        } else {
+            console.log(`[TaxReportService] Current/future period (${month}/${year}) - fetching LIVE data.`);
         }
 
-        return { data: historyData, isSourceCurrent };
+        // Fallback to LIVE data (for current month or when history is empty)
+        try {
+            const originData = await DataExtractorService.getInstance().extractPayrollData(
+                month, year, gangCode, divisionCode, null, undefined, false, undefined, gangPrefix, true, true
+            );
+
+            if (originData && originData.data_rows.length > 0) {
+                console.log(`[TaxReportService] LIVE data result: ${originData.data_rows.length} rows`);
+                isSourceCurrent = true;
+                return { data: originData, isSourceCurrent };
+            }
+        } catch (error: any) {
+            console.log(`[TaxReportService] LIVE data fetch failed: ${error.message}`);
+        }
+
+        // If we get here, both history and live data failed
+        console.log(`[TaxReportService] No data available for (${month}/${year}) from any source.`);
+        return { data: null, isSourceCurrent };
     }
 
     /**
@@ -450,6 +469,8 @@ class TaxReportService {
         gangCode?: string,
         gangPrefix?: string
     ): Promise<{ employees: MonthlyTaxRow[]; period: { month: number; year: number }; total_pph21: number; premiKeys: string[]; data_source: 'current' | 'history' }> {
+        console.log(`[TaxReportService] getMonthlyTaxReport called with: year=${year}, month=${month}, divisionCode=${divisionCode}, gangCode=${gangCode}, gangPrefix=${gangPrefix}`);
+        
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
         let effectiveGangPrefix = gangPrefix;
@@ -460,8 +481,17 @@ class TaxReportService {
             if (!effectiveGangPrefix) {
                 const vConfig = divisionDefinition.getVirtualDivisionConfig(divisionCode);
                 if (vConfig?.pattern) {
-                    // Extract prefix from pattern like "^IN" -> "IN", "^J" -> "J"
-                    effectiveGangPrefix = vConfig.pattern.replace(/^\^/, '').replace(/\$/, '');
+                    const patternStr = vConfig.pattern.toString();
+                    // Handle complex patterns like /^IN(?:F|T)$/i -> extract base prefix "IN"
+                    // For simple prefix patterns like /^J\d*$/i -> extract "J"
+                    // Strategy: find the alphabetic prefix at the start (after optional ^)
+                    const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
+                    if (alphaMatch && alphaMatch[1]) {
+                        effectiveGangPrefix = alphaMatch[1];
+                    } else {
+                        // Fallback: strip anchors, flags and special constructs
+                        effectiveGangPrefix = patternStr.replace(/^\/\^?/, '').replace(/\$?\/i?$/, '').replace(/\*\$.*/, '');
+                    }
                     console.log(`[TaxReportService] Auto-derived gangPrefix '${effectiveGangPrefix}' from virtual division ${divisionCode}`);
                 }
             }
@@ -469,7 +499,7 @@ class TaxReportService {
         }
 
         const { data: historyData, isSourceCurrent } = await this.fetchPayrollData(
-            month, year, gangCode || 'ALL', effectiveDivisionCode || undefined
+            month, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix
         );
 
         console.log(`[TaxReportService] getMonthlyTaxReport received data: ${historyData?.data_rows?.length || 0} rows, isSourceCurrent=${isSourceCurrent}`);
@@ -658,9 +688,16 @@ class TaxReportService {
 
             // Use PRE-CALCULATED pph21_ter from row data (from dataExtractorService/origin)
             // This ensures the Excel export matches exactly what the UI displays
-            const pph21 = row.pph21_ter !== undefined && row.pph21_ter !== null && row.pph21_ter !== 0
-                ? row.pph21_ter
-                : pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp).tax_amount;
+            // FIX: Use stored value when it's a valid number (including 0), only recalculate when truly missing
+            const hasStoredPph21 = row.pph21_ter !== undefined && row.pph21_ter !== null;
+            const storedPph21 = hasStoredPph21 ? row.pph21_ter : 0;
+            const actualDeduction = row.pot_pph21 || 0;
+            
+            // Prefer actual deduction (pot_pph21) if stored pph21_ter is 0.
+            // This handles cases where manual seeding added deductions but TER wasn't recalculated.
+            const pph21 = (storedPph21 === 0 && actualDeduction > 0)
+                ? actualDeduction
+                : (hasStoredPph21 ? storedPph21 : pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp).tax_amount);
             const rowPtkpStatus = row.status_ptkp || masterPtkp;
             const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, rowPtkpStatus);
             const tarifPajakTer = row.tarif_pajak_ter || pphResult.rate_percent;
@@ -854,7 +891,15 @@ class TaxReportService {
             if (!effectiveGangPrefix) {
                 const vConfig = divisionDefinition.getVirtualDivisionConfig(divisionCode);
                 if (vConfig?.pattern) {
-                    effectiveGangPrefix = vConfig.pattern.replace(/^\^/, '').replace(/\$/, '');
+                    const patternStr = vConfig.pattern.toString();
+                    // Extract ONLY alphabetic prefix from pattern like /^IN(?:F|T)$/i -> "IN"
+                    // Strategy: find letters at start, stop at any non-letter (including ( ? : | ) * $)
+                    const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
+                    if (alphaMatch && alphaMatch[1]) {
+                        effectiveGangPrefix = alphaMatch[1];
+                    } else {
+                        effectiveGangPrefix = patternStr.replace(/^\/\^?/, '').replace(/\$?\/i?$/, '').replace(/\*\$.*/, '');
+                    }
                     console.log(`[TaxReportService] Auto-derived gangPrefix '${effectiveGangPrefix}' from virtual division ${divisionCode}`);
                 }
             }
@@ -870,7 +915,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined
+                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }
@@ -1309,7 +1354,13 @@ class TaxReportService {
             if (!effectiveGangPrefix) {
                 const vConfig = divisionDefinition.getVirtualDivisionConfig(divisionCode);
                 if (vConfig?.pattern) {
-                    effectiveGangPrefix = vConfig.pattern.replace(/^\^/, '').replace(/\$/, '');
+                    const patternStr = vConfig.pattern.toString();
+                    const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
+                    if (alphaMatch && alphaMatch[1]) {
+                        effectiveGangPrefix = alphaMatch[1];
+                    } else {
+                        effectiveGangPrefix = patternStr.replace(/^\/\^?/, '').replace(/\$?\/i?$/, '').replace(/\*\$.*/, '');
+                    }
                     console.log(`[TaxReportService] Auto-derived gangPrefix '${effectiveGangPrefix}' from virtual division ${divisionCode}`);
                 }
             }
@@ -1323,7 +1374,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined
+                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }
@@ -1502,7 +1553,13 @@ class TaxReportService {
             if (!effectiveGangPrefix) {
                 const vConfig = divisionDefinition.getVirtualDivisionConfig(divisionCode);
                 if (vConfig?.pattern) {
-                    effectiveGangPrefix = vConfig.pattern.replace(/^\^/, '').replace(/\$/, '');
+                    const patternStr = vConfig.pattern.toString();
+                    const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
+                    if (alphaMatch && alphaMatch[1]) {
+                        effectiveGangPrefix = alphaMatch[1];
+                    } else {
+                        effectiveGangPrefix = patternStr.replace(/^\/\^?/, '').replace(/\$?\/i?$/, '').replace(/\*\$.*/, '');
+                    }
                     console.log(`[TaxReportService] Auto-derived gangPrefix '${effectiveGangPrefix}' from virtual division ${divisionCode}`);
                 }
             }
@@ -1515,7 +1572,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined
+                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }

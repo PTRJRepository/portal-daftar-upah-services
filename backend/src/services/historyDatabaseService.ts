@@ -1088,7 +1088,7 @@ export class HistoryDatabaseService {
             }
         }
         if (gangCode && gangCode !== "ALL") {
-            masterQuery += ` AND (gang_code = ? OR gang_code = 'ALL')`;
+            masterQuery += ` AND gang_code = ?`;
             masterParams.push(gangCode);
         }
 

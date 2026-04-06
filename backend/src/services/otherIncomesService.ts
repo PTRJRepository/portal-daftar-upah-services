@@ -463,6 +463,38 @@ export class OtherIncomesService {
     }
 
     /**
+     * Get all taxable other incomes for a specific year.
+     * Used by Annual Tax Report (getAnnualTaxReport) to aggregate annual income.
+     */
+    static async getIncomesForYear(year: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
+        const db = Database.getExtendedInstance();
+        try {
+            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND is_taxable = 1`;
+            const params: any[] = [year];
+
+            // If we have specific division or gang, we filter
+            // Note: getRawIncomes logic intentionally fetches ALL for current month 
+            // but for annual report we might want to narrow it down if possible.
+            // However, to support transfers, we stay consistent with getRawIncomes.
+            
+            const rows = (await db.query(sql, params)) as any[];
+            if (rows.length === 0) return [];
+
+            // Parse details_json
+            rows.forEach(r => {
+                if (r.details_json) {
+                    try { r.details = JSON.parse(r.details_json); } catch { r.details = null; }
+                }
+            });
+
+            return this.enrichWithHrData(rows, gangCode);
+        } catch (e) {
+            logError(CATEGORY, `[getIncomesForYear] Error:`, e);
+            return [];
+        }
+    }
+
+    /**
      * Normalize employee name for matching.
      * Removes text in parentheses, extra spaces, and converts to uppercase.
      */

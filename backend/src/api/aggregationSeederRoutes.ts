@@ -774,51 +774,13 @@ export async function seedAggregationToDb(division: string | undefined, month: n
             try {
                 const millData = await fetchMillData(month, year);
 
-                // Create a single aggregation record for MILL
-                const millRecord: AggregationRecord = {
-                    gang_code: "MILL_GENERAL",
-                    gang_description: "General Mill Operations",
-                    total_employees: millData.total_employees,
-                    total_hk: millData.total_hk,
-                    total_hari_kerja: millData.total_hk, // Assuming same
-                    total_cuti_tahunan: 0,
-                    total_cuti_sakit: 0,
-                    total_cuti_minggu: 0,
-                    total_cuti_nasional: 0,
-                    total_upah_dasar: 0,
-                    total_upah_pokok: 0,
-                    total_gaji_pokok: 0,
-                    total_beras: 0,
-                    total_jabatan: 0,
-                    total_masa_kerja: 0,
-                    total_lembur: millData.total_ot || 0,
-                    total_tunjangan: 0,
-                    total_premi_brondol: 0,
-                    total_premi_prunning: 0,
-                    total_premi_insentif: 0,
-                    total_premi_kinerja: 0,
-                    total_premi: 0,
-                    total_potongan: (millData.total_pph21 || 0) + (millData.total_spsi || 0),
-                    total_pph21: millData.total_pph21,
-                    total_bpjs_pekerja: 0,
-                    total_bpjs_majikan: 0,
-                    total_spsi: millData.total_spsi,
-                    total_upah_kotor: millData.total_salary, // Assuming take home pay ~ upah kotor for simple report? Or upah bersih? SQL says "IsTakeHomePay"
-                    total_upah_bersih: millData.total_salary, // Treating Take Home Pay as Upah Bersih
-                    total_ffb_weight: 0,
-                    total_weight_tbs: 0,
-                    dynamic_premi_data: "[]",
-                    informasi_tambahan: "Source: VenusHR",
-                    total_koreksi: 0
-                };
-
-                // Use insertOrUpdateAggregation (single record)
+                // fetchMillData now returns a complete AggregationRecord - use directly
                 targetDivisionCode = div;
-                await insertOrUpdateAggregation(targetDivisionCode, month, year, millRecord, sourceEndpoint);
+                await insertOrUpdateAggregation(targetDivisionCode, month, year, millData, sourceEndpoint);
 
                 // Assuming success if no error thrown
                 if (true) {
-                    results.push({ division: div, gang: "MILL_GENERAL", employees_processed: millRecord.total_employees, status: "SUCCESS" });
+                    results.push({ division: div, gang: millData.gang_code, employees_processed: millData.total_employees, status: "SUCCESS" });
                 } else {
                     results.push({ division: div, gang: "MILL_GENERAL", employees_processed: 0, status: "SKIPPED/FAILED" });
                 }
@@ -1071,15 +1033,15 @@ async function insertOrUpdateAggregation(
                 dynamic_premi_data, informasi_tambahan, total_koreksi,
                 created_at, updated_at, source_endpoint
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, GETDATE(), GETDATE(), ?
             )
         `, [
             month,
             year,
-            dbDivisionCode, // Use mapped code
+            dbDivisionCode,
             aggregation.gang_code,
             aggregation.gang_description,
             aggregation.total_employees,
@@ -1188,7 +1150,7 @@ async function fetchFfbWeightForDivision(divisionCode: string, month: number, ye
 /**
  * Fetch Mill Data from VenusHR database (SERVER_PROFILE_3)
  */
-async function fetchMillData(month: number, year: number) {
+export async function fetchMillData(month: number, year: number) {
     const db = Database.getVenusInstance();
     const monthStr = month.toString().padStart(2, '0');
     const pyNumberPattern = `PYW/PTRJ/${year}${monthStr}%`;
@@ -1215,50 +1177,104 @@ async function fetchMillData(month: number, year: number) {
 
     const hkResult = await db.queryOne<{ total_HK: number, total_employees: number }>(hkQuery, [pyNumberPattern]);
 
-    // 2. Get Total Salary (Take Home Pay)
+    // 2. Get Gaji Bersih (Net Salary) - IsTakeHomePay = 1
     const salaryQuery = `
-        SELECT CAST(SUM([CompAmount]) AS BIGINT) AS TotalCompAmount
+        SELECT CAST(SUM(CAST([CompAmount] AS DECIMAL(18,2))) AS BIGINT) AS TotalCompAmount
         FROM [dbo].[HR_T_PYWeekly_DComponent]
         WHERE [PYNumber] LIKE ?
           AND [IsTakeHomePay] = 1
     `;
-
     const salaryResult = await db.queryOne<{ TotalCompAmount: number }>(salaryQuery, [pyNumberPattern]);
 
-    // 3. Get PPh21 (Using provided query logic)
+    // 3. Get PPh21
     const pphQuery = `
-        SELECT ABS(SUM(ISNULL([CompAmount], 0))) AS totalCount
+        SELECT CAST(SUM(ABS(CAST([CompAmount] AS DECIMAL(18,2)))) AS BIGINT) AS totalCount
         FROM [dbo].[HR_T_PYWeekly_DComponent]
         WHERE [PYNumber] LIKE ?
           AND [PYCompCode] LIKE '#PPH21%'
     `;
     const pphResult = await db.queryOne<{ totalCount: number }>(pphQuery, [pyNumberPattern]);
 
-    // 4. Get SPSI (Using provided query logic)
+    // 4. Get SPSI
     const spsiQuery = `
-        SELECT ABS(SUM(ISNULL([CompAmount], 0))) AS totalCount
+        SELECT CAST(SUM(ABS(CAST([CompAmount] AS DECIMAL(18,2)))) AS BIGINT) AS totalCount
         FROM [dbo].[HR_T_PYWeekly_DComponent]
         WHERE [PYNumber] LIKE ?
           AND [PYCompCode] LIKE '#POT_spsi%'
     `;
     const spsiResult = await db.queryOne<{ totalCount: number }>(spsiQuery, [pyNumberPattern]);
 
-    // 5. Get Overtime (OT) - [NEW]
-    // User requested to NOT use minus sign, even if it reduces (ensure positive for sum consistency)
+    // 5. Get Overtime
     const otQuery = `
-        SELECT ABS(SUM(ISNULL([CompAmount], 0))) AS totalCount
+        SELECT CAST(SUM(CAST([CompAmount] AS DECIMAL(18,2))) AS BIGINT) AS totalCount
         FROM [dbo].[HR_T_PYWeekly_DComponent]
         WHERE [PYNumber] LIKE ?
-          AND [PYCompCode] LIKE '%#OT%%'
+          AND [PYCompCode] LIKE '%#OT%'
     `;
     const otResult = await db.queryOne<{ totalCount: number }>(otQuery, [pyNumberPattern]);
 
+    // 6. Get Gaji Pokok
+    const gpQuery = `
+        SELECT CAST(SUM(CAST([CompAmount] AS DECIMAL(18,2))) AS BIGINT) AS totalCount
+        FROM [dbo].[HR_T_PYWeekly_DComponent]
+        WHERE [PYNumber] LIKE ?
+          AND [PYCompCode] = '#GP#'
+    `;
+    const gpResult = await db.queryOne<{ totalCount: number }>(gpQuery, [pyNumberPattern]);
+
+    // 7. Get Total Deductions (all negative components with IsTakeHomePay=1)
+    // Note: CompAmount is stored as nvarchar, use CASE to safely convert
+    const dedQuery = `
+        SELECT CAST(SUM(CASE WHEN TRY_CAST([CompAmount] AS DECIMAL(18,2)) < 0
+                              THEN ABS(TRY_CAST([CompAmount] AS DECIMAL(18,2)))
+                              ELSE 0 END) AS BIGINT) AS totalCount
+        FROM [dbo].[HR_T_PYWeekly_DComponent]
+        WHERE [PYNumber] LIKE ?
+          AND [IsTakeHomePay] = 1
+    `;
+    const dedResult = await db.queryOne<{ totalCount: number }>(dedQuery, [pyNumberPattern]);
+
+    // Log raw results for debugging
+    console.log(`[fetchMillData] Salary breakdown:`, {
+        gaji_bersih: salaryResult?.TotalCompAmount,
+        pph21: pphResult?.totalCount,
+        spsi: spsiResult?.totalCount,
+        overtime: otResult?.totalCount,
+        gaji_pokok: gpResult?.totalCount,
+        deductions: dedResult?.totalCount
+    });
+
+    // Ensure all values are proper numbers (not BigInt or strings from gateway)
+    const bersih = Number(salaryResult?.TotalCompAmount) || 0;
+    const pph21 = Math.abs(Number(pphResult?.totalCount) || 0);
+    const spsi = Math.abs(Number(spsiResult?.totalCount) || 0);
+    const lembur = Math.abs(Number(otResult?.totalCount) || 0);
+    const gp = Number(gpResult?.totalCount) || 0;
+    const deductions = Math.abs(Number(dedResult?.totalCount) || 0);
+
+    console.log(`[fetchMillData] Processed values:`, { bersih, pph21, spsi, lembur, gp, deductions });
+
     return {
-        total_hk: hkResult?.total_HK || 0,
-        total_employees: hkResult?.total_employees || 0,
-        total_salary: salaryResult?.TotalCompAmount || 0,
-        total_pph21: pphResult?.totalCount || 0,
-        total_spsi: spsiResult?.totalCount || 0,
-        total_ot: otResult?.totalCount || 0
+        total_hk: Number(hkResult?.total_HK) || 0,
+        total_employees: Number(hkResult?.total_employees) || 0,
+        total_upah_bersih: bersih,  // net/gaji bersih (from IsTakeHomePay=1)
+        total_upah_kotor: bersih + deductions,  // gross = net + deductions
+        total_pph21: pph21,
+        total_spsi: spsi,
+        total_lembur: lembur,
+        total_gaji_pokok: gp,
+        total_potongan: deductions,  // total deductions
+        total_tunjangan: 0,  // Not available separately in MILL data
+        total_upah_dasar: gp,
+        total_upah_pokok: gp,
+        gang_code: "MILL_GENERAL",
+        gang_description: "General Mill Operations",
+        total_hari_kerja: Number(hkResult?.total_HK) || 0,
+        total_cuti_tahunan: 0, total_cuti_sakit: 0, total_cuti_minggu: 0, total_cuti_nasional: 0,
+        total_beras: 0, total_jabatan: 0, total_masa_kerja: 0,
+        total_premi_brondol: 0, total_premi_prunning: 0, total_premi_insentif: 0, total_premi_kinerja: 0, total_premi: 0,
+        total_bpjs_pekerja: 0, total_bpjs_majikan: 0,
+        total_ffb_weight: 0, total_weight_tbs: 0,
+        dynamic_premi_data: "[]", informasi_tambahan: "Source: VenusHR", total_koreksi: 0
     };
 }

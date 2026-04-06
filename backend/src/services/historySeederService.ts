@@ -48,7 +48,7 @@ export interface SeederOptions {
     ipAddress?: string;
     userAgent?: string;
     force?: boolean;  // Overwrite existing data
-    seederMode?: 'ALL' | 'PAYROLL' | 'EMPLOYEE_HR' | 'GANG_HR' | 'ALL_HR';
+    seederMode?: 'ALL' | 'PAYROLL' | 'PAYROLL_ONLY' | 'EMPLOYEE_HR' | 'GANG_HR' | 'ALL_HR';
 }
 export interface SeederProgress {
     is_running: boolean;
@@ -164,48 +164,10 @@ export class HistorySeederService {
         // to prevent timeout and memory issues in extractPayrollData
         if ((!options.divisionCode || options.divisionCode === 'ALL') && (options.gangCode === 'ALL' || !options.gangCode)) {
             console.log(`[HistorySeeder] 🔄 Processing ALL divisions iteratively...`);
-            
-            // ⚠️ CRITICAL FIX: DELETE ALL old data for this period BEFORE batch seeding
-            console.log(`[HistorySeeder] 🗑️  Cleaning ALL old data for period ${options.periodMonth}/${options.periodYear}...`);
-            
-            try {
-                const deleteHistoryDb = Database.getExtendedInstance();
-                
-                // Check how many records will be deleted
-                const checkSql = `SELECT COUNT(*) as cnt FROM dbo.daftar_upah_aggregation_history WHERE period_month = ? AND period_year = ?`;
-                const checkResult = await deleteHistoryDb.query(checkSql, [options.periodMonth, options.periodYear]);
-                const countBefore = checkResult?.[0]?.cnt || 0;
-                console.log(`[HistorySeeder] 📊 Found ${countBefore} records to delete for period ${options.periodMonth}/${options.periodYear}`);
 
-                if (countBefore > 0) {
-                    // Show sample
-                    const sampleResult = await deleteHistoryDb.query(`
-                        SELECT TOP 5 division_code, gang_code, period_month, period_year 
-                        FROM dbo.daftar_upah_aggregation_history 
-                        WHERE period_month = ? AND period_year = ?
-                    `, [options.periodMonth, options.periodYear]);
-                    console.log(`[HistorySeeder] 📋 Sample data to delete:`, sampleResult);
+            // ⚠️ REMOVED: Initial DELETE ALL - each division will delete its own data before insert
+            // This ensures if one division fails, other divisions' data remains intact
 
-                    // Execute delete
-                    const deleteSql = `DELETE FROM dbo.daftar_upah_aggregation_history WHERE period_month = ? AND period_year = ?`;
-                    await deleteHistoryDb.query(deleteSql, [options.periodMonth, options.periodYear]);
-                    console.log(`[HistorySeeder] ✅ Delete executed for period ${options.periodMonth}/${options.periodYear}`);
-
-                    // Verify
-                    const verifyResult = await deleteHistoryDb.query(checkSql, [options.periodMonth, options.periodYear]);
-                    const countAfter = verifyResult?.[0]?.cnt || 0;
-                    console.log(`[HistorySeeder] ✅ Records remaining: ${countAfter}`);
-
-                    if (countAfter > 0) {
-                        console.log(`[HistorySeeder] ❌ WARNING: ${countAfter} records still remain!`);
-                    }
-                } else {
-                    console.log(`[HistorySeeder] ℹ️  No old data found to delete`);
-                }
-            } catch (deleteError: any) {
-                console.error(`[HistorySeeder] ❌ Batch delete failed:`, deleteError.message);
-            }
-            
             HistorySeederService.updateProgress({
                 is_running: true,
                 current_step: 'Memulai seeding seluruh divisi...',
@@ -386,15 +348,44 @@ export class HistorySeederService {
                 } catch (fetchError: any) {
                     console.error(`[HistorySeeder] fetchPayrollData failed: ${fetchError.message}`);
                     result.errors.push(`Fetch payroll data failed: ${fetchError.message}`);
+                    // CRITICAL: Update progress to mark as complete (not stuck)
+                    HistorySeederService.updateProgress({
+                        is_running: false,
+                        current_step: `❌ Gagal mengambil data: ${fetchError.message}`,
+                        gangs_total: 0,
+                        gangs_done: 0,
+                        employees_processed: 0
+                    });
                     return result;
                 }
 
                 if (!payrollData || payrollData.length === 0) {
-                    console.warn(`[HistorySeeder] No payroll data found for period ${options.periodMonth}/${options.periodYear}`);
+                    const periodStr = `${options.periodMonth}/${options.periodYear}`;
+                    const divisionStr = options.divisionCode || 'ALL';
+                    console.warn(`[HistorySeeder] No payroll data found for period ${periodStr}, division ${divisionStr}`);
+
+                    // Provide more context for debugging
+                    result.errors.push(
+                        `No payroll data found for period ${periodStr} (Division: ${divisionStr}). ` +
+                        `Possible causes: ` +
+                        `1) Data does not exist in PR_GANGLN_ARC for accounting period, ` +
+                        `2) HR_GANGLN has no employees for this gang/division, ` +
+                        `3) Period conversion mismatch (calendar vs accounting period). ` +
+                        `Suggestion: Try mode 'ALL_HR' to save HR data only, or check if raw payroll data exists in the database.`
+                    );
+
                     if (seederMode === 'PAYROLL') {
-                        result.errors.push('No payroll data found for the specified period');
+                        // CRITICAL: Update progress to mark as complete (not stuck)
+                        HistorySeederService.updateProgress({
+                            is_running: false,
+                            current_step: `⚠️ Tidak ada data untuk periode ${periodStr}. Coba mode ALL_HR atau periksa database.`,
+                            gangs_total: 0,
+                            gangs_done: 0,
+                            employees_processed: 0
+                        });
                         return result;
                     }
+                    // For 'ALL' mode, continue to try HR data seeding
                 } else {
                     // 2. Seed master and detail
                     HistorySeederService.updateProgress({ gangs_total: payrollData.length, current_step: 'Menyimpan data payroll per gang...' });
@@ -608,7 +599,8 @@ export class HistorySeederService {
         // Create detail records - with duplicate NIK handling
         for (const emp of employees) {
             // Use new method that handles duplicate NIKs
-            await this.handleDuplicateNikSeeding(historyId, masterId, emp, options, result);
+            // Pass options.divisionCode to ensure detail uses correct division (not loc_code)
+            await this.handleDuplicateNikSeeding(historyId, masterId, emp, options, result, options.divisionCode);
         }
     }
 
@@ -682,8 +674,9 @@ export class HistorySeederService {
 
     /**
      * Map employee data to detail record
+     * @param divisionCode - The correct division code to use (from header), not loc_code which may be short form
      */
-    private mapEmployeeToDetail(historyId: string, masterId: number, emp: any): PayrollHistoryDetail {
+    private mapEmployeeToDetail(historyId: string, masterId: number, emp: any, divisionCode?: string): PayrollHistoryDetail {
         return {
             history_id: historyId,
             master_id: masterId,
@@ -692,7 +685,7 @@ export class HistorySeederService {
             nik: emp.nik,  // PayrollRow.nik = actual KTP (NewICNo)
             gender: emp.jenis_kelamin || emp.gender,
             gang_code: emp.gang_code,
-            division_code: emp.loc_code, // Use resolved LocCode (e.g. NRS) as division_code
+            division_code: divisionCode || emp.division_code || emp.loc_code, // Use passed divisionCode (from header) for consistency
             loc_code: emp.loc_code,
             status_ptkp: emp.status_ptkp,
             kategori_ter: emp.kategori_ter,
@@ -779,36 +772,37 @@ export class HistorySeederService {
         masterId: number,
         emp: any,
         options: SeederOptions,
-        result: SeederResult
+        result: SeederResult,
+        divisionCode?: string
     ): Promise<void> {
         const nik = emp.nik;
-        
+
         // Check if this NIK has duplicates
         const hasDuplicate = await duplicateNikMitigationService.hasDuplicate(nik);
-        
+
         if (hasDuplicate) {
             // Get all EmpCodes for this NIK
             const empCodeMap = await duplicateNikMitigationService.getAllEmpCodesForNik(nik);
-            
+
             // Log for audit
             console.log(`[HistorySeeder] Duplicate NIK detected: ${nik} has ${empCodeMap.emp_codes.length} EmpCodes: ${empCodeMap.emp_codes.join(', ')}`);
-            
+
             // Create detail records for ALL EmpCodes associated with this NIK
             // This ensures complete history coverage
             for (const empCode of empCodeMap.emp_codes) {
                 const detailData = this.mapEmployeeToDetail(historyId, masterId, {
                     ...emp,
                     emp_code: empCode // Override with each EmpCode
-                });
-                
+                }, divisionCode);
+
                 await historyDatabaseService.savePayrollHistoryDetail(detailData);
                 result.records_inserted.detail++;
             }
-            
+
             result.total_employees += empCodeMap.emp_codes.length;
         } else {
             // Normal flow - single employee
-            const detailData = this.mapEmployeeToDetail(historyId, masterId, emp);
+            const detailData = this.mapEmployeeToDetail(historyId, masterId, emp, divisionCode);
             await historyDatabaseService.savePayrollHistoryDetail(detailData);
             result.records_inserted.detail++;
             result.total_employees += 1;
@@ -825,28 +819,32 @@ export class HistorySeederService {
         options: SeederOptions,
         result: SeederResult
     ): Promise<void> {
-        const db = Database.getInstance();
+        // Use ExtendedInstance for history tables in extend_db_ptrj
+        const dbExtend = Database.getExtendedInstance();
+        // Use Instance for source tables in db_ptrj
+        const dbSource = Database.getInstance();
 
         // ⚠️ CRITICAL FIX: DELETE old transaction data BEFORE insert to prevent duplicates
         console.log(`[HistorySeeder] 🗑️  Deleting old transaction data for period ${options.periodMonth}/${options.periodYear}, division ${options.divisionCode}...`);
-        
+
         try {
             // Delete old taskreg history for this division/period
-            const deleteTaskregResult = await db.query(`
+            // Note: payroll_history_header is the actual table name (not history_payroll_master)
+            const deleteTaskregResult = await dbExtend.query(`
                 DELETE ht FROM history_taskreg ht
-                INNER JOIN history_payroll_master hpm ON ht.history_id = hpm.history_id
-                WHERE hpm.period_month = ? 
-                  AND hpm.period_year = ? 
+                INNER JOIN payroll_history_header hpm ON ht.history_id = hpm.history_id
+                WHERE hpm.period_month = ?
+                  AND hpm.period_year = ?
                   AND hpm.division_code = ?
             `, [options.periodMonth, options.periodYear, options.divisionCode || 'ALL']);
             console.log(`[HistorySeeder] ✅ Deleted ${deleteTaskregResult.affectedRows || 0} old taskreg rows`);
 
-            // Delete old adtrans history for this division/period  
-            const deleteAdtransResult = await db.query(`
+            // Delete old adtrans history for this division/period
+            const deleteAdtransResult = await dbExtend.query(`
                 DELETE ha FROM history_adtrans ha
-                INNER JOIN history_payroll_master hpm ON ha.history_id = hpm.history_id
-                WHERE hpm.period_month = ? 
-                  AND hpm.period_year = ? 
+                INNER JOIN payroll_history_header hpm ON ha.history_id = hpm.history_id
+                WHERE hpm.period_month = ?
+                  AND hpm.period_year = ?
                   AND hpm.division_code = ?
             `, [options.periodMonth, options.periodYear, options.divisionCode || 'ALL']);
             console.log(`[HistorySeeder] ✅ Deleted ${deleteAdtransResult.affectedRows || 0} old adtrans rows`);
@@ -888,7 +886,7 @@ export class HistorySeederService {
             for (const chunk of chunks) {
                 const taskregRows = await this.withRetry(async () => {
                     const empList = chunk.map(e => `'${e}'`).join(',');
-                    return await db.query<any>(`
+                    return await dbSource.query<any>(`
                         SELECT
                             tr.ID as master_id, tr.DocID as RegNo, tr.DocDate as RegDate,
                             trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode,
@@ -952,7 +950,7 @@ export class HistorySeederService {
             for (const chunk of chunks) {
                 const adtransRows = await this.withRetry(async () => {
                     const empList = chunk.map(e => `'${e}'`).join(',');
-                    return await db.query<any>(`
+                    return await dbSource.query<any>(`
                         SELECT
                             t.ID as master_id, t.DocID as DocNo, t.DocDate, t.DocDesc, t.EmpCode,
                             ln.ID as line_id, ln.TaskCode, ln.Amount,

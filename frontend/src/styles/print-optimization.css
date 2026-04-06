@@ -2,13 +2,13 @@
    GLOBAL PRINT OPTIMIZATION (READY-TO-PRINT)
    ============================================ */
 
-@media print {
+/* Force Landscape - must be outside @media print */
+@page {
+    size: A4 landscape;
+    margin: 10mm;
+}
 
-    /* Force Landscape */
-    @page {
-        size: A4 landscape;
-        margin: 10mm;
-    }
+@media print {
 
     /* Reset layout for print */
     html,

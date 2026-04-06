@@ -3,12 +3,13 @@
    Guaranteed to work properly
    ============================================ */
 
+/* Page setup - must be outside @media print */
+@page {
+    size: A4 landscape;
+    margin: 8mm;
+}
+
 @media print {
-    /* Page setup */
-    @page {
-        size: A4 landscape;
-        margin: 8mm;
-    }
 
     /* Hide everything that shouldn't print */
     .no-print,
@@ -46,6 +47,9 @@
         padding: 0 !important;
         background: white !important;
         margin: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: visible !important;
     }
 
     /* Document wrapper - simple borders */
@@ -127,6 +131,14 @@
         border: 1px solid black !important;
         margin-bottom: 15px !important;
         overflow: visible !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Comparison table - ensure full width */
+    .wsp-table.comparison-table {
+        width: 100% !important;
+        table-layout: fixed !important;
     }
 
     /* TABLE - Clean and Simple */
@@ -134,6 +146,7 @@
         width: 100% !important;
         border-collapse: collapse !important;
         font-size: 10px !important;
+        table-layout: fixed !important;
     }
 
     /* All headers */

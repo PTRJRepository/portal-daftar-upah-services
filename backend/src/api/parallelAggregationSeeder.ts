@@ -212,8 +212,8 @@ async function processMillDivision(
     try {
         // Import mill data fetcher
         const { fetchMillData } = await import("./aggregationSeederRoutes");
-        const millData = await (fetchMillData as any)(month, year);
-        
+        const millData = await fetchMillData(month, year);
+
         if (!millData) {
             return { division: "MILL", gang: "MILL_GENERAL", employees_processed: 0, status: "SKIPPED: No data" };
         }
@@ -222,10 +222,10 @@ async function processMillDivision(
 
         const divTime = ((Date.now() - divStart) / 1000).toFixed(1);
         console.log(`[MILL] ✅ Done in ${divTime}s`);
-        return { 
-            division: "MILL", 
-            gang: "MILL_GENERAL", 
-            employees_processed: millData.total_employees, 
+        return {
+            division: "MILL",
+            gang: "MILL_GENERAL",
+            employees_processed: millData.total_employees,
             status: "SUCCESS",
             time_seconds: parseFloat(divTime)
         };

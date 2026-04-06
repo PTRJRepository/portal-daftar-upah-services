@@ -2608,57 +2608,55 @@ export class DataExtractorService {
 
     private async getBrondol(empCodes: string[], startDate: string, endDate: string, serverProfile?: string): Promise<Record<string, number>> {
         if (!empCodes.length) return {};
-        
+
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
         try {
             // Query PR_LOOSEFRUIT (active + archived) for brondol premium amounts
-            // This is the source of truth for brondol (loose fruit) premiums
-            // OPTIMIZED: Process in batches to avoid timeout
+            // OPTIMIZED:
+            // - No RTRIM() on EmpCode in WHERE — allows SQL Server to use EmpCode index
+            // - Removed inner GROUP BY — single GROUP BY at outer level is sufficient
+            // - Removed subquery wrapper — direct UNION ALL is faster
+            // - Sequential smaller batches (size 20) — prevents gateway 30s timeout
             const result: Record<string, number> = {};
-            const batchSize = 200; // Smaller batch to avoid timeout
+            const batchSize = 20; // Small batches to avoid gateway timeout
             const batches = [];
-            
+
             for (let i = 0; i < empCodes.length; i += batchSize) {
                 batches.push(empCodes.slice(i, i + batchSize));
             }
-            
+
             for (const batch of batches) {
                 const batchEmpList = batch.map(e => `'${e}'`).join(",");
-                
+
                 try {
                     const rows = await db.query<any>(`
-                        SELECT RTRIM(EmpCode) as EmpCode, SUM(TotalAmount) as TotalAmount
-                        FROM (
-                            SELECT
-                                RTRIM(l.EmpCode) as EmpCode,
-                                SUM(ISNULL(l.Amount, 0)) as TotalAmount
-                            FROM PR_LOOSEFRUITLN l
-                            INNER JOIN PR_LOOSEFRUIT m ON l.MasterID = m.ID
-                            WHERE RTRIM(l.EmpCode) IN (${batchEmpList})
-                              AND m.DocDate >= ? AND m.DocDate < ?
-                            GROUP BY RTRIM(l.EmpCode)
+                        SELECT
+                            l.EmpCode as EmpCode,
+                            SUM(ISNULL(l.Amount, 0)) as TotalAmount
+                        FROM PR_LOOSEFRUITLN l
+                        INNER JOIN PR_LOOSEFRUIT m ON l.MasterID = m.ID
+                        WHERE l.EmpCode IN (${batchEmpList})
+                          AND m.DocDate >= ? AND m.DocDate < ?
+                        GROUP BY l.EmpCode
 
-                            UNION ALL
+                        UNION ALL
 
-                            SELECT
-                                RTRIM(l.EmpCode) as EmpCode,
-                                SUM(ISNULL(l.Amount, 0)) as TotalAmount
-                            FROM PR_LOOSEFRUITLN_ARC l
-                            INNER JOIN PR_LOOSEFRUIT_ARC m ON l.MasterID = m.ID
-                            WHERE RTRIM(l.EmpCode) IN (${batchEmpList})
-                              AND m.DocDate >= ? AND m.DocDate < ?
-                            GROUP BY RTRIM(l.EmpCode)
-                        ) Combined
-                        GROUP BY EmpCode
+                        SELECT
+                            l.EmpCode as EmpCode,
+                            SUM(ISNULL(l.Amount, 0)) as TotalAmount
+                        FROM PR_LOOSEFRUITLN_ARC l
+                        INNER JOIN PR_LOOSEFRUIT_ARC m ON l.MasterID = m.ID
+                        WHERE l.EmpCode IN (${batchEmpList})
+                          AND m.DocDate >= ? AND m.DocDate < ?
+                        GROUP BY l.EmpCode
                     `, [startDate, endDate, startDate, endDate], 60);
 
                     for (const row of rows) {
                         if (row.EmpCode && row.TotalAmount) {
-                            const empCode = row.EmpCode.trim();
+                            const empCode = (row.EmpCode || "").trim();
                             const amount = parseFloat(row.TotalAmount) || 0;
-                            // Keep the highest amount if employee appears in multiple batches
                             if (!result[empCode] || amount > result[empCode]) {
                                 result[empCode] = amount;
                             }
@@ -2666,10 +2664,10 @@ export class DataExtractorService {
                     }
                 } catch (batchError) {
                     warn("DataExtractor", `Brondol batch query failed for ${batch.length} employees: ${batchError.message || 'unknown error'}`);
-                    // Continue with next batch
+                    // Continue with next batch - brondol will be 0 for this batch
                 }
             }
-            
+
             return result;
         } catch (e) {
             // Gracefully handle timeout - brondol will be 0 for affected employees

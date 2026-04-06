@@ -1147,50 +1147,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                     ) : (
                         /* Paper Document */
                         <div className="wsp-document" id="wsp-report-content">
-                            {/* Print Styles - Inline for guaranteed effect */}
-                            <style>{`
-                                @media print {
-                                    @page { size: A4 landscape; margin: 8mm; }
-                                    .no-print, .report-header-web, button, select, input { display: none !important; }
-                                    .print-only { display: block !important; }
-                                    *, *::before, *::after { box-shadow: none !important; text-shadow: none !important; }
-                                    body { background: white !important; margin: 0 !important; padding: 0 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-                                    .wsp-container { padding: 0 !important; background: white !important; }
-                                    .wsp-document { border: 2px solid black !important; padding: 10px !important; }
-                                    .wsp-letterhead { text-align: center !important; margin-bottom: 15px !important; padding-bottom: 10px !important; border-bottom: 2px solid black !important; }
-                                    .wsp-logo { width: 50px !important; margin-bottom: 5px !important; }
-                                    .wsp-company-name { font-size: 18px !important; font-weight: bold !important; color: black !important; }
-                                    .wsp-report-title { font-size: 14px !important; font-weight: bold !important; color: black !important; }
-                                    .wsp-report-period { font-size: 12px !important; color: black !important; }
-                                    .wsp-kpi-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 8px !important; margin-bottom: 15px !important; }
-                                    .wsp-kpi-card { border: 1px solid black !important; padding: 8px !important; text-align: center !important; }
-                                    .wsp-kpi-label { font-size: 9px !important; font-weight: bold !important; text-transform: uppercase !important; margin-bottom: 3px !important; }
-                                    .wsp-kpi-value { font-size: 13px !important; font-weight: bold !important; }
-                                    .wsp-table-wrapper { border: 1px solid black !important; margin-bottom: 15px !important; }
-                                    .wsp-table { width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; }
-                                    .wsp-table th { background: #e8e8e8 !important; border: 1px solid black !important; padding: 5px 3px !important; font-weight: bold !important; text-align: center !important; }
-                                    .wsp-table thead tr.wsp-header-master th { background: #d8d8d8 !important; font-size: 11px !important; padding: 6px 4px !important; }
-                                    .wsp-table thead tr.wsp-header-sub th { background: #f0f0f0 !important; font-size: 9px !important; padding: 4px 3px !important; }
-                                    .wsp-table td { border: 1px solid black !important; padding: 4px 3px !important; font-size: 10px !important; vertical-align: middle !important; }
-                                    .wsp-table td.text-right { text-align: right !important; font-family: 'Courier New', monospace !important; }
-                                    .wsp-table td.text-left { text-align: left !important; }
-                                    .wsp-table td:first-child { text-align: left !important; font-weight: bold !important; }
-                                    .div-code { font-size: 10px !important; font-weight: bold !important; }
-                                    .div-desc { font-size: 9px !important; margin-top: 2px !important; }
-                                    .wsp-table tr.estate-header td { background: #e0e0e0 !important; font-weight: bold !important; font-size: 11px !important; padding: 6px 5px !important; }
-                                    .wsp-table tr.subtotal td { background: #f0f0f0 !important; font-weight: bold !important; }
-                                    .wsp-table tfoot tr.wsp-grand-total td { background: #1a1a1a !important; color: white !important; font-weight: bold !important; font-size: 11px !important; padding: 6px 4px !important; border: 2px solid black !important; }
-                                    .wsp-table td.val-zero { color: #999 !important; }
-                                    .sticky-col, .th-sticky-col { position: static !important; }
-                                    .wsp-signature-section { display: flex !important; justify-content: space-between !important; margin-top: 20px !important; padding-top: 10px !important; border-top: 1px solid black !important; }
-                                    .wsp-signature-block { text-align: center !important; flex: 1 !important; }
-                                    .wsp-signature-title { font-size: 10px !important; font-weight: bold !important; margin-bottom: 30px !important; }
-                                    .wsp-signature-name { font-size: 10px !important; font-weight: bold !important; border-top: 1px solid black !important; padding-top: 3px !important; display: inline-block !important; min-width: 120px !important; }
-                                    .wsp-footer { margin-top: 15px !important; padding-top: 8px !important; border-top: 1px solid black !important; font-size: 9px !important; color: #333 !important; }
-                                    .wsp-letterhead { page-break-after: avoid !important; }
-                                    .wsp-table thead { page-break-after: avoid !important; }
-                                }
-                            `}</style>
                             {/* Letterhead */}
                             <div className="wsp-letterhead">
                                 <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />

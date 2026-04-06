@@ -296,7 +296,7 @@ export default function AggregationSeederPage({ onBack }) {
     // Run history seeder (terpisah dari aggregation seeder)
     const handleRunHistorySeeder = async () => {
         if (isHistoryRunning) return;
-        
+
         // Check authentication first
         if (!token) {
             addLog('❌ ERROR: Not authenticated!', 'error');
@@ -304,10 +304,26 @@ export default function AggregationSeederPage({ onBack }) {
             alert('⚠️ Anda belum login!\n\nSilakan login ke aplikasi payroll di Port 8002 terlebih dahulu, kemudian coba lagi.');
             return;
         }
-        
+
         if (historyConnectionStatus !== 'connected') {
             addLog('❌ History database not connected. Cannot run history seeder.', 'error');
             return;
+        }
+
+        // Additional check: Warn if trying to seed current period with PAYROLL mode
+        // because raw data might not be available yet
+        const currentPeriodFromLog = logs.find(l => l.message.includes('Database aktif'));
+        const currentDate = new Date();
+        const isCurrentPeriod = (month === currentDate.getMonth() + 1 && year === currentDate.getFullYear());
+        const isNearCurrentPeriod = (month >= currentDate.getMonth() && year === currentDate.getFullYear()) ||
+            (month <= currentDate.getMonth() + 1 && year === currentDate.getFullYear());
+
+        if (historySeederType === 'PAYROLL' && isCurrentPeriod) {
+            const confirmMsg = `⚠️ Anda sedang mencoba menyimpan data untuk periode berjalan (${formatMonthName(month)} ${year}).\n\nData payroll untuk periode berjalan mungkin belum lengkap di database mentah.\n\nRekomendasi:\n1. Gunakan mode 'ALL' untuk menyimpan semua data (payroll + HR)\n2. Atau tunggu hingga akhir periode untuk hasil yang lebih akurat\n\nLanjutkan juga?`;
+            if (!window.confirm(confirmMsg)) {
+                addLog('⚠️ Seed dibatalkan oleh pengguna', 'warn');
+                return;
+            }
         }
 
         setIsHistoryRunning(true);
@@ -315,22 +331,34 @@ export default function AggregationSeederPage({ onBack }) {
         addLog('🚀 Starting HISTORY seeder (terpisah)...');
         addLog(`📅 Period: ${formatMonthName(month)} ${year}`);
         addLog(`📊 Division: ${division === 'ALL' ? 'All Divisions' : division}`);
+        addLog(`🔧 Mode: ${historySeederType}`);
+
+        // Show helpful message for first-time users
+        if (historySeederType === 'PAYROLL' && division === 'ALL') {
+            addLog('💡 Tip: Untuk seeding pertama, coba dengan division spesifik terlebih dahulu', 'info');
+        }
 
         try {
             // Start progress poller
             let lastStatus = '';
+            let progressCount = 0;
             const poller = setInterval(async () => {
                 try {
                     const progress = await getSeederProgress(token);
+                    if (progress) setSeederProgress(progress);
                     if (progress?.is_running) {
+                        progressCount++;
                         const p = progress;
-                        const statusMsg = `⏳ [${p.current_division}] Gangs: ${p.gangs_done}/${p.gangs_total} | Emp: ${p.employees_processed} | ${p.current_step}`;
-                        if (statusMsg !== lastStatus) {
-                            addLog(statusMsg, 'debug');
-                            lastStatus = statusMsg;
+                        // Only log every 5th progress update to avoid log spam
+                        if (progressCount % 5 === 0) {
+                            const statusMsg = `⏳ [${p.current_division || '...'}] Gangs: ${p.gangs_done}/${p.gangs_total} | Emp: ${p.employees_processed} | ${p.current_step}`;
+                            if (statusMsg !== lastStatus) {
+                                addLog(statusMsg, 'debug');
+                                lastStatus = statusMsg;
+                            }
                         }
                     }
-                } catch (e) { }
+                } catch (e) { /* ignore polling errors */ }
             }, 2000);
 
             const result = await seedPayrollHistory(
@@ -365,14 +393,29 @@ export default function AggregationSeederPage({ onBack }) {
                 if (result.data?.history_id) {
                     addLog(`🔑 History ID: ${result.data.history_id}`);
                 }
+
+                // Success feedback
+                if (result.data?.total_employees === 0) {
+                    addLog('⚠️ Perhatian: 0 employees diproses. Periksa apakah data exists untuk periode ini.', 'warn');
+                }
             } else {
-                addLog(`❌ History seeding failed: ${result.error}`, 'error');
+                addLog(`❌ History seeding failed: ${result.error || 'Unknown error'}`, 'error');
                 if (result.errors?.length > 0) {
-                    result.errors.forEach(err => addLog(`  • ${err}`, 'error'));
+                    result.errors.forEach(err => {
+                        addLog(`  • ${err}`, 'error');
+                        // Provide helpful suggestions based on error type
+                        if (err.includes('No payroll data found')) {
+                            addLog('💡 Saran: Coba gunakan mode ALL_HR atau ALL untuk menyimpan data HR saja', 'info');
+                            addLog('💡 Atau pastikan data payroll sudah ada di database mentah (PR_GANGLN_ARC)', 'info');
+                        }
+                    });
                 }
             }
         } catch (e) {
             addLog(`❌ Error: ${e.message}`, 'error');
+            if (e.message?.includes('Unable to connect')) {
+                addLog('💡 Error koneksi database. Pastikan SQL Gateway dan database server berjalan.', 'error');
+            }
         } finally {
             setIsHistoryRunning(false);
         }

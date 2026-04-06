@@ -6,7 +6,6 @@
  */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700&family=Roboto+Mono:wght@400;500;600;700&display=swap');
-@import url('./print-optimization.css');
 
 /* =============================================
    ROOT CONTAINER
@@ -134,6 +133,19 @@
     border-radius: 0;
     /* Sharp edges for real paper look */
     position: relative;
+}
+
+/* Print: Override min-width and use full page width */
+@media print {
+    .wsp-document {
+        width: 100% !important;
+        min-width: unset !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0.5rem !important;
+        box-shadow: none !important;
+        border: 2px solid #000 !important;
+    }
 }
 
 /* =============================================

@@ -177,29 +177,33 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
         const errors: any[] = [];
         const notFound: { empCode: string, reason: string }[] = [];
 
-        // RESOLVE ALL NIKs TO EMPCODES
-        const db = (await import('../db/client')).Database.getInstance();
-        const resolvedEmpCodes: string[] = [];
+        // OPTIMIZATION: Batch NIK Resolution - single query for all NIKs
+        const nikToResolve = empCodes.filter(code => typeof code === 'string' && code.trim() !== "" && /^\d{10,}$/.test(code.trim()));
+        const codeToResolve = empCodes.filter(code => typeof code === 'string' && code.trim() !== "" && !/^\d{10,}$/.test(code.trim()));
 
-        for (let code of empCodes) {
-            const trimmedCode = code.trim();
-            if (/^\d{10,}$/.test(trimmedCode)) {
-                console.log(`[Batch Checkroll] Detected NIK (KTP): ${trimmedCode}, resolving...`);
-                try {
-                    const rows = await db.query<{ EmpCode: string }>(
-                        `SELECT TOP 1 EmpCode FROM HR_EMPLOYEE WHERE RTRIM(NewICNo) = RTRIM(?) ORDER BY EmpCode`,
-                        [trimmedCode]
-                    );
-                    if (rows.length > 0) {
-                        resolvedEmpCodes.push(rows[0].EmpCode.trim());
-                    } else {
-                        notFound.push({ empCode: trimmedCode, reason: "Employee with NIK not found" });
+        const resolvedEmpCodes: string[] = [...codeToResolve];
+
+        if (nikToResolve.length > 0) {
+            console.log(`[Batch Checkroll] Resolving ${nikToResolve.length} NIKs in single batch query...`);
+            try {
+                const placeholders = nikToResolve.map(() => '?').join(',');
+                const nikRows = await db.query<{ NewICNo: string, EmpCode: string }>(
+                    `SELECT RTRIM(NewICNo) as NewICNo, RTRIM(EmpCode) as EmpCode FROM HR_EMPLOYEE WHERE RTRIM(NewICNo) IN (${placeholders})`,
+                    nikToResolve
+                );
+                const nikMap = new Map(nikToResolve.map(nik => [nik.trim().toUpperCase(), nik]));
+                nikRows.forEach(row => {
+                    const nik = nikMap.get(row.NewICNo?.trim().toUpperCase());
+                    if (nik) resolvedEmpCodes.push(row.EmpCode.trim());
+                });
+                nikToResolve.forEach(nik => {
+                    if (!nikRows.find(r => r.NewICNo?.trim().toUpperCase() === nik.trim().toUpperCase())) {
+                        notFound.push({ empCode: nik, reason: "Employee with NIK not found" });
                     }
-                } catch (e: any) {
-                    errors.push({ empCode: trimmedCode, reason: "Failed to resolve NIK", error: e.message });
-                }
-            } else {
-                resolvedEmpCodes.push(trimmedCode);
+                });
+                console.log(`[Batch Checkroll] NIK batch resolved ${nikRows.length}/${nikToResolve.length}`);
+            } catch (e: any) {
+                errors.push({ empCode: "BATCH_NIK", reason: "Failed to batch resolve NIKs", error: e.message });
             }
         }
 
@@ -216,42 +220,54 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
         // USE RESOLVED EMPCODES FROM NOW ON
         const actualEmpCodes = Array.from(new Set(resolvedEmpCodes));
 
-        // OPTIMIZATION: Get division from first employee's gang code
-        // Then fetch ALL payroll data for that division in ONE call
+        // OPTIMIZATION: Batch employee info fetch in single query (eliminates N individual queries)
         let allPayrollData: any[] = [];
-        let division = "ALL"; // Default to ALL if not specified
-
         try {
-            // First, get employee info to determine division
-            const empInfoResults = await Promise.all(
-                actualEmpCodes.map(code => employeeDetailService.getEmployeeInfo(code))
+            const placeholders = actualEmpCodes.map(() => '?').join(',');
+            const empInfoRows = await db.query<{ EmpCode: string, LocCode: string, GangCode: string }>(
+                `SELECT RTRIM(e.EmpCode) as EmpCode, e.LocCode, g.GangCode
+                 FROM HR_EMPLOYEE e
+                 LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                 LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                 WHERE RTRIM(e.EmpCode) IN (${placeholders})`,
+                actualEmpCodes
             );
 
             // Get unique divisions from employees
             const divisions = new Set<string>();
-            empInfoResults.forEach(info => {
-                if (info) {
-                    // Extract division from gang code (e.g., "H1H1" -> "H1")
-                    const gangCode = info.gang_code || "";
+            const empInfoMap = new Map<string, { locCode: string, gangCode: string }>();
+
+            empInfoRows.forEach(row => {
+                empInfoMap.set(row.EmpCode?.trim().toUpperCase(), {
+                    locCode: row.LocCode?.trim() || "",
+                    gangCode: row.GangCode?.trim() || ""
+                });
+                if (row.GangCode) {
+                    const gangCode = row.GangCode.trim();
                     const div = gangCode.substring(0, 2) || "ALL";
                     divisions.add(div);
                 }
             });
 
-            // Fetch payroll data for each division needed
-            for (const div of divisions) {
-                const payrollResult = await dataExtractorService.extractPayrollData(
-                    month, year, div, undefined, undefined, undefined, false, null, undefined, true // skipHarvest=true
-                );
-                if (payrollResult?.data_rows) {
-                    allPayrollData = allPayrollData.concat(payrollResult.data_rows);
-                }
-            }
+            console.log(`[Batch Checkroll] Fetched ${empInfoRows.length} employee records, divisions: [${Array.from(divisions).join(", ")}]`);
 
-            console.log(`[Batch Checkroll] Fetched ${allPayrollData.length} payroll rows for divisions: [${Array.from(divisions).join(", ")}]`);
+            // OPTIMIZATION: Fetch payroll data for each division in PARALLEL
+            const divisionArray = Array.from(divisions);
+            const payrollPromises = divisionArray.map(div =>
+                dataExtractorService.extractPayrollData(
+                    month, year, div, undefined, undefined, undefined, false, null, undefined, true // skipHarvest=true
+                )
+            );
+            const payrollResults = await Promise.all(payrollPromises);
+            payrollResults.forEach(result => {
+                if (result?.data_rows) {
+                    allPayrollData = allPayrollData.concat(result.data_rows);
+                }
+            });
+
+            console.log(`[Batch Checkroll] Fetched ${allPayrollData.length} payroll rows from ${divisionArray.length} divisions`);
         } catch (e: any) {
             console.error("[Batch Checkroll] Failed to fetch payroll data:", e);
-            // Continue with empty data - individual employee fetch may still work
         }
 
         // Normalize requested employee codes
