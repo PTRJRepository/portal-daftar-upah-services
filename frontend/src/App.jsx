@@ -159,7 +159,7 @@ const OperationalReportWrapper = () => {
   const handleExportTaxExcel = async () => {
     setTaxExportLoading(true)
     try {
-      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix)
+      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistoryDb)
     } catch (err) {
       alert('Gagal mengunduh pajak: ' + (err.message || 'Unknown error'))
     } finally {
@@ -173,7 +173,8 @@ const OperationalReportWrapper = () => {
       month: String(month),
       year: String(year),
       gang: gang || '',
-      gangPrefix: gangPrefix || ''
+      gangPrefix: gangPrefix || '',
+      use_history: useHistoryDb ? 'true' : 'false'
     });
     const taxPath = buildAppPath(`/report-pajak?${params.toString()}`);
     window.open(taxPath, '_blank', 'noopener,noreferrer');

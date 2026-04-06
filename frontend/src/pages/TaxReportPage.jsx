@@ -52,7 +52,7 @@ const formatPercent = (val) => {
 // ================================================================
 // TAB 1: Pajak Bulanan (Monthly PPH21)
 // ================================================================
-function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey }) {
+function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey, useHistory }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -91,9 +91,10 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                 division,
                 gang,
                 gangPrefix,
-                monthName: MONTH_NAMES[month - 1]
+                monthName: MONTH_NAMES[month - 1],
+                useHistory
             });
-            const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix);
+            const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory);
             console.log('[TaxReportPage] Monthly tax data loaded:', {
                 employeeCount: result?.employees?.length || 0,
                 total_pph21_from_backend: result?.total_pph21,
@@ -117,7 +118,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
         try {
-            await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix);
+            await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory);
         } catch (err) {
             alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
         } finally {
@@ -128,7 +129,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     const handleExportJson = async () => {
         setExportingJson(true);
         try {
-            await exportPajakJson(token, year, month, gang || 'ALL');
+            await exportPajakJson(token, year, month, gang || 'ALL', division, gangPrefix, useHistory);
         } catch (err) {
             alert('Gagal export JSON: ' + (err.message || 'Unknown error'));
         } finally {
@@ -139,7 +140,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     useEffect(() => {
         console.log('[TaxReportPage] useEffect triggered - calling loadData');
         loadData();
-    }, [loadData]);
+    }, [loadData, useHistory]);
 
     if (loading) return (
         <div className="tax-report-loading">
@@ -1606,6 +1607,15 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
 
     // Local state for non-shared filters
     const [activeTab, setActiveTab] = useState(() => loadFromStorage(STORAGE_KEYS.ACTIVE_TAB, 'monthly'));
+    const [useHistory, setUseHistory] = useState(false);
+
+    // Initial load from URL
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('use_history') === 'true') {
+            setUseHistory(true);
+        }
+    }, []);
 
     // Save to localStorage when values change
     useEffect(() => {
@@ -1766,6 +1776,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         division={division}
                         gang={gang}
                         gangPrefix={gangPrefix}
+                        useHistory={useHistory}
                     />
                 )}
                 {activeTab === 'annual' && (

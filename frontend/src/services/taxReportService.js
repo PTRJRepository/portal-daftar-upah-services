@@ -1,25 +1,76 @@
 import axios from 'axios';
 
 /**
+ * Helper to handle blob processes (checks for 0-byte, handles errors returned in blobs)
+ */
+async function processBlobResponse(response, defaultFileName) {
+    const blob = response.data;
+    
+    // 1. Basic validation
+    if (!(blob instanceof Blob)) {
+        throw new Error('Server returned unexpected response type. Expected blob.');
+    }
+
+    if (blob.size === 0) {
+        throw new Error('Server returned an empty file (0 bytes).');
+    }
+
+    // 2. Check if the "blob" is actually a JSON error (can happen if backend returns 200 with JSON but Axios expects blob)
+    const contentType = response.headers['content-type'] || '';
+    if (contentType.includes('application/json')) {
+        const text = await blob.text();
+        try {
+            const errorJson = JSON.parse(text);
+            throw new Error(errorJson.error || errorJson.message || 'Server error');
+        } catch (e) {
+            throw new Error(text || 'Server returned JSON error');
+        }
+    }
+
+    // 3. Extract filename from Content-Disposition
+    let fileName = defaultFileName;
+    const contentDisposition = response.headers['content-disposition'];
+    if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+        const matches = filenameRegex.exec(contentDisposition);
+        if (matches != null && matches[1]) {
+            fileName = matches[1].replace(/['"]/g, '');
+        }
+    }
+
+    // 4. Create and trigger download
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+
+    // 5. Cleanup
+    setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+    }, 100);
+}
+
+/**
  * Fetch monthly PPH21 tax report
  */
-export async function fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix) {
+export async function fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory) {
     const params = { year, month };
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
+    if (useHistory !== undefined) params.use_history = useHistory.toString();
 
-    // axios interceptor automatically sets the Authorization header
-    // if using the auth interceptor, otherwise we can pass it here. 
-    // Usually other services pass it directly like this:
+    // Axios defaults handle auth if interceptor is present
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
     const response = await axios.get('/tax-report/monthly', { params, headers, timeout: 120000 });
     return response.data;
 }
 
 /**
- * Fetch annual tax report (penghasilan setahun + perhitungan pajak)
+ * Fetch annual tax report
  */
 export async function fetchAnnualTaxReport(token, year, month, division, gang, gangPrefix) {
     const params = { year };
@@ -29,7 +80,6 @@ export async function fetchAnnualTaxReport(token, year, month, division, gang, g
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
     const response = await axios.get('/tax-report/annual', { params, headers, timeout: 120000 });
     return response.data;
 }
@@ -45,7 +95,6 @@ export async function fetchAnnualAstekBpjsReport(token, year, month, division, g
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
     const response = await axios.get('/tax-report/astek-bpjs', { params, headers, timeout: 120000 });
     return response.data;
 }
@@ -60,81 +109,74 @@ export async function fetchDecemberTaxReport(token, year, division, gang, gangPr
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
     const response = await axios.get('/tax-report/december', { params, headers, timeout: 120000 });
     return response.data;
 }
 
 /**
- * Download monthly PPH21 tax report as Excel Document
+ * Common error handler for blob requests
  */
-export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix) {
-    const params = { year, month };
-    if (division) params.division = division;
-    if (gang && gang !== 'ALL') params.gang = gang;
-    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
+async function handleBlobError(error, defaultMessage) {
+    if (error.response && error.response.data instanceof Blob) {
+        try {
+            const text = await error.response.data.text();
+            try {
+                const json = JSON.parse(text);
+                throw new Error(json.error || json.message || defaultMessage);
+            } catch {
+                throw new Error(text || defaultMessage);
+            }
+        } catch (e) {
+            throw new Error(e.message || defaultMessage);
+        }
+    }
+    throw error;
+}
 
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+/**
+ * Download monthly PPH21 tax report as Excel Document (Tax Report Page)
+ * Uses direct fetch to port 8002 like Daftar Upah export
+ */
+export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory) {
+    const params = new URLSearchParams({ year: String(year), month: String(month) });
+    if (division) params.append('division', division);
+    if (gang && gang !== 'ALL') params.append('gang', gang);
+    if (gangPrefix && gangPrefix !== 'ALL') params.append('gangPrefix', gangPrefix);
+    if (useHistory !== undefined) params.append('use_history', useHistory.toString());
 
     try {
-        // Use responseType: 'blob' to handle binary data properly
-        const response = await axios.get('/tax-report/monthly/excel', {
-            params,
-            headers,
-            responseType: 'blob'
+        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
+        const response = await fetch(`${backendUrl}/tax-report/monthly/excel?${params.toString()}`, {
+            headers: { Authorization: token ? `Bearer ${token}` : '' }
         });
 
-        // Check if response is actually a blob
-        if (!(response.data instanceof Blob)) {
-            throw new Error('Server returned unexpected response type. Expected blob.');
+        if (!response.ok) {
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+                const json = await response.json();
+                errorMessage = json.error || json.message || errorMessage;
+            } catch {}
+            throw new Error(errorMessage);
         }
 
-        // Create a download link
-        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const blob = await response.blob();
+        if (blob.size === 0) throw new Error('Server returned empty file');
+
+        const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-
-        // Extract filename from Content-Disposition header if available
-        let fileName = `PPH21_${division || 'ALL'}_${gang || 'ALL'}_${month}_${year}.xlsx`;
-        const contentDisposition = response.headers['content-disposition'];
-        if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
-            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-            const matches = filenameRegex.exec(contentDisposition);
-            if (matches != null && matches[1]) {
-                fileName = matches[1].replace(/['"]/g, '');
-            }
-        }
-
-        link.setAttribute('download', fileName);
+        link.download = `PPH21_${division || 'ALL'}_${month}_${year}.xlsx`;
         document.body.appendChild(link);
         link.click();
-
-        // Cleanup
         window.URL.revokeObjectURL(url);
         document.body.removeChild(link);
     } catch (error) {
-        // If error is from an error response (not network error), try to parse the error message
-        if (error.response && error.response.data) {
-            try {
-                const errorText = await error.response.data.text();
-                let errorMessage = 'Gagal mengunduh Excel';
-                try {
-                    const errorJson = JSON.parse(errorText);
-                    errorMessage = errorJson.error || errorJson.message || errorMessage;
-                } catch {
-                    errorMessage = errorText || errorMessage;
-                }
-                throw new Error(errorMessage);
-            } catch (parseError) {
-                throw new Error(parseError.message || 'Gagal mengunduh Excel: ' + error.message);
-            }
-        }
-        throw error;
+        await handleBlobError(error, 'Gagal mengunduh Excel Pajak Bulanan');
     }
 }
 
 /**
- * Download December tax report as Excel Document (includes Monthly Details Sheet)
+ * Download December tax report as Excel Document
  */
 export async function downloadDecemberTaxReportExcel(token, year, division, gang, gangPrefix) {
     const params = { year };
@@ -142,193 +184,78 @@ export async function downloadDecemberTaxReportExcel(token, year, division, gang
     if (gang && gang !== 'ALL') params.gang = gang;
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
     try {
-        // Use responseType: 'blob' to handle binary data properly
         const response = await axios.get('/tax-report/december/excel', {
             params,
-            headers,
-            responseType: 'blob'
+            responseType: 'blob',
+            timeout: 180000
         });
-
-        // Check if response is actually a blob
-        if (!(response.data instanceof Blob)) {
-            throw new Error('Server returned unexpected response type. Expected blob.');
-        }
-
-        // Create a download link
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-
-        // Extract filename from Content-Disposition header if available
-        let fileName = `PAJAK_DESEMBER_${division || 'ALL'}_${gang || 'ALL'}_${year}.xlsx`;
-        const contentDisposition = response.headers['content-disposition'];
-        if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
-            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-            const matches = filenameRegex.exec(contentDisposition);
-            if (matches != null && matches[1]) {
-                fileName = matches[1].replace(/['"]/g, '');
-            }
-        }
-
-        link.setAttribute('download', fileName);
-        document.body.appendChild(link);
-        link.click();
-
-        // Cleanup
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(link);
+        await processBlobResponse(response, `PAJAK_DESEMBER_${division || 'ALL'}_${year}.xlsx`);
     } catch (error) {
-        // If error is from an error response (not network error), try to parse the error message
-        if (error.response && error.response.data) {
-            try {
-                const errorText = await error.response.data.text();
-                let errorMessage = 'Gagal mengunduh Excel';
-                try {
-                    const errorJson = JSON.parse(errorText);
-                    errorMessage = errorJson.error || errorJson.message || errorMessage;
-                } catch {
-                    errorMessage = errorText || errorMessage;
-                }
-                throw new Error(errorMessage);
-            } catch (parseError) {
-                throw new Error(parseError.message || 'Gagal mengunduh Excel: ' + error.message);
-            }
-        }
-        throw error;
+        await handleBlobError(error, 'Gagal mengunduh Excel Pajak Desember');
     }
 }
 
 /**
  * Export PPh21 TER + PPh21 Input JSON by gang
- * Downloads as JSON file automatically
  */
-export async function exportPajakJson(token, year, month, gang) {
+export async function exportPajakJson(token, year, month, gang, div, gangPrefix, useHistory) {
     const params = { year: String(year), month: String(month) };
     if (gang && gang !== 'ALL') params.gang = gang;
-
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+    if (div) params.div = div;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gang_prefix = gangPrefix;
+    if (useHistory !== undefined) params.use_history = useHistory.toString();
 
     try {
         const response = await axios.get('/payroll/export/pajak', {
             params,
-            headers,
             responseType: 'blob',
             timeout: 120000,
         });
-
-        // Check if response is actually a blob
-        if (!(response.data instanceof Blob)) {
-            throw new Error('Server returned unexpected response type. Expected blob.');
-        }
-
-        // Extract filename from Content-Disposition header
-        let fileName = `PAJAK_${gang || 'ALL'}_${month}_${year}.json`;
-        const contentDisposition = response.headers['content-disposition'];
-        if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
-            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-            const matches = filenameRegex.exec(contentDisposition);
-            if (matches != null && matches[1]) {
-                fileName = matches[1].replace(/['"]/g, '');
-            }
-        }
-
-        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/json' }));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', fileName);
-        document.body.appendChild(link);
-        link.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(link);
+        await processBlobResponse(response, `PAJAK_${gang || 'ALL'}_${month}_${year}.json`);
     } catch (error) {
-        // If error is from an error response (not network error), try to parse the error message
-        if (error.response && error.response.data) {
-            try {
-                const errorText = await error.response.data.text();
-                let errorMessage = 'Gagal export JSON';
-                try {
-                    const errorJson = JSON.parse(errorText);
-                    errorMessage = errorJson.error || errorJson.message || errorMessage;
-                } catch {
-                    errorMessage = errorText || errorMessage;
-                }
-                throw new Error(errorMessage);
-            } catch (parseError) {
-                throw new Error(parseError.message || 'Gagal export JSON: ' + error.message);
-            }
-        }
-        throw error;
+        await handleBlobError(error, 'Gagal export JSON Pajak');
     }
 }
 
 /**
- * Download tax report (PPH21) Excel from Operational page
- * Uses the same /tax-report/monthly/excel endpoint with gang/division from current context
+ * Download tax report (PPH21) Excel from Operational page (App.jsx)
+ * Uses direct fetch to port 8002 like Daftar Upah export
  */
-export async function downloadTaxReportExcel(token, year, month, division, gang, gangPrefix) {
-    const params = { year, month };
-    if (division) params.division = division;
-    if (gang && gang !== 'ALL') params.gang = gang;
-    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
-
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+export async function downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory) {
+    const params = new URLSearchParams({ year: String(year), month: String(month) });
+    if (division) params.append('division', division);
+    if (gang && gang !== 'ALL') params.append('gang', gang);
+    if (gangPrefix && gangPrefix !== 'ALL') params.append('gangPrefix', gangPrefix);
+    if (useHistory !== undefined) params.append('use_history', useHistory.toString());
 
     try {
-        const response = await axios.get('/tax-report/monthly/excel', {
-            params,
-            headers,
-            responseType: 'blob',
-            timeout: 120000,
+        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
+        const response = await fetch(`${backendUrl}/tax-report/monthly/excel?${params.toString()}`, {
+            headers: { Authorization: token ? `Bearer ${token}` : '' }
         });
 
-        // Check if response is actually a blob
-        if (!(response.data instanceof Blob)) {
-            throw new Error('Server returned unexpected response type. Expected blob.');
+        if (!response.ok) {
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+                const json = await response.json();
+                errorMessage = json.error || json.message || errorMessage;
+            } catch {}
+            throw new Error(errorMessage);
         }
 
-        // Create a download link
-        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const blob = await response.blob();
+        if (blob.size === 0) throw new Error('Server returned empty file');
+
+        const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-
-        // Extract filename from Content-Disposition header
-        let fileName = `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`;
-        const contentDisposition = response.headers['content-disposition'];
-        if (contentDisposition && contentDisposition.indexOf('attachment') !== -1) {
-            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-            const matches = filenameRegex.exec(contentDisposition);
-            if (matches != null && matches[1]) {
-                fileName = matches[1].replace(/['"]/g, '');
-            }
-        }
-
-        link.setAttribute('download', fileName);
+        link.download = `PPH21_${division || 'ALL'}_${month}_${year}.xlsx`;
         document.body.appendChild(link);
         link.click();
-
-        // Cleanup
         window.URL.revokeObjectURL(url);
         document.body.removeChild(link);
     } catch (error) {
-        // If error is from an error response (not network error), try to parse the error message
-        if (error.response && error.response.data) {
-            try {
-                const errorText = await error.response.data.text();
-                let errorMessage = 'Gagal mengunduh Excel';
-                try {
-                    const errorJson = JSON.parse(errorText);
-                    errorMessage = errorJson.error || errorJson.message || errorMessage;
-                } catch {
-                    errorMessage = errorText || errorMessage;
-                }
-                throw new Error(errorMessage);
-            } catch (parseError) {
-                throw new Error(parseError.message || 'Gagal mengunduh Excel: ' + error.message);
-            }
-        }
-        throw error;
+        await handleBlobError(error, 'Gagal mengunduh Excel Pajak');
     }
 }

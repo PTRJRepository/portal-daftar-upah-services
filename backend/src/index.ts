@@ -292,7 +292,7 @@ const app = new Elysia()
         const pathname = url.pathname;
 
         // If it looks like an API call, return 404
-        const isApi = pathname.startsWith("/backend") || pathname.startsWith("/api") || pathname.includes("/payroll/");
+        const isApi = pathname.startsWith("/api") || pathname.includes("/payroll/");
         if (isApi) {
             set.status = 404;
             return { error: "Route not found", path: pathname };

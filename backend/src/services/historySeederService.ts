@@ -325,14 +325,23 @@ export class HistorySeederService {
 
             // [FIX] Delete existing history for this division/period/gang to prevent duplication
             // This ensures idempotent seeding - running seeder multiple times produces same result
-            if (options.force) {
-                console.log(`[HistorySeeder] Deleting existing history for ${options.divisionCode || 'ALL'}/${options.gangCode || 'ALL'} (${options.periodMonth}/${options.periodYear})...`);
+            //
+            // CRITICAL: Only delete if a SPECIFIC divisionCode is provided.
+            // If divisionCode is undefined (seeding ALL divisions), DO NOT delete
+            // because the DELETE would wipe ALL history for that period across all divisions.
+            // The absence of divisionCode means "additive" seeding - preserve existing data.
+            if (options.force && options.divisionCode) {
+                console.log(`[HistorySeeder] Deleting existing history for ${options.divisionCode}/${options.gangCode || 'ALL'} (${options.periodMonth}/${options.periodYear})...`);
                 await historyDatabaseService.deleteHistoryForPeriodAndLocation(
-                    options.periodMonth, 
-                    options.periodYear, 
-                    options.divisionCode, 
+                    options.periodMonth,
+                    options.periodYear,
+                    options.divisionCode,
                     options.gangCode
                 );
+            } else if (!options.force) {
+                console.log(`[HistorySeeder] force=false - skipping delete (preserving existing history data)`);
+            } else {
+                console.log(`[HistorySeeder] No specific divisionCode provided - skipping delete to preserve existing data from other divisions`);
             }
 
             const seederMode = options.seederMode || 'PAYROLL';
@@ -342,9 +351,15 @@ export class HistorySeederService {
                 // 1. Get payroll data from real-time database
                 HistorySeederService.updateProgress({ current_step: 'Mengambil data payroll live...' });
                 let payrollData: any[] = [];
+                let totalEmployeesInData = 0;
                 try {
                     payrollData = await this.fetchPayrollData(options);
                     console.log(`[HistorySeeder] fetchPayrollData returned ${payrollData.length} gangs`);
+                    // Calculate total employees for progress display
+                    for (const gang of payrollData) {
+                        totalEmployeesInData += gang.employees?.length || 0;
+                    }
+                    console.log(`[HistorySeeder] Total employees in fetched data: ${totalEmployeesInData}`);
                 } catch (fetchError: any) {
                     console.error(`[HistorySeeder] fetchPayrollData failed: ${fetchError.message}`);
                     result.errors.push(`Fetch payroll data failed: ${fetchError.message}`);
@@ -388,27 +403,43 @@ export class HistorySeederService {
                     // For 'ALL' mode, continue to try HR data seeding
                 } else {
                     // 2. Seed master and detail
-                    HistorySeederService.updateProgress({ gangs_total: payrollData.length, current_step: 'Menyimpan data payroll per gang...' });
+                    HistorySeederService.updateProgress({ gangs_total: payrollData.length, current_step: 'Menyimpan data payroll per gang...', employees_processed: 0 });
                     for (let gi = 0; gi < payrollData.length; gi++) {
                         const gangData = payrollData[gi];
                         try {
                             HistorySeederService.updateProgress({
                                 current_step: `Menyimpan gang ${gangData.gang_code || '?'} (${gi + 1}/${payrollData.length})`,
                                 current_gang: gangData.gang_code,
-                                gangs_done: gi
+                                gangs_done: gi,
+                                employees_processed: result.total_employees
                             });
                             await this.seedGangHistory(historyId, gangData, options, result);
                         } catch (error: any) {
                             result.errors.push(`Error seeding gang ${gangData.gang_code}: ${error.message}`);
                         }
                     }
-                    HistorySeederService.updateProgress({ gangs_done: payrollData.length, current_step: 'Menyimpan data transaksi...' });
+                    HistorySeederService.updateProgress({
+                        gangs_done: payrollData.length,
+                        employees_processed: result.total_employees,
+                        current_step: 'Menyimpan data transaksi...'
+                    });
 
-                    // 3. Seed transaction data
+                    // 3. Seed transaction data (with timeout protection)
                     console.log(`[HistorySeeder] Starting transaction seeding...`);
                     try {
-                        await this.seedTransactionData(historyId, options, result);
-                        console.log(`[HistorySeeder] Transaction seeding completed`);
+                        // Transaction seeding can take a long time. We'll wrap it with a timeout
+                        // If it takes more than 5 minutes, we'll skip it and continue
+                        const TX_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+                        await Promise.race([
+                            this.seedTransactionData(historyId, options, result),
+                            new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error('Transaction seeding timeout after 5 minutes - skipping')), TX_TIMEOUT_MS)
+                            )
+                        ]).catch((err) => {
+                            console.warn(`[HistorySeeder] ⚠️ Transaction seeding issue: ${err.message}`);
+                            console.warn(`[HistorySeeder] ⚠️ Skipping transaction data - manual intervention may be needed`);
+                        });
+                        console.log(`[HistorySeeder] Transaction seeding step completed (may have skipped)`);
                     } catch (error: any) {
                         console.error(`[HistorySeeder] Error in seedTransactionData:`, error);
                         console.error(`[HistorySeeder] Error stack:`, error.stack);
@@ -573,7 +604,24 @@ export class HistorySeederService {
         result: SeederResult
     ): Promise<void> {
         const employees = gangData.employees;
-        if (!employees || employees.length === 0) return;
+        console.log(`[HistorySeeder] seedGangHistory: gang=${gangData.gang_code}, employees count=${employees?.length || 0}`);
+
+        if (!employees || employees.length === 0) {
+            console.warn(`[HistorySeeder] ⚠️ No employees for gang ${gangData.gang_code}, skipping`);
+            return;
+        }
+
+        // Debug: Log first employee structure
+        if (employees.length > 0) {
+            const firstEmp = employees[0];
+            console.log(`[HistorySeeder] First employee: ${JSON.stringify({
+                emp_code: firstEmp.emp_code,
+                nik: firstEmp.nik,
+                nama: firstEmp.nama || firstEmp.emp_name,
+                gang_code: firstEmp.gang_code,
+                loc_code: firstEmp.loc_code
+            })}`);
+        }
 
         // Calculate totals
         const totals = this.calculateTotals(employees);
@@ -775,37 +823,57 @@ export class HistorySeederService {
         result: SeederResult,
         divisionCode?: string
     ): Promise<void> {
-        const nik = emp.nik;
+        const nik = emp?.nik;
 
-        // Check if this NIK has duplicates
-        const hasDuplicate = await duplicateNikMitigationService.hasDuplicate(nik);
+        // Safety check: if nik is missing, skip this employee
+        if (!nik) {
+            console.warn(`[HistorySeeder] ⚠️ Skipping employee with missing NIK: ${JSON.stringify({ emp_code: emp?.emp_code, nama: emp?.nama || emp?.emp_name })}`);
+            return;
+        }
 
-        if (hasDuplicate) {
-            // Get all EmpCodes for this NIK
-            const empCodeMap = await duplicateNikMitigationService.getAllEmpCodesForNik(nik);
+        try {
+            // Check if this NIK has duplicates
+            const hasDuplicate = await duplicateNikMitigationService.hasDuplicate(nik);
 
-            // Log for audit
-            console.log(`[HistorySeeder] Duplicate NIK detected: ${nik} has ${empCodeMap.emp_codes.length} EmpCodes: ${empCodeMap.emp_codes.join(', ')}`);
+            if (hasDuplicate) {
+                // Get all EmpCodes for this NIK
+                const empCodeMap = await duplicateNikMitigationService.getAllEmpCodesForNik(nik);
 
-            // Create detail records for ALL EmpCodes associated with this NIK
-            // This ensures complete history coverage
-            for (const empCode of empCodeMap.emp_codes) {
-                const detailData = this.mapEmployeeToDetail(historyId, masterId, {
-                    ...emp,
-                    emp_code: empCode // Override with each EmpCode
-                }, divisionCode);
+                // Log for audit
+                console.log(`[HistorySeeder] Duplicate NIK detected: ${nik} has ${empCodeMap.emp_codes.length} EmpCodes: ${empCodeMap.emp_codes.join(', ')}`);
 
+                // Create detail records for ALL EmpCodes associated with this NIK
+                // This ensures complete history coverage
+                for (const empCode of empCodeMap.emp_codes) {
+                    const detailData = this.mapEmployeeToDetail(historyId, masterId, {
+                        ...emp,
+                        emp_code: empCode // Override with each EmpCode
+                    }, divisionCode);
+
+                    await historyDatabaseService.savePayrollHistoryDetail(detailData);
+                    result.records_inserted.detail++;
+                }
+
+                result.total_employees += empCodeMap.emp_codes.length;
+            } else {
+                // Normal flow - single employee
+                const detailData = this.mapEmployeeToDetail(historyId, masterId, emp, divisionCode);
                 await historyDatabaseService.savePayrollHistoryDetail(detailData);
                 result.records_inserted.detail++;
+                result.total_employees += 1;
             }
-
-            result.total_employees += empCodeMap.emp_codes.length;
-        } else {
-            // Normal flow - single employee
-            const detailData = this.mapEmployeeToDetail(historyId, masterId, emp, divisionCode);
-            await historyDatabaseService.savePayrollHistoryDetail(detailData);
-            result.records_inserted.detail++;
-            result.total_employees += 1;
+        } catch (err: any) {
+            // Log error but don't fail the whole gang
+            console.error(`[HistorySeeder] Error handling NIK ${nik}: ${err.message}`);
+            // Try to save at least one record
+            try {
+                const detailData = this.mapEmployeeToDetail(historyId, masterId, emp, divisionCode);
+                await historyDatabaseService.savePayrollHistoryDetail(detailData);
+                result.records_inserted.detail++;
+                result.total_employees += 1;
+            } catch (saveErr: any) {
+                console.error(`[HistorySeeder] Failed to save fallback record for NIK ${nik}: ${saveErr.message}`);
+            }
         }
     }
 

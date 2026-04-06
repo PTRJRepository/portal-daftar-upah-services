@@ -25,10 +25,13 @@ async function getUserFromHeader(headers: Record<string, string | undefined>): P
 
 export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     .derive(async ({ headers }) => {
+        const authHeader = headers["authorization"];
+        console.log(`[TaxReport] Auth header: ${authHeader ? 'present' : 'missing'}`);
         const user = await getUserFromHeader(headers);
         return { currentUser: user };
     })
     .onBeforeHandle(({ currentUser, set }) => {
+        console.log(`[TaxReport] currentUser: ${currentUser ? 'authenticated' : 'not authenticated'}`);
         if (!currentUser) {
             set.status = 401;
             return { message: "Unauthorized" };
@@ -46,6 +49,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
             const gangPrefix = query.gangPrefix as string || undefined;
+            const useHistory = query.use_history === 'true';
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -56,13 +60,22 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year or month parameter" };
             }
 
-            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix);
+            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistory);
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching monthly tax report:", error);
             set.status = 500;
             return { error: error.message || "Failed to fetch monthly tax report" };
         }
+    }, {
+        query: t.Object({
+            year: t.String(),
+            month: t.String(),
+            division: t.Optional(t.String()),
+            gang: t.Optional(t.String()),
+            gangPrefix: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
+        })
     })
 
     // ========================================================
@@ -76,6 +89,10 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
             const gangPrefix = query.gangPrefix as string || undefined;
+            const useHistory = query.use_history === 'true';
+
+            console.log(`[TaxReport Excel] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistory}`);
+            console.log(`[TaxReport Excel] currentUser: ${currentUser ? 'authenticated' : 'not auth'}`);
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -87,7 +104,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // Fetch the base data
-            const data = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix);
+            const data = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistory);
+
+            console.log(`[TaxReport Excel] Data fetched: ${data?.employees?.length || 0} employees`);
 
             if (!data || data.employees.length === 0) {
                 set.status = 404;
@@ -99,16 +118,33 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             // Generate Excel Buffer (pass premiKeys for dynamic column headers)
             const excelBuffer = await generateMonthlyTaxExcel(data, year, month, division || 'ALL', gangLabel, data.premiKeys);
 
-            // Set headers for file download
-            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            set.headers["Content-Disposition"] = `attachment; filename="PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx"`;
+            console.log(`[TaxReport Excel] Excel generated: ${excelBuffer?.length || 0} bytes, type: ${typeof excelBuffer}`);
 
-            return excelBuffer;
+            if (!excelBuffer || excelBuffer.length === 0) {
+                set.status = 500;
+                return { error: "Failed to generate Excel buffer" };
+            }
+
+            return new Response(excelBuffer, {
+                headers: {
+                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "Content-Disposition": `attachment; filename="PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx"`
+                }
+            });
         } catch (error: any) {
             console.error("[TaxReport] Error generating Excel report:", error);
             set.status = 500;
             return { error: error.message || "Failed to generate Excel report" };
         }
+    }, {
+        query: t.Object({
+            year: t.String(),
+            month: t.String(),
+            division: t.Optional(t.String()),
+            gang: t.Optional(t.String()),
+            gangPrefix: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
+        })
     })
 
     // ========================================================
@@ -235,11 +271,12 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             // Generate Excel Buffer
             const excelBuffer = await generateDecemberTaxExcel(data, year, division || 'ALL', gangLabel);
 
-            // Set headers for file download
-            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            set.headers["Content-Disposition"] = `attachment; filename="PAJAK_DESEMBER_${division || 'ALL'}_${gangLabel}_${year}.xlsx"`;
-
-            return excelBuffer;
+            return new Response(excelBuffer, {
+                headers: {
+                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "Content-Disposition": `attachment; filename="PAJAK_DESEMBER_${division || 'ALL'}_${gangLabel}_${year}.xlsx"`
+                }
+            });
         } catch (error: any) {
             console.error("[TaxReport] Error generating December Excel report:", error);
             set.status = 500;

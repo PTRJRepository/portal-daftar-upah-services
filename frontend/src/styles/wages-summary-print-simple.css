@@ -54,8 +54,8 @@
 
     /* Document wrapper - simple borders */
     .wsp-document {
-        border: 2px solid black !important;
-        padding: 10px !important;
+        border: none !important; /* Remove outer border in print to prevent gap issues */
+        padding: 0 !important;
         margin: 0 !important;
         background: white !important;
     }
@@ -146,7 +146,12 @@
         width: 100% !important;
         border-collapse: collapse !important;
         font-size: 10px !important;
-        table-layout: fixed !important;
+        table-layout: auto !important; /* Changed from fixed to auto for better content fitting in print */
+        page-break-inside: auto !important; /* Allow table to split across pages */
+    }
+
+    .wsp-table thead {
+        display: table-header-group !important; /* Repeat headers on every page */
     }
 
     /* All headers */
@@ -198,8 +203,10 @@
         text-align: center !important;
     }
 
-    /* Division column */
-    .wsp-table td:first-child {
+    /* Division column - Give it more space */
+    .wsp-table td:first-child,
+    .wsp-table th:first-child {
+        width: 25% !important;
         text-align: left !important;
         font-weight: bold !important;
     }
@@ -289,7 +296,6 @@
     }
 
     /* Ensure no page breaks in bad places */
-    table,
     tr,
     .wsp-kpi-card,
     .wsp-signature-section {

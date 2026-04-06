@@ -413,50 +413,62 @@ class TaxReportService {
     /**
      * Fetch payroll data — HISTORY data as primary source for past months, with fallback to LIVE data
      * when history is not available. This ensures seeded data is always preferred for archived periods.
+     * @param useHistoryDb - Explicit override to use history database (from UI state)
      */
-    private async fetchPayrollData(month: number, year: number, gangCode: string, divisionCode?: string, gangPrefix?: string) {
-        let isSourceCurrent = false;
+    private async fetchPayrollData(month: number, year: number, divisionCode: string, gangCode?: string, gangPrefix?: string, useHistoryDb?: boolean) {
+        console.log(`[TaxReportService] Fetching payroll data: div=${divisionCode} m=${month} y=${year} useHistory=${useHistoryDb}`);
 
-        // Determine if this is a historical request by comparing with current date
         const now = new Date();
-        const currentMonth = now.getMonth() + 1; // JS months are 0-indexed
+        const currentMonth = now.getMonth() + 1;
         const currentYear = now.getFullYear();
         const isHistoricalRequest = year < currentYear || (year === currentYear && month < currentMonth);
 
-        // For historical periods (past months), try HISTORY data FIRST
-        if (isHistoricalRequest) {
-            console.log(`[TaxReportService] Historical period detected (${month}/${year}) - checking HISTORY data first.`);
+        // Decide whether we SHOULD check history first
+        // We check history if explicitly requested, or if it's a past month, or if no preference is given (auto-detect)
+        const checkHistoryFirst = (useHistoryDb === true) || (isHistoricalRequest) || (useHistoryDb === undefined);
+
+        if (checkHistoryFirst) {
+            console.log(`[TaxReportService] Checking HISTORY data first for (${month}/${year})...`);
             const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
-                month, year, gangCode, divisionCode
+                month, year, gangCode || "ALL", divisionCode
             );
 
             if (historyData && historyData.data_rows.length > 0) {
-                console.log(`[TaxReportService] History data found: ${historyData.data_rows.length} rows - using HISTORY as primary source.`);
+                console.log(`[TaxReportService] Found in HISTORY: ${historyData.data_rows.length} rows.`);
                 return { data: historyData, isSourceCurrent: false };
             }
-            console.log(`[TaxReportService] No HISTORY data for (${month}/${year}) - falling back to LIVE data.`);
-        } else {
-            console.log(`[TaxReportService] Current/future period (${month}/${year}) - fetching LIVE data.`);
+            console.log(`[TaxReportService] Not found in HISTORY. Trying LIVE...`);
         }
 
-        // Fallback to LIVE data (for current month or when history is empty)
+        // Try LIVE data
         try {
-            const originData = await DataExtractorService.getInstance().extractPayrollData(
-                month, year, gangCode, divisionCode, null, undefined, false, undefined, gangPrefix, true, true
+            console.log(`[TaxReportService] Querying LIVE data source...`);
+            const liveData = await DataExtractorService.getInstance().extractPayrollData(
+                month, year, gangCode || "ALL", divisionCode, null, undefined, false, undefined, gangPrefix, true, true
             );
 
-            if (originData && originData.data_rows.length > 0) {
-                console.log(`[TaxReportService] LIVE data result: ${originData.data_rows.length} rows`);
-                isSourceCurrent = true;
-                return { data: originData, isSourceCurrent };
+            if (liveData && liveData.data_rows.length > 0) {
+                console.log(`[TaxReportService] Found in LIVE: ${liveData.data_rows.length} rows.`);
+                return { data: liveData, isSourceCurrent: true };
             }
         } catch (error: any) {
-            console.log(`[TaxReportService] LIVE data fetch failed: ${error.message}`);
+            console.error(`[TaxReportService] LIVE data fetch failed:`, error.message);
         }
 
-        // If we get here, both history and live data failed
-        console.log(`[TaxReportService] No data available for (${month}/${year}) from any source.`);
-        return { data: null, isSourceCurrent };
+        // LAST RESORT: If we haven't checked history yet (because useHistoryDb was false but it's the current month)
+        // and LIVE is empty, check history anyway as a fallback unless explicitly forbidden.
+        if (!checkHistoryFirst && useHistoryDb !== false) {
+            console.log(`[TaxReportService] LIVE was empty. Checking HISTORY anyway as fallback...`);
+            const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
+                month, year, gangCode || "ALL", divisionCode
+            );
+            if (historyData && historyData.data_rows.length > 0) {
+                return { data: historyData, isSourceCurrent: false };
+            }
+        }
+
+        console.warn(`[TaxReportService] No data found for (${month}/${year}) in any source.`);
+        return { data: null, isSourceCurrent: false };
     }
 
     /**
@@ -467,10 +479,11 @@ class TaxReportService {
         month: number,
         divisionCode?: string,
         gangCode?: string,
-        gangPrefix?: string
-    ): Promise<{ employees: MonthlyTaxRow[]; period: { month: number; year: number }; total_pph21: number; premiKeys: string[]; data_source: 'current' | 'history' }> {
-        console.log(`[TaxReportService] getMonthlyTaxReport called with: year=${year}, month=${month}, divisionCode=${divisionCode}, gangCode=${gangCode}, gangPrefix=${gangPrefix}`);
-        
+        gangPrefix?: string,
+        useHistoryDb?: boolean
+    ): Promise<any> {
+        console.log(`[TaxReportService] getMonthlyTaxReport: year=${year}, month=${month}, division=${divisionCode || 'ALL'}, gang=${gangCode || 'ALL'}, gangPrefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}`);
+
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
         let effectiveGangPrefix = gangPrefix;
@@ -499,7 +512,7 @@ class TaxReportService {
         }
 
         const { data: historyData, isSourceCurrent } = await this.fetchPayrollData(
-            month, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix
+            month, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix, useHistoryDb
         );
 
         console.log(`[TaxReportService] getMonthlyTaxReport received data: ${historyData?.data_rows?.length || 0} rows, isSourceCurrent=${isSourceCurrent}`);
@@ -597,12 +610,17 @@ class TaxReportService {
             // This includes THR, Bonus, Custom income that was already calculated in the payroll data
             let rowPendapatanLainnya = row.total_pendapatan_lainnya || row.pendapatan_lainnya || 0;
 
-            let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
-                gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, 
-                row.pot_koreksi || 0,
-                rowPendapatanLainnya // Include pendapatan_lainnya from row data
-            );
+            // [CRITICAL FIX] Use STORED penghasilan_bruto EXACTLY from UI Daftar Upah
+            // Do NOT recalculate - this ensures 100% consistency with UI
+            const storedPenghasilanBruto = parseFloat(row.penghasilan_bruto) || 0;
+            let penghasilanBruto = storedPenghasilanBruto > 0 
+                ? storedPenghasilanBruto 
+                : pph21TerService.calculatePenghasilanBruto(
+                    gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
+                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, 
+                    row.pot_koreksi || 0,
+                    rowPendapatanLainnya // Include pendapatan_lainnya from row data
+                );
 
             let thrAmount = 0;
             let exgratiaAmount = 0;
@@ -686,27 +704,29 @@ class TaxReportService {
             // NOTE: If rowPendapatanLainnyaValue > 0, it's already included in penghasilanBruto
             // from calculatePenghasilanBruto() above, so we DON'T add it again.
 
-            // Use PRE-CALCULATED pph21_ter from row data (from dataExtractorService/origin)
-            // This ensures the Excel export matches exactly what the UI displays
-            // FIX: Use stored value when it's a valid number (including 0), only recalculate when truly missing
-            const hasStoredPph21 = row.pph21_ter !== undefined && row.pph21_ter !== null;
-            const storedPph21 = hasStoredPph21 ? row.pph21_ter : 0;
-            const actualDeduction = row.pot_pph21 || 0;
+            // [CRITICAL FIX] Use PRE-CALCULATED values from row data (UI Daftar Upah source)
+            // This ensures Excel export matches EXACTLY what the UI displays
+            // Do NOT recalculate - use exactly what DataExtractorService returns
+            const storedPph21 = Number(row.pph21_ter) || 0;
+            const storedBruto = Number(row.penghasilan_bruto) || 0;
+            const storedTarif = Number(row.tarif_pajak_ter) || 0;
+            const storedStatusPtkp = row.status_ptkp || masterPtkp;
             
-            // Prefer actual deduction (pot_pph21) if stored pph21_ter is 0.
-            // This handles cases where manual seeding added deductions but TER wasn't recalculated.
-            const pph21 = (storedPph21 === 0 && actualDeduction > 0)
-                ? actualDeduction
-                : (hasStoredPph21 ? storedPph21 : pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp).tax_amount);
-            const rowPtkpStatus = row.status_ptkp || masterPtkp;
-            const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, rowPtkpStatus);
-            const tarifPajakTer = row.tarif_pajak_ter || pphResult.rate_percent;
+            // Use stored values EXACTLY as they appear in UI Daftar Upah
+            // Only recalculate if truly missing (undefined or null), not if 0
+            const pph21 = (row.pph21_ter !== undefined && row.pph21_ter !== null) 
+                ? storedPph21 
+                : (storedBruto > 0 ? pph21TerService.calculatePph21Ter(storedBruto, storedStatusPtkp).tax_amount : 0);
+            
+            const tarifPajakTer = storedTarif > 0 
+                ? storedTarif 
+                : (storedBruto > 0 ? pph21TerService.calculatePph21Ter(storedBruto, storedStatusPtkp).rate_percent : 0);
 
             totalPph21 += pph21;
 
             // [DEBUG] Always log every employee's pph21 calculation for comparison
             if (idx < 5 || row.pph21_ter !== undefined) {
-                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: Using row_pph21_ter=${row.pph21_ter || 'N/A'}, TaxReport_pph21=${pph21}, bruto=${penghasilanBruto}, PTKP=${masterPtkp}, TER=${pphResult.ter_category}, rate=${pphResult.rate_percent}%`);
+                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: Using row_pph21_ter=${row.pph21_ter || 'N/A'}, TaxReport_pph21=${pph21}, bruto=${storedBruto}, PTKP=${storedStatusPtkp}, storedTarif=${storedTarif}`);
             }
 
             // Discover dynamic premi fields from row keys (e.g. premi_brondol, premi_pruning, etc.)

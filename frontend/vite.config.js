@@ -158,10 +158,6 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
       },
-      '/reports': {
-        target: backendTarget,
-        changeOrigin: true,
-      },
       '/dev-mode': {
         target: backendTarget,
         changeOrigin: true,

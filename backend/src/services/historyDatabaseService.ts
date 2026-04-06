@@ -1418,13 +1418,11 @@ export class HistoryDatabaseService {
         const headerParams: any[] = [periodMonth, periodYear];
 
         if (divisionCode && divisionCode !== 'ALL') {
-            // Use unified division mapping
-            const aliases = gangService.getAllDivisionAliases(divisionCode);
-            if (aliases.length > 0) {
-                const placeholders = aliases.map(() => '?').join(',');
-                findHeadersSql += ` AND division_code IN (${placeholders})`;
-                headerParams.push(...aliases);
-            }
+            // Use ONLY the exact division code passed - do NOT use aliases for DELETE
+            // Aliases are for matching incoming data, not for deleting
+            // Using aliases causes unrelated divisions' data to be deleted
+            findHeadersSql += ` AND division_code = ?`;
+            headerParams.push(divisionCode);
         }
         if (gangCode && gangCode !== 'ALL') {
             findHeadersSql += ` AND gang_code = ? `;

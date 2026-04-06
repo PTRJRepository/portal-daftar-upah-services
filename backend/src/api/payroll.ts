@@ -282,7 +282,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix, skipHarvest);
 
             // [DEBUG] Log result summary
-            console.log(`[PayrollRoutes] /report/division-raw-tree RESULT | data_rows=${result.data_rows.length} gangs=${result.gangs?.length || 0} | gangPrefix=${gangPrefix}`);
+            const { data_rows } = result;
+            const uniqueGangs = new Set(data_rows.map(r => r.gang_code || "UNKNOWN"));
+            console.log(`[PayrollRoutes] /report/division-raw-tree RESULT | data_rows=${data_rows.length} gangs=${uniqueGangs.size} | gangPrefix=${gangPrefix}`);
 
             // [NEW] Use centralized payrollTotalsCalculator for consistent totals
             const { calculatePayrollTotals } = await import("../services/payrollTotalsCalculator");
@@ -436,7 +438,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             // [DEBUG] Log result summary
             const empCount = result?.data_rows?.length || 0;
-            const gangCount = result?.gangs?.length || 0;
+            const uniqueGangs = new Set(result?.data_rows?.map(r => r.gang_code || "UNKNOWN") || []);
+            const gangCount = uniqueGangs.size;
             console.log(`[PayrollRoutes] /locked/report/raw-tree RESULT | gangs=${gangCount} employees=${empCount} | gangCode=${gangCode} | gangPrefix=${gangPrefix}`);
 
             // [NEW] Use centralized payrollTotalsCalculator for consistent totals
@@ -492,7 +495,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             year: t.String(),
             include_virtual: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
-            gang_prefix: t.Optional(t.String())
+            gang_prefix: t.Optional(t.String()),
+            gang_code: t.Optional(t.String())
         })
     })
     // --- Locked Manual Edit ---
@@ -1406,7 +1410,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                             controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
                                 stage: 'complete',
                                 message: meta.message,
-                                processed_gangs: meta.processed_gangs,
                                 total_gangs: meta.total_gangs,
                                 progress_pct: 100
                             })}\n\n`));
@@ -1508,9 +1511,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         );
                         gangsWarmed++;
                         employeesWarmed += result.data_rows.length;
-                    } catch (e) {
+                    } catch (e: any) {
                         errors++;
-                        console.error(`[CacheWarm] Error warming ${div}:`, e.message);
+                        console.error(`[CacheWarm] Error warming ${div}:`, e?.message || e);
                     }
                 }
             } else {
@@ -1629,13 +1632,16 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const month = parseInt(query.month as string);
             const year = parseInt(query.year as string);
             const gang = query.gang as string || undefined;
+            const division = query.div as string || undefined;
+            const gangPrefix = query.gang_prefix as string || undefined;
+            const useHistory = query.use_history === 'true';
 
             if (!month || !year || month < 1 || month > 12) {
                 set.status = 400;
                 return { error: "Invalid month or year" };
             }
 
-            const result = await taxReportService.getMonthlyTaxReport(year, month, undefined, gang);
+            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistory);
 
             // Build emp_code → pajak mapping
             const employeesMap: Record<string, any> = {};
@@ -1676,17 +1682,20 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 generated_at: new Date().toISOString(),
                 data_source: result.data_source,
                 total_pph21_ter: result.total_pph21,
-                total_pph21_input: result.employees.reduce((s, e) => s + (e.pot_pph21 ?? 0), 0),
+                total_pph21_input: result.employees.reduce((s: number, e: any) => s + (e.pot_pph21 ?? 0), 0),
                 employee_count: result.employees.length,
                 employees: employeesMap,
             };
 
-            // Set headers for JSON download
             const filename = `PAJAK_${gang || "ALL"}_${month}_${year}.json`;
-            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-            set.headers["Content-Type"] = "application/json";
-
-            return payload;
+            const jsonBody = JSON.stringify(payload);
+            
+            return new Response(jsonBody, {
+                headers: {
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Content-Disposition": `attachment; filename="${filename}"`
+                }
+            });
         } catch (e: any) {
             console.error("[PayrollRoutes] /export/pajak error:", e);
             set.status = 500;
@@ -1697,5 +1706,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             month: t.String(),
             year: t.String(),
             gang: t.Optional(t.String()),
+            div: t.Optional(t.String()),
+            gang_prefix: t.Optional(t.String()),
+            use_history: t.Optional(t.String()),
         })
     })
