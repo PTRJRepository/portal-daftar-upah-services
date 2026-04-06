@@ -326,7 +326,6 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
                     },
                     details: payrollRow.lembur_records || []
                 };
-
                 results.push({
                     emp_code: normalizedCode,
                     month,
@@ -337,6 +336,9 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
                     payroll_data: payrollRow,
                     debug_info: { found: true, source: "batch_fetch_optimized" }
                 });
+            }
+        }
+
         // OPTIMIZATION: Collect missed employees for PARALLEL fallback fetch
         const missedEmpCodes = actualEmpCodes.filter(empCode => {
             const normalizedCode = empCode.toUpperCase();
