@@ -446,7 +446,20 @@
     }
 
     .sw-table thead {
-        display: table-header-group;
+        display: table-header-group !important;
+        visibility: visible !important;
+    }
+
+    .sw-table thead tr {
+        display: table-row !important;
+        visibility: visible !important;
+        page-break-after: avoid !important;
+    }
+
+    .sw-table thead tr.sw-header-group th,
+    .sw-table thead tr.sw-header-cols th {
+        display: table-cell !important;
+        visibility: visible !important;
     }
 
     .sw-table tfoot {

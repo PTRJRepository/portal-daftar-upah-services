@@ -71,6 +71,45 @@
         height: auto !important;
     }
 
+    /* ==========================================
+       GLOBAL TABLE HEADER FIX FOR ALL REPORTS
+       ========================================== */
+    
+    /* Force all table headers to display in print */
+    table thead {
+        display: table-header-group !important;
+        visibility: visible !important;
+    }
+
+    table thead tr {
+        display: table-row !important;
+        visibility: visible !important;
+        page-break-after: avoid !important;
+    }
+
+    table th {
+        display: table-cell !important;
+        visibility: visible !important;
+        background: #e8e8e8 !important;
+        border: 1px solid black !important;
+        padding: 4px 3px !important;
+        font-weight: bold !important;
+        text-align: center !important;
+        font-size: 10px !important;
+        color: black !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    table td {
+        display: table-cell !important;
+        visibility: visible !important;
+        border: 1px solid black !important;
+        padding: 3px !important;
+        font-size: 9px !important;
+        color: black !important;
+    }
+
     /* Fix background colors not printing in some browsers */
     * {
         -webkit-print-color-adjust: exact !important;

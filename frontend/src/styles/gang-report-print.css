@@ -390,7 +390,18 @@
     }
 
     thead {
-        display: table-header-group;
+        display: table-header-group !important;
+        visibility: visible !important;
+    }
+
+    thead tr {
+        display: table-row !important;
+        visibility: visible !important;
+    }
+
+    thead th {
+        display: table-cell !important;
+        visibility: visible !important;
     }
 
     /* Summary cards grid optimization */

@@ -139,4 +139,20 @@
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
+
+    /* Ensure table headers display */
+    .sw-table thead {
+        display: table-header-group !important;
+        visibility: visible !important;
+    }
+
+    .sw-table thead tr {
+        display: table-row !important;
+        visibility: visible !important;
+    }
+
+    .sw-table th {
+        display: table-cell !important;
+        visibility: visible !important;
+    }
 }
