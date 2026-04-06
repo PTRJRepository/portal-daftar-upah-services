@@ -169,21 +169,16 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
             // Use extend_db_ptrj database to get aggregation data
             const extendDb = Database.getExtendedInstance();
 
-            // Get all gang codes for each division (EXCLUDING WORKSHOP to prevent duplicates)
+            // Get all gang codes for each division (including AMC/HMC for WKS_PG/WKS_AR)
             const divisionGangs: Record<string, string[]> = {};
             for (const divCode of divisions) {
                 const gangs = await divisionDefinition.getGangsForDivision(divCode);
                 divisionGangs[divCode] = gangs.map(g => g.gang_code);
             }
 
-            // Build query to get all data for these gangs (NO WORKSHOP gangs!)
+            // Build query to get all data for these gangs
             const allGangs = Object.values(divisionGangs).flat();
-            
-            // Filter out any WORKSHOP gangs (AMC, HMC) to prevent duplicates
-            const workshopGangs = new Set(['AMC', 'HMC']);
-            const filteredGangs = allGangs.filter(g => !workshopGangs.has(g));
-            
-            if (filteredGangs.length === 0) {
+            if (allGangs.length === 0) {
                 return {
                     success: true,
                     period: { month, year, label: `${getMonthName(month)} ${year}` },
@@ -203,7 +198,7 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 };
             }
 
-            const placeholders = filteredGangs.map(() => '?').join(',');
+            const placeholders = allGangs.map(() => '?').join(',');
             const query_sql = `
                 SELECT
                     division_code, gang_code,
@@ -218,10 +213,11 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                 FROM dbo.daftar_upah_aggregation_history
                 WHERE period_month = ? AND period_year = ?
                 AND gang_code IN (${placeholders})
+                AND division_code != 'WORKSHOP'
                 GROUP BY division_code, gang_code
             `;
 
-            const rows = await extendDb.query<any>(query_sql, [month, year, ...filteredGangs]);
+            const rows = await extendDb.query<any>(query_sql, [month, year, ...allGangs]);
 
             // Group by division - IMPORTANT: Use the division code from our predefined list,
             // NOT from the database row's division_code (which may differ)
