@@ -62,35 +62,60 @@
 
     /* Letterhead - clean and simple */
     .wsp-letterhead {
+        display: block !important;
         text-align: center !important;
         margin-bottom: 15px !important;
         padding-bottom: 10px !important;
         border-bottom: 2px solid black !important;
+        visibility: visible !important;
+        opacity: 1 !important;
     }
 
     .wsp-logo {
+        display: block !important;
         width: 50px !important;
-        margin-bottom: 5px !important;
+        margin: 0 auto 5px auto !important;
+        visibility: visible !important;
     }
 
     .wsp-company-name {
+        display: block !important;
         font-size: 18px !important;
         font-weight: bold !important;
         margin: 5px 0 !important;
         color: black !important;
+        visibility: visible !important;
     }
 
     .wsp-report-title {
-        font-size: 14px !important;
+        display: block !important;
+        font-size: 16px !important;
         font-weight: bold !important;
-        margin: 5px 0 !important;
+        margin: 8px 0 !important;
         color: black !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        visibility: visible !important;
+    }
+
+    .wsp-report-subtitle {
+        display: block !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        margin: 5px 0 !important;
+        color: #475569 !important;
+        visibility: visible !important;
     }
 
     .wsp-report-period {
+        display: inline-block !important;
         font-size: 12px !important;
-        margin: 5px 0 !important;
+        margin: 8px auto !important;
         color: black !important;
+        padding: 5px 10px !important;
+        background-color: #f1f5f9 !important;
+        border-radius: 6px !important;
+        visibility: visible !important;
     }
 
     /* KPI Cards - simple grid */
