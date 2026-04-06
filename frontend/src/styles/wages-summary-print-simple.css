@@ -338,6 +338,19 @@
         border-right: 2px solid black !important;
     }
 
+    /* Hide Uraian / Premi Breakdown columns in print */
+    .th-group-uraian,
+    .th-group-premi,
+    .wsp-table th.th-group-uraian,
+    .wsp-table th.th-group-premi,
+    .cell-group-premi,
+    .cell-uraian,
+    [class*="premi-breakdown"],
+    [class*="uraian"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
     /* Signature section */
     .wsp-signature-section {
         display: flex !important;

@@ -1,26 +1,24 @@
-[2026-04-06T14:43:54.314Z] === LOGS CLEARED ON STARTUP ===
+[2026-04-06T15:03:45.718Z] === LOGS CLEARED ON STARTUP ===
 
-[2026-04-06T14:55:06.589Z] [14:55:06.588] [ERROR] [SummaryService] Failed to parse informasi_tambahan for MILL:  Error: JSON Parse error: Unexpected identifier "Source"
-[2026-04-06T14:55:06.593Z]   at <parse> (:0)
-[2026-04-06T14:55:06.593Z]   at parse (unknown)
-[2026-04-06T14:55:06.594Z]   at getBackfillData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\summaryService.ts:723:86)
-[2026-04-06T14:55:19.441Z] [14:55:19.440] [ERROR] [DB] Gateway Error (500): {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":30044.383900001645,"data":null,"error":"Database error: Timeout: Request failed to complete in 30000ms"} Error: HTTP 500
-[2026-04-06T14:55:19.442Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:155:92)
-[2026-04-06T14:55:19.442Z]   at async getEmployees (unknown)
-[2026-04-06T14:55:19.442Z]   at async extractPayrollData (unknown)
-[2026-04-06T14:55:19.443Z] [14:55:19.443] [ERROR] [DB] Query failed (Attempt 1/4) Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":30044.383900001645,"data":null,"error":"Database error: Timeout: Request failed to complete in 30000ms"}
-[2026-04-06T14:55:19.444Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:156:31)
-[2026-04-06T14:55:19.444Z]   at async getEmployees (unknown)
-[2026-04-06T14:55:19.444Z]   at async extractPayrollData (unknown)
-[2026-04-06T14:55:19.445Z] [14:55:19.445] [ERROR] [DB] Timeout detected, skipping retries
-[2026-04-06T14:55:19.449Z] [14:55:19.449] [WARN] [HTTP] SLOW GET /tax-report/monthly/excel 30149ms
-[2026-04-06T14:55:48.948Z] [14:55:48.947] [ERROR] [DB] Gateway Error (500): {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":30033.702700000256,"data":null,"error":"Database error: Timeout: Request failed to complete in 30000ms"} Error: HTTP 500
-[2026-04-06T14:55:48.948Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:155:92)
-[2026-04-06T14:55:48.949Z]   at async getEmployees (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\dataExtractorService.ts:1648:33)
-[2026-04-06T14:55:48.949Z]   at async extractPayrollData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\dataExtractorService.ts:407:36)
-[2026-04-06T14:55:48.949Z] [14:55:48.949] [ERROR] [DB] Query failed (Attempt 1/4) Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":30033.702700000256,"data":null,"error":"Database error: Timeout: Request failed to complete in 30000ms"}
-[2026-04-06T14:55:48.949Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:156:31)
-[2026-04-06T14:55:48.949Z]   at async getEmployees (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\dataExtractorService.ts:1648:33)
-[2026-04-06T14:55:48.949Z]   at async extractPayrollData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\dataExtractorService.ts:407:36)
-[2026-04-06T14:55:48.950Z] [14:55:48.949] [ERROR] [DB] Timeout detected, skipping retries
-[2026-04-06T14:55:48.950Z] [14:55:48.950] [WARN] [HTTP] SLOW GET /tax-report/monthly/excel 30124ms
+[2026-04-06T15:03:47.603Z] [15:03:47.603] [ERROR] [SummaryService] Failed to parse informasi_tambahan for MILL:  Error: JSON Parse error: Unexpected identifier "Source"
+[2026-04-06T15:03:47.604Z]   at <parse> (:0)
+[2026-04-06T15:03:47.604Z]   at parse (unknown)
+[2026-04-06T15:03:47.604Z]   at getBackfillData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\summaryService.ts:723:86)
+[2026-04-06T15:05:18.907Z] [15:05:18.907] [ERROR] [SummaryService] Failed to parse informasi_tambahan for MILL:  Error: JSON Parse error: Unexpected identifier "Source"
+[2026-04-06T15:05:18.908Z]   at <parse> (:0)
+[2026-04-06T15:05:18.909Z]   at parse (unknown)
+[2026-04-06T15:05:18.909Z]   at getBackfillData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\summaryService.ts:723:86)
+[2026-04-06T15:05:41.312Z] [15:05:41.311] [ERROR] [SummaryService] Failed to parse informasi_tambahan for MILL:  Error: JSON Parse error: Unexpected identifier "Source"
+[2026-04-06T15:05:41.312Z]   at <parse> (:0)
+[2026-04-06T15:05:41.313Z]   at parse (unknown)
+[2026-04-06T15:05:41.313Z]   at getBackfillData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\summaryService.ts:723:86)
+[2026-04-06T15:05:42.148Z] [15:05:42.147] [ERROR] [SummaryService] Failed to parse informasi_tambahan for MILL:  Error: JSON Parse error: Unexpected identifier "Source"
+[2026-04-06T15:05:42.149Z]   at <parse> (:0)
+[2026-04-06T15:05:42.149Z]   at parse (unknown)
+[2026-04-06T15:05:42.150Z]   at getBackfillData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\summaryService.ts:723:86)
+[2026-04-06T15:05:42.178Z] [15:05:42.177] [WARN] [HTTP] SLOW GET /payroll/summary/comparison 1028ms
+[2026-04-06T15:05:42.407Z] [15:05:42.407] [ERROR] [SummaryService] Failed to parse informasi_tambahan for MILL:  Error: JSON Parse error: Unexpected identifier "Source"
+[2026-04-06T15:05:42.408Z]   at <parse> (:0)
+[2026-04-06T15:05:42.408Z]   at parse (unknown)
+[2026-04-06T15:05:42.409Z]   at getBackfillData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\summaryService.ts:723:86)
+[2026-04-06T15:05:42.540Z] [15:05:42.539] [WARN] [HTTP] SLOW GET /payroll/summary/comparison 1367ms

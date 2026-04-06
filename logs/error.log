@@ -1,6 +1,2 @@
-[2026-04-06T11:36:14.291Z] === LOGS CLEARED ON STARTUP ===
+[2026-04-06T14:58:39.119Z] === LOGS CLEARED ON STARTUP ===
 
-[2026-04-06T11:36:14.574Z] [11:36:14.574] [ERROR] [SummaryService] Failed to parse informasi_tambahan for MILL:  Error: JSON Parse error: Unexpected identifier "Source"
-[2026-04-06T11:36:14.575Z]   at <parse> (:0)
-[2026-04-06T11:36:14.575Z]   at parse (unknown)
-[2026-04-06T11:36:14.575Z]   at getBackfillData (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\services\summaryService.ts:723:86)

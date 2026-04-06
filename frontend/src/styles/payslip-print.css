@@ -8,7 +8,7 @@
    ============================================ */
 @page {
     size: A4 portrait;
-    margin: 3mm;
+    margin: 0;
 }
 
 /* ============================================
@@ -32,22 +32,22 @@
    A4 PAGE WRAPPER
    ============================================ */
 .payslip-a4-page {
-    width: 210mm;
-    height: 291mm;
-    /* 297mm - 6mm (top+bottom @page margin) */
+    width: 195mm;
+    height: 285mm;
+    /* Allow some room for browser headers/footers if not disabled */
     background: white;
-    margin: 0 auto 20px;
-    padding: 2mm;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    margin: 20px auto;
+    padding: 3mm;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     box-sizing: border-box;
     page-break-after: always;
+    position: relative;
     overflow: hidden;
 }
 
 .payslip-a4-page:last-child {
-    margin-bottom: 0;
+    margin-bottom: 20px;
     page-break-after: auto;
-    /* Prevent blank page at end */
 }
 
 /* ============================================
@@ -57,10 +57,11 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 1.5mm;
+    gap: 3mm;
     width: 100%;
     height: 100%;
     page-break-inside: avoid;
+    box-sizing: border-box;
 }
 
 /* ============================================
@@ -523,27 +524,35 @@
     }
 
     .payslip-a4-page {
-        width: 100%;
-        height: 291mm;
-        margin: 0;
-        padding: 2mm;
-        box-shadow: none;
-        page-break-after: always;
-        overflow: hidden;
+        width: 195mm !important;
+        height: 285mm !important;
+        margin: 0 auto !important;
+        padding: 3mm !important;
+        box-shadow: none !important;
+        page-break-after: always !important;
+        overflow: hidden !important;
+        border: none !important;
     }
 
     .payslip-a4-page:last-child {
-        page-break-after: auto;
+        page-break-after: auto !important;
     }
 
     .payslip-grid {
-        height: 100%;
-        page-break-inside: avoid;
+        width: 100% !important;
+        height: 100% !important;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        grid-template-rows: 1fr 1fr !important;
+        gap: 2mm !important;
     }
 
     .payslip-card {
-        break-inside: avoid;
-        overflow: hidden;
+        height: 100% !important;
+        width: 100% !important;
+        break-inside: avoid !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
     }
 }
 
@@ -553,15 +562,17 @@
 @media screen and (max-width: 900px) {
     .payslip-a4-page {
         width: 98%;
-        max-width: 210mm;
+        max-width: 195mm;
         height: auto;
+        padding: 5mm;
     }
 
     .payslip-grid {
         height: auto;
-        min-height: 800px;
+        min-height: auto;
         grid-template-columns: 1fr;
-        grid-template-rows: auto;
+        grid-template-rows: repeat(4, auto);
+        gap: 10px;
     }
 }
 
