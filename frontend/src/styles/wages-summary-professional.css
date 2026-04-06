@@ -151,6 +151,84 @@
 /* =============================================
    LETTERHEAD (Company Header)
    ============================================= */
+.wsp-report-header {
+    display: grid;
+    grid-template-columns: 180px 1fr 240px;
+    align-items: center;
+    gap: 2rem;
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 2px solid #0f172a;
+    position: relative;
+}
+
+.wsp-logo-section {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.wsp-logo {
+    max-width: 160px;
+    height: auto;
+    object-fit: contain;
+}
+
+.wsp-title-section {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.wsp-company-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.wsp-report-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0;
+}
+
+.wsp-meta-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    background: #f8fafc;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+
+.wsp-meta-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+.wsp-meta-label {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.wsp-meta-value {
+    font-weight: 700;
+    color: #0f172a;
+    text-align: right;
+}
+
+/* Legacy Letterhead Support (for backward compatibility if needed) */
 .wsp-letterhead {
     display: flex;
     flex-direction: column;
@@ -159,40 +237,6 @@
     padding-bottom: 1.5rem;
     border-bottom: 2px solid #0f172a;
     position: relative;
-}
-
-.wsp-logo {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 150px;
-    height: auto;
-}
-
-.wsp-company-name {
-    font-family: 'Playfair Display', serif;
-    font-size: 2rem;
-    font-weight: 800;
-    color: #000000;
-    letter-spacing: -0.01em;
-    margin: 0;
-}
-
-.wsp-report-title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #334155;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top: 0.5rem;
-}
-
-.wsp-report-period {
-    font-size: 0.9rem;
-    color: #0f172a;
-    margin-top: 0.25rem;
-    font-weight: 600;
 }
 
 /* =============================================
@@ -429,40 +473,54 @@
     color: #1e293b;
 }
 
-/* HEADERS - Light & Clean */
+/* HEADERS - Professional & Aesthetic */
 .wsp-table thead th {
     background-color: #f8fafc;
-    color: #334155;
+    color: #1e293b;
     font-weight: 700;
     text-align: center;
-    padding: 0.5rem 0.4rem;
+    padding: 0.6rem 0.5rem;
     border: 1px solid #cbd5e1;
     vertical-align: middle;
     white-space: normal !important;
     word-wrap: break-word !important;
     overflow-wrap: break-word !important;
-    line-height: 1.25 !important;
-    font-size: 0.7rem;
+    line-height: 1.3 !important;
+    font-size: 0.72rem;
+    letter-spacing: 0.01em;
 }
 
+/* Master headers - Premium gradient style */
 .wsp-table thead tr.wsp-header-master th {
     text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.02em;
-    background-color: #f1f5f9;
-    color: #0f172a;
-    border-bottom: 2px solid #94a3b8;
-    padding: 0.55rem 0.45rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+    color: #ffffff;
+    border: 1px solid #475569;
+    border-right: 1.5px solid #64748b;
+    padding: 0.65rem 0.5rem;
     font-weight: 800;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
 }
 
-/* Sub headers */
+.wsp-table thead tr.wsp-header-master th:last-child {
+    border-right: 1px solid #475569;
+}
+
+/* Sub headers - Clean professional */
 .wsp-table thead tr.wsp-header-sub th {
-    background-color: #f8fafc;
+    background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%);
     border-bottom: 2px solid #94a3b8;
-    font-size: 0.65rem;
-    padding: 0.45rem 0.4rem;
-    font-weight: 600;
+    font-size: 0.68rem;
+    padding: 0.5rem 0.45rem;
+    font-weight: 700;
+    color: #334155;
+    letter-spacing: 0.02em;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
 }
 
 /* ROWS - Clean Alternating */
@@ -1152,32 +1210,39 @@
         padding: 2px 1px !important;
     }
 
-    /* Table headers */
+    /* Table headers - Print optimized */
     .wsp-table thead {
         display: table-header-group !important;
     }
 
     .wsp-table thead th {
-        padding: 0.2rem 0.15rem !important;
-        font-size: 0.65rem !important;
+        padding: 0.25rem 0.2rem !important;
+        font-size: 0.68rem !important;
         font-weight: 800 !important;
         border: 1px solid #000 !important;
         text-align: center !important;
-        background-color: #e8e8e8 !important;
+        background-color: #d0d0d0 !important;
         white-space: nowrap !important;
-        line-height: 1.15 !important;
+        line-height: 1.2 !important;
         vertical-align: middle !important;
         color: #000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
     .wsp-table thead tr.wsp-header-master th {
-        font-size: 0.7rem !important;
+        font-size: 0.72rem !important;
         font-weight: 900 !important;
-        border-bottom: 2px solid #000 !important;
-        padding: 0.25rem 0.2rem !important;
-        line-height: 1.2 !important;
-        background-color: #d8d8d8 !important;
+        border: 1.5pt solid #000 !important;
+        padding: 0.3rem 0.25rem !important;
+        line-height: 1.25 !important;
+        background-color: #333333 !important;
+        color: #ffffff !important;
         white-space: normal !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.03em !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
     /* Table cells */

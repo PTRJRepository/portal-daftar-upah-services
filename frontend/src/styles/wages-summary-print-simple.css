@@ -209,40 +209,46 @@
         page-break-after: avoid !important;
     }
 
-    /* All headers */
+    /* All headers - Professional print */
     .wsp-table th {
         display: table-cell !important;
         visibility: visible !important;
-        background: #e8e8e8 !important;
-        border: 1px solid black !important;
-        padding: 3px 2px !important;
-        font-weight: bold !important;
+        background: #d0d0d0 !important;
+        border: 1px solid #000 !important;
+        padding: 4px 3px !important;
+        font-weight: 700 !important;
         text-align: center !important;
-        font-size: 9pt !important;
-        color: black !important;
+        font-size: 8pt !important;
+        color: #000 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
 
-    /* Master header row - larger font */
+    /* Master header row - Dark professional */
     .wsp-table thead tr.wsp-header-master th {
         display: table-cell !important;
         visibility: visible !important;
-        background: #d8d8d8 !important;
-        font-size: 11px !important;
-        font-weight: bold !important;
-        padding: 6px 4px !important;
+        background: #333333 !important;
+        color: #ffffff !important;
+        font-size: 9pt !important;
+        font-weight: 900 !important;
+        padding: 5px 4px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.03em !important;
+        border: 1.5pt solid #000 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
 
-    /* Sub header row - smaller font */
+    /* Sub header row - Clean professional */
     .wsp-table thead tr.wsp-header-sub th {
         display: table-cell !important;
         visibility: visible !important;
-        background: #f0f0f0 !important;
-        font-size: 9px !important;
+        background: #e8e8e8 !important;
+        font-size: 7.5pt !important;
+        font-weight: 800 !important;
         padding: 4px 3px !important;
+        border-bottom: 2px solid #000 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
