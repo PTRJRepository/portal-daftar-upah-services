@@ -266,9 +266,9 @@ export class AggregationService {
                     const potKoreksi = this.getNumericValue(row, 'koreksi');
                     const pendapatanLainya = this.getNumericValue(row, 'pot_pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_thr');
 
-                    // koreksi adalah bagian dari penghasilan, di-add ke jumlah_upah_kotor untuk tampilan
+                    // koreksi adalah pengurang dari penghasilan kotor (dikurang dari jumlah_upah_kotor)
                     // koreksi TIDAK masuk total_potongan (avoid double deduction)
-                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanLainya) + potKoreksi;
+                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanLainya) - potKoreksi;
 
                     // upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph
                     calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph;
