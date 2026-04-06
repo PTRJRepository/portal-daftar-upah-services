@@ -612,15 +612,30 @@ class TaxReportService {
 
             // [CRITICAL FIX] Use STORED penghasilan_bruto EXACTLY from UI Daftar Upah
             // Do NOT recalculate - this ensures 100% consistency with UI
+            // Formula in DataExtractorService: penghasilan_bruto = jumlah_upah_kotor + astek_m + bpjs_m
+            // where jumlah_upah_kotor already includes pot_koreksi (as negative value)
             const storedPenghasilanBruto = parseFloat(row.penghasilan_bruto) || 0;
-            let penghasilanBruto = storedPenghasilanBruto > 0 
-                ? storedPenghasilanBruto 
-                : pph21TerService.calculatePenghasilanBruto(
+            const storedJumlahUpahKotor = parseFloat(row.jumlah_upah_kotor) || 0;
+            let penghasilanBruto: number;
+
+            if (storedPenghasilanBruto > 0) {
+                // Use stored value from DataExtractorService - this is the canonical value
+                penghasilanBruto = storedPenghasilanBruto;
+            } else if (storedJumlahUpahKotor !== 0) {
+                // Recalculate using same formula as DataExtractorService:
+                // penghasilan_bruto = jumlah_upah_kotor + astek_majikan + bpjs_majikan
+                // Do NOT use calculatePenghasilanBruto as it has different pot_koreksi handling
+                penghasilanBruto = storedJumlahUpahKotor + astek084 + bpjsKesehatanMajikan4Pct;
+            } else {
+                // True last resort - use calculatePenghasilanBruto but WITHOUT pot_koreksi deduction
+                // as it should already be embedded in the components
+                penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
                     gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, 
-                    row.pot_koreksi || 0,
-                    rowPendapatanLainnya // Include pendapatan_lainnya from row data
+                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct,
+                    0, // Do NOT subtract pot_koreksi - it's already embedded in the wage components
+                    rowPendapatanLainnya
                 );
+            }
 
             let thrAmount = 0;
             let exgratiaAmount = 0;
@@ -1066,10 +1081,26 @@ class TaxReportService {
                 const bpjsKesehatanMajikan4Pct = pph21Caruman.bpjs_kes_majikan_4;
                 const carumanBase = pph21Caruman.base;
 
-                let penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
-                    gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, row.pot_koreksi || 0
-                );
+                // [CRITICAL FIX] Use same formula as DataExtractorService for consistency
+                // Formula: penghasilan_bruto = jumlah_upah_kotor + astek_m + bpjs_m
+                // where jumlah_upah_kotor already includes pot_koreksi (as negative value)
+                const storedPenghasilanBruto = parseFloat(row.penghasilan_bruto) || 0;
+                const storedJumlahUpahKotor = parseFloat(row.jumlah_upah_kotor) || 0;
+                let penghasilanBruto: number;
+
+                if (storedPenghasilanBruto > 0) {
+                    penghasilanBruto = storedPenghasilanBruto;
+                } else if (storedJumlahUpahKotor !== 0) {
+                    // Use same formula as DataExtractorService
+                    penghasilanBruto = storedJumlahUpahKotor + astek084 + bpjsKesehatanMajikan4Pct;
+                } else {
+                    // True last resort - without pot_koreksi deduction
+                    penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
+                        gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
+                        tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, 0,
+                        0 // No pendapatan_lainnya for annual
+                    );
+                }
 
                 // Jika ada THR/Exgratia, tetap tambahkan ke bruto untuk keperluan perhitungan setahun
                 const isThrMonth = activeThr && activeThr.month === month && activeThr.year === year;
@@ -1700,10 +1731,25 @@ class TaxReportService {
                 const astek084 = pph21Caruman.astek_majikan_084;
                 const bpjsKesehatanMajikan4Pct = pph21Caruman.bpjs_kes_majikan_4;
 
-                const penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
-                    gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, row.pot_koreksi || 0
-                );
+                // [CRITICAL FIX] Use same formula as DataExtractorService for consistency
+                // Formula: penghasilan_bruto = jumlah_upah_kotor + astek_m + bpjs_m
+                // where jumlah_upah_kotor already includes pot_koreksi (as negative value)
+                const storedPenghasilanBruto = parseFloat(row.penghasilan_bruto) || 0;
+                const storedJumlahUpahKotor = parseFloat(row.jumlah_upah_kotor) || 0;
+                let penghasilanBruto: number;
+
+                if (storedPenghasilanBruto > 0) {
+                    penghasilanBruto = storedPenghasilanBruto;
+                } else if (storedJumlahUpahKotor !== 0) {
+                    // Use same formula as DataExtractorService
+                    penghasilanBruto = storedJumlahUpahKotor + astek084 + bpjsKesehatanMajikan4Pct;
+                } else {
+                    // True last resort - without pot_koreksi deduction
+                    penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
+                        gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
+                        tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct, 0
+                    );
+                }
 
                 // Purely calculated PPh21 (TER) - untuk report pajak
                 const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);

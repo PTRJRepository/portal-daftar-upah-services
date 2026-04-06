@@ -5,7 +5,7 @@
 /* Force Landscape - must be outside @media print */
 @page {
     size: A4 landscape;
-    margin: 10mm;
+    margin: 5mm;
 }
 
 @media print {
@@ -46,7 +46,7 @@
     .comparison-report-container,
     .wages-summary-container {
         border: 1.5pt solid #000 !important;
-        padding: 12mm !important;
+        padding: 5mm !important;
         margin: 0 auto !important;
         width: 100% !important;
         max-width: 100% !important;

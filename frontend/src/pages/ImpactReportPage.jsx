@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchImpactReport, fetchAvailablePeriods, updateLuasArea } from '../services/summaryReportService';
+import PrintSignature from '../components/common/PrintSignature';
 import '../styles/wages-summary-professional.css';
 
 export default function ImpactReportPage({ onBack }) {
@@ -324,6 +325,32 @@ export default function ImpactReportPage({ onBack }) {
         return value > 0 ? 'text-diff-pos' : 'text-diff-neg';
     };
 
+    // Render trend indicator with icon
+    const renderTrend = (value, inverse = false) => {
+        if (value === 0 || value === '0' || value === '0.00') return null;
+        const num = parseFloat(value);
+        if (isNaN(num)) return null;
+
+        const isPositive = num > 0;
+        const color = inverse 
+            ? (isPositive ? '#dc2626' : '#16a34a') 
+            : (isPositive ? '#16a34a' : '#dc2626');
+        const icon = isPositive ? '▲' : '▼';
+
+        return (
+            <span style={{ 
+                color, 
+                marginLeft: '6px', 
+                fontWeight: 'bold', 
+                fontSize: '0.7rem',
+                display: 'inline-flex',
+                alignItems: 'center'
+            }}>
+                {icon}
+            </span>
+        );
+    };
+
     // Render main table (Table 1)
     const renderMainTable = () => {
         if (!filteredData?.main_table) return null;
@@ -400,9 +427,13 @@ export default function ImpactReportPage({ onBack }) {
                                 <td className={`text-right border-right-section ${getDiffClass(row.gaji_diff, true)}`}>{formatNumber(row.gaji_diff)}</td>
                                 <td className="text-right">{formatNumber(row.tbs_curr, 2)}</td>
                                 <td className="text-right">{formatNumber(row.tbs_prev, 2)}</td>
-                                <td className={`text-right border-right-section ${getDiffClass(row.tbs_diff)}`}>{formatNumber(row.tbs_diff, 2)}</td>
-                                <td className={`text-right font-bold ${getDiffClass(row.pct_gaji_naik_turun, true)}`}>
-                                    {formatPercentage(row.pct_gaji_naik_turun)}
+                                <td className={`text-right border-right-section ${getDiffClass(row.tbs_diff)}`}>
+                                    {formatNumber(row.tbs_diff, 2)}
+                                    {renderTrend(row.tbs_diff, false)}
+                                </td>
+                                <td className={`text-right font-bold ${getDiffClass(row.pct_gaji_naik_turun, true)}`} style={{ minWidth: '85px' }}>
+                                    {formatPercentage(row.pct_gaji_naik_turun)}%
+                                    {renderTrend(row.pct_gaji_naik_turun, true)}
                                 </td>
                             </tr>
                         ))}
@@ -430,7 +461,6 @@ export default function ImpactReportPage({ onBack }) {
         );
     };
 
-    // Render pruning table (Table 2 - Bottom Left)
     const renderPruningTable = () => {
         if (!filteredData?.pruning_table) return null;
 
@@ -438,25 +468,29 @@ export default function ImpactReportPage({ onBack }) {
         const totals = filteredData.pruning_totals;
 
         return (
-            <div className="wsp-table-wrapper" style={{ flex: 1 }}>
-                <div style={{ padding: '0.5rem 1rem', background: '#f8fafc', borderBottom: '1px solid #cbd5e1', fontWeight: 700, color: '#334155' }}>PRUNING</div>
+            <div className="wsp-table-wrapper" style={{ flex: 1, height: 'fit-content' }}>
+                <div style={{ padding: '0.65rem 1rem', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '0.75rem', letterSpacing: '0.05em' }}>
+                    PRUNING ANALYSIS
+                </div>
                 <table className="wsp-table">
                     <thead>
                         <tr className="wsp-header-master">
                             <th rowSpan="2" className="th-sticky-col">Estate</th>
-                            <th colSpan="2" className="th-group-income">This Month</th>
+                            <th colSpan="2" className="th-group-income">Realisasi Bulan Ini</th>
                         </tr>
                         <tr className="wsp-header-sub">
-                            <th className="th-group-income">Premi</th>
-                            <th className="th-group-income">Total</th>
+                            <th className="th-group-income">Premi Pruning</th>
+                            <th className="th-group-income">Total (Income)</th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.map((row, idx) => (
                             <tr key={idx}>
-                                <td className="text-left sticky-col"><div className="div-code">{row.division_code}</div></td>
+                                <td className="text-left sticky-col">
+                                    <div className="div-code">{row.division_code}</div>
+                                </td>
                                 <td className="text-right">{formatNumber(row.premi_this_month)}</td>
-                                <td className="text-right">{formatNumber(row.total)}</td>
+                                <td className="text-right font-semibold">{formatNumber(row.total)}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -480,39 +514,51 @@ export default function ImpactReportPage({ onBack }) {
         const summary = filteredData.summary_analysis;
         const currLabel = getMonthName(month);
         const prevLabel = getMonthName(prevMonth);
+        const formatShortMonth = (m) => getShortMonthName(m);
 
         return (
-            <div className="wsp-table-wrapper" style={{ flex: 1 }}>
-                <div style={{ padding: '0.5rem 1rem', background: '#f8fafc', borderBottom: '1px solid #cbd5e1', fontWeight: 700, color: '#334155' }}>ANALISIS HK & SUMMARY</div>
+            <div className="wsp-table-wrapper" style={{ flex: 1, height: 'fit-content' }}>
+                <div style={{ padding: '0.65rem 1rem', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '0.75rem', letterSpacing: '0.05em' }}>
+                    FINANCIAL IMPACT SUMMARY
+                </div>
 
                 {/* HK Analysis */}
-                <table className="wsp-table" style={{ marginBottom: '1rem', borderBottom: '1px solid #cbd5e1' }}>
+                <table className="wsp-table" style={{ marginBottom: '0', borderBottom: 'none' }}>
                     <thead>
                         <tr className="wsp-header-sub">
-                            <th style={{ textAlign: 'left', paddingLeft: '1rem' }}>Description</th>
+                            <th style={{ textAlign: 'left', paddingLeft: '1rem', width: '40%' }}>Description</th>
                             <th>HK</th>
-                            <th>Gaji (HK × Rate)</th>
-                            <th>Insentif Panen</th>
+                            <th className="th-group-income">Gaji (HK × Rate)</th>
+                            <th className="th-group-income">Insentif</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td className="text-left" style={{ paddingLeft: '1rem' }}>HK {prevLabel} (x {formatNumber(hk.upah_dasar_prev)})</td>
+                            <td className="text-left" style={{ paddingLeft: '1rem' }}>HK Bulan Lalu ({formatShortMonth(prevMonth)} @ {formatNumber(hk.upah_dasar_prev)})</td>
                             <td className="text-right">{formatNumber(hk.hk_prev)}</td>
                             <td className="text-right">{formatNumber(hk.gaji_hk_prev)}</td>
                             <td className="text-right">{formatNumber(hk.insentif_panen_prev)}</td>
                         </tr>
                         <tr>
-                            <td className="text-left" style={{ paddingLeft: '1rem' }}>HK {currLabel} (x {formatNumber(hk.upah_dasar_curr)})</td>
+                            <td className="text-left" style={{ paddingLeft: '1rem' }}>HK Bulan Ini ({formatShortMonth(month)} @ {formatNumber(hk.upah_dasar_curr)})</td>
                             <td className="text-right">{formatNumber(hk.hk_curr)}</td>
                             <td className="text-right">{formatNumber(hk.gaji_hk_curr)}</td>
                             <td className="text-right">{formatNumber(hk.insentif_panen_curr)}</td>
                         </tr>
-                        <tr style={{ background: '#fff7ed' }}>
-                            <td className="text-left font-bold" style={{ paddingLeft: '1rem' }}>Diff</td>
-                            <td className={`text-right font-bold ${getDiffClass(hk.hk_diff)}`}>({formatNumber(Math.abs(hk.hk_diff))})</td>
-                            <td className={`text-right font-bold ${getDiffClass(hk.gaji_hk_diff, true)}`}>({formatNumber(Math.abs(hk.gaji_hk_diff))})</td>
-                            <td className={`text-right font-bold ${getDiffClass(hk.insentif_panen_diff)}`}>{formatNumber(hk.insentif_panen_diff)}</td>
+                        <tr style={{ background: '#f1f5f9' }}>
+                            <td className="text-left font-bold" style={{ paddingLeft: '1rem' }}>SELISIH (Impact)</td>
+                            <td className={`text-right font-bold ${getDiffClass(hk.hk_diff)}`}>
+                                {hk.hk_diff < 0 ? `(${formatNumber(Math.abs(hk.hk_diff))})` : formatNumber(hk.hk_diff)}
+                                {renderTrend(hk.hk_diff, false)}
+                            </td>
+                            <td className={`text-right font-bold ${getDiffClass(hk.gaji_hk_diff, true)}`}>
+                                {hk.gaji_hk_diff < 0 ? `(${formatNumber(Math.abs(hk.gaji_hk_diff))})` : formatNumber(hk.gaji_hk_diff)}
+                                {renderTrend(hk.gaji_hk_diff, true)}
+                            </td>
+                            <td className={`text-right font-bold ${getDiffClass(hk.insentif_panen_diff)}`}>
+                                {formatNumber(hk.insentif_panen_diff)}
+                                {renderTrend(hk.insentif_panen_diff, false)}
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -608,7 +654,7 @@ export default function ImpactReportPage({ onBack }) {
                             style={{ minWidth: '140px' }}
                         >
                             <option value="all">Semua Estate</option>
-                            <option value="non-ijl">Non-IJL (Rebinmas)</option>
+                            <option value="non-ijl">Rebinmas</option>
                             <option value="ijl">IJL Only</option>
                         </select>
                     </div>
@@ -668,7 +714,7 @@ export default function ImpactReportPage({ onBack }) {
                         <div className="wsp-report-title">
                             IMPACT REPORT
                             {estateType === 'ijl' && ' - ESTATE IJL'}
-                            {estateType === 'non-ijl' && ' - ESTATE NON-IJL'}
+                            {estateType === 'non-ijl' && ' - ESTATE REBINMAS'}
                         </div>
                         <div className="wsp-report-period">{periodLabel}</div>
                     </div>
@@ -685,7 +731,11 @@ export default function ImpactReportPage({ onBack }) {
                         {renderHKAnalysisTable()}
                     </div>
 
-                    {/* Report Footer */}
+                    {/* Report Footer & Signatures */}
+                    <div className="print-only" style={{ marginTop: '3rem', pageBreakInside: 'avoid' }}>
+                        <PrintSignature />
+                    </div>
+
                     <footer className="wsp-footer" style={{ marginTop: '4rem' }}>
                         <div className="wsp-footer-left">
                             <div>Dicetak: {printDate}</div>

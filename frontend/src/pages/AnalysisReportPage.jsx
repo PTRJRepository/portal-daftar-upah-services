@@ -170,7 +170,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                             className="report-filter-badge"
                         >
                             <option value="all">ALL DIVISIONS</option>
-                            <option value="non_ijl">NON IJL (REBINMAS)</option>
+                            <option value="non_ijl">REBINMAS</option>
                             <option value="ijl">IJL ONLY</option>
                         </select>
                     </div>

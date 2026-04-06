@@ -467,7 +467,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 <div className="wsp-kpi-grid comparison-grid">
                     {/* Total Upah Bersih */}
                     <div className="wsp-kpi-card comparison-card">
-                        <div className="wsp-kpi-label">Total Upah Bersih (Non IJL)</div>
+                        <div className="wsp-kpi-label">Total Upah Bersih (Rebinmas)</div>
                         <div className="wsp-kpi-compare-row">
                             <div className="wsp-kpi-trend-box prev">
                                 <div className="trend-label">{prevLabel}</div>
@@ -632,11 +632,13 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             workers_current: divisions.reduce((sum, d) => sum + (d.workers_current || 0), 0),
             total_pph21_current: divisions.reduce((sum, d) => sum + (d.total_pph21_current || 0), 0),
             total_spsi_current: divisions.reduce((sum, d) => sum + (d.total_spsi_current || 0), 0),
+            total_premi_previous: divisions.reduce((sum, d) => sum + (d.total_premi_previous || 0), 0),
             total_premi_current: divisions.reduce((sum, d) => sum + (d.total_premi_current || 0), 0),
             total_prunning_current: divisions.reduce((sum, d) => sum + (d.total_prunning_current || 0), 0),
             total_brondol_current: divisions.reduce((sum, d) => sum + (d.total_brondol_current || 0), 0),
             total_insentif_current: divisions.reduce((sum, d) => sum + (d.total_insentif_current || 0), 0),
             total_kinerja_current: divisions.reduce((sum, d) => sum + (d.total_kinerja_current || 0), 0),
+            total_lembur_previous: divisions.reduce((sum, d) => sum + (d.total_lembur_previous || 0), 0),
             total_lembur_current: divisions.reduce((sum, d) => sum + (d.total_lembur_current || 0), 0),
             prev_gaji: divisions.reduce((sum, d) => sum + (d.previous_month?.gaji || 0), 0),
             prev_tbs: divisions.reduce((sum, d) => sum + (d.previous_month?.tbs_weight || 0), 0),
@@ -646,7 +648,6 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             curr_thumb_print: divisions.reduce((sum, d) => sum + (d.current_month?.thumb_print || 0), 0),
             selisih: divisions.reduce((sum, d) => sum + (d.selisih || 0), 0)
         };
-
         return (
             <div className="wsp-table-wrapper">
                 <table className="wsp-table comparison-table">
@@ -654,11 +655,11 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         {/* Master Header Level */}
                         <tr className="wsp-header-master">
                             <th rowSpan="2" className="th-sticky-col">ESTATE / DIVISI</th>
-                            <th colSpan="2" className="th-group-workers">MANPOWER</th>
-                            <th colSpan="5" className="th-group-premi">PREMI BREAKDOWN — {currMonthName} {current_period.year}</th>
-                            <th colSpan="3" className="th-group-uraian">LEMBUR & DEDUCTIONS</th>
-                            <th colSpan="2" className="th-group-prev">REKAP {prevMonthName}</th>
-                            <th colSpan="2" className="th-group-curr">REKAP {currMonthName}</th>
+                            <th colSpan="2" className="th-group-manpower">MANPOWER</th>
+                            <th colSpan="5" className="th-group-premi">PREMI ({currMonthName})</th>
+                            <th colSpan="3" className="th-group-uraian">Lembur dan Potongan</th>
+                            <th colSpan="2" className="th-group-prev">REKAP {prevMonthName.substring(0, 3)}</th>
+                            <th colSpan="2" className="th-group-curr">REKAP {currMonthName.substring(0, 3)}</th>
                             <th rowSpan="2" className="th-group-diff">SELISIH</th>
                         </tr>
                         {/* Sub Header */}
@@ -717,10 +718,16 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                     <td className={`text-right ${(row.total_brondol_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_brondol_current || 0)}</td>
                                     <td className={`text-right ${(row.total_insentif_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_insentif_current || 0)}</td>
                                     <td className={`text-right ${(row.total_kinerja_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_kinerja_current || 0)}</td>
-                                    <td className="text-right border-right-section" style={{ fontWeight: 700 }}>{formatNumber(row.total_premi_current)}</td>
+                                    <td className="text-right border-right-section" style={{ fontWeight: 700 }}>
+                                        {formatNumber(row.total_premi_current)}
+                                        {renderTrendArrow(row.total_premi_current, row.total_premi_previous, 'cost')}
+                                    </td>
 
                                     {/* Lembur & Deductions */}
-                                    <td className="text-right">{formatNumber(row.total_lembur_current)}</td>
+                                    <td className="text-right">
+                                        {formatNumber(row.total_lembur_current)}
+                                        {renderTrendArrow(row.total_lembur_current, row.total_lembur_previous, 'cost')}
+                                    </td>
                                     <td className="text-right">{formatNumber(row.total_pph21_current)}</td>
                                     <td className="text-right border-right-section">{formatNumber(row.total_spsi_current)}</td>
 
@@ -755,19 +762,34 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                         <tr className="wsp-grand-total">
                             <td className="text-left sticky-col">SUB TOTAL</td>
                             <td className="text-right">{formatNumber(grandTotal.workers_previous)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.workers_current)}</td>
+                            <td className="text-right">
+                                {formatNumber(grandTotal.workers_current)}
+                                {renderTrendArrow(grandTotal.workers_current, grandTotal.workers_previous, 'cost')}
+                            </td>
                             <td className="text-right">{formatNumber(grandTotal.total_prunning_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_brondol_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_insentif_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_kinerja_current)}</td>
-                            <td className="text-right" style={{ fontWeight: 800 }}>{formatNumber(grandTotal.total_premi_current)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.total_lembur_current)}</td>
+                            <td className="text-right" style={{ fontWeight: 800 }}>
+                                {formatNumber(grandTotal.total_premi_current)}
+                                {renderTrendArrow(grandTotal.total_premi_current, grandTotal.total_premi_previous, 'cost')}
+                            </td>
+                            <td className="text-right">
+                                {formatNumber(grandTotal.total_lembur_current)}
+                                {renderTrendArrow(grandTotal.total_lembur_current, grandTotal.total_lembur_previous, 'cost')}
+                            </td>
                             <td className="text-right">{formatNumber(grandTotal.total_pph21_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_spsi_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_gaji)}</td>
                             <td className={`text-right ${grandTotal.prev_tbs > 0 ? 'tonase-highlight' : ''}`}>{formatNumber(grandTotal.prev_tbs, 3)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.curr_gaji)}</td>
-                            <td className={`text-right ${grandTotal.curr_tbs > 0 ? 'tonase-highlight' : ''}`}>{formatNumber(grandTotal.curr_tbs, 3)}</td>
+                            <td className="text-right">
+                                {formatNumber(grandTotal.curr_gaji)}
+                                {renderTrendArrow(grandTotal.curr_gaji, grandTotal.prev_gaji, 'cost')}
+                            </td>
+                            <td className={`text-right ${grandTotal.curr_tbs > 0 ? 'tonase-highlight' : ''}`}>
+                                {formatNumber(grandTotal.curr_tbs, 3)}
+                                {renderTrendArrow(grandTotal.curr_tbs, grandTotal.prev_tbs, 'yield')}
+                            </td>
                             <td className={`text-right font-bold ${grandTotal.selisih > 0 ? 'text-diff-neg' : grandTotal.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
                                 <span style={{ marginRight: '4px' }}>
                                     {grandTotal.selisih > 0 ? '▲' : grandTotal.selisih < 0 ? '▼' : ''}
@@ -1156,15 +1178,15 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                         ? 'PT. IMPIAN JAYA LESTARI'
                                         : 'PT. REBINMAS JAYA'}
                                 </h1>
-                                <div className="wsp-report-title" style={{ 
-                                    fontSize: '1.5rem', 
-                                    fontWeight: '700', 
+                                <div className="wsp-report-title wsp-report-title-main" style={{
+                                    fontSize: '1.5rem',
+                                    fontWeight: '700',
                                     margin: '1rem 0 0.5rem 0',
                                     textAlign: 'center',
                                     textTransform: 'uppercase',
                                     letterSpacing: '1px'
                                 }}>
-                                    {thrMode ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : (comparisonMode ? 'LAPORAN PERBANDINGAN UPAH BULANAN' : 'LAPORAN RINGKASAN UPAH BULANAN')}
+                                    {thrMode ? 'REKAPITULASI TUNJANGAN HARI RAYA (THR SUMMARY)' : (comparisonMode ? 'LAPORAN PERBANDINGAN UPAH BULANAN (WAGES COMPARISON)' : 'REKAPITULASI DAFTAR UPAH (WAGES SUMMARY)')}
                                 </div>
                                 <div className="wsp-report-subtitle" style={{
                                     fontSize: '1rem',
@@ -1364,7 +1386,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             )}
 
                             {/* Signature Section */}
-                            <div className="print-only">
+                            <div className="print-only" style={{ marginTop: '40px' }}>
                                 <PrintSignature />
                             </div>
 

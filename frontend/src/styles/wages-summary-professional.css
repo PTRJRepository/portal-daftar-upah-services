@@ -914,7 +914,7 @@
    ============================================= */
 @page {
     size: A4 landscape;
-    margin: 8mm 8mm 8mm 8mm;
+    margin: 5mm;
     /* Optimized margins to prevent border cutoff */
 }
 
@@ -922,7 +922,7 @@
     /* Page setup - Landscape for wide tables */
     @page {
         size: A4 landscape;
-        margin: 8mm 6mm 8mm 6mm;
+        margin: 5mm;
     }
 
     /* Hide all interactive elements */
@@ -1005,12 +1005,20 @@
     }
 
     .wsp-report-title {
-        font-size: 0.9rem !important;
+        font-size: 1.1rem !important;
         font-weight: 700 !important;
-        margin: 0.15rem 0 !important;
+        margin: 0.3rem 0 !important;
         color: #000 !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.3px !important;
+        letter-spacing: 0.5px !important;
+        display: block !important;
+        visibility: visible !important;
+    }
+
+    .wsp-report-title.wsp-report-title-main {
+        font-size: 1.3rem !important;
+        font-weight: 800 !important;
+        margin: 0.4rem 0 !important;
     }
 
     .wsp-report-period {
@@ -1124,9 +1132,24 @@
 
     .wsp-table {
         width: 100% !important;
-        table-layout: fixed !important;
+        table-layout: auto !important;
         border-collapse: collapse !important;
-        font-size: 0.65rem !important;
+        font-size: 8.5pt !important;
+    }
+
+    /* Comparison table - specific compact styles */
+    .wsp-table.comparison-table {
+        font-size: 7.5pt !important;
+    }
+
+    .wsp-table.comparison-table thead th {
+        font-size: 7.5pt !important;
+        padding: 2px 1px !important;
+    }
+
+    .wsp-table.comparison-table td {
+        font-size: 7.5pt !important;
+        padding: 2px 1px !important;
     }
 
     /* Table headers */
