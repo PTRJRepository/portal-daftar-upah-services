@@ -1037,7 +1037,8 @@ export class HistoryDatabaseService {
         periodYear: number,
         gangCode: string = "ALL",
         divisionCode?: string,
-        specificEmpCode: string | null = null
+        specificEmpCode: string | null = null,
+        gangPrefix?: string
     ): Promise<{
         data_rows: any[];
         dynamic_premi_headers: string[];

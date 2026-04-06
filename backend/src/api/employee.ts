@@ -177,6 +177,9 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
         const errors: any[] = [];
         const notFound: { empCode: string, reason: string }[] = [];
 
+        // Fix: DB Instance
+        const db = (await import('../db/client')).Database.getInstance();
+
         // OPTIMIZATION: Batch NIK Resolution - single query for all NIKs
         const nikToResolve = empCodes.filter(code => typeof code === 'string' && code.trim() !== "" && /^\d{10,}$/.test(code.trim()));
         const codeToResolve = empCodes.filter(code => typeof code === 'string' && code.trim() !== "" && !/^\d{10,}$/.test(code.trim()));
@@ -238,14 +241,19 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
             const empInfoMap = new Map<string, { locCode: string, gangCode: string }>();
 
             empInfoRows.forEach(row => {
-                empInfoMap.set(row.EmpCode?.trim().toUpperCase(), {
+                const normalizedEmpCode = row.EmpCode?.trim().toUpperCase();
+                empInfoMap.set(normalizedEmpCode, {
                     locCode: row.LocCode?.trim() || "",
                     gangCode: row.GangCode?.trim() || ""
                 });
-                if (row.GangCode) {
-                    const gangCode = row.GangCode.trim();
-                    const div = gangCode.substring(0, 2) || "ALL";
-                    divisions.add(div);
+                
+                if (row.LocCode) {
+                    const locCode = row.LocCode.trim();
+                    // CRITICAL FIX: Use divisionDefinition to resolve proper division code (e.g. PG1A)
+                    // instead of naive substring slicing (substring(0,2) -> PG)
+                    const { divisionDefinition } = require('../services/divisionDefinition');
+                    const div = divisionDefinition.resolveDivisionCode(locCode);
+                    if (div) divisions.add(div);
                 }
             });
 
@@ -255,7 +263,7 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
             const divisionArray = Array.from(divisions);
             const payrollPromises = divisionArray.map(div =>
                 dataExtractorService.extractPayrollData(
-                    month, year, div, undefined, undefined, undefined, false, null, undefined, true // skipHarvest=true
+                    month, year, "ALL", div, undefined, undefined, false, null, undefined, true // skipHarvest=true
                 )
             );
             const payrollResults = await Promise.all(payrollPromises);
@@ -329,20 +337,33 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
                     payroll_data: payrollRow,
                     debug_info: { found: true, source: "batch_fetch_optimized" }
                 });
-            } else {
-                // Employee not found in payroll data - try individual fetch as fallback
+        // OPTIMIZATION: Collect missed employees for PARALLEL fallback fetch
+        const missedEmpCodes = actualEmpCodes.filter(empCode => {
+            const normalizedCode = empCode.toUpperCase();
+            return !results.find(res => res.emp_code === normalizedCode);
+        });
+
+        if (missedEmpCodes.length > 0) {
+            console.log(`[Batch Checkroll] ${missedEmpCodes.length} employees not in batch data, fetching in parallel...`);
+            
+            const fallbackPromises = missedEmpCodes.map(async (empCode) => {
+                const normalizedCode = empCode.toUpperCase();
                 try {
-                    console.log(`[Batch Checkroll] Employee ${normalizedCode} not in batch data, fetching individually...`);
                     const individualResult = await employeeDetailService.getEmployeeCheckroll(normalizedCode, month, year, true); // skipHarvest=true
                     if (!individualResult.error && individualResult.payroll_data) {
-                        results.push(individualResult);
+                        return individualResult;
                     } else {
                         notFound.push({ empCode: normalizedCode, reason: "No payroll data" });
+                        return null;
                     }
                 } catch (e: any) {
                     notFound.push({ empCode: normalizedCode, reason: e.message });
+                    return null;
                 }
-            }
+            });
+
+            const fallbackResults = (await Promise.all(fallbackPromises)).filter(Boolean);
+            results.push(...fallbackResults);
         }
 
         return {

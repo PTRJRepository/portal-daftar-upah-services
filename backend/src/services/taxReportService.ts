@@ -512,7 +512,7 @@ class TaxReportService {
         }
 
         const { data: historyData, isSourceCurrent } = await this.fetchPayrollData(
-            month, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix, useHistoryDb
+            month, year, effectiveDivisionCode || 'ALL', gangCode || 'ALL', effectiveGangPrefix, useHistoryDb
         );
 
         console.log(`[TaxReportService] getMonthlyTaxReport received data: ${historyData?.data_rows?.length || 0} rows, isSourceCurrent=${isSourceCurrent}`);
@@ -713,8 +713,8 @@ class TaxReportService {
             const storedStatusPtkp = row.status_ptkp || masterPtkp;
             
             // Use stored values EXACTLY as they appear in UI Daftar Upah
-            // Only recalculate if truly missing (undefined or null), not if 0
-            const pph21 = (row.pph21_ter !== undefined && row.pph21_ter !== null) 
+            // Only recalculate if truly missing or exactly 0 but bruto exists
+            const pph21 = (row.pph21_ter !== undefined && row.pph21_ter !== null && Number(row.pph21_ter) !== 0) 
                 ? storedPph21 
                 : (storedBruto > 0 ? pph21TerService.calculatePph21Ter(storedBruto, storedStatusPtkp).tax_amount : 0);
             
@@ -935,7 +935,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix
+                    m, year, effectiveDivisionCode || 'ALL', gangCode || 'ALL', effectiveGangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }
@@ -1394,7 +1394,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix
+                    m, year, effectiveDivisionCode || 'ALL', gangCode || 'ALL', effectiveGangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }
@@ -1592,7 +1592,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, gangCode || 'ALL', effectiveDivisionCode || undefined, effectiveGangPrefix
+                    m, year, effectiveDivisionCode || 'ALL', gangCode || 'ALL', effectiveGangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }
