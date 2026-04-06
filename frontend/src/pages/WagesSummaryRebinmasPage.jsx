@@ -1156,12 +1156,41 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                         ? 'PT. IMPIAN JAYA LESTARI'
                                         : 'PT. REBINMAS JAYA'}
                                 </h1>
-                                <div className="wsp-report-title">
-                                    {thrMode ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : (comparisonMode ? 'Monthly Wages Comparison Report' : 'Monthly Wages Summary Report')}
+                                <div className="wsp-report-title" style={{ 
+                                    fontSize: '1.5rem', 
+                                    fontWeight: '700', 
+                                    margin: '1rem 0 0.5rem 0',
+                                    textAlign: 'center',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '1px'
+                                }}>
+                                    {thrMode ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : (comparisonMode ? 'LAPORAN PERBANDINGAN UPAH BULANAN' : 'LAPORAN RINGKASAN UPAH BULANAN')}
                                 </div>
-                                <div className="wsp-report-period">
+                                <div className="wsp-report-subtitle" style={{
+                                    fontSize: '1rem',
+                                    fontWeight: '500',
+                                    textAlign: 'center',
+                                    color: '#475569',
+                                    marginBottom: '0.5rem'
+                                }}>
+                                    {!thrMode && !comparisonMode && 'WAGES SUMMARY REPORT - PT. REBINMAS JAYA'}
+                                    {comparisonMode && 'WAGES COMPARISON REPORT - PT. REBINMAS JAYA'}
+                                    {thrMode && thrIjlFilter === 'ijl-only' && 'THR REPORT - PT. IMPIAN JAYA LESTARI'}
+                                </div>
+                                <div className="wsp-report-period" style={{
+                                    fontSize: '0.95rem',
+                                    textAlign: 'center',
+                                    marginTop: '0.5rem',
+                                    padding: '0.5rem 1rem',
+                                    backgroundColor: '#f1f5f9',
+                                    borderRadius: '6px',
+                                    display: 'inline-block',
+                                    width: 'auto',
+                                    marginLeft: 'auto',
+                                    marginRight: 'auto'
+                                }}>
                                     {thrMode && <span style={{ marginRight: '1rem' }}>Division: <strong style={{ color: '#0f172a' }}>ALL</strong> | </span>}
-                                    Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
+                                    Periode: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
                                 </div>
                             </div>
 
