@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Printer, RefreshCw, ArrowLeft, Save } from 'lucide-react';
+import { Printer, RefreshCw, ArrowLeft, Save, Download } from 'lucide-react';
 import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, fetchVirtualDivisions, validateAggregation, seedAggregation, updateGangCell } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
@@ -632,56 +632,67 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         <div className="wsp-container" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
             {/* Header & Actions */}
             <div className="report-header-web no-print">
-                <div className="report-header-info">
-                    <h1>Summary Report Detail</h1>
-                    <p>{reportMode === 'thr' ? 'Rekapitulasi total pekerja dan pendapatan THR per estate/gang.' : 'Rekapitulasi total pekerja, HK, premi, dan upah bersih per estate/gang.'}</p>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                {/* Top: Title + Action Buttons */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                    <div className="report-header-info" style={{ flex: 1, minWidth: '200px' }}>
+                        <h1 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', fontWeight: 700 }}>Summary Report Detail</h1>
+                        <p style={{ margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>{reportMode === 'thr' ? 'Rekapitulasi total pekerja dan pendapatan THR per estate/gang.' : 'Rekapitulasi total pekerja, HK, premi, dan upah bersih per estate/gang.'}</p>
+                    </div>
+                    <div className="report-header-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
+                        <button onClick={handlePrint} className="wsp-btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.8rem' }}>
+                            <Printer size={16} /> Cetak
+                        </button>
+                        <button onClick={handleExport} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.8rem' }} disabled={loading || summaryData.length === 0}>
+                            <Download size={16} /> Export
+                        </button>
+                        <button onClick={() => setShowSeederModal(true)} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.8rem', backgroundColor: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>
+                            <RefreshCw size={16} /> Sync
+                        </button>
+                        <button
+                            onClick={() => setEditMode(prev => !prev)}
+                            className="wsp-btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.8rem', backgroundColor: editMode ? '#dbeafe' : '#f3f4f6', color: editMode ? '#1e40af' : '#374151', borderColor: editMode ? '#93c5fd' : '#d1d5db' }}
+                        >
+                            {editMode ? '✓ Selesai' : '✏️ Edit'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Bottom: Filter Controls */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Mode</label>
                         <select
                             value={reportMode}
                             onChange={e => setReportMode(e.target.value)}
                             className="wsp-btn-secondary"
-                            style={{
-                                cursor: 'pointer',
-                                outline: 'none',
-                                backgroundColor: '#eef2ff',
-                                color: '#4f46e5',
-                                borderColor: '#c7d2fe',
-                                fontWeight: 'bold',
-                                padding: '6px 12px',
-                                borderRadius: '6px',
-                                height: '36px'
-                            }}
+                            style={{ cursor: 'pointer', outline: 'none', backgroundColor: '#eef2ff', color: '#4f46e5', borderColor: '#c7d2fe', fontWeight: 'bold', padding: '6px 12px', borderRadius: '6px', height: '36px', minWidth: '110px' }}
                         >
-                            <option value="payroll">Mode Payroll</option>
-                            <option value="thr">Mode THR</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="thr">THR</option>
                         </select>
-                        
-                        {/* Division Type Selector (All/Real/Virtual) */}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Tipe Divisi</label>
                         <select
                             value={divisionType}
                             onChange={e => {
                                 setDivisionType(e.target.value);
-                                setDivision(''); // Reset division when switching type
+                                setDivision('');
                                 setGroupFilter('');
                             }}
                             className="wsp-btn-secondary"
-                            style={{
-                                cursor: 'pointer',
-                                outline: 'none',
-                                backgroundColor: divisionType === 'virtual' ? '#fef3c7' : divisionType === 'real' ? '#eef2ff' : '#dcfce7',
-                                color: divisionType === 'virtual' ? '#92400e' : divisionType === 'real' ? '#4f46e5' : '#166534',
-                                borderColor: divisionType === 'virtual' ? '#fde68a' : divisionType === 'real' ? '#c7d2fe' : '#86efac',
-                                fontWeight: 'bold',
-                                padding: '6px 12px',
-                                borderRadius: '6px',
-                                height: '36px'
-                            }}
+                            style={{ cursor: 'pointer', outline: 'none', backgroundColor: divisionType === 'virtual' ? '#fef3c7' : divisionType === 'real' ? '#eef2ff' : '#dcfce7', color: divisionType === 'virtual' ? '#92400e' : divisionType === 'real' ? '#4f46e5' : '#166534', borderColor: divisionType === 'virtual' ? '#fde68a' : divisionType === 'real' ? '#c7d2fe' : '#86efac', fontWeight: 'bold', padding: '6px 12px', borderRadius: '6px', height: '36px', minWidth: '120px' }}
                         >
-                            <option value="all">Semua Divisi</option>
-                            <option value="real">Divisi Utama Saja</option>
-                            <option value="virtual">Divisi Virtual Saja</option>
+                            <option value="all">Semua</option>
+                            <option value="real">Utama</option>
+                            <option value="virtual">Virtual</option>
                         </select>
-                        
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Divisi</label>
                         <select
                             value={division}
                             onChange={e => {
@@ -689,69 +700,43 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 setGroupFilter('');
                             }}
                             className="report-filter-badge"
-                            style={{ cursor: 'pointer', outline: 'none' }}
+                            style={{ cursor: 'pointer', outline: 'none', padding: '6px 12px', borderRadius: '6px', height: '36px', minWidth: '130px', backgroundColor: '#f8fafc', border: '1px solid #d1d5db' }}
                         >
-                            <option value="">Semua {divisionType === 'virtual' ? 'Divisi Virtual' : divisionType === 'real' ? 'Divisi Utama' : 'Divisi'}</option>
+                            <option value="">Semua</option>
                             {(divisionType === 'all' ? [...divisions, ...virtualDivisions] : divisionType === 'virtual' ? virtualDivisions : divisions).map(d => (
                                 <option key={d} value={d}>{d}</option>
                             ))}
                         </select>
+                    </div>
 
-                        {/* Group Selector */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Group</label>
                         <select
                             value={groupFilter}
                             onChange={e => setGroupFilter(e.target.value)}
                             className="report-filter-badge"
-                            style={{ cursor: 'pointer', outline: 'none', backgroundColor: groupFilter ? '#e0f2fe' : undefined, borderColor: groupFilter ? '#7dd3fc' : undefined }}
+                            style={{ cursor: 'pointer', outline: 'none', padding: '6px 12px', borderRadius: '6px', height: '36px', minWidth: '110px', backgroundColor: groupFilter ? '#e0f2fe' : '#f8fafc', borderColor: groupFilter ? '#7dd3fc' : '#d1d5db', border: '1px solid #d1d5db' }}
                         >
-                            <option value="">Semua Group</option>
+                            <option value="">Semua</option>
                             {availableGroups.map(g => (
                                 <option key={g} value={g}>Group {g}</option>
                             ))}
                         </select>
-
-                        <span className="report-filter-badge">{getMonthName(month)} {year}</span>
                     </div>
-                </div>
-                <div className="report-header-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <button onClick={handlePrint} className="wsp-btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Printer size={18} /> Cetak Report
-                    </button>
-                    <button onClick={handleExport} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} disabled={loading || summaryData.length === 0}>
-                        Download CSV
-                    </button>
-                    <button onClick={handleSeedAll} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isSeeding ? '#fef3c7' : '#10b981', color: isSeeding ? '#92400e' : '#fff', borderColor: isSeeding ? '#fde68a' : '#059669' }} disabled={isSeeding || loading}>
-                        <RefreshCw size={18} className={isSeeding ? 'animate-spin' : ''} />
-                        {isSeeding ? 'Seeding UI Data...' : 'Seed UI Data'}
-                    </button>
-                    <button onClick={() => setShowSeederModal(true)} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>
-                        <RefreshCw size={18} /> Sync Data
-                    </button>
-                    <button
-                        onClick={() => setEditMode(prev => !prev)}
-                        className="wsp-btn-secondary"
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '8px',
-                            backgroundColor: editMode ? '#dbeafe' : '#f3f4f6',
-                            color: editMode ? '#1e40af' : '#374151',
-                            borderColor: editMode ? '#93c5fd' : '#d1d5db'
-                        }}
-                    >
-                        {editMode ? 'Selesai Edit' : 'Edit Nilai'}
-                    </button>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Periode</label>
+                        <span className="report-filter-badge" style={{ padding: '6px 12px', borderRadius: '6px', height: '36px', display: 'flex', alignItems: 'center', backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.8rem', fontWeight: 600, border: '1px solid #e2e8f0' }}>{getMonthName(month)} {year}</span>
+                    </div>
+
                     {editMode && Object.keys(editedCells).length > 0 && (
                         <button
                             onClick={handleSaveEdits}
                             className="wsp-btn-primary"
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                                backgroundColor: '#10b981',
-                                color: '#fff',
-                                borderColor: '#059669'
-                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.8rem', backgroundColor: '#10b981', color: '#fff', borderColor: '#059669', alignSelf: 'flex-end', height: '36px' }}
                             disabled={loading}
                         >
-                            <Save size={18} /> Simpan ({Object.keys(editedCells).length})
+                            <Save size={16} /> Simpan ({Object.keys(editedCells).length})
                         </button>
                     )}
                 </div>
@@ -771,23 +756,42 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 <div className="wsp-error">! {error}</div>
             ) : (
                 <div className="wsp-document" id="summary-report-content">
-                    {/* Letterhead */}
-                    <div className="wsp-letterhead">
-                        <img
-                            src={companyInfo.logo}
-                            alt={companyInfo.name}
-                            className="wsp-logo"
-                            onError={(e) => {
-                                // Fallback logo if primary logo not found
-                                if (companyInfo.logoFallback) {
-                                    e.target.src = companyInfo.logoFallback;
-                                }
-                            }}
-                        />
-                        <h1 className="wsp-company-name">{companyInfo.name}</h1>
-                        <div className="wsp-report-title">{reportMode === 'thr' ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : 'SUMMARY REPORT DETAIL'}</div>
-                        <div className="wsp-report-period">
-                            Division: <strong style={{ color: '#0f172a' }}>{division || 'ALL'}</strong> | Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
+                    {/* Standardized Professional Header (3-Column Layout) */}
+                    <div className="wsp-report-header">
+                        {/* Left Section: Logo */}
+                        <div className="wsp-logo-section">
+                            <img
+                                src={companyInfo.logo}
+                                alt={companyInfo.name}
+                                className="wsp-logo"
+                                onError={(e) => {
+                                    if (companyInfo.logoFallback) e.target.src = companyInfo.logoFallback;
+                                }}
+                            />
+                        </div>
+
+                        {/* Center Section: Company & Report Title */}
+                        <div className="wsp-title-section">
+                            <h1 className="wsp-company-name">{companyInfo.name}</h1>
+                            <h2 className="wsp-report-title">
+                                {reportMode === 'thr' ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : 'SUMMARY REPORT DETAIL'}
+                            </h2>
+                        </div>
+
+                        {/* Right Section: Metadata */}
+                        <div className="wsp-meta-section">
+                            <div className="wsp-meta-row">
+                                <span className="wsp-meta-label">Division:</span>
+                                <span className="wsp-meta-value">{division || 'ALL'}</span>
+                            </div>
+                            <div className="wsp-meta-row">
+                                <span className="wsp-meta-label">Period:</span>
+                                <span className="wsp-meta-value">{periodLabel}</span>
+                            </div>
+                            <div className="wsp-meta-row">
+                                <span className="wsp-meta-label">Total Geng:</span>
+                                <span className="wsp-meta-value">{filteredSummaryData.length}</span>
+                            </div>
                         </div>
                     </div>
 
@@ -841,10 +845,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                         <tr className="wsp-header-master">
                                             <th rowSpan="2" style={{ minWidth: '300px', width: '300px' }}>ESTATE / GANG</th>
                                             <th colSpan="2">MANPOWER</th>
-                                            {/* Screen: Show full PREMI INCOME with all dynamic columns */}
-                                            <th colSpan={dynamicPremiHeaders.length + 1} className="print-hide-detail">PREMI INCOME</th>
-                                            {/* Print: Show only PREMI INCOME with 1 column (Total Premi) */}
-                                            <th className="print-show-only">PREMI INCOME</th>
+                                            {/* Simplified PREMI INCOME (Hidden detail breakdown per request) */}
+                                            <th style={{ width: '120px' }}>PREMI INCOME</th>
                                             <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
                                             <th colSpan="2">DEDUCTIONS</th>
                                             <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
@@ -854,12 +856,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <th style={{ width: '60px' }}>WORKERS</th>
                                             <th style={{ width: '60px' }}>HK</th>
 
-                                            {/* Premi Dynamic - Hidden on Print */}
-                                            {dynamicPremiHeaders.map((h, i) => (
-                                                <th key={i} style={{ minWidth: '90px' }} className="print-hide-detail">{h}</th>
-                                            ))}
-
-                                            <th style={{ width: '100px', background: '#334155' }}>TOTAL PREMI</th>
+                                            <th style={{ width: '120px', background: '#334155', color: 'white' }}>TOTAL PREMI</th>
 
                                             {/* Deductions */}
                                             <th style={{ width: '90px' }}>PPH 21</th>
@@ -889,18 +886,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                 <EditableCell editMode={editMode} value={row.total_employees} onSave={(v) => handleCellEdit(row.gang_code, 'total_employees', v)} />
                                                 <EditableCell editMode={editMode} value={row.total_hk} onSave={(v) => handleCellEdit(row.gang_code, 'total_hk', v)} />
 
-                                                {/* Dynamic Premi Cols */}
-                                                {dynamicPremiHeaders.map(header => {
-                                                    const val = getDynamicPremiValue(row, header);
-                                                    return (
-                                                        <td key={header} className={`text-right print-hide-detail ${!val && 'val-zero'}`}>
-                                                            {formatNumber(val)}
-                                                        </td>
-                                                    );
-                                                })}
-
-                                                {/* Total Premi - Show FULL total from portal */}
-                                                <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
+                                                {/* Total Premi - Simplified view without breakdown */}
+                                                <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 700, backgroundColor: '#f8fafc' }}>
                                                     {formatNumber(row.total_premi)}
                                                 </td>
 
@@ -935,16 +922,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_employees)}</td>
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_hk)}</td>
 
-                                            {/* Dynamic Premi Totals - Hidden on Print */}
-                                            {dynamicPremiHeaders.map(header => {
-                                                const total = filteredGrandTotal.dynamic_premi_totals?.[header] || 0;
-                                                return (
-                                                    <td key={header} className="text-right print-hide-detail">{formatNumber(total)}</td>
-                                                );
-                                            })}
-
-                                            {/* Total Premi - FULL from portal */}
-                                            <td className="text-right" style={{ background: '#1e293b', color: 'white' }}>{formatNumber(filteredGrandTotal.total_premi)}</td>
+                                            {/* Total Premi - Grand Total */}
+                                            <td className="text-right" style={{ background: '#1e293b', color: 'white', fontWeight: 800 }}>{formatNumber(filteredGrandTotal.total_premi)}</td>
 
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_lembur)}</td>
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_pph21)}</td>
