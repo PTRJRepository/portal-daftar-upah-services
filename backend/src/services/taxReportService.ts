@@ -19,6 +19,7 @@ import { Config } from "../config";
 import { DataExtractorService } from './dataExtractorService';
 import { currentPeriodService } from './currentPeriodService';
 import { EmployeeEstateService } from './employeeEstateService';
+import { cacheService } from './cacheService';
 
 /**
  * Auto-derive jabatan (job title) from the last character of gang code.
@@ -463,6 +464,18 @@ class TaxReportService {
     ): Promise<any> {
         console.log(`[TaxReportService] getMonthlyTaxReport: year=${year}, month=${month}, division=${divisionCode || 'ALL'}, gang=${gangCode || 'ALL'}, gangPrefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}`);
 
+        const currentPeriod = await currentPeriodService.getCurrentPeriod();
+        const cacheKey = cacheService.buildPayrollKey(`TAX_M_${gangCode || 'ALL'}_${gangPrefix || 'ALL'}`, month, year, divisionCode, useHistoryDb);
+        const shouldCache = cacheService.shouldCache(month, year, currentPeriod.month, currentPeriod.year);
+
+        if (shouldCache) {
+            const cachedData = cacheService.get(cacheKey);
+            if (cachedData) {
+                console.log(`[TaxReportService] Returning cached monthly tax report from memory.`);
+                return cachedData;
+            }
+        }
+
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
         let effectiveGangPrefix = gangPrefix;
@@ -845,8 +858,15 @@ class TaxReportService {
             );
         }
 
+        const finalResult = { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
+
+        if (shouldCache) {
+            const ttl = cacheService.getPayrollCacheTtl(month, year, currentPeriod.month, currentPeriod.year);
+            cacheService.set(cacheKey, finalResult, ttl);
+        }
+
         console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${isSourceCurrent ? 'current' : 'history'}`);
-        return { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
+        return finalResult;
     }
 
     /**

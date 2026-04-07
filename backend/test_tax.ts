@@ -1,28 +1,31 @@
 import { taxReportService } from "./src/services/taxReportService";
-import { Database } from "./src/db/client";
+import { generateMonthlyTaxExcel } from "./src/services/taxReportExcelService";
+import { MasterService } from "./src/services/masterService";
 
 async function run() {
+    console.log("Starting test for ALL IJL...");
+    
     try {
-        console.log("Testing getMonthlyTaxReport for Div P1A, Gang ALL");
-        const res = await taxReportService.getMonthlyTaxReport(2025, 1, 'P1A', undefined);
-
-        console.log(`Returned ${res.employees.length} employees`);
-
-        // Check divisions of the returned employees
-        const divs = new Set();
-        const gangs = new Set();
-        for (const e of res.employees) {
-            gangs.add(e.gang_code);
-            // The service doesn't return division_code on the employee row in getMonthlyTaxReport
-            // But we can check gangs
+        console.time("getMonthlyTaxReport");
+        const data = await taxReportService.getMonthlyTaxReport(2026, 3, "IJL", undefined, undefined, false);
+        console.timeEnd("getMonthlyTaxReport");
+        
+        console.log(`Fetched ${data.employees.length} employees`);
+        if (data.employees.length > 0) {
+            console.log(`First employee: ${data.employees[0].emp_code}`);
         }
-        console.log(`Gangs in result:`, Array.from(gangs));
-
-        process.exit(0);
-    } catch (err) {
-        console.error(err);
-        process.exit(1);
+        
+        console.log("Generating excel...");
+        console.time("generateMonthlyTaxExcel");
+        const buffer = await generateMonthlyTaxExcel(data, 2026, 3, "IJL", "ALL", data.premiKeys);
+        console.timeEnd("generateMonthlyTaxExcel");
+        
+        console.log(`Success! Buffer size: ${buffer.length}`);
+    } catch (e) {
+        console.error("ERROR EXPORTING PPH21:");
+        console.error(e);
     }
+    process.exit(0);
 }
 
 run();
