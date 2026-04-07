@@ -116,12 +116,6 @@
 
     /* ==========================================
        ENSURE REPORT LETTERHEAD IS VISIBLE
-       (Don't override - let wages-summary-professional.css handle it)
+       (Styling handled by wages-summary-professional.css)
        ========================================== */
-    .wsp-letterhead,
-    .wsp-letterhead * {
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
 }
