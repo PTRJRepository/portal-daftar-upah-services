@@ -545,8 +545,15 @@ class TaxReportService {
         }
 
         let totalPph21 = 0;
+        
+        // [ALIGNMENT] Only include employees with active working days (jumlah_hk > 0)
+        // This matches the filtering logic in the Wages Report summary totals.
+        const activeRows = historyData.data_rows.filter((r: any) => {
+            const hk = Number(r.jumlah_hk || r.hk || 0);
+            return hk > 0;
+        });
 
-        const employees: MonthlyTaxRow[] = historyData.data_rows.map((row: any, idx: number) => {
+        const employees: MonthlyTaxRow[] = activeRows.map((row: any, idx: number) => {
             const empCodeTrimmed = row.emp_code?.trim() || '';
             const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
             const kategoriTer = mapPTKPToTER(masterPtkp);
@@ -573,9 +580,13 @@ class TaxReportService {
             const carumanBase = pph21Caruman.base;
 
             // [CRITICAL ALIGNMENT] Use values EXACTLY from UI Daftar Upah (DataExtractorService / History)
-            // This ensures 100% consistency between what the user sees in the report and the export.
+            // pot_pph21 = actual PPh21 deduction from PR_ADTRANS (what the Daftar Upah UI shows)
+            // pph21_ter = recalculated PPh21 via TER method (may differ from actual ADTRANS value)
+            // penghasilan_bruto = calculated in DataExtractor Phase 4b (same as UI)
             const penghasilanBruto = Number(row.penghasilan_bruto) || 0;
-            const pph21 = Number(row.pph21_ter) || 0;
+            // [FIX] Use pot_pph21 (actual deduction shown in Daftar Upah UI) as primary source
+            // Fallback to pph21_ter only if pot_pph21 is not available (e.g. no ADTRANS record)
+            const pph21 = Number(row.pot_pph21) || Number(row.pph21_ter) || 0;
             const tarifPajakTer = Number(row.tarif_pajak_ter) || 0;
             const storedStatusPtkp = row.status_ptkp || masterPtkp;
 
@@ -583,9 +594,9 @@ class TaxReportService {
 
             const rawEmpNikForBonus = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
 
-            // [DEBUG] Always log every employee's pph21 calculation for comparison
-            if (idx < 5 || row.pph21_ter !== undefined) {
-                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: Using row_pph21_ter=${row.pph21_ter || 'N/A'}, TaxReport_pph21=${pph21}, bruto=${penghasilanBruto}, PTKP=${storedStatusPtkp}, tarif=${tarifPajakTer}`);
+            // [DEBUG] Always log every employee's pph21 for comparison
+            if (idx < 5) {
+                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: pot_pph21=${row.pot_pph21 || 'N/A'}, pph21_ter=${row.pph21_ter || 'N/A'}, USED=${pph21}, bruto=${penghasilanBruto}, PTKP=${storedStatusPtkp}, tarif=${tarifPajakTer}`);
             }
 
             // [ALIGNMENT] Use other_incomes already attached to the row if available
@@ -610,105 +621,131 @@ class TaxReportService {
             const empKontanAmount = empOtherIncomes.filter((i: any) => i.type === 'KONTAN' || i.type === 'KONTANAN').reduce((s: number, i: any) => s + i.amount, 0);
             const empOtherIncomeAmount = empOtherIncomes.filter((i: any) => i.type !== 'THR' && i.type !== 'KONTAN' && i.type !== 'KONTANAN').reduce((s: number, i: any) => s + i.amount, 0);
 
-            // Discover dynamic premi fields from row keys (e.g. premi_brondol, premi_pruning, etc.)
+            // ============================================================
+            // Build premiDetail: extract ALL individual premi items
+            // Sources: row.premi (nested object from DataExtractor), 
+            //          row.premi_detail (from history DB), 
+            //          row.premi_* (flattened top-level fields)
+            // BRONDOL sub-keys are consolidated into single BRONDOL.
+            // NO "LAINNYA" catch-all — every premi gets its own column.
+            // ============================================================
             const premiDetail: Record<string, number> = {};
 
-            // [FIX] Normalize brondol-related keys to single BRONDOL column
-            // BRONDOL LOOSEFRUIT, BRONDOL TOTAL, BRONDOL ADTRANS → combine into BRONDOL
-            const brondolKeys = ['BRONDOL LOOSEFRUIT', 'BRONDOL TOTAL', 'BRONDOL ADTRANS', 'BRONDOL_LOOSEFRUIT', 'BRONDOL_TOTAL', 'BRONDOL_ADTRANS'];
-            let combinedBrondol = 0;
+            // Keys that should be consolidated into single BRONDOL
+            const brondolSubKeys = ['BRONDOL LOOSEFRUIT', 'BRONDOL TOTAL', 'BRONDOL ADTRANS',
+                                     'BRONDOL_LOOSEFRUIT', 'BRONDOL_TOTAL', 'BRONDOL_ADTRANS',
+                                     'brondol_loosefruit', 'brondol_total', 'brondol_adtrans',
+                                     'brondol loosefruit', 'brondol total', 'brondol adtrans'];
+            // Keys to skip entirely (internal/meta)
+            const skipKeys = ['koreksi', 'KOREKSI', 'total', 'TOTAL'];
+            let consolidatedBrondol = 0;
+            let hasBrondolFromDetail = false;
 
-            // [NEW] First, check if there's a premi_detail JSON string from history database
-            // This contains the parsed premi data with keys like 'BRONDOL', 'PRUNING', etc.
-            if (row.premi_detail && typeof row.premi_detail === 'object') {
-                // If it's already parsed (object)
-                for (const [key, value] of Object.entries(row.premi_detail)) {
+            // Helper: normalize a premi key to uppercase label
+            const normalizePremiKey = (key: string): string => {
+                return String(key).toUpperCase().replace(/_/g, ' ').trim();
+            };
+
+            // Helper: check if a key is a brondol sub-key
+            const isBrondolSubKey = (key: string): boolean => {
+                const upper = normalizePremiKey(key);
+                return brondolSubKeys.some(bk => upper === bk.toUpperCase());
+            };
+
+            // SOURCE 1: row.premi (nested object from DataExtractor Phase 3)
+            // Contains keys like 'pruning', 'angkut_material', 'harvesting', 'brondol', etc.
+            if (row.premi && typeof row.premi === 'object' && !Array.isArray(row.premi)) {
+                for (const [key, value] of Object.entries(row.premi)) {
                     const val = Number(value) || 0;
-                    const upperKey = String(key).toUpperCase().replace(/_/g, ' ');
-                    // Skip brondol sub-keys - will combine into single BRONDOL
-                    if (brondolKeys.some(bk => upperKey.includes(bk))) {
-                        combinedBrondol += val;
+                    if (val <= 0) continue;
+                    if (skipKeys.includes(key)) continue;
+
+                    const upperKey = normalizePremiKey(key);
+
+                    // Consolidate brondol sub-keys
+                    if (isBrondolSubKey(key)) {
+                        consolidatedBrondol += val;
                         continue;
                     }
-                    if (val > 0) {
-                        // Use the key directly (it's already in uppercase like 'BRONDOL', 'PRUNING')
-                        const label = String(key).toUpperCase().replace(/_/g, ' ');
+                    // 'brondol' key itself → add to consolidatedBrondol
+                    if (upperKey === 'BRONDOL') {
+                        consolidatedBrondol += val;
+                        hasBrondolFromDetail = true;
+                        continue;
+                    }
+
+                    premiDetail[upperKey] = (premiDetail[upperKey] || 0) + val;
+                }
+            }
+
+            // SOURCE 2: row.premi_detail (from history database — object or JSON string)
+            // Contains keys like 'BRONDOL', 'PRUNING', 'HARVESTING', etc.
+            const rawPremiDetail = row.premi_detail;
+            let parsedPremiDetail: Record<string, any> | null = null;
+
+            if (rawPremiDetail && typeof rawPremiDetail === 'object' && !Array.isArray(rawPremiDetail)) {
+                parsedPremiDetail = rawPremiDetail;
+            } else if (rawPremiDetail && typeof rawPremiDetail === 'string') {
+                try { parsedPremiDetail = JSON.parse(rawPremiDetail); } catch (_) {}
+            }
+
+            if (parsedPremiDetail) {
+                for (const [key, value] of Object.entries(parsedPremiDetail)) {
+                    const val = Number(value) || 0;
+                    if (val <= 0) continue;
+                    if (skipKeys.includes(key)) continue;
+
+                    const upperKey = normalizePremiKey(key);
+
+                    if (isBrondolSubKey(key)) {
+                        consolidatedBrondol += val;
+                        continue;
+                    }
+                    if (upperKey === 'BRONDOL') {
+                        // Only add if not already counted from row.premi
+                        if (!hasBrondolFromDetail) {
+                            consolidatedBrondol += val;
+                            hasBrondolFromDetail = true;
+                        }
+                        continue;
+                    }
+
+                    // Only add if not already set from row.premi (avoid double-counting)
+                    if (!premiDetail[upperKey]) {
+                        premiDetail[upperKey] = val;
+                    }
+                }
+            }
+
+            // SOURCE 3: row.premi_* flattened top-level fields (fallback for live data)
+            // e.g. row.premi_pruning, row.premi_harvesting, row.premi_angkut_material, etc.
+            if (Object.keys(premiDetail).length === 0) {
+                // Only use flattened fields if we got nothing from nested sources
+                for (const [key, value] of Object.entries(row)) {
+                    if (!key.startsWith('premi_')) continue;
+                    if (key === 'premi_brondol' || key === 'premi_pph' || key === 'premi_detail' || key === 'premi_koreksi') continue;
+                    const val = Number(value) || 0;
+                    if (val <= 0) continue;
+
+                    const label = normalizePremiKey(key.replace(/^premi_/, ''));
+                    if (isBrondolSubKey(label)) {
+                        consolidatedBrondol += val;
+                        continue;
+                    }
+                    if (label === 'BRONDOL') {
+                        if (!hasBrondolFromDetail) consolidatedBrondol += val;
+                        continue;
+                    }
+                    if (!premiDetail[label]) {
                         premiDetail[label] = val;
                     }
                 }
-            } else if (row.premi_detail && typeof row.premi_detail === 'string') {
-                // If it's a JSON string, parse it
-                try {
-                    const parsedPremi = JSON.parse(row.premi_detail);
-                    for (const [key, value] of Object.entries(parsedPremi)) {
-                        const val = Number(value) || 0;
-                        const upperKey = String(key).toUpperCase().replace(/_/g, ' ');
-                        // Skip brondol sub-keys - will combine into single BRONDOL
-                        if (brondolKeys.some(bk => upperKey.includes(bk))) {
-                            combinedBrondol += val;
-                            continue;
-                        }
-                        if (val > 0) {
-                            const label = String(key).toUpperCase().replace(/_/g, ' ');
-                            premiDetail[label] = val;
-                        }
-                    }
-                } catch (e) {
-                    console.error('[TaxReportService] Error parsing premi_detail:', e);
-                }
             }
 
-            // [DEPRECATED] Legacy premi_* keys from row object - do NOT use individually
-            // BRONDOL comes from row.premi_brondol or DB sub-keys (BRONDOL LOOSEFRUIT/TOTAL/ADTRANS)
-            // Keep only for compatibility with old data that doesn't have premi_detail
-
-            // Set BRONDOL - use combinedBrondol from sub-keys first, then row.premi_brondol as fallback
-            const dbBrondol = Number(row.premi_detail?.['BRONDOL']) || 0;
-            const finalBrondol = combinedBrondol > 0 ? combinedBrondol : (row.premi_brondol || 0);
-
-            if (finalBrondol > 0) {
-                if (dbBrondol > 0) {
-                    // Both DB and legacy have brondol - they may be duplicate sources
-                    // Only add if they are from different sources (combinedBrondol vs row.premi_brondol)
-                    if (combinedBrondol > 0 && combinedBrondol !== dbBrondol) {
-                        // combinedBrondol is from sub-keys, dbBrondol is direct - they may be same data
-                        // Only add if row.premi_brondol also exists and differs
-                        const legacyBrondol = row.premi_brondol || 0;
-                        if (legacyBrondol > 0 && legacyBrondol !== dbBrondol && legacyBrondol !== combinedBrondol) {
-                            premiDetail['BRONDOL'] = dbBrondol + legacyBrondol;
-                        } else if (legacyBrondol === 0) {
-                            // No legacy, use DB + combined
-                            premiDetail['BRONDOL'] = dbBrondol + combinedBrondol;
-                        }
-                        // else: combinedBrondol already added to dbBrondol via sub-keys, skip
-                    }
-                    // else: dbBrondol already set from DB directly, combinedBrondol was 0
-                } else if (!premiDetail['BRONDOL']) {
-                    // No BRONDOL in DB, use finalBrondol
-                    premiDetail['BRONDOL'] = finalBrondol;
-                } else if (row.premi_brondol && combinedBrondol === 0) {
-                    // DB has BRONDOL, but also has legacy row.premi_brondol - potential duplicate
-                    // Only add if they are different (different sources)
-                    if (row.premi_brondol !== dbBrondol) {
-                        // They may be different sources - but to avoid dupes, prefer DB
-                        // row.premi_brondol is likely same as dbBrondol, so skip
-                    }
-                }
-            }
-
-            // [FIX] LAINNYA: only include items that should appear as dynamic columns
-            // Exclude PRUNING (static column), TBS (already in structural allowance), BRONDOL (already combined)
-            // Also exclude items that are 0 to avoid false remaining
-            const excludedFromLainnya = ['PRUNING', 'TBS', 'BRONDOL', 'BRONDOL LOOSEFRUIT', 'BRONDOL TOTAL', 'BRONDOL ADTRANS'];
-            const dynamicNamedSum = Object.entries(premiDetail)
-                .filter(([key, val]) => !excludedFromLainnya.includes(key) && val > 0)
-                .reduce((s, [, v]) => s + v, 0);
-            const remaining = (totalPremi || 0) - dynamicNamedSum;
-            if (remaining > 0) {
-                // Only add LAINNYA if it's significant (> 1000 to avoid rounding noise)
-                if (remaining > 1000) {
-                    premiDetail['LAINNYA'] = remaining;
-                }
+            // BRONDOL: use consolidated value, fallback to row.premi_brondol
+            const brondolFinal = consolidatedBrondol > 0 ? consolidatedBrondol : (row.premi_brondol || 0);
+            if (brondolFinal > 0) {
+                premiDetail['BRONDOL'] = brondolFinal;
             }
 
             // Resolve jabatan: DB first → auto-derive from gang code
@@ -785,22 +822,11 @@ class TaxReportService {
         });
 
         // Collect all unique premi keys across all employees
-        // [FIX] Exclude static items: PRUNING, TBS, BRONDOL sub-keys (already combined into BRONDOL)
-        const staticPremiKeys = ['PRUNING', 'TBS', 'BRONDOL', 'BRONDOL LOOSEFRUIT', 'BRONDOL TOTAL', 'BRONDOL ADTRANS',
-                                 'PRUNING ', 'TBS ', 'BRONDOL LOOSE FRUIT', 'BRONDOL_ADTRANS'];
+        // premiDetail already contains clean, normalized keys (no LAINNYA, no brondol sub-keys)
         const premiKeySet = new Set<string>();
         for (const emp of employees) {
             if (emp.premi_detail) {
                 for (const k of Object.keys(emp.premi_detail)) {
-                    const upperK = k.toUpperCase().trim();
-                    // Skip static items and brondol sub-keys
-                    if (staticPremiKeys.some(sk => upperK.includes(sk))) {
-                        continue;
-                    }
-                    // Skip LAINNYA in key collection (it goes to last position)
-                    if (upperK === 'LAINNYA') {
-                        continue;
-                    }
                     premiKeySet.add(k);
                 }
             }

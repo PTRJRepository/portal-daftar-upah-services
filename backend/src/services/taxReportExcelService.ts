@@ -370,22 +370,19 @@ export const generateMonthlyTaxExcel = async (
             result: emp.upah_kotor || 0
         };
 
-        // PENGHASILAN BRUTO = Upah Kotor + BPJS + ASTEK + THR + KONTAN
-        // (pot_koreksi sudah mengurangi di upah kotor, TIDAK ditambah kembali di bruto)
-        row.getCell(COL_BRUTO).value = {
-            formula: `${lUK}${r}+${lBpjs}${r}+${lAstek}${r}+${lTHR}${r}+${lKontan}${r}`,
-            result: emp.penghasilan_bruto || 0
-        };
+        // PENGHASILAN BRUTO — use DIRECT value from UI Daftar Upah (not reconstructed via formula)
+        // [FIX] Formula reconstruction produced different totals than the UI.
+        // The UI value (penghasilan_bruto) is the single source of truth.
+        row.getCell(COL_BRUTO).value = emp.penghasilan_bruto || 0;
 
         // TER Rate (percentage format)
         row.getCell(COL_TARIF_TER).value = (emp.tarif_pajak_ter || 0) / 100;
         row.getCell(COL_TARIF_TER).numFmt = '0.00%';
 
-        // PPH21 = ROUND(Bruto × Tarif TER, 0)
-        row.getCell(COL_PPH21).value = {
-            formula: `ROUND(${lBruto}${r}*${lTarif}${r},0)`,
-            result: emp.pph21_ter || 0
-        };
+        // PPH21 — use DIRECT value from UI Daftar Upah (pot_pph21)
+        // [FIX] Formula ROUND(Bruto×Tarif,0) produced different totals because bruto was also reconstructed.
+        // Now uses the exact PPh21 value that the Daftar Upah UI displays.
+        row.getCell(COL_PPH21).value = emp.pph21_ter || 0;
 
         // Apply number formats
         for (let c = COL_HK; c <= TOTAL_COLS; c++) {
@@ -765,20 +762,16 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(STD_COL_THR).value = emp.thr_amount || 0;
         row.getCell(STD_COL_EXGRATIA).value = emp.exgratia_amount || 0;
 
-        const premiSumFormula = allPremiKeys.length === 1
-            ? `${sPremiStart}${r}`
-            : `SUM(${sPremiStart}${r}:${sPremiEnd}${r})`;
-        row.getCell(STD_COL_BRUTO).value = {
-            formula: `${sGP}${r}+${sAstek}${r}+${sBpjs}${r}+${sBeras}${r}+${sJab}${r}+${sST}${r}+${sMK}${r}+${premiSumFormula}+${sPotKor}${r}+${sPotAlpa}${r}+${sTHR}${r}+${sExg}${r}`,
-            result: emp.penghasilan_bruto || 0
-        };
+        // PENGHASILAN BRUTO — use DIRECT value from UI Daftar Upah
+        // [FIX] Formula reconstruction produced different totals than the UI.
+        row.getCell(STD_COL_BRUTO).value = emp.penghasilan_bruto || 0;
 
         row.getCell(STD_COL_TARIF).value = (emp.tarif_pajak_ter || 0) / 100;
         row.getCell(STD_COL_TARIF).numFmt = '0.00%';
-        row.getCell(STD_COL_PPH21).value = {
-            formula: `ROUND(${sBruto}${r}*${sTarif}${r},0)`,
-            result: emp.pph21_ter || 0
-        };
+
+        // PPH21 — use DIRECT value from UI Daftar Upah (pot_pph21)
+        // [FIX] Formula ROUND(Bruto×Tarif,0) produced different totals.
+        row.getCell(STD_COL_PPH21).value = emp.pph21_ter || 0;
 
         for (let c = STD_COL_GAJI_POKOK; c <= STD_TOTAL_COLS; c++) {
             if (c !== STD_COL_TARIF) row.getCell(c).numFmt = numFormat;
