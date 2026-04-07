@@ -940,33 +940,32 @@ const OperationalReportWrapper = () => {
             </div>
           )}
 
-          {/* Spacer to push Export Pajak button to center */}
-          <div style={{ flex: 1 }}></div>
-
-          {/* Export Pajak - Centered in second row */}
-          <button
-            onClick={handleExportTaxExcel}
-            disabled={taxExportLoading}
-            style={{
-              padding: '0.4rem 1.2rem',
-              backgroundColor: taxExportLoading ? '#f1f5f9' : '#dc2626',
-              color: taxExportLoading ? '#94a3b8' : 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: '600',
-              fontSize: '0.78rem',
-              cursor: taxExportLoading ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              transition: 'all 0.15s',
-              boxShadow: '0 2px 4px rgba(220, 38, 38, 0.2)'
-            }}
-            title="Unduh Laporan Pajak PPH21 (Format Standar Pajak)"
-          >
-            {taxExportLoading ? '⏳' : '📋'}
-            {taxExportLoading ? '...' : 'Export Pajak'}
-          </button>
+          {/* Centered Export Pajak Button */}
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <button
+              onClick={handleExportTaxExcel}
+              disabled={taxExportLoading}
+              style={{
+                padding: '0.4rem 1.2rem',
+                backgroundColor: taxExportLoading ? '#f1f5f9' : '#dc2626',
+                color: taxExportLoading ? '#94a3b8' : 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '0.78rem',
+                cursor: taxExportLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s',
+                boxShadow: '0 2px 4px rgba(220, 38, 38, 0.2)'
+              }}
+              title="Unduh Laporan Pajak PPH21 (Format Standar Pajak)"
+            >
+              {taxExportLoading ? '⏳' : '📋'}
+              {taxExportLoading ? '...' : 'Export Pajak'}
+            </button>
+          </div>
         </div>
       </div>
 
