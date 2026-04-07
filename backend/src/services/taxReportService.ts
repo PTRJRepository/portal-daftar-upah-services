@@ -15,6 +15,7 @@ import { pph21TerService } from './pph21TerService';
 import { divisionDefinition } from './divisionDefinition';
 import { OtherIncomesService } from './otherIncomesService';
 import { getCarumanForPph21, calculateAllCaruman, CARUMAN_RATES } from './carumanDefinitions';
+import { Config } from "../config";
 import { DataExtractorService } from './dataExtractorService';
 import { currentPeriodService } from './currentPeriodService';
 import { EmployeeEstateService } from './employeeEstateService';
@@ -416,59 +417,37 @@ class TaxReportService {
      * @param useHistoryDb - Explicit override to use history database (from UI state)
      */
     private async fetchPayrollData(month: number, year: number, divisionCode: string, gangCode?: string, gangPrefix?: string, useHistoryDb?: boolean) {
-        console.log(`[TaxReportService] Fetching payroll data: div=${divisionCode} m=${month} y=${year} useHistory=${useHistoryDb}`);
+        console.log(`[TaxReportService] Fetching payroll data via DataExtractorService: div=${divisionCode} m=${month} y=${year} useHistory=${useHistoryDb}`);
 
-        const now = new Date();
-        const currentMonth = now.getMonth() + 1;
-        const currentYear = now.getFullYear();
-        const isHistoricalRequest = year < currentYear || (year === currentYear && month < currentMonth);
-
-        // Decide whether we SHOULD check history first
-        // We check history if explicitly requested, or if it's a past month, or if no preference is given (auto-detect)
-        const checkHistoryFirst = (useHistoryDb === true) || (isHistoricalRequest) || (useHistoryDb === undefined);
-
-        if (checkHistoryFirst) {
-            console.log(`[TaxReportService] Checking HISTORY data first for (${month}/${year})...`);
-            const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
-                month, year, gangCode || "ALL", divisionCode
-            );
-
-            if (historyData && historyData.data_rows.length > 0) {
-                console.log(`[TaxReportService] Found in HISTORY: ${historyData.data_rows.length} rows.`);
-                return { data: historyData, isSourceCurrent: false };
-            }
-            console.log(`[TaxReportService] Not found in HISTORY. Trying LIVE...`);
-        }
-
-        // Try LIVE data
         try {
-            console.log(`[TaxReportService] Querying LIVE data source...`);
-            const liveData = await DataExtractorService.getInstance().extractPayrollData(
-                month, year, gangCode || "ALL", divisionCode, null, undefined, false, undefined, gangPrefix, true, true
+            // [ALIGNMENT] Trust DataExtractorService as the Single Source of Truth
+            const result = await DataExtractorService.getInstance().extractPayrollData(
+                month, 
+                year, 
+                gangCode || "ALL", 
+                divisionCode, 
+                null, 
+                Config.DB_PROFILE, // Match payroll.ts
+                false, 
+                useHistoryDb, 
+                gangPrefix, 
+                true, // skipHarvest (Match payroll.ts)
+                false // skipHeavyDetails (Match payroll.ts default)
             );
 
-            if (liveData && liveData.data_rows.length > 0) {
-                console.log(`[TaxReportService] Found in LIVE: ${liveData.data_rows.length} rows.`);
-                return { data: liveData, isSourceCurrent: true };
+            if (result && result.data_rows.length > 0) {
+                // We'll mark isSourceCurrent based on whether it's the current period or or explicitly requested live
+                const now = new Date();
+                const currentPeriod = { month: now.getMonth() + 1, year: now.getFullYear() };
+                const isSourceCurrent = (month === currentPeriod.month && year === currentPeriod.year) || (useHistoryDb === false);
+                
+                return { data: result, isSourceCurrent };
             }
         } catch (error: any) {
-            console.error(`[TaxReportService] LIVE data fetch failed:`, error.message);
+            console.error(`[TaxReportService] Data fetch failed:`, error.message);
         }
 
-        // LAST RESORT: If we haven't checked history yet (because useHistoryDb was false but it's the current month)
-        // and LIVE is empty, check history anyway as a fallback unless explicitly forbidden.
-        if (!checkHistoryFirst && useHistoryDb !== false) {
-            console.log(`[TaxReportService] LIVE was empty. Checking HISTORY anyway as fallback...`);
-            const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
-                month, year, gangCode || "ALL", divisionCode
-            );
-            if (historyData && historyData.data_rows.length > 0) {
-                return { data: historyData, isSourceCurrent: false };
-            }
-        }
-
-        console.warn(`[TaxReportService] No data found for (${month}/${year}) in any source.`);
-        return { data: null, isSourceCurrent: false };
+        return { data: { data_rows: [], dynamic_premi_headers: [], dynamic_potongan_headers: [] }, isSourceCurrent: true };
     }
 
     /**
@@ -543,42 +522,29 @@ class TaxReportService {
         const jabatanMap = await EmployeeEstateService.getEmployeeJobs();
         const newJabatansToSave: any[] = [];
 
-        let totalPph21 = 0;
+        // Fetch Other Incomes (THR, Bonus, Custom, KONTAN) for the year to get monthly breakdown
+        const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivisionCode, gangCode);
+        const dbIncomeByMonthNik = new Map<string, { thr: number, exgratia: number, custom: number }>();
 
-        // Load THR and Exgratia for the specific month if it matches the active THR month
-        const activeThr = loadActiveThrPeriode();
-        const isThrMonth = activeThr && activeThr.month === month && activeThr.year === year;
-
-        let thrMap: Map<string, number> | null = null;
-        let exgratiaMap: Map<string, number> | null = null;
-
-        if (isThrMonth) {
-            const maps = loadThrBonusMaps();
-            thrMap = maps.thrMap;
-            exgratiaMap = maps.exgratiaMap;
-        }
-
-        // --- Fetch Database Other Incomes ---
-        const dbOtherIncomes = await OtherIncomesService.getIncomes(year, month, effectiveDivisionCode, gangCode);
-        const dbThrMap = new Map<string, number>();
-        const dbExgratiaMap = new Map<string, number>();
-        const dbCustomIncomeMap = new Map<string, number>();
-
-        for (const inc of dbOtherIncomes) {
+        for (const inc of dbOtherIncomesYear) {
             if (inc.is_taxable) {
-                const currentNik = String(inc.nik || '').trim().toUpperCase();
-                const amt = Number(inc.amount) || 0;
+                const nik = String(inc.nik || '').trim().toUpperCase();
                 const type = String(inc.income_type || '').toUpperCase();
+                const monthKey = `${inc.period_month}_${nik}`;
+                const amt = Number(inc.amount) || 0;
 
-                if (type === 'THR') {
-                    dbThrMap.set(currentNik, (dbThrMap.get(currentNik) || 0) + amt);
-                } else if (type === 'BONUS' || type === 'EXGRATIA') {
-                    dbExgratiaMap.set(currentNik, (dbExgratiaMap.get(currentNik) || 0) + amt);
-                } else {
-                    dbCustomIncomeMap.set(currentNik, (dbCustomIncomeMap.get(currentNik) || 0) + amt);
-                }
+                if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                const mData = dbIncomeByMonthNik.get(monthKey)!;
+
+                // Map income types correctly: THR, KONTAN/KONTANAN, BONUS/EXGRATIA, CUSTOM
+                if (type === 'THR') { mData.thr += amt; }
+                else if (type === 'KONTAN' || type === 'KONTANAN') { mData.exgratia += amt; } // KONTAN goes to KONTANAN column
+                else if (type === 'BONUS' || type === 'EXGRATIA') { mData.exgratia += amt; }
+                else { mData.custom += amt; }
             }
         }
+
+        let totalPph21 = 0;
 
         const employees: MonthlyTaxRow[] = historyData.data_rows.map((row: any, idx: number) => {
             const empCodeTrimmed = row.emp_code?.trim() || '';
@@ -606,153 +572,51 @@ class TaxReportService {
             const bpjsKesehatanMajikan4Pct = pph21Caruman.bpjs_kes_majikan_4;
             const carumanBase = pph21Caruman.base;
 
-            // Get pendapatan_lainnya from row data (from dataExtractorService or history)
-            // This includes THR, Bonus, Custom income that was already calculated in the payroll data
-            let rowPendapatanLainnya = row.total_pendapatan_lainnya || row.pendapatan_lainnya || 0;
+            // [CRITICAL ALIGNMENT] Use values EXACTLY from UI Daftar Upah (DataExtractorService / History)
+            // This ensures 100% consistency between what the user sees in the report and the export.
+            const penghasilanBruto = Number(row.penghasilan_bruto) || 0;
+            const pph21 = Number(row.pph21_ter) || 0;
+            const tarifPajakTer = Number(row.tarif_pajak_ter) || 0;
+            const storedStatusPtkp = row.status_ptkp || masterPtkp;
 
-            // [CRITICAL FIX] Use STORED penghasilan_bruto EXACTLY from UI Daftar Upah
-            // Do NOT recalculate - this ensures 100% consistency with UI
-            // Formula in DataExtractorService: penghasilan_bruto = jumlah_upah_kotor + astek_m + bpjs_m
-            // where jumlah_upah_kotor already includes pot_koreksi (as negative value)
-            const storedPenghasilanBruto = parseFloat(row.penghasilan_bruto) || 0;
-            const storedJumlahUpahKotor = parseFloat(row.jumlah_upah_kotor) || 0;
-            let penghasilanBruto: number;
+            totalPph21 += pph21;
 
-            if (storedPenghasilanBruto > 0) {
-                // Use stored value from DataExtractorService - this is the canonical value
-                penghasilanBruto = storedPenghasilanBruto;
-            } else if (storedJumlahUpahKotor !== 0) {
-                // Recalculate using same formula as DataExtractorService:
-                // penghasilan_bruto = jumlah_upah_kotor + astek_majikan + bpjs_majikan
-                // Do NOT use calculatePenghasilanBruto as it has different pot_koreksi handling
-                penghasilanBruto = storedJumlahUpahKotor + astek084 + bpjsKesehatanMajikan4Pct;
-            } else {
-                // True last resort - use calculatePenghasilanBruto but WITHOUT pot_koreksi deduction
-                // as it should already be embedded in the components
-                penghasilanBruto = pph21TerService.calculatePenghasilanBruto(
-                    gajiPokokAktual, tunjanganBeras, tunjanganJabatan, tunjanganMasaKerja,
-                    tunjanganLembur, totalPremi, astek084, bpjsKesehatanMajikan4Pct,
-                    0, // Do NOT subtract pot_koreksi - it's already embedded in the wage components
-                    rowPendapatanLainnya
-                );
+            const rawEmpNikForBonus = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+
+            // [DEBUG] Always log every employee's pph21 calculation for comparison
+            if (idx < 5 || row.pph21_ter !== undefined) {
+                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: Using row_pph21_ter=${row.pph21_ter || 'N/A'}, TaxReport_pph21=${pph21}, bruto=${penghasilanBruto}, PTKP=${storedStatusPtkp}, tarif=${tarifPajakTer}`);
             }
 
-            let thrAmount = 0;
-            let exgratiaAmount = 0;
-            let otherIncomeAmount = 0;
-
-            const rawEmpNik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
-
-            // 1. Dynamic THR Calculation (Fallback)
-            if (isThrMonth) {
-                const masaKerjaTahun = row.masa_kerja_tahun || 0;
-                if (masaKerjaTahun >= 1) {
-                    const upahDasar = row.upah_dasar || 0;
-                    const berasRate = row.beras_rate || 0;
-                    thrAmount = (upahDasar * 30) + (berasRate * 30) + tunjanganMasaKerja;
-                }
-
-                // 2. Exgratia Calculation (Fallback)
-                let rawEmpName = String(row.nama || row.emp_name || '').toUpperCase();
-                rawEmpName = rawEmpName.replace(/\s*\([^)]*\)\s*/g, '').trim();
-                const firstName = rawEmpName.split(' ')[0].trim();
-
-                if (exgratiaMap && thrMap) {
-                    if (exgratiaMap.has(rawEmpNik)) {
-                        exgratiaAmount = exgratiaMap.get(rawEmpNik)!;
-                    } else if (exgratiaMap.has(rawEmpName)) {
-                        exgratiaAmount = exgratiaMap.get(rawEmpName)!;
-                    } else {
-                        for (const [jsonName, jsonThr] of thrMap.entries()) {
-                            if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
-                                exgratiaAmount = exgratiaMap.get(jsonName) || 0;
-                                break;
-                            }
-                        }
+            // [ALIGNMENT] Use other_incomes already attached to the row if available
+            // If not available (e.g. from history which might have stripped it), fallback to DB fetch
+            let empOtherIncomes = row.other_incomes || [];
+            
+            if (empOtherIncomes.length === 0) {
+                // Fetch other incomes from the yearly map if not already in the row
+                for (const inc of dbOtherIncomesYear) {
+                    const incNik = String(inc.nik || '').trim().toUpperCase();
+                    if (incNik === rawEmpNikForBonus && inc.period_month === month) {
+                        empOtherIncomes.push({
+                            type: inc.income_type || '',
+                            name: inc.income_name || inc.income_type || '',
+                            amount: Number(inc.amount) || 0
+                        });
                     }
                 }
             }
 
-            // 3. Database Overrides & Custom Incomes
-            if (dbThrMap.has(rawEmpNik)) {
-                thrAmount = dbThrMap.get(rawEmpNik)!;
-            }
-            if (dbExgratiaMap.has(rawEmpNik)) {
-                exgratiaAmount = dbExgratiaMap.get(rawEmpNik)!;
-            }
-            if (dbCustomIncomeMap.has(rawEmpNik)) {
-                otherIncomeAmount = dbCustomIncomeMap.get(rawEmpNik)!;
-            }
-
-            const empOtherIncomes = dbOtherIncomes
-                .filter(inc => String(inc.nik || '').trim().toUpperCase() === rawEmpNik)
-                .map(inc => ({
-                    type: inc.income_type,
-                    name: inc.income_name,
-                    amount: Number(inc.amount) || 0
-                }));
-
-            // If we have THR/Exgratia from JSON but not in DB, add them to the list for UI display
-            if (thrAmount > 0 && !dbThrMap.has(rawEmpNik)) {
-                empOtherIncomes.push({ type: 'THR', name: 'THR (Formula)', amount: thrAmount });
-            }
-            if (exgratiaAmount > 0 && !dbExgratiaMap.has(rawEmpNik)) {
-                empOtherIncomes.push({ type: 'BONUS', name: 'Exgratia (Static)', amount: exgratiaAmount });
-            }
-
-            // Calculate total non-regular income (pendapatan tidak tetap / lainnya)
-            // Use row's pre-computed field if available (from origin dataExtractor or history)
-            // This is the CANONICAL value - do NOT use fallback formula calculations
-            const rowPendapatanLainnyaValue = row.total_pendapatan_lainnya || row.pendapatan_lainnya || 0;
-
-            // [CRITICAL] Only add pendapatan_lainnya to penghasilanBruto if:
-            // 1. row value exists (already included in DataExtractorService calculation), OR
-            // 2. Database has explicit OtherIncomes records (from OtherIncomesService)
-            // DO NOT add fallback-calculated THR/bonus values (thrAmount, exgratiaAmount)
-            // as these are provisional and may not reflect actual determined values
-            const dbPendapatanLainnya = thrAmount + exgratiaAmount + otherIncomeAmount;
-
-            // Only use database values, not fallback formula values
-            // If rowPendapatanLainnyaValue > 0, it's already in penghasilanBruto from DataExtractorService
-            // If rowPendapatanLainnyaValue === 0 but db has values, use those
-            // Otherwise, don't add anything (no phantom THR/bonus)
-            if (rowPendapatanLainnyaValue === 0 && dbPendapatanLainnya > 0) {
-                // Database has explicit OtherIncomes records - use them
-                penghasilanBruto += dbPendapatanLainnya;
-                rowPendapatanLainnya = dbPendapatanLainnya;
-            } else if (rowPendapatanLainnyaValue > 0) {
-                // Row has value - it's already included in the stored penghasilan_bruto
-                // No additional action needed
-            }
-            // If both are 0, no pendapatan_lainnya to add
-
-            // [CRITICAL FIX] Use PRE-CALCULATED values from row data (UI Daftar Upah source)
-            // This ensures Excel export matches EXACTLY what the UI displays
-            // Do NOT recalculate - use exactly what DataExtractorService returns
-            const storedPph21 = Number(row.pph21_ter) || 0;
-            const storedBruto = Number(row.penghasilan_bruto) || 0;
-            const storedTarif = Number(row.tarif_pajak_ter) || 0;
-            const storedStatusPtkp = row.status_ptkp || masterPtkp;
-            
-            // Use stored values EXACTLY as they appear in UI Daftar Upah
-            // Only recalculate if truly missing or exactly 0 but bruto exists
-            const pph21 = (row.pph21_ter !== undefined && row.pph21_ter !== null && Number(row.pph21_ter) !== 0) 
-                ? storedPph21 
-                : (storedBruto > 0 ? pph21TerService.calculatePph21Ter(storedBruto, storedStatusPtkp).tax_amount : 0);
-            
-            const tarifPajakTer = storedTarif > 0 
-                ? storedTarif 
-                : (storedBruto > 0 ? pph21TerService.calculatePph21Ter(storedBruto, storedStatusPtkp).rate_percent : 0);
-
-            totalPph21 += pph21;
-
-            // [DEBUG] Always log every employee's pph21 calculation for comparison
-            if (idx < 5 || row.pph21_ter !== undefined) {
-                console.log(`[TAX_REPORT_DEBUG] [${idx}] ${row.emp_code || row.nik}: Using row_pph21_ter=${row.pph21_ter || 'N/A'}, TaxReport_pph21=${pph21}, bruto=${storedBruto}, PTKP=${storedStatusPtkp}, storedTarif=${storedTarif}`);
-            }
+            const empThrAmount = empOtherIncomes.filter((i: any) => i.type === 'THR').reduce((s: number, i: any) => s + i.amount, 0);
+            const empKontanAmount = empOtherIncomes.filter((i: any) => i.type === 'KONTAN' || i.type === 'KONTANAN').reduce((s: number, i: any) => s + i.amount, 0);
+            const empOtherIncomeAmount = empOtherIncomes.filter((i: any) => i.type !== 'THR' && i.type !== 'KONTAN' && i.type !== 'KONTANAN').reduce((s: number, i: any) => s + i.amount, 0);
 
             // Discover dynamic premi fields from row keys (e.g. premi_brondol, premi_pruning, etc.)
             const premiDetail: Record<string, number> = {};
+
+            // [FIX] Normalize brondol-related keys to single BRONDOL column
+            // BRONDOL LOOSEFRUIT, BRONDOL TOTAL, BRONDOL ADTRANS → combine into BRONDOL
+            const brondolKeys = ['BRONDOL LOOSEFRUIT', 'BRONDOL TOTAL', 'BRONDOL ADTRANS', 'BRONDOL_LOOSEFRUIT', 'BRONDOL_TOTAL', 'BRONDOL_ADTRANS'];
+            let combinedBrondol = 0;
 
             // [NEW] First, check if there's a premi_detail JSON string from history database
             // This contains the parsed premi data with keys like 'BRONDOL', 'PRUNING', etc.
@@ -760,6 +624,12 @@ class TaxReportService {
                 // If it's already parsed (object)
                 for (const [key, value] of Object.entries(row.premi_detail)) {
                     const val = Number(value) || 0;
+                    const upperKey = String(key).toUpperCase().replace(/_/g, ' ');
+                    // Skip brondol sub-keys - will combine into single BRONDOL
+                    if (brondolKeys.some(bk => upperKey.includes(bk))) {
+                        combinedBrondol += val;
+                        continue;
+                    }
                     if (val > 0) {
                         // Use the key directly (it's already in uppercase like 'BRONDOL', 'PRUNING')
                         const label = String(key).toUpperCase().replace(/_/g, ' ');
@@ -772,6 +642,12 @@ class TaxReportService {
                     const parsedPremi = JSON.parse(row.premi_detail);
                     for (const [key, value] of Object.entries(parsedPremi)) {
                         const val = Number(value) || 0;
+                        const upperKey = String(key).toUpperCase().replace(/_/g, ' ');
+                        // Skip brondol sub-keys - will combine into single BRONDOL
+                        if (brondolKeys.some(bk => upperKey.includes(bk))) {
+                            combinedBrondol += val;
+                            continue;
+                        }
                         if (val > 0) {
                             const label = String(key).toUpperCase().replace(/_/g, ' ');
                             premiDetail[label] = val;
@@ -782,30 +658,57 @@ class TaxReportService {
                 }
             }
 
-            // [LEGACY] Also look for keys starting with 'premi_' in the row object
-            // This is for compatibility with old data structure
-            for (const key of Object.keys(row)) {
-                if (key.startsWith('premi_') && key !== 'premi_pph' && key !== 'premi_pph21') {
-                    const val = Number(row[key]) || 0;
-                    if (val > 0) {
-                        const label = key.replace(/^premi_/, '').replace(/_/g, ' ').toUpperCase();
-                        // Only add if not already present (avoid duplicate from premi_detail)
-                        if (!premiDetail[label]) {
-                            premiDetail[label] = val;
+            // [DEPRECATED] Legacy premi_* keys from row object - do NOT use individually
+            // BRONDOL comes from row.premi_brondol or DB sub-keys (BRONDOL LOOSEFRUIT/TOTAL/ADTRANS)
+            // Keep only for compatibility with old data that doesn't have premi_detail
+
+            // Set BRONDOL - use combinedBrondol from sub-keys first, then row.premi_brondol as fallback
+            const dbBrondol = Number(row.premi_detail?.['BRONDOL']) || 0;
+            const finalBrondol = combinedBrondol > 0 ? combinedBrondol : (row.premi_brondol || 0);
+
+            if (finalBrondol > 0) {
+                if (dbBrondol > 0) {
+                    // Both DB and legacy have brondol - they may be duplicate sources
+                    // Only add if they are from different sources (combinedBrondol vs row.premi_brondol)
+                    if (combinedBrondol > 0 && combinedBrondol !== dbBrondol) {
+                        // combinedBrondol is from sub-keys, dbBrondol is direct - they may be same data
+                        // Only add if row.premi_brondol also exists and differs
+                        const legacyBrondol = row.premi_brondol || 0;
+                        if (legacyBrondol > 0 && legacyBrondol !== dbBrondol && legacyBrondol !== combinedBrondol) {
+                            premiDetail['BRONDOL'] = dbBrondol + legacyBrondol;
+                        } else if (legacyBrondol === 0) {
+                            // No legacy, use DB + combined
+                            premiDetail['BRONDOL'] = dbBrondol + combinedBrondol;
                         }
+                        // else: combinedBrondol already added to dbBrondol via sub-keys, skip
+                    }
+                    // else: dbBrondol already set from DB directly, combinedBrondol was 0
+                } else if (!premiDetail['BRONDOL']) {
+                    // No BRONDOL in DB, use finalBrondol
+                    premiDetail['BRONDOL'] = finalBrondol;
+                } else if (row.premi_brondol && combinedBrondol === 0) {
+                    // DB has BRONDOL, but also has legacy row.premi_brondol - potential duplicate
+                    // Only add if they are different (different sources)
+                    if (row.premi_brondol !== dbBrondol) {
+                        // They may be different sources - but to avoid dupes, prefer DB
+                        // row.premi_brondol is likely same as dbBrondol, so skip
                     }
                 }
             }
 
-            // If brondol not in premi_* but row has premi_brondol, ensure it is included
-            if (!('BRONDOL' in premiDetail) && row.premi_brondol) {
-                premiDetail['BRONDOL'] = Number(row.premi_brondol) || 0;
-            }
-            // remaining = total_premi minus all named items detected
-            const namedSum = Object.values(premiDetail).reduce((s, v) => s + v, 0);
-            const remaining = (totalPremi || 0) - namedSum;
+            // [FIX] LAINNYA: only include items that should appear as dynamic columns
+            // Exclude PRUNING (static column), TBS (already in structural allowance), BRONDOL (already combined)
+            // Also exclude items that are 0 to avoid false remaining
+            const excludedFromLainnya = ['PRUNING', 'TBS', 'BRONDOL', 'BRONDOL LOOSEFRUIT', 'BRONDOL TOTAL', 'BRONDOL ADTRANS'];
+            const dynamicNamedSum = Object.entries(premiDetail)
+                .filter(([key, val]) => !excludedFromLainnya.includes(key) && val > 0)
+                .reduce((s, [, v]) => s + v, 0);
+            const remaining = (totalPremi || 0) - dynamicNamedSum;
             if (remaining > 0) {
-                premiDetail['LAINNYA'] = remaining;
+                // Only add LAINNYA if it's significant (> 1000 to avoid rounding noise)
+                if (remaining > 1000) {
+                    premiDetail['LAINNYA'] = remaining;
+                }
             }
 
             // Resolve jabatan: DB first → auto-derive from gang code
@@ -870,35 +773,42 @@ class TaxReportService {
                 bpjs_kes_majikan: bpjsKesehatanMajikan4Pct,
                 astek_jht_majikan: astek084,
 
-                // Enriched fields
+                other_incomes: empOtherIncomes,
+                thr_amount: empThrAmount,
+                exgratia_amount: empKontanAmount,
+                other_income_amount: empOtherIncomeAmount,
+                pendapatan_tidak_tetap_thp: empThrAmount + empKontanAmount + empOtherIncomeAmount,
                 upah_dasar: upahDasar,
                 gaji_pokok_ideal: row.gaji_pokok_ideal || 0,
-                carumanBase: carumanBase,
-                thr_amount: thrAmount,
-                exgratia_amount: exgratiaAmount,
-                other_incomes: empOtherIncomes,
-                // Include the actual pendapatan_lainnya used in tax calculation
-                pendapatan_lainnya: rowPendapatanLainnya,
-                // Total non-regular income for display (for display purposes only)
-                pendapatan_tidak_tetap_thp: rowPendapatanLainnya
+                carumanBase: carumanBase
             };
         });
 
         // Collect all unique premi keys across all employees
+        // [FIX] Exclude static items: PRUNING, TBS, BRONDOL sub-keys (already combined into BRONDOL)
+        const staticPremiKeys = ['PRUNING', 'TBS', 'BRONDOL', 'BRONDOL LOOSEFRUIT', 'BRONDOL TOTAL', 'BRONDOL ADTRANS',
+                                 'PRUNING ', 'TBS ', 'BRONDOL LOOSE FRUIT', 'BRONDOL_ADTRANS'];
         const premiKeySet = new Set<string>();
         for (const emp of employees) {
             if (emp.premi_detail) {
                 for (const k of Object.keys(emp.premi_detail)) {
+                    const upperK = k.toUpperCase().trim();
+                    // Skip static items and brondol sub-keys
+                    if (staticPremiKeys.some(sk => upperK.includes(sk))) {
+                        continue;
+                    }
+                    // Skip LAINNYA in key collection (it goes to last position)
+                    if (upperK === 'LAINNYA') {
+                        continue;
+                    }
                     premiKeySet.add(k);
                 }
             }
         }
-        // Sort: BRONDOL first, then alphabetical, LAINNYA last
+        // Sort: BRONDOL first, then alphabetical
         const premiKeys = Array.from(premiKeySet).sort((a, b) => {
             if (a === 'BRONDOL') return -1;
             if (b === 'BRONDOL') return 1;
-            if (a === 'LAINNYA') return 1;
-            if (b === 'LAINNYA') return -1;
             return a.localeCompare(b);
         });
 

@@ -265,7 +265,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const divisionCode = query.division_code;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
-            const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
+            const useHistoryDb = query.use_history === '1';
             const gangPrefix = query.gang_prefix;
 
             if (!divisionCode || !month || !year) {
@@ -1634,14 +1634,14 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const gang = query.gang as string || undefined;
             const division = query.div as string || undefined;
             const gangPrefix = query.gang_prefix as string || undefined;
-            const useHistory = query.use_history === 'true';
+            const useHistoryDb = query.use_history === '1';
 
             if (!month || !year || month < 1 || month > 12) {
                 set.status = 400;
                 return { error: "Invalid month or year" };
             }
 
-            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistory);
+            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistoryDb);
 
             // Build emp_code → pajak mapping
             const employeesMap: Record<string, any> = {};
@@ -1672,6 +1672,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     pot_koreksi: emp.pot_koreksi,
                     bpjs_kes_majikan: emp.bpjs_kes_majikan,
                     astek_jht_majikan: emp.astek_jht_majikan,
+                    // Restoration of THR and Kontan
+                    thr_amount: emp.thr_amount || 0,
+                    exgratia_amount: emp.exgratia_amount || 0,
+                    other_income_amount: emp.other_income_amount || 0,
                 };
             }
 

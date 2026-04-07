@@ -299,35 +299,23 @@ export class DataExtractorService {
 
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
-        console.log(`[DataExtractor] Period check: year=${year}, currentYear=${currentYear}, month=${month}, currentMonth=${currentMonth}, isHistorical=${isHistorical}`);
 
-        // [OPTIMIZATION] Cache check for all periods (historical + current)
-        // TTL determined by getPayrollCacheTtl: 1 hour for historical, 60s for current
-        const cacheKey = cacheService.buildPayrollKey(gangCode, month, year, divisionCode);
-        const useCache = !specificEmpCode && cacheService.shouldCache(month, year, currentMonth, currentYear);
+        // [OPTIMIZATION] Cache check
+        const cacheKey = cacheService.buildPayrollKey(gangCode, month, year, divisionCode, useHistoryDb);
+        const useCache = !specificEmpCode;
         if (useCache) {
-            const cached = cacheService.get<{
-                data_rows: PayrollRow[];
-                dynamic_premi_headers: string[];
-                dynamic_potongan_headers: string[];
-                premi_title_map: Record<string, string>;
-                potongan_title_map: Record<string, string>;
-                meta: { execution_time_ms: number; row_count: number; cached: boolean };
-            }>(cacheKey);
+            const cached = cacheService.get<any>(cacheKey);
             if (cached) {
-                debug(CATEGORY, `✅ [CACHE HIT] ${cacheKey} — returning ${cached.data_rows.length} rows (cached)`);
-                cached.meta.cached = true;
                 return cached;
             }
-            debug(CATEGORY, `⏳ [CACHE MISS] ${cacheKey} — fetching from DB...`);
         }
-        // For development/debugging as requested, bypass the interceptor to allow getPremi logic to run for History
+
         // If history mode is on, try to fetch from the snapshot tables first.
-        let shouldFetchHistory = false; // Bypass: isHistorical && historyDatabaseService.isHistoryMode();
+        let shouldFetchHistory = isHistorical && historyDatabaseService.isHistoryMode();
 
         // Explicit override from frontend
         if (useHistoryDb === true) {
-            shouldFetchHistory = false; // Bypass: true
+            shouldFetchHistory = true;
         } else if (useHistoryDb === false) {
             shouldFetchHistory = false;
         }
@@ -339,6 +327,7 @@ export class DataExtractorService {
                 );
 
                 if (historyData && historyData.data_rows.length > 0) {
+                    console.log(`[DataExtractor] Found seeded history: ${historyData.data_rows.length} rows`);
                     // Apply gangPrefix filter if present
                     if (gangPrefix) {
                         const isNumeric = /^\d+$/.test(gangPrefix);
@@ -406,7 +395,6 @@ export class DataExtractorService {
         const startTotal = performance.now();
         let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
         debug(CATEGORY, `Phase 0 - getEmployees: ${(performance.now() - startTotal).toFixed(0)}ms, found ${employees.length} employees`);
-        console.log(`[DataExtractor] getEmployees returned ${employees.length} employees, gangCondition=${gangCondition}`);
 
         // Apply gangPrefix (Group/Asistensi) filter for LIVE path
         if (gangPrefix && employees.length > 0) {
@@ -3941,8 +3929,8 @@ export class DataExtractorService {
 
         debug(CATEGORY, `📊 Filter result: ${filteredEmployees.length} kept, ${filteredOutCount} filtered out (effective_hk = 0)`);
 
-        // Sort by name first (single sort pass)
-        filteredEmployees.sort((a, b) => (a?.emp_name || a?.nama || '').localeCompare(b?.emp_name || b?.nama || ''));
+        // Sort by emp_code (default sort)
+        filteredEmployees.sort((a, b) => (a?.emp_code || '').localeCompare(b?.emp_code || ''));
 
         // Flatten nested premi/potongan objects to top-level fields for frontend compatibility
         for (const emp of filteredEmployees) {

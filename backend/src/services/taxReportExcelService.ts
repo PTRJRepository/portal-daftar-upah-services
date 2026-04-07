@@ -131,11 +131,11 @@ export const generateMonthlyTaxExcel = async (
     const COL_PREMI_END = 18 + allPremiKeys.length;  // inclusive
     const COL_TOTAL_PREMI = COL_PREMI_END + 1;
 
-    // Fixed after premi
+    // Fixed after premi (THR and KONTAN shown for reference)
     const COL_POT_KOREKSI = COL_TOTAL_PREMI + 1;
     const COL_THR = COL_POT_KOREKSI + 1;
-    const COL_EXGRATIA = COL_THR + 1;
-    const COL_BPJS_KES = COL_EXGRATIA + 1;
+    const COL_KONTAN = COL_THR + 1;
+    const COL_BPJS_KES = COL_KONTAN + 1;
     const COL_ASTEK = COL_BPJS_KES + 1;
     const COL_UPAH_KOTOR = COL_ASTEK + 1;
     const COL_BRUTO = COL_UPAH_KOTOR + 1;
@@ -154,8 +154,7 @@ export const generateMonthlyTaxExcel = async (
         else if (i <= 18) colWidths.push(12);
         else if (i < COL_TOTAL_PREMI) colWidths.push(13); // premi columns
         else if (i === COL_TOTAL_PREMI) colWidths.push(15);
-        else if (i === COL_POT_KOREKSI) colWidths.push(15);
-        else if (i <= COL_EXGRATIA) colWidths.push(15);
+        else if (i <= COL_KONTAN) colWidths.push(15);
         else if (i <= COL_ASTEK) colWidths.push(15);
         else colWidths.push(18);
     }
@@ -208,9 +207,9 @@ export const generateMonthlyTaxExcel = async (
     sheet.getCell(`${L(COL_POT_KOREKSI)}3`).value = 'POTONGAN';
     applyHeaderStyle(sheet.getCell(`${L(COL_POT_KOREKSI)}3`), 'FCA5A5', '0F172A');
 
-    // PEND. LAINNYA
-    if (COL_THR !== COL_EXGRATIA) {
-        sheet.mergeCells(`${L(COL_THR)}3:${L(COL_EXGRATIA)}3`);
+    // PENDAPATAN LAINNYA (THR, KONTAN)
+    if (COL_THR !== COL_KONTAN) {
+        sheet.mergeCells(`${L(COL_THR)}3:${L(COL_KONTAN)}3`);
     }
     sheet.getCell(`${L(COL_THR)}3`).value = 'PENDAPATAN\nLAINNYA';
     applyHeaderStyle(sheet.getCell(`${L(COL_THR)}3`), 'FEF3C7', '0F172A');
@@ -256,11 +255,11 @@ export const generateMonthlyTaxExcel = async (
     subHeaders.push({ col: COL_TOTAL_PREMI, label: 'TOTAL PREMI\n(SUM Premi)', bg: 'CBD5E1', fg: '0F172A' });
     subHeaders.push({ col: COL_POT_KOREKSI, label: 'POT KOREKSI (-)', bg: 'FCA5A5', fg: '0F172A' });
     subHeaders.push({ col: COL_THR, label: 'THR', bg: 'FEF3C7', fg: '0F172A' });
-    subHeaders.push({ col: COL_EXGRATIA, label: 'KONTANAN', bg: 'FEF3C7', fg: '0F172A' });
+    subHeaders.push({ col: COL_KONTAN, label: 'KONTANAN', bg: 'FEF3C7', fg: '0F172A' });
     subHeaders.push({ col: COL_BPJS_KES, label: `BPJS KES\n${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%\n(×GPStandar+MK)`, bg: 'F1F5F9', fg: '0F172A' });
     subHeaders.push({ col: COL_ASTEK, label: `ASTEK\n${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%\n(×GPStandar+MK)`, bg: 'F1F5F9', fg: '0F172A' });
     subHeaders.push({ col: COL_UPAH_KOTOR, label: 'UPAH KOTOR\n(Aktual+Tunj+Premi-Pot)', bg: '0F172A', fg: 'FFFFFF' });
-    subHeaders.push({ col: COL_BRUTO, label: 'PENGHASILAN\nBRUTO\n(UKotor+BPJS+Ast+THR+Exg)', bg: '0F172A', fg: 'FFFFFF' });
+    subHeaders.push({ col: COL_BRUTO, label: 'PENGHASILAN\nBRUTO', bg: '0F172A', fg: 'FFFFFF' });
     subHeaders.push({ col: COL_TARIF_TER, label: 'TARIF TER (%)', bg: '0F172A', fg: 'FFFFFF' });
     subHeaders.push({ col: COL_PPH21, label: 'PPH21\n(ROUND Bruto×Tarif)', bg: '0F172A', fg: 'FFFFFF' });
 
@@ -312,7 +311,7 @@ export const generateMonthlyTaxExcel = async (
         const lPremiEnd = L(COL_PREMI_END);
         const lPotKor = L(COL_POT_KOREKSI);
         const lTHR = L(COL_THR);
-        const lExg = L(COL_EXGRATIA);
+        const lKontan = L(COL_KONTAN);
         const lBpjs = L(COL_BPJS_KES);
         const lAstek = L(COL_ASTEK);
         const lUK = L(COL_UPAH_KOTOR);
@@ -356,9 +355,9 @@ export const generateMonthlyTaxExcel = async (
         // Potongan Koreksi (displayed as negative — it's a deduction)
         row.getCell(COL_POT_KOREKSI).value = -(emp.pot_koreksi || 0);
 
-        // Pendapatan Lainnya
+        // Pendapatan Lainnya (THR and KONTAN)
         row.getCell(COL_THR).value = emp.thr_amount || 0;
-        row.getCell(COL_EXGRATIA).value = emp.exgratia_amount || 0;
+        row.getCell(COL_KONTAN).value = emp.exgratia_amount || 0;
 
         // Jaminan Majikan (based on Gaji Standar + Masa Kerja)
         // Masa Kerja column was removed from display, so use hardcoded values
@@ -371,10 +370,10 @@ export const generateMonthlyTaxExcel = async (
             result: emp.upah_kotor || 0
         };
 
-        // PENGHASILAN BRUTO = Upah Kotor + BPJS + ASTEK + THR + Exgratia
+        // PENGHASILAN BRUTO = Upah Kotor + BPJS + ASTEK + THR + KONTAN
         // (pot_koreksi sudah mengurangi di upah kotor, TIDAK ditambah kembali di bruto)
         row.getCell(COL_BRUTO).value = {
-            formula: `${lUK}${r}+${lBpjs}${r}+${lAstek}${r}+${lTHR}${r}+${lExg}${r}`,
+            formula: `${lUK}${r}+${lBpjs}${r}+${lAstek}${r}+${lTHR}${r}+${lKontan}${r}`,
             result: emp.penghasilan_bruto || 0
         };
 
@@ -421,7 +420,7 @@ export const generateMonthlyTaxExcel = async (
         COL_HK, COL_UPAH_DASAR, COL_GAJI_STANDAR, COL_GP_IDEAL, COL_GP_AKTUAL, COL_KOREKSI,
         COL_BERAS, COL_JABATAN, COL_SERVICE_TIME,
         ...Array.from({ length: allPremiKeys.length }, (_, i) => COL_PREMI_START + i),
-        COL_TOTAL_PREMI, COL_POT_KOREKSI, COL_THR, COL_EXGRATIA,
+        COL_TOTAL_PREMI, COL_POT_KOREKSI, COL_THR, COL_KONTAN,
         COL_BPJS_KES, COL_ASTEK, COL_UPAH_KOTOR, COL_BRUTO, COL_PPH21
     ];
 
