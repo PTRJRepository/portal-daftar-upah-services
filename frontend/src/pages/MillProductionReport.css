@@ -477,6 +477,180 @@
     }
 }
 
+/* ===== Month-over-Month Comparison Styles ===== */
+.mom-period-selectors {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    padding: 6px 12px;
+}
+
+.mom-vs-label {
+    font-weight: 700;
+    color: #92400e;
+    font-size: 0.9rem;
+    padding: 0 4px;
+}
+
+.compare-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background-color: #7c3aed;
+    box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.3);
+}
+
+.compare-toggle-btn:hover:not(:disabled) {
+    background-color: #6d28d9;
+    transform: translateY(-1px);
+}
+
+.compare-toggle-btn:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* MoM KPI Cards */
+.mom-kpi-card {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mom-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.1);
+}
+
+.mom-kpi-current {
+    flex: 1;
+    min-width: 0;
+}
+
+.mom-kpi-prev {
+    flex: 1;
+    min-width: 0;
+    border-left: 2px solid #e5e7eb;
+    padding-left: 16px;
+    opacity: 0.75;
+}
+
+.mom-kpi-delta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 90px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    gap: 2px;
+}
+
+.mom-kpi-delta.positive {
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border: 1px solid #bbf7d0;
+}
+
+.mom-kpi-delta.negative {
+    background: linear-gradient(135deg, #fef2f2, #fecaca);
+    border: 1px solid #fca5a5;
+}
+
+.mom-kpi-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: #6b7280;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+}
+
+.mom-kpi-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #111827;
+    line-height: 1.2;
+}
+
+.mom-kpi-value-prev {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #6b7280;
+    line-height: 1.2;
+}
+
+.mom-kpi-unit {
+    font-size: 0.75rem;
+    font-weight: 500;
+    opacity: 0.8;
+}
+
+.mom-kpi-delta-val {
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.mom-kpi-delta-pct {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.mom-kpi-delta .mom-kpi-trend {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.mom-kpi-delta.positive .mom-kpi-delta-val,
+.mom-kpi-delta.positive .mom-kpi-delta-pct {
+    color: #059669;
+}
+
+.mom-kpi-delta.negative .mom-kpi-delta-val,
+.mom-kpi-delta.negative .mom-kpi-delta-pct {
+    color: #dc2626;
+}
+
+/* MoM Trend Badge in Table */
+.mom-trend-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.mom-trend-badge.up {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.mom-trend-badge.down {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
 /* ===== PRINT STYLES ===== */
 @media print {
     * {

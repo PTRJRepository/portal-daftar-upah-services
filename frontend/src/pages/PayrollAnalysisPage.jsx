@@ -290,7 +290,8 @@ export default function PayrollAnalysisPage({
     rawData.forEach(row => {
       if (row.premi) {
         Object.keys(row.premi).forEach(k => {
-          if (k !== 'premi_brondol' && k !== 'premi_pruning') headers.add(k);
+          // Exclude static columns: 'premi_brondol' (field), 'brondol' (key in row.premi), 'premi_pruning'
+          if (k !== 'premi_brondol' && k !== 'premi_pruning' && k !== 'brondol') headers.add(k);
         });
       }
     });

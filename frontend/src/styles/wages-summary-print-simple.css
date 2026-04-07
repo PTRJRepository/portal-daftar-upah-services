@@ -9,6 +9,13 @@
     margin: 8mm 10mm 8mm 10mm;
 }
 
+/* Visibility Helpers */
+.print-only,
+.print-show,
+.only-print {
+    display: none !important;
+}
+
 @media print {
 
     /* Hide everything that shouldn't print */
@@ -23,6 +30,15 @@
     /* Show print-only elements */
     .print-only {
         display: block !important;
+    }
+    
+    tr.print-only {
+        display: table-row !important;
+    }
+    
+    th.print-only,
+    td.print-only {
+        display: table-cell !important;
     }
 
     /* Reset everything */

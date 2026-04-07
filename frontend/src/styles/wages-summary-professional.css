@@ -22,6 +22,24 @@
 }
 
 /* =============================================
+   PRINT/SCREEN VISIBILITY HELPERS
+   ============================================= */
+.print-only,
+.print-show,
+.only-print {
+    display: none !important;
+}
+
+.no-print,
+.print-hide {
+    display: block; /* Standard block for screen */
+}
+
+tr.no-print {
+    display: table-row !important;
+}
+
+/* =============================================
    TONASE HIGHLIGHT
    ============================================= */
 .tonase-highlight {
@@ -1006,12 +1024,19 @@
     .print-show,
     .print-only,
     .only-print {
-        display: table-cell !important;
+        display: block !important;
     }
 
-    /* Hide detailed columns in print */
-    .print-hide-detail {
-        display: none !important;
+    tr.print-only,
+    tr.print-show {
+        display: table-row !important;
+    }
+
+    th.print-only,
+    th.print-show,
+    td.print-only,
+    td.print-show {
+        display: table-cell !important;
     }
 
     /* Body and container reset */

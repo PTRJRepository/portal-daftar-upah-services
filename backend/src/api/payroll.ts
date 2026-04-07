@@ -1199,29 +1199,42 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     // Helper function to calculate totals for streaming endpoint
                     // Must be defined inside start() to access gangs Map directly
                     const calculateGangTotals = (employees: any[]) => {
-                        // Filter active employees (hari_kerja > 0)
+                        // Filter active employees (jumlah_hk > 0) - same logic as payrollTotalsCalculator
                         const activeEmployees = employees.filter((emp: any) => {
-                            const totalCuti = (emp.cuti_tahunan || 0) + (emp.cuti_sakit_haid || 0) + (emp.cuti_minggu || 0) + (emp.cuti_nasional || 0);
-                            const hari_kerja = Math.max(0, (parseFloat(emp.jumlah_hk) || 0) - totalCuti);
-                            return hari_kerja > 0;
+                            const jumlahHk = Number(emp.jumlah_hk || 0);
+                            return jumlahHk > 0;
                         });
 
+                        if (activeEmployees.length === 0) {
+                            return { employee_count: 0 };
+                        }
+
                         const totals: Record<string, number> = {};
-                        const numericFields = [
-                            'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
-                            'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_tahun', 'masa_kerja_jumlah', 'lembur_jumlah',
-                            'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
-                            'potongan_upah_kotor_total', 'jumlah_upah_kotor',
-                            'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
-                            'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
-                            'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
+
+                        // Base numeric fields - complete list matching payrollTotalsCalculator
+                        const baseFields = [
+                            'jumlah_hk', 'hari_kerja', 'upah_pokok',
+                            'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
+                            'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari',
+                            'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah',
+                            'lembur_jam', 'lembur_jumlah',
+                            'total_tunjangan',
+                            // Premi
+                            'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs',
+                            'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk',
+                            'pot_koreksi', 'total_premi',
+                            // Gross & deductions
+                            'jumlah_upah_kotor',
+                            'pot_astek', 'pot_astek_maj', 'pot_astek_jumlah',
+                            'pot_bpjs_kes', 'pot_bpjs_pekerja', 'pot_bpjs_maj',
+                            'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
+                            'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan',
+                            'pot_bpjs_jumlah', 'pot_bpjs_pekerja_total',
+                            'pot_spsi', 'pot_pph21', 'premi_pph',
+                            'total_potongan', 'total_potongan_bersih',
                             'upah_bersih', 'koreksi_hk',
-                            // [PHASE 4b] Calculated Tax Fields
+                            // Tax fields
                             'pph21_ter', 'tarif_pajak_ter',
-                            // Pendapatan Lainnya
-                            'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
-                            'pendapatan_lainnya', 'pot_pendapatan_lainnya',
-                            // Tax-related fields
                             'penghasilan_bruto', 'upah_kotor_pajak',
                             // Harvest items
                             'bunches_total', 'bunches_ripe', 'bunches_unripe',
@@ -1229,33 +1242,68 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                             'loose_fruit', 'bunches_transactions'
                         ];
 
-                        // Initialize totals
-                        for (const field of numericFields) {
+                        // Pendapatan lainnya fields
+                        const pendapatanFields = [
+                            'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
+                            'pendapatan_lainnya', 'pot_pendapatan_lainnya'
+                        ];
+
+                        const allNumericFields = [...baseFields, ...pendapatanFields];
+
+                        // Initialize all fields to 0
+                        for (const field of allNumericFields) {
                             totals[field] = 0;
                         }
                         totals['employee_count'] = activeEmployees.length;
 
+                        // Helper to safely parse number
+                        const parseNum = (val: any): number => {
+                            if (val === null || val === undefined) return 0;
+                            const n = parseFloat(val);
+                            return isNaN(n) ? 0 : n;
+                        };
+
                         // Sum all numeric fields from active employees
                         for (const emp of activeEmployees) {
-                            for (const field of numericFields) {
-                                const val = emp[field];
-                                if (val !== null && val !== undefined) {
-                                    totals[field] += parseFloat(val) || 0;
+                            // Sum base fields
+                            for (const field of allNumericFields) {
+                                totals[field] += parseNum(emp[field]);
+                            }
+
+                            // Also sum other_incomes array (THR, BONUS, CUSTOM, KONTAN, etc.)
+                            if (emp.other_incomes && Array.isArray(emp.other_incomes)) {
+                                for (const oi of emp.other_incomes) {
+                                    const type = (oi.type || '').toUpperCase();
+                                    const amount = parseNum(oi.amount);
+                                    if (type && amount !== 0) {
+                                        const fieldKey = `pendapatan_${type.toLowerCase()}`;
+                                        if (!totals[fieldKey]) totals[fieldKey] = 0;
+                                        totals[fieldKey] += amount;
+                                    }
                                 }
                             }
 
                             // Also sum dynamic premi fields (premi_*) and dynamic potongan fields
                             for (const key of Object.keys(emp)) {
-                                if (key.startsWith('premi_') && key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'premi_koreksi') {
+                                if (key.startsWith('premi_') &&
+                                    key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'premi_koreksi' &&
+                                    key !== 'premi_brondol_loosefruit' && key !== 'premi_brondol_adtrans' && key !== 'premi_brondol_total') {
                                     const val = emp[key];
-                                    if (val !== null && val !== undefined && typeof val === 'number') {
+                                    if (typeof val === 'number' && !isNaN(val)) {
                                         if (!totals[key]) totals[key] = 0;
                                         totals[key] += val;
                                     }
                                 }
-                                if (key.startsWith('KOREKSI') || key.startsWith('POTONGAN')) {
+                                if (key.startsWith('KOREKSI')) {
                                     const val = emp[key];
-                                    if (val !== null && val !== undefined && typeof val === 'number') {
+                                    if (typeof val === 'number' && !isNaN(val)) {
+                                        if (!totals[key]) totals[key] = 0;
+                                        totals[key] += val;
+                                    }
+                                }
+                                if (key.startsWith('potongan_')) {
+                                    const val = emp[key];
+                                    if (typeof val === 'number' && !isNaN(val)) {
                                         if (!totals[key]) totals[key] = 0;
                                         totals[key] += val;
                                     }

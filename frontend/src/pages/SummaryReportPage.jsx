@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Printer, RefreshCw, ArrowLeft, Save } from 'lucide-react';
+import { Printer, RefreshCw, ArrowLeft, Save, FileText } from 'lucide-react';
 import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, fetchVirtualDivisions, validateAggregation, seedAggregation, updateGangCell } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
@@ -146,13 +146,21 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [summaryData, setSummaryData] = useState([]);
     const [gangDescriptions, setGangDescriptions] = useState({});
     const [grandTotal, setGrandTotal] = useState(null);
+    const [showDetail, setShowDetail] = useState(false);
     const [filteredHeaders, setFilteredHeaders] = useState([]);
     const [groupFilter, setGroupFilter] = useState(''); // Group / Asistensi filter
 
     // State
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
     const [editMode, setEditMode] = useState(false);
     const [editedCells, setEditedCells] = useState({}); // { `${gang_code}_${field}`: value }
+    const [isSeeding, setIsSeeding] = useState(false);
+    const [seedingProgress, setSeedingProgress] = useState(null);
+    const [validating, setValidating] = useState(false);
+    const [showValidation, setShowValidation] = useState(false);
+    const [validationResult, setValidationResult] = useState(null);
+    const [showSeederModal, setShowSeederModal] = useState(false);
 
     // Helper to extract Asistensi (Group)
     // Rule: K2 gangs belong to Group 1 (special estate classification).
@@ -254,13 +262,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
         return totals;
     }, [filteredSummaryData]);
-    const [error, setError] = useState('');
-    const [showSeederModal, setShowSeederModal] = useState(false);
-    const [isSeeding, setIsSeeding] = useState(false);
-    const [seedingProgress, setSeedingProgress] = useState(null);
-    const [validating, setValidating] = useState(false);
-    const [validationResult, setValidationResult] = useState(null);
-    const [showValidation, setShowValidation] = useState(false);
 
     // Load gang descriptions (real-time from HR_GANG)
     useEffect(() => {
@@ -717,8 +718,15 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     <button onClick={handlePrint} className="wsp-btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Printer size={18} /> Cetak Report
                     </button>
-                    <button onClick={handleExport} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} disabled={loading || summaryData.length === 0}>
-                        Download CSV
+                    <button onClick={handleExport} className="wsp-btn" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileText size={18} /> Export CSV
+                    </button>
+                    <button 
+                        onClick={() => setShowDetail(!showDetail)} 
+                        className="wsp-btn"
+                        style={{ backgroundColor: showDetail ? '#f1f5f9' : '#fff', fontWeight: 700 }}
+                    >
+                        {showDetail ? 'Hide Detail' : 'Show Detail Premi'}
                     </button>
                     <button onClick={handleSeedAll} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isSeeding ? '#fef3c7' : '#10b981', color: isSeeding ? '#92400e' : '#fff', borderColor: isSeeding ? '#fde68a' : '#059669' }} disabled={isSeeding || loading}>
                         <RefreshCw size={18} className={isSeeding ? 'animate-spin' : ''} />
@@ -838,34 +846,46 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             <thead>
                                 {reportMode === 'payroll' ? (
                                     <>
-                                        <tr className="wsp-header-master">
-                                            <th rowSpan="2" style={{ minWidth: '300px', width: '300px' }}>ESTATE / GANG</th>
-                                            <th colSpan="2">MANPOWER</th>
-                                            <th colSpan={dynamicPremiHeaders.length + 1}>PREMI INCOME</th>
-                                            <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
-                                            <th colSpan="2">DEDUCTIONS</th>
-                                            <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
+                                        {/* SCREEN VERSION of Master Headers */}
+                                        <tr className="wsp-header-master no-print">
+                                            <th rowSpan="2" className="th-gang-name" style={{ width: '25%' }}>ESTATE / GANG</th>
+                                            <th colSpan="2" className="th-group-manpower">MANPOWER</th>
+                                            <th colSpan={showDetail ? dynamicPremiHeaders.length + 1 : 1} className="th-group-income">PREMI INCOME</th>
+                                            <th rowSpan="2" className="th-group-income">LEMBUR</th>
+                                            <th colSpan="2" className="th-group-deductions">DEDUCTIONS</th>
+                                            <th rowSpan="2" className="th-group-income">TOTAL UPAH BERSIH</th>
                                         </tr>
-                                        <tr className="wsp-header-sub">
-                                            {/* Manpower */}
-                                            <th style={{ width: '60px' }}>WORKERS</th>
-                                            <th style={{ width: '60px' }}>HK</th>
-
-                                            {/* Premi Dynamic Columns - Hidden on Print */}
-                                            {dynamicPremiHeaders.map((h, i) => (
-                                                <th key={i} className="print-hide-detail" style={{ minWidth: '90px' }}>{h}</th>
+                                        <tr className="wsp-header-sub no-print">
+                                            <th className="th-group-manpower">WORKERS</th>
+                                            <th className="th-group-manpower">HK</th>
+                                            {showDetail && dynamicPremiHeaders.map((h, i) => (
+                                                <th key={i} className="th-group-premi">{h}</th>
                                             ))}
+                                            <th className="th-group-premi">TOTAL PREMI</th>
+                                            <th className="th-group-deductions">PPH 21</th>
+                                            <th className="th-group-deductions">SPSI</th>
+                                        </tr>
 
-                                            <th style={{ width: '100px', background: '#334155' }}>TOTAL PREMI</th>
-
-                                            {/* Deductions */}
-                                            <th style={{ width: '90px' }}>PPH 21</th>
-                                            <th style={{ width: '90px' }}>SPSI</th>
+                                        {/* PRINT VERSION of Master Headers (Consolidated View) */}
+                                        <tr className="wsp-header-master print-only">
+                                            <th rowSpan="2" className="th-gang-name" style={{ width: '25%' }}>ESTATE / GANG</th>
+                                            <th colSpan="2" className="th-group-manpower">MANPOWER</th>
+                                            <th colSpan="1" className="th-group-income">PREMI INCOME</th>
+                                            <th rowSpan="2" className="th-group-income">LEMBUR</th>
+                                            <th colSpan="2" className="th-group-deductions">DEDUCTIONS</th>
+                                            <th rowSpan="2" className="th-group-income">TOTAL UPAH BERSIH</th>
+                                        </tr>
+                                        <tr className="wsp-header-sub print-only">
+                                            <th className="th-group-manpower">WORKERS</th>
+                                            <th className="th-group-manpower">HK</th>
+                                            <th className="th-group-premi">TOTAL PREMI</th>
+                                            <th className="th-group-deductions">PPH 21</th>
+                                            <th className="th-group-deductions">SPSI</th>
                                         </tr>
                                     </>
                                 ) : (
                                     <tr className="wsp-header-master" style={{ backgroundColor: '#000', color: '#fff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                                        <th style={{ minWidth: '300px', width: '300px', textAlign: 'left', border: '1.5pt solid #000', fontWeight: 800 }}>ESTATE / GANG</th>
+                                        <th style={{ minWidth: '300px', textAlign: 'left', border: '1.5pt solid #000', fontWeight: 800 }}>ESTATE / GANG</th>
                                         <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>WORKERS</th>
                                         <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>FULL</th>
                                         <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>PROPORSI</th>
@@ -886,11 +906,11 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                 <EditableCell editMode={editMode} value={row.total_employees} onSave={(v) => handleCellEdit(row.gang_code, 'total_employees', v)} />
                                                 <EditableCell editMode={editMode} value={row.total_hk} onSave={(v) => handleCellEdit(row.gang_code, 'total_hk', v)} />
 
-                                                {/* Dynamic Premi Cols - Hidden on Print */}
-                                                {dynamicPremiHeaders.map(header => {
+                                                {/* Dynamic Premi Cols - Hidden when not in detail mode OR on print */}
+                                                {showDetail && dynamicPremiHeaders.map(header => {
                                                     const val = getDynamicPremiValue(row, header);
                                                     return (
-                                                        <td key={header} className={`text-right print-hide-detail ${!val && 'val-zero'}`}>
+                                                        <td key={header} className={`text-right no-print print-hide-detail ${!val && 'val-zero'}`}>
                                                             {formatNumber(val)}
                                                         </td>
                                                     );
@@ -932,11 +952,11 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_employees)}</td>
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_hk)}</td>
 
-                                            {/* Dynamic Premi Totals - Hidden on Print */}
-                                            {dynamicPremiHeaders.map(header => {
+                                            {/* Dynamic Premi Totals - Hidden when not in detail mode OR on print */}
+                                            {showDetail && dynamicPremiHeaders.map(header => {
                                                 const total = filteredGrandTotal.dynamic_premi_totals?.[header] || 0;
                                                 return (
-                                                    <td key={header} className="text-right print-hide-detail">{formatNumber(total)}</td>
+                                                    <td key={header} className="text-right no-print print-hide-detail">{formatNumber(total)}</td>
                                                 );
                                             })}
 

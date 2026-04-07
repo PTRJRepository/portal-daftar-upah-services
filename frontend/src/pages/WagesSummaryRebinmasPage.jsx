@@ -652,9 +652,9 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
             <div className="wsp-table-wrapper">
                 <table className="wsp-table comparison-table">
                     <thead>
-                        {/* Master Header Level */}
-                        <tr className="wsp-header-master">
-                            <th rowSpan="2" className="th-sticky-col">ESTATE / DIVISI</th>
+                        {/* SCREEN VERSION of Comparison Headers */}
+                        <tr className="wsp-header-master no-print">
+                            <th rowSpan="2" className="th-sticky-col th-gang-name" style={{ width: '25%' }}>ESTATE / DIVISI</th>
                             <th colSpan="2" className="th-group-manpower">MANPOWER</th>
                             <th colSpan="5" className="th-group-premi">PREMI ({currMonthName})</th>
                             <th colSpan="3" className="th-group-uraian">Lembur dan Potongan</th>
@@ -662,29 +662,42 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             <th colSpan="2" className="th-group-curr">REKAP {currMonthName.substring(0, 3)}</th>
                             <th rowSpan="2" className="th-group-diff">SELISIH</th>
                         </tr>
-                        {/* Sub Header */}
-                        <tr className="wsp-header-sub">
-                            {/* Workers */}
+                        <tr className="wsp-header-sub no-print">
                             <th className="th-group-workers">{prevMonthName.substring(0, 3)}</th>
                             <th className="th-group-workers">{currMonthName.substring(0, 3)}</th>
-
-                            {/* Premi Breakdown */}
                             <th className="th-group-premi">PRUNING</th>
                             <th className="th-group-premi">BRONDOL</th>
                             <th className="th-group-premi">INSENTIF</th>
                             <th className="th-group-premi">KINERJA</th>
                             <th className="th-group-premi" style={{ fontWeight: 800 }}>TOTAL</th>
-
-                            {/* Lembur & Deductions */}
                             <th className="th-group-uraian">LEMBUR</th>
                             <th className="th-group-uraian">PPH21</th>
                             <th className="th-group-uraian">SPSI</th>
-
-                            {/* Previous Month Totals */}
                             <th className="th-group-prev">GAJI</th>
                             <th className="th-group-prev">TBS (Ton)</th>
+                            <th className="th-group-curr">GAJI</th>
+                            <th className="th-group-curr">TBS (Ton)</th>
+                        </tr>
 
-                            {/* Current Month Totals */}
+                        {/* PRINT VERSION of Comparison Headers (Simplified) */}
+                        <tr className="wsp-header-master print-only">
+                            <th rowSpan="2" className="th-sticky-col th-gang-name" style={{ width: '25%' }}>ESTATE / DIVISI</th>
+                            <th colSpan="2" className="th-group-manpower">MANPOWER</th>
+                            <th colSpan="1" className="th-group-premi">TOTAL PREMI</th>
+                            <th colSpan="3" className="th-group-uraian">Lembur dan Potongan</th>
+                            <th colSpan="2" className="th-group-prev">REKAP {prevMonthName.substring(0, 3)}</th>
+                            <th colSpan="2" className="th-group-curr">REKAP {currMonthName.substring(0, 3)}</th>
+                            <th rowSpan="2" className="th-group-diff">SELISIH</th>
+                        </tr>
+                        <tr className="wsp-header-sub print-only">
+                            <th className="th-group-workers">{prevMonthName.substring(0, 3)}</th>
+                            <th className="th-group-workers">{currMonthName.substring(0, 3)}</th>
+                            <th className="th-group-premi" style={{ fontWeight: 800 }}>TOTAL</th>
+                            <th className="th-group-uraian">LEMBUR</th>
+                            <th className="th-group-uraian">PPH21</th>
+                            <th className="th-group-uraian">SPSI</th>
+                            <th className="th-group-prev">GAJI</th>
+                            <th className="th-group-prev">TBS (Ton)</th>
                             <th className="th-group-curr">GAJI</th>
                             <th className="th-group-curr">TBS (Ton)</th>
                         </tr>
@@ -713,11 +726,12 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                         {renderTrendArrow(row.workers_current, row.workers_previous, 'cost')}
                                     </td>
 
-                                    {/* Premi Breakdown */}
-                                    <td className={`text-right ${(row.total_prunning_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_prunning_current || 0)}</td>
-                                    <td className={`text-right ${(row.total_brondol_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_brondol_current || 0)}</td>
-                                    <td className={`text-right ${(row.total_insentif_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_insentif_current || 0)}</td>
-                                    <td className={`text-right ${(row.total_kinerja_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_kinerja_current || 0)}</td>
+                                    {/* Premi Breakdown - Hide detail in print */}
+                                    <td className={`text-right no-print ${(row.total_prunning_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_prunning_current || 0)}</td>
+                                    <td className={`text-right no-print ${(row.total_brondol_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_brondol_current || 0)}</td>
+                                    <td className={`text-right no-print ${(row.total_insentif_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_insentif_current || 0)}</td>
+                                    <td className={`text-right no-print ${(row.total_kinerja_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_kinerja_current || 0)}</td>
+                                    {/* Keep Total Premi in print */}
                                     <td className="text-right border-right-section" style={{ fontWeight: 700 }}>
                                         {formatNumber(row.total_premi_current)}
                                         {renderTrendArrow(row.total_premi_current, row.total_premi_previous, 'cost')}
@@ -766,10 +780,10 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 {formatNumber(grandTotal.workers_current)}
                                 {renderTrendArrow(grandTotal.workers_current, grandTotal.workers_previous, 'cost')}
                             </td>
-                            <td className="text-right">{formatNumber(grandTotal.total_prunning_current)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.total_brondol_current)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.total_insentif_current)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.total_kinerja_current)}</td>
+                            <td className="text-right no-print">{formatNumber(grandTotal.total_prunning_current)}</td>
+                            <td className="text-right no-print">{formatNumber(grandTotal.total_brondol_current)}</td>
+                            <td className="text-right no-print">{formatNumber(grandTotal.total_insentif_current)}</td>
+                            <td className="text-right no-print">{formatNumber(grandTotal.total_kinerja_current)}</td>
                             <td className="text-right" style={{ fontWeight: 800 }}>
                                 {formatNumber(grandTotal.total_premi_current)}
                                 {renderTrendArrow(grandTotal.total_premi_current, grandTotal.total_premi_previous, 'cost')}
@@ -1319,31 +1333,44 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 <div className="wsp-table-wrapper">
                                     <table className="wsp-table">
                                         <thead>
-                                            {/* Master Header Level */}
-                                            <tr className="wsp-header-master">
-                                                <th rowSpan="2" className="th-sticky-col">ESTATE / DIVISI</th>
+                                            {/* SCREEN VERSION of Summary Headers */}
+                                            <tr className="wsp-header-master no-print">
+                                                <th rowSpan="2" className="th-sticky-col th-gang-name" style={{ width: '25%' }}>ESTATE / DIVISI</th>
                                                 <th colSpan="2" className="th-group-manpower">MANPOWER</th>
                                                 <th colSpan="2" className="th-group-deductions">DEDUCTIONS / POTONGAN</th>
                                                 <th colSpan="3" className="th-group-income">INCOME / PENDAPATAN</th>
                                                 <th colSpan="2" className="th-group-compare">PERBANDINGAN</th>
                                             </tr>
-                                            {/* Sub Header Level */}
-                                            <tr className="wsp-header-sub">
-                                                <th className="th-group-manpower" style={{ minWidth: '80px' }}>WORKERS</th>
-                                                <th className="th-group-manpower border-right-section" style={{ minWidth: '90px' }}>HK</th>
+                                            <tr className="wsp-header-sub no-print">
+                                                <th className="th-group-manpower">WORKERS</th>
+                                                <th className="th-group-manpower border-right-section">HK</th>
+                                                <th className="th-group-deductions">PPH 21</th>
+                                                <th className="th-group-deductions border-right-section">SPSI</th>
+                                                <th className="th-group-income">TOTAL PREMI</th>
+                                                <th className="th-group-income">LEMBUR</th>
+                                                <th className="th-group-income border-right-section">UPAH BERSIH (Portal)</th>
+                                                <th className="th-group-compare">THUMB PRINT</th>
+                                                <th className="th-group-compare">SELISIH</th>
+                                            </tr>
 
-                                                {/* Deductions Group */}
-                                                <th className="th-group-deductions" style={{ minWidth: '110px' }}>PPH 21</th>
-                                                <th className="th-group-deductions border-right-section" style={{ minWidth: '100px' }}>SPSI</th>
-
-                                                {/* Income Group */}
-                                                <th className="th-group-income" style={{ minWidth: '120px' }}>TOTAL PREMI</th>
-                                                <th className="th-group-income" style={{ minWidth: '120px' }}>LEMBUR</th>
-                                                <th className="th-group-income border-right-section" style={{ minWidth: '130px' }}>UPAH BERSIH (Portal)</th>
-
-                                                {/* Comparison Group */}
-                                                <th className="th-group-compare" style={{ minWidth: '130px' }}>THUMB PRINT</th>
-                                                <th className="th-group-compare" style={{ minWidth: '120px' }}>SELISIH</th>
+                                            {/* PRINT VERSION of Summary Headers */}
+                                            <tr className="wsp-header-master print-only">
+                                                <th rowSpan="2" className="th-sticky-col th-gang-name" style={{ width: '25%' }}>ESTATE / DIVISI</th>
+                                                <th colSpan="2" className="th-group-manpower">MANPOWER</th>
+                                                <th colSpan="2" className="th-group-deductions">DEDUCTIONS / POTONGAN</th>
+                                                <th colSpan="3" className="th-group-income">INCOME / PENDAPATAN</th>
+                                                <th colSpan="2" className="th-group-compare">PERBANDINGAN</th>
+                                            </tr>
+                                            <tr className="wsp-header-sub print-only">
+                                                <th className="th-group-manpower">WORKERS</th>
+                                                <th className="th-group-manpower border-right-section">HK</th>
+                                                <th className="th-group-deductions">PPH 21</th>
+                                                <th className="th-group-deductions border-right-section">SPSI</th>
+                                                <th className="th-group-income">TOTAL PREMI</th>
+                                                <th className="th-group-income">LEMBUR</th>
+                                                <th className="th-group-income border-right-section">UPAH BERSIH (Portal)</th>
+                                                <th className="th-group-compare">THUMB PRINT</th>
+                                                <th className="th-group-compare">SELISIH</th>
                                             </tr>
                                         </thead>
 

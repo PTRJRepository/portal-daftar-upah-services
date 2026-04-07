@@ -332,6 +332,18 @@ export default function PayslipPrintPage() {
                 </div>
             </div>
 
+            {/* Print Orientation Warning Banner */}
+            <div style={{
+                background: '#fef3c7',
+                borderBottom: '2px solid #f59e0b',
+                padding: '8px 20px',
+                textAlign: 'center',
+                fontSize: '0.85rem'
+            }} className="no-print">
+                <strong style={{ color: '#b45309' }}>⚠️ WAJIB: </strong>
+                <span style={{ color: '#92400e' }}>Saat Print, pilih <strong>Orientation: Portrait</strong> dan <strong>Scale: 100%</strong> agar 4 slip muat di 1 halaman A4</span>
+            </div>
+
             {/* Print Pages */}
             <div className="payslip-print-container" ref={printRef}>
                 {payslipChunks.map((chunk, chunkIndex) => (
@@ -357,12 +369,24 @@ export default function PayslipPrintPage() {
 
             {/* Print Instructions - Hidden when printing */}
             <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }} className="no-print">
-                <p style={{ marginBottom: '0.5rem' }}>
-                    💡 <strong>Tips Print:</strong> Gunakan pengaturan <strong>Portrait (Tegak)</strong> di dialog print browser Anda agar 4 slip muat dalam 1 lembar A4.
-                </p>
-                <p style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
-                    Pastikan Skala diatur ke <strong>Default (100%)</strong>.
-                </p>
+                <div style={{
+                    background: '#fef3c7',
+                    border: '2px solid #f59e0b',
+                    borderRadius: '8px',
+                    padding: '12px 20px',
+                    marginBottom: '1rem',
+                    maxWidth: '600px',
+                    margin: '0 auto 1rem auto'
+                }}>
+                    <strong style={{ color: '#b45309' }}>⚠️ PENTING - Pengaturan Print:</strong>
+                    <ul style={{ textAlign: 'left', marginTop: '8px', paddingLeft: '20px' }}>
+                        <li><strong>Orientation: Portrait (Tegak)</strong> - WAJIB pilih Portrait</li>
+                        <li><strong>Paper Size: A4</strong></li>
+                        <li><strong>Scale: 100%</strong> - Jangan pakai "Fit to page"</li>
+                        <li><strong>Margins: Minimum</strong></li>
+                        <li><strong>Background Graphics: ✓ ON</strong></li>
+                    </ul>
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                     <button
                         className="payslip-preview-btn"

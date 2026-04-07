@@ -1,49 +1,30 @@
 /**
- * Quick verification of current service state
- * 
- * Run: cd backend && bun run verify_fix.ts
+ * Verify bonus/THR is removed from tax report
  */
+import { taxReportService } from "./src/services/taxReportService";
 
-import { summaryService } from "./src/services/summaryService";
+async function main() {
+    const result = await taxReportService.getMonthlyTaxReport(2026, 3, 'PG2B', undefined, undefined, undefined);
 
-async function verifyFix() {
-    console.log('=== VERIFY FIX - Direct Service Call ===\n');
+    console.log(`Employees: ${result?.employees?.length || 0}`);
 
-    const month = 3;
-    const year = 2026;
+    if (result?.employees?.length > 0) {
+        const emp = result.employees[0];
+        console.log('\nChecking if bonus/THR fields are removed:');
+        console.log('- thr_amount:', emp.thr_amount === undefined ? 'REMOVED ✓' : `Still exists: ${emp.thr_amount}`);
+        console.log('- exgratia_amount:', emp.exgratia_amount === undefined ? 'REMOVED ✓' : `Still exists: ${emp.exgratia_amount}`);
+        console.log('- other_incomes:', emp.other_incomes === undefined ? 'REMOVED ✓' : `Still exists: ${emp.other_incomes}`);
+        console.log('- pendapatan_lainnya:', emp.pendapatan_lainnya === undefined ? 'REMOVED ✓' : `Still exists: ${emp.pendapatan_lainnya}`);
 
-    console.log('Calling getAllDivisionsPremiTotals with includeVirtual=true...');
-    const result = await summaryService.getAllDivisionsPremiTotals(month, year, true);
-    
-    console.log(`\n✅ Result: ${result.length} divisions\n`);
-    
-    // Check virtual divisions
-    const virtualDivs = ['INF', 'NRS', 'WKS_PG', 'WKS_AR', 'WORKSHOP', 'MILL', 'ARC'];
-    
-    console.log('Virtual Divisions Status:');
-    console.log('─'.repeat(80));
-    
-    for (const div of virtualDivs) {
-        const found = result.find(r => r.division_code === div);
-        if (found) {
-            const hasData = found.total_employees > 0 || found.total_upah_bersih > 0;
-            const status = hasData ? '✅ HAS DATA' : '❌ ZERO DATA';
-            console.log(`${div.padEnd(12)} | emp=${found.total_employees.toString().padStart(4)} | upah=${found.total_upah_bersih.toFixed(0).padStart(12)} | premi=${found.total_premi.toFixed(0).padStart(10)} | ${status}`);
-        } else {
-            console.log(`${div.padEnd(12)} | ❌ NOT FOUND IN RESULT`);
-        }
+        console.log('\nEmployee data sample:');
+        console.log('- emp_code:', emp.emp_code);
+        console.log('- emp_name:', emp.emp_name);
+        console.log('- penghasilan_bruto:', emp.penghasilan_bruto);
+        console.log('- pph21_ter:', emp.pph21_ter);
+        console.log('- status_ptkp:', emp.status_ptkp);
     }
-    
-    console.log('\n' + '─'.repeat(80));
-    console.log(`\nAll divisions (${result.length}):`);
-    console.log(result.map(r => r.division_code).join(', '));
 
-    console.log('\n=== VERIFY COMPLETE ===');
+    process.exit(0);
 }
 
-verifyFix().catch(error => {
-    console.error('\n❌ Fatal error:', error);
-    console.error('Message:', error.message);
-    console.error('Stack:', error.stack);
-    process.exit(1);
-});
+main().catch(console.error);

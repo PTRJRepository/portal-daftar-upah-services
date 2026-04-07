@@ -100,8 +100,9 @@ export class CacheService {
     /**
      * Build cache key for payroll data
      */
-    public buildPayrollKey(gangCode: string, month: number, year: number, divisionCode?: string): string {
-        return `payroll:${gangCode || 'ALL'}:${month}:${year}:${divisionCode || 'ALL'}`;
+    public buildPayrollKey(gangCode: string, month: number, year: number, divisionCode?: string, useHistoryDb: boolean | null = false): string {
+        const historySuffix = useHistoryDb ? ':H' : ':L';
+        return `payroll:${gangCode || 'ALL'}:${month}:${year}:${divisionCode || 'ALL'}${historySuffix}`;
     }
 
     /**

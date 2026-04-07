@@ -485,11 +485,13 @@ const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, formatCurrenc
             <table className="wsp-table">
                 <thead>
                     <tr className="wsp-header-master">
-                        <th style={{ textAlign: 'left', width: '150px', position: 'sticky', left: 0, zIndex: 5 }}>DIVISI</th>
+                        <th style={{ textAlign: 'left', width: '150px', position: 'static', left: 0, zIndex: 5 }}>DIVISI</th>
                         {headers.map(h => (
-                            <th key={h} style={{ minWidth: '100px', fontSize: '0.65rem' }}>{h.replace('PREMI_', '').replace(/_/g, ' ')}</th>
+                            <th key={h} className="th-premi-detail" style={{ minWidth: '60px', fontSize: '0.6rem' }}>
+                                {h.replace('PREMI_', '').replace(/_/g, ' ')}
+                            </th>
                         ))}
-                        <th style={{ minWidth: '120px', background: '#334155', color: 'white' }}>TOTAL PREMI</th>
+                        <th style={{ minWidth: '100px', background: '#334155', color: 'white' }}>TOTAL PREMI</th>
                     </tr>
                 </thead>
                 <tbody>
