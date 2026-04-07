@@ -7,8 +7,7 @@
 @media print {
     /* Hide the header/topbar with admin icon */
     .no-print,
-    header,
-    [class*="header"],
+    header:not(.wsp-letterhead):not(.wsp-report-header),
     [class*="topbar"],
     [class*="navbar"],
     div[style*="z-index: 30"],
@@ -60,9 +59,9 @@
         display: none !important;
     }
 
-    /* Adjust page margins for printing */
+    /* Adjust page margins for printing - increased for better header visibility */
     @page {
-        margin: 1cm;
+        margin: 8mm 10mm 8mm 10mm;
     }
 
     /* Ensure body allows overflow for printing long documents */
@@ -113,5 +112,71 @@
     * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+    }
+
+    /* ==========================================
+       ENSURE REPORT LETTERHEAD IS VISIBLE
+       ========================================== */
+    .wsp-letterhead,
+    .wsp-letterhead * {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    .wsp-logo {
+        display: block !important;
+        visibility: visible !important;
+        width: 55px !important;
+        margin: 0 auto 6px !important;
+    }
+
+    .wsp-company-name {
+        display: block !important;
+        visibility: visible !important;
+        font-size: 19px !important;
+        font-weight: 800 !important;
+        margin: 4px 0 !important;
+        color: #000 !important;
+        text-transform: uppercase !important;
+    }
+
+    .wsp-report-title {
+        display: block !important;
+        visibility: visible !important;
+        font-size: 18px !important;
+        font-weight: 800 !important;
+        margin: 10px 0 6px !important;
+        color: #000 !important;
+        text-transform: uppercase !important;
+    }
+
+    .wsp-report-period {
+        display: block !important;
+        visibility: visible !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        margin: 6px 0 0 !important;
+        color: #333 !important;
+    }
+
+    /* Ensure signature section is visible and not cut off */
+    .wsp-signature-section {
+        display: flex !important;
+        visibility: visible !important;
+        page-break-inside: avoid !important;
+        page-break-before: auto !important;
+        margin-top: 2rem !important;
+        padding-top: 1.5rem !important;
+        border-top: 1.5pt solid #000 !important;
+    }
+
+    .wsp-footer {
+        display: block !important;
+        visibility: visible !important;
+        page-break-inside: avoid !important;
+        margin-top: 1rem !important;
+        padding-top: 0.5rem !important;
+        border-top: 1.5pt solid #000 !important;
     }
 }
