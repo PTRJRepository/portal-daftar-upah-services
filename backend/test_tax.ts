@@ -7,7 +7,7 @@ async function run() {
     
     try {
         console.time("getMonthlyTaxReport");
-        const data = await taxReportService.getMonthlyTaxReport(2026, 3, "IJL", undefined, undefined, false);
+        const data = await taxReportService.getMonthlyTaxReport(2026, 3, "PG2B", undefined, undefined, false);
         console.timeEnd("getMonthlyTaxReport");
         
         console.log(`Fetched ${data.employees.length} employees`);
@@ -17,7 +17,7 @@ async function run() {
         
         console.log("Generating excel...");
         console.time("generateMonthlyTaxExcel");
-        const buffer = await generateMonthlyTaxExcel(data, 2026, 3, "IJL", "ALL", data.premiKeys);
+        const buffer = await generateMonthlyTaxExcel(data, 2026, 3, "PG2B", "ALL", data.premiKeys);
         console.timeEnd("generateMonthlyTaxExcel");
         
         console.log(`Success! Buffer size: ${buffer.length}`);
