@@ -980,7 +980,7 @@
     /* Page setup - Landscape for wide tables */
     @page {
         size: A4 landscape;
-        margin: 5mm;
+        margin: 8mm 10mm 8mm 10mm;
     }
 
     /* Hide all interactive elements */
@@ -1042,72 +1042,79 @@
         margin: 0 !important;
         width: 100% !important;
         max-width: 100% !important;
+        page-break-inside: auto !important;
     }
 
-    /* Letterhead - Professional header */
+    /* Letterhead - Professional centered header */
     .wsp-letterhead {
         text-align: center !important;
-        margin-bottom: 0.5rem !important;
-        padding-bottom: 0.4rem !important;
-        border-bottom: 2px solid #000 !important;
+        margin: 0 auto 1rem auto !important;
+        padding: 0.6rem 0 0.8rem 0 !important;
+        border-bottom: 2.5pt solid #000 !important;
         page-break-after: avoid !important;
+        page-break-inside: avoid !important;
+        width: 100% !important;
     }
 
     .wsp-logo {
-        width: 45px !important;
+        width: 50px !important;
         height: auto !important;
-        margin: 0 auto 0.2rem !important;
+        margin: 0 auto 0.3rem auto !important;
         display: block !important;
     }
 
     .wsp-company-name {
-        font-size: 1.2rem !important;
+        font-size: 1.3rem !important;
         font-weight: 800 !important;
-        margin: 0.1rem 0 !important;
+        margin: 0.2rem 0 !important;
         color: #000 !important;
-        letter-spacing: 0.5px !important;
+        letter-spacing: 0.8px !important;
+        text-transform: uppercase !important;
     }
 
     .wsp-report-title {
-        font-size: 1.1rem !important;
-        font-weight: 700 !important;
-        margin: 0.3rem 0 !important;
+        font-size: 1.2rem !important;
+        font-weight: 800 !important;
+        margin: 0.5rem 0 0.3rem 0 !important;
         color: #000 !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.5px !important;
+        letter-spacing: 1px !important;
         display: block !important;
         visibility: visible !important;
     }
 
     .wsp-report-title.wsp-report-title-main {
-        font-size: 1.3rem !important;
-        font-weight: 800 !important;
-        margin: 0.4rem 0 !important;
+        font-size: 1.4rem !important;
+        font-weight: 900 !important;
+        margin: 0.5rem 0 0.3rem 0 !important;
     }
 
     .wsp-report-period {
-        font-size: 0.8rem !important;
+        font-size: 0.85rem !important;
         font-weight: 600 !important;
-        margin: 0.1rem 0 0 !important;
+        margin: 0.3rem 0 0 !important;
         color: #333 !important;
+        padding: 0.2rem 0 !important;
     }
 
-    /* KPI Cards - Compact 4-column grid */
+    /* KPI Cards - Compact professional grid */
     .wsp-kpi-grid {
         display: grid !important;
         grid-template-columns: repeat(4, 1fr) !important;
-        gap: 0.4rem !important;
-        margin-bottom: 0.6rem !important;
+        gap: 0.5rem !important;
+        margin: 0.8rem 0 1rem 0 !important;
+        page-break-inside: avoid !important;
     }
 
     .wsp-kpi-grid.comparison-grid {
         grid-template-columns: repeat(4, 1fr) !important;
-        gap: 0.4rem !important;
+        gap: 0.5rem !important;
+        margin: 0.8rem 0 1rem 0 !important;
     }
 
     .wsp-kpi-card {
-        padding: 0.35rem !important;
-        border: 1px solid #000 !important;
+        padding: 0.4rem !important;
+        border: 1.5pt solid #000 !important;
         min-height: 60px !important;
         display: flex !important;
         flex-direction: column !important;
@@ -1186,19 +1193,21 @@
         margin-bottom: 0.1rem !important;
     }
 
-    /* Table - Optimized for print */
+    /* Table - Optimized for print, prevent cutoff */
     .wsp-table-wrapper {
         overflow: visible !important;
-        border: 1px solid #000 !important;
-        margin-bottom: 0.5rem !important;
+        border: 1.5pt solid #000 !important;
+        margin: 1rem 0 1.5rem 0 !important;
         width: 100% !important;
+        page-break-inside: avoid !important;
     }
 
     .wsp-table {
         width: 100% !important;
         table-layout: auto !important;
         border-collapse: collapse !important;
-        font-size: 8.5pt !important;
+        font-size: 8pt !important;
+        page-break-inside: auto !important;
     }
 
     /* Comparison table - specific compact styles */
@@ -1424,12 +1433,30 @@
 
     /* Footer info */
     .wsp-footer {
-        margin-top: 0.5rem !important;
-        padding-top: 0.3rem !important;
-        border-top: 1px solid #000 !important;
+        margin-top: 1rem !important;
+        padding-top: 0.5rem !important;
+        border-top: 1.5pt solid #000 !important;
         text-align: center !important;
-        font-size: 0.6rem !important;
-        color: #666 !important;
+        font-size: 0.7rem !important;
+        color: #333 !important;
+        page-break-inside: avoid !important;
+    }
+
+    /* Signature section - ensure not cut off */
+    .wsp-signature-section {
+        display: flex !important;
+        justify-content: space-between !important;
+        margin-top: 2rem !important;
+        padding-top: 1.5rem !important;
+        border-top: 1.5pt solid #000 !important;
+        page-break-inside: avoid !important;
+        page-break-before: auto !important;
+    }
+
+    .wsp-signature-block {
+        text-align: center !important;
+        flex: 1 !important;
+        min-width: 150px !important;
     }
 
     /* Prevent orphans */
