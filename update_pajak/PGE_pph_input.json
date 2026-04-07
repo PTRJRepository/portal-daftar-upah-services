@@ -1,0 +1,17 @@
+{
+  "divisi": "PGE",
+  "tipe": "pph_input",
+  "periode": {
+    "bulan": 3,
+    "tahun": 2026
+  },
+  "generated_at": "2026-04-06T14:58:39.122Z",
+  "data_source": "none",
+  "totals": {
+    "total_pph21_input": 0,
+    "total_pph21_ter": 0,
+    "total_selisih": 0
+  },
+  "employee_count": 0,
+  "employees": {}
+}

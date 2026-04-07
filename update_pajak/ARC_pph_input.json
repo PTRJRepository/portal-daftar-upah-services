@@ -1,0 +1,1428 @@
+{
+  "divisi": "ARC",
+  "tipe": "pph_input",
+  "periode": {
+    "bulan": 3,
+    "tahun": 2026
+  },
+  "generated_at": "2026-04-06T14:58:39.122Z",
+  "data_source": "history",
+  "totals": {
+    "total_pph21_input": 0,
+    "total_pph21_ter": 24150367,
+    "total_selisih": -24150367
+  },
+  "employee_count": 141,
+  "employees": {
+    "J0233": {
+      "emp_code": "J0233",
+      "emp_name": "ASEP",
+      "nik": "3205361507850007",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 511491,
+      "selisih": -511491
+    },
+    "J0239": {
+      "emp_code": "J0239",
+      "emp_name": "DANULI",
+      "nik": "1905361602890002",
+      "gang_code": "J1H",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 328857,
+      "selisih": -328857
+    },
+    "J0249": {
+      "emp_code": "J0249",
+      "emp_name": "ERWANDI",
+      "nik": "1902052806890002",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 89535,
+      "selisih": -89535
+    },
+    "J0324": {
+      "emp_code": "J0324",
+      "emp_name": "MAMAT",
+      "nik": "3205360205710001",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 138864,
+      "selisih": -138864
+    },
+    "J0406": {
+      "emp_code": "J0406",
+      "emp_name": "ROTAMA LAIA",
+      "nik": "1214082910740002",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 52074,
+      "selisih": -52074
+    },
+    "J0407": {
+      "emp_code": "J0407",
+      "emp_name": "BALAZIGO NDRURU",
+      "nik": "1214080107820016",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 52183,
+      "selisih": -52183
+    },
+    "J0509": {
+      "emp_code": "J0509",
+      "emp_name": "MUNAWIR",
+      "nik": "5203121612890001",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 88268,
+      "selisih": -88268
+    },
+    "J0539": {
+      "emp_code": "J0539",
+      "emp_name": "MUSTAMIN",
+      "nik": "5203013012750002",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 150191,
+      "selisih": -150191
+    },
+    "J0548": {
+      "emp_code": "J0548",
+      "emp_name": "MUSTAFA",
+      "nik": "5203012004850003",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 504132,
+      "selisih": -504132
+    },
+    "J0587": {
+      "emp_code": "J0587",
+      "emp_name": "ADE MUSTOFA",
+      "nik": "3205363011940001",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 87271,
+      "selisih": -87271
+    },
+    "J0623": {
+      "emp_code": "J0623",
+      "emp_name": "SUHENDI",
+      "nik": "3205301104010003",
+      "gang_code": "J1H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 162209,
+      "selisih": -162209
+    },
+    "J0637": {
+      "emp_code": "J0637",
+      "emp_name": "MAHRIP",
+      "nik": "5203013112760087",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 155148,
+      "selisih": -155148
+    },
+    "J0685": {
+      "emp_code": "J0685",
+      "emp_name": "SOLEH",
+      "nik": "3205361006800006",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 86017,
+      "selisih": -86017
+    },
+    "J0709": {
+      "emp_code": "J0709",
+      "emp_name": "HASAN BASRI",
+      "nik": "5202030107910130",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 84857,
+      "selisih": -84857
+    },
+    "J0727": {
+      "emp_code": "J0727",
+      "emp_name": "SUYATMAN",
+      "nik": "5203083112870297",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 159342,
+      "selisih": -159342
+    },
+    "J0739": {
+      "emp_code": "J0739",
+      "emp_name": "SUKANDAR",
+      "nik": "5203013112800120",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 89664,
+      "selisih": -89664
+    },
+    "J0743": {
+      "emp_code": "J0743",
+      "emp_name": "ISMAIL",
+      "nik": "1906011304960006",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 154957,
+      "selisih": -154957
+    },
+    "J0759": {
+      "emp_code": "J0759",
+      "emp_name": "SUKRI",
+      "nik": "5203013005930001",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 146415,
+      "selisih": -146415
+    },
+    "J0762": {
+      "emp_code": "J0762",
+      "emp_name": "SUANDI",
+      "nik": "5203010107840408",
+      "gang_code": "J1H",
+      "status_ptkp": "K/3",
+      "pph21_input": 0,
+      "pph21_ter": 114791,
+      "selisih": -114791
+    },
+    "J0768": {
+      "emp_code": "J0768",
+      "emp_name": "HALIMI",
+      "nik": "1902011205780006",
+      "gang_code": "J1H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 326001,
+      "selisih": -326001
+    },
+    "J0769": {
+      "emp_code": "J0769",
+      "emp_name": "SUDIRMAN",
+      "nik": "1902022305830002",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 138529,
+      "selisih": -138529
+    },
+    "J0798": {
+      "emp_code": "J0798",
+      "emp_name": "SAPARWADI",
+      "nik": "5203083112820556",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 155752,
+      "selisih": -155752
+    },
+    "J0800": {
+      "emp_code": "J0800",
+      "emp_name": "MUH. EFENDI PERDANA",
+      "nik": "5203193112920327",
+      "gang_code": "J1H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 692080,
+      "selisih": -692080
+    },
+    "J0805": {
+      "emp_code": "J0805",
+      "emp_name": "SUMARNA HADI",
+      "nik": "5203017112000051",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 33784,
+      "selisih": -33784
+    },
+    "J0806": {
+      "emp_code": "J0806",
+      "emp_name": "ZAINUDIN",
+      "nik": "5203013112970021",
+      "gang_code": "J1H",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 388739,
+      "selisih": -388739
+    },
+    "J0812": {
+      "emp_code": "J0812",
+      "emp_name": "SURYA RAMADHAN PUTRA HARTONO",
+      "nik": "1902010312000003",
+      "gang_code": "J1H",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 116807,
+      "selisih": -116807
+    },
+    "J0816": {
+      "emp_code": "J0816",
+      "emp_name": "ARIEL SAPUTRA",
+      "nik": "1906020806050001",
+      "gang_code": "J1H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 119058,
+      "selisih": -119058
+    },
+    "J0818": {
+      "emp_code": "J0818",
+      "emp_name": "ENCENG ROIS",
+      "nik": "3205360705070003",
+      "gang_code": "J1H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 88153,
+      "selisih": -88153
+    },
+    "J0820": {
+      "emp_code": "J0820",
+      "emp_name": "BASARUDDIN",
+      "nik": "5203200107030097",
+      "gang_code": "J1H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 152829,
+      "selisih": -152829
+    },
+    "J0833": {
+      "emp_code": "J0833",
+      "emp_name": "MUHAMAD ALFIAN RAMADHAN",
+      "nik": "3172040610050002",
+      "gang_code": "J1H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 86404,
+      "selisih": -86404
+    },
+    "J0843": {
+      "emp_code": "J0843",
+      "emp_name": "MAHDI",
+      "nik": "5202020202920001",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 90532,
+      "selisih": -90532
+    },
+    "J0844": {
+      "emp_code": "J0844",
+      "emp_name": "SUHAIRI",
+      "nik": "5202120908850001",
+      "gang_code": "J1H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 89400,
+      "selisih": -89400
+    },
+    "J0253": {
+      "emp_code": "J0253",
+      "emp_name": "BASTINO",
+      "nik": "1906022506860003",
+      "gang_code": "J1M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 150196,
+      "selisih": -150196
+    },
+    "J0298": {
+      "emp_code": "J0298",
+      "emp_name": "HASDIANTO",
+      "nik": "1906060202900001",
+      "gang_code": "J1M",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 151265,
+      "selisih": -151265
+    },
+    "J0353": {
+      "emp_code": "J0353",
+      "emp_name": "ANITA YUSTI",
+      "nik": "1906025604990001",
+      "gang_code": "J1M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 126465,
+      "selisih": -126465
+    },
+    "J0393": {
+      "emp_code": "J0393",
+      "emp_name": "MELINDA SUKMA",
+      "nik": "5203207103940003",
+      "gang_code": "J1M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 150151,
+      "selisih": -150151
+    },
+    "J0660": {
+      "emp_code": "J0660",
+      "emp_name": "MEGA MUSTIKA",
+      "nik": "1906021707960005",
+      "gang_code": "J1M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 83852,
+      "selisih": -83852
+    },
+    "J0821": {
+      "emp_code": "J0821",
+      "emp_name": "MUHAMMAD NURUL YAQIN",
+      "nik": "1906021009050003",
+      "gang_code": "J1M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 85591,
+      "selisih": -85591
+    },
+    "J0822": {
+      "emp_code": "J0822",
+      "emp_name": "DAAN SAPUTRA HIDAYAT",
+      "nik": "1603062805040003",
+      "gang_code": "J1M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 86612,
+      "selisih": -86612
+    },
+    "J0825": {
+      "emp_code": "J0825",
+      "emp_name": "HELDI NUGRAHA",
+      "nik": "1906022203040001",
+      "gang_code": "J1M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 32981,
+      "selisih": -32981
+    },
+    "J0826": {
+      "emp_code": "J0826",
+      "emp_name": "RIKO DUWI CANDRA",
+      "nik": "1906021805990002",
+      "gang_code": "J1M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 64858,
+      "selisih": -64858
+    },
+    "J0827": {
+      "emp_code": "J0827",
+      "emp_name": "HENDRY PRIRANTO",
+      "nik": "1906021507980001",
+      "gang_code": "J1M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 33564,
+      "selisih": -33564
+    },
+    "J0828": {
+      "emp_code": "J0828",
+      "emp_name": "LEO LINARDI",
+      "nik": "1902052005030002",
+      "gang_code": "J1M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 33564,
+      "selisih": -33564
+    },
+    "J0255": {
+      "emp_code": "J0255",
+      "emp_name": "EDI GUNANTO",
+      "nik": "1902052702730001",
+      "gang_code": "J1T",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 261137,
+      "selisih": -261137
+    },
+    "J0258": {
+      "emp_code": "J0258",
+      "emp_name": "AGUSTIAN",
+      "nik": "1902010208980003",
+      "gang_code": "J1T",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 498116,
+      "selisih": -498116
+    },
+    "J0259": {
+      "emp_code": "J0259",
+      "emp_name": "ADE FIRMANSYAH",
+      "nik": "1906041206940002",
+      "gang_code": "J1T",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 88175,
+      "selisih": -88175
+    },
+    "J0498": {
+      "emp_code": "J0498",
+      "emp_name": "HARYULI",
+      "nik": "1902051303800002",
+      "gang_code": "J1T",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 155217,
+      "selisih": -155217
+    },
+    "J0744": {
+      "emp_code": "J0744",
+      "emp_name": "AGUS YANTO",
+      "nik": "1906021404810003",
+      "gang_code": "J1T",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 157733,
+      "selisih": -157733
+    },
+    "J0773": {
+      "emp_code": "J0773",
+      "emp_name": "TIO SAPUTRA",
+      "nik": "1906033107990002",
+      "gang_code": "J1T",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 353717,
+      "selisih": -353717
+    },
+    "J0341": {
+      "emp_code": "J0341",
+      "emp_name": "MELIUS LAOLI",
+      "nik": "1204051510920001",
+      "gang_code": "J2H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 89362,
+      "selisih": -89362
+    },
+    "J0471": {
+      "emp_code": "J0471",
+      "emp_name": "JURI",
+      "nik": "1906030106870001",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 692944,
+      "selisih": -692944
+    },
+    "J0496": {
+      "emp_code": "J0496",
+      "emp_name": "MAGEL HAENZ SINAGA",
+      "nik": "1217032105020001",
+      "gang_code": "J2H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 13576,
+      "selisih": -13576
+    },
+    "J0571": {
+      "emp_code": "J0571",
+      "emp_name": "TAMRIN",
+      "nik": "6302200107710028",
+      "gang_code": "J2H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 151072,
+      "selisih": -151072
+    },
+    "J0656": {
+      "emp_code": "J0656",
+      "emp_name": "FERIANTO NDRURU",
+      "nik": "1214010406970001",
+      "gang_code": "J2H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0669": {
+      "emp_code": "J0669",
+      "emp_name": "GAAZARO LAIA",
+      "nik": "1214011503750003",
+      "gang_code": "J2H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0677": {
+      "emp_code": "J0677",
+      "emp_name": "SAHNAN",
+      "nik": "5202023012830003",
+      "gang_code": "J2H",
+      "status_ptkp": "K/3",
+      "pph21_input": 0,
+      "pph21_ter": 160067,
+      "selisih": -160067
+    },
+    "J0705": {
+      "emp_code": "J0705",
+      "emp_name": "ENDANG SAPUTRA",
+      "nik": "1906022111950007",
+      "gang_code": "J2H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 141000,
+      "selisih": -141000
+    },
+    "J0707": {
+      "emp_code": "J0707",
+      "emp_name": "MUHAMMAD NASIR",
+      "nik": "520301101780002",
+      "gang_code": "J2H",
+      "status_ptkp": "K/3",
+      "pph21_input": 0,
+      "pph21_ter": 111215,
+      "selisih": -111215
+    },
+    "J0715": {
+      "emp_code": "J0715",
+      "emp_name": "MUSTIADI",
+      "nik": "5203013112860192",
+      "gang_code": "J2H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 154827,
+      "selisih": -154827
+    },
+    "J0718": {
+      "emp_code": "J0718",
+      "emp_name": "SUWELO",
+      "nik": "3304142312960003",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 356539,
+      "selisih": -356539
+    },
+    "J0728": {
+      "emp_code": "J0728",
+      "emp_name": "PANGIHUTAN SINAGA",
+      "nik": "1217030309040001",
+      "gang_code": "J2H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0729": {
+      "emp_code": "J0729",
+      "emp_name": "MIRAYANG",
+      "nik": "5203010107800809",
+      "gang_code": "J2H",
+      "status_ptkp": "K/3",
+      "pph21_input": 0,
+      "pph21_ter": 163785,
+      "selisih": -163785
+    },
+    "J0731": {
+      "emp_code": "J0731",
+      "emp_name": "ALFREN MARTUPA HALOMOAN PURBA",
+      "nik": "1212030603040003",
+      "gang_code": "J2H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0732": {
+      "emp_code": "J0732",
+      "emp_name": "MIKO ALPIAN",
+      "nik": "1902022306030001",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 366762,
+      "selisih": -366762
+    },
+    "J0733": {
+      "emp_code": "J0733",
+      "emp_name": "SUMARDI",
+      "nik": "1902050411980002",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 156124,
+      "selisih": -156124
+    },
+    "J0737": {
+      "emp_code": "J0737",
+      "emp_name": "JULIADY",
+      "nik": "1906022407950003",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 146464,
+      "selisih": -146464
+    },
+    "J0748": {
+      "emp_code": "J0748",
+      "emp_name": "SUDARSONO",
+      "nik": "1902051711890003",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 149172,
+      "selisih": -149172
+    },
+    "J0764": {
+      "emp_code": "J0764",
+      "emp_name": "MULYANTO",
+      "nik": "3304031510890003",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 221404,
+      "selisih": -221404
+    },
+    "J0766": {
+      "emp_code": "J0766",
+      "emp_name": "MUHAMMAD ROZFAN",
+      "nik": "1902012605890005",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 154409,
+      "selisih": -154409
+    },
+    "J0772": {
+      "emp_code": "J0772",
+      "emp_name": "RASLAM",
+      "nik": "3304081712860002",
+      "gang_code": "J2H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 141054,
+      "selisih": -141054
+    },
+    "J0778": {
+      "emp_code": "J0778",
+      "emp_name": "AKSAMUDIN",
+      "nik": "5202090107770551",
+      "gang_code": "J2H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 143861,
+      "selisih": -143861
+    },
+    "J0790": {
+      "emp_code": "J0790",
+      "emp_name": "AHMAD YANI",
+      "nik": "5203193112920174",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 88524,
+      "selisih": -88524
+    },
+    "J0808": {
+      "emp_code": "J0808",
+      "emp_name": "MORIS DULANLI SINAGA",
+      "nik": "1902012905020002",
+      "gang_code": "J2H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0830": {
+      "emp_code": "J0830",
+      "emp_name": "RAJAB",
+      "nik": "5203200107950586",
+      "gang_code": "J2H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 93095,
+      "selisih": -93095
+    },
+    "J0839": {
+      "emp_code": "J0839",
+      "emp_name": "RENDI ASDIYANTO",
+      "nik": "1906031006030003",
+      "gang_code": "J2H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 33957,
+      "selisih": -33957
+    },
+    "J0840": {
+      "emp_code": "J0840",
+      "emp_name": "HERIYANDI",
+      "nik": "1906022402020003",
+      "gang_code": "J2H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0304": {
+      "emp_code": "J0304",
+      "emp_name": "DEVI MONASARI",
+      "nik": "1902056809910002",
+      "gang_code": "J2M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 150581,
+      "selisih": -150581
+    },
+    "J0472": {
+      "emp_code": "J0472",
+      "emp_name": "HARTONO",
+      "nik": "1902051506830003",
+      "gang_code": "J2M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 143211,
+      "selisih": -143211
+    },
+    "J0779": {
+      "emp_code": "J0779",
+      "emp_name": "TRISSUNANO",
+      "nik": "1906041006850002",
+      "gang_code": "J2M",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 86874,
+      "selisih": -86874
+    },
+    "J0794": {
+      "emp_code": "J0794",
+      "emp_name": "SUMARLIA",
+      "nik": "1906066404810001",
+      "gang_code": "J2M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 87015,
+      "selisih": -87015
+    },
+    "J0795": {
+      "emp_code": "J0795",
+      "emp_name": "SYAHMILAN",
+      "nik": "1906021306730001",
+      "gang_code": "J2M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 87449,
+      "selisih": -87449
+    },
+    "J0336": {
+      "emp_code": "J0336",
+      "emp_name": "SAUTA ARINO",
+      "nik": "1906021103820005",
+      "gang_code": "J2T",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 228382,
+      "selisih": -228382
+    },
+    "J0371": {
+      "emp_code": "J0371",
+      "emp_name": "TRI ASYUDI",
+      "nik": "1906023001950002",
+      "gang_code": "J2T",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 158383,
+      "selisih": -158383
+    },
+    "J0372": {
+      "emp_code": "J0372",
+      "emp_name": "FERY FADLI",
+      "nik": "1906020903940004",
+      "gang_code": "J2T",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 348510,
+      "selisih": -348510
+    },
+    "J0553": {
+      "emp_code": "J0553",
+      "emp_name": "YUDI",
+      "nik": "1906021009870002",
+      "gang_code": "J2T",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 640838,
+      "selisih": -640838
+    },
+    "J0554": {
+      "emp_code": "J0554",
+      "emp_name": "HERMAN",
+      "nik": "1906021006770006",
+      "gang_code": "J2T",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 229607,
+      "selisih": -229607
+    },
+    "J0557": {
+      "emp_code": "J0557",
+      "emp_name": "YURDIANTO",
+      "nik": "1906021402950002",
+      "gang_code": "J2T",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 509317,
+      "selisih": -509317
+    },
+    "J0305": {
+      "emp_code": "J0305",
+      "emp_name": "RUMADI",
+      "nik": "1906061807910001",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 141763,
+      "selisih": -141763
+    },
+    "J0363": {
+      "emp_code": "J0363",
+      "emp_name": "ERVENDI",
+      "nik": "1906030411940004",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 289256,
+      "selisih": -289256
+    },
+    "J0429": {
+      "emp_code": "J0429",
+      "emp_name": "JEFRIMAN NDRURU",
+      "nik": "1214081902910004",
+      "gang_code": "J3H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 78334,
+      "selisih": -78334
+    },
+    "J0434": {
+      "emp_code": "J0434",
+      "emp_name": "SANDI",
+      "nik": "1906032111930001",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 218468,
+      "selisih": -218468
+    },
+    "J0437": {
+      "emp_code": "J0437",
+      "emp_name": "SAIR",
+      "nik": "3216131404810002",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 156050,
+      "selisih": -156050
+    },
+    "J0457": {
+      "emp_code": "J0457",
+      "emp_name": "JULI MARWANDI",
+      "nik": "1906021107790004",
+      "gang_code": "J3H",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 266819,
+      "selisih": -266819
+    },
+    "J0486": {
+      "emp_code": "J0486",
+      "emp_name": "LALA",
+      "nik": "1902011612020009",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 143470,
+      "selisih": -143470
+    },
+    "J0520": {
+      "emp_code": "J0520",
+      "emp_name": "DEDY SUSANTO",
+      "nik": "1906030201890002",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 368792,
+      "selisih": -368792
+    },
+    "J0522": {
+      "emp_code": "J0522",
+      "emp_name": "DARMAWAN",
+      "nik": "1902010401890003",
+      "gang_code": "J3H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 286959,
+      "selisih": -286959
+    },
+    "J0575": {
+      "emp_code": "J0575",
+      "emp_name": "SAHIMAN",
+      "nik": "520301703900002",
+      "gang_code": "J3H",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 671355,
+      "selisih": -671355
+    },
+    "J0577": {
+      "emp_code": "J0577",
+      "emp_name": "ATRAH",
+      "nik": "5203013112740228",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 84848,
+      "selisih": -84848
+    },
+    "J0618": {
+      "emp_code": "J0618",
+      "emp_name": "SUNAWANDI",
+      "nik": "1906031807960002",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 153457,
+      "selisih": -153457
+    },
+    "J0736": {
+      "emp_code": "J0736",
+      "emp_name": "AZI SAPUTRA",
+      "nik": "1906030802020002",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 156714,
+      "selisih": -156714
+    },
+    "J0740": {
+      "emp_code": "J0740",
+      "emp_name": "RONI",
+      "nik": "1906031111940003",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 531968,
+      "selisih": -531968
+    },
+    "J0741": {
+      "emp_code": "J0741",
+      "emp_name": "RICCY RICARDO",
+      "nik": "1906022310030001",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 152400,
+      "selisih": -152400
+    },
+    "J0760": {
+      "emp_code": "J0760",
+      "emp_name": "SATRIA JUNANDA",
+      "nik": "1906022301040005",
+      "gang_code": "J3H",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 154446,
+      "selisih": -154446
+    },
+    "J0761": {
+      "emp_code": "J0761",
+      "emp_name": "SANDI DARMAWAN",
+      "nik": "1906022009010001",
+      "gang_code": "J3H",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 150961,
+      "selisih": -150961
+    },
+    "J0781": {
+      "emp_code": "J0781",
+      "emp_name": "TEGUH PANGESTU",
+      "nik": "1902052607020001",
+      "gang_code": "J3H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 161421,
+      "selisih": -161421
+    },
+    "J0841": {
+      "emp_code": "J0841",
+      "emp_name": "MARLAN HERTANTO",
+      "nik": "1906031610880001",
+      "gang_code": "J3H",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 114626,
+      "selisih": -114626
+    },
+    "J0845": {
+      "emp_code": "J0845",
+      "emp_name": "RIYAN",
+      "nik": "1906040606960006",
+      "gang_code": "J3H",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 85155,
+      "selisih": -85155
+    },
+    "J0264": {
+      "emp_code": "J0264",
+      "emp_name": "IRIANDI",
+      "nik": "1906021102940002",
+      "gang_code": "J3M",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 151892,
+      "selisih": -151892
+    },
+    "J0266": {
+      "emp_code": "J0266",
+      "emp_name": "SELVY MEILITA",
+      "nik": "1902054505980002",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 391803,
+      "selisih": -391803
+    },
+    "J0288": {
+      "emp_code": "J0288",
+      "emp_name": "SUJUNO",
+      "nik": "1906023012790002",
+      "gang_code": "J3M",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 149740,
+      "selisih": -149740
+    },
+    "J0296": {
+      "emp_code": "J0296",
+      "emp_name": "JUMIDI",
+      "nik": "1906061305870001",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 155927,
+      "selisih": -155927
+    },
+    "J0300": {
+      "emp_code": "J0300",
+      "emp_name": "HERMAN",
+      "nik": "1906022209890002",
+      "gang_code": "J3M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 85634,
+      "selisih": -85634
+    },
+    "J0327": {
+      "emp_code": "J0327",
+      "emp_name": "RUNINGSIH",
+      "nik": "3172045407860001",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 126650,
+      "selisih": -126650
+    },
+    "J0328": {
+      "emp_code": "J0328",
+      "emp_name": "SUKARTINI",
+      "nik": "1902055004780001",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 127018,
+      "selisih": -127018
+    },
+    "J0330": {
+      "emp_code": "J0330",
+      "emp_name": "ERNAWATI",
+      "nik": "1219036103830007",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 126650,
+      "selisih": -126650
+    },
+    "J0424": {
+      "emp_code": "J0424",
+      "emp_name": "ERWANDI",
+      "nik": "1906022404810002",
+      "gang_code": "J3M",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 121187,
+      "selisih": -121187
+    },
+    "J0436": {
+      "emp_code": "J0436",
+      "emp_name": "MARTONO",
+      "nik": "1906030210930002",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 159554,
+      "selisih": -159554
+    },
+    "J0658": {
+      "emp_code": "J0658",
+      "emp_name": "SUDIANSYAH",
+      "nik": "1902010909970003",
+      "gang_code": "J3M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 138065,
+      "selisih": -138065
+    },
+    "J0659": {
+      "emp_code": "J0659",
+      "emp_name": "RIA ADINATA",
+      "nik": "1906062804950001",
+      "gang_code": "J3M",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 85089,
+      "selisih": -85089
+    },
+    "J0807": {
+      "emp_code": "J0807",
+      "emp_name": "FERDIANSYAH",
+      "nik": "1906032408050001",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 162108,
+      "selisih": -162108
+    },
+    "J0823": {
+      "emp_code": "J0823",
+      "emp_name": "FERI NOVIADI",
+      "nik": "1906020201020003",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 65208,
+      "selisih": -65208
+    },
+    "J0846": {
+      "emp_code": "J0846",
+      "emp_name": "RUDIANSYAH",
+      "nik": "1906022505050001",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 13608,
+      "selisih": -13608
+    },
+    "J0847": {
+      "emp_code": "J0847",
+      "emp_name": "PIRDAUS",
+      "nik": "1906010910050001",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 13608,
+      "selisih": -13608
+    },
+    "J0848": {
+      "emp_code": "J0848",
+      "emp_name": "FRIMARTY MEGA SARI",
+      "nik": "1304124202890005",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0849": {
+      "emp_code": "J0849",
+      "emp_name": "NURANI",
+      "nik": "1902015506780006",
+      "gang_code": "J3M",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 161920,
+      "selisih": -161920
+    },
+    "J0858": {
+      "emp_code": "J0858",
+      "emp_name": "SADINO",
+      "nik": "1906030608820001",
+      "gang_code": "J3P",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0260": {
+      "emp_code": "J0260",
+      "emp_name": "AZWIRADI",
+      "nik": "1902052708770002",
+      "gang_code": "J3T",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 350524,
+      "selisih": -350524
+    },
+    "J0306": {
+      "emp_code": "J0306",
+      "emp_name": "ADIANSYAH",
+      "nik": "1902051004940001",
+      "gang_code": "J3T",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 322075,
+      "selisih": -322075
+    },
+    "J0423": {
+      "emp_code": "J0423",
+      "emp_name": "RUDIANSYAH",
+      "nik": "1906020502940002",
+      "gang_code": "J3T",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 519811,
+      "selisih": -519811
+    },
+    "J0426": {
+      "emp_code": "J0426",
+      "emp_name": "LINTONG P PAKPAHAN",
+      "nik": "1902010410800004",
+      "gang_code": "J3T",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0428": {
+      "emp_code": "J0428",
+      "emp_name": "YUPIANTO",
+      "nik": "1906011104930003",
+      "gang_code": "J3T",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 150786,
+      "selisih": -150786
+    },
+    "J0560": {
+      "emp_code": "J0560",
+      "emp_name": "EKO WARYANTO",
+      "nik": "1902050901940005",
+      "gang_code": "J3T",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 538238,
+      "selisih": -538238
+    },
+    "J0774": {
+      "emp_code": "J0774",
+      "emp_name": "FERI",
+      "nik": "1906030606900001",
+      "gang_code": "J3T",
+      "status_ptkp": "K/2",
+      "pph21_input": 0,
+      "pph21_ter": 156021,
+      "selisih": -156021
+    },
+    "J0784": {
+      "emp_code": "J0784",
+      "emp_name": "DWI ARI PANGGA",
+      "nik": "1906012604910002",
+      "gang_code": "J3T",
+      "status_ptkp": "K/0",
+      "pph21_input": 0,
+      "pph21_ter": 677023,
+      "selisih": -677023
+    },
+    "J0786": {
+      "emp_code": "J0786",
+      "emp_name": "MULYADI",
+      "nik": "1902051508810001",
+      "gang_code": "J3T",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 286058,
+      "selisih": -286058
+    },
+    "J0850": {
+      "emp_code": "J0850",
+      "emp_name": "MERRY SRI HANDAYANI",
+      "nik": "1902044710970002",
+      "gang_code": "J3U",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0852": {
+      "emp_code": "J0852",
+      "emp_name": "EGI LESTARI",
+      "nik": "1906026611980002",
+      "gang_code": "J3U",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0853": {
+      "emp_code": "J0853",
+      "emp_name": "ASTRIANI",
+      "nik": "1906024605990002",
+      "gang_code": "J3U",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0854": {
+      "emp_code": "J0854",
+      "emp_name": "FITRI INDRIATI",
+      "nik": "1906025904890002",
+      "gang_code": "J3U",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0855": {
+      "emp_code": "J0855",
+      "emp_name": "IRA SUSANTI",
+      "nik": "1906025906000004",
+      "gang_code": "J3U",
+      "status_ptkp": "TK/0",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    },
+    "J0856": {
+      "emp_code": "J0856",
+      "emp_name": "RIKI ANDI PRANATA",
+      "nik": "1902040303980006",
+      "gang_code": "J3U",
+      "status_ptkp": "K/1",
+      "pph21_input": 0,
+      "pph21_ter": 0,
+      "selisih": 0
+    }
+  }
+}

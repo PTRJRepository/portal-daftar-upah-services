@@ -1,0 +1,539 @@
+{
+  "periode": {
+    "bulan": 3,
+    "tahun": 2026
+  },
+  "generated_at": "2026-04-06T14:58:39.122Z",
+  "divisions": {
+    "PG1A": {
+      "employee_count": 120,
+      "total_pph21_ter": 22578281,
+      "total_pph21_input": 0,
+      "total_selisih": -22578281,
+      "file_ter": "PG1A_pajak.json",
+      "file_input": "PG1A_pph_input.json",
+      "data_source": "history",
+      "gangs": {
+        "A1M": {
+          "emp_count": 21,
+          "ter": 2690966,
+          "input": 0
+        },
+        "A1H": {
+          "emp_count": 25,
+          "ter": 5799336,
+          "input": 0
+        },
+        "A1T": {
+          "emp_count": 4,
+          "ter": 616726,
+          "input": 0
+        },
+        "A2M": {
+          "emp_count": 20,
+          "ter": 2712354,
+          "input": 0
+        },
+        "A2T": {
+          "emp_count": 2,
+          "ter": 380104,
+          "input": 0
+        },
+        "A3H": {
+          "emp_count": 18,
+          "ter": 5002618,
+          "input": 0
+        },
+        "A3M": {
+          "emp_count": 22,
+          "ter": 3163061,
+          "input": 0
+        },
+        "A3T": {
+          "emp_count": 8,
+          "ter": 2213116,
+          "input": 0
+        }
+      }
+    },
+    "PG1B": {
+      "employee_count": 165,
+      "total_pph21_ter": 17852260,
+      "total_pph21_input": 0,
+      "total_selisih": -17852260,
+      "file_ter": "PG1B_pajak.json",
+      "file_input": "PG1B_pph_input.json",
+      "data_source": "history",
+      "gangs": {
+        "B1H": {
+          "emp_count": 17,
+          "ter": 2008365,
+          "input": 0
+        },
+        "B1M": {
+          "emp_count": 55,
+          "ter": 6746360,
+          "input": 0
+        },
+        "B1T": {
+          "emp_count": 6,
+          "ter": 930547,
+          "input": 0
+        },
+        "B3B": {
+          "emp_count": 2,
+          "ter": 0,
+          "input": 0
+        },
+        "B3H": {
+          "emp_count": 13,
+          "ter": 640067,
+          "input": 0
+        },
+        "B3M": {
+          "emp_count": 56,
+          "ter": 6979948,
+          "input": 0
+        },
+        "B3P": {
+          "emp_count": 12,
+          "ter": 0,
+          "input": 0
+        },
+        "B3T": {
+          "emp_count": 4,
+          "ter": 546973,
+          "input": 0
+        }
+      }
+    },
+    "PG2A": {
+      "employee_count": 139,
+      "total_pph21_ter": 16934621,
+      "total_pph21_input": 0,
+      "total_selisih": -16934621,
+      "file_ter": "PG2A_pajak.json",
+      "file_input": "PG2A_pph_input.json",
+      "data_source": "history",
+      "gangs": {
+        "C1B": {
+          "emp_count": 1,
+          "ter": 14037,
+          "input": 0
+        },
+        "C1H": {
+          "emp_count": 12,
+          "ter": 2445966,
+          "input": 0
+        },
+        "C1M": {
+          "emp_count": 28,
+          "ter": 3301019,
+          "input": 0
+        },
+        "C1P": {
+          "emp_count": 7,
+          "ter": 0,
+          "input": 0
+        },
+        "C2B": {
+          "emp_count": 1,
+          "ter": 0,
+          "input": 0
+        },
+        "C1T": {
+          "emp_count": 4,
+          "ter": 1292634,
+          "input": 0
+        },
+        "C2H": {
+          "emp_count": 26,
+          "ter": 2957513,
+          "input": 0
+        },
+        "C2M": {
+          "emp_count": 16,
+          "ter": 2095915,
+          "input": 0
+        },
+        "C2P": {
+          "emp_count": 1,
+          "ter": 0,
+          "input": 0
+        },
+        "C2T": {
+          "emp_count": 2,
+          "ter": 488928,
+          "input": 0
+        },
+        "C3H": {
+          "emp_count": 21,
+          "ter": 1810545,
+          "input": 0
+        },
+        "C3M": {
+          "emp_count": 14,
+          "ter": 1867249,
+          "input": 0
+        },
+        "C3P": {
+          "emp_count": 3,
+          "ter": 0,
+          "input": 0
+        },
+        "C3T": {
+          "emp_count": 3,
+          "ter": 660815,
+          "input": 0
+        }
+      }
+    },
+    "PG2B": {
+      "employee_count": 77,
+      "total_pph21_ter": 12525982,
+      "total_pph21_input": 0,
+      "total_selisih": -12525982,
+      "file_ter": "PG2B_pajak.json",
+      "file_input": "PG2B_pph_input.json",
+      "data_source": "history",
+      "gangs": {
+        "D1H": {
+          "emp_count": 11,
+          "ter": 1895579,
+          "input": 0
+        },
+        "D1M": {
+          "emp_count": 21,
+          "ter": 3069022,
+          "input": 0
+        },
+        "D1T": {
+          "emp_count": 3,
+          "ter": 641526,
+          "input": 0
+        },
+        "D2H": {
+          "emp_count": 15,
+          "ter": 2986479,
+          "input": 0
+        },
+        "D2M": {
+          "emp_count": 20,
+          "ter": 2645118,
+          "input": 0
+        },
+        "D2T": {
+          "emp_count": 5,
+          "ter": 1200995,
+          "input": 0
+        },
+        "D2P": {
+          "emp_count": 1,
+          "ter": 0,
+          "input": 0
+        },
+        "K2H": {
+          "emp_count": 1,
+          "ter": 87263,
+          "input": 0
+        }
+      }
+    },
+    "PGE": {
+      "employee_count": 0,
+      "total_pph21_ter": 0,
+      "total_pph21_input": 0,
+      "total_selisih": 0,
+      "file_ter": "PGE_pajak.json",
+      "file_input": "PGE_pph_input.json",
+      "data_source": "unknown",
+      "gangs": {}
+    },
+    "AB1": {
+      "employee_count": 91,
+      "total_pph21_ter": 15992433,
+      "total_pph21_input": 0,
+      "total_selisih": -15992433,
+      "file_ter": "AB1_pajak.json",
+      "file_input": "AB1_pph_input.json",
+      "data_source": "history",
+      "gangs": {
+        "G1H": {
+          "emp_count": 35,
+          "ter": 4968021,
+          "input": 0
+        },
+        "G1M": {
+          "emp_count": 9,
+          "ter": 1408799,
+          "input": 0
+        },
+        "G1T": {
+          "emp_count": 6,
+          "ter": 1644859,
+          "input": 0
+        },
+        "G2H": {
+          "emp_count": 32,
+          "ter": 6385016,
+          "input": 0
+        },
+        "G2M": {
+          "emp_count": 4,
+          "ter": 472757,
+          "input": 0
+        },
+        "G2T": {
+          "emp_count": 5,
+          "ter": 1112981,
+          "input": 0
+        }
+      }
+    },
+    "AB2": {
+      "employee_count": 114,
+      "total_pph21_ter": 18610749,
+      "total_pph21_input": 0,
+      "total_selisih": -18610749,
+      "file_ter": "AB2_pajak.json",
+      "file_input": "AB2_pph_input.json",
+      "data_source": "current",
+      "gangs": {
+        "H1H": {
+          "emp_count": 20,
+          "ter": 4834941,
+          "input": 0
+        },
+        "H1L": {
+          "emp_count": 9,
+          "ter": 592799,
+          "input": 0
+        },
+        "H1M": {
+          "emp_count": 30,
+          "ter": 3674577,
+          "input": 0
+        },
+        "H1T": {
+          "emp_count": 8,
+          "ter": 2028476,
+          "input": 0
+        },
+        "H2M": {
+          "emp_count": 10,
+          "ter": 1253730,
+          "input": 0
+        },
+        "H2H": {
+          "emp_count": 31,
+          "ter": 5538505,
+          "input": 0
+        },
+        "H2T": {
+          "emp_count": 6,
+          "ter": 687721,
+          "input": 0
+        }
+      }
+    },
+    "ARA": {
+      "employee_count": 109,
+      "total_pph21_ter": 16288291,
+      "total_pph21_input": 0,
+      "total_selisih": -16288291,
+      "file_ter": "ARA_pajak.json",
+      "file_input": "ARA_pph_input.json",
+      "data_source": "history",
+      "gangs": {
+        "F1BHL": {
+          "emp_count": 2,
+          "ter": 0,
+          "input": 0
+        },
+        "F1H": {
+          "emp_count": 23,
+          "ter": 4250311,
+          "input": 0
+        },
+        "F1M": {
+          "emp_count": 24,
+          "ter": 3274478,
+          "input": 0
+        },
+        "F1T": {
+          "emp_count": 7,
+          "ter": 1239054,
+          "input": 0
+        },
+        "F2H": {
+          "emp_count": 21,
+          "ter": 3448800,
+          "input": 0
+        },
+        "F2M": {
+          "emp_count": 27,
+          "ter": 3167940,
+          "input": 0
+        },
+        "F2T": {
+          "emp_count": 5,
+          "ter": 907708,
+          "input": 0
+        }
+      }
+    },
+    "ARC": {
+      "employee_count": 141,
+      "total_pph21_ter": 24150367,
+      "total_pph21_input": 0,
+      "total_selisih": -24150367,
+      "file_ter": "ARC_pajak.json",
+      "file_input": "ARC_pph_input.json",
+      "data_source": "history",
+      "gangs": {
+        "J1H": {
+          "emp_count": 32,
+          "ter": 5634334,
+          "input": 0
+        },
+        "J1M": {
+          "emp_count": 11,
+          "ter": 999099,
+          "input": 0
+        },
+        "J1T": {
+          "emp_count": 6,
+          "ter": 1514095,
+          "input": 0
+        },
+        "J2H": {
+          "emp_count": 27,
+          "ter": 3729213,
+          "input": 0
+        },
+        "J2M": {
+          "emp_count": 5,
+          "ter": 555130,
+          "input": 0
+        },
+        "J2T": {
+          "emp_count": 6,
+          "ter": 2115037,
+          "input": 0
+        },
+        "J3H": {
+          "emp_count": 20,
+          "ter": 4367262,
+          "input": 0
+        },
+        "J3M": {
+          "emp_count": 18,
+          "ter": 2235661,
+          "input": 0
+        },
+        "J3P": {
+          "emp_count": 1,
+          "ter": 0,
+          "input": 0
+        },
+        "J3T": {
+          "emp_count": 9,
+          "ter": 3000536,
+          "input": 0
+        },
+        "J3U": {
+          "emp_count": 6,
+          "ter": 0,
+          "input": 0
+        }
+      }
+    },
+    "DME": {
+      "employee_count": 123,
+      "total_pph21_ter": 15562828,
+      "total_pph21_input": 0,
+      "total_selisih": -15562828,
+      "file_ter": "DME_pajak.json",
+      "file_input": "DME_pph_input.json",
+      "data_source": "history",
+      "gangs": {
+        "E1H": {
+          "emp_count": 10,
+          "ter": 971290,
+          "input": 0
+        },
+        "E1M": {
+          "emp_count": 10,
+          "ter": 1150268,
+          "input": 0
+        },
+        "E1T": {
+          "emp_count": 1,
+          "ter": 324018,
+          "input": 0
+        },
+        "E2H": {
+          "emp_count": 22,
+          "ter": 3176941,
+          "input": 0
+        },
+        "E2M": {
+          "emp_count": 20,
+          "ter": 2677987,
+          "input": 0
+        },
+        "E2T": {
+          "emp_count": 5,
+          "ter": 813298,
+          "input": 0
+        },
+        "E3H": {
+          "emp_count": 22,
+          "ter": 2244586,
+          "input": 0
+        },
+        "E3M": {
+          "emp_count": 26,
+          "ter": 3368513,
+          "input": 0
+        },
+        "E3P": {
+          "emp_count": 1,
+          "ter": 29102,
+          "input": 0
+        },
+        "E3T": {
+          "emp_count": 6,
+          "ter": 806825,
+          "input": 0
+        }
+      }
+    },
+    "IJL": {
+      "employee_count": 26,
+      "total_pph21_ter": 6591270,
+      "total_pph21_input": 0,
+      "total_selisih": -6591270,
+      "file_ter": "IJL_pajak.json",
+      "file_input": "IJL_pph_input.json",
+      "data_source": "current",
+      "gangs": {
+        "L1H": {
+          "emp_count": 19,
+          "ter": 5056418,
+          "input": 0
+        },
+        "L1M": {
+          "emp_count": 3,
+          "ter": 451636,
+          "input": 0
+        },
+        "L1T": {
+          "emp_count": 4,
+          "ter": 1083216,
+          "input": 0
+        }
+      }
+    }
+  }
+}
