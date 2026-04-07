@@ -1309,6 +1309,23 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                                     }
                                 }
                             }
+
+                            // Sum from nested potongan object (dataExtractorService stores KONTAN, THR, PINJAM, KL here)
+                            // Map nested keys to flat output keys for consistency with payrollTotalsCalculator
+                            if (emp.potongan && typeof emp.potongan === 'object') {
+                                const potonganMapping: Record<string, string> = {
+                                    'KONTAN': 'pot_kontan',
+                                    'THR': 'pot_thr',
+                                    'PINJAM': 'pot_pinjam',
+                                    'KL': 'pot_kl'
+                                };
+                                for (const [nestedKey, flatKey] of Object.entries(potonganMapping)) {
+                                    const val = parseNum(emp.potongan[nestedKey]);
+                                    if (val !== 0) {
+                                        totals[flatKey] = (totals[flatKey] || 0) + val;
+                                    }
+                                }
+                            }
                         }
 
                         return totals;

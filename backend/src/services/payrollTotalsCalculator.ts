@@ -163,6 +163,26 @@ export function calculatePayrollTotals(employees: any[], label: string): Payroll
         );
     };
 
+    // Helper to sum nested potongan object fields from dataExtractorService
+    // dataExtractorService stores deductions in emp.potongan with keys like KONTAN, THR, PINJAM, KL
+    // payrollTotalsCalculator expects flat fields like pot_kontan, pot_thr, pot_pinjam, pot_kl
+    // This helper tries both: flat field first (reportService compatibility), then nested object (dataExtractorService)
+    const aggPotongan = (flatField: string, nestedKey: string): number => {
+        return Math.round(
+            activeEmployees.reduce((total, emp) => {
+                // First try flat field (from reportService)
+                let val = Number(emp[flatField] || 0);
+                if (val !== 0) return total + val;
+                // Fall back to nested potongan object (from dataExtractorService)
+                // Keys in emp.potongan are uppercase: KONTAN, THR, PINJAM, KL
+                if (emp.potongan && typeof emp.potongan === 'object') {
+                    val = Number(emp.potongan[nestedKey] || 0);
+                }
+                return total + val;
+            }, 0)
+        );
+    };
+
     // Calculate all totals matching the frontend Report.jsx logic EXACTLY
     const totals: PayrollTotals = {
         // Identity fields - EXACT same as frontend
@@ -213,10 +233,10 @@ export function calculatePayrollTotals(employees: any[], label: string): Payroll
         // Gross & Deductions - EXACT same fields as frontend
         jumlah_upah_kotor: agg('jumlah_upah_kotor'),
         pot_pph21: agg('pot_pph21'),
-        pot_kontan: agg('pot_kontan'),
-        pot_thr: agg('pot_thr'),
-        pot_pinjam: agg('pot_pinjam'),
-        pot_kl: agg('pot_kl'),
+        pot_kontan: aggPotongan('pot_kontan', 'KONTAN'),
+        pot_thr: aggPotongan('pot_thr', 'THR'),
+        pot_pinjam: aggPotongan('pot_pinjam', 'PINJAM'),
+        pot_kl: aggPotongan('pot_kl', 'KL'),
         pot_bpjs_kes: agg('pot_bpjs_kes'),
         pot_astek: agg('pot_astek'),
         pot_astek_maj: agg('pot_astek_maj'),
