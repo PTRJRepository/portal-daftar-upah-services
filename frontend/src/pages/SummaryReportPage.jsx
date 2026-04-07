@@ -841,10 +841,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                         <tr className="wsp-header-master">
                                             <th rowSpan="2" style={{ minWidth: '300px', width: '300px' }}>ESTATE / GANG</th>
                                             <th colSpan="2">MANPOWER</th>
-                                            {/* Screen: Show full PREMI INCOME with all dynamic columns */}
-                                            <th colSpan={dynamicPremiHeaders.length + 1} className="print-hide-detail">PREMI INCOME</th>
-                                            {/* Print: Show only PREMI INCOME with 1 column (Total Premi) */}
-                                            <th className="print-show-only">PREMI INCOME</th>
+                                            <th colSpan={dynamicPremiHeaders.length + 1}>PREMI INCOME</th>
                                             <th rowSpan="2" style={{ width: '120px' }}>LEMBUR</th>
                                             <th colSpan="2">DEDUCTIONS</th>
                                             <th rowSpan="2" style={{ width: '140px' }}>TOTAL UPAH BERSIH</th>
@@ -854,9 +851,9 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <th style={{ width: '60px' }}>WORKERS</th>
                                             <th style={{ width: '60px' }}>HK</th>
 
-                                            {/* Premi Dynamic - Hidden on Print */}
+                                            {/* Premi Dynamic Columns - Hidden on Print */}
                                             {dynamicPremiHeaders.map((h, i) => (
-                                                <th key={i} style={{ minWidth: '90px' }} className="print-hide-detail">{h}</th>
+                                                <th key={i} className="print-hide-detail" style={{ minWidth: '90px' }}>{h}</th>
                                             ))}
 
                                             <th style={{ width: '100px', background: '#334155' }}>TOTAL PREMI</th>
@@ -889,7 +886,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                 <EditableCell editMode={editMode} value={row.total_employees} onSave={(v) => handleCellEdit(row.gang_code, 'total_employees', v)} />
                                                 <EditableCell editMode={editMode} value={row.total_hk} onSave={(v) => handleCellEdit(row.gang_code, 'total_hk', v)} />
 
-                                                {/* Dynamic Premi Cols */}
+                                                {/* Dynamic Premi Cols - Hidden on Print */}
                                                 {dynamicPremiHeaders.map(header => {
                                                     const val = getDynamicPremiValue(row, header);
                                                     return (

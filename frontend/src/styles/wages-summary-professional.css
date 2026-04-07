@@ -1004,8 +1004,14 @@
 
     /* Show print-only elements */
     .print-show,
+    .print-only,
     .only-print {
-        display: block !important;
+        display: table-cell !important;
+    }
+
+    /* Hide detailed columns in print */
+    .print-hide-detail {
+        display: none !important;
     }
 
     /* Body and container reset */
@@ -1292,6 +1298,11 @@
     .th-sticky-col {
         position: static !important;
         box-shadow: none !important;
+    }
+
+    /* Hide detailed columns in print */
+    .print-hide-detail {
+        display: none !important;
     }
 
     /* Special rows */
@@ -1665,6 +1676,11 @@
     display: none !important;
 }
 
-.pdf-export-active .print-show-only {
+.pdf-export-active .print-show-only,
+.pdf-export-active .print-only {
     display: table-cell !important;
+}
+
+.pdf-export-active .no-print {
+    display: none !important;
 }

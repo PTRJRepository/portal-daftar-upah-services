@@ -338,17 +338,45 @@
         border-right: 2px solid black !important;
     }
 
-    /* Hide Uraian / Premi Breakdown columns in print */
+    /* Ensure table headers behave correctly in multi-page prints */
+    .wsp-table thead {
+        display: table-header-group !important;
+        position: static !important; /* Position static is safer for print thead */
+    }
+
+    .wsp-table thead tr {
+        page-break-inside: avoid !important;
+        page-break-after: avoid !important;
+    }
+
+    /* Standardize header columns for print to prevent overlapping */
+    .wsp-table th {
+        word-wrap: break-word !important;
+        white-space: normal !important;
+        line-height: 1.1 !important;
+        padding: 4px 2px !important;
+        vertical-align: middle !important;
+    }
+
+    /* Reset specific group widths for print to ensure they fit */
+    .th-group-manpower { width: 10% !important; }
+    .th-group-deductions { width: 15% !important; }
+    .th-group-income { width: 25% !important; }
+    .th-group-compare { width: 20% !important; }
+
+    /* Fix: Do not hide premiums via CSS only if it breaks the table structure.
+       Instead, we will use .no-print on individual cells in the JSX for better control. */
     .th-group-uraian,
-    .th-group-premi,
-    .wsp-table th.th-group-uraian,
-    .wsp-table th.th-group-premi,
-    .cell-group-premi,
-    .cell-uraian,
-    [class*="premi-breakdown"],
-    [class*="uraian"] {
+    .th-group-premi {
+        /* Reset any previous hiding that might have been there */
+        display: table-cell !important;
+        visibility: visible !important;
+    }
+
+    /* Helper to hide specific detail columns in print to save space */
+    .print-hide-column,
+    .print-hide-detail {
         display: none !important;
-        visibility: hidden !important;
     }
 
     /* Signature section */
