@@ -53,14 +53,12 @@ export const generateMonthlyTaxExcel = async (
             }
         }
     }
-    // Sort: BRONDOL first, then alphabetical, LAINNYA last
+    // Sort: BRONDOL first, then alphabetical (no LAINNYA catch-all — every premi has its own column)
     const allPremiKeys: string[] = premiKeys && premiKeys.length > 0
         ? premiKeys
         : Array.from(discoveredPremiKeys).sort((a, b) => {
             if (a === 'BRONDOL') return -1;
             if (b === 'BRONDOL') return 1;
-            if (a === 'LAINNYA') return 1;
-            if (b === 'LAINNYA') return -1;
             return a.localeCompare(b);
         });
 
