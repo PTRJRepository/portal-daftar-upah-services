@@ -138,38 +138,19 @@ async function handleBlobError(error, defaultMessage) {
  * Uses direct fetch to port 8002 like Daftar Upah export
  */
 export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory) {
-    const params = new URLSearchParams({ year: String(year), month: String(month) });
-    if (division) params.append('division', division);
-    if (gang && gang !== 'ALL') params.append('gang', gang);
-    if (gangPrefix && gangPrefix !== 'ALL') params.append('gangPrefix', gangPrefix);
-    if (useHistory !== undefined) params.append('use_history', useHistory.toString());
+    const params = { year: String(year), month: String(month) };
+    if (division) params.division = division;
+    if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
+    if (useHistory !== undefined) params.use_history = useHistory.toString();
 
     try {
-        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
-        const response = await fetch(`${backendUrl}/tax-report/monthly/excel?${params.toString()}`, {
-            headers: { Authorization: token ? `Bearer ${token}` : '' }
+        const response = await axios.get('/tax-report/monthly/excel', {
+            params,
+            responseType: 'blob',
+            timeout: 300000 // 5 minutes timeout for large divisions
         });
-
-        if (!response.ok) {
-            let errorMessage = `HTTP ${response.status}`;
-            try {
-                const json = await response.json();
-                errorMessage = json.error || json.message || errorMessage;
-            } catch {}
-            throw new Error(errorMessage);
-        }
-
-        const blob = await response.blob();
-        if (blob.size === 0) throw new Error('Server returned empty file');
-
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `PPH21_${division || 'ALL'}_${month}_${year}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(link);
+        await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
     } catch (error) {
         await handleBlobError(error, 'Gagal mengunduh Excel Pajak Bulanan');
     }
@@ -223,39 +204,20 @@ export async function exportPajakJson(token, year, month, gang, div, gangPrefix,
  * Uses direct fetch to port 8002 like Daftar Upah export
  */
 export async function downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory) {
-    const params = new URLSearchParams({ year: String(year), month: String(month) });
-    if (division) params.append('division', division);
-    if (gang && gang !== 'ALL') params.append('gang', gang);
-    if (gangPrefix && gangPrefix !== 'ALL') params.append('gangPrefix', gangPrefix);
-    if (useHistory !== undefined) params.append('use_history', useHistory.toString());
+    const params = { year: String(year), month: String(month) };
+    if (division) params.division = division;
+    if (gang && gang !== 'ALL') params.gang = gang;
+    if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
+    if (useHistory !== undefined) params.use_history = useHistory.toString();
 
     try {
-        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
-        const response = await fetch(`${backendUrl}/tax-report/monthly/excel?${params.toString()}`, {
-            headers: { Authorization: token ? `Bearer ${token}` : '' }
+        const response = await axios.get('/tax-report/monthly/excel', {
+            params,
+            responseType: 'blob',
+            timeout: 300000 // 5 minutes timeout for large divisions
         });
-
-        if (!response.ok) {
-            let errorMessage = `HTTP ${response.status}`;
-            try {
-                const json = await response.json();
-                errorMessage = json.error || json.message || errorMessage;
-            } catch {}
-            throw new Error(errorMessage);
-        }
-
-        const blob = await response.blob();
-        if (blob.size === 0) throw new Error('Server returned empty file');
-
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `PPH21_${division || 'ALL'}_${month}_${year}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(link);
+        await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
     } catch (error) {
-        await handleBlobError(error, 'Gagal mengunduh Excel Pajak');
+        await handleBlobError(error, 'Gagal mengunduh Excel Pajak Bulanan');
     }
 }
