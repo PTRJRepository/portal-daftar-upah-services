@@ -141,6 +141,7 @@ export default function CustomPayrollTable({
     initialData = null,   // Cached raw API response from parent
     onDataLoaded = null,   // Callback to notify parent of loaded data
     onDataReady = null,    // Callback to expose displayRows data to parent
+    onTaxExportReady = null, // Callback to expose data getter for Tax Export
     onRefresh = null,      // Callback to trigger parent refresh (for saving)
     sortBy = 'name',       // 'name' | 'emp_code' | 'nik'
     sortOrder = 'asc'      // 'asc' | 'desc'
@@ -2456,6 +2457,13 @@ export default function CustomPayrollTable({
             onExportReady(() => handleExportToExcel);
         }
     }, [onExportReady, handleExportToExcel]);
+
+    // Expose table data getter for Tax Export to parent
+    useEffect(() => {
+        if (onTaxExportReady) {
+            onTaxExportReady(() => () => displayRows);
+        }
+    }, [displayRows, onTaxExportReady]);
 
 
     // Helper function to get header color style — uniform dark color for ALL headers

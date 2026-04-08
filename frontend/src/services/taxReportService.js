@@ -221,3 +221,55 @@ export async function downloadTaxReportExcel(token, year, month, division, gang,
         await handleBlobError(error, 'Gagal mengunduh Excel Pajak Bulanan');
     }
 }
+
+/**
+ * Download tax report (PPH21) Excel directly using data from UI (Daftar Upah)
+ * Matches UI calculations exactly to prevent any DB read deviations
+ */
+export async function downloadTaxReportExcelFromUI(token, year, month, division, gang, gangPrefix, uiData) {
+    const strippedEmployees = uiData.map(r => ({
+        emp_name: r.name || r.nama || r.emp_name,
+        emp_code: r.emp_code,
+        nik: r.nik,
+        new_nik: r.new_nik,
+        npwp: r.npwp,
+        alamat: r.alamat,
+        jabatan: r.jabatan,
+        gender: r.gender,
+        status_ptkp: r.status_keluarga || r.status_ptkp || r.ptkp_status,
+        kategori_ter: r.kategori_ter,
+        hk: Number(r.jumlah_hk || r.hk || 0),
+        upah_dasar: Number(r.upah_dasar || 0),
+        gaji_pokok_ideal: Number(r.gaji_pokok_ideal || 0),
+        gaji_pokok_aktual: Number(r.gaji_pokok_aktual || 0),
+        koreksi_hk: Number(r.koreksi_hk || 0),
+        tunjangan_beras: Number(r.tunjangan_beras || 0),
+        tunjangan_jabatan: Number(r.tunjangan_jabatan || 0),
+        tunjangan_lembur: Number(r.tunjangan_lembur || 0),
+        premi_detail: r.premi_detail || {},
+        total_premi: Number(r.total_premi || r.premi || 0),
+        pot_koreksi: Number(r.pot_koreksi || 0),
+        thr_amount: Number(r.thr_amount || r.pendapatan_thr || 0),
+        exgratia_amount: Number(r.exgratia_amount || r.kontan || 0),
+        bpjs_kes_majikan: Number(r.bpjs_kes_majikan || 0),
+        astek_jht_majikan: Number(r.astek_jht_majikan || 0),
+        upah_kotor: Number(r.upah_kotor || r.jumlah_upah_kotor || 0),
+        penghasilan_bruto: Number(r.penghasilan_bruto || r.bruto || 0),
+        tarif_pajak_ter: Number(r.tarif_pajak_ter || 0),
+        pph21_ter: Number(r.pph21_ter || r.pot_pph21 || 0),
+        gang_code: r.gang_code
+    }));
+
+    // Axios configuration with token if present
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    try {
+        const response = await axios.post('tax-report/monthly/excel/from-ui', 
+            { year: String(year), month: String(month), division, gang, gangPrefix, employees: strippedEmployees },
+            { headers, responseType: 'blob', timeout: 120000, maxContentLength: Infinity, maxBodyLength: Infinity }
+        );
+        await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
+    } catch (error) {
+        await handleBlobError(error, 'Gagal mengunduh Excel Pajak dari UI');
+    }
+}

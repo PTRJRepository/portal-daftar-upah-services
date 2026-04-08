@@ -1060,12 +1060,17 @@ export class HistoryDatabaseService {
             try {
                 // Check if this is a virtual division - handle separately with gang filtering
                 if (gangService.isVirtualDivision(divisionCode)) {
-                    // For virtual divisions, filter by gang_code instead of division_code
+                    // [ALIGNMENT] For virtual divisions, we look for both:
+                    // 1. Records with gang_code matching the virtual division's gangs (e.g., 'HMC')
+                    // 2. Records with division_code matching the virtual division name (e.g., 'WKS_AR')
                     const virtualGangs = await gangService.getVirtualDivisionGangs(divisionCode);
-                    if (virtualGangs.length > 0) {
-                        const placeholders = virtualGangs.map(() => '?').join(',');
-                        masterQuery += ` AND gang_code IN (${placeholders})`;
-                        masterParams.push(...virtualGangs);
+                    const aliases = gangService.getAllDivisionAliases(divisionCode);
+                    const targets = [...new Set([...virtualGangs, ...aliases])];
+                    
+                    if (targets.length > 0) {
+                        const placeholders = targets.map(() => '?').join(',');
+                        masterQuery += ` AND (gang_code IN (${placeholders}) OR division_code IN (${placeholders}))`;
+                        masterParams.push(...targets, ...targets);
                     }
                 } else {
                     // Regular division - use unified mapping
@@ -1329,6 +1334,7 @@ export class HistoryDatabaseService {
                 cuti_nasional_hari: parseFloat(d.cuti_nasional_hari) || 0,
                 task_code: d.task_code,
                 task_desc: d.task_desc,
+                gang_description: d.gang_description,
                 beras_rate: parseFloat(d.beras_rate) || 0,
                 beras_jumlah: parseFloat(d.beras_jumlah) || 0,
                 jabatan_rate: parseFloat(d.jabatan_rate) || 0,

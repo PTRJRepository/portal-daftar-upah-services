@@ -555,29 +555,47 @@ export class HistorySeederService {
         // ⚠️ CRITICAL: EXCLUDE virtual division gangs from parent division
         // WKS_PG (AMC) should be SEPARATE from P1A
         // WKS_AR (HMC) should be SEPARATE from AB2
+        // NRS (B2N) should be SEPARATE from PG1B
+        // INF (IN, INT) should be SEPARATE from PG1A
         const virtualGangCodes = new Set<string>();
         const virtualDivs = divisionConfigService.getVirtualDivisions();
-        virtualDivs.forEach(vDiv => {
-            if (vDiv.sourceDivision === options.divisionCode && vDiv.gangPattern) {
-                // Mark gangs matching this virtual pattern
-                virtualGangCodes.add(vDiv.gangCode || '');
+        
+        // Build the set of virtual gang codes that should be excluded from parent divisions
+        for (const vDiv of virtualDivs) {
+            if (vDiv.sourceDivision === options.divisionCode) {
+                // Add explicit gang codes for this virtual division
+                if (vDiv.code === 'WKS_PG') {
+                    virtualGangCodes.add('AMC');
+                } else if (vDiv.code === 'WKS_AR') {
+                    virtualGangCodes.add('HMC');
+                } else if (vDiv.code === 'NRS') {
+                    virtualGangCodes.add('B2N');
+                } else if (vDiv.code === 'INF' || vDiv.code === 'INFRA') {
+                    virtualGangCodes.add('IN');
+                    virtualGangCodes.add('INT');
+                }
             }
-        });
-        // Also explicitly add known virtual gangs
+        }
+        
+        // Also explicitly add known virtual gangs (catch-all)
         virtualGangCodes.add('AMC');  // WKS_PG
         virtualGangCodes.add('HMC');  // WKS_AR
+        virtualGangCodes.add('B2N');  // NRS
 
-        console.log(`[HistorySeeder] ⚠️ Excluding virtual gangs from parent: ${Array.from(virtualGangCodes).join(', ')}`);
+        const isSeedingVirtual = divisionConfigService.isVirtualDivision(options.divisionCode || '');
+        console.log(`[HistorySeeder] ⚠️ Seeding virtual division? ${isSeedingVirtual}. Excluding virtual gangs from parent? ${!isSeedingVirtual}`);
+        console.log(`[HistorySeeder] Virtual gang codes to exclude: ${Array.from(virtualGangCodes).join(', ')}`);
 
         for (const row of rawData.data_rows) {
-            const gangCode = row.gang_code;
-            
-            // Skip virtual gangs when seeding parent division
-            if (virtualGangCodes.has(gangCode)) {
-                console.log(`[HistorySeeder] ⏭️ Skipping virtual gang ${gangCode} from ${options.divisionCode}`);
+            const gangCode = row.gang_code?.trim().toUpperCase() || '';
+
+            // Skip virtual gangs when seeding parent division (to prevent double-counting)
+            // BUT do NOT skip if we are specifically seeding that virtual division!
+            if (!isSeedingVirtual && virtualGangCodes.has(gangCode)) {
+                console.log(`[HistorySeeder] ⏭️ Skipping virtual gang ${gangCode} from parent ${options.divisionCode}`);
                 continue;
             }
-            
+
             if (!gangMap.has(gangCode)) {
                 gangMap.set(gangCode, []);
             }

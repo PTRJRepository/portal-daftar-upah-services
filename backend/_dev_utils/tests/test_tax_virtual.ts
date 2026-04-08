@@ -4,8 +4,8 @@ import { divisionDefinition } from "../../src/services/divisionDefinition";
 
 async function test() {
     const divisions = ['INF', 'NRS', 'WORKSHOP', 'WKS_PG', 'WKS_AR'];
-    const month = 3;
-    const year = 2026;
+    const month = 1;
+    const year = 2025;
 
     for (const div of divisions) {
         console.log(`\n=== Testing Division: ${div} ===`);

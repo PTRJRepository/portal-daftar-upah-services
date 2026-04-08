@@ -159,16 +159,28 @@ export class DivisionDefinition {
     }
 
     /**
-     * Match a gang code against a virtual division's pattern
+     * Match a gang code and description against a virtual division's patterns
      */
-    public matchGangToVirtualDivision(gangCode: string, divisionCode: string): boolean {
-        const pattern = this.getVirtualDivisionPattern(divisionCode);
-        if (!pattern) return false;
-        const result = pattern.test(gangCode);
-        if (result) {
-            console.log(`[DivisionDefinition] Match SUCCESS: gang=${gangCode} division=${divisionCode} pattern=${pattern}`);
+    public matchGangToVirtualDivision(gangCode: string, divisionCode: string, description: string = ''): boolean {
+        const plugin = virtualDivisionRegistry.getPlugin(divisionCode);
+        if (!plugin) return false;
+
+        // 1. Check gang pattern
+        if (plugin.gangPattern && plugin.gangPattern.test(gangCode)) {
+            return true;
         }
-        return result;
+
+        // 2. Check description pattern
+        if (plugin.descriptionPattern && plugin.descriptionPattern.test(description)) {
+            return true;
+        }
+
+        // 3. Check custom matches method if exists
+        if (plugin.matchesGang && plugin.matchesGang(gangCode, description, '')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

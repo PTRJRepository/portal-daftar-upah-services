@@ -504,7 +504,7 @@ class TaxReportService {
                 
                 if (isVirtual && divisionCode) {
                     filteredRows = chunk.data_rows.filter((r: any) => 
-                        divisionDefinition.matchGangToVirtualDivision(r.gang_code || '', divisionCode)
+                        divisionDefinition.matchGangToVirtualDivision(r.gang_code || '', divisionCode, r.gang_description || r.gang_desc || r.task_desc || '')
                     );
                     console.log(`[TaxReportService] Virtual filter (${divisionCode}) on ${sourceDiv}: ${chunk.data_rows.length} -> ${filteredRows.length} rows.`);
                 } else if (gangPrefix) {
