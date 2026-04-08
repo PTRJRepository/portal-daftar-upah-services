@@ -42,7 +42,8 @@ export default function PayslipPrintPage() {
             employee: {
                 nama: row.nama || row.EmpName,
                 jabatan: row.jabatan_estate || row.task_desc || row.jabatan || '-',
-                gang_code: row.gang_code || row.GangCode
+                gang_code: row.gang_code || row.GangCode,
+                alamat: row.alamat || row.res_address || ''
             },
             attendance: {
                 summary: {
@@ -122,7 +123,8 @@ export default function PayslipPrintPage() {
                                     employee: {
                                         nama: row.emp_name || row.nama,
                                         jabatan: row.jabatan_estate || row.task_desc || row.jabatan,
-                                        gang_code: row.gang_code
+                                        gang_code: row.gang_code,
+                                        alamat: row.alamat || row.res_address || ''
                                     },
                                     attendance: {
                                         summary: {

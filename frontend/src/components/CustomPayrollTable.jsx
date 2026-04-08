@@ -1872,6 +1872,15 @@ export default function CustomPayrollTable({
             }
         });
 
+        // ALAMAT
+        cols.push({
+            field: 'alamat',
+            headers: ['IDENTITAS', null, null, 'ALAMAT'],
+            w: 200,
+            className: 'text-left',
+            render: (row) => row.alamat || '-'
+        });
+
         // TUNJANGAN - Simplified
         // Show Rates ONLY if expanded
         const showAllowanceRates = isAllowanceExpanded;

@@ -92,6 +92,7 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
             { field: 'join_date', headerName: 'TGL MASUK', width: 15 }, // Fallback if available
             { field: 'status_ptkp', headerName: 'PTKP', width: 8 },
             { field: 'jabatan_estate', headerName: 'JABATAN', width: 15 },
+            { field: 'alamat', headerName: 'ALAMAT', width: 30 },
         ];
 
         // Kehadiran (Absensi)

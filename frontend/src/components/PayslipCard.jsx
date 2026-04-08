@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import '../styles/payslip-print.css';
 
 // Helper to format currency
@@ -22,6 +22,8 @@ const getMonthName = (month) => {
  * @param {number} props.year - Year
  */
 export default function PayslipCard({ data, month, year }) {
+    const [showAddress, setShowAddress] = useState(false);
+
     if (!data || !data.payroll_data) {
         return (
             <div className="payslip-card">
@@ -222,6 +224,30 @@ export default function PayslipCard({ data, month, year }) {
                     <span className="payslip-info-label">PTKP</span>
                     <span className="payslip-info-value">: {payroll.status_ptkp || '-'} ({payroll.kategori_ter || '-'})</span>
                 </div>
+                {/* Alamat - collapsible, hidden by default */}
+                {empInfo.alamat && empInfo.alamat.trim() && (
+                    <>
+                        <div
+                            className="payslip-info-row payslip-address-toggle"
+                            onClick={() => setShowAddress(!showAddress)}
+                            style={{ cursor: 'pointer' }}
+                            title={showAddress ? 'Klik untuk sembunyikan alamat' : 'Klik untuk tampilkan alamat'}
+                        >
+                            <span className="payslip-info-label">Alamat</span>
+                            <span className="payslip-info-value payslip-address-toggle-icon">
+                                : {showAddress ? '▲ Tampilkan' : '▼ Tampilkan'}
+                            </span>
+                        </div>
+                        {showAddress && (
+                            <div className="payslip-info-row payslip-address-row">
+                                <span className="payslip-info-label"></span>
+                                <span className="payslip-info-value payslip-address-text">
+                                    {empInfo.alamat}
+                                </span>
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
 
             {/* Content - Two Columns */}

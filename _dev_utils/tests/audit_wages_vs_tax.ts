@@ -9,7 +9,7 @@ const SYSTEM_TOKEN = 'system-internal-secret-token';
 async function audit() {
     const month = "3";
     const year = "2026";
-    const div = "PG2A";
+    const div = "ARA";
 
     console.log(`Auditing Wages vs Tax for ${div} (${month}/${year})...`);
 

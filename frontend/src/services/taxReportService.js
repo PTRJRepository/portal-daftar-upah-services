@@ -135,7 +135,7 @@ async function handleBlobError(error, defaultMessage) {
 
 /**
  * Download monthly PPH21 tax report as Excel Document (Tax Report Page)
- * Uses direct fetch to port 8002 like Daftar Upah export
+ * Uses FAST endpoint that reads directly from pre-computed history tables
  */
 export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory) {
     const params = { year: String(year), month: String(month) };
@@ -145,10 +145,10 @@ export async function downloadMonthlyTaxReportExcel(token, year, month, division
     if (useHistory !== undefined) params.use_history = useHistory.toString();
 
     try {
-        const response = await axios.get('/tax-report/monthly/excel', {
+        const response = await axios.get('/tax-report/monthly/excel/fast', {
             params,
             responseType: 'blob',
-            timeout: 300000 // 5 minutes timeout for large divisions
+            timeout: 120000 // 2 minutes - much faster with direct history query
         });
         await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
     } catch (error) {
@@ -201,7 +201,7 @@ export async function exportPajakJson(token, year, month, gang, div, gangPrefix,
 
 /**
  * Download tax report (PPH21) Excel from Operational page (App.jsx)
- * Uses direct fetch to port 8002 like Daftar Upah export
+ * Uses FAST endpoint that reads directly from pre-computed history tables
  */
 export async function downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory) {
     const params = { year: String(year), month: String(month) };
@@ -211,10 +211,10 @@ export async function downloadTaxReportExcel(token, year, month, division, gang,
     if (useHistory !== undefined) params.use_history = useHistory.toString();
 
     try {
-        const response = await axios.get('/tax-report/monthly/excel', {
+        const response = await axios.get('/tax-report/monthly/excel/fast', {
             params,
             responseType: 'blob',
-            timeout: 300000 // 5 minutes timeout for large divisions
+            timeout: 120000 // 2 minutes - much faster with direct history query
         });
         await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
     } catch (error) {

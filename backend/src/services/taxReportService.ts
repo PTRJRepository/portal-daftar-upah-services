@@ -559,11 +559,12 @@ class TaxReportService {
 
         let totalPph21 = 0;
         
-        // [ALIGNMENT] Only include employees with active working days (jumlah_hk > 0)
-        // This matches the filtering logic in the Wages Report summary totals.
+        // [ALIGNMENT] Include employees with active working days OR positive gross income
+        // This matches the filtering logic in the Wages Report UI (PayrollAggregator).
         const activeRows = historyData.data_rows.filter((r: any) => {
             const hk = Number(r.jumlah_hk || r.hk || 0);
-            return hk > 0;
+            const hasIncome = Number(r.jumlah_upah_kotor || 0) > 0;
+            return hk > 0 || hasIncome;
         });
 
         const employees: MonthlyTaxRow[] = activeRows.map((row: any, idx: number) => {
@@ -593,13 +594,12 @@ class TaxReportService {
             const carumanBase = pph21Caruman.base;
 
             // [CRITICAL ALIGNMENT] Use values EXACTLY from UI Daftar Upah (DataExtractorService / History)
-            // pot_pph21 = actual PPh21 deduction from PR_ADTRANS (what the Daftar Upah UI shows)
-            // pph21_ter = recalculated PPh21 via TER method (may differ from actual ADTRANS value)
+            // pph21_ter = recalculated PPh21 via TER method (What the UI shows in the PPh21 cell)
+            // pot_pph21 = actual PPh21 deduction from PR_ADTRANS (synchronized deduction)
             // penghasilan_bruto = calculated in DataExtractor Phase 4b (same as UI)
             const penghasilanBruto = Number(row.penghasilan_bruto) || 0;
-            // [FIX] Use pot_pph21 (actual deduction shown in Daftar Upah UI) as primary source
-            // Fallback to pph21_ter only if pot_pph21 is not available (e.g. no ADTRANS record)
-            const pph21 = Number(row.pot_pph21) || Number(row.pph21_ter) || 0;
+            // [FIXED 2026-04-08] Prioritize pph21_ter to match UI "Pajak" column exactly
+            const pph21 = Number(row.pph21_ter) || Number(row.pot_pph21) || 0;
             const tarifPajakTer = Number(row.tarif_pajak_ter) || 0;
             const storedStatusPtkp = row.status_ptkp || masterPtkp;
 

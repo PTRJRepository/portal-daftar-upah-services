@@ -303,7 +303,8 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
                     gang_code: payrollRow.gang_code,
                     GangCode: payrollRow.gang_code,
                     loc_code: payrollRow.loc_code,
-                    LocCode: payrollRow.loc_code
+                    LocCode: payrollRow.loc_code,
+                    alamat: payrollRow.res_address || payrollRow.alamat || ''
                 };
 
                 const attendanceData = {

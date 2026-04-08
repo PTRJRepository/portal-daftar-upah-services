@@ -15,6 +15,11 @@ export const PayrollAggregator = {
     const val = (v) => Number(v) || 0;
 
     // 1. FLATTEN NESTED STRUCTURES
+    // Map backend res_address to alamat for UI and Exports
+    if (emp.res_address && !emp.alamat) {
+      emp.alamat = emp.res_address;
+    }
+
     // This is critical for handling data that might be nested in the backend response
 
     // Flatten nested 'premi' object if it exists
