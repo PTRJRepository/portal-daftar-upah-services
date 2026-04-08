@@ -113,24 +113,25 @@ export const generateMonthlyTaxExcel = async (
     const COL_NAMA = 3;
     const COL_PARENT_NAME = 4;
     const COL_NIK = 5;
-    const COL_GENDER = 6;
-    const COL_STAT = 7;
-    const COL_GANG = 8;
-    const COL_KAT = 9;
-    const COL_HK = 10;
-    const COL_UPAH_DASAR = 11;
-    const COL_GAJI_STANDAR = 12;
-    const COL_GP_IDEAL = 13;
-    const COL_GP_AKTUAL = 14;
-    const COL_KOREKSI = 15;
-    const COL_BERAS = 16;
-    const COL_JABATAN = 17;
-    const COL_MASA_KERJA = 18;
-    const COL_SERVICE_TIME = 19; // Service Time Allow = Lembur value
+    const COL_ALAMAT = 6;
+    const COL_GENDER = 7;
+    const COL_STAT = 8;
+    const COL_GANG = 9;
+    const COL_KAT = 10;
+    const COL_HK = 11;
+    const COL_UPAH_DASAR = 12;
+    const COL_GAJI_STANDAR = 13;
+    const COL_GP_IDEAL = 14;
+    const COL_GP_AKTUAL = 15;
+    const COL_KOREKSI = 16;
+    const COL_BERAS = 17;
+    const COL_JABATAN = 18;
+    const COL_MASA_KERJA = 19;
+    const COL_SERVICE_TIME = 20; // Service Time Allow = Lembur value
 
     // Dynamic premi columns
-    const COL_PREMI_START = 20;
-    const COL_PREMI_END = 19 + allPremiKeys.length;  // inclusive
+    const COL_PREMI_START = 21;
+    const COL_PREMI_END = 20 + allPremiKeys.length;  // inclusive
     const COL_TOTAL_PREMI = COL_PREMI_END + 1;
 
     // Fixed after premi (THR and KONTAN shown for reference)
@@ -151,8 +152,8 @@ export const generateMonthlyTaxExcel = async (
     // Define column widths
     const colWidths: number[] = [];
     for (let i = 1; i <= TOTAL_COLS; i++) {
-        if (i <= 9) colWidths.push(i === 2 ? 15 : i === 3 ? 25 : i === 4 ? 20 : i <= 9 ? 8 : 5);
-        else if (i <= 15) colWidths.push(15);
+        if (i <= 10) colWidths.push(i === 2 ? 15 : i === 3 ? 25 : i === 4 ? 20 : i === 6 ? 30 : i <= 10 ? 8 : 5);
+        else if (i <= 16) colWidths.push(15);
         else if (i <= 19) colWidths.push(12);
         else if (i < COL_TOTAL_PREMI) colWidths.push(13); // premi columns
         else if (i === COL_TOTAL_PREMI) colWidths.push(15);
@@ -235,6 +236,7 @@ export const generateMonthlyTaxExcel = async (
         { col: COL_NAMA, label: 'NAMA', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_PARENT_NAME, label: 'NAMA ORANG TUA', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_NIK, label: 'NIK', bg: '1E3A8A', fg: 'FFFFFF' },
+        { col: COL_ALAMAT, label: 'ALAMAT', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_GENDER, label: 'L/P', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_STAT, label: 'STAT', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_GANG, label: 'GANG', bg: '1E3A8A', fg: 'FFFFFF' },
@@ -290,6 +292,8 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_NAMA).value = emp.emp_name;
         row.getCell(COL_PARENT_NAME).value = emp.parent_name || '';
         row.getCell(COL_NIK).value = emp.new_nik || emp.nik || '';
+        // [ROBUST] Support multiple field names for address from DOM vs Tax Report
+        row.getCell(COL_ALAMAT).value = emp.alamat || emp.res_address || emp.ResAddress || emp.ALAMAT || emp.address || '';
         row.getCell(COL_GENDER).value = emp.gender;
         row.getCell(COL_STAT).value = emp.status_ptkp;
         row.getCell(COL_GANG).value = emp.gang_code;
@@ -328,19 +332,35 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_KOREKSI).value = emp.koreksi_hk || 0;
 
         // Tunjangan — Service Time Allow = Lembur
-        row.getCell(COL_BERAS).value = emp.tunjangan_beras || 0;
-        row.getCell(COL_JABATAN).value = emp.tunjangan_jabatan || 0;
-        row.getCell(COL_MASA_KERJA).value = emp.tunjangan_masa_kerja || 0;
-        row.getCell(COL_SERVICE_TIME).value = emp.tunjangan_lembur || 0; // Lembur → Service Time Allow
+        // [ROBUST] Handle multiple field names (Daftar Upah vs Tax Report mapped names)
+        row.getCell(COL_BERAS).value = emp.tunjangan_beras ?? emp.beras_jumlah ?? 0;
+        row.getCell(COL_JABATAN).value = emp.tunjangan_jabatan ?? emp.jabatan_jumlah ?? 0;
+        row.getCell(COL_MASA_KERJA).value = emp.tunjangan_masa_kerja ?? emp.masa_kerja_jumlah ?? 0;
+        row.getCell(COL_SERVICE_TIME).value = emp.tunjangan_lembur ?? emp.lembur_jumlah ?? 0; // Lembur → Service Time Allow
 
         // Dynamic Premi columns
-        let totalPremiResult = 0;
+        // [ROBUST] Search for premiums in premi_detail, premi object, or top-level properties
         for (let i = 0; i < allPremiKeys.length; i++) {
             const colIdx = COL_PREMI_START + i;
             const keyName = allPremiKeys[i];
-            const val = (emp.premi_detail && emp.premi_detail[keyName]) ? emp.premi_detail[keyName] : 0;
-            row.getCell(colIdx).value = val;
-            totalPremiResult += val;
+            const normalizedKey = keyName.toUpperCase().replace(/ /g, '_');
+            
+            let val = 0;
+            if (emp.premi_detail && emp.premi_detail[keyName] !== undefined) {
+                val = emp.premi_detail[keyName];
+            } else if (emp.premi && emp.premi[keyName] !== undefined) {
+                val = emp.premi[keyName];
+            } else if (emp.premi && emp.premi[normalizedKey] !== undefined) {
+                val = emp.premi[normalizedKey];
+            } else if (emp[keyName] !== undefined) {
+                val = emp[keyName];
+            } else if (emp[normalizedKey] !== undefined) {
+                val = emp[normalizedKey];
+            } else if (keyName === 'BRONDOL' && (emp.premi_brondol || emp.premi_brondol_total)) {
+                val = emp.premi_brondol || emp.premi_brondol_total || 0;
+            }
+            
+            row.getCell(colIdx).value = val || 0;
         }
 
         // Total Premi = exact numeric value from UI/DB
@@ -350,8 +370,9 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_POT_KOREKSI).value = -(emp.pot_koreksi || 0);
 
         // Pendapatan Lainnya (THR and KONTAN)
-        row.getCell(COL_THR).value = emp.thr_amount || 0;
-        row.getCell(COL_KONTAN).value = emp.exgratia_amount || 0;
+        // [ROBUST] Support multiple field names from DOM vs Tax Report
+        row.getCell(COL_THR).value = emp.thr_amount ?? emp.THR ?? emp.thr ?? 0;
+        row.getCell(COL_KONTAN).value = emp.exgratia_amount ?? emp.kontanan_amount ?? emp.KONTANAN ?? emp.bonus_amount ?? 0;
 
         // Jaminan Majikan (based on Gaji Standar + Masa Kerja)
         // Masa Kerja column was removed from display, so use hardcoded values
@@ -371,9 +392,9 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_TARIF_TER).value = (emp.tarif_pajak_ter || 0) / 100;
         row.getCell(COL_TARIF_TER).numFmt = '0.00%';
 
-        // PPH21 — use pot_pph21 (actual deduction from PR_ADTRANS, matches Daftar Upah "Pajak" column)
+        // PPH21 — prioritize potongan_pph21 or pot_pph21 (actual deduction from UI/PR_ADTRANS)
         // pph21_ter is calculated TER which may differ from actual deduction for some employees
-        row.getCell(COL_PPH21).value = emp.pot_pph21 || emp.pph21_ter || 0;
+        row.getCell(COL_PPH21).value = emp.potongan_pph21 ?? emp.pot_pph21 ?? emp.pph21_ter ?? 0;
 
         // Apply number formats
         for (let c = COL_HK; c <= TOTAL_COLS; c++) {
@@ -760,8 +781,8 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(STD_COL_TARIF).value = (emp.tarif_pajak_ter || 0) / 100;
         row.getCell(STD_COL_TARIF).numFmt = '0.00%';
 
-        // PPH21 — use pot_pph21 (actual deduction from PR_ADTRANS, matches Daftar Upah "Pajak" column)
-        row.getCell(STD_COL_PPH21).value = emp.pot_pph21 || emp.pph21_ter || 0;
+        // PPH21 — prioritize potongan_pph21 or pot_pph21 (actual deduction from UI/PR_ADTRANS)
+        row.getCell(STD_COL_PPH21).value = emp.potongan_pph21 ?? emp.pot_pph21 ?? emp.pph21_ter ?? 0;
 
         for (let c = STD_COL_GAJI_POKOK; c <= STD_TOTAL_COLS; c++) {
             if (c !== STD_COL_TARIF) row.getCell(c).numFmt = numFormat;
@@ -829,8 +850,8 @@ export const generateMonthlyTaxExcel = async (
 
     console.log(`[generateMonthlyTaxExcel] Calling workbook.xlsx.writeBuffer()...`);
     const buffer = await workbook.xlsx.writeBuffer();
-    console.log(`[generateMonthlyTaxExcel] writeBuffer returned ${buffer?.length || 0} bytes`);
-    if (buffer && buffer.length > 0) {
+    console.log(`[generateMonthlyTaxExcel] writeBuffer returned ${(buffer as any).byteLength || (buffer as any).length || 0} bytes`);
+    if (buffer && ((buffer as any).byteLength > 0 || (buffer as any).length > 0)) {
         console.log(`[generateMonthlyTaxExcel] SUCCESS`);
     } else {
         console.error(`[generateMonthlyTaxExcel] WARNING - buffer is empty!`);

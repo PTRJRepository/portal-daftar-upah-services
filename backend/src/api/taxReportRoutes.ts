@@ -14,6 +14,7 @@ import { taxReportService } from "../services/taxReportService";
 import { generateMonthlyTaxExcel, generateDecemberTaxExcel } from "../services/taxReportExcelService";
 import { ptkpTaxService } from "../services/ptkpTaxService";
 import { EmployeeEstateService } from "../services/employeeEstateService";
+import { Database } from "../db/client";
 
 const authService = AuthService.getInstance();
 
@@ -895,21 +896,27 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 const finalBuffer = Buffer.isBuffer(excelBuffer) ? excelBuffer : Buffer.from(excelBuffer);
                 
                 const filename = `PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
-                console.log(`[TaxReport Excel FAST] Returning response:`, {
-                    bufferSize: finalBuffer.length,
-                    filename
-                });
+                const tempPath = `./temp/${filename}`;
                 
+                // Write to temp file
+                await Bun.write(tempPath, finalBuffer);
+                console.log(`[TaxReport Excel FAST] Written to temp file: ${tempPath} (${finalBuffer.length} bytes)`);
+                
+                // Return as Bun file response (known to work correctly)
+                const fileResponse = Bun.file(tempPath);
                 set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
                 set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-                set.headers["Content-Length"] = String(finalBuffer.length);
                 set.headers["Access-Control-Expose-Headers"] = "Content-Disposition";
-                set.headers["Cache-Control"] = "no-cache";
-
-                // Return as ArrayBuffer (Elysia handles this better for binary data)
-                const arrayBuffer = finalBuffer.buffer.slice(finalBuffer.byteOffset, finalBuffer.byteOffset + finalBuffer.byteLength);
-                console.log(`[TaxReport Excel FAST] ArrayBuffer size: ${arrayBuffer.byteLength}`);
-                return arrayBuffer;
+                
+                // Clean up temp file after response is sent (best effort)
+                setTimeout(() => {
+                    Bun.file(tempPath).exists().then(exists => {
+                        if (exists) Bun.file(tempPath).delete();
+                    });
+                }, 5000);
+                
+                console.log(`[TaxReport Excel FAST] Returning file response`);
+                return fileResponse;
             } catch (excelError: any) {
                 console.error('[TaxReport Excel FAST] Excel generation failed:', excelError);
                 console.error('[TaxReport Excel FAST] Stack:', excelError?.stack);
@@ -939,6 +946,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // ========================================================
     // POST /tax-report/monthly/excel/dom
     // Generates Tax Report directly from frontend DOM details
+    // Enriches data with THR, kontanan, and alamat from HR tables
     // ========================================================
     .post("/monthly/excel/dom", async ({ body, set }) => {
         try {
@@ -951,20 +959,117 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             console.log(`[TaxReport Excel DOM] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, employees=${employees.length}`);
 
+            // Enrich employee data with THR, kontanan, and alamat from database
+            const empCodes = employees.map((emp: any) => (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase()).filter(Boolean);
+            
+            if (empCodes.length > 0) {
+                try {
+                    const mainDb = Database.getInstance();
+                    const extendedDb = Database.getExtendedInstance();
+
+                    // 1. Fetch alamat from HR_EMPLOYEE
+                    const CHUNK = 500;
+                    const alamatMap = new Map<string, string>();
+                    for (let i = 0; i < empCodes.length; i += CHUNK) {
+                        const chunk = empCodes.slice(i, i + CHUNK);
+                        const placeholders = chunk.map(() => '?').join(',');
+                        const rows = await mainDb.query(`
+                            SELECT RTRIM(EmpCode) as EmpCode, RTRIM(ISNULL(ResAddress, '')) as ResAddress
+                            FROM HR_EMPLOYEE
+                            WHERE RTRIM(EmpCode) IN (${placeholders})
+                        `, chunk) as any[];
+                        
+                        for (const row of rows) {
+                            const empCode = (row.EmpCode || '').trim().toUpperCase();
+                            const alamat = (row.ResAddress || '').trim();
+                            if (empCode && alamat) {
+                                alamatMap.set(empCode, alamat);
+                            }
+                        }
+                    }
+                    console.log(`[TaxReport Excel DOM] Fetched alamat for ${alamatMap.size} employees`);
+
+                    // 2. Fetch THR and kontanan from employee_other_incomes
+                    const thrMap = new Map<string, number>();
+                    const kontananMap = new Map<string, number>();
+                    
+                    for (let i = 0; i < empCodes.length; i += CHUNK) {
+                        const chunk = empCodes.slice(i, i + CHUNK);
+                        const placeholders = chunk.map(() => '?').join(',');
+                        const rows = await extendedDb.query(`
+                            SELECT RTRIM(ISNULL(emp_code, '')) as emp_code, income_type, SUM(ISNULL(amount, 0)) as total_amount
+                            FROM employee_other_incomes
+                            WHERE RTRIM(ISNULL(emp_code, '')) IN (${placeholders})
+                              AND period_year = ?
+                              AND period_month = ?
+                              AND income_type IN ('THR', 'BONUS', 'KONTAN', 'KONTANAN')
+                            GROUP BY emp_code, income_type
+                        `, [...chunk, parseInt(year), parseInt(month)]) as any[];
+                        
+                        for (const row of rows) {
+                            const empCode = (row.emp_code || '').trim().toUpperCase();
+                            const amount = Number(row.total_amount) || 0;
+                            const incomeType = (row.income_type || '').toUpperCase();
+                            
+                            if (empCode && amount > 0) {
+                                if (incomeType === 'THR') {
+                                    thrMap.set(empCode, (thrMap.get(empCode) || 0) + amount);
+                                } else if (['BONUS', 'KONTAN', 'KONTANAN'].includes(incomeType)) {
+                                    kontananMap.set(empCode, (kontananMap.get(empCode) || 0) + amount);
+                                }
+                            }
+                        }
+                    }
+                    console.log(`[TaxReport Excel DOM] Fetched THR for ${thrMap.size} employees, kontanan for ${kontananMap.size} employees`);
+
+                    // 3. Enrich employee data
+                    employees.forEach((emp: any) => {
+                        const empCode = (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase();
+                        
+                        // Add alamat if missing
+                        if (!emp.alamat && !emp.res_address && alamatMap.has(empCode)) {
+                            emp.alamat = alamatMap.get(empCode);
+                            emp.res_address = alamatMap.get(empCode);
+                        }
+                        
+                        // Add THR if missing or zero
+                        if (!emp.thr_amount || emp.thr_amount === 0) {
+                            const thrAmount = thrMap.get(empCode) || 0;
+                            if (thrAmount > 0) {
+                                emp.thr_amount = thrAmount;
+                            }
+                        }
+                        
+                        // Add kontanan/exgratia if missing or zero
+                        if (!emp.exgratia_amount || emp.exgratia_amount === 0) {
+                            const kontananAmount = kontananMap.get(empCode) || 0;
+                            if (kontananAmount > 0) {
+                                emp.exgratia_amount = kontananAmount;
+                            }
+                        }
+                    });
+
+                    console.log(`[TaxReport Excel DOM] Enriched ${employees.length} employees with THR, kontanan, and alamat`);
+                } catch (enrichError: any) {
+                    console.error('[TaxReport Excel DOM] Failed to enrich data (continuing with original data):', enrichError);
+                    // Continue with original data if enrichment fails
+                }
+            }
+
             let totalPph21 = 0;
             employees.forEach((emp: any) => {
-                 totalPph21 += (Number(emp.pot_pph21) || Number(emp.pph21_ter) || 0);
+                 totalPph21 += (Number(emp.potongan_pph21) || Number(emp.pot_pph21) || Number(emp.pph21_ter) || 0);
             });
 
             const gangLabel = gang || gangPrefix || 'ALL';
 
             // Generate Excel Buffer (pass premiKeys for dynamic column headers)
             const excelBuffer = await generateMonthlyTaxExcel(
-                { employees, period: { month: parseInt(month), year: parseInt(year) }, total_pph21: totalPph21 }, 
-                parseInt(year), 
-                parseInt(month), 
-                division || 'ALL', 
-                gangLabel, 
+                { employees, period: { month: parseInt(month), year: parseInt(year) }, total_pph21: totalPph21 },
+                parseInt(year),
+                parseInt(month),
+                division || 'ALL',
+                gangLabel,
                 premiKeys || []
             );
 
@@ -976,7 +1081,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const filename = `PPH21_DOM_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-            
+
             return excelBuffer;
         } catch (error: any) {
             console.error("[TaxReport DOM] Error generating Excel report from DOM:", error);
