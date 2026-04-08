@@ -42,6 +42,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // ========================================================
     // GET /tax-report/monthly
     // Monthly PPH21 tax report for a specific period
+    // Uses DataExtractorService (same as Daftar Upah) - always uses current DB
     // ========================================================
     .get("/monthly", async ({ query, set, currentUser }) => {
         try {
@@ -50,7 +51,6 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
             const gangPrefix = query.gangPrefix as string || undefined;
-            const useHistory = query.use_history === 'true';
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -61,7 +61,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year or month parameter" };
             }
 
-            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistory);
+            // Always use current DB (same as Daftar Upah)
+            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, false);
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching monthly tax report:", error);
@@ -74,14 +75,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             month: t.String(),
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
-            gangPrefix: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            gangPrefix: t.Optional(t.String())
         })
     })
 
     // ========================================================
     // GET /tax-report/monthly/excel
     // Download Monthly PPH21 tax report as Excel with formulas
+    // Uses DataExtractorService (same as Daftar Upah) - always uses current DB
     // ========================================================
     .get("/monthly/excel", async ({ query, set, currentUser }) => {
         try {
@@ -90,10 +91,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
             const gangPrefix = query.gangPrefix as string || undefined;
-            const useHistory = query.use_history === 'true';
 
-            console.log(`[TaxReport Excel] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistory}`);
-            console.log(`[TaxReport Excel] currentUser: ${currentUser ? 'authenticated' : 'not auth'}`);
+            console.log(`[TaxReport Excel] Request: year=${year}, month=${month}, division=${division}, gang=${gang}`);
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -104,8 +103,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Invalid year or month parameter" };
             }
 
-            // Fetch the base data
-            const data = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistory);
+            // Always use current DB (same as Daftar Upah)
+            const data = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, false);
 
             console.log(`[TaxReport Excel] Data fetched: ${data?.employees?.length || 0} employees`);
 
@@ -126,12 +125,11 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            return new Response(excelBuffer, {
-                headers: {
-                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "Content-Disposition": `attachment; filename="PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx"`
-                }
-            });
+            const filename = `PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
+            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+            
+            return excelBuffer;
         } catch (error: any) {
             console.error("[TaxReport] Error generating Excel report:", error);
             set.status = 500;
@@ -143,15 +141,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             month: t.String(),
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
-            gangPrefix: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            gangPrefix: t.Optional(t.String())
         })
     })
 
     // ========================================================
     // GET /tax-report/monthly/excel/progressive
     // Download Monthly PPH21 using progressive extraction (avoids timeout)
-    // Uses dataExtractorService.extractPayrollDataProgressive() + direct tax transformation
+    // Uses dataExtractorService.extractPayrollDataProgressive() (same as Daftar Upah) - always uses current DB
     // ========================================================
     .get("/monthly/excel/progressive", async ({ query, set, currentUser }) => {
         try {
@@ -160,9 +157,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
             const gangPrefix = query.gangPrefix as string || undefined;
-            const useHistory = query.use_history === 'true';
 
-            console.log(`[TaxReport Excel Progressive] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, gangPrefix=${gangPrefix}, useHistory=${useHistory}`);
+            console.log(`[TaxReport Excel Progressive] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, gangPrefix=${gangPrefix}`);
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -446,6 +442,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     penghasilan_bruto: row.penghasilan_bruto || penghasilanBruto,
                     tarif_pajak_ter: row.tarif_pajak_ter || tarifPajakTer,
                     pph21_ter: pph21,
+                    pot_pph21: row.pot_pph21 || 0,
                     hk: row.jumlah_hk || row.hk || 0,
                     gaji_pokok_aktual: gajiPokokAktual,
                     koreksi_hk: row.koreksi_hk || 0,
@@ -489,12 +486,11 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            return new Response(excelBuffer, {
-                headers: {
-                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "Content-Disposition": `attachment; filename="PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx"`
-                }
-            });
+            const filename = `PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
+            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+            
+            return excelBuffer;
         } catch (error: any) {
             console.error("[TaxReport Excel Progressive] Error:", error);
             set.status = 500;
@@ -506,15 +502,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             month: t.String(),
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
-            gangPrefix: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            gangPrefix: t.Optional(t.String())
         })
     })
 
     // ========================================================
     // GET /tax-report/monthly/excel/fast
-    // FAST tax report using pre-computed history data (no streaming)
-    // Reads directly from payroll_history_detail table - MUCH faster than progressive
+    // FAST tax report using DataExtractorService (same as Daftar Upah)
+    // Respects use_history parameter to ensure data consistency with Daftar Upah
     // ========================================================
     .get("/monthly/excel/fast", async ({ query, set, currentUser }) => {
         try {
@@ -524,9 +519,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             let division = query.division as string || undefined;
             const gang = query.gang as string || undefined;
             const gangPrefix = query.gangPrefix as string || undefined;
-            const useHistory = query.use_history === 'true';
+            const useHistoryDb = query.use_history === '1' || query.use_history === 'true';
 
-            console.log(`[TaxReport Excel FAST] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistory}`);
+            console.log(`[TaxReport Excel FAST] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistoryDb}`);
 
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 division = currentUser.divisions[0];
@@ -538,45 +533,50 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // Import services
-            const { HistoryDatabaseService } = await import("../services/historyDatabaseService");
             const { mapPTKPToTER } = await import("../services/ptkpTaxService");
             const { getCarumanForPph21 } = await import("../services/carumanDefinitions");
             const { EmployeeEstateService } = await import("../services/employeeEstateService");
             const { OtherIncomesService } = await import("../services/otherIncomesService");
             const { ptkpTaxService } = await import("../services/ptkpTaxService");
-            const { divisionDefinition } = await import("../services/divisionDefinition");
-
-            const historyDb = HistoryDatabaseService.getInstance();
+            const { DataExtractorService } = await import("../services/dataExtractorService");
+            const { Config } = await import("../config");
 
             // Resolve gang/division
             const targetGangCode = gang && gang.trim() !== '' && gang !== 'ALL' ? gang.trim().toUpperCase() : undefined;
 
-            // Determine effective division for secondary services (OtherIncomes, EmployeeEstate)
-            // Some services need the real source division code even if it's a virtual division
-            let effectiveDivisionForSecondary = division;
-            if (division && divisionDefinition.isVirtualDivision(division)) {
-                const sourceDivisions = await divisionDefinition.getSourceDivisionsForAggregation(division);
-                if (sourceDivisions.length > 0) effectiveDivisionForSecondary = sourceDivisions[0];
-            }
+            console.log(`[TaxReport Excel FAST] Using DataExtractorService (same as Daftar Upah): gang=${targetGangCode || 'ALL'}, division=${division || 'ALL'}, prefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}`);
 
-            console.log(`[TaxReport Excel FAST] Fetching from history: gang=${targetGangCode || 'ALL'}, division=${division || 'ALL'}, prefix=${gangPrefix || 'none'}`);
-
-            // FAST: Read directly from pre-computed history tables
-            // HistoryDatabaseService internally handles virtual divisions and gangPrefix filtering.
-            const historyData = await historyDb.getHistoricalPayrollDataAsExtractorFormat(
+            // Use DataExtractorService EXACTLY like Daftar Upah - same data source, same logic
+            // This ensures Excel export matches exactly what appears in Daftar Upah
+            const extractorResult = await DataExtractorService.getInstance().extractPayrollData(
                 month, year,
                 targetGangCode || "ALL",
                 division,
-                null, // no specific emp code
-                gangPrefix
+                null,
+                Config.DB_PROFILE,
+                false, // skipDetailRecords
+                useHistoryDb, // Use the same useHistoryDb parameter as Daftar Upah
+                gangPrefix,
+                false  // skipHarvest [FIXED 2026-04-08]: Must match UI logic
             );
 
-            if (!historyData || !historyData.data_rows || historyData.data_rows.length === 0) {
+            if (!extractorResult.data_rows || extractorResult.data_rows.length === 0) {
                 set.status = 404;
                 return { error: "No data available for the selected period" };
             }
 
-            console.log(`[TaxReport Excel FAST] History query completed in ${Date.now() - startTime}ms, rows: ${historyData.data_rows.length}`);
+            const historyData = {
+                data_rows: extractorResult.data_rows,
+                dynamic_premi_headers: extractorResult.dynamic_premi_headers || [],
+                dynamic_potongan_headers: extractorResult.dynamic_potongan_headers || [],
+                premi_title_map: extractorResult.premi_title_map || {},
+                potongan_title_map: extractorResult.potongan_title_map || {},
+                meta: { execution_time_ms: 0, row_count: extractorResult.data_rows.length, is_history_snapshot: false }
+            };
+            console.log(`[TaxReport Excel FAST] DataExtractor: ${historyData.data_rows.length} rows, same as Daftar Upah`);
+
+            // Effective division for other incomes lookup
+            const effectiveDivisionForSecondary = division;
 
             // Get PTKP data
             const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
@@ -585,10 +585,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 ptkpMap.set(p.emp_code.trim(), p.ptkp_status);
             }
 
-            // Get jabatan map
+            // COLLECT unique emp_codes for optimized lookups
+            const allInitialEmpCodes = Array.from(new Set(extractorResult.data_rows.map(r => (r.emp_code || '').trim()).filter(Boolean)));
+            
+            // Get jabatan map (OPTIMIZED with filter)
             const jabatanMap: Record<string, string> = {};
             try {
-                const jobTitlesResult = await EmployeeEstateService.getEmployeeJobsWithNik();
+                console.log(`[TaxReport Excel FAST] Fetching jabatan for ${allInitialEmpCodes.length} employees...`);
+                const jobTitlesResult = await EmployeeEstateService.getEmployeeJobsWithNik(allInitialEmpCodes);
                 if (jobTitlesResult && jobTitlesResult.empcodeMap) {
                     for (const [empCode, jabatan] of Object.entries(jobTitlesResult.empcodeMap)) {
                         jabatanMap[empCode] = jabatan || '';
@@ -656,24 +660,26 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return brondolSubKeys.some(bk => upper === bk.toUpperCase());
             };
 
-            // [DE-DUPLICATION] Use a Map to ensure each employee is counted only once
-            // This prevents doubled totals if history data contains overlapping master headers.
+            // [DE-DUPLICATION] Use a Map to focus on the LATEST record per employee (Append-Insert handling)
+            // This prevents "accumulated" duplicate data from being summed erroneously.
+            // We assume the extractor returns rows in natural insertion order (oldest first).
             const employeeMap = new Map<string, any>();
             for (const r of historyData.data_rows) {
                 const hk = Number(r.jumlah_hk || r.hk || 0);
                 const hasIncome = Number(r.jumlah_upah_kotor || 0) > 0;
                 
                 if (hk > 0 || hasIncome) {
-                    // Use emp_code or fallback to nik/actual_nik for de-duplication
                     const key = (r.emp_code || r.nik || r.actual_nik || '').trim().toUpperCase();
                     if (key) {
+                        // Always overwrite with the last record seen (Latest Wins)
                         employeeMap.set(key, r);
                     }
                 }
             }
 
             const activeEmployees = Array.from(employeeMap.values());
-            console.log(`[TaxReport Excel FAST] De-duplicated ${historyData.data_rows.length} rows down to ${activeEmployees.length} unique employees.`);
+            console.log(`[TaxReport Excel FAST] Rows from Extractor: ${historyData.data_rows.length}`);
+            console.log(`[TaxReport Excel FAST] De-duplicated down to ${activeEmployees.length} unique employees (LATEST VERSION ONLY).`);
 
             console.log(`[TaxReport Excel FAST] Active employees (HK > 0 OR Income > 0): ${activeEmployees.length}`);
 
@@ -851,6 +857,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     penghasilan_bruto: Number(penghasilanBruto),
                     tarif_pajak_ter: tarifPajakTer,
                     pph21_ter: Number(pph21),
+                    pot_pph21: Number(row.pot_pph21) || 0,
                     
                     // Pendapatan Lainnya
                     thr_amount: empThrAmount,                    // Was: missing
@@ -868,28 +875,55 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const gangLabel = gang || gangPrefix || 'ALL';
 
             // Generate Excel
-            const excelBuffer = await generateMonthlyTaxExcel(
-                { employees, period: { month, year }, total_pph21: totalPph21 },
-                year, month, division || 'ALL', gangLabel
-            );
+            console.log(`[TaxReport Excel FAST] Calling generateMonthlyTaxExcel with ${employees.length} employees...`);
+            try {
+                const excelBuffer = await generateMonthlyTaxExcel(
+                    { employees, period: { month, year }, total_pph21: totalPph21 },
+                    year, month, division || 'ALL', gangLabel
+                );
+                console.log(`[TaxReport Excel FAST] generateMonthlyTaxExcel returned buffer length=${excelBuffer?.length || 0}`);
 
-            if (!excelBuffer || excelBuffer.length === 0) {
-                set.status = 500;
-                return { error: "Failed to generate Excel buffer" };
-            }
-
-            console.log(`[TaxReport Excel FAST] Total time: ${Date.now() - startTime}ms`);
-
-            return new Response(excelBuffer, {
-                headers: {
-                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "Content-Disposition": `attachment; filename="PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx"`
+                if (!excelBuffer || excelBuffer.length === 0) {
+                    console.error('[TaxReport Excel FAST] Excel buffer is empty!');
+                    set.status = 500;
+                    return { error: "Failed to generate Excel buffer - empty" };
                 }
-            });
+
+                console.log(`[TaxReport Excel FAST] Total time: ${Date.now() - startTime}ms`);
+
+                // Ensure we have a proper Buffer
+                const finalBuffer = Buffer.isBuffer(excelBuffer) ? excelBuffer : Buffer.from(excelBuffer);
+                
+                const filename = `PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
+                console.log(`[TaxReport Excel FAST] Returning response:`, {
+                    bufferSize: finalBuffer.length,
+                    filename
+                });
+                
+                set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+                set.headers["Content-Length"] = String(finalBuffer.length);
+                set.headers["Access-Control-Expose-Headers"] = "Content-Disposition";
+                set.headers["Cache-Control"] = "no-cache";
+
+                // Return as ArrayBuffer (Elysia handles this better for binary data)
+                const arrayBuffer = finalBuffer.buffer.slice(finalBuffer.byteOffset, finalBuffer.byteOffset + finalBuffer.byteLength);
+                console.log(`[TaxReport Excel FAST] ArrayBuffer size: ${arrayBuffer.byteLength}`);
+                return arrayBuffer;
+            } catch (excelError: any) {
+                console.error('[TaxReport Excel FAST] Excel generation failed:', excelError);
+                console.error('[TaxReport Excel FAST] Stack:', excelError?.stack);
+                set.status = 500;
+                return { error: "Excel generation failed: " + (excelError?.message || String(excelError)) };
+            }
         } catch (error: any) {
-            console.error("[TaxReport Excel FAST] Error:", error);
+            console.error(`[TaxReport Excel FAST ERROR]`, error);
             set.status = 500;
-            return { error: error.message || "Failed to generate tax report" };
+            return { 
+                error: "Internal Server Error", 
+                details: error?.message || "Unknown error",
+                stack: error?.stack
+            };
         }
     }, {
         query: t.Object({
@@ -900,6 +934,55 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             gangPrefix: t.Optional(t.String()),
             use_history: t.Optional(t.String())
         })
+    })
+
+    // ========================================================
+    // POST /tax-report/monthly/excel/dom
+    // Generates Tax Report directly from frontend DOM details
+    // ========================================================
+    .post("/monthly/excel/dom", async ({ body, set }) => {
+        try {
+            const { year, month, division, gang, gangPrefix, employees, premiKeys } = body as any;
+
+            if (!year || !month || !employees || !Array.isArray(employees)) {
+                set.status = 400;
+                return { error: "Invalid payload: year, month, and employees are required" };
+            }
+
+            console.log(`[TaxReport Excel DOM] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, employees=${employees.length}`);
+
+            let totalPph21 = 0;
+            employees.forEach((emp: any) => {
+                 totalPph21 += (Number(emp.pot_pph21) || Number(emp.pph21_ter) || 0);
+            });
+
+            const gangLabel = gang || gangPrefix || 'ALL';
+
+            // Generate Excel Buffer (pass premiKeys for dynamic column headers)
+            const excelBuffer = await generateMonthlyTaxExcel(
+                { employees, period: { month: parseInt(month), year: parseInt(year) }, total_pph21: totalPph21 }, 
+                parseInt(year), 
+                parseInt(month), 
+                division || 'ALL', 
+                gangLabel, 
+                premiKeys || []
+            );
+
+            if (!excelBuffer || excelBuffer.length === 0) {
+                set.status = 500;
+                return { error: "Failed to generate Excel buffer" };
+            }
+
+            const filename = `PPH21_DOM_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
+            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+            
+            return excelBuffer;
+        } catch (error: any) {
+            console.error("[TaxReport DOM] Error generating Excel report from DOM:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to generate Excel report from DOM" };
+        }
     })
 
     // ========================================================
@@ -1026,12 +1109,11 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             // Generate Excel Buffer
             const excelBuffer = await generateDecemberTaxExcel(data, year, division || 'ALL', gangLabel);
 
-            return new Response(excelBuffer, {
-                headers: {
-                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "Content-Disposition": `attachment; filename="PAJAK_DESEMBER_${division || 'ALL'}_${gangLabel}_${year}.xlsx"`
-                }
-            });
+            const filename = `PAJAK_DESEMBER_${division || 'ALL'}_${gangLabel}_${year}.xlsx`;
+            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+            
+            return excelBuffer;
         } catch (error: any) {
             console.error("[TaxReport] Error generating December Excel report:", error);
             set.status = 500;

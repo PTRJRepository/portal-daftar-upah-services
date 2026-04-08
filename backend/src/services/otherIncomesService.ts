@@ -441,7 +441,9 @@ export class OtherIncomesService {
                 const employeeKey = nikKey || empCodeKey;
                 const key = `${employeeKey}|${incomeType}`;
                 
-                if (key && employeeKey && !uniqueMap.has(key)) {
+                if (key && employeeKey) {
+                    // [APPEND-INSERT FIX] Always overwrite with the latest record found in the array.
+                    // If the database returns records in insertion order, the last one is the newest.
                     uniqueMap.set(key, r);
                 }
             });

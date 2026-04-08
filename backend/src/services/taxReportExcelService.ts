@@ -30,6 +30,9 @@ export const generateMonthlyTaxExcel = async (
     gang: string,
     premiKeys?: string[]
 ): Promise<Buffer> => {
+    console.log(`[generateMonthlyTaxExcel] START - employees=${data?.employees?.length}, year=${year}, month=${month}, division=${division}, gang=${gang}`);
+    console.log(`[generateMonthlyTaxExcel] First emp keys: ${data?.employees?.[0] ? Object.keys(data.employees[0]).join(', ') : 'NONE'}`);
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'PT. Rebinmas Jaya - Auto Report System';
     workbook.created = new Date();
@@ -122,11 +125,12 @@ export const generateMonthlyTaxExcel = async (
     const COL_KOREKSI = 15;
     const COL_BERAS = 16;
     const COL_JABATAN = 17;
-    const COL_SERVICE_TIME = 18; // Service Time Allow = Lembur value
+    const COL_MASA_KERJA = 18;
+    const COL_SERVICE_TIME = 19; // Service Time Allow = Lembur value
 
     // Dynamic premi columns
-    const COL_PREMI_START = 19;
-    const COL_PREMI_END = 18 + allPremiKeys.length;  // inclusive
+    const COL_PREMI_START = 20;
+    const COL_PREMI_END = 19 + allPremiKeys.length;  // inclusive
     const COL_TOTAL_PREMI = COL_PREMI_END + 1;
 
     // Fixed after premi (THR and KONTAN shown for reference)
@@ -149,7 +153,7 @@ export const generateMonthlyTaxExcel = async (
     for (let i = 1; i <= TOTAL_COLS; i++) {
         if (i <= 9) colWidths.push(i === 2 ? 15 : i === 3 ? 25 : i === 4 ? 20 : i <= 9 ? 8 : 5);
         else if (i <= 15) colWidths.push(15);
-        else if (i <= 18) colWidths.push(12);
+        else if (i <= 19) colWidths.push(12);
         else if (i < COL_TOTAL_PREMI) colWidths.push(13); // premi columns
         else if (i === COL_TOTAL_PREMI) colWidths.push(15);
         else if (i <= COL_KONTAN) colWidths.push(15);
@@ -243,6 +247,7 @@ export const generateMonthlyTaxExcel = async (
         { col: COL_KOREKSI, label: 'KOREKSI\n(Aktual-Ideal)', bg: 'F1F5F9', fg: '0F172A' },
         { col: COL_BERAS, label: 'BERAS', bg: 'E2E8F0', fg: '0F172A' },
         { col: COL_JABATAN, label: 'JABATAN', bg: 'E2E8F0', fg: '0F172A' },
+        { col: COL_MASA_KERJA, label: 'MASA KERJA', bg: 'E2E8F0', fg: '0F172A' },
         { col: COL_SERVICE_TIME, label: 'SERVICE TIME\nALLOW', bg: 'E2E8F0', fg: '0F172A' },
     ];
 
@@ -317,14 +322,15 @@ export const generateMonthlyTaxExcel = async (
         const lTarif = L(COL_TARIF_TER);
         const lPph = L(COL_PPH21);
 
-        row.getCell(COL_GAJI_STANDAR).value = { formula: `${lUD}${r}*30`, result: (emp.upah_dasar || 0) * 30 };
-        row.getCell(COL_GP_IDEAL).value = { formula: `${lUD}${r}*${lHK}${r}`, result: emp.gaji_pokok_ideal || 0 };
+        row.getCell(COL_GAJI_STANDAR).value = (emp.upah_dasar || 0) * 30;
+        row.getCell(COL_GP_IDEAL).value = emp.gaji_pokok_ideal || 0;
         row.getCell(COL_GP_AKTUAL).value = emp.gaji_pokok_aktual || 0;
-        row.getCell(COL_KOREKSI).value = { formula: `${lGA}${r}-${lGI}${r}`, result: emp.koreksi_hk || 0 };
+        row.getCell(COL_KOREKSI).value = emp.koreksi_hk || 0;
 
         // Tunjangan — Service Time Allow = Lembur
         row.getCell(COL_BERAS).value = emp.tunjangan_beras || 0;
         row.getCell(COL_JABATAN).value = emp.tunjangan_jabatan || 0;
+        row.getCell(COL_MASA_KERJA).value = emp.tunjangan_masa_kerja || 0;
         row.getCell(COL_SERVICE_TIME).value = emp.tunjangan_lembur || 0; // Lembur → Service Time Allow
 
         // Dynamic Premi columns
@@ -337,18 +343,8 @@ export const generateMonthlyTaxExcel = async (
             totalPremiResult += val;
         }
 
-        // Total Premi = SUM(premi range)
-        if (COL_PREMI_START === COL_PREMI_END) {
-            row.getCell(COL_TOTAL_PREMI).value = {
-                formula: `${lPremiStart}${r}`,
-                result: emp.total_premi || 0
-            };
-        } else {
-            row.getCell(COL_TOTAL_PREMI).value = {
-                formula: `SUM(${lPremiStart}${r}:${lPremiEnd}${r})`,
-                result: emp.total_premi || 0
-            };
-        }
+        // Total Premi = exact numeric value from UI/DB
+        row.getCell(COL_TOTAL_PREMI).value = emp.total_premi || 0;
 
         // Potongan Koreksi (displayed as negative — it's a deduction)
         row.getCell(COL_POT_KOREKSI).value = -(emp.pot_koreksi || 0);
@@ -362,11 +358,9 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_BPJS_KES).value = emp.bpjs_kes_majikan || 0;
         row.getCell(COL_ASTEK).value = emp.astek_jht_majikan || 0;
 
-        // UPAH KOTOR = GP Aktual + Beras + Jabatan + ServiceTime + Total Premi + Pot Koreksi (already negative)
-        row.getCell(COL_UPAH_KOTOR).value = {
-            formula: `${lGA}${r}+${lBeras}${r}+${lJab}${r}+${lST}${r}+${lTotalPremi}${r}+${lPotKor}${r}`,
-            result: emp.upah_kotor || 0
-        };
+        // UPAH KOTOR = exact numeric value from UI/DB
+        // Formulas cause inconsistencies when user opens Excel if backend uses custom capping/rules
+        row.getCell(COL_UPAH_KOTOR).value = emp.upah_kotor || 0;
 
         // PENGHASILAN BRUTO — use DIRECT value from UI Daftar Upah (not reconstructed via formula)
         // [FIX] Formula reconstruction produced different totals than the UI.
@@ -377,10 +371,9 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_TARIF_TER).value = (emp.tarif_pajak_ter || 0) / 100;
         row.getCell(COL_TARIF_TER).numFmt = '0.00%';
 
-        // PPH21 — use DIRECT value from UI Daftar Upah (pot_pph21)
-        // [FIX] Formula ROUND(Bruto×Tarif,0) produced different totals because bruto was also reconstructed.
-        // Now uses the exact PPh21 value that the Daftar Upah UI displays.
-        row.getCell(COL_PPH21).value = emp.pph21_ter || 0;
+        // PPH21 — use pot_pph21 (actual deduction from PR_ADTRANS, matches Daftar Upah "Pajak" column)
+        // pph21_ter is calculated TER which may differ from actual deduction for some employees
+        row.getCell(COL_PPH21).value = emp.pot_pph21 || emp.pph21_ter || 0;
 
         // Apply number formats
         for (let c = COL_HK; c <= TOTAL_COLS; c++) {
@@ -413,7 +406,7 @@ export const generateMonthlyTaxExcel = async (
 
     const numericCols = [
         COL_HK, COL_UPAH_DASAR, COL_GAJI_STANDAR, COL_GP_IDEAL, COL_GP_AKTUAL, COL_KOREKSI,
-        COL_BERAS, COL_JABATAN, COL_SERVICE_TIME,
+        COL_BERAS, COL_JABATAN, COL_MASA_KERJA, COL_SERVICE_TIME,
         ...Array.from({ length: allPremiKeys.length }, (_, i) => COL_PREMI_START + i),
         COL_TOTAL_PREMI, COL_POT_KOREKSI, COL_THR, COL_KONTAN,
         COL_BPJS_KES, COL_ASTEK, COL_UPAH_KOTOR, COL_BRUTO, COL_PPH21
@@ -767,9 +760,8 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(STD_COL_TARIF).value = (emp.tarif_pajak_ter || 0) / 100;
         row.getCell(STD_COL_TARIF).numFmt = '0.00%';
 
-        // PPH21 — use DIRECT value from UI Daftar Upah (pot_pph21)
-        // [FIX] Formula ROUND(Bruto×Tarif,0) produced different totals.
-        row.getCell(STD_COL_PPH21).value = emp.pph21_ter || 0;
+        // PPH21 — use pot_pph21 (actual deduction from PR_ADTRANS, matches Daftar Upah "Pajak" column)
+        row.getCell(STD_COL_PPH21).value = emp.pot_pph21 || emp.pph21_ter || 0;
 
         for (let c = STD_COL_GAJI_POKOK; c <= STD_TOTAL_COLS; c++) {
             if (c !== STD_COL_TARIF) row.getCell(c).numFmt = numFormat;
@@ -835,7 +827,14 @@ export const generateMonthlyTaxExcel = async (
         stdSheet.getCell(`${sig.col}${sigRowEnd + 1}`).font = { italic: true, size: 9 };
     });
 
+    console.log(`[generateMonthlyTaxExcel] Calling workbook.xlsx.writeBuffer()...`);
     const buffer = await workbook.xlsx.writeBuffer();
+    console.log(`[generateMonthlyTaxExcel] writeBuffer returned ${buffer?.length || 0} bytes`);
+    if (buffer && buffer.length > 0) {
+        console.log(`[generateMonthlyTaxExcel] SUCCESS`);
+    } else {
+        console.error(`[generateMonthlyTaxExcel] WARNING - buffer is empty!`);
+    }
     return Buffer.from(buffer);
 };
 

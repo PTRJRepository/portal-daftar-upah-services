@@ -752,6 +752,29 @@ export async function seedAggregationToDb(division: string | undefined, month: n
         console.log(`[AggregationSeeder] Bulk seeding ${divisionsToProcess.length} divisions (real + virtual): ${divisionsToProcess.join(', ')}`);
     }
 
+    // [CLEANUP] Delete existing data for the target division(s) and period before seeding
+    // This ensures a clean slate and prevents duplicate/stale data from previous seeding
+    const db = Database.getExtendedInstance();
+    for (const div of divisionsToProcess) {
+        const dbDivisionCode = DIVISION_CODE_MAP[div] || div;
+        console.log(`[AggregationSeeder] Cleaning existing data for ${dbDivisionCode} (${month}/${year})...`);
+        
+        try {
+            const deleteResult = await db.query(`
+                DELETE FROM dbo.daftar_upah_aggregation_history
+                WHERE period_month = ? AND period_year = ? AND division_code = ?
+            `, [month, year, dbDivisionCode]);
+            
+            const deletedCount = deleteResult?.rowsAffected || 0;
+            if (deletedCount > 0) {
+                console.log(`[AggregationSeeder] ✅ Deleted ${deletedCount} existing record(s) for ${dbDivisionCode}`);
+            }
+        } catch (deleteError: any) {
+            console.warn(`[AggregationSeeder] ⚠️ Failed to cleanup ${dbDivisionCode}:`, deleteError.message);
+            // Continue anyway - the per-gang delete in insertOrUpdateAggregation will handle duplicates
+        }
+    }
+
     const results: SeedResult[] = [];
     // Only difference: sourceEndpoint is now 'raw-tree-endpoint'
     const sourceEndpoint = "raw-tree-endpoint";

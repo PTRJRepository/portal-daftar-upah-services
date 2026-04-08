@@ -47,6 +47,34 @@ export async function seedAggregationParallel(
     const startTime = Date.now();
     const allResults: SeederResult[] = [];
 
+    // [CLEANUP] Delete existing data for all divisions before parallel seeding
+    console.log(`\n🧹 Pre-cleanup: Removing existing data for ${month}/${year}...`);
+    const db = Database.getExtendedInstance();
+    const DIVISION_CODE_MAP: Record<string, string> = {
+        "PG1A": "P1A", "PG1B": "P1B", "PG2A": "P2A", "PG2B": "P2B",
+        "ARB1": "AB1", "ARB2": "AB2",
+        "INFRA": "INF", "ARC": "ARC",
+        "DME": "DME", "ARA": "ARA", "IJL": "IJL", "MILL": "MILL"
+    };
+
+    for (const div of divisions) {
+        const dbDivisionCode = DIVISION_CODE_MAP[div] || div;
+        try {
+            const deleteResult = await db.query(`
+                DELETE FROM dbo.daftar_upah_aggregation_history
+                WHERE period_month = ? AND period_year = ? AND division_code = ?
+            `, [month, year, dbDivisionCode]);
+            
+            const deletedCount = deleteResult?.rowsAffected || 0;
+            if (deletedCount > 0) {
+                console.log(`  ✅ ${dbDivisionCode}: Deleted ${deletedCount} record(s)`);
+            }
+        } catch (deleteError: any) {
+            console.warn(`  ⚠️ ${dbDivisionCode}: Cleanup failed - ${deleteError.message}`);
+        }
+    }
+    console.log(`✅ Pre-cleanup complete\n`);
+
     // Initialize progress tracker
     updateProgress({
         is_running: true,

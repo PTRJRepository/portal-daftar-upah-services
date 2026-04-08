@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
 import { useCurrentPeriod } from '../hooks/useCurrentPeriod';
 import { fetchGangs, fetchDivisions } from '../services/gangService';
 import { getLockedGangs } from '../services/lockedDivisionService';
@@ -197,7 +197,7 @@ export const ReportProvider = ({ children }) => {
         load();
     }, [division, token, isLockedMode]);
 
-    const value = {
+    const value = useMemo(() => ({
         month, setMonth,
         year, setYear,
         division, setDivision,
@@ -210,7 +210,11 @@ export const ReportProvider = ({ children }) => {
         isLockedMode,
         isAdminUser,
         currentPeriod: currentPeriodData
-    };
+    }), [
+        month, year, division, gang, gangPrefix, gangs, 
+        allDivisions, gangLoading, divisionsLoading, 
+        isLockedMode, isAdminUser, currentPeriodData
+    ]);
 
     return <ReportContext.Provider value={value}>{children}</ReportContext.Provider>;
 };

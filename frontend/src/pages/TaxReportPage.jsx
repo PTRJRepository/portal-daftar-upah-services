@@ -95,17 +95,21 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                 useHistory
             });
             const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory);
+            const potPph21Sum = result?.employees?.reduce((s, e) => s + (e.pot_pph21 || 0), 0) ?? 0;
+            const pph21TerSum = result?.employees?.reduce((s, e) => s + (e.pph21_ter || 0), 0) ?? 0;
             console.log('[TaxReportPage] Monthly tax data loaded:', {
                 employeeCount: result?.employees?.length || 0,
-                total_pph21_from_backend: result?.total_pph21,
+                total_pot_pph21: potPph21Sum,          // Matches Daftar Upah
+                total_pph21_ter: pph21TerSum,           // Calculated TER
+                selisih: pph21TerSum - potPph21Sum,     // Difference
                 data_source: result?.data_source,
                 sample_employee: result?.employees?.[0] ? {
                     emp_name: result.employees[0].emp_name,
+                    pot_pph21: result.employees[0].pot_pph21,
                     pph21_ter: result.employees[0].pph21_ter,
                     penghasilan_bruto: result.employees[0].penghasilan_bruto,
                     tarif_pajak_ter: result.employees[0].tarif_pajak_ter
                 } : null,
-                calculated_total_pph21_ter: result?.employees?.reduce((s, e) => s + (e.pph21_ter || 0), 0)
             });
             setData(result);
         } catch (err) {
@@ -118,6 +122,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
         try {
+            // Use the same useHistory state as the displayed data to ensure consistency
             await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory);
         } catch (err) {
             alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
@@ -129,6 +134,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     const handleExportJson = async () => {
         setExportingJson(true);
         try {
+            // Use the same useHistory state as the displayed data to ensure consistency
             await exportPajakJson(token, year, month, gang || 'ALL', division, gangPrefix, useHistory);
         } catch (err) {
             alert('Gagal export JSON: ' + (err.message || 'Unknown error'));
@@ -310,7 +316,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                             <td className="text-right">{formatNumber(emp.upah_kotor)}</td>
                                             <td className="text-right">{formatNumber(emp.penghasilan_bruto)}</td>
                                             <td className="text-center">{formatPercent(emp.tarif_pajak_ter)}</td>
-                                            <td className="text-right">{formatNumber(emp.pph21_ter)}</td>
+                                            <td className="text-right">{formatNumber(emp.pot_pph21 || emp.pph21_ter)}</td>
                                         </tr>
                                         {isExpanded && (
                                             <tr className="expanded-row-detail" style={{ backgroundColor: '#f8fafc' }}>
@@ -451,7 +457,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                 <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.upah_kotor || 0), 0))}</strong></td>
                                 <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.penghasilan_bruto || 0), 0))}</strong></td>
                                 <td></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.pph21_ter || 0), 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.pot_pph21 || 0), 0))}</strong></td>
                             </tr>
                         </tfoot>
                     </table>

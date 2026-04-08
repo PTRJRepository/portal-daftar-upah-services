@@ -1744,25 +1744,32 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 };
             }
 
+            // [FIX] Use pot_pph21 (actual deduction) as primary total to match Daftar Upah grand total
+            // pph21_ter is calculated TER which may differ from actual deduction for some employees
+            const actualPph21Total = result.employees.reduce((s: number, e: any) => s + (e.pot_pph21 ?? 0), 0);
             const payload = {
                 tipe: "pajak_export",
                 periode: { bulan: month, tahun: year },
                 gang: gang || "ALL",
                 generated_at: new Date().toISOString(),
                 data_source: result.data_source,
-                total_pph21_ter: result.total_pph21,
-                total_pph21_input: result.employees.reduce((s: number, e: any) => s + (e.pot_pph21 ?? 0), 0),
+                total_pph21: actualPph21Total,           // Matches Daftar Upah grand total
+                total_pph21_input: actualPph21Total,   // Legacy alias (same value)
+                total_pph21_ter: result.total_pph21,    // Calculated TER (for comparison)
+                selisih_total: result.total_pph21 - actualPph21Total, // TER - actual
                 employee_count: result.employees.length,
                 employees: employeesMap,
             };
 
             const filename = `PAJAK_${gang || "ALL"}_${month}_${year}.json`;
             const jsonBody = JSON.stringify(payload);
-            
+            console.log(`[PayrollRoutes] /export/pajak: JSON size=${jsonBody.length} bytes, employees=${result.employees.length}`);
+
             return new Response(jsonBody, {
                 headers: {
                     "Content-Type": "application/json; charset=utf-8",
-                    "Content-Disposition": `attachment; filename="${filename}"`
+                    "Content-Disposition": `attachment; filename="${filename}"`,
+                    "Content-Length": String(jsonBody.length)
                 }
             });
         } catch (e: any) {

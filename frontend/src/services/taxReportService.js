@@ -5,7 +5,13 @@ import axios from 'axios';
  */
 async function processBlobResponse(response, defaultFileName) {
     const blob = response.data;
-    
+
+    console.log('[processBlobResponse] Input:', {
+        blobType: blob?.constructor?.name,
+        blobSize: blob?.size,
+        blobMimeType: blob?.type
+    });
+
     // 1. Basic validation
     if (!(blob instanceof Blob)) {
         throw new Error('Server returned unexpected response type. Expected blob.');
@@ -65,7 +71,7 @@ export async function fetchMonthlyTaxReport(token, year, month, division, gang, 
 
     // Axios defaults handle auth if interceptor is present
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-    const response = await axios.get('tax-report/monthly', { params, headers, timeout: 120000 });
+    const response = await axios.get('tax-report/monthly', { params, headers, timeout: 300000 });
     return response.data;
 }
 
@@ -148,11 +154,39 @@ export async function downloadMonthlyTaxReportExcel(token, year, month, division
         const response = await axios.get('tax-report/monthly/excel/fast', {
             params,
             responseType: 'blob',
-            timeout: 120000 // 2 minutes - much faster with direct history query
+            timeout: 300000 // 5 minutes - ensure slow exports don't timeout
         });
         await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
     } catch (error) {
         await handleBlobError(error, 'Gagal mengunduh Excel Pajak Bulanan');
+    }
+}
+
+/**
+ * Download monthly PPH21 tax report as Excel Document using frontend DOM details
+ */
+export async function downloadMonthlyTaxReportExcelFromDOM(token, year, month, division, gang, gangPrefix, employeesData, premiKeys) {
+    try {
+        const payload = {
+            year: String(year),
+            month: String(month),
+            division: division || 'ALL',
+            gang: gang || 'ALL',
+            gangPrefix: gangPrefix || 'ALL',
+            employees: employeesData,
+            premiKeys: premiKeys
+        };
+
+        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+        // Need to pass headers to post if the axios instance needs it directly
+        const response = await axios.post('tax-report/monthly/excel/dom', payload, {
+            headers,
+            responseType: 'blob',
+            timeout: 300000 // 5 minutes
+        });
+        await processBlobResponse(response, `PPH21_DOM_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
+    } catch (error) {
+        await handleBlobError(error, 'Gagal mengunduh Excel Pajak dari DOM');
     }
 }
 
@@ -210,14 +244,51 @@ export async function downloadTaxReportExcel(token, year, month, division, gang,
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
     if (useHistory !== undefined) params.use_history = useHistory.toString();
 
+    console.log('[downloadTaxReportExcel] Requesting:', {
+        url: 'tax-report/monthly/excel/fast',
+        params
+    });
+
     try {
         const response = await axios.get('tax-report/monthly/excel/fast', {
             params,
             responseType: 'blob',
-            timeout: 120000 // 2 minutes - much faster with direct history query
+            timeout: 300000 // 5 minutes - ensure slow exports don't timeout
         });
+
+        console.log('[downloadTaxReportExcel] FULL response object:', response);
+        console.log('[downloadTaxReportExcel] Response headers:', response.headers);
+        console.log('[downloadTaxReportExcel] Data details:', {
+            dataType: typeof response.data,
+            isBlob: response.data instanceof Blob,
+            isArrayBuffer: response.data instanceof ArrayBuffer,
+            size: response.data?.size,
+            type: response.data?.type,
+            slice: response.data?.slice ? 'exists' : 'missing'
+        });
+        
+        // If it's a blob, read its contents to verify
+        if (response.data instanceof Blob) {
+            console.log('[downloadTaxReportExcel] Blob is valid, size:', response.data.size);
+            if (response.data.size === 0) {
+                console.error('[downloadTaxReportExcel] ⚠️ BLOB IS EMPTY! This is the problem.');
+                // Try to see what the raw response looks like
+                const text = await response.data.text();
+                console.error('[downloadTaxReportExcel] Blob text content:', text.substring(0, 500));
+            }
+        } else {
+            console.error('[downloadTaxReportExcel] ⚠️ Response is NOT a Blob! Type:', typeof response.data);
+            console.error('[downloadTaxReportExcel] Response data preview:', String(response.data).substring(0, 500));
+        }
+
         await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
     } catch (error) {
+        console.error('[downloadTaxReportExcel] Error caught:', error);
+        console.error('[downloadTaxReportExcel] Error response:', error.response ? {
+            status: error.response.status,
+            contentType: error.response.headers?.['content-type'],
+            dataSize: error.response.data?.size
+        } : 'No response object');
         await handleBlobError(error, 'Gagal mengunduh Excel Pajak Bulanan');
     }
 }

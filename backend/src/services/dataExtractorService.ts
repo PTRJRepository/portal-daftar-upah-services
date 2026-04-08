@@ -480,7 +480,7 @@ export class DataExtractorService {
         const [jobTitlesResult, manualAdjustmentsRaw] = await Promise.all([
             safeQuery('getJobTitles', async () => {
                 const { EmployeeEstateService: EES } = await import("./employeeEstateService");
-                return EES.getEmployeeJobsWithNik();
+                return EES.getEmployeeJobsWithNik(empCodes);
             }, { empcodeMap: {} as Record<string, string>, nikMap: {} as Record<string, string> }),
             safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined), [])
         ]);
@@ -1527,28 +1527,36 @@ export class DataExtractorService {
         
         try {
             const rows = await db.query<any>(`
-                SELECT DISTINCT
-                    RTRIM(e.EmpCode) as emp_code,
-                    ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
-                    e.EmpName as emp_name,
-                    e.Gender as gender,
-                    RTRIM(e.LocCode) as loc_code,
-                    RTRIM(gl.GangCode) as gang_code,
-                    RTRIM(g.Description) as gang_desc,
-                    COALESCE(p.PayRate, 0) as pay_rate,
-                    CASE
-                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
-                        ELSE COALESCE(p.RiceRation, 0)
-                    END as beras_rate,
-                    em.AppJoinGrpDate as join_date,
-                    e.ResAddress as res_address,
-                    e.HREmpType as hr_emp_type
-                FROM HR_EMPLOYEE e
-                INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                INNER JOIN HR_GANG g ON gl.GangCode = g.GangCode
-                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
-                LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
-                WHERE ${gangCondition}
+                SELECT 
+                    emp_code, actual_nik, emp_name, gender, loc_code, 
+                    gang_code, gang_desc, pay_rate, beras_rate, 
+                    join_date, res_address, hr_emp_type
+                FROM (
+                    SELECT 
+                        RTRIM(e.EmpCode) as emp_code,
+                        ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
+                        e.EmpName as emp_name,
+                        e.Gender as gender,
+                        RTRIM(e.LocCode) as loc_code,
+                        RTRIM(gl.GangCode) as gang_code,
+                        RTRIM(g.Description) as gang_desc,
+                        COALESCE(p.PayRate, 0) as pay_rate,
+                        CASE
+                            WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
+                            ELSE COALESCE(p.RiceRation, 0)
+                        END as beras_rate,
+                        em.AppJoinGrpDate as join_date,
+                        e.ResAddress as res_address,
+                        e.HREmpType as hr_emp_type,
+                        ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY e.EmpCode DESC) as rn -- Basic dedup
+                    FROM HR_EMPLOYEE e
+                    INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                    INNER JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                    LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                    LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                    WHERE ${gangCondition}
+                ) t
+                WHERE rn = 1
                 ORDER BY emp_code
             `);
             
@@ -1590,30 +1598,38 @@ export class DataExtractorService {
             // PR_GANGLN_ARC uses EmpCode column and MasterID to join with PR_GANG
             try {
                 rows = await db.query<any>(`
-                    SELECT DISTINCT
-                        RTRIM(e.EmpCode) as emp_code,
-                        e.NewICNo as actual_nik,
-                        e.EmpName as emp_name,
-                        e.Gender as gender,
-                        RTRIM(e.LocCode) as loc_code,
-                        COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
-                        RTRIM(g.Description) as gang_desc,
-                        COALESCE(p.PayRate, 0) as pay_rate,
-                        CASE
-                            WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
-                            ELSE COALESCE(p.RiceRation, 0)
-                        END as beras_rate,
-                        em.AppJoinGrpDate as join_date,
-                        e.ResAddress as res_address,
-                        e.HREmpType as hr_emp_type
-                    FROM HR_EMPLOYEE e
-                    INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
-                        AND gl.AccMonth = ?
-                        AND gl.AccYear = ?
-                    INNER JOIN PR_GANG g ON g.ID = gl.MasterID
-                    LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
-                    LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
-                    WHERE ${historicalCondition}
+                    SELECT 
+                        emp_code, actual_nik, emp_name, gender, loc_code, 
+                        gang_code, gang_desc, pay_rate, beras_rate, 
+                        join_date, res_address, hr_emp_type
+                    FROM (
+                        SELECT 
+                            RTRIM(e.EmpCode) as emp_code,
+                            e.NewICNo as actual_nik,
+                            e.EmpName as emp_name,
+                            e.Gender as gender,
+                            RTRIM(e.LocCode) as loc_code,
+                            COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
+                            RTRIM(g.Description) as gang_desc,
+                            COALESCE(p.PayRate, 0) as pay_rate,
+                            CASE
+                                WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
+                                ELSE COALESCE(p.RiceRation, 0)
+                            END as beras_rate,
+                            em.AppJoinGrpDate as join_date,
+                            e.ResAddress as res_address,
+                            e.HREmpType as hr_emp_type,
+                            ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY e.EmpCode DESC) as rn
+                        FROM HR_EMPLOYEE e
+                        INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
+                            AND gl.AccMonth = ?
+                            AND gl.AccYear = ?
+                        INNER JOIN PR_GANG g ON g.ID = gl.MasterID
+                        LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                        LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                        WHERE ${historicalCondition}
+                    ) t
+                    WHERE rn = 1
                     ORDER BY emp_code
                 `, [accMonth, accYear]);
 
@@ -1630,11 +1646,9 @@ export class DataExtractorService {
             }
         } else {
             // For current/future data, use HR_GANGLN (current active data)
-
-
-            try {
+             try {
                 rows = await db.query<any>(`
-                    SELECT DISTINCT
+                    SELECT 
                         RTRIM(e.EmpCode) as emp_code,
                         ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
                         e.EmpName as emp_name,
@@ -1652,13 +1666,27 @@ export class DataExtractorService {
                         e.HREmpType as hr_emp_type
                     FROM HR_EMPLOYEE e
                     INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                    INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
+                    INNER JOIN HR_GANG g ON gl.GangCode = g.GangCode
                     LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                     LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
                     WHERE ${gangCondition}
                     ORDER BY emp_code
                 `);
-                console.log(`[DataExtractor] Current employee query: gangCondition=${gangCondition}, returned ${rows.length} rows`);
+
+                console.log(`[DataExtractor] Live active query returned ${rows.length} rows (before de-duplication)`);
+                
+                // [DE-DUPLICATION] Latest Wins logic for append-insert handling
+                const employeeMap = new Map<string, any>();
+                for (const r of rows) {
+                    const key = r.emp_code;
+                    if (key) {
+                        // The last one in the database result set wins
+                        employeeMap.set(key, r);
+                    }
+                }
+                const resultRows = Array.from(employeeMap.values());
+                console.log(`[DataExtractor] De-duplicated live active results to ${resultRows.length} unique employees`);
+                return resultRows;
             } catch (error: any) {
                 console.error(`[DataExtractor] Current employee query failed: ${error.message}`);
                 throw new Error(`Failed to fetch employee data: ${error.message}`);
@@ -3192,8 +3220,9 @@ export class DataExtractorService {
                 debug(CATEGORY, `🔍 Attempting to get employee jobs with NIK...`);
                 // Timeout wrapper: 5 seconds max for this enrichment query
                 const timeoutMs = 5000;
+                const currentEmpCodes = employees.map(e => e.emp_code);
                 const jobTitlesResult = await Promise.race([
-                    EES.getEmployeeJobsWithNik(),
+                    EES.getEmployeeJobsWithNik(currentEmpCodes),
                     new Promise<null>((_, reject) =>
                         setTimeout(() => reject(new Error('getEmployeeJobsWithNik timeout (5s)')), timeoutMs)
                     )

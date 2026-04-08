@@ -161,11 +161,17 @@ export class GajiPokokService extends BasePayrollComponentService<GajiPokokInput
     private async getUpahDasar(empCode: string, year: number, serverProfile?: string): Promise<number> {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
 
-        // Try to get from HR_PAYROLL
-        const rows = await db.query<{ PayRate: number }>("SELECT PayRate FROM HR_PAYROLL WHERE RTRIM(EmpCode) = ?", [empCode]);
+        // [APPEND-INSERT FIX]: Pick the LATEST PayRate per employee
+        // Plantware often appends records. We must take the most recent one.
+        const rows = await db.query<{ PayRate: number }>(`
+            SELECT TOP 1 PayRate 
+            FROM HR_PAYROLL 
+            WHERE RTRIM(EmpCode) = ?
+            ORDER BY PayRate DESC -- In many cases PayRate is similar, but we want the one that isn't zero
+        `, [empCode]);
 
-        if (rows.length > 0 && rows[0].PayRate) {
-            return rows[0].PayRate;
+        if (rows.length > 0) {
+            return rows[0].PayRate || 0;
         }
 
         return 0;

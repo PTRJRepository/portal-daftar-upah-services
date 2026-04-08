@@ -38,7 +38,7 @@ import WagesComparisonPage from './pages/WagesComparisonPage'
 import ImpactReportPage from './pages/ImpactReportPage'
 import TaxReportPage from './pages/TaxReportPage'
 import OtherIncomesPage from './pages/OtherIncomesPage'
-import { downloadTaxReportExcel } from './services/taxReportService'
+import { downloadTaxReportExcel, downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
 import ProductivityReportPage from './pages/ProductivityReportPage'
 import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
@@ -64,6 +64,9 @@ const OperationalReportWrapper = () => {
   const [exportHandler, setExportHandler] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [taxExportLoading, setTaxExportLoading] = useState(false);
+  const [taxDomExportLoading, setTaxDomExportLoading] = useState(false);
+  const [domEmployeesData, setDomEmployeesData] = useState([]);
+  const [domPremiKeys, setDomPremiKeys] = useState([]);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [useHistoryDb, setUseHistoryDb] = useState(false);
@@ -118,13 +121,12 @@ const OperationalReportWrapper = () => {
 
   // Reset gangPrefix when division changes
   useEffect(() => {
-    // [OPTIMIZATION] Set to the first available group automatically instead of 'SEMUA GROUP'
-    if (availablePrefixes.length > 0) {
-        setGangPrefix(availablePrefixes[0]);
-    } else {
-        setGangPrefix('');
-    }
-  }, [availablePrefixes, division]);
+      // [OPTIMIZATION] Set to the first available group automatically instead of 'SEMUA GROUP'
+      const targetPrefix = availablePrefixes.length > 0 ? availablePrefixes[0] : '';
+      if (gangPrefix !== targetPrefix) {
+          setGangPrefix(targetPrefix);
+      }
+  }, [availablePrefixes, division, gangPrefix, setGangPrefix]);
 
   // Layout state for selectors
   // If not admin and locked mode, division is read-only
@@ -164,6 +166,21 @@ const OperationalReportWrapper = () => {
       alert('Gagal mengunduh pajak: ' + (err.message || 'Unknown error'))
     } finally {
       setTaxExportLoading(false)
+    }
+  }
+
+  const handleExportTaxExcelDom = async () => {
+    if (!domEmployeesData || domEmployeesData.length === 0) {
+      alert('Data Daftar Upah belum siap atau kosong.');
+      return;
+    }
+    setTaxDomExportLoading(true);
+    try {
+      await downloadMonthlyTaxReportExcelFromDOM(token, year, month, division, gang, gangPrefix, domEmployeesData, domPremiKeys);
+    } catch (err) {
+      alert('Gagal mengunduh pajak DOM: ' + (err.message || 'Unknown error'));
+    } finally {
+      setTaxDomExportLoading(false);
     }
   }
 
@@ -989,6 +1006,31 @@ const OperationalReportWrapper = () => {
               {taxExportLoading ? '⏳' : '📋'}
               {taxExportLoading ? '...' : 'Export Pajak'}
             </button>
+
+            <button
+              onClick={handleExportTaxExcelDom}
+              disabled={taxDomExportLoading}
+              style={{
+                marginLeft: '10px',
+                padding: '0.4rem 1.2rem',
+                backgroundColor: taxDomExportLoading ? '#f1f5f9' : '#059669',
+                color: taxDomExportLoading ? '#94a3b8' : 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '0.78rem',
+                cursor: taxDomExportLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s',
+                boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)'
+              }}
+              title="Unduh Kalkulasi Pajak PPH21 (versi DOM sesuai UI)"
+            >
+              {taxDomExportLoading ? '⏳' : '📥'}
+              {taxDomExportLoading ? '...' : 'Export Pajak DOM'}
+            </button>
           </div>
         </div>
       </div>
@@ -1008,6 +1050,8 @@ const OperationalReportWrapper = () => {
             selectedEmployees={selectedEmployees}
             onToggleEmployeeSelection={handleToggleEmployeeSelection}
             onSelectAllEmployees={handleSelectAllEmployees}
+            onDataReady={setDomEmployeesData}
+            onDataLoaded={(meta) => setDomPremiKeys(meta.dynamic_premi_headers || [])}
             isEditMode={isEditMode}
             useHistoryDb={useHistoryDb}
             gangPrefix={gangPrefix || null}

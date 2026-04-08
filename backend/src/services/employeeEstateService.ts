@@ -206,7 +206,13 @@ export class EmployeeEstateService {
      *
      * Lookup di dataExtractorService harus cek empcodeMap dulu, fallback ke nikMap.
      */
-    static async getEmployeeJobsWithNik(): Promise<{
+    /**
+     * Get employee job titles with DUAL MAP: by empcode AND by NIK.
+     * 
+     * @param filterEmpCodes Optional array of emp_codes to filter the lookup.
+     *                       Significantly reduces DB queries and processing time.
+     */
+    static async getEmployeeJobsWithNik(filterEmpCodes?: string[]): Promise<{
         empcodeMap: Record<string, string>;
         nikMap: Record<string, string>;
     }> {
@@ -219,9 +225,26 @@ export class EmployeeEstateService {
 
         try {
             // Step 1: Get all jabatan from employee_estate (extend DB)
-            const estateRows = await extDb.query<{ empcode: string; jabatan: string }>(
-                "SELECT empcode, jabatan FROM employee_estate WHERE jabatan IS NOT NULL AND jabatan <> ''"
-            );
+            let estateRows: { empcode: string; jabatan: string }[] = [];
+            
+            if (filterEmpCodes && filterEmpCodes.length > 0) {
+                // If filter specified, only query those specific codes
+                const CHUNK_SIZE = 500;
+                for (let i = 0; i < filterEmpCodes.length; i += CHUNK_SIZE) {
+                    const chunk = filterEmpCodes.slice(i, i + CHUNK_SIZE);
+                    const placeholders = chunk.map(() => '?').join(',');
+                    const chunkRows = await extDb.query<{ empcode: string; jabatan: string }>(
+                        `SELECT empcode, jabatan FROM employee_estate WHERE jabatan IS NOT NULL AND jabatan <> '' AND RTRIM(empcode) IN (${placeholders})`,
+                        chunk
+                    );
+                    estateRows.push(...chunkRows);
+                }
+            } else {
+                // Return all jabatan
+                estateRows = await extDb.query<{ empcode: string; jabatan: string }>(
+                    "SELECT empcode, jabatan FROM employee_estate WHERE jabatan IS NOT NULL AND jabatan <> ''"
+                );
+            }
 
             if (estateRows.length === 0) {
                 return { empcodeMap, nikMap };

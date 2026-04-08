@@ -216,6 +216,7 @@ export interface MonthlyTaxRow {
     emp_name: string;
     parent_name?: string;
     nik: string;
+    new_nik?: string;
     gender: string;
     status_ptkp: string;
     kategori_ter: string;
@@ -227,6 +228,7 @@ export interface MonthlyTaxRow {
     penghasilan_bruto: number;
     tarif_pajak_ter: number;
     pph21_ter: number;
+    pot_pph21?: number;
 
     // GL Metadata for Headers
     component_metadata?: Record<string, TaskCodeMetadata>;
@@ -317,6 +319,7 @@ export interface DecemberTaxRow {
     emp_name: string;
     parent_name?: string;
     nik: string;
+    new_nik?: string;
     npwp: string;
     alamat: string;
     jabatan: string;
@@ -829,6 +832,8 @@ class TaxReportService {
                 penghasilan_bruto: row.penghasilan_bruto || penghasilanBruto,
                 tarif_pajak_ter: row.tarif_pajak_ter || tarifPajakTer,
                 pph21_ter: pph21,
+                // pot_pph21 is the actual PPh21 deduction from PR_ADTRANS (matches Daftar Upah column)
+                pot_pph21: row.pot_pph21 || 0,
                 component_metadata: TAX_COMPONENT_METADATA,
 
                 // Detailed breakdowns

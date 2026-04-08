@@ -41,6 +41,24 @@ export async function seedFromUI(
     const results: SeedResult[] = [];
 
     try {
+        // [CLEANUP] Delete existing data for this division/period before seeding
+        console.log(`🧹 Cleaning existing data for ${division} (${month}/${year})...`);
+        try {
+            const deleteResult = await extDb.query(`
+                DELETE FROM dbo.daftar_upah_aggregation_history
+                WHERE period_month = ? AND period_year = ? AND division_code = ?
+            `, [month, year, division]);
+            
+            const deletedCount = deleteResult?.rowsAffected || 0;
+            if (deletedCount > 0) {
+                console.log(`   ✅ Deleted ${deletedCount} existing record(s)\n`);
+            } else {
+                console.log(`   ℹ️ No existing data found\n`);
+            }
+        } catch (deleteError: any) {
+            console.warn(`   ⚠️ Cleanup failed: ${deleteError.message}\n`);
+        }
+
         // Step 1: Fetch data EXACTLY like UI does
         const result = await dataExtractorService.extractPayrollData(
             month,

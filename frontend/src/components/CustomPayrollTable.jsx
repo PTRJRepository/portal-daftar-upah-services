@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from 'react';
 import axios from 'axios';
 import '../styles/CustomPayrollTable.css';
 import { getLockedRawTree, saveLockedManualEdit } from '../services/lockedDivisionService';
@@ -129,7 +129,7 @@ const getHeaderGroup = (label) => {
     return null;
 };
 
-export default function CustomPayrollTable({
+const CustomPayrollTable = memo(function CustomPayrollTable({
     token, month, year, division, gangCode, onViewEmployeeDetail, onOpenHrProfile, fontSize = 100,
     onExportReady = null, refreshTrigger = 0,
     selectedEmployees = [], onToggleEmployeeSelection = () => { },
@@ -3247,5 +3247,6 @@ export default function CustomPayrollTable({
             )}
         </div>
     );
-}
+});
 
+export default CustomPayrollTable;
