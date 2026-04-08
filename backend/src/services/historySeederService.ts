@@ -278,7 +278,9 @@ export class HistorySeederService {
 
                 if (countBefore > 0) {
                     // Show sample of what will be deleted
-                    const sampleSql = deleteSql.replace(/DELETE FROM.*?WHERE/, 'SELECT TOP 3 division_code, gang_code FROM');
+                    const sampleSql = deleteSql.replace('DELETE FROM', 'SELECT TOP 3 division_code, gang_code FROM').split('WHERE')[0] + ' WHERE ' + deleteSql.split('WHERE')[1];
+                    // Or more simply, just replace the starting part properly:
+                    const simpleSampleSql = deleteSql.replace('DELETE FROM', 'SELECT TOP 3 division_code, gang_code FROM');
                     const sampleResult = await deleteHistoryDb.query(sampleSql, deleteParams);
                     console.log(`[HistorySeeder] 📋 Sample data to delete:`, sampleResult);
 

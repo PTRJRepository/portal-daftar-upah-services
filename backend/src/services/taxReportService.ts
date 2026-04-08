@@ -478,9 +478,11 @@ class TaxReportService {
 
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         const isVirtual = divisionCode ? divisionDefinition.isVirtualDivision(divisionCode) : false;
-        const sourceDivisions = isVirtual && divisionCode 
-            ? await divisionDefinition.getSourceDivisionsForAggregation(divisionCode)
-            : [divisionCode || 'ALL'];
+        // [ALIGNMENT] Stop resolving virtual divisions to source divisions here.
+        // DataExtractorService already handles virtual divisions (WKS, NRS, etc.) internally
+        // by resolving them to their constituent gangs. Over-resolving here causes 
+        // history database mapping issues (looking for virtual data under real division codes).
+        const sourceDivisions = [divisionCode || 'ALL'];
 
         console.log(`[TaxReportService] Source divisions for ${divisionCode || 'ALL'}: ${sourceDivisions.join(', ')}`);
 

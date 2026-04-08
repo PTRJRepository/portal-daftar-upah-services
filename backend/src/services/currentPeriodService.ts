@@ -136,38 +136,22 @@ export class CurrentPeriodService {
      * - Jan(1)-Sep(9) -> AccMonth 10-12 (current year)
      */
     public calendarToAccMonth(calendarMonth: number, calendarYear: number): { accMonth: number; accYear: number } {
-        if (calendarMonth >= 4) {
-            // Apr(4)-Dec(12) -> AccMonth 1-9, year is next year
-            return {
-                accMonth: calendarMonth - 3,
-                accYear: calendarYear + 1
-            };
-        } else {
-            // Jan(1)-Mar(3) -> AccMonth 10-12, year is current
-            return {
-                accMonth: calendarMonth + 9,
-                accYear: calendarYear
-            };
-        }
+        // [FIXED] In this estate (PTRJ), AccMonth matches CalendarMonth exactly.
+        return {
+            accMonth: calendarMonth,
+            accYear: calendarYear
+        };
     }
 
     /**
      * Convert AccMonth/AccYear to calendar month/year
      */
     public accToCalendarMonth(accMonth: number, accYear: number): { calendarMonth: number; calendarYear: number } {
-        if (accMonth <= 9) {
-            // AccMonth 1-9 -> Calendar 4-11 (previous year)
-            return {
-                calendarMonth: accMonth + 3,
-                calendarYear: accYear - 1
-            };
-        } else {
-            // AccMonth 10-12 -> Calendar 1-3 (current year)
-            return {
-                calendarMonth: accMonth - 9,
-                calendarYear: accYear
-            };
-        }
+        // [FIXED] In this estate (PTRJ), AccMonth matches CalendarMonth exactly.
+        return {
+            calendarMonth: accMonth,
+            calendarYear: accYear
+        };
     }
 
     /**
