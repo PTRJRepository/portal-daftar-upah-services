@@ -559,13 +559,26 @@ class TaxReportService {
 
         let totalPph21 = 0;
         
-        // [ALIGNMENT] Include employees with active working days OR positive gross income
-        // This matches the filtering logic in the Wages Report UI (PayrollAggregator).
-        const activeRows = historyData.data_rows.filter((r: any) => {
+        // [DE-DUPLICATION] Use a Map to ensure each employee is counted only once
+        // This prevents doubled totals if history data contains overlapping master headers.
+        const employeeMap = new Map<string, any>();
+        for (const r of historyData.data_rows) {
             const hk = Number(r.jumlah_hk || r.hk || 0);
             const hasIncome = Number(r.jumlah_upah_kotor || 0) > 0;
-            return hk > 0 || hasIncome;
-        });
+            
+            if (hk > 0 || hasIncome) {
+                // Use emp_code or fallback to nik/actual_nik for de-duplication
+                const key = (r.emp_code || r.nik || r.actual_nik || '').trim().toUpperCase();
+                if (key) {
+                    // If multiple records exist, we keep the latest one (or first one found)
+                    // In history database, rows are usually sorted by ID, so last one is most recent.
+                    employeeMap.set(key, r);
+                }
+            }
+        }
+
+        const activeRows = Array.from(employeeMap.values());
+        console.log(`[TaxReportService] De-duplicated ${historyData.data_rows.length} rows down to ${activeRows.length} unique employees.`);
 
         const employees: MonthlyTaxRow[] = activeRows.map((row: any, idx: number) => {
             const empCodeTrimmed = row.emp_code?.trim() || '';

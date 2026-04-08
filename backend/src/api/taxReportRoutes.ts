@@ -294,8 +294,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                         continue;
                     }
                     for (const emp of gangEmployees) {
-                        if (!processedEmpCodes.has(emp.emp_code)) {
-                            processedEmpCodes.add(emp.emp_code);
+                        const dedupKey = (emp.emp_code || emp.nik || emp.actual_nik || '').trim().toUpperCase();
+                        if (dedupKey && !processedEmpCodes.has(dedupKey)) {
+                            processedEmpCodes.add(dedupKey);
                             allEmployees.push(emp);
                         }
                     }
@@ -663,13 +664,24 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return brondolSubKeys.some(bk => upper === bk.toUpperCase());
             };
 
-            // Filter active employees (jumlah_hk > 0 OR Income > 0)
-            // This matches the filtering logic in the Wages Report UI (PayrollAggregator).
-            const activeEmployees = historyData.data_rows.filter((r: any) => {
+            // [DE-DUPLICATION] Use a Map to ensure each employee is counted only once
+            // This prevents doubled totals if history data contains overlapping master headers.
+            const employeeMap = new Map<string, any>();
+            for (const r of historyData.data_rows) {
                 const hk = Number(r.jumlah_hk || r.hk || 0);
                 const hasIncome = Number(r.jumlah_upah_kotor || 0) > 0;
-                return hk > 0 || hasIncome;
-            });
+                
+                if (hk > 0 || hasIncome) {
+                    // Use emp_code or fallback to nik/actual_nik for de-duplication
+                    const key = (r.emp_code || r.nik || r.actual_nik || '').trim().toUpperCase();
+                    if (key) {
+                        employeeMap.set(key, r);
+                    }
+                }
+            }
+
+            const activeEmployees = Array.from(employeeMap.values());
+            console.log(`[TaxReport Excel FAST] De-duplicated ${historyData.data_rows.length} rows down to ${activeEmployees.length} unique employees.`);
 
             console.log(`[TaxReport Excel FAST] Active employees (HK > 0 OR Income > 0): ${activeEmployees.length}`);
 

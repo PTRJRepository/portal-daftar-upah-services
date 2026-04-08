@@ -1080,8 +1080,15 @@ export class HistoryDatabaseService {
                     }
                     const divList = Array.from(allPossibleDivs);
                     const placeholders = divList.map(() => '?').join(',');
-                    masterQuery += ` AND (division_code IN (${placeholders}) OR division_code = 'ALL')`;
-                    masterParams.push(...divList);
+                    
+                    // [REFINEMENT] If we have specific divisions, don't include global 'ALL' headers
+                    // This prevents duplication when fetching history that has both divisional and global records.
+                    if (divisionCode === 'ALL') {
+                        masterQuery += ` AND division_code = 'ALL'`;
+                    } else {
+                        masterQuery += ` AND division_code IN (${placeholders})`;
+                        masterParams.push(...divList);
+                    }
                 }
             } catch (e) {
                 logError(CATEGORY, "Error handling division filter:", e);
