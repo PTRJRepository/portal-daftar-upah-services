@@ -38,7 +38,7 @@ import WagesComparisonPage from './pages/WagesComparisonPage'
 import ImpactReportPage from './pages/ImpactReportPage'
 import TaxReportPage from './pages/TaxReportPage'
 import OtherIncomesPage from './pages/OtherIncomesPage'
-import { downloadTaxReportExcel, downloadTaxReportExcelFromUI } from './services/taxReportService'
+import { downloadTaxReportExcel } from './services/taxReportService'
 import ProductivityReportPage from './pages/ProductivityReportPage'
 import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
@@ -70,7 +70,6 @@ const OperationalReportWrapper = () => {
   const [gangPrefix, setGangPrefix] = useState('');
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'attendance' | 'overtime' | 'employee-directory'
   const [hrSearchNik, setHrSearchNik] = useState('');
-  const [uiTableData, setUiTableData] = useState([]);
 
   // Employee sorting state
   const [employeeSortBy, setEmployeeSortBy] = useState('name'); // 'name' | 'emp_code' | 'nik'
@@ -160,11 +159,7 @@ const OperationalReportWrapper = () => {
   const handleExportTaxExcel = async () => {
     setTaxExportLoading(true)
     try {
-      if (uiTableData && uiTableData.length > 0) {
-        await downloadTaxReportExcelFromUI(token, year, month, division, gang, gangPrefix, uiTableData)
-      } else {
-        await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistoryDb)
-      }
+      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistoryDb)
     } catch (err) {
       alert('Gagal mengunduh pajak: ' + (err.message || 'Unknown error'))
     } finally {
@@ -1008,7 +1003,6 @@ const OperationalReportWrapper = () => {
             year={year}
             fontSize={fontSize}
             onExportReady={setExportHandler}
-            onDataReady={setUiTableData}
             onViewEmployeeDetail={handleViewEmployeeDetail}
             onOpenHrProfile={handleOpenHrProfile}
             selectedEmployees={selectedEmployees}

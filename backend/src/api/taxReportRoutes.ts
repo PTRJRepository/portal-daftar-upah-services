@@ -149,59 +149,6 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     })
 
     // ========================================================
-    // POST /tax-report/monthly/excel/from-ui
-    // Generate Monthly PPH21 Excel directly from UI data to ensure exact parity
-    // ========================================================
-    .post("/monthly/excel/from-ui", async ({ body, set, currentUser }) => {
-        try {
-            const { year, month, division, gang, gangPrefix, employees } = body as any;
-
-            console.log(`[TaxReport Excel From UI] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, employees=${employees?.length || 0}`);
-
-            if (!employees || employees.length === 0) {
-                set.status = 400;
-                return { error: "No employees provided from UI" };
-            }
-
-            const total_pph21 = employees.reduce((sum: number, emp: any) => sum + Number(emp.pph21_ter || 0), 0);
-
-            const data = {
-                employees: employees,
-                period: { month: Number(month), year: Number(year) },
-                total_pph21
-            };
-
-            const gangLabel = gang || gangPrefix || 'ALL';
-
-            // Generate Excel Buffer directly from UI data
-            // We pass undefined for premiKeys so generateMonthlyTaxExcel dynamically extracts them from premi_detail
-            const excelBuffer = await generateMonthlyTaxExcel(data, Number(year), Number(month), division || 'ALL', gangLabel);
-
-            console.log(`[TaxReport Excel From UI] Excel generated: ${excelBuffer?.length || 0} bytes`);
-
-            return new Response(excelBuffer, {
-                headers: {
-                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "Content-Disposition": `attachment; filename="PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx"`
-                }
-            });
-        } catch (error: any) {
-            console.error("[TaxReport] Error generating Excel report from UI:", error);
-            set.status = 500;
-            return { error: error.message || "Failed to generate Excel report from UI" };
-        }
-    }, {
-        body: t.Object({
-            year: t.String(),
-            month: t.String(),
-            division: t.Optional(t.String()),
-            gang: t.Optional(t.String()),
-            gangPrefix: t.Optional(t.String()),
-            employees: t.Array(t.Any())
-        })
-    })
-
-    // ========================================================
     // GET /tax-report/monthly/excel/progressive
     // Download Monthly PPH21 using progressive extraction (avoids timeout)
     // Uses dataExtractorService.extractPayrollDataProgressive() + direct tax transformation
