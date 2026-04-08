@@ -551,33 +551,24 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             // Resolve gang/division
             const targetGangCode = gang && gang.trim() !== '' && gang !== 'ALL' ? gang.trim().toUpperCase() : undefined;
 
-            // Determine effective division for gang resolution
-            let effectiveDivision = division;
-            let effectiveGangPrefix = gangPrefix;
+            // Determine effective division for secondary services (OtherIncomes, EmployeeEstate)
+            // Some services need the real source division code even if it's a virtual division
+            let effectiveDivisionForSecondary = division;
             if (division && divisionDefinition.isVirtualDivision(division)) {
                 const sourceDivisions = await divisionDefinition.getSourceDivisionsForAggregation(division);
-                effectiveDivision = sourceDivisions[0];
-                if (!effectiveGangPrefix) {
-                    const vConfig = divisionDefinition.getVirtualDivisionConfig(division);
-                    if (vConfig?.pattern) {
-                        const patternStr = vConfig.pattern.toString();
-                        const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
-                        if (alphaMatch && alphaMatch[1]) {
-                            effectiveGangPrefix = alphaMatch[1];
-                        }
-                    }
-                }
+                if (sourceDivisions.length > 0) effectiveDivisionForSecondary = sourceDivisions[0];
             }
 
-            console.log(`[TaxReport Excel FAST] Fetching from history: gang=${targetGangCode || 'ALL'}, division=${effectiveDivision || 'ALL'}`);
+            console.log(`[TaxReport Excel FAST] Fetching from history: gang=${targetGangCode || 'ALL'}, division=${division || 'ALL'}, prefix=${gangPrefix || 'none'}`);
 
             // FAST: Read directly from pre-computed history tables
+            // HistoryDatabaseService internally handles virtual divisions and gangPrefix filtering.
             const historyData = await historyDb.getHistoricalPayrollDataAsExtractorFormat(
                 month, year,
                 targetGangCode || "ALL",
-                effectiveDivision,
+                division,
                 null, // no specific emp code
-                effectiveGangPrefix
+                gangPrefix
             );
 
             if (!historyData || !historyData.data_rows || historyData.data_rows.length === 0) {
@@ -608,7 +599,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // Get other incomes for the year
-            const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivision, gang);
+            // Use effectiveDivisionForSecondary here if the service expects a real division code
+            const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivisionForSecondary, gang);
             const dbIncomeByMonthNik = new Map<string, { thr: number; exgratia: number; custom: number }>();
             for (const inc of dbOtherIncomesYear) {
                 if (inc.is_taxable) {

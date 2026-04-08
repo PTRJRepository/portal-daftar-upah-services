@@ -1139,6 +1139,11 @@ export class HistoryDatabaseService {
             // Jika gang spesifik, cukup filter by gang
             detailQuery += ` AND gang_code = ?`;
             detailParams.push(gangCode);
+        } else if (gangPrefix && gangPrefix.trim() !== "" && !/^\d+$/.test(gangPrefix.trim())) {
+            // [ALIGNMENT] Only add broad LIKE filter if it's NOT a numeric Group
+            // Numeric groups (asistensi) are handled by the memory filter later.
+            detailQuery += ` AND d.gang_code LIKE ?`;
+            detailParams.push(`${gangPrefix.trim()}%`);
         } else if (divisionCode && divisionCode !== "ALL") {
             // Jika gang ALL tapi divisi spesifik, pastikan kita hanya fetch pegawai dari divisi tersebut
             // Use unified mapping for consistent division handling
@@ -1169,6 +1174,22 @@ export class HistoryDatabaseService {
         for (const d of rawDetails) {
             const key = (d.nik || d.emp_code || '').trim().toUpperCase();
             if (!key) continue;
+
+            // [ALIGNMENT] Handle "Group" filtering in memory to match DataExtractorService logic
+            if (gangPrefix && gangPrefix.trim() !== "" && d.gang_code) {
+                const prefix = gangPrefix.trim();
+                const isNumeric = /^\d+$/.test(prefix);
+                const gc = (d.gang_code || '').trim().toUpperCase();
+                let matches = false;
+                if (isNumeric) {
+                    const asistensi = gc.startsWith('K2') ? '1' : (gc.match(/\d+/)?.[0] ?? null);
+                    matches = asistensi === prefix;
+                } else {
+                    matches = gc.startsWith(prefix.toUpperCase());
+                }
+                if (!matches) continue;
+            }
+
             if (!uniqueDetailsMap.has(key)) {
                 uniqueDetailsMap.set(key, d);
             }
