@@ -13,7 +13,7 @@ export const otherIncomesService = {
             if (divisionCode) params.append('divisionCode', divisionCode);
             if (gangCode) params.append('gangCode', gangCode);
 
-            const response = await api.get(`/other-incomes?${params.toString()}`);
+            const response = await api.get(`other-incomes?${params.toString()}`);
             return response.data?.data || [];
         } catch (error) {
             console.error('Error fetching other incomes:', error);
@@ -30,7 +30,7 @@ export const otherIncomesService = {
 
             if (divisionCode) params.append('divisionCode', divisionCode);
 
-            const response = await api.get(`/other-incomes/summary?${params.toString()}`);
+            const response = await api.get(`other-incomes/summary?${params.toString()}`);
             return response.data;
         } catch (error) {
             console.error('Error fetching THR summary:', error);
@@ -50,7 +50,7 @@ export const otherIncomesService = {
             if (ijlOnly) {
                 params.append('ijl_only', 'true');
             }
-            const response = await api.get(`/other-incomes/recap-all?${params.toString()}`);
+            const response = await api.get(`other-incomes/recap-all?${params.toString()}`);
             return response.data;
         } catch (error) {
             console.error('Error fetching THR recap all:', error);
@@ -60,7 +60,7 @@ export const otherIncomesService = {
 
     addIncome: async (data) => {
         try {
-            const response = await api.post('/other-incomes', data);
+            const response = await api.post('other-incomes', data);
             return response.data?.data;
         } catch (error) {
             console.error('Error adding other income:', error);
@@ -70,7 +70,7 @@ export const otherIncomesService = {
 
     updateIncome: async (id, data) => {
         try {
-            const response = await api.put(`/other-incomes/${id}`, data);
+            const response = await api.put(`other-incomes/${id}`, data);
             return response.data;
         } catch (error) {
             console.error('Error updating other income:', error);
@@ -80,7 +80,7 @@ export const otherIncomesService = {
 
     deleteIncome: async (id) => {
         try {
-            const response = await api.delete(`/other-incomes/${id}`);
+            const response = await api.delete(`other-incomes/${id}`);
             return response.data;
         } catch (error) {
             console.error('Error deleting other income:', error);
@@ -98,7 +98,7 @@ export const otherIncomesService = {
             if (divisionCode) params.append('divisionCode', divisionCode);
             if (gangCode) params.append('gangCode', gangCode);
 
-            const response = await api.delete(`/other-incomes/delete-by-period?${params.toString()}`);
+            const response = await api.delete(`other-incomes/delete-by-period?${params.toString()}`);
             return response.data;
         } catch (error) {
             console.error('Error deleting by period:', error);
@@ -108,7 +108,7 @@ export const otherIncomesService = {
 
     getBlacklist: async (year, month, type = 'THR') => {
         try {
-            const response = await api.get(`/other-incomes/blacklist?year=${year}&month=${month}&type=${type}`);
+            const response = await api.get(`other-incomes/blacklist?year=${year}&month=${month}&type=${type}`);
             return response.data;
         } catch (error) {
             console.error('Error fetching blacklist:', error);
@@ -118,7 +118,7 @@ export const otherIncomesService = {
 
     removeFromBlacklist: async (id) => {
         try {
-            const response = await api.delete(`/other-incomes/blacklist/${id}`);
+            const response = await api.delete(`other-incomes/blacklist/${id}`);
             return response.data;
         } catch (error) {
             console.error('Error removing from blacklist:', error);
@@ -128,7 +128,7 @@ export const otherIncomesService = {
 
     addToBlacklist: async (nik, emp_name, year, month, type = 'THR', reason = 'Manual') => {
         try {
-            const response = await api.post(`/other-incomes/blacklist`, { nik, emp_name, year, month, type, reason });
+            const response = await api.post(`other-incomes/blacklist`, { nik, emp_name, year, month, type, reason });
             return response.data;
         } catch (error) {
             console.error('Error adding to blacklist:', error);
@@ -142,7 +142,7 @@ export const otherIncomesService = {
             if (divisionCode) data.divisionCode = divisionCode;
             if (gangCode) data.gangCode = gangCode;
 
-            const response = await api.post('/other-incomes/calculate-thr', data);
+            const response = await api.post('other-incomes/calculate-thr', data);
             return response.data;
         } catch (error) {
             console.error('Error calculating THR:', error);
@@ -156,7 +156,7 @@ export const otherIncomesService = {
             if (divisionCode) data.divisionCode = divisionCode;
             if (gangCode) data.gangCode = gangCode;
 
-            const response = await api.post('/other-incomes/preview-thr', data);
+            const response = await api.post('other-incomes/preview-thr', data);
             return response.data;
         } catch (error) {
             console.error('Error previewing THR:', error);
@@ -166,7 +166,7 @@ export const otherIncomesService = {
 
     bulkSave: async (incomes) => {
         try {
-            const response = await api.post('/other-incomes/bulk-save', { incomes });
+            const response = await api.post('other-incomes/bulk-save', { incomes });
             return response.data;
         } catch (error) {
             console.error('Error bulk saving incomes:', error);
@@ -176,7 +176,7 @@ export const otherIncomesService = {
 
     getFormula: async (type) => {
         try {
-            const response = await api.get(`/other-incomes/formulas/${type}`);
+            const response = await api.get(`other-incomes/formulas/${type}`);
             return response.data?.formula || '';
         } catch (error) {
             console.error('Error fetching formula:', error);
@@ -186,7 +186,7 @@ export const otherIncomesService = {
 
     saveFormula: async (type, formulaString) => {
         try {
-            const response = await api.post(`/other-incomes/formulas/${type}`, { formulaString });
+            const response = await api.post(`other-incomes/formulas/${type}`, { formulaString });
             return response.data;
         } catch (error) {
             console.error('Error saving formula:', error);
@@ -205,7 +205,7 @@ export const otherIncomesService = {
             if (gangCode) params.append('gangCode', gangCode);
             if (incomeType && incomeType !== 'TOTAL') params.append('incomeType', incomeType);
 
-            const response = await api.get(`/other-incomes/export?${params.toString()}`, {
+            const response = await api.get(`other-incomes/export?${params.toString()}`, {
                 responseType: 'blob'
             });
 
@@ -236,7 +236,7 @@ export const otherIncomesService = {
             if (divisionCode) params.append('divisionCode', divisionCode);
             if (gangCode) params.append('gangCode', gangCode);
 
-            const response = await api.get(`/other-incomes/export-bank-list?${params.toString()}`, {
+            const response = await api.get(`other-incomes/export-bank-list?${params.toString()}`, {
                 responseType: 'blob'
             });
 
@@ -265,7 +265,7 @@ export const otherIncomesService = {
             if (gangCode && gangCode !== 'ALL') params.append('gang_code', gangCode);
             if (divisionCode && divisionCode !== 'ALL') params.append('division_code', divisionCode);
 
-            const response = await api.get(`/other-incomes/gang-members?${params.toString()}`);
+            const response = await api.get(`other-incomes/gang-members?${params.toString()}`);
             return response.data || [];
         } catch (error) {
             console.error('Error fetching gang members:', error);
@@ -283,7 +283,7 @@ export const otherIncomesService = {
             if (divisionCode) params.append('divisionCode', divisionCode);
             if (gangCode) params.append('gangCode', gangCode);
 
-            const response = await api.get(`/other-incomes/export-thr?${params.toString()}`, {
+            const response = await api.get(`other-incomes/export-thr?${params.toString()}`, {
                 responseType: 'blob'
             });
 

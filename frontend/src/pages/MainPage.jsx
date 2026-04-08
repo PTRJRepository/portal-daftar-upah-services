@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import { fetchGangs, fetchDivisions } from '../services/gangService'
 import { getLockedGangs } from '../services/lockedDivisionService'
@@ -215,22 +216,19 @@ export default function MainPage({ lockedDiv = null }) {
     
     try {
       // Use seed-ui endpoint with EXACT same parameters as current UI view
-      const response = await fetch('/payroll/aggregation/seed-ui', {
-        method: 'POST',
+      const response = await axios.post('payroll/aggregation/seed-ui', {
+        division: division || 'ALL',
+        month,
+        year,
+        gangCode: gang || null,  // Current gang filter
+        gangPrefix: gangPrefix || null  // Current group filter
+      }, {
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          division: division || 'ALL',
-          month,
-          year,
-          gangCode: gang || null,  // Current gang filter
-          gangPrefix: gangPrefix || null  // Current group filter
-        })
+        }
       })
       
-      const result = await response.json()
+      const result = response.data
       
       if (result.success) {
         const gangCount = result.data?.total_gangs || 0
@@ -1614,10 +1612,7 @@ export default function MainPage({ lockedDiv = null }) {
               else if (mode === 'employee') setActiveMatrixView('employee');
             }}
             onTogglePeriodSlider={setUsePeriodSlider}
-            currentProductionMonth={currentProductionMonth}
-            currentProductionYear={currentProductionYear}
             useHistoryDb={isHistorical}
-            viewMode={activeMatrixView || 'table'}
             employeeSortBy={employeeSortBy}
             employeeSortOrder={employeeSortOrder}
             onEmployeeSort={handleEmployeeSort}

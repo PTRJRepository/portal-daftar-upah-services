@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import axios from 'axios';
 import '../styles/CustomPayrollTable.css';
 import { getLockedRawTree, saveLockedManualEdit } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
@@ -626,10 +627,9 @@ export default function CustomPayrollTable({
     };
 
     useEffect(() => {
-        fetch('/tunjangan/rates?category=JABATAN')
-            .then(res => res.json())
-            .then(json => {
-                if (json.success) setTunjanganRates(json.data);
+        axios.get('tunjangan/rates?category=JABATAN')
+            .then(res => {
+                if (res.data.success) setTunjanganRates(res.data.data);
             })
             .catch(console.error);
     }, []);
@@ -785,19 +785,16 @@ export default function CustomPayrollTable({
             // --- Save MASTER_TAX edits (PTKP) via dedicated endpoint ---
             for (const edit of masterTaxEdits) {
                 try {
-                    const res = await fetch(`/tax-report/ptkp/${encodeURIComponent(edit.nik)}`, {
-                        method: 'PUT',
+                    const res = await axios.put(`tax-report/ptkp/${encodeURIComponent(edit.nik)}`, {
+                        year: year,
+                        ptkp_status: edit.value
+                    }, {
                         headers: {
-                            'Content-Type': 'application/json',
                             'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            year: year,
-                            ptkp_status: edit.value
-                        })
+                        }
                     });
-                    const resJson = await res.json();
-                    if (res.ok && resJson?.success) {
+                    
+                    if (res.data?.success) {
                         successCount++;
                     } else {
                         console.error('PTKP update failed:', resJson?.error);

@@ -1,14 +1,10 @@
 /**
  * Dashboard Service
  * Fetches dashboard and analytics data from /payroll/dashboard endpoints
+ * Standardized to use axios with relative paths for production proxy support.
  */
 
 import axios from 'axios';
-
-const getBackendBase = () => {
-    return ''; // Uses Vite Proxy/Nginx
-};
-const BACKEND_BASE = getBackendBase();
 
 /**
  * Fetch gang comparison data (includes production/tonase)
@@ -20,14 +16,13 @@ const BACKEND_BASE = getBackendBase();
  * @returns {Promise<Object>} Gang comparison data
  */
 export async function fetchGangComparison(token, { month, year, division_code }) {
-    const params = new URLSearchParams();
-    params.append('month', month.toString());
-    params.append('year', year.toString());
-    if (division_code) params.append('division_code', division_code);
+    const params = {};
+    params.month = month.toString();
+    params.year = year.toString();
+    if (division_code) params.division_code = division_code;
 
-    const url = `${BACKEND_BASE}/payroll/dashboard/gang-comparison?${params.toString()}`;
-
-    const response = await axios.get(url, {
+    const response = await axios.get('payroll/dashboard/gang-comparison', {
+        params,
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -47,14 +42,13 @@ export async function fetchGangComparison(token, { month, year, division_code })
  * @returns {Promise<Object>} Division detail data
  */
 export async function fetchDivisionDetailData(token, { month, year, division_code }) {
-    const params = new URLSearchParams();
-    params.append('month', month.toString());
-    params.append('year', year.toString());
-    params.append('division_code', division_code);
+    const params = {};
+    params.month = month.toString();
+    params.year = year.toString();
+    params.division_code = division_code;
 
-    const url = `${BACKEND_BASE}/payroll/dashboard/division-detail-data?${params.toString()}`;
-
-    const response = await axios.get(url, {
+    const response = await axios.get('payroll/dashboard/division-detail-data', {
+        params,
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -72,9 +66,8 @@ export async function fetchDivisionDetailData(token, { month, year, division_cod
  * @returns {Promise<Object>} Filter options
  */
 export async function fetchFilterOptions(token, month, year) {
-    const url = `${BACKEND_BASE}/payroll/dashboard/filter-options?month=${month}&year=${year}`;
-
-    const response = await axios.get(url, {
+    const response = await axios.get('payroll/dashboard/filter-options', {
+        params: { month, year },
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'

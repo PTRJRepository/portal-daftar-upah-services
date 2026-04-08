@@ -65,7 +65,7 @@ export async function fetchMonthlyTaxReport(token, year, month, division, gang, 
 
     // Axios defaults handle auth if interceptor is present
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-    const response = await axios.get('/tax-report/monthly', { params, headers, timeout: 120000 });
+    const response = await axios.get('tax-report/monthly', { params, headers, timeout: 120000 });
     return response.data;
 }
 
@@ -80,7 +80,7 @@ export async function fetchAnnualTaxReport(token, year, month, division, gang, g
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-    const response = await axios.get('/tax-report/annual', { params, headers, timeout: 120000 });
+    const response = await axios.get('tax-report/annual', { params, headers, timeout: 120000 });
     return response.data;
 }
 
@@ -95,7 +95,7 @@ export async function fetchAnnualAstekBpjsReport(token, year, month, division, g
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-    const response = await axios.get('/tax-report/astek-bpjs', { params, headers, timeout: 120000 });
+    const response = await axios.get('tax-report/astek-bpjs', { params, headers, timeout: 120000 });
     return response.data;
 }
 
@@ -109,7 +109,7 @@ export async function fetchDecemberTaxReport(token, year, division, gang, gangPr
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-    const response = await axios.get('/tax-report/december', { params, headers, timeout: 120000 });
+    const response = await axios.get('tax-report/december', { params, headers, timeout: 120000 });
     return response.data;
 }
 
@@ -145,7 +145,7 @@ export async function downloadMonthlyTaxReportExcel(token, year, month, division
     if (useHistory !== undefined) params.use_history = useHistory.toString();
 
     try {
-        const response = await axios.get('/tax-report/monthly/excel/fast', {
+        const response = await axios.get('tax-report/monthly/excel/fast', {
             params,
             responseType: 'blob',
             timeout: 120000 // 2 minutes - much faster with direct history query
@@ -166,7 +166,7 @@ export async function downloadDecemberTaxReportExcel(token, year, division, gang
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
 
     try {
-        const response = await axios.get('/tax-report/december/excel', {
+        const response = await axios.get('tax-report/december/excel', {
             params,
             responseType: 'blob',
             timeout: 180000
@@ -188,7 +188,7 @@ export async function exportPajakJson(token, year, month, gang, div, gangPrefix,
     if (useHistory !== undefined) params.use_history = useHistory.toString();
 
     try {
-        const response = await axios.get('/payroll/export/pajak', {
+        const response = await axios.get('payroll/export/pajak', {
             params,
             responseType: 'blob',
             timeout: 120000,
@@ -211,7 +211,7 @@ export async function downloadTaxReportExcel(token, year, month, division, gang,
     if (useHistory !== undefined) params.use_history = useHistory.toString();
 
     try {
-        const response = await axios.get('/tax-report/monthly/excel/fast', {
+        const response = await axios.get('tax-report/monthly/excel/fast', {
             params,
             responseType: 'blob',
             timeout: 120000 // 2 minutes - much faster with direct history query

@@ -1,0 +1,831 @@
+{
+  "all_matching_masters": [
+    {
+      "id": 3702,
+      "div": "ALL",
+      "gang": "A1H",
+      "detail_count": 35,
+      "pph21_sum": 8334864,
+      "upah_kotor_sum": 361944628.5607
+    },
+    {
+      "id": 3706,
+      "div": "ALL",
+      "gang": "A1M",
+      "detail_count": 23,
+      "pph21_sum": 2937925,
+      "upah_kotor_sum": 194568650.20220003
+    },
+    {
+      "id": 3707,
+      "div": "ALL",
+      "gang": "A1T",
+      "detail_count": 4,
+      "pph21_sum": 616726,
+      "upah_kotor_sum": 39505920.4913
+    },
+    {
+      "id": 3699,
+      "div": "ALL",
+      "gang": "A2M",
+      "detail_count": 22,
+      "pph21_sum": 2952374,
+      "upah_kotor_sum": 186868858.6706
+    },
+    {
+      "id": 3709,
+      "div": "ALL",
+      "gang": "A2T",
+      "detail_count": 4,
+      "pph21_sum": 760208,
+      "upah_kotor_sum": 42540321.5608
+    },
+    {
+      "id": 3704,
+      "div": "ALL",
+      "gang": "A3H",
+      "detail_count": 23,
+      "pph21_sum": 6525959,
+      "upah_kotor_sum": 248639047.4971
+    },
+    {
+      "id": 3703,
+      "div": "ALL",
+      "gang": "A3M",
+      "detail_count": 22,
+      "pph21_sum": 3163061,
+      "upah_kotor_sum": 189773724.27740002
+    },
+    {
+      "id": 3701,
+      "div": "ALL",
+      "gang": "A3T",
+      "detail_count": 9,
+      "pph21_sum": 2606691,
+      "upah_kotor_sum": 97362794.711
+    },
+    {
+      "id": 3705,
+      "div": "ALL",
+      "gang": "AMC",
+      "detail_count": 12,
+      "pph21_sum": 2652395,
+      "upah_kotor_sum": 124289551.15619998
+    },
+    {
+      "id": 3715,
+      "div": "ALL",
+      "gang": "B1H",
+      "detail_count": 36,
+      "pph21_sum": 4707616,
+      "upah_kotor_sum": 319173751
+    },
+    {
+      "id": 3712,
+      "div": "ALL",
+      "gang": "B1M",
+      "detail_count": 81,
+      "pph21_sum": 9556794,
+      "upah_kotor_sum": 669608916.7882999
+    },
+    {
+      "id": 3713,
+      "div": "ALL",
+      "gang": "B1T",
+      "detail_count": 8,
+      "pph21_sum": 1170683,
+      "upah_kotor_sum": 76557860.1735
+    },
+    {
+      "id": 3714,
+      "div": "ALL",
+      "gang": "B2N",
+      "detail_count": 50,
+      "pph21_sum": 8884514,
+      "upah_kotor_sum": 441824438.7282
+    },
+    {
+      "id": 3718,
+      "div": "ALL",
+      "gang": "B3B",
+      "detail_count": 2,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 9168100
+    },
+    {
+      "id": 3716,
+      "div": "ALL",
+      "gang": "B3H",
+      "detail_count": 19,
+      "pph21_sum": 1649900,
+      "upah_kotor_sum": 139483769
+    },
+    {
+      "id": 3710,
+      "div": "ALL",
+      "gang": "B3M",
+      "detail_count": 100,
+      "pph21_sum": 12410214,
+      "upah_kotor_sum": 826460867.3211001
+    },
+    {
+      "id": 3717,
+      "div": "ALL",
+      "gang": "B3P",
+      "detail_count": 12,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 53195916.1851
+    },
+    {
+      "id": 3711,
+      "div": "ALL",
+      "gang": "B3T",
+      "detail_count": 15,
+      "pph21_sum": 1500629,
+      "upah_kotor_sum": 130216850.6069
+    },
+    {
+      "id": 3727,
+      "div": "ALL",
+      "gang": "C1B",
+      "detail_count": 1,
+      "pph21_sum": 14037,
+      "upah_kotor_sum": 5419409
+    },
+    {
+      "id": 3720,
+      "div": "ALL",
+      "gang": "C1H",
+      "detail_count": 16,
+      "pph21_sum": 2585378,
+      "upah_kotor_sum": 135563234.3353
+    },
+    {
+      "id": 3719,
+      "div": "ALL",
+      "gang": "C1M",
+      "detail_count": 37,
+      "pph21_sum": 4279564,
+      "upah_kotor_sum": 313207036.9942
+    },
+    {
+      "id": 3729,
+      "div": "ALL",
+      "gang": "C1P",
+      "detail_count": 9,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 37861750
+    },
+    {
+      "id": 3731,
+      "div": "ALL",
+      "gang": "C2B",
+      "detail_count": 1,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 3851742.3574
+    },
+    {
+      "id": 3725,
+      "div": "ALL",
+      "gang": "C2H",
+      "detail_count": 43,
+      "pph21_sum": 4966352,
+      "upah_kotor_sum": 373125602.4980001
+    },
+    {
+      "id": 3724,
+      "div": "ALL",
+      "gang": "C2M",
+      "detail_count": 16,
+      "pph21_sum": 2095915,
+      "upah_kotor_sum": 135099585.65000007
+    },
+    {
+      "id": 3728,
+      "div": "ALL",
+      "gang": "C2P",
+      "detail_count": 1,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 5528704.948
+    },
+    {
+      "id": 3726,
+      "div": "ALL",
+      "gang": "C2T",
+      "detail_count": 6,
+      "pph21_sum": 1508528,
+      "upah_kotor_sum": 63632932.6592
+    },
+    {
+      "id": 3722,
+      "div": "ALL",
+      "gang": "C3H",
+      "detail_count": 36,
+      "pph21_sum": 3250908,
+      "upah_kotor_sum": 298805690.5954
+    },
+    {
+      "id": 3723,
+      "div": "ALL",
+      "gang": "C3M",
+      "detail_count": 18,
+      "pph21_sum": 2472460,
+      "upah_kotor_sum": 152918525.14450002
+    },
+    {
+      "id": 3730,
+      "div": "ALL",
+      "gang": "C3P",
+      "detail_count": 3,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 8124571.42
+    },
+    {
+      "id": 3721,
+      "div": "ALL",
+      "gang": "C3T",
+      "detail_count": 5,
+      "pph21_sum": 1164923,
+      "upah_kotor_sum": 54206788.7861
+    },
+    {
+      "id": 3737,
+      "div": "ALL",
+      "gang": "D1H",
+      "detail_count": 11,
+      "pph21_sum": 1895579,
+      "upah_kotor_sum": 108679974
+    },
+    {
+      "id": 3734,
+      "div": "ALL",
+      "gang": "D1M",
+      "detail_count": 24,
+      "pph21_sum": 3389865,
+      "upah_kotor_sum": 206306720.5202
+    },
+    {
+      "id": 3732,
+      "div": "ALL",
+      "gang": "D1T",
+      "detail_count": 3,
+      "pph21_sum": 641526,
+      "upah_kotor_sum": 31453607.0809
+    },
+    {
+      "id": 3735,
+      "div": "ALL",
+      "gang": "D2H",
+      "detail_count": 15,
+      "pph21_sum": 2986479,
+      "upah_kotor_sum": 151563418.3699
+    },
+    {
+      "id": 3736,
+      "div": "ALL",
+      "gang": "D2M",
+      "detail_count": 21,
+      "pph21_sum": 2772405,
+      "upah_kotor_sum": 176487446.2428
+    },
+    {
+      "id": 3733,
+      "div": "ALL",
+      "gang": "D2T",
+      "detail_count": 6,
+      "pph21_sum": 1666813,
+      "upah_kotor_sum": 63808393.2196
+    },
+    {
+      "id": 3742,
+      "div": "ALL",
+      "gang": "E1H",
+      "detail_count": 13,
+      "pph21_sum": 1053223,
+      "upah_kotor_sum": 94019961
+    },
+    {
+      "id": 3739,
+      "div": "ALL",
+      "gang": "E1M",
+      "detail_count": 10,
+      "pph21_sum": 1150268,
+      "upah_kotor_sum": 80627468
+    },
+    {
+      "id": 3740,
+      "div": "ALL",
+      "gang": "E1T",
+      "detail_count": 1,
+      "pph21_sum": 324018,
+      "upah_kotor_sum": 10604442.7283
+    },
+    {
+      "id": 3744,
+      "div": "ALL",
+      "gang": "E2H",
+      "detail_count": 30,
+      "pph21_sum": 4391208,
+      "upah_kotor_sum": 275941277
+    },
+    {
+      "id": 3743,
+      "div": "ALL",
+      "gang": "E2M",
+      "detail_count": 20,
+      "pph21_sum": 2677987,
+      "upah_kotor_sum": 168829137.2832
+    },
+    {
+      "id": 3745,
+      "div": "ALL",
+      "gang": "E2T",
+      "detail_count": 7,
+      "pph21_sum": 1138940,
+      "upah_kotor_sum": 65146794.7689
+    },
+    {
+      "id": 3746,
+      "div": "ALL",
+      "gang": "E3H",
+      "detail_count": 26,
+      "pph21_sum": 2866923,
+      "upah_kotor_sum": 217710644
+    },
+    {
+      "id": 3741,
+      "div": "ALL",
+      "gang": "E3M",
+      "detail_count": 26,
+      "pph21_sum": 3368513,
+      "upah_kotor_sum": 221630085.54909998
+    },
+    {
+      "id": 3748,
+      "div": "ALL",
+      "gang": "E3P",
+      "detail_count": 1,
+      "pph21_sum": 29102,
+      "upah_kotor_sum": 5625039
+    },
+    {
+      "id": 3747,
+      "div": "ALL",
+      "gang": "E3T",
+      "detail_count": 6,
+      "pph21_sum": 806825,
+      "upah_kotor_sum": 52600001.1908
+    },
+    {
+      "id": 3755,
+      "div": "ALL",
+      "gang": "F1BHL",
+      "detail_count": 5,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 15277749
+    },
+    {
+      "id": 3750,
+      "div": "ALL",
+      "gang": "F1H",
+      "detail_count": 33,
+      "pph21_sum": 6608924,
+      "upah_kotor_sum": 322426950.52
+    },
+    {
+      "id": 3749,
+      "div": "ALL",
+      "gang": "F1M",
+      "detail_count": 24,
+      "pph21_sum": 3274478,
+      "upah_kotor_sum": 200773198.96530002
+    },
+    {
+      "id": 3751,
+      "div": "ALL",
+      "gang": "F1T",
+      "detail_count": 9,
+      "pph21_sum": 1473193,
+      "upah_kotor_sum": 86549750.3758
+    },
+    {
+      "id": 3754,
+      "div": "ALL",
+      "gang": "F2H",
+      "detail_count": 26,
+      "pph21_sum": 4081419,
+      "upah_kotor_sum": 229388823
+    },
+    {
+      "id": 3753,
+      "div": "ALL",
+      "gang": "F2M",
+      "detail_count": 27,
+      "pph21_sum": 3167940,
+      "upah_kotor_sum": 216253277.10980004
+    },
+    {
+      "id": 3752,
+      "div": "ALL",
+      "gang": "F2T",
+      "detail_count": 5,
+      "pph21_sum": 907708,
+      "upah_kotor_sum": 52199403.7919
+    },
+    {
+      "id": 3756,
+      "div": "ALL",
+      "gang": "G1H",
+      "detail_count": 47,
+      "pph21_sum": 6621710,
+      "upah_kotor_sum": 410528544
+    },
+    {
+      "id": 3758,
+      "div": "ALL",
+      "gang": "G1M",
+      "detail_count": 15,
+      "pph21_sum": 2061316,
+      "upah_kotor_sum": 123492489.3064
+    },
+    {
+      "id": 3761,
+      "div": "ALL",
+      "gang": "G1T",
+      "detail_count": 10,
+      "pph21_sum": 2392086,
+      "upah_kotor_sum": 105907189.2833
+    },
+    {
+      "id": 3757,
+      "div": "ALL",
+      "gang": "G2H",
+      "detail_count": 42,
+      "pph21_sum": 8392925,
+      "upah_kotor_sum": 420605085
+    },
+    {
+      "id": 3759,
+      "div": "ALL",
+      "gang": "G2M",
+      "detail_count": 9,
+      "pph21_sum": 1110617,
+      "upah_kotor_sum": 75268775.896
+    },
+    {
+      "id": 3760,
+      "div": "ALL",
+      "gang": "G2T",
+      "detail_count": 5,
+      "pph21_sum": 1112981,
+      "upah_kotor_sum": 50991712.8844
+    },
+    {
+      "id": 3762,
+      "div": "ALL",
+      "gang": "H2M",
+      "detail_count": 10,
+      "pph21_sum": 1253730,
+      "upah_kotor_sum": 83045650
+    },
+    {
+      "id": 3700,
+      "div": "ALL",
+      "gang": "INF",
+      "detail_count": 20,
+      "pph21_sum": 2769185,
+      "upah_kotor_sum": 181837015.31780002
+    },
+    {
+      "id": 3708,
+      "div": "ALL",
+      "gang": "INT",
+      "detail_count": 20,
+      "pph21_sum": 4751489,
+      "upah_kotor_sum": 206695023.69959998
+    },
+    {
+      "id": 3763,
+      "div": "ALL",
+      "gang": "J1H",
+      "detail_count": 40,
+      "pph21_sum": 6942685,
+      "upah_kotor_sum": 366234503
+    },
+    {
+      "id": 3764,
+      "div": "ALL",
+      "gang": "J1M",
+      "detail_count": 15,
+      "pph21_sum": 1400806,
+      "upah_kotor_sum": 113699204.6242
+    },
+    {
+      "id": 3765,
+      "div": "ALL",
+      "gang": "J1T",
+      "detail_count": 9,
+      "pph21_sum": 2376746,
+      "upah_kotor_sum": 96531518.16179998
+    },
+    {
+      "id": 3771,
+      "div": "ALL",
+      "gang": "J2H",
+      "detail_count": 36,
+      "pph21_sum": 4894666,
+      "upah_kotor_sum": 310537585.74
+    },
+    {
+      "id": 3768,
+      "div": "ALL",
+      "gang": "J2M",
+      "detail_count": 11,
+      "pph21_sum": 1141372,
+      "upah_kotor_sum": 94288919.0751
+    },
+    {
+      "id": 3770,
+      "div": "ALL",
+      "gang": "J2T",
+      "detail_count": 14,
+      "pph21_sum": 4970223,
+      "upah_kotor_sum": 156398189.91340002
+    },
+    {
+      "id": 3769,
+      "div": "ALL",
+      "gang": "J3H",
+      "detail_count": 21,
+      "pph21_sum": 4509025,
+      "upah_kotor_sum": 209614767
+    },
+    {
+      "id": 3767,
+      "div": "ALL",
+      "gang": "J3M",
+      "detail_count": 30,
+      "pph21_sum": 3591947,
+      "upah_kotor_sum": 243080399.16760004
+    },
+    {
+      "id": 3773,
+      "div": "ALL",
+      "gang": "J3P",
+      "detail_count": 1,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 5777471
+    },
+    {
+      "id": 3766,
+      "div": "ALL",
+      "gang": "J3T",
+      "detail_count": 20,
+      "pph21_sum": 6769650,
+      "upah_kotor_sum": 218255061.27730003
+    },
+    {
+      "id": 3772,
+      "div": "ALL",
+      "gang": "J3U",
+      "detail_count": 6,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 25420500
+    },
+    {
+      "id": 3738,
+      "div": "ALL",
+      "gang": "K2H",
+      "detail_count": 1,
+      "pph21_sum": 87263,
+      "upah_kotor_sum": 8531000
+    },
+    {
+      "id": 3774,
+      "div": "ALL",
+      "gang": "L1M",
+      "detail_count": 3,
+      "pph21_sum": 451636,
+      "upah_kotor_sum": 25217250
+    },
+    {
+      "id": 4189,
+      "div": "PG2B",
+      "gang": "D1H",
+      "detail_count": 37,
+      "pph21_sum": 7135245,
+      "upah_kotor_sum": 376211586.6879
+    },
+    {
+      "id": 4186,
+      "div": "PG2B",
+      "gang": "D1M",
+      "detail_count": 28,
+      "pph21_sum": 3907844,
+      "upah_kotor_sum": 242929321.13020003
+    },
+    {
+      "id": 4184,
+      "div": "PG2B",
+      "gang": "D1T",
+      "detail_count": 6,
+      "pph21_sum": 1105734,
+      "upah_kotor_sum": 61807598.184999995
+    },
+    {
+      "id": 4187,
+      "div": "PG2B",
+      "gang": "D2H",
+      "detail_count": 47,
+      "pph21_sum": 10125881,
+      "upah_kotor_sum": 479581054.69939995
+    },
+    {
+      "id": 4188,
+      "div": "PG2B",
+      "gang": "D2M",
+      "detail_count": 22,
+      "pph21_sum": 3026489,
+      "upah_kotor_sum": 186038696.2428
+    },
+    {
+      "id": 4191,
+      "div": "PG2B",
+      "gang": "D2P",
+      "detail_count": 1,
+      "pph21_sum": 0,
+      "upah_kotor_sum": 4102250
+    },
+    {
+      "id": 4185,
+      "div": "PG2B",
+      "gang": "D2T",
+      "detail_count": 14,
+      "pph21_sum": 2874865,
+      "upah_kotor_sum": 142753256.43
+    },
+    {
+      "id": 4190,
+      "div": "PG2B",
+      "gang": "K2H",
+      "detail_count": 7,
+      "pph21_sum": 999590,
+      "upah_kotor_sum": 65054550
+    }
+  ],
+  "pg2b_analysis": {
+    "master_ids": [
+      4189,
+      4186,
+      4184,
+      4187,
+      4188,
+      4191,
+      4185,
+      4190
+    ],
+    "total_detail_rows": 162,
+    "unique_employees": 126,
+    "duplicated_employees": 28,
+    "pph21_raw": 29175648,
+    "pph21_deduped": 22254328,
+    "upah_kotor_raw": 1558478313.3753,
+    "upah_kotor_deduped": 1199475644.1208,
+    "expected_pph21": 22254328,
+    "pph21_matches": true,
+    "duplicate_samples": [
+      {
+        "key": "1902011511890006",
+        "count": 3,
+        "masters": [
+          4184,
+          4184,
+          4184
+        ],
+        "gangs": [
+          "D1T",
+          "D1T",
+          "D1T"
+        ]
+      },
+      {
+        "key": "1906040106750002",
+        "count": 2,
+        "masters": [
+          4185,
+          4185
+        ],
+        "gangs": [
+          "D2T",
+          "D2T"
+        ]
+      },
+      {
+        "key": "1906042905920001",
+        "count": 3,
+        "masters": [
+          4185,
+          4185,
+          4185
+        ],
+        "gangs": [
+          "D2T",
+          "D2T",
+          "D2T"
+        ]
+      },
+      {
+        "key": "1902010703890005",
+        "count": 4,
+        "masters": [
+          4185,
+          4185,
+          4185,
+          4185
+        ],
+        "gangs": [
+          "D2T",
+          "D2T",
+          "D2T",
+          "D2T"
+        ]
+      },
+      {
+        "key": "1902041104810005",
+        "count": 3,
+        "masters": [
+          4186,
+          4186,
+          4186
+        ],
+        "gangs": [
+          "D1M",
+          "D1M",
+          "D1M"
+        ]
+      },
+      {
+        "key": "1906046309750002",
+        "count": 2,
+        "masters": [
+          4186,
+          4186
+        ],
+        "gangs": [
+          "D1M",
+          "D1M"
+        ]
+      },
+      {
+        "key": "1906042110820002",
+        "count": 3,
+        "masters": [
+          4186,
+          4186,
+          4186
+        ],
+        "gangs": [
+          "D1M",
+          "D1M",
+          "D1M"
+        ]
+      },
+      {
+        "key": "5203091701810001",
+        "count": 2,
+        "masters": [
+          4187,
+          4187
+        ],
+        "gangs": [
+          "D2H",
+          "D2H"
+        ]
+      },
+      {
+        "key": "5204061305020002",
+        "count": 2,
+        "masters": [
+          4187,
+          4187
+        ],
+        "gangs": [
+          "D2H",
+          "D2H"
+        ]
+      },
+      {
+        "key": "5203072304800004",
+        "count": 2,
+        "masters": [
+          4187,
+          4187
+        ],
+        "gangs": [
+          "D2H",
+          "D2H"
+        ]
+      }
+    ]
+  }
+}

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Printer, RefreshCw, ArrowLeft, Save, FileText } from 'lucide-react';
 import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, fetchVirtualDivisions, validateAggregation, seedAggregation, updateGangCell } from '../services/summaryReportService';
@@ -268,12 +269,12 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         async function loadGangDescriptions() {
             if (!token) return;
             try {
-                const response = await fetch('/payroll/summary/gang-descriptions', {
+                const response = await axios.get('payroll/summary/gang-descriptions', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
                 });
-                const result = await response.json();
+                const result = response.data;
                 if (result.success) {
                     setGangDescriptions(result.descriptions || {});
                 }
@@ -458,22 +459,19 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         
         try {
             // Use seed-ui endpoint with EXACT same parameters as current UI view
-            const response = await fetch('/payroll/aggregation/seed-ui', {
-                method: 'POST',
+            const response = await axios.post('payroll/aggregation/seed-ui', {
+                division: division || 'ALL',
+                month,
+                year,
+                gangCode: null,  // ALL gangs in division
+                gangPrefix: null  // ALL groups
+            }, {
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    division: division || 'ALL',
-                    month,
-                    year,
-                    gangCode: null,  // ALL gangs in division
-                    gangPrefix: null  // ALL groups
-                })
+                }
             });
             
-            const result = await response.json();
+            const result = response.data;
             
             if (result.success) {
                 const gangCount = result.data?.total_gangs || 0;

@@ -151,6 +151,27 @@ export class DivisionDefinition {
     }
 
     /**
+     * Get the actual regex pattern for a virtual division
+     */
+    public getVirtualDivisionPattern(divisionCode: string): RegExp | null {
+        const plugin = virtualDivisionRegistry.getPlugin(divisionCode);
+        return plugin?.gangPattern || null;
+    }
+
+    /**
+     * Match a gang code against a virtual division's pattern
+     */
+    public matchGangToVirtualDivision(gangCode: string, divisionCode: string): boolean {
+        const pattern = this.getVirtualDivisionPattern(divisionCode);
+        if (!pattern) return false;
+        const result = pattern.test(gangCode);
+        if (result) {
+            console.log(`[DivisionDefinition] Match SUCCESS: gang=${gangCode} division=${divisionCode} pattern=${pattern}`);
+        }
+        return result;
+    }
+
+    /**
      * Mendapatkan konfigurasi virtual division.
      *
      * Usage:

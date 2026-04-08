@@ -477,53 +477,69 @@ class TaxReportService {
         }
 
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
-        let effectiveDivisionCode = divisionCode;
-        let effectiveGangPrefix = gangPrefix;
-        if (divisionCode && divisionDefinition.isVirtualDivision(divisionCode)) {
-            const sourceDivisions = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-            effectiveDivisionCode = sourceDivisions[0]; // Use first source division for history query
-            // Auto-derive gangPrefix from virtual division pattern if not explicitly set
-            if (!effectiveGangPrefix) {
-                const vConfig = divisionDefinition.getVirtualDivisionConfig(divisionCode);
-                if (vConfig?.pattern) {
-                    const patternStr = vConfig.pattern.toString();
-                    // Handle complex patterns like /^IN(?:F|T)$/i -> extract base prefix "IN"
-                    // For simple prefix patterns like /^J\d*$/i -> extract "J"
-                    // Strategy: find the alphabetic prefix at the start (after optional ^)
-                    const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
-                    if (alphaMatch && alphaMatch[1]) {
-                        effectiveGangPrefix = alphaMatch[1];
-                    } else {
-                        // Fallback: strip anchors, flags and special constructs
-                        effectiveGangPrefix = patternStr.replace(/^\/\^?/, '').replace(/\$?\/i?$/, '').replace(/\*\$.*/, '');
-                    }
-                    console.log(`[TaxReportService] Auto-derived gangPrefix '${effectiveGangPrefix}' from virtual division ${divisionCode}`);
+        const isVirtual = divisionCode ? divisionDefinition.isVirtualDivision(divisionCode) : false;
+        const sourceDivisions = isVirtual && divisionCode 
+            ? await divisionDefinition.getSourceDivisionsForAggregation(divisionCode)
+            : [divisionCode || 'ALL'];
+
+        console.log(`[TaxReportService] Source divisions for ${divisionCode || 'ALL'}: ${sourceDivisions.join(', ')}`);
+
+        // Aggregated data from all sources
+        const allHistoryRows: any[] = [];
+        const dynamicPremiHeaders = new Set<string>();
+        const dynamicPotonganHeaders = new Set<string>();
+        let finalIsSourceCurrent = false;
+
+        for (const sourceDiv of sourceDivisions) {
+            const { data: chunk, isSourceCurrent: chunkIsSourceCurrent } = await this.fetchPayrollData(
+                month, year, sourceDiv, gangCode || 'ALL', gangPrefix, useHistoryDb
+            );
+
+            if (chunk?.data_rows) {
+                // If it's a virtual division, we filter rows manually using the precise regex pattern
+                // if it's a real division we filter by gangPrefix if provided.
+                let filteredRows = chunk.data_rows;
+                
+                if (isVirtual && divisionCode) {
+                    filteredRows = chunk.data_rows.filter((r: any) => 
+                        divisionDefinition.matchGangToVirtualDivision(r.gang_code || '', divisionCode)
+                    );
+                    console.log(`[TaxReportService] Virtual filter (${divisionCode}) on ${sourceDiv}: ${chunk.data_rows.length} -> ${filteredRows.length} rows.`);
+                } else if (gangPrefix) {
+                    const isNumericPrefix = /^\d+$/.test(gangPrefix);
+                    filteredRows = chunk.data_rows.filter((r: any) => {
+                        const gc = (r.gang_code || '').trim();
+                        if (isNumericPrefix) {
+                            const asistensi = divisionDefinition.getAsistensiFromGang(gc, divisionCode);
+                            return asistensi === gangPrefix;
+                        }
+                        return gc.startsWith(gangPrefix);
+                    });
                 }
+
+                allHistoryRows.push(...filteredRows);
+                
+                // Merge dynamic headers
+                if (chunk.dynamic_premi_headers) chunk.dynamic_premi_headers.forEach((h: string) => dynamicPremiHeaders.add(h));
+                if (chunk.dynamic_potongan_headers) chunk.dynamic_potongan_headers.forEach((h: string) => dynamicPotonganHeaders.add(h));
             }
-            console.log(`[TaxReportService] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode}`);
+            
+            if (chunkIsSourceCurrent) finalIsSourceCurrent = true;
         }
 
-        const { data: historyData, isSourceCurrent } = await this.fetchPayrollData(
-            month, year, effectiveDivisionCode || 'ALL', gangCode || 'ALL', effectiveGangPrefix, useHistoryDb
-        );
+        console.log(`[TaxReportService] Total aggregated rows: ${allHistoryRows.length}, isSourceCurrent=${finalIsSourceCurrent}`);
 
-        console.log(`[TaxReportService] getMonthlyTaxReport received data: ${historyData?.data_rows?.length || 0} rows, isSourceCurrent=${isSourceCurrent}`);
-
-        if (!historyData || historyData.data_rows.length === 0) {
-            return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [], data_source: isSourceCurrent ? 'current' : 'history' };
+        if (allHistoryRows.length === 0) {
+            return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [], data_source: finalIsSourceCurrent ? 'current' : 'history' };
         }
 
-        if (effectiveGangPrefix) {
-            const isNumericPrefix = /^\d+$/.test(effectiveGangPrefix);
-            historyData.data_rows = historyData.data_rows.filter((r: any) => {
-                const gc = (r.gang_code || '').trim();
-                if (isNumericPrefix) {
-                    const asistensi = divisionDefinition.getAsistensiFromGang(gc, divisionCode);
-                    return asistensi === effectiveGangPrefix;
-                }
-                return gc.startsWith(effectiveGangPrefix);
-            });
-        }
+        const historyData = {
+            data_rows: allHistoryRows,
+            dynamic_premi_headers: Array.from(dynamicPremiHeaders),
+            dynamic_potongan_headers: Array.from(dynamicPotonganHeaders)
+        };
+
+        const effectiveDivisionCode = sourceDivisions[0]; // Fallback for other income fetching
 
         const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
         const ptkpMap = new Map<string, string>();
@@ -871,14 +887,14 @@ class TaxReportService {
             );
         }
 
-        const finalResult = { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: isSourceCurrent ? 'current' : 'history' };
+        const finalResult = { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: finalIsSourceCurrent ? 'current' : 'history' };
 
         if (shouldCache) {
             const ttl = cacheService.getPayrollCacheTtl(month, year, currentPeriod.month, currentPeriod.year);
             cacheService.set(cacheKey, finalResult, ttl);
         }
 
-        console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${isSourceCurrent ? 'current' : 'history'}`);
+        console.log(`[TaxReportService] getMonthlyTaxReport returning: ${employees.length} employees, total_pph21=${totalPph21}, data_source=${finalIsSourceCurrent ? 'current' : 'history'}`);
         return finalResult;
     }
 

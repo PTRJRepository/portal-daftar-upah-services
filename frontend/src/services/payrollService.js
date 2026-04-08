@@ -52,7 +52,7 @@ export async function fetchReportRows(token, { month, year, gang_code, division,
   if (gang_prefix) params.gang_prefix = gang_prefix
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
-  const r = await requestWithRetry('/payroll/report', config, 2, 300, 60000)
+  const r = await requestWithRetry('payroll/report', config, 2, 300, 60000)
   return r.data
 }
 
@@ -79,7 +79,7 @@ export async function fetchReportRowsSimple(token, { month, year, gang_code, div
   if (token) config.headers = { Authorization: `Bearer ${token}` }
 
   try {
-    const r = await requestWithRetry('/payroll/report', config, 2, 500, 120000)
+    const r = await requestWithRetry('payroll/report', config, 2, 500, 120000)
     // Endpoint returns { data: [...], gangs: [...], grand_total: {...}, meta: {...}, ... }
     if (returnFullResponse) {
       // Return full response with backend-calculated totals
@@ -106,7 +106,7 @@ export async function fetchReportDivisionOptimized(token, { division, month, yea
   if (token) config.headers = { Authorization: `Bearer ${token}` }
 
   try {
-    const r = await requestWithRetry('/payroll/locked/report/raw-tree', config, 1, 500, 120000)
+    const r = await requestWithRetry('payroll/locked/report/raw-tree', config, 1, 500, 120000)
     return r.data
   } catch (error) {
     console.error('[PayrollService] Failed to fetch optimized division report:', error)
@@ -124,7 +124,7 @@ export async function fetchReportAggregate(token, { month, year, gang_code, divi
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
   
-  const r = await requestWithRetry('/payroll/report/aggregate', config, 1, 500, 90000)
+  const r = await requestWithRetry('payroll/report/aggregate', config, 1, 500, 90000)
   return r.data
 }
 
@@ -138,7 +138,7 @@ export async function fetchReportCount(token, { month, year, gang_code, division
   const config = { params }
   if (token) config.headers = { Authorization: `Bearer ${token}` }
   
-  const r = await requestWithRetry('/payroll/report/count', config, 2, 300, 10000)
+  const r = await requestWithRetry('payroll/report/count', config, 2, 300, 10000)
   return r.data
 }
 
@@ -253,7 +253,7 @@ export async function fetchPayrollWithComponents(token, { month, year, gang_code
   if (token) config.headers = { Authorization: `Bearer ${token}` }
 
   try {
-    const r = await requestWithRetry('/payroll/report-with-components', config, 1, 500, 90000)
+    const r = await requestWithRetry('payroll/report-with-components', config, 1, 500, 90000)
     return r.data
   } catch (error) {
     console.error('[PayrollService] Failed to fetch payroll with components:', error)
@@ -276,7 +276,7 @@ export async function fetchEmployeeComponents(token, empCode, month, year, divis
   if (token) config.headers = { Authorization: `Bearer ${token}` }
 
   try {
-    const r = await requestWithRetry(`/payroll/employee/${empCode}/components`, config, 1, 500, 60000)
+    const r = await requestWithRetry(`payroll/employee/${empCode}/components`, config, 1, 500, 60000)
     return r.data
   } catch (error) {
     console.error('[PayrollService] Failed to fetch employee components:', error)
@@ -293,7 +293,7 @@ export async function fetchComponentRegistry(token) {
   if (token) config.headers = { Authorization: `Bearer ${token}` }
 
   try {
-    const r = await requestWithRetry('/payroll/components/registry', config, 1, 300, 10000)
+    const r = await requestWithRetry('payroll/components/registry', config, 1, 300, 10000)
     return r.data
   } catch (error) {
     console.error('[PayrollService] Failed to fetch component registry:', error)
