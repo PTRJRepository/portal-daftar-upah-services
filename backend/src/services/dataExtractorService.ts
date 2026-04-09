@@ -389,7 +389,7 @@ export class DataExtractorService {
             // that were deleted from the live table but still exist in the historical table.
             
             const isVirtual = gangService.isVirtualDivision(divisionCode);
-            console.log(`--- REFLI VERSION 1.0.4 ---`);
+            console.log(`--- REFLI VERSION 1.0.7 ---`);
             console.log(`[DataExtractor] Division: ${divisionCode}, isVirtual: ${isVirtual}, allGangs: ${allGangs.length}`);
             
             if (isVirtual) {
@@ -411,8 +411,8 @@ export class DataExtractorService {
                 const aliases = gangService.getDivisionCodesWithAliases(divisionCode);
                 const placeholders = aliases.map((a: string) => `'${a.toUpperCase()}'`).join(',');
                 
-                // Base condition: employees or gangs belonging to this division's LocCode
-                let locCondition = `(UPPER(RTRIM(g.LocCode)) IN (${placeholders}) OR UPPER(RTRIM(e.LocCode)) IN (${placeholders}))`;
+                // Base condition: strictly gangs belonging to this division's LocCode
+                let locCondition = `(UPPER(RTRIM(g.LocCode)) IN (${placeholders}))`;
                 
                 // Add explicit gang codes from discovery list (catches cross-division gangs like F1BHL)
                 if (allGangs.length > 0) {
@@ -423,10 +423,8 @@ export class DataExtractorService {
 
                 gangCondition = locCondition;
 
-                // Exclude virtual division gangs that shouldn't appear in real division reports
-                const virtualGangsToExclude = ['IN', 'INT', 'AMC', 'HMC', 'B2N'];
-                const excludePlaceholders = virtualGangsToExclude.map((a: string) => `'${a}'`).join(',');
-                gangCondition += ` AND (UPPER(RTRIM(gl.GangCode)) NOT IN (${excludePlaceholders}))`;
+                // Exclude virtual division gangs strictly using divisionConfigService (covers INFRA, NURSERY, WORKSHOP, MEC)
+                gangCondition += divisionConfigService.getVirtualExclusionSQL();
             }
             console.log(`[DataExtractor] Final gangCondition: ${gangCondition}`);
         }
@@ -3219,7 +3217,7 @@ export class DataExtractorService {
             gangCondition = `(UPPER(RTRIM(gl.GangCode)) = '${gangCodeInput}' OR UPPER(RTRIM(g.GangCode)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
         } else if (divisionCode) {
             const isVirtual = gangService.isVirtualDivision(divisionCode);
-            console.log(`--- REFLI VERSION 1.0.5 (Progressive) ---`);
+            console.log(`--- REFLI VERSION 1.0.7 (Progressive) ---`);
             console.log(`[DataExtractor.Progressive] Division: ${divisionCode}, isVirtual: ${isVirtual}, allGangs: ${allGangs.length}`);
 
             if (isVirtual) {
@@ -3239,7 +3237,7 @@ export class DataExtractorService {
                 const aliases = gangService.getDivisionCodesWithAliases(divisionCode);
                 const placeholders = aliases.map((a: string) => `'${a.toUpperCase()}'`).join(',');
                 
-                let locCondition = `(UPPER(RTRIM(g.LocCode)) IN (${placeholders}) OR UPPER(RTRIM(e.LocCode)) IN (${placeholders}))`;
+                let locCondition = `(UPPER(RTRIM(g.LocCode)) IN (${placeholders}))`;
                 
                 if (allGangs.length > 0) {
                     const gangCodes = allGangs.map((gang: { gang_code: string }) => `'${gang.gang_code.trim().toUpperCase()}'`).join(',');
@@ -3248,9 +3246,8 @@ export class DataExtractorService {
 
                 gangCondition = locCondition;
 
-                const virtualGangsToExclude = ['IN', 'INT', 'AMC', 'HMC', 'B2N'];
-                const excludePlaceholders = virtualGangsToExclude.map((a: string) => `'${a}'`).join(',');
-                gangCondition += ` AND (UPPER(RTRIM(gl.GangCode)) NOT IN (${excludePlaceholders}))`;
+                // Exclude virtual division gangs strictly using divisionConfigService (covers INFRA, NURSERY, WORKSHOP, MEC)
+                gangCondition += divisionConfigService.getVirtualExclusionSQL();
             }
         }
 
