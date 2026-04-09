@@ -5,35 +5,43 @@ const TOKEN_KEY = 'payroll_auth_token'
 const USER_KEY = 'payroll_user_info'
 const REMEMBER_KEY = 'payroll_remember_me'
 
-// Cookie options
-const COOKIE_OPTIONS = {
-  expires: 30, // 30 hari default
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict',
-  path: '/'
-}
+// Use localStorage for token persistence (more reliable than cookies across sessions)
+// localStorage persists until explicitly cleared, survives browser restarts
+const LOCAL_TOKEN_KEY = 'payroll_auth_token_local'
 
 export const cookieService = {
-  // Save authentication token
+  // Save authentication token - uses localStorage for persistence
   saveToken: (token, rememberMe = false) => {
     try {
-      const options = { ...COOKIE_OPTIONS }
-      if (rememberMe) {
-        options.expires = 30 // 30 hari jika remember me
-      } else {
-        options.expires = 7 // 7 hari default (dari 1 hari)
-      }
-      Cookies.set(TOKEN_KEY, token, options)
+      // Always use localStorage for token - cookies are unreliable across sessions
+      localStorage.setItem(LOCAL_TOKEN_KEY, token)
       localStorage.setItem(REMEMBER_KEY, rememberMe)
-      console.log('[CookieService] Token saved successfully with', options.expires, 'days expiration')
+      console.log('[CookieService] Token saved to localStorage successfully')
     } catch (error) {
       console.error('[CookieService] Failed to save token:', error)
+      // Fallback to cookie if localStorage fails
+      try {
+        Cookies.set(TOKEN_KEY, token, {
+          expires: rememberMe ? 30 : 7,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'Lax', // Changed from 'strict' to 'Lax' for better compatibility
+          path: '/'
+        })
+      } catch (fallbackError) {
+        console.error('[CookieService] Fallback cookie save also failed:', fallbackError)
+      }
     }
   },
 
-  // Get authentication token
+  // Get authentication token - checks localStorage first, then falls back to cookie
   getToken: () => {
     try {
+      // Try localStorage first (primary storage)
+      const localToken = localStorage.getItem(LOCAL_TOKEN_KEY)
+      if (localToken) {
+        return localToken
+      }
+      // Fallback to cookie
       return Cookies.get(TOKEN_KEY)
     } catch (error) {
       console.error('[CookieService] Failed to get token:', error)
@@ -41,22 +49,28 @@ export const cookieService = {
     }
   },
 
-  // Save user information
+  // Save user information - uses localStorage for persistence
   saveUser: (user) => {
     try {
-      const userJson = JSON.stringify(user)
-      Cookies.set(USER_KEY, userJson, COOKIE_OPTIONS)
-      console.log('[CookieService] User info saved successfully:', { username: user.username, divisions: user.divisions?.length })
+      // Use localStorage for user data - more reliable than cookies
+      localStorage.setItem(USER_KEY, JSON.stringify(user))
+      console.log('[CookieService] User info saved to localStorage:', { username: user.username, divisions: user.divisions?.length })
     } catch (error) {
       console.error('[CookieService] Failed to save user:', error)
     }
   },
 
-  // Get user information
+  // Get user information - checks localStorage first, then falls back to cookie
   getUser: () => {
     try {
-      const userJson = Cookies.get(USER_KEY)
-      return userJson ? JSON.parse(userJson) : null
+      // Try localStorage first (primary storage)
+      const userJson = localStorage.getItem(USER_KEY)
+      if (userJson) {
+        return JSON.parse(userJson)
+      }
+      // Fallback to cookie
+      const cookieUser = Cookies.get(USER_KEY)
+      return cookieUser ? JSON.parse(cookieUser) : null
     } catch (error) {
       console.error('[CookieService] Failed to get user:', error)
       return null
@@ -90,9 +104,12 @@ export const cookieService = {
   // Clear all authentication data
   clearAuth: () => {
     try {
+      // Clear localStorage token (primary storage)
+      localStorage.removeItem(LOCAL_TOKEN_KEY)
+      localStorage.removeItem(REMEMBER_KEY)
+      // Also clear cookie for safety
       Cookies.remove(TOKEN_KEY, { path: '/' })
       Cookies.remove(USER_KEY, { path: '/' })
-      localStorage.removeItem(REMEMBER_KEY)
       console.log('[CookieService] Authentication data cleared')
     } catch (error) {
       console.error('[CookieService] Failed to clear auth data:', error)
@@ -102,6 +119,9 @@ export const cookieService = {
   // Clear token only
   clearToken: () => {
     try {
+      // Clear localStorage token (primary storage)
+      localStorage.removeItem(LOCAL_TOKEN_KEY)
+      // Also clear cookie for safety
       Cookies.remove(TOKEN_KEY, { path: '/' })
     } catch (error) {
       console.error('[CookieService] Failed to clear token:', error)
@@ -111,6 +131,9 @@ export const cookieService = {
   // Clear user info only
   clearUser: () => {
     try {
+      // Clear localStorage user (primary storage)
+      localStorage.removeItem(USER_KEY)
+      // Also clear cookie for safety
       Cookies.remove(USER_KEY, { path: '/' })
     } catch (error) {
       console.error('[CookieService] Failed to clear user:', error)
