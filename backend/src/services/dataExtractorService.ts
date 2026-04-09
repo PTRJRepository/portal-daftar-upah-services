@@ -381,16 +381,34 @@ export class DataExtractorService {
             // getEmployees will override this for historical path
             gangCondition = `(UPPER(RTRIM(gl.GangCode)) = '${trimmedInput}' OR UPPER(RTRIM(g.GangCode)) = '${trimmedInput}' OR UPPER(RTRIM(g.Description)) = '${trimmedInput}')`;
         } else if (divisionCode) {
-            // Already fetched `allGangs` above for mapping, reuse it for condition
-            if (allGangs.length > 0) {
-                // Use UPPER for case-insensitive comparison and RTRIM for trailing spaces
-                // Match by BOTH GangCode AND Description for maximum reliability across Plantware tables
-                const conditions = allGangs.map((gang: { gang_code: string, description: string }) =>
-                    `(UPPER(RTRIM(g.GangCode)) = UPPER('${gang.gang_code.trim()}') OR UPPER(RTRIM(g.Description)) = UPPER('${gang.description.trim()}'))`
-                ).join(' OR ');
-                gangCondition = `(${conditions})`;
+            // [CRITICAL FIX] Virtual vs Real division gang condition building
+            // For virtual divisions (INF, NRS, Workshop), the list of gangs perfectly defines the division.
+            // For real divisions (P1A, AB1), they are defined by LocCode and we MUST NOT filter by g.GangCode 
+            // strictly using the live gang list. Doing so excludes historical gangs (like "PERCOBAAN") 
+            // that were deleted from the live table but still exist in the historical table.
+            
+            const isVirtual = gangService.isVirtualDivision(divisionCode);
+            
+            if (isVirtual) {
+                // Use the explicit gang list returned by gangService
+                if (allGangs.length > 0) {
+                    const conditions = allGangs.map((gang: { gang_code: string, description: string }) =>
+                        `(UPPER(RTRIM(g.GangCode)) = UPPER('${gang.gang_code.trim()}') OR UPPER(RTRIM(g.Description)) = UPPER('${gang.description.trim()}'))`
+                    ).join(' OR ');
+                    gangCondition = `(${conditions})`;
+                } else {
+                    gangCondition = "1=0";
+                }
             } else {
-                gangCondition = "1=0";
+                // Real division: Filter by LocCode but exclude virtual gang codes safely
+                const aliases = gangService.getDivisionCodesWithAliases(divisionCode);
+                const placeholders = aliases.map((a: string) => `'${a.toUpperCase()}'`).join(',');
+                
+                // Exclude all known virtual gangs exactly as DivisionConfigService does
+                const virtualGangsToExclude = ['IN', 'INT', 'AMC', 'HMC', 'B2N'];
+                const excludePlaceholders = virtualGangsToExclude.map((a: string) => `'${a}'`).join(',');
+                
+                gangCondition = `(UPPER(RTRIM(e.LocCode)) IN (${placeholders}) AND UPPER(RTRIM(g.GangCode)) NOT IN (${excludePlaceholders}))`;
             }
         }
 
@@ -1637,7 +1655,46 @@ export class DataExtractorService {
                 `, [accMonth, accYear]);
 
                 console.log(`[DataExtractor] Historical query for ${accMonth}/${accYear} returned ${rows.length} rows`);
-                // [FALLBACK] If historical query returns no data, fallback to live tables
+                // [FALLBACK] Try relaxed historical search if strict month/year search yields 0 rows
+                if (rows.length === 0) {
+                    console.log(`[DataExtractor] Strict historical query returned no data. Attempting relaxed historical query...`);
+                    rows = await db.query<any>(`
+                        SELECT 
+                            emp_code, actual_nik, emp_name, gender, loc_code, 
+                            gang_code, gang_desc, pay_rate, beras_rate, 
+                            join_date, res_address, hr_emp_type
+                        FROM (
+                            SELECT 
+                                RTRIM(e.EmpCode) as emp_code,
+                                e.NewICNo as actual_nik,
+                                e.EmpName as emp_name,
+                                e.Gender as gender,
+                                RTRIM(e.LocCode) as loc_code,
+                                COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
+                                RTRIM(g.Description) as gang_desc,
+                                COALESCE(p.PayRate, 0) as pay_rate,
+                                CASE
+                                    WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
+                                    ELSE COALESCE(p.RiceRation, 0)
+                                END as beras_rate,
+                                em.AppJoinGrpDate as join_date,
+                                e.ResAddress as res_address,
+                                e.HREmpType as hr_emp_type,
+                                ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY gl.AccYear DESC, gl.AccMonth DESC) as rn
+                            FROM HR_EMPLOYEE e
+                            INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
+                            INNER JOIN PR_GANG g ON g.ID = gl.MasterID
+                            LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                            LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                            WHERE ${historicalCondition}
+                        ) t
+                        WHERE rn = 1
+                        ORDER BY emp_code
+                    `);
+                    console.log(`[DataExtractor] Relaxed historical query returned ${rows.length} rows`);
+                }
+
+                // [FALLBACK] If historical query still returns no data, fallback to live tables
                 if (rows.length === 0) {
                     console.log(`[DataExtractor] Historical query returned no data. Falling back to live tables for ${month}/${year}...`);
                     return await this.getEmployeesFallbackLive(gangCondition, serverProfile);
@@ -1676,20 +1733,7 @@ export class DataExtractorService {
                     ORDER BY emp_code
                 `);
 
-                console.log(`[DataExtractor] Live active query returned ${rows.length} rows (before de-duplication)`);
-                
-                // [DE-DUPLICATION] Latest Wins logic for append-insert handling
-                const employeeMap = new Map<string, any>();
-                for (const r of rows) {
-                    const key = r.emp_code;
-                    if (key) {
-                        // The last one in the database result set wins
-                        employeeMap.set(key, r);
-                    }
-                }
-                const resultRows = Array.from(employeeMap.values());
-                console.log(`[DataExtractor] De-duplicated live active results to ${resultRows.length} unique employees`);
-                return resultRows;
+                console.log(`[DataExtractor] Live active query returned ${rows.length} rows`);
             } catch (error: any) {
                 console.error(`[DataExtractor] Current employee query failed: ${error.message}`);
                 throw new Error(`Failed to fetch employee data: ${error.message}`);
@@ -1697,7 +1741,10 @@ export class DataExtractorService {
 
             // [FALLBACK] If no data in base table (HR_GANGLN) for current period,
             // try ARC table (PR_GANGLN_ARC) as fallback - data may have been archived
-            if (rows.length === 0) {
+            // This happens when a gang like PERCOBAAN is deleted from live but we are requesting a month
+            // that is still technically 'current' according to the server flags.
+            if (rows && rows.length === 0) {
+                console.log(`[DataExtractor] Live query returned 0 rows. Attempting ARC fallback for ${month}/${year}...`);
                 const { accMonth: fallbackAccMonth, accYear: fallbackAccYear } = currentPeriodService.calendarToAccMonth(month, year);
 
                 // Build ARC-compatible gang condition (PR_GANG uses GangID/Description, not GangCode)
@@ -1706,38 +1753,93 @@ export class DataExtractorService {
                     arcCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
                 }
 
-                rows = await db.query<any>(`
-                    SELECT DISTINCT
-                        RTRIM(e.EmpCode) as emp_code,
-                        e.NewICNo as actual_nik,
-                        e.EmpName as emp_name,
-                        e.Gender as gender,
-                        RTRIM(e.LocCode) as loc_code,
-                        COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
-                        RTRIM(g.Description) as gang_desc,
-                        COALESCE(p.PayRate, 0) as pay_rate,
-                        CASE 
-                            WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
-                            ELSE COALESCE(p.RiceRation, 0)
-                        END as beras_rate,
-                        em.AppJoinGrpDate as join_date,
-                        e.ResAddress as res_address,
-                        e.HREmpType as hr_emp_type
-                    FROM HR_EMPLOYEE e
-                    INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
-                        AND gl.AccMonth = ?
-                        AND gl.AccYear = ?
-                    INNER JOIN PR_GANG g ON g.ID = gl.MasterID
-                    LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
-                    LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
-                    WHERE ${arcCondition}
-                    ORDER BY emp_code
-                `, [fallbackAccMonth, fallbackAccYear]);
+                try {
+                    rows = await db.query<any>(`
+                        SELECT DISTINCT
+                            RTRIM(e.EmpCode) as emp_code,
+                            e.NewICNo as actual_nik,
+                            e.EmpName as emp_name,
+                            e.Gender as gender,
+                            RTRIM(e.LocCode) as loc_code,
+                            COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
+                            RTRIM(g.Description) as gang_desc,
+                            COALESCE(p.PayRate, 0) as pay_rate,
+                            CASE 
+                                WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
+                                ELSE COALESCE(p.RiceRation, 0)
+                            END as beras_rate,
+                            em.AppJoinGrpDate as join_date,
+                            e.ResAddress as res_address,
+                            e.HREmpType as hr_emp_type
+                        FROM HR_EMPLOYEE e
+                        INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
+                            AND gl.AccMonth = ?
+                            AND gl.AccYear = ?
+                        INNER JOIN PR_GANG g ON g.ID = gl.MasterID
+                        LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                        LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                        WHERE ${arcCondition}
+                        ORDER BY emp_code
+                    `, [fallbackAccMonth, fallbackAccYear]);
 
-                if (rows.length === 0) {
-                    console.log(`[DataExtractor] ARC Fallback: no data found for ${month}/${year}`);
+                    if (rows.length === 0) {
+                        console.log(`[DataExtractor] Strict ARC Fallback: no data found for ${month}/${year}. Attempting relaxed fallback...`);
+                        rows = await db.query<any>(`
+                            SELECT 
+                                emp_code, actual_nik, emp_name, gender, loc_code, 
+                                gang_code, gang_desc, pay_rate, beras_rate, 
+                                join_date, res_address, hr_emp_type
+                            FROM (
+                                SELECT 
+                                    RTRIM(e.EmpCode) as emp_code,
+                                    e.NewICNo as actual_nik,
+                                    e.EmpName as emp_name,
+                                    e.Gender as gender,
+                                    RTRIM(e.LocCode) as loc_code,
+                                    COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
+                                    RTRIM(g.Description) as gang_desc,
+                                    COALESCE(p.PayRate, 0) as pay_rate,
+                                    CASE 
+                                        WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
+                                        ELSE COALESCE(p.RiceRation, 0)
+                                    END as beras_rate,
+                                    em.AppJoinGrpDate as join_date,
+                                    e.ResAddress as res_address,
+                                    e.HREmpType as hr_emp_type,
+                                    ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY gl.AccYear DESC, gl.AccMonth DESC) as rn
+                                FROM HR_EMPLOYEE e
+                                INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
+                                INNER JOIN PR_GANG g ON g.ID = gl.MasterID
+                                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                                LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                                WHERE ${arcCondition}
+                            ) t
+                            WHERE rn = 1
+                            ORDER BY emp_code
+                        `);
+                        console.log(`[DataExtractor] Relaxed ARC Fallback retrieved ${rows.length} rows`);
+                    } else {
+                        console.log(`[DataExtractor] Strict ARC Fallback retrieved ${rows.length} rows`);
+                    }
+                } catch (error: any) {
+                    console.error(`[DataExtractor] ARC Fallback employee query failed: ${error.message}`);
                 }
             }
+            
+            // [DE-DUPLICATION] Latest Wins logic for append-insert handling
+            const employeeMap = new Map<string, any>();
+            if (rows && rows.length > 0) {
+                for (const r of rows) {
+                    const key = r.emp_code;
+                    if (key) {
+                        // The last one in the database result set wins
+                        employeeMap.set(key, r);
+                    }
+                }
+            }
+            // Overwrite rows with de-duplicated rows
+            rows = Array.from(employeeMap.values());
+            console.log(`[DataExtractor] De-duplicated results to ${rows.length} unique employees`);
         }
 
         // Fetch HR data overrides (e.g. NIK KTP)
