@@ -1243,9 +1243,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         ];
 
                         // Pendapatan lainnya fields
+                        // NOTE: pendapatan_thr, bonus, custom, kontan diproses dari other_incomes loop (line ~1274)
+                        // JANGAN masukkan ke pendapatanFields untuk menghindari duplikasi dengan other_incomes loop
                         const pendapatanFields = [
-                            'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontan',
-                            'pendapatan_lainnya', 'pot_pendapatan_lainnya'
+                            'pendapatan_lainnya', 'total_pendapatan_lainnya'
                         ];
 
                         const allNumericFields = [...baseFields, ...pendapatanFields];

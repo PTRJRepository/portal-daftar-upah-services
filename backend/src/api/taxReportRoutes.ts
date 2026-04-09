@@ -1179,7 +1179,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     console.log(`[TaxReport Excel DOM] Fetching premi data from DataExtractor for division=${division}...`);
                     const extractorData = await extractor.extractPayrollData(
                         parseInt(month), parseInt(year), gang || 'ALL', division || undefined,
-                        null, undefined, false, undefined, undefined, false, true
+                        null, undefined, true, true, undefined, false, true
                     );
                     
                     if (extractorData?.data_rows?.length > 0) {
