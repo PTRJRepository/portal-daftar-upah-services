@@ -433,25 +433,16 @@ export class DivisionConfigService {
             : [];
 
         if (division.type === 'virtual') {
-            // Virtual divisions source from a real division - get loc_codes from source
-            const sourceDivAliases = division.sourceDivision
-                ? this.getAliases(division.sourceDivision)
-                : [];
-            const placeholders = sourceDivAliases.map(() => '?').join(',');
-
-            // Query HR_GANGLN for gangs that belong to source division via employee loc_code
+            // For virtual divisions, query all gangs from HR_GANGLN and let the pattern filter do the work
             query = `
                 SELECT DISTINCT
                     RTRIM(gl.GangCode) as gang_code,
-                    RTRIM(ISNULL(h.Description, 'GANG TANPA DESKRIPSI')) as description,
-                    RTRIM(e.LocCode) as loc_code
+                    '' as description,
+                    RTRIM(gl.LocCode) as loc_code
                 FROM HR_GANGLN gl
-                INNER JOIN HR_EMPLOYEE e ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                LEFT JOIN HR_GANG h ON RTRIM(gl.GangCode) = RTRIM(h.GangCode)
-                WHERE RTRIM(e.LocCode) IN (${placeholders})
-                ORDER BY RTRIM(gl.GangCode)
+                ORDER BY gl.GangCode
             `;
-            params = sourceDivAliases;
+            params = [];
         } else {
             // For real divisions - also use aliases
             // ⚠️ CRITICAL: EXCLUDE virtual division gangs
@@ -483,7 +474,7 @@ export class DivisionConfigService {
 
             if (gangsToExclude.length > 0) {
                 const excludePlaceholders = gangsToExclude.map(() => '?').join(',');
-                excludeClause = `AND gl.GangCode NOT IN (${excludePlaceholders})`;
+                excludeClause = `AND GangCode NOT IN (${excludePlaceholders})`;
                 queryParams.push(...gangsToExclude);
             }
 
@@ -491,55 +482,21 @@ export class DivisionConfigService {
             console.log(`[DivisionConfigService]   Aliases: ${JSON.stringify(aliases)}`);
             console.log(`[DivisionConfigService]   Excluded gangs: ${JSON.stringify(gangsToExclude)}`);
 
-            // 1. Get ALL gangs from HR_GANG for this LocCode (including gangs without employees)
+            // Simple query: just get distinct gangs from HR_GANGLN by LocCode
             const gangQuery = `
                 SELECT DISTINCT
-                    RTRIM(GangCode) as gang_code,
-                    RTRIM(Description) as description,
-                    RTRIM(LocCode) as loc_code
-                FROM HR_GANG
-                WHERE RTRIM(LocCode) IN (${placeholders})
-                  ${excludeClause}
-                  AND (Description IS NULL OR (Description NOT LIKE '%WORKSHOP%' AND Description NOT LIKE '%INFRA%'))
-                ORDER BY RTRIM(GangCode)
+                    RTRIM(gl.GangCode) as gang_code,
+                    '' as description,
+                    RTRIM(gl.LocCode) as loc_code
+                FROM HR_GANGLN gl
+                WHERE RTRIM(gl.LocCode) IN (${placeholders})
+                  ${excludeClause.replace(/GangCode/g, 'gl.GangCode')}
+                ORDER BY gl.GangCode
             `;
             const gangRows = await db.query<any>(gangQuery, queryParams);
-            console.log(`[DivisionConfigService] HR_GANG returned ${gangRows.length} gangs for ${division.code}.`);
+            console.log(`[DivisionConfigService] HR_GANGLN returned ${gangRows.length} gangs for ${division.code}.`);
 
-            // 2. Also get orphaned gangs (in HR_GANGLN but not in HR_GANG) for this LocCode
-            let orphanedQueryParams: any[] = [...aliases];
-            let orphanedExcludeClause = '';
-            if (gangsToExclude.length > 0) {
-                const excludePlaceholders = gangsToExclude.map(() => '?').join(',');
-                orphanedExcludeClause = `AND gl.GangCode NOT IN (${excludePlaceholders})`;
-                orphanedQueryParams.push(...gangsToExclude);
-            }
-
-            const orphanedQuery = `
-                SELECT DISTINCT
-                    RTRIM(gl.GangCode) as gang_code,
-                    'GANG TANPA DESKRIPSI' as description,
-                    RTRIM(e.LocCode) as loc_code
-                FROM HR_GANGLN gl
-                INNER JOIN HR_EMPLOYEE e ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                LEFT JOIN HR_GANG g ON RTRIM(gl.GangCode) = RTRIM(g.GangCode)
-                WHERE g.GangCode IS NULL
-                  AND RTRIM(e.LocCode) IN (${placeholders})
-                  ${orphanedExcludeClause}
-            `;
-            const orphanedRows = await db.query<any>(orphanedQuery, orphanedQueryParams);
-            console.log(`[DivisionConfigService] HR_GANGLN orphaned: ${orphanedRows.length} gangs.`);
-
-            // Combine HR_GANG gangs with orphaned gangs
-            const combinedMap = new Map<string, any>();
-            for (const row of [...gangRows, ...orphanedRows]) {
-                const key = row.gang_code?.trim().toUpperCase();
-                if (key) combinedMap.set(key, row);
-            }
-            const combined = Array.from(combinedMap.values());
-
-            console.log(`[DivisionConfigService] Combined: ${gangRows.length} from HR_GANG + ${orphanedRows.length} orphaned = ${combined.length} total.`);
-            return combined.map(row => ({
+            return gangRows.map(row => ({
                 gang_code: row.gang_code?.trim() || '',
                 description: row.description?.trim() || '',
                 loc_code: row.loc_code?.trim() || ''
