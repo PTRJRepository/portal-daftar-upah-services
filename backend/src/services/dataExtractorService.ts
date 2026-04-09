@@ -22,6 +22,7 @@ import { cacheService } from "./cacheService";
 import { mapBerasRateToPTKP, mapPTKPToTER } from './payroll/formulas/PTKPMapper';
 import { debug, info, warn, error as logError } from "../utils/logger";
 import { PayrollCalculator } from "./payroll/components/PayrollCalculator";
+import { divisionConfigService } from "./config/DivisionConfigService";
 
 const CATEGORY = "DataExtractor";
 
@@ -388,32 +389,46 @@ export class DataExtractorService {
             // that were deleted from the live table but still exist in the historical table.
             
             const isVirtual = gangService.isVirtualDivision(divisionCode);
+            console.log(`--- REFLI VERSION 1.0.4 ---`);
+            console.log(`[DataExtractor] Division: ${divisionCode}, isVirtual: ${isVirtual}, allGangs: ${allGangs.length}`);
             
             if (isVirtual) {
-                // Use the explicit gang list returned by gangService
+                // Virtual divisions are strictly defined by their gang list
                 if (allGangs.length > 0) {
-                    const conditions = allGangs.map((gang: { gang_code: string, description: string }) =>
-                        `(UPPER(RTRIM(g.GangCode)) = UPPER('${gang.gang_code.trim()}') OR UPPER(RTRIM(g.Description)) = UPPER('${gang.description.trim()}'))`
-                    ).join(' OR ');
-                    gangCondition = `(${conditions})`;
+                    const gangCodes = allGangs.map((gang: { gang_code: string }) => `'${gang.gang_code.trim().toUpperCase()}'`).join(',');
+                    const gangDescs = allGangs.filter(g => g.description).map((gang: { description: string }) => `'${gang.description.trim().toUpperCase()}'`).join(',');
+                    
+                    gangCondition = `(UPPER(RTRIM(gl.GangCode)) IN (${gangCodes}) OR UPPER(RTRIM(g.GangCode)) IN (${gangCodes})`;
+                    if (gangDescs) {
+                        gangCondition += ` OR UPPER(RTRIM(g.Description)) IN (${gangDescs})`;
+                    }
+                    gangCondition += `)`;
                 } else {
                     gangCondition = "1=0";
                 }
             } else {
-                // Real division: Filter by LocCode but exclude virtual gang codes safely
+                // Real division (P1A, AB1, etc.): Hybrid approach
                 const aliases = gangService.getDivisionCodesWithAliases(divisionCode);
                 const placeholders = aliases.map((a: string) => `'${a.toUpperCase()}'`).join(',');
                 
-                // Exclude all known virtual gangs exactly as DivisionConfigService does
-                // Identification: Find all gangs that belong to this division via g.LocCode OR e.LocCode
-                // This satisfies the user's request for "All Gangs" to be inclusive.
-                gangCondition = `(UPPER(RTRIM(g.LocCode)) IN (${placeholders}) OR UPPER(RTRIM(e.LocCode)) IN (${placeholders}))`;
+                // Base condition: employees or gangs belonging to this division's LocCode
+                let locCondition = `(UPPER(RTRIM(g.LocCode)) IN (${placeholders}) OR UPPER(RTRIM(e.LocCode)) IN (${placeholders}))`;
                 
-                // Exclude virtual divisions if appropriate
+                // Add explicit gang codes from discovery list (catches cross-division gangs like F1BHL)
+                if (allGangs.length > 0) {
+                    const gangCodes = allGangs.map((gang: { gang_code: string }) => `'${gang.gang_code.trim().toUpperCase()}'`).join(',');
+                    // [CRITICAL] Use gl.GangCode to catch gangs that don't have master records in HR_GANG
+                    locCondition = `(${locCondition} OR UPPER(RTRIM(gl.GangCode)) IN (${gangCodes}))`;
+                }
+
+                gangCondition = locCondition;
+
+                // Exclude virtual division gangs that shouldn't appear in real division reports
                 const virtualGangsToExclude = ['IN', 'INT', 'AMC', 'HMC', 'B2N'];
                 const excludePlaceholders = virtualGangsToExclude.map((a: string) => `'${a}'`).join(',');
-                gangCondition += ` AND (UPPER(RTRIM(g.GangCode)) NOT IN (${excludePlaceholders}))`;
+                gangCondition += ` AND (UPPER(RTRIM(gl.GangCode)) NOT IN (${excludePlaceholders}))`;
             }
+            console.log(`[DataExtractor] Final gangCondition: ${gangCondition}`);
         }
 
         const startTotal = performance.now();
@@ -822,6 +837,7 @@ export class DataExtractorService {
         const dataRows: PayrollRow[] = [];
         const dynamicPremiSet = new Set<string>();
         const dynamicPotonganSet = new Set<string>();
+        const seenEmpCodes = new Set<string>();
         const startRowProcessing = performance.now();
 
         for (const emp of employees) {
@@ -1356,6 +1372,20 @@ export class DataExtractorService {
                 upah_bersih,
             } = calc;
 
+            const rowFound = seenEmpCodes.has(emp.emp_code);
+            if (rowFound) continue;
+            
+            // [DEBUG] Trace F1BHL members
+            if (emp.emp_code === 'F0520' || emp.emp_code === 'F0524' || emp.gang_code === 'F1BHL') {
+                console.log(`[DataExtractor DEBUG] Processing ${emp.emp_code} (${emp.gang_code}): hari_kerja=${hari_kerja}, found=${!rowFound}`);
+            }
+
+            seenEmpCodes.add(emp.emp_code);
+
+            // [FILTER] "kehadiran > 0 gausah tampil"
+            // Hide employees who have worked (hari_kerja > 0)
+            if (hari_kerja > 0) continue;
+
             // formula handled inside OOP logic
             const koreksi_hk = gpResult?.koreksi_hk?.value || 0;
             const row: PayrollRow = {
@@ -1576,7 +1606,7 @@ export class DataExtractorService {
                         ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY e.EmpCode DESC) as rn -- Basic dedup
                     FROM HR_EMPLOYEE e
                     INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                    INNER JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                    LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
                     LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                     LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
                     WHERE ${gangCondition}
@@ -1622,6 +1652,7 @@ export class DataExtractorService {
 
             // PR_GANGLN_ARC uses EmpCode column and MasterID to join with PR_GANG
             try {
+                // Strict historical query with LEFT JOIN and COALESCE fallback
                 rows = await db.query<any>(`
                     SELECT 
                         emp_code, actual_nik, emp_name, gender, loc_code, 
@@ -1634,8 +1665,8 @@ export class DataExtractorService {
                             e.EmpName as emp_name,
                             e.Gender as gender,
                             RTRIM(e.LocCode) as loc_code,
-                            COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
-                            RTRIM(g.Description) as gang_desc,
+                            COALESCE(RTRIM(g.GangID), RTRIM(g.Description), CAST(gl.MasterID AS VARCHAR)) as gang_code,
+                            COALESCE(RTRIM(g.Description), CAST(gl.MasterID AS VARCHAR)) as gang_desc,
                             COALESCE(p.PayRate, 0) as pay_rate,
                             CASE
                                 WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
@@ -1649,7 +1680,7 @@ export class DataExtractorService {
                         INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
                             AND gl.AccMonth = ?
                             AND gl.AccYear = ?
-                        INNER JOIN PR_GANG g ON g.ID = gl.MasterID
+                        LEFT JOIN PR_GANG g ON g.ID = gl.MasterID
                         LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                         LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
                         WHERE ${historicalCondition}
@@ -1659,6 +1690,7 @@ export class DataExtractorService {
                 `, [accMonth, accYear]);
 
                 console.log(`[DataExtractor] Historical query for ${accMonth}/${accYear} returned ${rows.length} rows`);
+                
                 // [FALLBACK] Try relaxed historical search if strict month/year search yields 0 rows
                 if (rows.length === 0) {
                     console.log(`[DataExtractor] Strict historical query returned no data. Attempting relaxed historical query...`);
@@ -1674,8 +1706,8 @@ export class DataExtractorService {
                                 e.EmpName as emp_name,
                                 e.Gender as gender,
                                 RTRIM(e.LocCode) as loc_code,
-                                COALESCE(RTRIM(g.GangID), RTRIM(g.Description)) as gang_code,
-                                RTRIM(g.Description) as gang_desc,
+                                COALESCE(RTRIM(g.GangID), RTRIM(g.Description), CAST(gl.MasterID AS VARCHAR)) as gang_code,
+                                COALESCE(RTRIM(g.Description), CAST(gl.MasterID AS VARCHAR)) as gang_desc,
                                 COALESCE(p.PayRate, 0) as pay_rate,
                                 CASE
                                     WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0
@@ -1687,7 +1719,7 @@ export class DataExtractorService {
                                 ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY gl.AccYear DESC, gl.AccMonth DESC) as rn
                             FROM HR_EMPLOYEE e
                             INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode)
-                            INNER JOIN PR_GANG g ON g.ID = gl.MasterID
+                            LEFT JOIN PR_GANG g ON g.ID = gl.MasterID
                             LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                             LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
                             WHERE ${historicalCondition}
@@ -1730,7 +1762,7 @@ export class DataExtractorService {
                         e.HREmpType as hr_emp_type
                     FROM HR_EMPLOYEE e
                     INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                    INNER JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                    LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
                     LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
                     LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
                     WHERE ${gangCondition}
@@ -3186,11 +3218,39 @@ export class DataExtractorService {
             gangCodeInput = gangCode.trim().toUpperCase();
             gangCondition = `(UPPER(RTRIM(gl.GangCode)) = '${gangCodeInput}' OR UPPER(RTRIM(g.GangCode)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
         } else if (divisionCode) {
-            if (allGangs.length > 0) {
-                const conditions = allGangs.map((gang: { gang_code: string, description: string }) =>
-                    `(UPPER(RTRIM(g.GangCode)) = UPPER('${gang.gang_code.trim()}') OR UPPER(RTRIM(g.Description)) = UPPER('${gang.description.trim()}'))`
-                ).join(' OR ');
-                gangCondition = `(${conditions})`;
+            const isVirtual = gangService.isVirtualDivision(divisionCode);
+            console.log(`--- REFLI VERSION 1.0.5 (Progressive) ---`);
+            console.log(`[DataExtractor.Progressive] Division: ${divisionCode}, isVirtual: ${isVirtual}, allGangs: ${allGangs.length}`);
+
+            if (isVirtual) {
+                if (allGangs.length > 0) {
+                    const gangCodes = allGangs.map((gang: { gang_code: string }) => `'${gang.gang_code.trim().toUpperCase()}'`).join(',');
+                    const gangDescs = allGangs.filter(g => g.description).map((gang: { description: string }) => `'${gang.description.trim().toUpperCase()}'`).join(',');
+                    
+                    gangCondition = `(UPPER(RTRIM(gl.GangCode)) IN (${gangCodes}) OR UPPER(RTRIM(g.GangCode)) IN (${gangCodes})`;
+                    if (gangDescs) {
+                        gangCondition += ` OR UPPER(RTRIM(g.Description)) IN (${gangDescs})`;
+                    }
+                    gangCondition += `)`;
+                } else {
+                    gangCondition = "1=0";
+                }
+            } else {
+                const aliases = gangService.getDivisionCodesWithAliases(divisionCode);
+                const placeholders = aliases.map((a: string) => `'${a.toUpperCase()}'`).join(',');
+                
+                let locCondition = `(UPPER(RTRIM(g.LocCode)) IN (${placeholders}) OR UPPER(RTRIM(e.LocCode)) IN (${placeholders}))`;
+                
+                if (allGangs.length > 0) {
+                    const gangCodes = allGangs.map((gang: { gang_code: string }) => `'${gang.gang_code.trim().toUpperCase()}'`).join(',');
+                    locCondition = `(${locCondition} OR UPPER(RTRIM(gl.GangCode)) IN (${gangCodes}))`;
+                }
+
+                gangCondition = locCondition;
+
+                const virtualGangsToExclude = ['IN', 'INT', 'AMC', 'HMC', 'B2N'];
+                const excludePlaceholders = virtualGangsToExclude.map((a: string) => `'${a}'`).join(',');
+                gangCondition += ` AND (UPPER(RTRIM(gl.GangCode)) NOT IN (${excludePlaceholders}))`;
             }
         }
 

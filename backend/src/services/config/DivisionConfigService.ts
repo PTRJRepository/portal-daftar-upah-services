@@ -1,4 +1,4 @@
-﻿/**
+/**
  * DivisionConfigService - Single Source of Truth for Division Definitions
  *
  * Provides centralized management of:
@@ -417,122 +417,146 @@ export class DivisionConfigService {
         const db = Database.getInstance();
         const division = this.getDivision(divisionCode);
 
-        console.log(`[DivisionConfigService] getGangsForDivision: ${divisionCode}, resolved: ${division?.code}, type: ${division?.type}`);
+        console.log(`[DivisionConfigService] getGangsForDivision (Enhanced): ${divisionCode}, resolved: ${division?.code}, type: ${division?.type}`);
 
         if (!division) {
             console.warn(`[DivisionConfigService] Division not found: ${divisionCode}`);
             return [];
         }
 
-        let query: string;
-        let params: any[];
+        const aliases = this.getAliases(division.code);
+        const placeholders = aliases.map(() => '?').join(',');
 
-        // Get all aliases for the source division to use in query
-        const sourceDivAliases = division.sourceDivision
-            ? this.getAliases(division.sourceDivision)
-            : [];
+        // 1. Master Discovery (from HR_GANG by LocCode)
+        const masterQuery = `
+            SELECT 
+                RTRIM(GangCode) as gang_code,
+                RTRIM(Description) as description,
+                RTRIM(LocCode) as loc_code
+            FROM HR_GANG
+            WHERE RTRIM(LocCode) IN (${placeholders})
+               OR (RTRIM(GangCode) LIKE '%BHL%' AND ? = 'PG1A')
+               OR (RTRIM(Description) LIKE '%BHL%' AND ? = 'PG1A')
+        `;
 
-        if (division.type === 'virtual') {
-            // For all virtual divisions, query all gangs and let the pattern filter do the work
-            // This prevents issues where a virtual gang's LocCode doesn't match the source division
-            query = `
-                SELECT
-                    GangCode as gang_code,
-                    Description as description,
-                    LocCode as loc_code
-                FROM HR_GANG
-                WHERE 1=1
-                ORDER BY GangCode
-            `;
-            params = [];
-        } else {
-            // For real divisions - also use aliases
-            // ΓÜá∩╕Å CRITICAL: EXCLUDE virtual division gangs
-            // This ensures virtual divisions are SEPARATE from their parent divisions
-            const aliases = this.getAliases(division.code);
-            const placeholders = aliases.map(() => '?').join(',');
+        // 1b. Historical Master Discovery (from PR_GANG by LocCode)
+        const historicalMasterQuery = `
+            SELECT 
+                RTRIM(GangID) as gang_code,
+                RTRIM(Description) as description,
+                RTRIM(LocCode) as loc_code
+            FROM PR_GANG
+            WHERE RTRIM(LocCode) IN (${placeholders})
+               OR (RTRIM(GangID) LIKE '%BHL%' AND ? = 'PG1A')
+               OR (RTRIM(Description) LIKE '%BHL%' AND ? = 'PG1A')
+        `;
 
-            // Build exclusion list based on virtual divisions that source from this division
-            const gangsToExclude: string[] = [];
-            const virtualDivs = this.getVirtualDivisions();
-            virtualDivs.forEach(vDiv => {
-                if (vDiv.sourceDivision === division.code && vDiv.gangPattern) {
-                    // Extract gang codes from pattern for known virtual divisions
-                    if (vDiv.code === 'INF' || vDiv.code === 'INFRA') {
-                        gangsToExclude.push('IN', 'INT');
-                    } else if (vDiv.code === 'WKS_PG') {
-                        gangsToExclude.push('AMC');
-                    } else if (vDiv.code === 'WKS_AR') {
-                        gangsToExclude.push('HMC');
-                    } else if (vDiv.code === 'NRS') {
-                        gangsToExclude.push('B2N');
-                    }
+        // 2. Current Membership Discovery
+        const currentMembershipQuery = `
+            SELECT DISTINCT
+                RTRIM(gl.GangCode) as gang_code,
+                RTRIM(g.Description) as description,
+                RTRIM(e.LocCode) as loc_code
+            FROM HR_GANGLN gl
+            JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(gl.GangMember)
+            LEFT JOIN HR_GANG g ON g.GangCode = gl.GangCode
+            WHERE RTRIM(e.LocCode) IN (${placeholders})
+        `;
+
+        // 2b. Cross-Division Membership Discovery (BHL special case)
+        const crossDivisionQuery = division.code === 'PG1A' ? `
+            SELECT DISTINCT
+                RTRIM(gl.GangCode) as gang_code,
+                RTRIM(g.Description) as description,
+                'CROSS-DIV' as loc_code
+            FROM HR_GANGLN gl
+            LEFT JOIN HR_GANG g ON g.GangCode = gl.GangCode
+            WHERE RTRIM(gl.GangCode) LIKE '%BHL%'
+        ` : null;
+
+        // 3. Historical Membership Discovery (PR_GANGLN)
+        const historicalMembershipQuery = `
+            SELECT DISTINCT
+                RTRIM(COALESCE(g.GangID, CAST(gl.MasterID AS VARCHAR))) as gang_code,
+                RTRIM(g.Description) as description,
+                RTRIM(e.LocCode) as loc_code
+            FROM PR_GANGLN gl
+            JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(gl.EmpCode)
+            LEFT JOIN PR_GANG g ON g.ID = gl.MasterID
+            WHERE RTRIM(e.LocCode) IN (${placeholders})
+        `;
+        
+        // 4. Archive Membership Discovery (PR_GANGLN_ARC)
+        const archiveMembershipQuery = `
+            SELECT DISTINCT
+                RTRIM(COALESCE(g.GangID, CAST(gl.MasterID AS VARCHAR))) as gang_code,
+                RTRIM(g.Description) as description,
+                RTRIM(e.LocCode) as loc_code
+            FROM PR_GANGLN_ARC gl
+            JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(gl.EmpCode)
+            LEFT JOIN PR_GANG g ON g.ID = gl.MasterID
+            WHERE RTRIM(e.LocCode) IN (${placeholders})
+        `;
+
+        const results: GangInfo[] = [];
+        const seenCodes = new Set<string>();
+
+        const addResults = (rows: any[]) => {
+            for (const row of rows) {
+                const code = (row.gang_code || '').trim().toUpperCase();
+                if (code && !seenCodes.has(code)) {
+                    seenCodes.add(code);
+                    results.push({
+                        gang_code: code,
+                        description: (row.description || code).trim(),
+                        loc_code: (row.loc_code || '').trim(),
+                        division_code: division.code
+                    });
                 }
-            });
+            }
+        };
 
-            // Build query with or without exclusion clause
-            let excludeClause = '';
-            let queryParams: any[] = [...aliases];
+             try {
+            // Run all discovery queries in parallel
+            const [
+                masterRows, 
+                historicalMasterRows,
+                currentRows, 
+                crossDivisionRows,
+                historicalRows,
+                archiveRows
+            ] = await Promise.all([
+                db.query<any>(masterQuery, [...aliases, division.code, division.code]),
+                db.query<any>(historicalMasterQuery, [...aliases, division.code, division.code]),
+                db.query<any>(currentMembershipQuery, aliases),
+                crossDivisionQuery ? db.query<any>(crossDivisionQuery) : Promise.resolve([]),
+                db.query<any>(historicalMembershipQuery, aliases),
+                db.query<any>(archiveMembershipQuery, aliases)
+            ]);
 
-            if (gangsToExclude.length > 0) {
-                const excludePlaceholders = gangsToExclude.map(() => '?').join(',');
-                excludeClause = `AND GangCode NOT IN (${excludePlaceholders})`;
-                queryParams = [...aliases, ...gangsToExclude];
-            } else {
-                excludeClause = '';
-                queryParams = aliases;
+            addResults(masterRows);
+            addResults(historicalMasterRows);
+            addResults(currentRows);
+            addResults(crossDivisionRows);
+            addResults(historicalRows);
+            addResults(archiveRows);
+
+            console.log(`[DivisionConfigService] Discovery complete for ${division.code}: Master=${masterRows.length}, HistMaster=${historicalMasterRows.length}, Current=${currentRows.length}, Cross=${crossDivisionRows.length}, Hist=${historicalRows.length}, Archive=${archiveRows.length}. Total Unique=${results.length}`);
+            
+            // Apply filtering for virtual divisions if needed
+            if (division.type === 'virtual') {
+                 return results.filter(g => {
+                    const code = g.gang_code.toUpperCase();
+                    const desc = g.description.toUpperCase();
+                    return (division.gangPattern?.test(code)) || (division.descriptionPattern?.test(desc));
+                });
             }
 
-            console.log(`[DivisionConfigService] Query for ${division.code}:`);
-            console.log(`[DivisionConfigService]   Aliases: ${JSON.stringify(aliases)}`);
-            console.log(`[DivisionConfigService]   Excluded gangs: ${JSON.stringify(gangsToExclude)}`);
-
-            query = `
-                SELECT
-                    GangCode as gang_code,
-                    Description as description,
-                    LocCode as loc_code
-                FROM HR_GANG
-                WHERE RTRIM(LocCode) IN (${placeholders})
-                  ${excludeClause}
-                  AND Description NOT LIKE '%WORKSHOP%'
-                  AND Description NOT LIKE '%INFRA%'
-                ORDER BY GangCode
-            `;
-            params = queryParams;
+            return results.sort((a, b) => a.gang_code.localeCompare(b.gang_code));
+        } catch (e: any) {
+            console.error(`[DivisionConfigService] Discovery failed for ${division.code}:`, e);
+            return [];
         }
-
-        console.log(`[DivisionConfigService] Executing query for ${divisionCode} with aliases: ${JSON.stringify(params)}`);
-        const rows = await db.query<any>(query, params);
-        console.log(`[DivisionConfigService] Database returned ${rows.length} rows`);
-
-        // Filter for virtual divisions
-        if (division.type === 'virtual' && division.gangPattern) {
-            const filtered = rows
-                .filter(row => {
-                    const gangCode = row.gang_code?.trim().toUpperCase() || '';
-                    const desc = row.description?.trim().toUpperCase() || '';
-
-                    if (division.gangPattern?.test(gangCode)) return true;
-                    if (division.descriptionPattern?.test(desc)) return true;
-
-                    return false;
-                })
-                .map(row => ({
-                    gang_code: row.gang_code?.trim() || '',
-                    description: row.description?.trim() || '',
-                    loc_code: row.loc_code?.trim() || '',
-                    division_code: division.code
-                }));
-            console.log(`[DivisionConfigService] Virtual filter: ${filtered.length} rows matched pattern`);
-            return filtered;
-        }
-
-        return rows.map(row => ({
-            gang_code: row.gang_code?.trim() || '',
-            description: row.description?.trim() || '',
-            loc_code: row.loc_code?.trim() || ''
-        }));
     }
 
     /**
