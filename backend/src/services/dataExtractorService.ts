@@ -42,6 +42,7 @@ interface EmployeeRow {
      */
     jabatan?: string;
     pot_premi_pph?: number;
+    res_address?: string;
 }
 
 interface CutiData {
@@ -98,6 +99,7 @@ interface PayrollRow {
     kategori_ter: string;
     loc_code: string;
     gang_code: string;
+    alamat: string;
     // Upah Dasar: Base wage rate from HR_PAYROLL.PayRate (daily rate)
     // = Gaji Pokok per Hari (rate, bukan jumlah). Sumber: HR_PAYROLL.PayRate (via GajiPokokService)
     upah_dasar: number;
@@ -1345,6 +1347,7 @@ export class DataExtractorService {
                 kategori_ter: mapPTKPToTER(statusPtkp),
                 loc_code: emp.loc_code,
                 gang_code: emp.gang_code,
+                alamat: emp.res_address || "",
                 upah_dasar: empUpahDasar,
                 jumlah_hk: hk, // [UPDATED] Use Total HK (including Sundays & Holidays) as requested
                 total_jam_kerja: attData.total_hours,

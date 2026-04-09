@@ -46,6 +46,12 @@ const DIVISIONS = [
 // Types
 // ============================================================
 
+
+interface ReportPajak {
+
+
+}
+
 interface TaxMappingRow {
     emp_code: string;
     emp_name: string;

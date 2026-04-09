@@ -860,28 +860,28 @@ const OperationalReportWrapper = () => {
             </select>
           </div>
 
-          {/* Export Pajak - placed in middle of filter row */}
+          {/* Export Pajak (DOM based) - placed in middle of filter row */}
           <button
-            onClick={handleExportTaxExcel}
-            disabled={taxExportLoading}
+            onClick={handleExportTaxExcelDom}
+            disabled={taxDomExportLoading || domEmployeesData.length === 0}
             style={{
               padding: '0.4rem 0.85rem',
-              backgroundColor: taxExportLoading ? '#f1f5f9' : '#dc2626',
-              color: taxExportLoading ? '#94a3b8' : 'white',
+              backgroundColor: (taxDomExportLoading || domEmployeesData.length === 0) ? '#f1f5f9' : '#dc2626',
+              color: (taxDomExportLoading || domEmployeesData.length === 0) ? '#94a3b8' : 'white',
               border: 'none',
               borderRadius: '6px',
               fontWeight: '600',
               fontSize: '0.78rem',
-              cursor: taxExportLoading ? 'not-allowed' : 'pointer',
+              cursor: (taxDomExportLoading || domEmployeesData.length === 0) ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '5px',
               transition: 'all 0.15s'
             }}
-            title="Unduh Laporan Pajak PPH21 (Format Standar Pajak)"
+            title="Unduh Laporan Pajak PPH21 (Berdasarkan Data Layar)"
           >
-            {taxExportLoading ? '⏳' : '📋'}
-            {taxExportLoading ? '...' : 'Pajak'}
+            {taxDomExportLoading ? '⏳' : '📋'}
+            {taxDomExportLoading ? '...' : 'Pajak'}
           </button>
 
           {/* Divider */}

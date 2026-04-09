@@ -1405,7 +1405,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     );
                 }
             },
-            // IDENTITAS
+            {
+                field: 'alamat',
+                headers: ['IDENTITAS', null, null, 'ALAMAT'],
+                w: 180,
+                className: 'text-left'
+            },
             { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 35, className: 'text-center', left: 35 },
             { field: 'emp_code', headers: ['IDENTITAS', null, null, 'EMP CODE'], w: 75, className: 'text-center sticky-col', left: 35 },
             { field: 'nik', headers: ['IDENTITAS', null, null, 'NIK'], w: 55, className: 'text-center sticky-col', left: 110 },

@@ -562,6 +562,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             );
 
             if (!extractorResult.data_rows || extractorResult.data_rows.length === 0) {
+                console.error(`[TaxReport Excel FAST] No data returned from DataExtractorService!`);
                 set.status = 404;
                 return { error: "No data available for the selected period" };
             }
@@ -580,15 +581,18 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const effectiveDivisionForSecondary = division;
 
             // Get PTKP data
+            console.log(`[TaxReport Excel FAST] Fetching PTKP data for year ${year}...`);
             const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
             const ptkpMap = new Map<string, string>();
             for (const p of ptkpMaster) {
                 ptkpMap.set(p.emp_code.trim(), p.ptkp_status);
             }
+            console.log(`[TaxReport Excel FAST] PTKP map has ${ptkpMap.size} entries`);
 
             // COLLECT unique emp_codes for optimized lookups
             const allInitialEmpCodes = Array.from(new Set(extractorResult.data_rows.map(r => (r.emp_code || '').trim()).filter(Boolean)));
-            
+            console.log(`[TaxReport Excel FAST] Found ${allInitialEmpCodes.length} unique employee codes`);
+
             // Get jabatan map (OPTIMIZED with filter)
             const jabatanMap: Record<string, string> = {};
             try {
@@ -599,13 +603,16 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                         jabatanMap[empCode] = jabatan || '';
                     }
                 }
-            } catch (e) {
-                console.warn('[TaxReport Excel FAST] Failed to get jabatan map:', e);
+                console.log(`[TaxReport Excel FAST] Jabatan map has ${Object.keys(jabatanMap).length} entries`);
+            } catch (e: any) {
+                console.warn('[TaxReport Excel FAST] Failed to get jabatan map:', e?.message || e);
             }
 
             // Get other incomes for the year
-            // Use effectiveDivisionForSecondary here if the service expects a real division code
+            console.log(`[TaxReport Excel FAST] Fetching other incomes for year ${year}, division ${effectiveDivisionForSecondary}...`);
             const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivisionForSecondary, gang);
+            console.log(`[TaxReport Excel FAST] Found ${dbOtherIncomesYear.length} other income records`);
+            
             const dbIncomeByMonthNik = new Map<string, { thr: number; exgratia: number; custom: number }>();
             for (const inc of dbOtherIncomesYear) {
                 if (inc.is_taxable) {
@@ -621,6 +628,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     else mData.custom += amt;
                 }
             }
+            console.log(`[TaxReport Excel FAST] Other incomes by month/NIK: ${dbIncomeByMonthNik.size} entries`);
 
             // Helper: derive jabatan from gang code
             const deriveJabatanFromGang = (gangCode: string): string => {
@@ -685,14 +693,16 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             console.log(`[TaxReport Excel FAST] Active employees (HK > 0 OR Income > 0): ${activeEmployees.length}`);
 
             // Transform to MonthlyTaxRow format — ALIGNED with progressive endpoint & Excel generator
+            console.log(`[TaxReport Excel FAST] Starting employee transformation...`);
             const employees: any[] = [];
             let totalPph21 = 0;
 
             for (let idx = 0; idx < activeEmployees.length; idx++) {
-                const row = activeEmployees[idx];
-                const empCodeTrimmed = (row.emp_code || '').trim();
-                const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
-                const kategoriTer = mapPTKPToTER(masterPtkp);
+                try {
+                    const row = activeEmployees[idx];
+                    const empCodeTrimmed = (row.emp_code || '').trim();
+                    const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
+                    const kategoriTer = mapPTKPToTER(masterPtkp);
 
                 // [DEBUG] Log first row to help diagnose
                 if (idx === 0) {
@@ -869,6 +879,11 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     // GL Metadata
                     component_metadata: row.component_metadata || {},
                 });
+                } catch (empError: any) {
+                    const empCode = activeEmployees[idx]?.emp_code || 'unknown';
+                    console.error(`[TaxReport Excel FAST] Error transforming employee ${empCode} (index ${idx}):`, empError?.message || empError);
+                    // Continue with next employee instead of failing completely
+                }
             }
 
             console.log(`[TaxReport Excel FAST] Transformed ${employees.length} employees, total_pph21=${totalPph21} in ${Date.now() - startTime}ms`);
@@ -894,29 +909,27 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
                 // Ensure we have a proper Buffer
                 const finalBuffer = Buffer.isBuffer(excelBuffer) ? excelBuffer : Buffer.from(excelBuffer);
-                
+
+                if (!finalBuffer || finalBuffer.length === 0) {
+                    console.error('[TaxReport Excel FAST] Excel buffer is empty after conversion!');
+                    set.status = 500;
+                    return { error: "Failed to generate Excel - empty buffer" };
+                }
+
                 const filename = `PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
-                const tempPath = `./temp/${filename}`;
-                
-                // Write to temp file
-                await Bun.write(tempPath, finalBuffer);
-                console.log(`[TaxReport Excel FAST] Written to temp file: ${tempPath} (${finalBuffer.length} bytes)`);
-                
-                // Return as Bun file response (known to work correctly)
-                const fileResponse = Bun.file(tempPath);
-                set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-                set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-                set.headers["Access-Control-Expose-Headers"] = "Content-Disposition";
-                
-                // Clean up temp file after response is sent (best effort)
-                setTimeout(() => {
-                    Bun.file(tempPath).exists().then(exists => {
-                        if (exists) Bun.file(tempPath).delete();
-                    });
-                }, 5000);
-                
-                console.log(`[TaxReport Excel FAST] Returning file response`);
-                return fileResponse;
+                console.log(`[TaxReport Excel FAST] Returning file: ${filename} (${finalBuffer.length} bytes)`);
+
+                // Set headers and return a native Response object
+                // returning Response directly is more robust in Bun for binary data
+                return new Response(finalBuffer, {
+                    status: 200,
+                    headers: {
+                        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "Content-Disposition": `attachment; filename="${filename}"`,
+                        "Content-Length": String(finalBuffer.length),
+                        "Access-Control-Expose-Headers": "Content-Disposition"
+                    }
+                });
             } catch (excelError: any) {
                 console.error('[TaxReport Excel FAST] Excel generation failed:', excelError);
                 console.error('[TaxReport Excel FAST] Stack:', excelError?.stack);
@@ -946,7 +959,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // ========================================================
     // POST /tax-report/monthly/excel/dom
     // Generates Tax Report directly from frontend DOM details
-    // Enriches data with THR, kontanan, and alamat from HR tables
+    // [REVISED] Use DOM data directly from UI PAJAK section
+    // Only fetch premi_detail and THR from backend (not in UI table)
     // ========================================================
     .post("/monthly/excel/dom", async ({ body, set }) => {
         try {
@@ -958,103 +972,185 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             console.log(`[TaxReport Excel DOM] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, employees=${employees.length}`);
-
-            // Enrich employee data with THR, kontanan, and alamat from database
-            const empCodes = employees.map((emp: any) => (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase()).filter(Boolean);
+            console.log(`[TaxReport Excel DOM] premiKeys from frontend: ${premiKeys ? (Array.isArray(premiKeys) ? premiKeys.join(', ') : 'NOT ARRAY') : 'NULL/UNDEFINED'}`);
             
+            // Safe debug log for first employee
+            if (employees.length > 0) {
+                const firstEmp = employees[0];
+                console.log(`[TaxReport Excel DOM] First employee summary:`, {
+                    emp_name: (firstEmp.emp_name || '').substring(0, 20),
+                    emp_code: firstEmp.emp_code,
+                    premi_detail_keys: firstEmp.premi_detail ? Object.keys(firstEmp.premi_detail) : 'NONE',
+                    total_premi: firstEmp.total_premi
+                });
+            }
+            
+            // [DEBUG] Log first employee's raw DOM data to see actual field names
+            if (employees.length > 0) {
+                const emp = employees[0];
+                console.log(`[TaxReport Excel DOM] First employee RAW DOM data:`, {
+                    emp_name: emp.emp_name,
+                    emp_code: emp.emp_code,
+                    // PAJAK section fields
+                    ptkp: emp.ptkp,
+                    kategori_ter: emp.kategori_ter,
+                    gaji_pokok_ideal: emp.gaji_pokok_ideal,
+                    gaji_pokok_dibayarkan: emp.gaji_pokok_dibayarkan,
+                    koreksi_hk: emp.koreksi_hk,
+                    astek_084: emp.astek_084,
+                    pot_bpjs_kesehatan_majikan: emp.pot_bpjs_kesehatan_majikan,
+                    beras_jumlah: emp.beras_jumlah,
+                    jabatan_jumlah: emp.jabatan_jumlah,
+                    masa_kerja_jumlah: emp.masa_kerja_jumlah,
+                    lembur_jumlah: emp.lembur_jumlah,
+                    total_premi: emp.total_premi,
+                    pot_koreksi: emp.pot_koreksi,
+                    penghasilan_bruto: emp.penghasilan_bruto,
+                    tarif_pajak_ter: emp.tarif_pajak_ter,
+                    pph21_ter: emp.pph21_ter,
+                    // POTONGAN UPAH BERSIH section fields
+                    pot_pph21: emp.pot_pph21,
+                    pot_spsi: emp.pot_spsi,
+                    pot_bpjs_pekerja_total: emp.pot_bpjs_pekerja_total,
+                    potongan_upah_bersih: emp.potongan_upah_bersih,
+                    total_potongan: emp.total_potongan,
+                    // Check ALL keys that contain 'pph', 'pot', 'pajak'
+                    all_keys: Object.keys(emp).filter(k => 
+                        k.toLowerCase().includes('pph') || 
+                        k.toLowerCase().includes('pot') ||
+                        k.toLowerCase().includes('pajak') ||
+                        k.toLowerCase().includes('gaji')
+                    )
+                });
+            }
+            
+            // [REVISED] Use DOM data directly - map UI field names to Excel field names
+            // DOM data is the single source of truth since it's what the user sees in the UI
+            const empCodes = employees.map((emp: any) => (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase()).filter(Boolean);
+
+            // [ENHANCED] Only fetch backend data for fields NOT in DOM (premi_detail breakdown, alamat)
+            // DO NOT overwrite THR, kontanan, premi totals that are already in DOM
             if (empCodes.length > 0) {
                 try {
-                    const mainDb = Database.getInstance();
-                    const extendedDb = Database.getExtendedInstance();
+                    const { taxReportService } = await import("../services/taxReportService");
 
-                    // 1. Fetch alamat from HR_EMPLOYEE
-                    const CHUNK = 500;
-                    const alamatMap = new Map<string, string>();
-                    for (let i = 0; i < empCodes.length; i += CHUNK) {
-                        const chunk = empCodes.slice(i, i + CHUNK);
-                        const placeholders = chunk.map(() => '?').join(',');
-                        const rows = await mainDb.query(`
-                            SELECT RTRIM(EmpCode) as EmpCode, RTRIM(ISNULL(ResAddress, '')) as ResAddress
-                            FROM HR_EMPLOYEE
-                            WHERE RTRIM(EmpCode) IN (${placeholders})
-                        `, chunk) as any[];
-                        
-                        for (const row of rows) {
-                            const empCode = (row.EmpCode || '').trim().toUpperCase();
-                            const alamat = (row.ResAddress || '').trim();
-                            if (empCode && alamat) {
-                                alamatMap.set(empCode, alamat);
+                    console.log(`[TaxReport Excel DOM] Fetching complete data from backend API for ${empCodes.length} employees...`);
+                    const completeData = await taxReportService.getMonthlyTaxReport(
+                        parseInt(year),
+                        parseInt(month),
+                        division || 'ALL',
+                        gang || 'ALL',
+                        undefined,
+                        true
+                    );
+
+                    if (completeData && completeData.employees && completeData.employees.length > 0) {
+                        console.log(`[TaxReport Excel DOM] ✅ Got ${completeData.employees.length} employees from backend API`);
+
+                        // Create map: emp_code -> backend data
+                        const backendMap = new Map<string, any>();
+                        completeData.employees.forEach((emp: any) => {
+                            const empCode = (emp.emp_code || '').trim().toUpperCase();
+                            if (empCode) {
+                                backendMap.set(empCode, emp);
                             }
-                        }
-                    }
-                    console.log(`[TaxReport Excel DOM] Fetched alamat for ${alamatMap.size} employees`);
+                        });
 
-                    // 2. Fetch THR and kontanan from employee_other_incomes
-                    const thrMap = new Map<string, number>();
-                    const kontananMap = new Map<string, number>();
-                    
-                    for (let i = 0; i < empCodes.length; i += CHUNK) {
-                        const chunk = empCodes.slice(i, i + CHUNK);
-                        const placeholders = chunk.map(() => '?').join(',');
-                        const rows = await extendedDb.query(`
-                            SELECT RTRIM(ISNULL(emp_code, '')) as emp_code, income_type, SUM(ISNULL(amount, 0)) as total_amount
-                            FROM employee_other_incomes
-                            WHERE RTRIM(ISNULL(emp_code, '')) IN (${placeholders})
-                              AND period_year = ?
-                              AND period_month = ?
-                              AND income_type IN ('THR', 'BONUS', 'KONTAN', 'KONTANAN')
-                            GROUP BY emp_code, income_type
-                        `, [...chunk, parseInt(year), parseInt(month)]) as any[];
-                        
-                        for (const row of rows) {
-                            const empCode = (row.emp_code || '').trim().toUpperCase();
-                            const amount = Number(row.total_amount) || 0;
-                            const incomeType = (row.income_type || '').toUpperCase();
-                            
-                            if (empCode && amount > 0) {
-                                if (incomeType === 'THR') {
-                                    thrMap.set(empCode, (thrMap.get(empCode) || 0) + amount);
-                                } else if (['BONUS', 'KONTAN', 'KONTANAN'].includes(incomeType)) {
-                                    kontananMap.set(empCode, (kontananMap.get(empCode) || 0) + amount);
+                        // [ENHANCED MERGE] Add fields needed for DOM export that DOM doesn't have
+                        // DOM has: pendapatan_thr, pendapatan_bonus, gaji_pokok_ideal, gaji_pokok_aktual
+                        // Excel needs: thr_amount, exgratia_amount, pot_alpa_cth
+                        let mergeCount = 0;
+                        employees.forEach((domEmp: any) => {
+                            const empCode = (domEmp.emp_code || domEmp.ID_KARYAWAN || '').trim().toUpperCase();
+                            const backendData = backendMap.get(empCode);
+
+                            if (backendData) {
+                                mergeCount++;
+
+                                // [1] PREMI DETAIL - individual premi breakdown (NOT in DOM, must fetch from backend)
+                                // This is used for the detailed premi columns in Excel
+                                if (!domEmp.premi_detail || Object.keys(domEmp.premi_detail).length === 0) {
+                                    domEmp.premi_detail = backendData.premi_detail || {};
+                                }
+
+                                // [2] ALAMAT - not shown in DOM table
+                                if (!domEmp.alamat && !domEmp.res_address && backendData.alamat) {
+                                    domEmp.alamat = backendData.alamat;
+                                    domEmp.res_address = backendData.alamat;
+                                }
+
+                                // [3] Component metadata for GL accounts
+                                if (!domEmp.component_metadata && backendData.component_metadata) {
+                                    domEmp.component_metadata = backendData.component_metadata;
+                                }
+
+                                // [4] THR amount - from OtherIncomes (THR type)
+                                // DOM has pendapatan_thr but Excel expects thr_amount
+                                if ((!domEmp.thr_amount || domEmp.thr_amount === 0) && backendData.thr_amount > 0) {
+                                    domEmp.thr_amount = backendData.thr_amount;
+                                }
+
+                                // [5] KONTANAN/Exgratia amount - from OtherIncomes (KONTAN/KONTANAN type)
+                                // DOM has pendapatan_bonus but Excel expects exgratia_amount
+                                if ((!domEmp.exgratia_amount || domEmp.exgratia_amount === 0) && backendData.exgratia_amount > 0) {
+                                    domEmp.exgratia_amount = backendData.exgratia_amount;
+                                }
+
+                                // [6] Pot Alpa & CTH - calculated from gaji difference
+                                // Only set if not already in DOM and there's a valid difference
+                                if (!domEmp.pot_alpa_cth && !domEmp.pot_alpa) {
+                                    const domGajiIdeal = Number(domEmp.gaji_pokok_ideal || 0);
+                                    const domGajiAktual = Number(domEmp.gaji_pokok_aktual || 0);
+                                    if (domGajiIdeal > 0 && domGajiAktual > 0 && domGajiIdeal > domGajiAktual) {
+                                        domEmp.pot_alpa_cth = -(domGajiIdeal - domGajiAktual);
+                                    }
                                 }
                             }
+                        });
+
+                        console.log(`[TaxReport Excel DOM] ✅ Merged ${mergeCount} employees with backend data (premi_detail, alamat, thr_amount, exgratia_amount, pot_alpa_cth)`);
+
+                        // [DEBUG] Log first employee after merge to verify
+                        if (employees.length > 0) {
+                            const first = employees[0];
+                            const empCode = (first.emp_code || first.ID_KARYAWAN || '').trim().toUpperCase();
+                            const backendFirst = backendMap.get(empCode);
+                            console.log(`[TaxReport Excel DOM] AFTER MERGE - First employee (${(first.emp_name || '').trim()}):`, {
+                                emp_code: first.emp_code,
+                                // DOM fields
+                                dom_thr_amount: first.thr_amount,
+                                dom_exgratia_amount: first.exgratia_amount,
+                                dom_pendapatan_thr: first.pendapatan_thr,
+                                dom_pendapatan_bonus: first.pendapatan_bonus,
+                                dom_total_premi: first.total_premi,
+                                dom_gaji_pokok_ideal: first.gaji_pokok_ideal,
+                                dom_gaji_pokok_aktual: first.gaji_pokok_aktual,
+                                dom_pot_alpa_cth: first.pot_alpa_cth,
+                                // Backend fields (before merge)
+                                backend_thr_amount: backendFirst?.thr_amount,
+                                backend_exgratia_amount: backendFirst?.exgratia_amount,
+                                backend_total_premi: backendFirst?.total_premi,
+                                backend_premi_detail_keys: backendFirst?.premi_detail ? Object.keys(backendFirst.premi_detail) : [],
+                                backend_premi_detail_sample: backendFirst?.premi_detail ? Object.fromEntries(Object.entries(backendFirst.premi_detail).slice(0, 5)) : {},
+                                // After merge
+                                after_merge_thr_amount: first.thr_amount,
+                                after_merge_exgratia_amount: first.exgratia_amount,
+                                after_merge_pot_alpa_cth: first.pot_alpa_cth,
+                                after_merge_premi_detail_keys: first.premi_detail ? Object.keys(first.premi_detail) : []
+                            });
                         }
+                    } else {
+                        console.log(`[TaxReport Excel DOM] ⚠️ Backend API returned NO employees`);
                     }
-                    console.log(`[TaxReport Excel DOM] Fetched THR for ${thrMap.size} employees, kontanan for ${kontananMap.size} employees`);
-
-                    // 3. Enrich employee data
-                    employees.forEach((emp: any) => {
-                        const empCode = (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase();
-                        
-                        // Add alamat if missing
-                        if (!emp.alamat && !emp.res_address && alamatMap.has(empCode)) {
-                            emp.alamat = alamatMap.get(empCode);
-                            emp.res_address = alamatMap.get(empCode);
-                        }
-                        
-                        // Add THR if missing or zero
-                        if (!emp.thr_amount || emp.thr_amount === 0) {
-                            const thrAmount = thrMap.get(empCode) || 0;
-                            if (thrAmount > 0) {
-                                emp.thr_amount = thrAmount;
-                            }
-                        }
-                        
-                        // Add kontanan/exgratia if missing or zero
-                        if (!emp.exgratia_amount || emp.exgratia_amount === 0) {
-                            const kontananAmount = kontananMap.get(empCode) || 0;
-                            if (kontananAmount > 0) {
-                                emp.exgratia_amount = kontananAmount;
-                            }
-                        }
-                    });
-
-                    console.log(`[TaxReport Excel DOM] Enriched ${employees.length} employees with THR, kontanan, and alamat`);
-                } catch (enrichError: any) {
-                    console.error('[TaxReport Excel DOM] Failed to enrich data (continuing with original data):', enrichError);
-                    // Continue with original data if enrichment fails
+                } catch (fetchError: any) {
+                    console.error(`[TaxReport Excel DOM] ❌ Failed to fetch backend data:`, fetchError.message);
+                    // Continue with DOM data only
                 }
             }
+            
+            // [REMOVED] No longer fetching THR/kontanan from DB - using DOM data directly
+            // DOM already has the correct THR and kontanan values from the UI
+            console.log(`[TaxReport Excel DOM] Using DOM data for THR, kontanan, and all displayed values`);
 
             let totalPph21 = 0;
             employees.forEach((emp: any) => {
@@ -1064,25 +1160,49 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const gangLabel = gang || gangPrefix || 'ALL';
 
             // Generate Excel Buffer (pass premiKeys for dynamic column headers)
-            const excelBuffer = await generateMonthlyTaxExcel(
-                { employees, period: { month: parseInt(month), year: parseInt(year) }, total_pph21: totalPph21 },
-                parseInt(year),
-                parseInt(month),
-                division || 'ALL',
-                gangLabel,
-                premiKeys || []
-            );
+            console.log(`[TaxReport Excel DOM] Calling generateMonthlyTaxExcel with ${employees.length} employees...`);
+            let excelBuffer: Buffer | undefined;
+            
+            try {
+                excelBuffer = await generateMonthlyTaxExcel(
+                    { employees, period: { month: parseInt(month), year: parseInt(year) }, total_pph21: totalPph21 },
+                    parseInt(year),
+                    parseInt(month),
+                    division || 'ALL',
+                    gangLabel,
+                    premiKeys || []
+                );
+                console.log(`[TaxReport Excel DOM] generateMonthlyTaxExcel completed: ${excelBuffer?.length || 0} bytes`);
+            } catch (excelGenError: any) {
+                console.error('[TaxReport Excel DOM] Excel generation FAILED:', excelGenError);
+                console.error('[TaxReport Excel DOM] Stack trace:', excelGenError?.stack);
+                set.status = 500;
+                return { 
+                    error: "Excel generation failed", 
+                    details: excelGenError?.message || "Unknown error during Excel generation",
+                    stack: process.env.NODE_ENV === 'development' ? excelGenError?.stack : undefined
+                };
+            }
 
             if (!excelBuffer || excelBuffer.length === 0) {
+                console.error('[TaxReport Excel DOM] Excel buffer is empty!');
                 set.status = 500;
                 return { error: "Failed to generate Excel buffer" };
             }
 
             const filename = `PPH21_DOM_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
-            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+            console.log(`[TaxReport Excel DOM] Returning file: ${filename} (${excelBuffer.length} bytes)`);
 
-            return excelBuffer;
+            // Set headers and return a native Response object
+            return new Response(excelBuffer, {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "Content-Disposition": `attachment; filename="${filename}"`,
+                    "Content-Length": String(excelBuffer.length),
+                    "Access-Control-Expose-Headers": "Content-Disposition"
+                }
+            });
         } catch (error: any) {
             console.error("[TaxReport DOM] Error generating Excel report from DOM:", error);
             set.status = 500;
@@ -1223,6 +1343,56 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             console.error("[TaxReport] Error generating December Excel report:", error);
             set.status = 500;
             return { error: error.message || "Failed to generate Excel report" };
+        }
+    })
+
+    // ========================================================
+    // POST /tax-report/monthly/excel/dom
+    // Generate Monthly PPH21 Excel using data from the frontend DOM
+    // ========================================================
+    .post("/monthly/excel/dom", async ({ body, set }) => {
+        try {
+            const { year, month, division, gang, gangPrefix, employees, premiKeys } = body as any;
+
+            console.log(`[TaxReport Excel DOM] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, employees=${employees?.length}`);
+
+            if (!year || !month || !employees || !Array.isArray(employees)) {
+                set.status = 400;
+                return { error: "Invalid parameters: year, month, and employees array are required" };
+            }
+
+            const y = parseInt(year);
+            const m = parseInt(month);
+            const gangLabel = gang || gangPrefix || 'ALL';
+
+            // Calculate total_pph21 from whatever the DOM sent
+            let total_pph21 = 0;
+            employees.forEach((emp: any) => {
+                 total_pph21 += Number(emp.potongan_pph21 || emp.pot_pph21 || emp.pph21_ter || 0);
+            });
+
+            const data = {
+                employees: employees,
+                period: { month: m, year: y },
+                total_pph21: total_pph21
+            };
+
+            const excelBuffer = await generateMonthlyTaxExcel(data, y, m, division || 'ALL', gangLabel, premiKeys);
+
+            if (!excelBuffer || excelBuffer.length === 0) {
+                set.status = 500;
+                return { error: "Failed to generate Excel buffer" };
+            }
+
+            const filename = `PPH21_DOM_${division || 'ALL'}_${gangLabel}_${m}_${y}.xlsx`;
+            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+            
+            return excelBuffer;
+        } catch (error: any) {
+            console.error("[TaxReport] Error generating DOM Excel report:", error);
+            set.status = 500;
+            return { error: error.message || "Failed to generate DOM Excel report" };
         }
     })
 

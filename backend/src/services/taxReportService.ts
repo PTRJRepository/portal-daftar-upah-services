@@ -265,6 +265,16 @@ export interface MonthlyTaxRow {
     other_incomes?: { type: string; name: string; amount: number }[];
     pendapatan_tidak_tetap_thp?: number; // Total non-regular income for display
     pendapatan_lainnya?: number; // Actual pendapatan_lainnya used in tax calculation
+
+    // [ROBUST] Support field names from both DataExtractor (Daftar Upah) and Tax Report
+    beras_jumlah?: number;
+    jabatan_jumlah?: number;
+    masa_kerja_jumlah?: number;
+    lembur_jumlah?: number;
+    premi_brondol_total?: number;
+    res_address?: string;
+    premi?: Record<string, number>;
+    [key: string]: any;
 }
 
 export interface AnnualIncomeRow {
