@@ -1,0 +1,42 @@
+﻿[HarvesterService] Staging DB disabled by default as requested
+[VirtualDivisionRegistry] Registered: INF - Infrastruktur
+[VirtualDivisionRegistry] Registered: NRS - Nursery
+[VirtualDivisionRegistry] Registered: WKS_PG - Workshop Parit Gunung (PGE)
+[VirtualDivisionRegistry] Registered: WKS_AR - Workshop Air Ruak (AB2)
+[VirtualDivisionRegistry] Registered: WORKSHOP - Workshop All
+[VirtualDivisionRegistry] Registered: ARC - Air Ruak Central
+[VirtualDivisionRegistry] Registered: MILL - Palm Oil Mill
+Fetching payroll data for PG1A 3/2026...
+[GangService] fetchGangs triggered - Div: PG1A, Search: undefined, Profile: SERVER_PROFILE_2, DB: db_ptrj
+[DivisionConfigService] getGangsForDivision: PG1A, resolved: PG1A, type: real
+[DivisionConfigService] Query for PG1A:
+[DivisionConfigService]   Aliases: ["P1A","P1a","pg1a","PLASMA1A","Plasma 1A"]
+[DivisionConfigService]   Excluded gangs: ["IN","INT","AMC"]
+[DivisionConfigService] Executing query for PG1A with aliases: ["P1A","P1a","pg1a","PLASMA1A","Plasma 1A","IN","INT","AMC"]
+[DivisionConfigService] Database returned 11 rows
+[GangService] divisionConfigService returned 11 gangs for PG1A
+[GangService] Returning 11 gangs.
+[DataExtractor] allGangs.length=11, divisionCode=PG1A, gangCode=ALL
+[DataExtractor.getEmployees] isHistorical=false, gangCondition=((UPPER(RTRIM(g.GangCode)) = UPPER('A1H') OR UPPER(RTRIM(g.Description)) = UPPER('HARVESTING AIR BATU')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A1M') OR UPPER(RTRIM(g.Description)) = UPPER('MAINTENANCE AIR BATU')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A1P') OR UPPER(RTRIM(g.Description)) = UPPER('PERCOBAAN AIR BATU')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A1T') OR UPPER(RTRIM(g.Description)) = UPPER('TRANSPORT AIR BATU')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A2M') OR UPPER(RTRIM(g.Description)) = UPPER('MAINTENANCE AIR KUNDO')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A2P') OR UPPER(RTRIM(g.Description)) = UPPER('PERCOBAAN AIR KUNDO')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A2T') OR UPPER(RTRIM(g.Description)) = UPPER('TRANSPORT AIR KUNDO')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A3H') OR UPPER(RTRIM(g.Description)) = UPPER('HARVESTING AIR HIJAU')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A3M') OR UPPER(RTRIM(g.Description)) = UPPER('MAINTENANCE AIR HIJAU')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A3P') OR UPPER(RTRIM(g.Description)) = UPPER('PERCOBAAN AIR HIJAU')) OR (UPPER(RTRIM(g.GangCode)) = UPPER('A3T') OR UPPER(RTRIM(g.Description)) = UPPER('TRANSPORT AIR HIJAU')))
+[DataExtractor] Live active query returned 185 rows (before de-duplication)
+[DataExtractor] De-duplicated live active results to 185 unique employees
+[EmployeeEstateService] Final maps: empcodeMap=184, nikMap=184
+[PtkpTaxService] Table history_ptkp_pajak assumed to exist (pre-created)
+Total: 184, withBrondol: 58
+
+=== Brondol employee: A0039 ===
+gang_code: A1H
+premi_brondol: 106750
+premi_brondol_total: 106750
+premi_brondol_loosefruit: 106750
+premi_brondol_adtrans: 0
+total_premi: 1786850
+
+row.premi brondol keys: [
+  [ "brondol", 106750 ]
+]
+
+All row.premi keys with values:
+  premi.premi_circle_raking = 330000
+  premi.premi_pruning = 1350100
+  premi.brondol = 106750

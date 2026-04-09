@@ -338,9 +338,13 @@ export class GangService {
         try {
             const { Config: Cfg } = await import("../config");
             console.log(`[GangService] fetchGangs triggered - Div: ${division}, Search: ${search}, Profile: ${Cfg.DB_PROFILE}, DB: ${Cfg.DEFAULT_DATABASE}`);
-            if (!division) {
-                console.log(`[GangService] No division provided, returning empty.`);
-                return [];
+
+            if (!division || division === 'ALL') {
+                // Return all gangs from all divisions - query HR_GANG directly
+                console.log(`[GangService] ALL divisions requested, fetching all gangs from HR_GANG`);
+                const allGangs = await this.fetchAllGangs();
+                console.log(`[GangService] Returning ${allGangs.length} total gangs.`);
+                return allGangs;
             }
 
             // Use DivisionConfigService for gang retrieval
@@ -369,6 +373,34 @@ export class GangService {
             console.error("[GangService] Failed to fetch gangs:", e);
             return [];
         }
+    }
+
+    /**
+     * Fetch all gangs from HR_GANGLN (for ALL divisions case)
+     */
+    private async fetchAllGangs(): Promise<Gang[]> {
+        const db = Database.getInstance();
+
+        // Use HR_GANGLN as primary source - get all gangs that have employees assigned
+        const query = `
+            SELECT DISTINCT
+                RTRIM(gl.GangCode) as gang_code,
+                RTRIM(ISNULL(h.Description, 'GANG TANPA DESKRIPSI')) as description,
+                RTRIM(e.LocCode) as loc_code
+            FROM HR_GANGLN gl
+            INNER JOIN HR_EMPLOYEE e ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+            LEFT JOIN HR_GANG h ON RTRIM(gl.GangCode) = RTRIM(h.GangCode)
+            WHERE (h.Description IS NULL OR (h.Description NOT LIKE '%WORKSHOP%' AND h.Description NOT LIKE '%INFRA%'))
+            ORDER BY RTRIM(e.LocCode), RTRIM(gl.GangCode)
+        `;
+        const rows = await db.query<any>(query, []);
+
+        return rows.map(row => ({
+            gang_code: row.gang_code?.trim() || '',
+            description: row.description?.trim() || '',
+            loc_code: row.loc_code?.trim() || '',
+            server_profile: this.getServerProfile(row.loc_code?.trim(), row.gang_code?.trim())
+        }));
     }
 
     /**

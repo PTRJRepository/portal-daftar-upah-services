@@ -462,6 +462,12 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     saveAs(blob, fileName);
 
+    // Memory Cleaner Frontend: Hapus referensi dari sheet dan workbook yang memakan banyak memori Chrome
+    worksheet.spliceRows(1, worksheet.rowCount);
+    workbook.removeWorksheet(worksheet.id);
+    // @ts-ignore
+    workbook = null;
+
     return fileName;
 }
 

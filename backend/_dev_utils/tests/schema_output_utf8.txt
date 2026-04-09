@@ -1,0 +1,299 @@
+﻿TASKREG_SCHEMA_START
+[
+  {
+    "COLUMN_NAME": "id",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "history_id",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "original_master_id",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "reg_no",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "reg_date",
+    "DATA_TYPE": "datetime",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "emp_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "gang_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "division_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "original_line_id",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "line_no",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "trx_date",
+    "DATA_TYPE": "datetime",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "task_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "task_desc",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "hours",
+    "DATA_TYPE": "decimal",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "ot",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "rate",
+    "DATA_TYPE": "decimal",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "amount",
+    "DATA_TYPE": "decimal",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "tapping_type",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "location_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "status",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_cuti_tahunan",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_cuti_sakit",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_cuti_minggu",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_cuti_nasional",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_hari_kerja",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_lembur",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "period_month",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "period_year",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "source_table",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "created_at",
+    "DATA_TYPE": "datetime",
+    "IS_NULLABLE": "YES"
+  }
+]
+TASKREG_SCHEMA_END
+
+ADTRANS_SCHEMA_START
+[
+  {
+    "COLUMN_NAME": "id",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "history_id",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "original_master_id",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "doc_no",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "doc_date",
+    "DATA_TYPE": "datetime",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "doc_desc",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "emp_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "gang_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "division_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "original_line_id",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "line_no",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "task_code",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "task_desc",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "amount",
+    "DATA_TYPE": "decimal",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "quantity",
+    "DATA_TYPE": "decimal",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "uom",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "category",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "sub_category",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_dynamic",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "dynamic_header_name",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_premi_pph",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_koreksi",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_potongan",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "is_premi",
+    "DATA_TYPE": "bit",
+    "IS_NULLABLE": "YES"
+  },
+  {
+    "COLUMN_NAME": "period_month",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "period_year",
+    "DATA_TYPE": "int",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "source_table",
+    "DATA_TYPE": "varchar",
+    "IS_NULLABLE": "NO"
+  },
+  {
+    "COLUMN_NAME": "created_at",
+    "DATA_TYPE": "datetime",
+    "IS_NULLABLE": "YES"
+  }
+]
+ADTRANS_SCHEMA_END

@@ -405,10 +405,14 @@ export class DataExtractorService {
                 const placeholders = aliases.map((a: string) => `'${a.toUpperCase()}'`).join(',');
                 
                 // Exclude all known virtual gangs exactly as DivisionConfigService does
+                // Identification: Find all gangs that belong to this division via g.LocCode OR e.LocCode
+                // This satisfies the user's request for "All Gangs" to be inclusive.
+                gangCondition = `(UPPER(RTRIM(g.LocCode)) IN (${placeholders}) OR UPPER(RTRIM(e.LocCode)) IN (${placeholders}))`;
+                
+                // Exclude virtual divisions if appropriate
                 const virtualGangsToExclude = ['IN', 'INT', 'AMC', 'HMC', 'B2N'];
                 const excludePlaceholders = virtualGangsToExclude.map((a: string) => `'${a}'`).join(',');
-                
-                gangCondition = `(UPPER(RTRIM(e.LocCode)) IN (${placeholders}) AND UPPER(RTRIM(g.GangCode)) NOT IN (${excludePlaceholders}))`;
+                gangCondition += ` AND (UPPER(RTRIM(g.GangCode)) NOT IN (${excludePlaceholders}))`;
             }
         }
 
@@ -1610,7 +1614,7 @@ export class DataExtractorService {
             // For historical path: g = PR_GANG (has GangID, Description, no GangCode)
             // Override gangCondition if gangCodeInput is provided
             let historicalCondition = gangCondition;
-            if (gangCodeInput) {
+            if (gangCodeInput && gangCodeInput !== 'ALL') {
                 historicalCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
             } else {
                 historicalCondition = gangCondition.replace(/g\.GangCode/ig, 'g.GangID');
@@ -1749,7 +1753,7 @@ export class DataExtractorService {
 
                 // Build ARC-compatible gang condition (PR_GANG uses GangID/Description, not GangCode)
                 let arcCondition = gangCondition;
-                if (gangCodeInput) {
+                if (gangCodeInput && gangCodeInput !== 'ALL') {
                     arcCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
                 }
 

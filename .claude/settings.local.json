@@ -125,7 +125,10 @@
       "Bash(npx -y obsidian-mcp --vault \"C:/Users/nbgmf/OneDrive/Documents/Obsidian Vault\" --ObsidianUrl \"https://127.0.0.1:27124\" --apiKey \"2a71e6c5159c207ee37e80e7a67b94dd64f392236bda22d866094641831f8eac\")",
       "Bash(rm:*)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'Gangs: {len\\(d\\)}'\\)\")",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(t['TABLE_NAME']\\) for t in d['data']['recordset']] if d.get\\('success'\\) else print\\('Error:', d.get\\('error'\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\([c['COLUMN_NAME'] for c in d['data']['recordset']]\\)\")"
     ],
     "deny": [],
     "ask": [],

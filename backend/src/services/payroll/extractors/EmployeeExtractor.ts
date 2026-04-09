@@ -178,7 +178,8 @@ export class EmployeeExtractor {
                 const { accMonth: fallbackAccMonth, accYear: fallbackAccYear } = currentPeriodService.calendarToAccMonth(month, year);
 
                 let arcCondition = gangCondition;
-                if (gangCodeInput) {
+                if (gangCodeInput && gangCodeInput !== 'ALL') {
+                    // Only apply specific gang filter if not querying 'ALL'
                     arcCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
                 }
 

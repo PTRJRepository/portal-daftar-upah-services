@@ -1048,6 +1048,14 @@ export const generateMonthlyTaxExcel = async (
 
     console.log(`[generateMonthlyTaxExcel] Calling workbook.xlsx.writeBuffer()...`);
     const buffer = await workbook.xlsx.writeBuffer();
+    
+    // Explicit Memory Cleanup
+    try {
+        workbook.removeWorksheet(stdSheet.id);
+        workbook.removeWorksheet(sheet.id);
+        workbook.removeWorksheet(summarySheet.id);
+    } catch(e) {}
+    
     console.log(`[generateMonthlyTaxExcel] writeBuffer returned ${(buffer as any).byteLength || (buffer as any).length || 0} bytes`);
     if (buffer && ((buffer as any).byteLength > 0 || (buffer as any).length > 0)) {
         console.log(`[generateMonthlyTaxExcel] SUCCESS`);
@@ -1339,5 +1347,12 @@ export const generateDecemberTaxExcel = async (
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
+    
+    // Explicit Memory Cleanup
+    try {
+        workbook.removeWorksheet(mainSheet.id);
+        if (detailSheet) workbook.removeWorksheet(detailSheet.id);
+    } catch(e) {}
+    
     return Buffer.from(buffer);
 };

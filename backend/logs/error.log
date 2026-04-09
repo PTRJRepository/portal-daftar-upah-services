@@ -1,27 +1,2 @@
-[2026-04-08T02:23:19.027Z] === LOGS CLEARED ON STARTUP ===
+[2026-04-09T08:56:54.178Z] === LOGS CLEARED ON STARTUP ===
 
-[2026-04-08T02:23:19.068Z] [02:23:19.068] [ERROR] [DB] Gateway Error (500): {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":21.17350000143051,"data":null,"error":"Database error: Invalid object name 'dbo.payroll_history_header'."} Error: HTTP 500
-[2026-04-08T02:23:19.069Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:155:92)
-[2026-04-08T02:23:19.069Z]   at async <anonymous> (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\[eval]:1:122)
-[2026-04-08T02:23:19.070Z] [02:23:19.070] [ERROR] [DB] Query failed (Attempt 1/4) Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":21.17350000143051,"data":null,"error":"Database error: Invalid object name 'dbo.payroll_history_header'."}
-[2026-04-08T02:23:19.070Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:156:31)
-[2026-04-08T02:23:19.071Z]   at async <anonymous> (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\[eval]:1:122)
-[2026-04-08T02:23:19.942Z] [02:23:19.941] [ERROR] [DB] Gateway Error (500): {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":20.993000000715256,"data":null,"error":"Database error: Invalid object name 'dbo.payroll_history_header'."} Error: HTTP 500
-[2026-04-08T02:23:19.942Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:155:92)
-[2026-04-08T02:23:19.942Z]   at async <anonymous> (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\[eval]:1:122)
-[2026-04-08T02:23:19.943Z] [02:23:19.943] [ERROR] [DB] Query failed (Attempt 2/4) Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":20.993000000715256,"data":null,"error":"Database error: Invalid object name 'dbo.payroll_history_header'."}
-[2026-04-08T02:23:19.943Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:156:31)
-[2026-04-08T02:23:19.943Z]   at async <anonymous> (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\[eval]:1:122)
-[2026-04-08T02:23:20.978Z] [02:23:20.978] [ERROR] [DB] Gateway Error (500): {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":8.10080000013113,"data":null,"error":"Database error: Invalid object name 'dbo.payroll_history_header'."} Error: HTTP 500
-[2026-04-08T02:23:20.979Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:155:92)
-[2026-04-08T02:23:20.979Z]   at async <anonymous> (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\[eval]:1:122)
-[2026-04-08T02:23:20.980Z] [02:23:20.979] [ERROR] [DB] Query failed (Attempt 3/4) Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":8.10080000013113,"data":null,"error":"Database error: Invalid object name 'dbo.payroll_history_header'."}
-[2026-04-08T02:23:20.980Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:156:31)
-[2026-04-08T02:23:20.981Z]   at async <anonymous> (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\[eval]:1:122)
-[2026-04-08T02:23:23.058Z] [02:23:23.058] [ERROR] [DB] Gateway Error (500): {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":18.911800004541874,"data":null,"error":"Database error: Invalid object name 'dbo.payroll_history_header'."} Error: HTTP 500
-[2026-04-08T02:23:23.059Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:155:92)
-[2026-04-08T02:23:23.059Z]   at async <anonymous> (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\[eval]:1:122)
-[2026-04-08T02:23:23.059Z] [02:23:23.059] [ERROR] [DB] Query failed (Attempt 4/4) Error: Gateway returned 500: Internal Server Error - {"success":false,"db":"db_ptrj","server":"SERVER_PROFILE_2","execution_ms":18.911800004541874,"data":null,"error":"Database error: Invalid object name 'dbo.payroll_history_header'."}
-[2026-04-08T02:23:23.059Z]   at query (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\src\db\client.ts:156:31)
-[2026-04-08T02:23:23.060Z]   at async <anonymous> (D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\backend\[eval]:1:122)
-[2026-04-08T02:23:27.781Z] [02:23:27.781] [WARN] [HTTP] SLOW GET /tax-report/monthly/excel/fast 23061ms
