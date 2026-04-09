@@ -1214,7 +1214,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                         // Base numeric fields - complete list matching payrollTotalsCalculator
                         const baseFields = [
                             'jumlah_hk', 'hari_kerja', 'upah_pokok',
-                            'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
+                            'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual', 'gaji_pokok_dibayarkan',
                             'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari',
                             'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah',
                             'lembur_jam', 'lembur_jumlah',
@@ -1225,7 +1225,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                             'pot_koreksi', 'total_premi',
                             // Gross & deductions
                             'jumlah_upah_kotor',
-                            'pot_astek', 'pot_astek_maj', 'pot_astek_jumlah',
+                            'pot_astek', 'pot_astek_maj', 'pot_astek_jumlah', 'astek_084',
                             'pot_bpjs_kes', 'pot_bpjs_pekerja', 'pot_bpjs_maj',
                             'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
                             'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan',
@@ -1244,7 +1244,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
                         // Pendapatan lainnya fields
                         const pendapatanFields = [
-                            'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom',
+                            'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_kontan',
                             'pendapatan_lainnya', 'pot_pendapatan_lainnya'
                         ];
 

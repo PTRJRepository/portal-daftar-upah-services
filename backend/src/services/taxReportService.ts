@@ -150,16 +150,18 @@ function loadThrBonusMaps(): ThrBonusMaps {
 // ============================================================
 // GL and TaskCode Metadata for Tax Report
 // ============================================================
-const TAX_COMPONENT_METADATA: Record<string, TaskCodeMetadata> = {
+export const TAX_COMPONENT_METADATA: Record<string, TaskCodeMetadata> = {
     "masa_kerja": { task_code: "PT9129", dr_acct: "GA9127", cr_acct: "CL3310" },
     "gaji_pokok": { task_code: "AL0013", dr_acct: "GA9110", cr_acct: "CL3310" },
     "tunjangan_jabatan": { task_code: "GA9128", dr_acct: "GA9128", cr_acct: "CL3310" },
     "tunjangan_lembur": { task_code: "AL0019", dr_acct: "GA9112", cr_acct: "CL3310" },
     "tunjangan_beras": { task_code: "AL0014", dr_acct: "GA9131", cr_acct: "CL3310" },
     "premi": { task_code: "AL3PM2207", dr_acct: "PM2201", cr_acct: "CL3310" },
+    "brondol": { task_code: "AL3PM2207", dr_acct: "PM2201", cr_acct: "CL3310" }, // Premi Brondol
     "pph21": { task_code: "DEPH21", dr_acct: "CL3310", cr_acct: "CL3710" },
     "bpjs_kes_pekerja": { task_code: "DEBPJS", dr_acct: "CL3310", cr_acct: "CL3314" },
     "bpjs_kes_majikan": { task_code: "ALBPJS", dr_acct: "GA9120", cr_acct: "CL3314" },
+    "astek_jht_majikan": { task_code: "ALASTK", dr_acct: "GA9121", cr_acct: "CL3313" },
     "pot_spsi": { task_code: "DE0005", dr_acct: "CL3310", cr_acct: "CL3315" },
     "thr": { task_code: "GA9116", dr_acct: "GA9116", cr_acct: "CL3310" },
     "bonus": { task_code: "AL0005", dr_acct: "GA9117", cr_acct: "CL3310" }

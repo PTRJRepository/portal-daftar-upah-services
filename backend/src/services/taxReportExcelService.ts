@@ -68,13 +68,29 @@ export const generateMonthlyTaxExcel = async (
     const summarySheet = workbook.addWorksheet(summarySheetName);
 
     // Sort: BRONDOL first, then alphabetical (no LAINNYA catch-all — every premi has its own column)
-    const allPremiKeys: string[] = premiKeys && premiKeys.length > 0
-        ? premiKeys
-        : Array.from(discoveredPremiKeys).sort((a, b) => {
+    // [FIX] Always include BRONDOL if it exists in discoveredPremiKeys, even if premiKeys is provided
+    // This is because BRONDOL comes from a separate field (premi_brondol) not in dynamic_premi_headers
+    let allPremiKeys: string[];
+    if (premiKeys && premiKeys.length > 0) {
+        // Start with frontend-provided keys
+        allPremiKeys = [...premiKeys];
+        // Always add BRONDOL if it exists in discoveredPremiKeys but not in provided keys
+        if (discoveredPremiKeys.has('BRONDOL') && !allPremiKeys.includes('BRONDOL')) {
+            allPremiKeys.unshift('BRONDOL'); // Add at beginning
+        }
+        // Sort with BRONDOL first
+        allPremiKeys.sort((a, b) => {
             if (a === 'BRONDOL') return -1;
             if (b === 'BRONDOL') return 1;
             return a.localeCompare(b);
         });
+    } else {
+        allPremiKeys = Array.from(discoveredPremiKeys).sort((a, b) => {
+            if (a === 'BRONDOL') return -1;
+            if (b === 'BRONDOL') return 1;
+            return a.localeCompare(b);
+        });
+    }
 
     // If no premi data found, use a minimal default
     if (allPremiKeys.length === 0) allPremiKeys.push('BRONDOL');
@@ -135,13 +151,14 @@ export const generateMonthlyTaxExcel = async (
     const COL_GP_IDEAL = 14;
     const COL_GP_AKTUAL = 15;
     const COL_KOREKSI = 16;
-    const COL_BERAS = 17;
-    const COL_JABATAN = 18;
-    const COL_MASA_KERJA = 19;
-    const COL_SERVICE_TIME = 20; // Service Time Allow = Lembur value
+    const COL_POT_ALPA = 17; // Potongan Alpa (between KOREKSI and TUNJANGAN)
+    const COL_BERAS = 18;
+    const COL_JABATAN = 19;
+    const COL_MASA_KERJA = 20;
+    const COL_SERVICE_TIME = 21; // Service Time Allow = Lembur value
 
     // Dynamic premi columns
-    const COL_PREMI_START = 21;
+    const COL_PREMI_START = 22;
     const COL_PREMI_END = 20 + allPremiKeys.length;  // inclusive
     const COL_TOTAL_PREMI = COL_PREMI_END + 1;
 
@@ -166,6 +183,7 @@ export const generateMonthlyTaxExcel = async (
         if (i <= 10) colWidths.push(i === 2 ? 15 : i === 3 ? 25 : i === 4 ? 20 : i === 6 ? 30 : i <= 10 ? 8 : 5);
         else if (i <= 16) colWidths.push(15);
         else if (i <= 19) colWidths.push(12);
+        else if (i === COL_POT_ALPA) colWidths.push(13); // pot_alpa column
         else if (i < COL_TOTAL_PREMI) colWidths.push(13); // premi columns
         else if (i === COL_TOTAL_PREMI) colWidths.push(15);
         else if (i <= COL_KONTAN) colWidths.push(15);
@@ -184,63 +202,11 @@ export const generateMonthlyTaxExcel = async (
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
     // ─────────────────────────────────────────────────────────
-    // ROW 3: Group headers
+    // ROW 2: TaskCode (AccCode)
     // ─────────────────────────────────────────────────────────
-    const premiEndLetter = L(COL_PREMI_END);
-    const premiStartLetter = L(COL_PREMI_START);
-    const totalPremiLetter = L(COL_TOTAL_PREMI);
+    const mainMetaRef = data.employees[0]?.component_metadata || {};
 
-    // IDENTITAS
-    sheet.mergeCells(`A3:${L(COL_KAT)}3`);
-    sheet.getCell('A3').value = 'IDENTITAS';
-    applyHeaderStyle(sheet.getCell('A3'), '1E3A8A', 'FFFFFF');
-
-    // STRUKTUR UPAH
-    sheet.mergeCells(`${L(COL_HK)}3:${L(COL_KOREKSI)}3`);
-    sheet.getCell(`${L(COL_HK)}3`).value = 'STRUKTUR UPAH';
-    applyHeaderStyle(sheet.getCell(`${L(COL_HK)}3`), 'F1F5F9', '0F172A');
-
-    // TUNJANGAN
-    sheet.mergeCells(`${L(COL_BERAS)}3:${L(COL_SERVICE_TIME)}3`);
-    sheet.getCell(`${L(COL_BERAS)}3`).value = 'TUNJANGAN';
-    applyHeaderStyle(sheet.getCell(`${L(COL_BERAS)}3`), 'E2E8F0', '0F172A');
-
-    // URAIAN PREMI (spans all premi cols + total premi)
-    const premiGroupEnd = L(COL_TOTAL_PREMI);
-    if (COL_PREMI_START === COL_TOTAL_PREMI) {
-        // only one column: no merge needed
-        sheet.getCell(`${premiStartLetter}3`).value = 'Uraian Premi';
-        applyHeaderStyle(sheet.getCell(`${premiStartLetter}3`), 'CBD5E1', '0F172A');
-    } else {
-        sheet.mergeCells(`${premiStartLetter}3:${premiGroupEnd}3`);
-        sheet.getCell(`${premiStartLetter}3`).value = 'Uraian Premi';
-        applyHeaderStyle(sheet.getCell(`${premiStartLetter}3`), 'CBD5E1', '0F172A');
-    }
-
-    // POTONGAN (single cell)
-    sheet.getCell(`${L(COL_POT_KOREKSI)}3`).value = 'POTONGAN';
-    applyHeaderStyle(sheet.getCell(`${L(COL_POT_KOREKSI)}3`), 'FCA5A5', '0F172A');
-
-    // PENDAPATAN LAINNYA (THR, KONTAN)
-    if (COL_THR !== COL_KONTAN) {
-        sheet.mergeCells(`${L(COL_THR)}3:${L(COL_KONTAN)}3`);
-    }
-    sheet.getCell(`${L(COL_THR)}3`).value = 'PENDAPATAN\nLAINNYA';
-    applyHeaderStyle(sheet.getCell(`${L(COL_THR)}3`), 'FEF3C7', '0F172A');
-
-    // JAMINAN MAJIKAN
-    sheet.mergeCells(`${L(COL_BPJS_KES)}3:${L(COL_ASTEK)}3`);
-    sheet.getCell(`${L(COL_BPJS_KES)}3`).value = 'JAMINAN MAJIKAN';
-    applyHeaderStyle(sheet.getCell(`${L(COL_BPJS_KES)}3`), 'F1F5F9', '0F172A');
-
-    // KALKULASI PPH21
-    sheet.mergeCells(`${L(COL_UPAH_KOTOR)}3:${L(COL_PPH21)}3`);
-    sheet.getCell(`${L(COL_UPAH_KOTOR)}3`).value = 'KALKULASI PPH21';
-    applyHeaderStyle(sheet.getCell(`${L(COL_UPAH_KOTOR)}3`), '1E293B', 'FFFFFF');
-
-    // ─────────────────────────────────────────────────────────
-    // ROW 4: Sub-headers (With meta_key for AccCode)
-    // ─────────────────────────────────────────────────────────
+    // Define subHeaders first so we can use them for Row 2 and Row 5
     const subHeaders: { col: number; label: string; bg: string; fg: string; meta_key?: string }[] = [
         { col: COL_NO, label: 'NO', bg: '1E3A8A', fg: 'FFFFFF' },
         { col: COL_EMP_CODE, label: 'ID KARYAWAN', bg: '1E3A8A', fg: 'FFFFFF' },
@@ -258,6 +224,7 @@ export const generateMonthlyTaxExcel = async (
         { col: COL_GP_IDEAL, label: 'GP IDEAL\n(×HK)', bg: 'F1F5F9', fg: '0F172A' },
         { col: COL_GP_AKTUAL, label: 'GP AKTUAL', bg: 'F1F5F9', fg: '0F172A', meta_key: 'gaji_pokok' },
         { col: COL_KOREKSI, label: 'KOREKSI\n(Aktual-Ideal)', bg: 'F1F5F9', fg: '0F172A' },
+        { col: COL_POT_ALPA, label: 'POT. ALPA (-)', bg: 'F1F5F9', fg: '0F172A' },
         { col: COL_BERAS, label: 'BERAS', bg: 'E2E8F0', fg: '0F172A', meta_key: 'tunjangan_beras' },
         { col: COL_JABATAN, label: 'JABATAN', bg: 'E2E8F0', fg: '0F172A', meta_key: 'tunjangan_jabatan' },
         { col: COL_MASA_KERJA, label: 'MASA KERJA', bg: 'E2E8F0', fg: '0F172A', meta_key: 'masa_kerja' },
@@ -266,7 +233,10 @@ export const generateMonthlyTaxExcel = async (
 
     // Dynamic premi sub-headers
     for (let i = 0; i < allPremiKeys.length; i++) {
-        subHeaders.push({ col: COL_PREMI_START + i, label: allPremiKeys[i], bg: 'CBD5E1', fg: '0F172A', meta_key: 'premi' });
+        const keyName = allPremiKeys[i];
+        // BRONDOL uses its own metadata entry for proper AccCode
+        const metaKey = keyName.toUpperCase() === 'BRONDOL' ? 'brondol' : 'premi';
+        subHeaders.push({ col: COL_PREMI_START + i, label: keyName, bg: 'CBD5E1', fg: '0F172A', meta_key: metaKey });
     }
     subHeaders.push({ col: COL_TOTAL_PREMI, label: 'TOTAL PREMI\n(SUM Premi)', bg: 'CBD5E1', fg: '0F172A' });
     subHeaders.push({ col: COL_POT_KOREKSI, label: 'POT KOREKSI (-)', bg: 'FCA5A5', fg: '0F172A' });
@@ -279,12 +249,15 @@ export const generateMonthlyTaxExcel = async (
     subHeaders.push({ col: COL_TARIF_TER, label: 'TARIF TER (%)', bg: '0F172A', fg: 'FFFFFF' });
     subHeaders.push({ col: COL_PPH21, label: 'PPH21\n(ROUND Bruto×Tarif)', bg: '0F172A', fg: 'FFFFFF', meta_key: 'pph21' });
 
-    // ─────────────────────────────────────────────────────────
-    // ROW 2: Header AccCode (TaskCode)
-    // ─────────────────────────────────────────────────────────
+    // ROW 2: TaskCode (AccCode - task codes like AL0013, GA9128)
+    console.log(`[generateMonthlyTaxExcel] DEBUG: data.employees[0] component_metadata type: ${typeof data.employees[0]?.component_metadata}, value: ${JSON.stringify(data.employees[0]?.component_metadata)}`);
+    console.log(`[generateMonthlyTaxExcel] mainMetaRef keys: ${Object.keys(mainMetaRef).join(', ')}`);
+    console.log(`[generateMonthlyTaxExcel] First employee has component_metadata: ${!!data.employees[0]?.component_metadata}`);
+    if (data.employees[0]?.component_metadata) {
+        console.log(`[generateMonthlyTaxExcel] component_metadata entries:`, JSON.stringify(data.employees[0].component_metadata));
+    }
     const mainTaskRow = sheet.getRow(2);
     mainTaskRow.height = 20;
-    const mainMetaRef = data.employees[0]?.component_metadata || {};
     subHeaders.forEach(({ col, meta_key }) => {
         const cell = mainTaskRow.getCell(col);
         if (meta_key && mainMetaRef[meta_key]) {
@@ -294,18 +267,93 @@ export const generateMonthlyTaxExcel = async (
         cell.font = { size: 8, italic: true, name: 'Arial', color: { argb: '64748B' } };
     });
 
+    // ─────────────────────────────────────────────────────────
+    // ROW 3: GL Accounts (AccCode - DR:XXX CR:XXX - NEW!)
+    // ─────────────────────────────────────────────────────────
+    const glAccRow = sheet.getRow(3);
+    glAccRow.height = 20;
+    let glAccCount = 0;
+    subHeaders.forEach(({ col, meta_key }) => {
+        const cell = glAccRow.getCell(col);
+        if (meta_key && mainMetaRef[meta_key]) {
+            cell.value = `DR:${mainMetaRef[meta_key].dr_acct} CR:${mainMetaRef[meta_key].cr_acct}`;
+            glAccCount++;
+        }
+        applyHeaderStyle(cell, 'F8FAFC', '64748B');
+        cell.font = { size: 7, italic: true, name: 'Arial', color: { argb: '64748B' } };
+    });
+    console.log(`[generateMonthlyTaxExcel] GL Accounts row: wrote ${glAccCount} cells with DR/CR values`);
+
+    // ─────────────────────────────────────────────────────────
+    // ROW 4: Group headers
+    // ─────────────────────────────────────────────────────────
+    const premiEndLetter = L(COL_PREMI_END);
+    const premiStartLetter = L(COL_PREMI_START);
+    const totalPremiLetter = L(COL_TOTAL_PREMI);
+
+    // IDENTITAS
+    sheet.mergeCells(`A4:${L(COL_KAT)}4`);
+    sheet.getCell('A4').value = 'IDENTITAS';
+    applyHeaderStyle(sheet.getCell('A4'), '1E3A8A', 'FFFFFF');
+
+    // STRUKTUR UPAH
+    sheet.mergeCells(`${L(COL_HK)}4:${L(COL_KOREKSI)}4`);
+    sheet.getCell(`${L(COL_HK)}4`).value = 'STRUKTUR UPAH';
+    applyHeaderStyle(sheet.getCell(`${L(COL_HK)}4`), 'F1F5F9', '0F172A');
+
+    // TUNJANGAN
+    sheet.mergeCells(`${L(COL_BERAS)}4:${L(COL_SERVICE_TIME)}4`);
+    sheet.getCell(`${L(COL_BERAS)}4`).value = 'TUNJANGAN';
+    applyHeaderStyle(sheet.getCell(`${L(COL_BERAS)}4`), 'E2E8F0', '0F172A');
+
+    // URAIAN PREMI (spans all premi cols + total premi)
+    const premiGroupEnd = L(COL_TOTAL_PREMI);
+    if (COL_PREMI_START === COL_TOTAL_PREMI) {
+        // only one column: no merge needed
+        sheet.getCell(`${premiStartLetter}4`).value = 'Uraian Premi';
+        applyHeaderStyle(sheet.getCell(`${premiStartLetter}4`), 'CBD5E1', '0F172A');
+    } else {
+        sheet.mergeCells(`${premiStartLetter}4:${premiGroupEnd}4`);
+        sheet.getCell(`${premiStartLetter}4`).value = 'Uraian Premi';
+        applyHeaderStyle(sheet.getCell(`${premiStartLetter}4`), 'CBD5E1', '0F172A');
+    }
+
+    // POTONGAN (single cell)
+    sheet.getCell(`${L(COL_POT_KOREKSI)}4`).value = 'POTONGAN';
+    applyHeaderStyle(sheet.getCell(`${L(COL_POT_KOREKSI)}4`), 'FCA5A5', '0F172A');
+
+    // PENDAPATAN LAINNYA (THR, KONTAN)
+    if (COL_THR !== COL_KONTAN) {
+        sheet.mergeCells(`${L(COL_THR)}4:${L(COL_KONTAN)}4`);
+    }
+    sheet.getCell(`${L(COL_THR)}4`).value = 'PENDAPATAN\nLAINNYA';
+    applyHeaderStyle(sheet.getCell(`${L(COL_THR)}4`), 'FEF3C7', '0F172A');
+
+    // JAMINAN MAJIKAN
+    sheet.mergeCells(`${L(COL_BPJS_KES)}4:${L(COL_ASTEK)}4`);
+    sheet.getCell(`${L(COL_BPJS_KES)}4`).value = 'JAMINAN MAJIKAN';
+    applyHeaderStyle(sheet.getCell(`${L(COL_BPJS_KES)}4`), 'F1F5F9', '0F172A');
+
+    // KALKULASI PPH21
+    sheet.mergeCells(`${L(COL_UPAH_KOTOR)}4:${L(COL_PPH21)}4`);
+    sheet.getCell(`${L(COL_UPAH_KOTOR)}4`).value = 'KALKULASI PPH21';
+    applyHeaderStyle(sheet.getCell(`${L(COL_UPAH_KOTOR)}4`), '1E293B', 'FFFFFF');
+
+    // ─────────────────────────────────────────────────────────
+    // ROW 5: Sub-headers (column labels)
+    // ─────────────────────────────────────────────────────────
     subHeaders.forEach(({ col, label, bg, fg }) => {
-        const cell = sheet.getCell(4, col);
+        const cell = sheet.getCell(5, col);
         cell.value = label;
         applyHeaderStyle(cell, bg, fg);
     });
-    sheet.getRow(4).height = 45;
+    sheet.getRow(5).height = 45;
 
     // ─────────────────────────────────────────────────────────
-    // Data rows (row 5 onwards)
+    // Data rows (row 6 onwards)
     // ─────────────────────────────────────────────────────────
     const numFormat = '#.##0';
-    const DATA_START = 5;
+    const DATA_START = 6;
     let currentRowIndex = DATA_START;
 
     data.employees.forEach((emp) => {
@@ -362,6 +410,12 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_GP_IDEAL).value = emp.gaji_pokok_ideal || 0;
         row.getCell(COL_GP_AKTUAL).value = emp.gaji_pokok_aktual || 0;
         row.getCell(COL_KOREKSI).value = emp.koreksi_hk || 0;
+
+        // Potongan Alpa (from gaji difference: GP_IDEAL - GP_AKTUAL when negative)
+        const potAlpa = (emp.gaji_pokok_ideal || 0) > (emp.gaji_pokok_aktual || 0)
+            ? -((emp.gaji_pokok_ideal || 0) - (emp.gaji_pokok_aktual || 0))
+            : 0;
+        row.getCell(COL_POT_ALPA).value = potAlpa;
 
         // Tunjangan — Service Time Allow = Lembur
         // [ROBUST] Handle multiple field names (Daftar Upah vs Tax Report mapped names)
@@ -502,6 +556,7 @@ export const generateMonthlyTaxExcel = async (
 
     const numericCols = [
         COL_HK, COL_UPAH_DASAR, COL_GAJI_STANDAR, COL_GP_IDEAL, COL_GP_AKTUAL, COL_KOREKSI,
+        COL_POT_ALPA,
         COL_BERAS, COL_JABATAN, COL_MASA_KERJA, COL_SERVICE_TIME,
         ...Array.from({ length: allPremiKeys.length }, (_, i) => COL_PREMI_START + i),
         COL_TOTAL_PREMI, COL_POT_KOREKSI, COL_THR, COL_KONTAN,
@@ -734,7 +789,8 @@ export const generateMonthlyTaxExcel = async (
     ];
 
     for (const key of allPremiKeys) {
-        stdHeaders.push({ header: key, width: 15, meta_key: 'premi' });
+        const metaKey = key.toUpperCase() === 'BRONDOL' ? 'brondol' : 'premi';
+        stdHeaders.push({ header: key, width: 15, meta_key: metaKey });
     }
 
     stdHeaders.push({ header: 'Potongan\nKoreksi (-)', width: 15 });

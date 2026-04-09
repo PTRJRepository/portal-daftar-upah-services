@@ -10,7 +10,7 @@
 import { Elysia, t } from "elysia";
 import { AuthService } from "../services/authService";
 import { User } from "../types/user";
-import { taxReportService } from "../services/taxReportService";
+import { taxReportService, TAX_COMPONENT_METADATA } from "../services/taxReportService";
 import { generateMonthlyTaxExcel, generateDecemberTaxExcel } from "../services/taxReportExcelService";
 import { ptkpTaxService } from "../services/ptkpTaxService";
 import { EmployeeEstateService } from "../services/employeeEstateService";
@@ -704,10 +704,16 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
                     const kategoriTer = mapPTKPToTER(masterPtkp);
 
-                // [DEBUG] Log first row to help diagnose
+                // [DEBUG] Log first row to help diagnose premi data
                 if (idx === 0) {
                     console.log(`[TaxReport FAST DEBUG] First row keys (sample):`, 
-                        Object.keys(row).filter(k => k.includes('pph') || k.includes('premi') || k.includes('pot') || k.includes('beras') || k.includes('bruto')));
+                        Object.keys(row).filter(k => k.includes('pph') || k.includes('premi') || k.includes('pot') || k.includes('beras') || k.includes('bruto') || k.includes('brondol')));
+                    console.log(`[TaxReport FAST DEBUG] row.premi type=${typeof row.premi}, keys=${row.premi ? Object.keys(row.premi) : 'N/A'}`);
+                    console.log(`[TaxReport FAST DEBUG] row.premi_detail type=${typeof row.premi_detail}, keys=${row.premi_detail && typeof row.premi_detail === 'object' ? Object.keys(row.premi_detail) : 'N/A'}`);
+                    console.log(`[TaxReport FAST DEBUG] row.premi_brondol=${row.premi_brondol}, row.total_premi=${row.total_premi}`);
+                    // Log all premi_* flat keys
+                    const premiFlat = Object.entries(row).filter(([k]) => k.startsWith('premi_')).map(([k,v]) => `${k}=${v}`);
+                    console.log(`[TaxReport FAST DEBUG] Flat premi_* fields: [${premiFlat.join(', ')}]`);
                 }
 
                 const gajiPokokAktual = row.gaji_pokok_aktual || row.gaji_pokok || 0;
@@ -756,63 +762,78 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
                 // ============================================================
                 // Build premiDetail: extract ALL individual premi items
-                // Replicates the progressive endpoint logic for consistency
+                // DataExtractor stores premi in row.premi as nested object
+                // Keys can be: premi_angkut, premi_pruning, brondol, etc.
                 // ============================================================
                 const premiDetail: Record<string, number> = {};
-                let consolidatedBrondol = 0;
-                let hasBrondolFromDetail = false;
 
-                // SOURCE 1: row.premi (nested object from DataExtractor)
+                // SOURCE 1: row.premi (nested object from DataExtractor - PRIMARY)
                 if (row.premi && typeof row.premi === 'object' && !Array.isArray(row.premi)) {
                     for (const [key, value] of Object.entries(row.premi)) {
                         const val = Number(value) || 0;
                         if (val <= 0) continue;
                         if (skipKeys.includes(key)) continue;
-                        const upperKey = normalizePremiKey(key);
-                        if (isBrondolSubKey(key)) { consolidatedBrondol += val; continue; }
-                        if (upperKey === 'BRONDOL') { consolidatedBrondol += val; hasBrondolFromDetail = true; continue; }
+                        
+                        // Strip 'premi_' prefix if present, then normalize
+                        const cleanKey = key.replace(/^premi_/i, '');
+                        const upperKey = normalizePremiKey(cleanKey);
+                        
+                        // Skip brondol — handled separately below as single entry
+                        if (upperKey === 'BRONDOL' || isBrondolSubKey(cleanKey)) continue;
+                        
                         premiDetail[upperKey] = (premiDetail[upperKey] || 0) + val;
                     }
                 }
 
-                // SOURCE 2: row.premi_detail (from history database)
-                let parsedPremiDetail: Record<string, any> | null = null;
-                const rawPremiDetail = row.premi_detail;
-                if (rawPremiDetail && typeof rawPremiDetail === 'object' && !Array.isArray(rawPremiDetail)) {
-                    parsedPremiDetail = rawPremiDetail;
-                } else if (rawPremiDetail && typeof rawPremiDetail === 'string') {
-                    try { parsedPremiDetail = JSON.parse(rawPremiDetail); } catch (_) {}
-                }
-                if (parsedPremiDetail) {
-                    for (const [key, value] of Object.entries(parsedPremiDetail)) {
-                        const val = Number(value) || 0;
-                        if (val <= 0) continue;
-                        if (skipKeys.includes(key)) continue;
-                        const upperKey = normalizePremiKey(key);
-                        if (isBrondolSubKey(key)) { consolidatedBrondol += val; continue; }
-                        if (upperKey === 'BRONDOL' && !hasBrondolFromDetail) { consolidatedBrondol += val; hasBrondolFromDetail = true; continue; }
-                        if (!premiDetail[upperKey]) { premiDetail[upperKey] = val; }
+                // SOURCE 2: row.premi_detail (from history database — only if SOURCE 1 was empty)
+                if (Object.keys(premiDetail).length === 0) {
+                    let parsedPremiDetail: Record<string, any> | null = null;
+                    const rawPremiDetail = row.premi_detail;
+                    if (rawPremiDetail && typeof rawPremiDetail === 'object' && !Array.isArray(rawPremiDetail)) {
+                        parsedPremiDetail = rawPremiDetail;
+                    } else if (rawPremiDetail && typeof rawPremiDetail === 'string') {
+                        try { parsedPremiDetail = JSON.parse(rawPremiDetail); } catch (_) {}
+                    }
+                    if (parsedPremiDetail) {
+                        for (const [key, value] of Object.entries(parsedPremiDetail)) {
+                            const val = Number(value) || 0;
+                            if (val <= 0) continue;
+                            if (skipKeys.includes(key)) continue;
+                            const cleanKey = key.replace(/^premi_/i, '');
+                            const upperKey = normalizePremiKey(cleanKey);
+                            if (upperKey === 'BRONDOL' || isBrondolSubKey(cleanKey)) continue;
+                            if (!premiDetail[upperKey]) { premiDetail[upperKey] = val; }
+                        }
                     }
                 }
 
-                // SOURCE 3: row.premi_* flattened fields (fallback)
+                // SOURCE 3: row.premi_* flattened fields (final fallback)
                 if (Object.keys(premiDetail).length === 0) {
                     for (const [key, value] of Object.entries(row)) {
                         if (!key.startsWith('premi_')) continue;
-                        if (key === 'premi_brondol' || key === 'premi_pph' || key === 'premi_detail' || key === 'premi_koreksi') continue;
+                        if (['premi_brondol', 'premi_brondol_total', 'premi_brondol_loosefruit', 
+                             'premi_brondol_adtrans', 'premi_pph', 'premi_detail', 'premi_details',
+                             'premi_koreksi'].includes(key)) continue;
                         const val = Number(value) || 0;
                         if (val <= 0) continue;
-                        const label = normalizePremiKey(key.replace(/^premi_/, ''));
-                        if (isBrondolSubKey(label)) { consolidatedBrondol += val; continue; }
-                        if (label === 'BRONDOL') { if (!hasBrondolFromDetail) consolidatedBrondol += val; continue; }
+                        const cleanKey = key.replace(/^premi_/, '');
+                        const label = normalizePremiKey(cleanKey);
+                        if (label === 'BRONDOL' || isBrondolSubKey(cleanKey)) continue;
                         if (!premiDetail[label]) { premiDetail[label] = val; }
                     }
                 }
 
-                // BRONDOL: use consolidated value, fallback to row.premi_brondol
-                const brondolFinal = consolidatedBrondol > 0 ? consolidatedBrondol : (row.premi_brondol || 0);
+                // BRONDOL: single source — use premi_brondol_total (already consolidated by DataExtractor)
+                // This ensures brondol appears exactly ONCE, not duplicated
+                const brondolFinal = Number(row.premi_brondol_total) || Number(row.premi_brondol) || 0;
                 if (brondolFinal > 0) {
                     premiDetail['BRONDOL'] = brondolFinal;
+                }
+
+                // [DEBUG] Log premiDetail for first employee
+                if (idx === 0) {
+                    console.log(`[TaxReport FAST DEBUG] First employee premiDetail:`, JSON.stringify(premiDetail));
+                    console.log(`[TaxReport FAST DEBUG] brondolFinal=${brondolFinal}, premi_brondol_total=${row.premi_brondol_total}, premi_brondol=${row.premi_brondol}`);
                 }
 
                 // ============================================================
@@ -876,8 +897,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     other_incomes: empOtherIncomes,
                     pendapatan_tidak_tetap_thp: empThrAmount + empKontanAmount + empOtherIncomeAmount,
                     
-                    // GL Metadata
-                    component_metadata: row.component_metadata || {},
+                    // GL Metadata — use TAX_COMPONENT_METADATA directly (DataExtractor doesn't provide this)
+                    component_metadata: TAX_COMPONENT_METADATA,
                 });
                 } catch (empError: any) {
                     const empCode = activeEmployees[idx]?.emp_code || 'unknown';
@@ -1069,8 +1090,22 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
                                 // [1] PREMI DETAIL - individual premi breakdown (NOT in DOM, must fetch from backend)
                                 // This is used for the detailed premi columns in Excel
-                                if (!domEmp.premi_detail || Object.keys(domEmp.premi_detail).length === 0) {
+                                // [FIX] Also merge if BRONDOL is missing from existing premi_detail
+                                const existingPremi = domEmp.premi_detail || {};
+                                const hasBrondolInDom = Object.keys(existingPremi).some(k => k.toUpperCase() === 'BRONDOL');
+                                const hasAnyPremiInDom = Object.keys(existingPremi).length > 0;
+
+                                // [DEBUG] Log first few employees
+                                if (mergeCount <= 3) {
+                                    console.log(`[TaxReport Excel DOM] PREMI DEBUG emp=${empCode}: hasAnyPremiInDom=${hasAnyPremiInDom}, hasBrondolInDom=${hasBrondolInDom}, backendHasBrondol=${!!backendData.premi_detail?.['BRONDOL']}, backendBrondolVal=${backendData.premi_detail?.['BRONDOL'] || 'N/A'}`);
+                                }
+
+                                if (!hasAnyPremiInDom) {
+                                    // DOM has no premi_detail at all - use backend's
                                     domEmp.premi_detail = backendData.premi_detail || {};
+                                } else if (!hasBrondolInDom && backendData.premi_detail?.['BRONDOL']) {
+                                    // DOM has premi_detail but missing BRONDOL - merge missing keys from backend
+                                    domEmp.premi_detail = { ...backendData.premi_detail, ...existingPremi };
                                 }
 
                                 // [2] ALAMAT - not shown in DOM table
@@ -1117,25 +1152,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                             const backendFirst = backendMap.get(empCode);
                             console.log(`[TaxReport Excel DOM] AFTER MERGE - First employee (${(first.emp_name || '').trim()}):`, {
                                 emp_code: first.emp_code,
-                                // DOM fields
-                                dom_thr_amount: first.thr_amount,
-                                dom_exgratia_amount: first.exgratia_amount,
-                                dom_pendapatan_thr: first.pendapatan_thr,
-                                dom_pendapatan_bonus: first.pendapatan_bonus,
                                 dom_total_premi: first.total_premi,
-                                dom_gaji_pokok_ideal: first.gaji_pokok_ideal,
-                                dom_gaji_pokok_aktual: first.gaji_pokok_aktual,
-                                dom_pot_alpa_cth: first.pot_alpa_cth,
-                                // Backend fields (before merge)
-                                backend_thr_amount: backendFirst?.thr_amount,
-                                backend_exgratia_amount: backendFirst?.exgratia_amount,
-                                backend_total_premi: backendFirst?.total_premi,
                                 backend_premi_detail_keys: backendFirst?.premi_detail ? Object.keys(backendFirst.premi_detail) : [],
-                                backend_premi_detail_sample: backendFirst?.premi_detail ? Object.fromEntries(Object.entries(backendFirst.premi_detail).slice(0, 5)) : {},
-                                // After merge
-                                after_merge_thr_amount: first.thr_amount,
-                                after_merge_exgratia_amount: first.exgratia_amount,
-                                after_merge_pot_alpa_cth: first.pot_alpa_cth,
                                 after_merge_premi_detail_keys: first.premi_detail ? Object.keys(first.premi_detail) : []
                             });
                         }
@@ -1147,8 +1165,146 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     // Continue with DOM data only
                 }
             }
-            
-            // [REMOVED] No longer fetching THR/kontanan from DB - using DOM data directly
+
+            // ============================================================
+            // [FIX] Fetch premi_detail from DataExtractor if still missing
+            // This is the same approach as the FAST endpoint, ensuring brondol
+            // and all dynamic premi appear correctly.
+            // ============================================================
+            if (empCodes.length > 0) {
+                try {
+                    const { DataExtractorService } = await import("../services/dataExtractorService");
+                    const extractor = DataExtractorService.getInstance();
+                    
+                    console.log(`[TaxReport Excel DOM] Fetching premi data from DataExtractor for division=${division}...`);
+                    const extractorData = await extractor.extractPayrollData(
+                        parseInt(month), parseInt(year), gang || 'ALL', division || undefined,
+                        null, undefined, false, undefined, undefined, false, true
+                    );
+                    
+                    if (extractorData?.data_rows?.length > 0) {
+                        // Build emp_code -> row map from DataExtractor
+                        const extractorMap = new Map<string, any>();
+                        for (const row of extractorData.data_rows) {
+                            const code = (row.emp_code || '').trim().toUpperCase();
+                            if (code) extractorMap.set(code, row);
+                        }
+                        
+                        console.log(`[TaxReport Excel DOM] DataExtractor returned ${extractorData.data_rows.length} rows, mapped ${extractorMap.size} employees`);
+                        
+                        // Helper to normalize premi keys
+                        const normalizeKey = (key: string): string => {
+                            return key.replace(/^premi_/i, '').toUpperCase().replace(/_/g, ' ').trim();
+                        };
+                        
+                        const brondolSubKeys = ['BRONDOL LOOSEFRUIT', 'BRONDOL TOTAL', 'BRONDOL ADTRANS'];
+                        
+                        let premiMergeCount = 0;
+                        employees.forEach((domEmp: any) => {
+                            const empCode = (domEmp.emp_code || domEmp.ID_KARYAWAN || '').trim().toUpperCase();
+                            const extractorRow = extractorMap.get(empCode);
+
+                            if (extractorRow) {
+                                // Build premi_detail from DataExtractor if DOM doesn't have it
+                                // or if existing premi_detail is empty/missing brondol
+                                const existingPremi = domEmp.premi_detail || {};
+                                const hasBrondol = Object.keys(existingPremi).some(k => k.toUpperCase() === 'BRONDOL');
+                                const hasAnyPremi = Object.keys(existingPremi).length > 0;
+
+                                if (!hasAnyPremi || !hasBrondol) {
+                                    const newPremi: Record<string, number> = {};
+
+                                    // Extract from row.premi (nested object)
+                                    if (extractorRow.premi && typeof extractorRow.premi === 'object') {
+                                        for (const [key, value] of Object.entries(extractorRow.premi)) {
+                                            const val = Number(value) || 0;
+                                            if (val <= 0) continue;
+                                            if (['koreksi', 'total', 'KOREKSI', 'TOTAL'].includes(key)) continue;
+
+                                            const cleanKey = normalizeKey(key);
+                                            // Skip brondol sub-keys; handled separately
+                                            if (cleanKey === 'BRONDOL' || brondolSubKeys.includes(cleanKey)) continue;
+
+                                            newPremi[cleanKey] = (newPremi[cleanKey] || 0) + val;
+                                        }
+                                    }
+
+                                    // Add brondol as single entry
+                                    const brondolVal = Number(extractorRow.premi_brondol_total) || Number(extractorRow.premi_brondol) || 0;
+
+                                    // [DEBUG] Log brondol extraction for first few employees
+                                    if (premiMergeCount < 3) {
+                                        console.log(`[TaxReport Excel DOM] BRONDOL DEBUG emp=${empCode}: brondolVal=${brondolVal}, extractorRow.premi_brondol_total=${extractorRow.premi_brondol_total}, extractorRow.premi_brondol=${extractorRow.premi_brondol}`);
+                                    }
+
+                                    if (brondolVal > 0) {
+                                        newPremi['BRONDOL'] = brondolVal;
+                                    }
+
+                                    // Merge: keep existing values, add new ones
+                                    if (Object.keys(newPremi).length > 0) {
+                                        domEmp.premi_detail = { ...newPremi, ...existingPremi };
+                                        premiMergeCount++;
+                                    }
+                                }
+
+                                // Also set premi_brondol for fallback
+                                if (!domEmp.premi_brondol && extractorRow.premi_brondol_total) {
+                                    domEmp.premi_brondol = extractorRow.premi_brondol_total;
+                                    domEmp.premi_brondol_total = extractorRow.premi_brondol_total;
+                                }
+                            }
+                        });
+                        
+                        console.log(`[TaxReport Excel DOM] ✅ Merged premi_detail from DataExtractor for ${premiMergeCount} employees`);
+                        
+                        // Debug first employee
+                        if (employees.length > 0) {
+                            const first = employees[0];
+                            console.log(`[TaxReport Excel DOM] After DataExtractor merge - premi_detail:`, first.premi_detail ? JSON.stringify(first.premi_detail) : 'NONE');
+                        }
+                    }
+                } catch (extractorError: any) {
+                    console.error(`[TaxReport Excel DOM] ⚠️ DataExtractor premi fetch failed:`, extractorError.message);
+                    // Continue without - premi will just be empty
+                }
+            }
+
+            // [FIX] Ensure prem_detail['BRONDOL'] is set from top-level prem_brondol if missing
+            // DOM sends prem_brondol as a separate field, not inside prem_detail
+            employees.forEach((emp: any) => {
+                if (!emp.premi_detail) {
+                    emp.premi_detail = {};
+                }
+                // If BRONDOL is missing from prem_detail but we have top-level prem_brondol, add it
+                const hasBrondolInDetail = Object.keys(emp.premi_detail).some(k => k.toUpperCase() === 'BRONDOL');
+                if (!hasBrondolInDetail && emp.premi_brondol && emp.premi_brondol > 0) {
+                    emp.premi_detail['BRONDOL'] = emp.premi_brondol;
+                    console.log(`[TaxReport Excel DOM] ✅ Added BRONDOL=${emp.premi_brondol} to prem_detail for emp ${emp.emp_code || emp.ID_KARYAWAN}`);
+                }
+                // Also check prem_brondol_total if available
+                if (!hasBrondolInDetail && emp.premi_brondol_total && emp.premi_brondol_total > 0) {
+                    emp.premi_detail['BRONDOL'] = emp.premi_brondol_total;
+                }
+            });
+
+            // [FIX] Always inject TAX_COMPONENT_METADATA for AccCode rows
+            // This doesn't depend on backendData - use the canonical metadata directly
+            console.log(`[TaxReport Excel DOM] DEBUG: Static TAX_COMPONENT_METADATA keys: ${Object.keys(TAX_COMPONENT_METADATA || {}).join(', ')}`);
+            const { TAX_COMPONENT_METADATA: MTD } = await import("../services/taxReportService");
+            console.log(`[TaxReport Excel DOM] DEBUG: Dynamic MTD is: ${MTD}, type: ${typeof MTD}`);
+            console.log(`[TaxReport Excel DOM] DEBUG: Dynamic MTD keys: ${MTD ? Object.keys(MTD).join(', ') : 'N/A'}`);
+            console.log(`[TaxReport Excel DOM] DEBUG: Static TAX_COMPONENT_METADATA is: ${TAX_COMPONENT_METADATA}, type: ${typeof TAX_COMPONENT_METADATA}`);
+
+            const metaToInject = MTD || TAX_COMPONENT_METADATA;
+            console.log(`[TaxReport Excel DOM] DEBUG: metaToInject is: ${metaToInject}, type: ${typeof metaToInject}, keys: ${metaToInject ? Object.keys(metaToInject).join(', ') : 'N/A'}`);
+
+            employees.forEach((emp: any) => {
+                emp.component_metadata = metaToInject;
+            });
+            console.log(`[TaxReport Excel DOM] ✅ Injected TAX_COMPONENT_METADATA into all ${employees.length} employees`);
+            console.log(`[TaxReport Excel DOM] ✅ First employee component_metadata after injection: ${JSON.stringify(employees[0]?.component_metadata)}`);
+
             // DOM already has the correct THR and kontanan values from the UI
             console.log(`[TaxReport Excel DOM] Using DOM data for THR, kontanan, and all displayed values`);
 
@@ -1346,55 +1502,6 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
         }
     })
 
-    // ========================================================
-    // POST /tax-report/monthly/excel/dom
-    // Generate Monthly PPH21 Excel using data from the frontend DOM
-    // ========================================================
-    .post("/monthly/excel/dom", async ({ body, set }) => {
-        try {
-            const { year, month, division, gang, gangPrefix, employees, premiKeys } = body as any;
-
-            console.log(`[TaxReport Excel DOM] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, employees=${employees?.length}`);
-
-            if (!year || !month || !employees || !Array.isArray(employees)) {
-                set.status = 400;
-                return { error: "Invalid parameters: year, month, and employees array are required" };
-            }
-
-            const y = parseInt(year);
-            const m = parseInt(month);
-            const gangLabel = gang || gangPrefix || 'ALL';
-
-            // Calculate total_pph21 from whatever the DOM sent
-            let total_pph21 = 0;
-            employees.forEach((emp: any) => {
-                 total_pph21 += Number(emp.potongan_pph21 || emp.pot_pph21 || emp.pph21_ter || 0);
-            });
-
-            const data = {
-                employees: employees,
-                period: { month: m, year: y },
-                total_pph21: total_pph21
-            };
-
-            const excelBuffer = await generateMonthlyTaxExcel(data, y, m, division || 'ALL', gangLabel, premiKeys);
-
-            if (!excelBuffer || excelBuffer.length === 0) {
-                set.status = 500;
-                return { error: "Failed to generate Excel buffer" };
-            }
-
-            const filename = `PPH21_DOM_${division || 'ALL'}_${gangLabel}_${m}_${y}.xlsx`;
-            set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-            
-            return excelBuffer;
-        } catch (error: any) {
-            console.error("[TaxReport] Error generating DOM Excel report:", error);
-            set.status = 500;
-            return { error: error.message || "Failed to generate DOM Excel report" };
-        }
-    })
 
     // ========================================================
     // PUT /tax-report/ptkp/:emp_code
