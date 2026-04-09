@@ -7,6 +7,7 @@ import { payrollService } from "../services/payrollService";
 import { AuthService } from "../services/authService";
 import { currentPeriodService } from "../services/currentPeriodService";
 import { taxReportService } from "../services/taxReportService";
+import { divisionConfigService } from "../services/config/DivisionConfigService";
 import { User, UserRole } from "../types/user";
 
 

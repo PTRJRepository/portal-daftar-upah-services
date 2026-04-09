@@ -188,9 +188,16 @@ export function GangFilterProvider({ children }) {
     },
 
     setAvailableData: (data) => {
+      // Transform division objects to strings (extract .code)
+      // API returns objects like {code, name, type, aliases, description}
+      // but GangFilter component expects string codes
+      const transformedData = {
+        gangs: data.gangs || [],
+        divisions: (data.divisions || []).map(d => typeof d === 'object' ? d.code : d)
+      }
       dispatch({
         type: GANG_FILTER_ACTIONS.SET_AVAILABLE_DATA,
-        payload: data
+        payload: transformedData
       })
     },
 

@@ -15,6 +15,18 @@ import { generateMonthlyTaxExcel, generateDecemberTaxExcel } from "../services/t
 import { ptkpTaxService } from "../services/ptkpTaxService";
 import { EmployeeEstateService } from "../services/employeeEstateService";
 import { Database } from "../db/client";
+import { gangService } from "../services/gangService";
+
+/**
+ * Sanitize string for filename - remove/replace invalid filename characters
+ */
+function sanitizeForFilename(str: string): string {
+    if (!str) return '';
+    return str
+        .replace(/[\\/:*?"<>|]/g, '_')  // Replace invalid filename chars
+        .replace(/\s+/g, '_')            // Replace spaces with underscore
+        .substring(0, 50);               // Limit length
+}
 
 const authService = AuthService.getInstance();
 
@@ -116,6 +128,19 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             const gangLabel = gang || gangPrefix || 'ALL';
 
+            // Get gang description for filename
+            let gangDescForFilename = '';
+            if (gangLabel && gangLabel !== 'ALL') {
+                try {
+                    const gangInfo = await gangService.getGangInfo(gangLabel);
+                    if (gangInfo?.description) {
+                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
+                    }
+                } catch (e) {
+                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
+                }
+            }
+
             // Generate Excel Buffer (pass premiKeys for dynamic column headers)
             const excelBuffer = await generateMonthlyTaxExcel(data, year, month, division || 'ALL', gangLabel, data.premiKeys);
 
@@ -126,10 +151,10 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            const filename = `PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
+            const filename = `PPH21_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-            
+
             return excelBuffer;
         } catch (error: any) {
             console.error("[TaxReport] Error generating Excel report:", error);
@@ -476,6 +501,19 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             const gangLabel = gang || gangPrefix || 'ALL';
 
+            // Get gang description for filename
+            let gangDescForFilename = '';
+            if (gangLabel && gangLabel !== 'ALL') {
+                try {
+                    const gangInfo = await gangService.getGangInfo(gangLabel);
+                    if (gangInfo?.description) {
+                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
+                    }
+                } catch (e) {
+                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
+                }
+            }
+
             // Generate Excel
             const excelBuffer = await generateMonthlyTaxExcel(
                 { employees, period: { month, year }, total_pph21: totalPph21 },
@@ -487,10 +525,10 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            const filename = `PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
+            const filename = `PPH21_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-            
+
             return excelBuffer;
         } catch (error: any) {
             console.error("[TaxReport Excel Progressive] Error:", error);
@@ -911,6 +949,19 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             const gangLabel = gang || gangPrefix || 'ALL';
 
+            // Get gang description for filename
+            let gangDescForFilename = '';
+            if (gangLabel && gangLabel !== 'ALL') {
+                try {
+                    const gangInfo = await gangService.getGangInfo(gangLabel);
+                    if (gangInfo?.description) {
+                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
+                    }
+                } catch (e) {
+                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
+                }
+            }
+
             // Generate Excel
             console.log(`[TaxReport Excel FAST] Calling generateMonthlyTaxExcel with ${employees.length} employees...`);
             try {
@@ -937,7 +988,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     return { error: "Failed to generate Excel - empty buffer" };
                 }
 
-                const filename = `PPH21_${division || 'ALL'}_${gangLabel}_${month}_${year}.xlsx`;
+                const filename = `PPH21_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
                 console.log(`[TaxReport Excel FAST] Returning file: ${filename} (${finalBuffer.length} bytes)`);
 
                 // Set headers and return a native Response object
@@ -1103,8 +1154,22 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             });
 
             const gangLabel = gang || gangPrefix || 'ALL';
+
+            // Get gang description for filename
+            let gangDescForFilename = '';
+            if (gangLabel && gangLabel !== 'ALL') {
+                try {
+                    const gangInfo = await gangService.getGangInfo(gangLabel);
+                    if (gangInfo?.description) {
+                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
+                    }
+                } catch (e) {
+                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
+                }
+            }
+
             let excelBuffer: Buffer | undefined;
-            
+
             try {
                 excelBuffer = await generateMonthlyTaxExcel(
                     { employees, period: { month: m, year: y }, total_pph21: totalPph21 },
@@ -1118,8 +1183,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 console.error('[TaxReport Excel DOM] Excel generation FAILED:', excelGenError);
                 console.error('[TaxReport Excel DOM] Stack trace:', excelGenError?.stack);
                 set.status = 500;
-                return { 
-                    error: "Excel generation failed", 
+                return {
+                    error: "Excel generation failed",
                     details: excelGenError?.message || "Unknown error during Excel generation",
                     stack: process.env.NODE_ENV === 'development' ? excelGenError?.stack : undefined
                 };
@@ -1132,7 +1197,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             const totalMs = (performance.now() - t0).toFixed(0);
-            const filename = `PPH21_DOM_${division || 'ALL'}_${gangLabel}_${m}_${y}.xlsx`;
+            const filename = `PPH21_DOM_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${m}_${y}.xlsx`;
             console.log(`[TaxReport DOM FAST] ✅ Done in ${totalMs}ms — ${filename} (${excelBuffer.length} bytes)`);
 
             // Set headers and return a native Response object
@@ -1284,13 +1349,26 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             const gangLabel = gang || gangPrefix || 'ALL';
 
+            // Get gang description for filename
+            let gangDescForFilename = '';
+            if (gangLabel && gangLabel !== 'ALL') {
+                try {
+                    const gangInfo = await gangService.getGangInfo(gangLabel);
+                    if (gangInfo?.description) {
+                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
+                    }
+                } catch (e) {
+                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
+                }
+            }
+
             // Generate Excel Buffer
             const excelBuffer = await generateDecemberTaxExcel(data, year, division || 'ALL', gangLabel);
 
-            const filename = `PAJAK_DESEMBER_${division || 'ALL'}_${gangLabel}_${year}.xlsx`;
+            const filename = `PAJAK_DESEMBER_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-            
+
             return excelBuffer;
         } catch (error: any) {
             console.error("[TaxReport] Error generating December Excel report:", error);

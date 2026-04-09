@@ -377,29 +377,18 @@ export class GangService {
 
     /**
      * Fetch all gangs from HR_GANGLN (for ALL divisions case)
+     * Delegates to divisionConfigService.getAllGangs() for consistent results
      */
     private async fetchAllGangs(): Promise<Gang[]> {
-        const db = Database.getInstance();
+        // Use DivisionConfigService as single source of truth
+        const gangs = await divisionConfigService.getAllGangs();
+        console.log(`[GangService] fetchAllGangs delegated to DivisionConfigService, returned ${gangs.length} gangs`);
 
-        // Use HR_GANGLN as primary source - get all gangs that have employees assigned
-        const query = `
-            SELECT DISTINCT
-                RTRIM(gl.GangCode) as gang_code,
-                RTRIM(ISNULL(h.Description, 'GANG TANPA DESKRIPSI')) as description,
-                RTRIM(e.LocCode) as loc_code
-            FROM HR_GANGLN gl
-            INNER JOIN HR_EMPLOYEE e ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-            LEFT JOIN HR_GANG h ON RTRIM(gl.GangCode) = RTRIM(h.GangCode)
-            WHERE (h.Description IS NULL OR (h.Description NOT LIKE '%WORKSHOP%' AND h.Description NOT LIKE '%INFRA%'))
-            ORDER BY RTRIM(e.LocCode), RTRIM(gl.GangCode)
-        `;
-        const rows = await db.query<any>(query, []);
-
-        return rows.map(row => ({
-            gang_code: row.gang_code?.trim() || '',
-            description: row.description?.trim() || '',
-            loc_code: row.loc_code?.trim() || '',
-            server_profile: this.getServerProfile(row.loc_code?.trim(), row.gang_code?.trim())
+        return gangs.map(g => ({
+            gang_code: g.gang_code,
+            description: g.description || '',
+            loc_code: g.loc_code,
+            server_profile: this.getServerProfile(g.loc_code, g.gang_code)
         }));
     }
 

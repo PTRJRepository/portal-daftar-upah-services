@@ -1,4 +1,4 @@
-/**
+﻿/**
  * DivisionConfigService - Single Source of Truth for Division Definitions
  *
  * Provides centralized management of:
@@ -289,9 +289,9 @@ export class DivisionConfigService {
 
     /**
      * Resolve any division code or alias to canonical form
-     * @example resolve('INFRA') → 'INF'
-     * @example resolve('PG1A') → 'PG1A'
-     * @example resolve('P1A') → 'PG1A'
+     * @example resolve('INFRA') ΓåÆ 'INF'
+     * @example resolve('PG1A') ΓåÆ 'PG1A'
+     * @example resolve('P1A') ΓåÆ 'PG1A'
      */
     public resolveCode(input: string): string {
         if (!input) return input;
@@ -433,21 +433,21 @@ export class DivisionConfigService {
             : [];
 
         if (division.type === 'virtual') {
-            // For virtual divisions, query all gangs from HR_GANGLN and let the pattern filter do the work
+            // For all virtual divisions, query all gangs and let the pattern filter do the work
+            // This prevents issues where a virtual gang's LocCode doesn't match the source division
             query = `
-                SELECT DISTINCT
-                    RTRIM(gl.GangCode) as gang_code,
-                    RTRIM(ISNULL(h.Description, 'GANG TANPA DESKRIPSI')) as description,
-                    RTRIM(e.LocCode) as loc_code
-                FROM HR_GANGLN gl
-                INNER JOIN HR_EMPLOYEE e ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                LEFT JOIN HR_GANG h ON RTRIM(gl.GangCode) = RTRIM(h.GangCode)
-                ORDER BY loc_code, gang_code
+                SELECT
+                    GangCode as gang_code,
+                    Description as description,
+                    LocCode as loc_code
+                FROM HR_GANG
+                WHERE 1=1
+                ORDER BY GangCode
             `;
             params = [];
         } else {
             // For real divisions - also use aliases
-            // ⚠️ CRITICAL: EXCLUDE virtual division gangs
+            // ΓÜá∩╕Å CRITICAL: EXCLUDE virtual division gangs
             // This ensures virtual divisions are SEPARATE from their parent divisions
             const aliases = this.getAliases(division.code);
             const placeholders = aliases.map(() => '?').join(',');
@@ -470,42 +470,36 @@ export class DivisionConfigService {
                 }
             });
 
-            // Build exclusion clause for query params
+            // Build query with or without exclusion clause
             let excludeClause = '';
             let queryParams: any[] = [...aliases];
 
             if (gangsToExclude.length > 0) {
                 const excludePlaceholders = gangsToExclude.map(() => '?').join(',');
-                excludeClause = `AND gl.GangCode NOT IN (${excludePlaceholders})`;
-                queryParams.push(...gangsToExclude);
+                excludeClause = `AND GangCode NOT IN (${excludePlaceholders})`;
+                queryParams = [...aliases, ...gangsToExclude];
+            } else {
+                excludeClause = '';
+                queryParams = aliases;
             }
 
             console.log(`[DivisionConfigService] Query for ${division.code}:`);
             console.log(`[DivisionConfigService]   Aliases: ${JSON.stringify(aliases)}`);
             console.log(`[DivisionConfigService]   Excluded gangs: ${JSON.stringify(gangsToExclude)}`);
 
-            // Query: get distinct gangs from HR_GANGLN JOIN HR_EMPLOYEE for LocCode
-            // NOTE: LocCode is in HR_EMPLOYEE, NOT in HR_GANGLN
-            const gangQuery = `
-                SELECT DISTINCT
-                    RTRIM(gl.GangCode) as gang_code,
-                    RTRIM(ISNULL(h.Description, 'GANG TANPA DESKRIPSI')) as description,
-                    RTRIM(e.LocCode) as loc_code
-                FROM HR_GANGLN gl
-                INNER JOIN HR_EMPLOYEE e ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-                LEFT JOIN HR_GANG h ON RTRIM(gl.GangCode) = RTRIM(h.GangCode)
-                WHERE RTRIM(e.LocCode) IN (${placeholders})
+            query = `
+                SELECT
+                    GangCode as gang_code,
+                    Description as description,
+                    LocCode as loc_code
+                FROM HR_GANG
+                WHERE RTRIM(LocCode) IN (${placeholders})
                   ${excludeClause}
-                ORDER BY loc_code, gang_code
+                  AND Description NOT LIKE '%WORKSHOP%'
+                  AND Description NOT LIKE '%INFRA%'
+                ORDER BY GangCode
             `;
-            const gangRows = await db.query<any>(gangQuery, queryParams);
-            console.log(`[DivisionConfigService] HR_GANGLN returned ${gangRows.length} gangs for ${division.code}.`);
-
-            return gangRows.map(row => ({
-                gang_code: row.gang_code?.trim() || '',
-                description: row.description?.trim() || '',
-                loc_code: row.loc_code?.trim() || ''
-            }));
+            params = queryParams;
         }
 
         console.log(`[DivisionConfigService] Executing query for ${divisionCode} with aliases: ${JSON.stringify(params)}`);

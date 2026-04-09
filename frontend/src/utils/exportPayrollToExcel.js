@@ -232,7 +232,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
 
     console.log(`[Export] Added ${missingFields.length} missing fields to export:`, missingFields);
 
-    const workbook = new ExcelJS.Workbook();
+    let workbook = new ExcelJS.Workbook();
     workbook.creator = 'PT Rebinmas Jaya - Payroll System';
     workbook.created = new Date();
 

@@ -190,7 +190,7 @@ const HighEarnerReportPage = () => {
                         >
                             <option value="ALL">Semua Divisi</option>
                             {divisions.map(div => (
-                                <option key={div} value={div}>{div}</option>
+                                <option key={div.code} value={div.code}>{div.code}</option>
                             ))}
                         </select>
 

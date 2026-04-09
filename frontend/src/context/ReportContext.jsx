@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
+﻿import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
 import { useCurrentPeriod } from '../hooks/useCurrentPeriod';
 import { fetchGangs, fetchDivisions } from '../services/gangService';
 import { getLockedGangs } from '../services/lockedDivisionService';

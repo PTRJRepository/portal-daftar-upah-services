@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+﻿import { Database } from "bun:sqlite";
 import { Config } from "../config";
 import { User, UserCreate, UserRole, UserWithHash } from "../types/user";
 import * as bcrypt from "bcryptjs";
