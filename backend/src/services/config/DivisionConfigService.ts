@@ -437,10 +437,12 @@ export class DivisionConfigService {
             query = `
                 SELECT DISTINCT
                     RTRIM(gl.GangCode) as gang_code,
-                    '' as description,
-                    RTRIM(gl.LocCode) as loc_code
+                    RTRIM(ISNULL(h.Description, 'GANG TANPA DESKRIPSI')) as description,
+                    RTRIM(e.LocCode) as loc_code
                 FROM HR_GANGLN gl
-                ORDER BY gl.GangCode
+                INNER JOIN HR_EMPLOYEE e ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                LEFT JOIN HR_GANG h ON RTRIM(gl.GangCode) = RTRIM(h.GangCode)
+                ORDER BY loc_code, gang_code
             `;
             params = [];
         } else {
@@ -474,7 +476,7 @@ export class DivisionConfigService {
 
             if (gangsToExclude.length > 0) {
                 const excludePlaceholders = gangsToExclude.map(() => '?').join(',');
-                excludeClause = `AND GangCode NOT IN (${excludePlaceholders})`;
+                excludeClause = `AND gl.GangCode NOT IN (${excludePlaceholders})`;
                 queryParams.push(...gangsToExclude);
             }
 
@@ -482,16 +484,19 @@ export class DivisionConfigService {
             console.log(`[DivisionConfigService]   Aliases: ${JSON.stringify(aliases)}`);
             console.log(`[DivisionConfigService]   Excluded gangs: ${JSON.stringify(gangsToExclude)}`);
 
-            // Simple query: just get distinct gangs from HR_GANGLN by LocCode
+            // Query: get distinct gangs from HR_GANGLN JOIN HR_EMPLOYEE for LocCode
+            // NOTE: LocCode is in HR_EMPLOYEE, NOT in HR_GANGLN
             const gangQuery = `
                 SELECT DISTINCT
                     RTRIM(gl.GangCode) as gang_code,
-                    '' as description,
-                    RTRIM(gl.LocCode) as loc_code
+                    RTRIM(ISNULL(h.Description, 'GANG TANPA DESKRIPSI')) as description,
+                    RTRIM(e.LocCode) as loc_code
                 FROM HR_GANGLN gl
-                WHERE RTRIM(gl.LocCode) IN (${placeholders})
-                  ${excludeClause.replace(/GangCode/g, 'gl.GangCode')}
-                ORDER BY gl.GangCode
+                INNER JOIN HR_EMPLOYEE e ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                LEFT JOIN HR_GANG h ON RTRIM(gl.GangCode) = RTRIM(h.GangCode)
+                WHERE RTRIM(e.LocCode) IN (${placeholders})
+                  ${excludeClause}
+                ORDER BY loc_code, gang_code
             `;
             const gangRows = await db.query<any>(gangQuery, queryParams);
             console.log(`[DivisionConfigService] HR_GANGLN returned ${gangRows.length} gangs for ${division.code}.`);

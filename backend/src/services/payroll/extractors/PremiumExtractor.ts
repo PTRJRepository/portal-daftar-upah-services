@@ -219,14 +219,27 @@ export class PremiumExtractor {
 
         const rows = await db.query<{ emp_code: string; total_amount: number }>(`
             SELECT
-                RTRIM(EmpCode) as emp_code,
-                SUM(Amount) as total_amount
-            FROM PR_LOOSEFRUIT
-            WHERE RTRIM(EmpCode) IN (${empList})
-              AND TrxDate >= ?
-              AND TrxDate < ?
-            GROUP BY RTRIM(EmpCode)
-        `, [startDate, endDate]);
+                RTRIM(l.EmpCode) as emp_code,
+                SUM(l.Amount) as total_amount
+            FROM PR_LOOSEFRUITLN l
+            INNER JOIN PR_LOOSEFRUIT m ON l.MasterID = m.ID
+            WHERE l.EmpCode IN (${empList})
+              AND m.DocDate >= ?
+              AND m.DocDate < ?
+            GROUP BY l.EmpCode
+
+            UNION ALL
+
+            SELECT
+                RTRIM(l.EmpCode) as emp_code,
+                SUM(l.Amount) as total_amount
+            FROM PR_LOOSEFRUITLN_ARC l
+            INNER JOIN PR_LOOSEFRUIT_ARC m ON l.MasterID = m.ID
+            WHERE l.EmpCode IN (${empList})
+              AND m.DocDate >= ?
+              AND m.DocDate < ?
+            GROUP BY l.EmpCode
+        `, [startDate, endDate, startDate, endDate]);
 
         const result: Record<string, number> = {};
         for (const r of rows) {
