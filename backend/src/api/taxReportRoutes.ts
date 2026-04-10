@@ -151,7 +151,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            const filename = `PPH21_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
+            const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
+            const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
+            const filename = `PPH21_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
 
@@ -525,7 +527,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            const filename = `PPH21_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
+            const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
+            const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
+            const filename = `PPH21_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
 
@@ -988,7 +992,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     return { error: "Failed to generate Excel - empty buffer" };
                 }
 
-                const filename = `PPH21_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
+                const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
+                const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
+                const filename = `PPH21_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
                 console.log(`[TaxReport Excel FAST] Returning file: ${filename} (${finalBuffer.length} bytes)`);
 
                 // Set headers and return a native Response object
@@ -1197,7 +1203,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             const totalMs = (performance.now() - t0).toFixed(0);
-            const filename = `PPH21_DOM_${division || 'ALL'}_${gangLabel}${gangDescForFilename}_${m}_${y}.xlsx`;
+            const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
+            const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
+            const filename = `PPH21_DOM_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${m}_${y}.xlsx`;
             console.log(`[TaxReport DOM FAST] ✅ Done in ${totalMs}ms — ${filename} (${excelBuffer.length} bytes)`);
 
             // Set headers and return a native Response object

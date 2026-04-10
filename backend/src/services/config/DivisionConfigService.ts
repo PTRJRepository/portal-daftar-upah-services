@@ -190,10 +190,10 @@ export class DivisionConfigService {
             type: 'virtual',
             aliases: ['INF', 'inf', 'INFRA', 'infra', 'INFRASTRUKTUR', 'Infrastruktur'],
             sourceDivision: 'PG1A',
-            gangPattern: /^IN(?:F|T)$/i,  // Matches INF and INT only
+            gangPattern: /^IN.*/i,  // Matches anything starting with IN
             descriptionPattern: /INFRA(STRUKTUR|STUKTUR)?/i,
             excludeFromSource: true,
-            description: 'Infrastruktur - gang INF dan INT dari Plasma 1A'
+            description: 'Infrastruktur - semua gang berawalan IN dari Plasma 1A'
         });
 
         this.registerDivision({
@@ -424,16 +424,20 @@ export class DivisionConfigService {
             return [];
         }
 
-        const aliases = this.getAliases(division.code);
-        const placeholders = aliases.map(() => '?').join(',');
-
-        // [SIMPLIFIED DISCOVERY] Align with user's validated SQL logic
-        // Only discover gangs that are explicitly assigned to this division's LocCode
-        // OR match the division's prefix OR special cases (BHL for PG1A)
-
         const prefix = division.gangPrefix ? `${division.gangPrefix}%` : null;
 
-        // 1. Master Discovery (Live & Historical)
+        // If it's a virtual division with a source, we search in the source's locations
+        let aliases = division.aliases;
+        if (division.type === 'virtual' && division.sourceDivision) {
+            aliases = this.getAliases(division.sourceDivision);
+        } else if (division.type === 'virtual' && !division.sourceDivision) {
+             // For global virtual (Workshop, Mill), search ALL loc_codes that aren't themselves virtual
+             aliases = Array.from(this.divisions.values())
+                .filter(d => d.type === 'real')
+                .flatMap(d => d.aliases);
+        }
+        
+        const placeholders = aliases.map(() => '?').join(',');
         const combinedMasterQuery = `
             SELECT DISTINCT 
                 RTRIM(GangCode) as gang_code,
@@ -487,12 +491,12 @@ export class DivisionConfigService {
 
         try {
             // Priority 1: Master Tables (Matches user's SQL logic)
-            const masterRows = await db.query<any>(combinedMasterQuery, [...aliases, division.code]);
+            const masterRows = await db.query<any>(combinedMasterQuery, [...aliases, ...aliases, division.code]);
             addResults(masterRows);
 
             // Priority 2: Membership (Only if needed to catch outliers, but strictly filtered)
             if (results.length < 5) { // Heuristic: if master is suspiciously thin, try membership
-                const membershipRows = await db.query<any>(membershipQuery, aliases);
+                const membershipRows = await db.query<any>(membershipQuery, [...aliases, ...aliases]);
                 addResults(membershipRows);
             }
 
@@ -583,15 +587,19 @@ export class DivisionConfigService {
         const virtualDivs = Array.from(this.divisions.values()).filter(d => d.type === 'virtual');
         
         // Combine all explicit gang patterns if they are simple enough for SQL LIKE
-        const explicitGangs = ['INF', 'INT', 'AMC', 'HMC', 'B2N', 'AMC%', 'HMC%', 'B2N%', 'M%'];
-        const gangExcludeStr = explicitGangs.map(g => `'${g.replace(/%/g, '')}'`).join(',');
-        const gangLikeStr = explicitGangs.filter(g => g.includes('%')).map(g => `gl.GangCode NOT LIKE '${g.toUpperCase()}'`).join(' AND ');
+        const explicitGangs = ['IN%', 'INT%', 'AMC%', 'HMC%', 'B2N%', 'M%'];
+        const gangExcludeStr = ["'INF'", "'INT'", "'AMC'", "'HMC'", "'B2N'"].join(',');
+        const gangLikeStr = explicitGangs.map(g => `gl.GangCode LIKE '${g.toUpperCase()}'`).join(' OR ');
+        
+        // Final logic: Exclude if it's in the list OR matches the LIKE patterns
+        const excludeLogic = `(gl.GangCode IN (${gangExcludeStr}) OR ${gangLikeStr})`;
 
         // [USER SPECIFIC] Exclude based on descriptions strictly requested
         const descExcludeKeywords = ['INFRA', 'WORKSHOP', 'NURSERY', 'MEC', 'MECHANIC', 'PKS', 'MILL', 'TRAKSI'];
-        const descLikeStr = descExcludeKeywords.map(kw => `g.Description NOT LIKE '%${kw}%'`).join(' AND ');
+        const descLikeStr = descExcludeKeywords.map(kw => `COALESCE(g.Description, '') LIKE '%${kw}%'`).join(' OR ');
 
-        return ` AND (gl.GangCode NOT IN (${gangExcludeStr}) AND ${gangLikeStr} AND ${descLikeStr})`;
+        // Final result: exclude anything that matches the explicit virtual codes OR the description patterns
+        return ` AND NOT (${excludeLogic} OR ${descLikeStr === '' ? '1=0' : descLikeStr})`;
     }
 
     /**

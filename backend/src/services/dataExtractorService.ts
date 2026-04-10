@@ -44,6 +44,8 @@ interface EmployeeRow {
     jabatan?: string;
     pot_premi_pph?: number;
     res_address?: string;
+    // Allow dynamic properties added during progressive extraction
+    [key: string]: any;
 }
 
 interface CutiData {
@@ -389,12 +391,14 @@ export class DataExtractorService {
             // that were deleted from the live table but still exist in the historical table.
             
             const isVirtual = gangService.isVirtualDivision(divisionCode);
-            console.log(`--- REFLI VERSION 1.0.7 ---`);
+            console.log(`--- REFLI VERSION 1.1.0 ---`);
             console.log(`[DataExtractor] Division: ${divisionCode}, isVirtual: ${isVirtual}, allGangs: ${allGangs.length}`);
             
             if (isVirtual) {
-                // Virtual divisions are strictly defined by their gang list
-                if (allGangs.length > 0) {
+                if (divisionCode.toUpperCase() === 'INF') {
+                    // [USER REQUEST] Hardcoded isolation for Infrastruktur: Anything starting with IN
+                    gangCondition = `(UPPER(RTRIM(gl.GangCode)) IN ('INF', 'INT') OR UPPER(RTRIM(g.GangCode)) IN ('INF', 'INT'))`;
+                } else if (allGangs.length > 0) {
                     const gangCodes = allGangs.map((gang: { gang_code: string }) => `'${gang.gang_code.trim().toUpperCase()}'`).join(',');
                     const gangDescs = allGangs.filter(g => g.description).map((gang: { description: string }) => `'${gang.description.trim().toUpperCase()}'`).join(',');
                     
@@ -1645,7 +1649,8 @@ export class DataExtractorService {
             if (gangCodeInput && gangCodeInput !== 'ALL') {
                 historicalCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
             } else {
-                historicalCondition = gangCondition.replace(/g\.GangCode/ig, 'g.GangID');
+                // Historical tables (PR_GANG) use GangID, and PR_GANGLN doesn't have GangCode column
+                historicalCondition = gangCondition.replace(/(gl|g)\.GangCode/ig, 'g.GangID');
             }
 
             // PR_GANGLN_ARC uses EmpCode column and MasterID to join with PR_GANG
@@ -3217,11 +3222,13 @@ export class DataExtractorService {
             gangCondition = `(UPPER(RTRIM(gl.GangCode)) = '${gangCodeInput}' OR UPPER(RTRIM(g.GangCode)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
         } else if (divisionCode) {
             const isVirtual = gangService.isVirtualDivision(divisionCode);
-            console.log(`--- REFLI VERSION 1.0.7 (Progressive) ---`);
+            console.log(`--- REFLI VERSION 1.1.0 (Progressive) ---`);
             console.log(`[DataExtractor.Progressive] Division: ${divisionCode}, isVirtual: ${isVirtual}, allGangs: ${allGangs.length}`);
-
             if (isVirtual) {
-                if (allGangs.length > 0) {
+                if (divisionCode.toUpperCase() === 'INF') {
+                    // [USER REQUEST] Hardcoded isolation for Infrastruktur: Strictly INF and INT
+                    gangCondition = `(UPPER(RTRIM(gl.GangCode)) IN ('INF', 'INT') OR UPPER(RTRIM(g.GangCode)) IN ('INF', 'INT'))`;
+                } else if (allGangs.length > 0) {
                     const gangCodes = allGangs.map((gang: { gang_code: string }) => `'${gang.gang_code.trim().toUpperCase()}'`).join(',');
                     const gangDescs = allGangs.filter(g => g.description).map((gang: { description: string }) => `'${gang.description.trim().toUpperCase()}'`).join(',');
                     

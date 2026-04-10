@@ -211,7 +211,9 @@ export async function downloadMonthlyTaxReportExcel(token, year, month, division
             responseType: 'blob',
             timeout: 300000 // 5 minutes - ensure slow exports don't timeout
         });
-        await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
+        const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
+        const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : (gang || gangPrefix || 'ALL');
+        await processBlobResponse(response, `PPH21_${division || 'ALL'}_${displayGangLabel}_${month}_${year}.xlsx`);
     } catch (error) {
         await handleBlobError(error, 'Gagal mengunduh Excel Pajak Bulanan');
     }
@@ -239,7 +241,9 @@ export async function downloadMonthlyTaxReportExcelFromDOM(token, year, month, d
             responseType: 'blob',
             timeout: 300000 // 5 minutes
         });
-        await processBlobResponse(response, `PPH21_DOM_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
+        const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
+        const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : (gang || gangPrefix || 'ALL');
+        await processBlobResponse(response, `PPH21_DOM_${division || 'ALL'}_${displayGangLabel}_${month}_${year}.xlsx`);
     } catch (error) {
         await handleBlobError(error, 'Gagal mengunduh Excel Pajak dari DOM');
     }
@@ -335,7 +339,9 @@ export async function downloadTaxReportExcel(token, year, month, division, gang,
             }
         }
 
-        await processBlobResponse(response, `PPH21_${division || 'ALL'}_${gang || gangPrefix || 'ALL'}_${month}_${year}.xlsx`);
+        const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
+        const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : (gang || gangPrefix || 'ALL');
+        await processBlobResponse(response, `PPH21_${division || 'ALL'}_${displayGangLabel}_${month}_${year}.xlsx`);
     } catch (error) {
         console.error('[downloadTaxReportExcel] Error caught:', error);
         await handleBlobError(error, 'Gagal mengunduh Excel Pajak Bulanan');
