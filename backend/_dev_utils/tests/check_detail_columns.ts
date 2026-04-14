@@ -14,6 +14,7 @@ async function check() {
         SELECT TOP 1 * FROM dbo.payroll_history_detail WHERE master_id = 4184
     `);
     
+    
     if (rows.length > 0) {
         result.columns = Object.keys(rows[0]);
         result.sample = {};
