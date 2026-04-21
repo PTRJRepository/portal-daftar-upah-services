@@ -1,1 +1,0 @@
-﻿src/api/summary.ts(13,14): error TS4023: Exported variable 'summaryRoutes' has or is using name 'Gang' from external module "D:/Gawean Rebinmas/Monitoring Database/Plantware_Auto_Report/Daftar_Upah_baru/payroll_daftar_upah/refactor_production/backend/src/services/divisionDefinition" but cannot be named.
