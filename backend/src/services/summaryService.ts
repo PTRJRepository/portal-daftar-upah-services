@@ -1191,6 +1191,7 @@ export class SummaryService {
             acc[header] = premiOtRows.reduce((sum, row) => sum + (row.premi_breakdown[header] || 0), 0);
             return acc;
         }, {} as Record<string, number>);
+        const breakdownGrandTotal = allPremiHeaders.reduce((sum, header) => sum + (breakdownTotals[header] || 0), 0);
 
         return {
             success: true,
@@ -1200,6 +1201,7 @@ export class SummaryService {
             premi_ot_table: premiOtRows,
             all_premi_headers: allPremiHeaders,
             breakdown_totals: breakdownTotals,
+            breakdown_grand_total: breakdownGrandTotal,
             totals: {
                 prev_premi: prevPremi,
                 curr_premi: currPremi,

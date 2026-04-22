@@ -18,6 +18,9 @@ export interface PayrollTotals {
     nik: string;
     nama: string;
 
+    // Employee count (only for grand totals)
+    employee_count: number;
+
     // Attendance & Identity
     upah_dasar: string;  // Empty string in frontend
     hari_kerja: number;
@@ -191,6 +194,9 @@ export function calculatePayrollTotals(employees: any[], label: string): Payroll
         nik: '',
         nama: label,
 
+        // Employee count
+        employee_count: activeEmployees.length,
+
         // Attendance & Identity - EXACT same fields as frontend
         upah_dasar: '',  // Frontend sets to empty string
         hari_kerja: agg('hari_kerja'),
@@ -338,6 +344,7 @@ function createEmptyTotals(label: string): PayrollTotals {
         jenis_kelamin: '',
         nik: '',
         nama: label,
+        employee_count: 0,
         upah_dasar: '',
         hari_kerja: 0,
         upah_pokok: 0,
@@ -416,4 +423,106 @@ export function calculateGangTotalsMap(gangs: Array<{ gang_code: string; employe
 export function calculateGrandTotal(gangs: Array<{ gang_code: string; employees: any[] }>): PayrollTotals {
     const allEmployees = gangs.flatMap(gang => gang.employees);
     return calculatePayrollTotals(allEmployees, 'GRAND TOTAL');
+}
+
+export interface TaxMatrixTotals {
+    employee_count: number;
+    gaji_pokok_bulanan: number;
+    gaji_pokok_ideal: number;
+    gaji_pokok_dibayarkan: number;
+    koreksi_hk: number;
+    astek_084: number;
+    bpjs_kesehatan_majikan_4_pct: number;
+    beras_jumlah: number;
+    jabatan_jumlah: number;
+    masa_kerja_jumlah: number;
+    lembur_jumlah: number;
+    total_premi: number;
+    pot_koreksi: number;
+    taxable_pendapatan_thr: number;
+    taxable_pendapatan_bonus: number;
+    taxable_pendapatan_custom: number;
+    taxable_pendapatan_lainnya: number;
+    penghasilan_bruto: number;
+    pph21_ter: number;
+    pot_astek_pekerja: number;
+    pot_bpjs_kesehatan_pekerja: number;
+    pot_bpjs_pensiun_pekerja: number;
+    pot_astek_jumlah: number;
+    pot_spsi: number;
+    pot_pph21: number;
+}
+
+const TAX_MATRIX_NUMERIC_FIELDS: Array<keyof Omit<TaxMatrixTotals, 'employee_count'>> = [
+    'gaji_pokok_bulanan',
+    'gaji_pokok_ideal',
+    'gaji_pokok_dibayarkan',
+    'koreksi_hk',
+    'astek_084',
+    'bpjs_kesehatan_majikan_4_pct',
+    'beras_jumlah',
+    'jabatan_jumlah',
+    'masa_kerja_jumlah',
+    'lembur_jumlah',
+    'total_premi',
+    'pot_koreksi',
+    'taxable_pendapatan_thr',
+    'taxable_pendapatan_bonus',
+    'taxable_pendapatan_custom',
+    'taxable_pendapatan_lainnya',
+    'penghasilan_bruto',
+    'pph21_ter',
+    'pot_astek_pekerja',
+    'pot_bpjs_kesehatan_pekerja',
+    'pot_bpjs_pensiun_pekerja',
+    'pot_astek_jumlah',
+    'pot_spsi',
+    'pot_pph21'
+];
+
+function emptyTaxMatrixTotals(): TaxMatrixTotals {
+    return {
+        employee_count: 0,
+        gaji_pokok_bulanan: 0,
+        gaji_pokok_ideal: 0,
+        gaji_pokok_dibayarkan: 0,
+        koreksi_hk: 0,
+        astek_084: 0,
+        bpjs_kesehatan_majikan_4_pct: 0,
+        beras_jumlah: 0,
+        jabatan_jumlah: 0,
+        masa_kerja_jumlah: 0,
+        lembur_jumlah: 0,
+        total_premi: 0,
+        pot_koreksi: 0,
+        taxable_pendapatan_thr: 0,
+        taxable_pendapatan_bonus: 0,
+        taxable_pendapatan_custom: 0,
+        taxable_pendapatan_lainnya: 0,
+        penghasilan_bruto: 0,
+        pph21_ter: 0,
+        pot_astek_pekerja: 0,
+        pot_bpjs_kesehatan_pekerja: 0,
+        pot_bpjs_pensiun_pekerja: 0,
+        pot_astek_jumlah: 0,
+        pot_spsi: 0,
+        pot_pph21: 0
+    };
+}
+
+export function calculateTaxMatrixTotals(employees: any[]): TaxMatrixTotals {
+    if (!employees || employees.length === 0) {
+        return emptyTaxMatrixTotals();
+    }
+
+    const totals = emptyTaxMatrixTotals();
+    totals.employee_count = employees.length;
+
+    for (const field of TAX_MATRIX_NUMERIC_FIELDS) {
+        totals[field] = Math.round(
+            employees.reduce((sum, emp) => sum + (Number(emp?.[field]) || 0), 0)
+        );
+    }
+
+    return totals;
 }

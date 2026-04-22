@@ -336,6 +336,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                         data={filteredMainTable}
                         headers={reportData.all_premi_headers}
                         breakdownTotals={reportData.breakdown_totals}
+                        breakdownGrandTotal={reportData.breakdown_grand_total}
                         formatCurrency={formatCurrency}
                     />
 
@@ -475,7 +476,7 @@ const SummaryPremiOTTable = ({ data, totals, prevMonthLabel, currMonthLabel, for
     </div>
 );
 
-const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, formatCurrency }) => (
+const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, breakdownGrandTotal, formatCurrency }) => (
     <div className="analysis-section" style={{ marginTop: '3rem', pageBreakBefore: 'always' }}>
         <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderLeft: '4px solid #1e40af', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <span>Uraian Premi Seluruh Variasi (Current Month)</span>
@@ -520,7 +521,7 @@ const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, formatCurrenc
                             </td>
                         ))}
                         <td className="text-right" style={{ background: '#1e293b', color: '#fff' }}>
-                            {formatCurrency(headers.reduce((sum, h) => sum + breakdownTotals[h], 0))}
+                            {formatCurrency(breakdownGrandTotal || 0)}
                         </td>
                     </tr>
                 </tfoot>

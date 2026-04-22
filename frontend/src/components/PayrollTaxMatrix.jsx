@@ -5,7 +5,7 @@
  * Follows the same pattern as GangOvertimeMatrix / GangEmployeeInfo
  * Uses the payroll data API to display tax-focused columns
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getLockedRawTree } from '../services/lockedDivisionService'
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -108,8 +108,19 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
         setLoading(true)
         setError(null)
         try {
+            const selectedGangCode =
+                Array.isArray(gangCodes) && gangCodes.length === 1 ? gangCodes[0] : null
+
             // Fetch raw tree data which contains all employee payroll rows
-            const result = await getLockedRawTree(token, division, month, year, gangCodes, useHistoryDb)
+            const result = await getLockedRawTree(
+                token,
+                division,
+                month,
+                year,
+                useHistoryDb,
+                null,
+                selectedGangCode
+            )
             setData(result)
         } catch (err) {
             setError(err.message || 'Gagal memuat data pajak')
@@ -177,25 +188,36 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
         return <span style={{ opacity: 1, marginLeft: 2 }}>{sortOrder === 'asc' ? '↑' : '↓'}</span>
     }
 
-    // Summary stats
+    // Summary stats are backend-calculated to keep one source of truth
     const summaryStats = useMemo(() => {
-        const emps = filteredEmployees
-        const totalPenghasilanBruto = emps.reduce((sum, e) => sum + (Number(e.penghasilan_bruto) || 0), 0)
-        const totalPph21 = emps.reduce((sum, e) => sum + (Number(e.pph21_ter) || 0), 0)
-        const totalAstek084 = emps.reduce((sum, e) => sum + (Number(e.astek_084) || 0), 0)
-        const totalBpjsKesMaj = emps.reduce((sum, e) => sum + (Number(e.bpjs_kesehatan_majikan_4_pct) || 0), 0)
-        const totalAstekPekerja = emps.reduce((sum, e) => sum + (Number(e.pot_astek_pekerja) || 0), 0)
-        const totalBpjsKesPekerja = emps.reduce((sum, e) => sum + (Number(e.pot_bpjs_kesehatan_pekerja) || 0), 0)
+        const totals = data?.tax_matrix_totals || {}
         return {
-            count: emps.length,
-            totalPenghasilanBruto,
-            totalPph21,
-            totalAstek084,
-            totalBpjsKesMaj,
-            totalAstekPekerja,
-            totalBpjsKesPekerja,
+            count: Number(totals.employee_count) || 0,
+            gaji_pokok_bulanan: Number(totals.gaji_pokok_bulanan) || 0,
+            gaji_pokok_ideal: Number(totals.gaji_pokok_ideal) || 0,
+            gaji_pokok_dibayarkan: Number(totals.gaji_pokok_dibayarkan) || 0,
+            koreksi_hk: Number(totals.koreksi_hk) || 0,
+            astek_084: Number(totals.astek_084) || 0,
+            bpjs_kesehatan_majikan_4_pct: Number(totals.bpjs_kesehatan_majikan_4_pct) || 0,
+            beras_jumlah: Number(totals.beras_jumlah) || 0,
+            jabatan_jumlah: Number(totals.jabatan_jumlah) || 0,
+            masa_kerja_jumlah: Number(totals.masa_kerja_jumlah) || 0,
+            lembur_jumlah: Number(totals.lembur_jumlah) || 0,
+            total_premi: Number(totals.total_premi) || 0,
+            pot_koreksi: Number(totals.pot_koreksi) || 0,
+            taxable_pendapatan_thr: Number(totals.taxable_pendapatan_thr) || 0,
+            taxable_pendapatan_bonus: Number(totals.taxable_pendapatan_bonus) || 0,
+            taxable_pendapatan_lainnya: Number(totals.taxable_pendapatan_lainnya) || 0,
+            penghasilan_bruto: Number(totals.penghasilan_bruto) || 0,
+            pph21_ter: Number(totals.pph21_ter) || 0,
+            pot_astek_pekerja: Number(totals.pot_astek_pekerja) || 0,
+            pot_bpjs_kesehatan_pekerja: Number(totals.pot_bpjs_kesehatan_pekerja) || 0,
+            pot_bpjs_pensiun_pekerja: Number(totals.pot_bpjs_pensiun_pekerja) || 0,
+            pot_astek_jumlah: Number(totals.pot_astek_jumlah) || 0,
+            pot_spsi: Number(totals.pot_spsi) || 0,
+            pot_pph21: Number(totals.pot_pph21) || 0,
         }
-    }, [filteredEmployees])
+    }, [data])
 
     if (loading) {
         return (
@@ -257,11 +279,11 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
                     </div>
                     <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', padding: '4px 10px', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.65rem', color: '#92400e', fontWeight: 600 }}>PENGHASILAN BRUTO</div>
-                        <div style={{ fontSize: '0.9rem', color: '#d97706', fontWeight: 700 }}>{formatRupiah(summaryStats.totalPenghasilanBruto)}</div>
+                        <div style={{ fontSize: '0.9rem', color: '#d97706', fontWeight: 700 }}>{formatRupiah(summaryStats.penghasilan_bruto)}</div>
                     </div>
                     <div style={{ background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '8px', padding: '4px 10px', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.65rem', color: '#991b1b', fontWeight: 600 }}>PPH21 TER</div>
-                        <div style={{ fontSize: '0.9rem', color: '#dc2626', fontWeight: 700 }}>{formatRupiah(summaryStats.totalPph21)}</div>
+                        <div style={{ fontSize: '0.9rem', color: '#dc2626', fontWeight: 700 }}>{formatRupiah(summaryStats.pph21_ter)}</div>
                     </div>
                 </div>
 
@@ -314,6 +336,9 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
                 </span>
                 <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
                     <span style={{ fontWeight: 600 }}>Klik header</span> untuk sorting
+                </span>
+                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                    Footer total mengikuti nilai API backend (single source of truth)
                 </span>
             </div>
 
@@ -474,58 +499,58 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
                     <tfoot>
                         <tr style={{ background: '#1e293b', color: 'white', fontWeight: 700 }}>
                             <td colSpan={5} style={{ textAlign: 'center', padding: '6px' }}>
-                                TOTAL ({filteredEmployees.length} karyawan)
+                                TOTAL API ({summaryStats.count} karyawan)
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.gaji_pokok_bulanan) || 0), 0))}
+                                {formatNumber(summaryStats.gaji_pokok_bulanan)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.gaji_pokok_ideal) || 0), 0))}
+                                {formatNumber(summaryStats.gaji_pokok_ideal)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.gaji_pokok_dibayarkan) || 0), 0))}
+                                {formatNumber(summaryStats.gaji_pokok_dibayarkan)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#fbbf24' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.koreksi_hk) || 0), 0))}
+                                {formatNumber(summaryStats.koreksi_hk)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#c4b5fd' }}>
-                                {formatNumber(summaryStats.totalAstek084)}
+                                {formatNumber(summaryStats.astek_084)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#c4b5fd' }}>
-                                {formatNumber(summaryStats.totalBpjsKesMaj)}
+                                {formatNumber(summaryStats.bpjs_kesehatan_majikan_4_pct)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.beras_jumlah) || 0), 0))}
+                                {formatNumber(summaryStats.beras_jumlah)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.jabatan_jumlah) || 0), 0))}
+                                {formatNumber(summaryStats.jabatan_jumlah)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.masa_kerja_jumlah) || 0), 0))}
+                                {formatNumber(summaryStats.masa_kerja_jumlah)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#fbbf24' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.lembur_jumlah) || 0), 0))}
+                                {formatNumber(summaryStats.lembur_jumlah)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#6ee7b7' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.total_premi) || 0), 0))}
+                                {formatNumber(summaryStats.total_premi)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#fca5a5' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.pot_koreksi) || 0), 0))}
+                                {formatNumber(summaryStats.pot_koreksi)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.taxable_pendapatan_thr) || 0), 0))}
+                                {formatNumber(summaryStats.taxable_pendapatan_thr)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.taxable_pendapatan_bonus) || 0), 0))}
+                                {formatNumber(summaryStats.taxable_pendapatan_bonus)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#c4b5fd' }}>
-                                {formatNumber(filteredEmployees.reduce((s, e) => s + (Number(e.taxable_pendapatan_lainnya) || 0), 0))}
+                                {formatNumber(summaryStats.taxable_pendapatan_lainnya)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#fca5a5', fontSize: '12px', borderLeft: '2px solid #fca5a5' }}>
-                                {formatRupiah(summaryStats.totalPenghasilanBruto)}
+                                {formatRupiah(summaryStats.penghasilan_bruto)}
                             </td>
                             <td colSpan={2} style={{ textAlign: 'right', padding: '4px 6px', color: '#fca5a5', fontSize: '12px' }}>
-                                {formatRupiah(summaryStats.totalPph21)}
+                                {formatRupiah(summaryStats.pph21_ter)}
                             </td>
                         </tr>
                     </tfoot>
@@ -568,12 +593,12 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
                                 { label: 'SPSI', key: 'pot_spsi' },
                                 { label: 'PPH21 (dari ADTRANS)', key: 'pot_pph21' },
                             ].map(({ label, key }) => {
-                                const total = filteredEmployees.reduce((s, e) => s + (Number(e[key]) || 0), 0)
-                                const first = filteredEmployees[0] ? (Number(filteredEmployees[0][key]) || 0) : 0
+                                const total = Number(summaryStats[key]) || 0
+                                const perEmployee = summaryStats.count > 0 ? total / summaryStats.count : 0
                                 return (
                                     <tr key={key}>
                                         <td style={{ padding: '3px 6px', border: '1px solid #e2e8f0' }}>{label}</td>
-                                        <td style={{ padding: '3px 6px', border: '1px solid #e2e8f0', textAlign: 'right' }}>{formatNumber(first)}</td>
+                                        <td style={{ padding: '3px 6px', border: '1px solid #e2e8f0', textAlign: 'right' }}>{formatNumber(perEmployee)}</td>
                                         <td style={{ padding: '3px 6px', border: '1px solid #e2e8f0', textAlign: 'right', fontWeight: 700 }}>{formatRupiah(total)}</td>
                                     </tr>
                                 )

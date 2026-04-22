@@ -9,6 +9,7 @@ import { currentPeriodService } from "../services/currentPeriodService";
 import { taxReportService } from "../services/taxReportService";
 import { divisionConfigService } from "../services/config/DivisionConfigService";
 import { User, UserRole } from "../types/user";
+import { parseBooleanQueryParam } from "../utils/queryParsers";
 
 
 const authService = AuthService.getInstance();
@@ -266,7 +267,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const divisionCode = query.division_code;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
-            const useHistoryDb = query.use_history === '1';
+            const useHistoryDb = parseBooleanQueryParam(query.use_history) ?? false;
             const gangPrefix = query.gang_prefix;
 
             if (!divisionCode || !month || !year) {
@@ -288,7 +289,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             console.log(`[PayrollRoutes] /report/division-raw-tree RESULT | data_rows=${data_rows.length} gangs=${uniqueGangs.size} | gangPrefix=${gangPrefix}`);
 
             // [NEW] Use centralized payrollTotalsCalculator for consistent totals
-            const { calculatePayrollTotals } = await import("../services/payrollTotalsCalculator");
+            const { calculatePayrollTotals, calculateTaxMatrixTotals } = await import("../services/payrollTotalsCalculator");
 
             // Group by gang and calculate totals
             const gangsMap: Record<string, any[]> = {};
@@ -312,7 +313,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 .map(([gang_code, employees]) => ({
                     gang_code,
                     employees: employees.map(slimEmployee),  // Strip heavy arrays before sending
-                    gang_totals: calculatePayrollTotals(employees, `TOTAL ${gang_code}`)  // Pre-calculated totals from FULL data
+                    gang_totals: calculatePayrollTotals(employees, `TOTAL ${gang_code}`),  // Pre-calculated totals from FULL data
+                    tax_matrix_totals: calculateTaxMatrixTotals(employees)
                 }))
                 .sort((a, b) => a.gang_code.localeCompare(b.gang_code));
 
@@ -324,6 +326,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 year,
                 gangs: gangsList,
                 grand_total: grandTotal,  // Division-level totals
+                tax_matrix_totals: calculateTaxMatrixTotals(result.data_rows),
                 dynamic_premi_headers: result.dynamic_premi_headers || [],
                 dynamic_potongan_headers: result.dynamic_potongan_headers || [],
                 premi_title_map: result.premi_title_map || {},
@@ -356,7 +359,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const divisionCode = query.div;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
-            const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
+            const useHistoryDb = parseBooleanQueryParam(query.use_history);
 
             if (!divisionCode || !month || !year) {
                 set.status = 400;
@@ -444,7 +447,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             console.log(`[PayrollRoutes] /locked/report/raw-tree RESULT | gangs=${gangCount} employees=${empCount} | gangCode=${gangCode} | gangPrefix=${gangPrefix}`);
 
             // [NEW] Use centralized payrollTotalsCalculator for consistent totals
-            const { calculatePayrollTotals } = await import("../services/payrollTotalsCalculator");
+            const { calculatePayrollTotals, calculateTaxMatrixTotals } = await import("../services/payrollTotalsCalculator");
 
             // Group by gang and calculate totals
             const gangsMap: Record<string, any[]> = {};
@@ -464,7 +467,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 .map(([gang_code, employees]) => ({
                     gang_code,
                     employees: employees.map(slimEmployee),  // Strip heavy arrays before sending
-                    gang_totals: calculatePayrollTotals(employees, `TOTAL ${gang_code}`)  // Pre-calculated totals from FULL data
+                    gang_totals: calculatePayrollTotals(employees, `TOTAL ${gang_code}`),  // Pre-calculated totals from FULL data
+                    tax_matrix_totals: calculateTaxMatrixTotals(employees)
                 }))
                 .sort((a, b) => a.gang_code.localeCompare(b.gang_code));
 
@@ -478,6 +482,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 year,
                 gangs: gangsList,
                 grand_total: grandTotal,  // Division-level totals
+                tax_matrix_totals: calculateTaxMatrixTotals(result.data_rows),
                 dynamic_premi_headers: result.dynamic_premi_headers,
                 dynamic_potongan_headers: result.dynamic_potongan_headers,
                 premi_title_map: result.premi_title_map,
@@ -791,7 +796,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const gangCode = query.gang_code || "ALL";
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
             const year = parseInt(query.year || String(new Date().getFullYear()));
-            const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
+            const useHistoryDb = parseBooleanQueryParam(query.use_history);
             const gangPrefix = query.gang_prefix;
             const serverProfile = query.server_profile || Config.DB_PROFILE;
             const skipHeavyDetails = query.summary_only === 'true';
@@ -865,7 +870,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const gangCode = query.gang_code || "ALL";
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
             const year = parseInt(query.year || String(new Date().getFullYear()));
-            const useHistoryDb = query.use_history ? query.use_history === 'true' : null;
+            const useHistoryDb = parseBooleanQueryParam(query.use_history);
 
             // Use new component-based extraction method
             const result = await dataExtractorService.extractPayrollDataWithComponents(month, year, gangCode, undefined, null, Config.DB_PROFILE, useHistoryDb);
@@ -1151,6 +1156,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         const year = parseInt(query.year);
         const gangPrefix = query.gang_prefix;
         const gangCode = query.gang_code || "ALL";
+        const useHistoryDb = parseBooleanQueryParam(query.use_history as string | undefined) ?? false;
 
         if (!divisionCode || !month || !year) {
             set.status = 400;
@@ -1165,7 +1171,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
         }
 
-        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode}`);
+        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} useHistory=${useHistoryDb}`);
 
         const encoder = new TextEncoder();
         let cancelled = false;
@@ -1176,6 +1182,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     // Import services
                     const { dataExtractorService } = await import("../services/dataExtractorService");
                     const { Config } = await import("../config");
+                    const { calculatePayrollTotals } = await import("../services/payrollTotalsCalculator");
 
                     // Send initial progress
                     controller.enqueue(encoder.encode(`event: progress\ndata: ${JSON.stringify({
@@ -1188,7 +1195,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     // Use TRUE lazy loading extraction - yields data in phases
                     const progressiveStream = dataExtractorService.extractPayrollDataProgressive(
                         month, year, gangCode, divisionCode,
-                        Config.DB_PROFILE, gangPrefix
+                        Config.DB_PROFILE, gangPrefix, useHistoryDb
                     );
 
                     let gangIndex = 0;
@@ -1197,141 +1204,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     let lastPhase = '';
                     const streamStartTime = Date.now();
 
-                    // Helper function to calculate totals for streaming endpoint
-                    // Must be defined inside start() to access gangs Map directly
-                    const calculateGangTotals = (employees: any[]) => {
-                        // Filter active employees (jumlah_hk > 0) - same logic as payrollTotalsCalculator
-                        const activeEmployees = employees.filter((emp: any) => {
-                            const jumlahHk = Number(emp.jumlah_hk || 0);
-                            return jumlahHk > 0;
-                        });
-
-                        if (activeEmployees.length === 0) {
-                            return { employee_count: 0 };
-                        }
-
-                        const totals: Record<string, number> = {};
-
-                        // Base numeric fields - complete list matching payrollTotalsCalculator
-                        const baseFields = [
-                            'jumlah_hk', 'hari_kerja', 'upah_pokok',
-                            'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual', 'gaji_pokok_dibayarkan',
-                            'cuti_tahunan_hari', 'cuti_sakit_haid_hari', 'cuti_minggu_hari', 'cuti_nasional_hari',
-                            'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah',
-                            'lembur_jam', 'lembur_jumlah',
-                            'total_tunjangan',
-                            // Premi
-                            'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs',
-                            'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk',
-                            'pot_koreksi', 'total_premi',
-                            // Gross & deductions
-                            'jumlah_upah_kotor',
-                            'pot_astek', 'pot_astek_maj', 'pot_astek_jumlah', 'astek_084',
-                            'pot_bpjs_kes', 'pot_bpjs_pekerja', 'pot_bpjs_maj',
-                            'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
-                            'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan',
-                            'pot_bpjs_jumlah', 'pot_bpjs_pekerja_total',
-                            'pot_spsi', 'pot_pph21', 'premi_pph',
-                            'total_potongan', 'total_potongan_bersih',
-                            'upah_bersih', 'koreksi_hk',
-                            // Tax fields
-                            'pph21_ter', 'tarif_pajak_ter',
-                            'penghasilan_bruto', 'upah_kotor_pajak',
-                            // Harvest items
-                            'bunches_total', 'bunches_ripe', 'bunches_unripe',
-                            'bunches_underripe', 'bunches_overripe', 'bunches_rotten', 'bunches_abnormal',
-                            'loose_fruit', 'bunches_transactions'
-                        ];
-
-                        // Pendapatan lainnya fields
-                        // NOTE: pendapatan_thr, bonus, custom, kontan diproses dari other_incomes loop (line ~1274)
-                        // JANGAN masukkan ke pendapatanFields untuk menghindari duplikasi dengan other_incomes loop
-                        const pendapatanFields = [
-                            'pendapatan_lainnya', 'total_pendapatan_lainnya'
-                        ];
-
-                        const allNumericFields = [...baseFields, ...pendapatanFields];
-
-                        // Initialize all fields to 0
-                        for (const field of allNumericFields) {
-                            totals[field] = 0;
-                        }
-                        totals['employee_count'] = activeEmployees.length;
-
-                        // Helper to safely parse number
-                        const parseNum = (val: any): number => {
-                            if (val === null || val === undefined) return 0;
-                            const n = parseFloat(val);
-                            return isNaN(n) ? 0 : n;
-                        };
-
-                        // Sum all numeric fields from active employees
-                        for (const emp of activeEmployees) {
-                            // Sum base fields
-                            for (const field of allNumericFields) {
-                                totals[field] += parseNum(emp[field]);
-                            }
-
-                            // Also sum other_incomes array (THR, BONUS, CUSTOM, KONTAN, etc.)
-                            if (emp.other_incomes && Array.isArray(emp.other_incomes)) {
-                                for (const oi of emp.other_incomes) {
-                                    const type = (oi.type || '').toUpperCase();
-                                    const amount = parseNum(oi.amount);
-                                    if (type && amount !== 0) {
-                                        const fieldKey = `pendapatan_${type.toLowerCase()}`;
-                                        if (!totals[fieldKey]) totals[fieldKey] = 0;
-                                        totals[fieldKey] += amount;
-                                    }
-                                }
-                            }
-
-                            // Also sum dynamic premi fields (premi_*) and dynamic potongan fields
-                            for (const key of Object.keys(emp)) {
-                                if (key.startsWith('premi_') &&
-                                    key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'premi_koreksi' &&
-                                    key !== 'premi_brondol_loosefruit' && key !== 'premi_brondol_adtrans' && key !== 'premi_brondol_total') {
-                                    const val = emp[key];
-                                    if (typeof val === 'number' && !isNaN(val)) {
-                                        if (!totals[key]) totals[key] = 0;
-                                        totals[key] += val;
-                                    }
-                                }
-                                if (key.startsWith('KOREKSI')) {
-                                    const val = emp[key];
-                                    if (typeof val === 'number' && !isNaN(val)) {
-                                        if (!totals[key]) totals[key] = 0;
-                                        totals[key] += val;
-                                    }
-                                }
-                                if (key.startsWith('potongan_')) {
-                                    const val = emp[key];
-                                    if (typeof val === 'number' && !isNaN(val)) {
-                                        if (!totals[key]) totals[key] = 0;
-                                        totals[key] += val;
-                                    }
-                                }
-                            }
-
-                            // Sum from nested potongan object (dataExtractorService stores KONTAN, THR, PINJAM, KL here)
-                            // Map nested keys to flat output keys for consistency with payrollTotalsCalculator
-                            if (emp.potongan && typeof emp.potongan === 'object') {
-                                const potonganMapping: Record<string, string> = {
-                                    'KONTAN': 'pot_kontan',
-                                    'THR': 'pot_thr',
-                                    'PINJAM': 'pot_pinjam',
-                                    'KL': 'pot_kl'
-                                };
-                                for (const [nestedKey, flatKey] of Object.entries(potonganMapping)) {
-                                    const val = parseNum(emp.potongan[nestedKey]);
-                                    if (val !== 0) {
-                                        totals[flatKey] = (totals[flatKey] || 0) + val;
-                                    }
-                                }
-                            }
-                        }
-
-                        return totals;
-                    };
                     const allDynamicPremiHeaders = new Set<string>();
                     const allDynamicPotonganHeaders = new Set<string>();
                     let globalPremiTitleMap: Record<string, string> = {};
@@ -1452,7 +1324,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                             for (const [, employees] of gangs) {
                                 allEmployees.push(...employees);
                             }
-                            const grandTotal = calculateGangTotals(allEmployees);
+                            const grandTotal = calculatePayrollTotals(allEmployees, "GRAND TOTAL");
 
                             // Send final filtered & sorted gangs with gang_totals
                             for (const [gangCodeKey, employees] of gangs) {
@@ -1461,7 +1333,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                                     const { _phase, _enriched, _loading, ...rest } = emp;
                                     return slimEmployee(rest);
                                 });
-                                const gangTotals = calculateGangTotals(employees);
+                                const gangTotals = calculatePayrollTotals(employees, `TOTAL ${gangCodeKey}`);
 
                                 controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
                                     gang_code: gangCodeKey,
@@ -1494,7 +1366,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                                 grand_total: grandTotal,
                                 total_execution_ms: Date.now() - streamStartTime,
                                 total_gangs: meta.total_gangs,
-                                total_employees: meta.total_employees
+                                total_employees: meta.total_employees,
+                                gangs_count: meta.total_gangs,
+                                employees_count: meta.total_employees
                             })}\n\n`));
                         }
                     }
@@ -1529,7 +1403,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             month: t.String(),
             year: t.String(),
             gang_prefix: t.Optional(t.String()),
-            gang_code: t.Optional(t.String())
+            gang_code: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
         })
     })
 
@@ -1701,7 +1576,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const gang = query.gang as string || undefined;
             const division = query.div as string || undefined;
             const gangPrefix = query.gang_prefix as string || undefined;
-            const useHistoryDb = query.use_history === '1';
+            const useHistoryDb = parseBooleanQueryParam(query.use_history) ?? false;
 
             if (!month || !year || month < 1 || month > 12) {
                 set.status = 400;
