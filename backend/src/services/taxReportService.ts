@@ -906,7 +906,40 @@ class TaxReportService {
             );
         }
 
-        const finalResult = { employees, period: { month, year }, total_pph21: totalPph21, premiKeys, data_source: finalIsSourceCurrent ? 'current' : 'history' };
+        const sumMonthly = (selector: (emp: MonthlyTaxRow) => number): number =>
+            Math.round(employees.reduce((s, emp) => s + (selector(emp) || 0), 0));
+
+        const monthlyTableTotals = {
+            hk: sumMonthly(emp => Number(emp.hk) || 0),
+            upah_dasar: sumMonthly(emp => Number(emp.upah_dasar) || 0),
+            gaji_pokok_ideal: sumMonthly(emp => Number(emp.gaji_pokok_ideal) || 0),
+            gaji_standar: sumMonthly(emp => (Number(emp.upah_dasar) || 0) * 30),
+            gaji_pokok_aktual: sumMonthly(emp => Number(emp.gaji_pokok_aktual) || 0),
+            koreksi_hk: sumMonthly(emp => Number(emp.koreksi_hk) || 0),
+            pendapatan_tidak_tetap_thp: sumMonthly(emp => Number(emp.pendapatan_tidak_tetap_thp) || 0),
+            upah_kotor: sumMonthly(emp => Number(emp.upah_kotor) || 0),
+            penghasilan_bruto: sumMonthly(emp => Number(emp.penghasilan_bruto) || 0),
+            pph21_input: sumMonthly(emp => Number(emp.pot_pph21) || 0),
+            pph21_ter: sumMonthly(emp => Number(emp.pph21_ter) || 0)
+        };
+
+        const finalResult = {
+            employees,
+            period: { month, year },
+            total_pph21: totalPph21,
+            total_pot_pph21: monthlyTableTotals.pph21_input,
+            premiKeys,
+            data_source: finalIsSourceCurrent ? 'current' : 'history',
+            summary: {
+                employee_count: employees.length,
+                monthly_table_totals: monthlyTableTotals,
+                pph21: {
+                    input: monthlyTableTotals.pph21_input,
+                    ter: monthlyTableTotals.pph21_ter,
+                    selisih: monthlyTableTotals.pph21_ter - monthlyTableTotals.pph21_input
+                }
+            }
+        };
 
         if (shouldCache) {
             const ttl = cacheService.getPayrollCacheTtl(month, year, currentPeriod.month, currentPeriod.year);
@@ -926,7 +959,7 @@ class TaxReportService {
         divisionCode?: string,
         gangCode?: string,
         gangPrefix?: string
-    ): Promise<{ employees: AnnualIncomeRow[]; year: number; available_months: number[] }> {
+    ): Promise<any> {
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
         let effectiveGangPrefix = gangPrefix;
@@ -1393,7 +1426,71 @@ class TaxReportService {
             });
         }
 
-        return { employees, year, available_months: availableMonths.sort((a, b) => a - b) };
+        const monthlyTotalsByMode = {
+            gaji: Array.from({ length: 12 }, (_, m) =>
+                Math.round(employees.reduce((s, e) => s + (Number(e.monthly_gaji_kotor?.[String(m + 1)]) || 0), 0))
+            ),
+            bpjs_kesehatan: Array.from({ length: 12 }, (_, m) =>
+                Math.round(employees.reduce((s, e) => s + (Number(e.monthly_bpjs_kesehatan?.[String(m + 1)]) || 0), 0))
+            ),
+            astek_ins_084: Array.from({ length: 12 }, (_, m) =>
+                Math.round(employees.reduce((s, e) => s + (Number(e.monthly_astek_ins_084?.[String(m + 1)]) || 0), 0))
+            ),
+            astek_ins_2: Array.from({ length: 12 }, (_, m) =>
+                Math.round(employees.reduce((s, e) => s + (Number(e.monthly_astek_ins_2?.[String(m + 1)]) || 0), 0))
+            ),
+            pensiun_1: Array.from({ length: 12 }, (_, m) =>
+                Math.round(employees.reduce((s, e) => s + (Number(e.monthly_pensiun_1?.[String(m + 1)]) || 0), 0))
+            ),
+            pph21_adtrans: Array.from({ length: 12 }, (_, m) =>
+                Math.round(employees.reduce((s, e) => s + (Number(e.monthly_pph21_adtrans?.[String(m + 1)]) || 0), 0))
+            )
+        };
+
+        const annualSummary = {
+            employee_count: employees.length,
+            penghasilan: {
+                monthly_totals_by_mode: monthlyTotalsByMode,
+                totals: {
+                    gaji: Math.round(employees.reduce((s, e) => s + (Number(e.gaji_jan_nov) || 0), 0)),
+                    bpjs_kesehatan: Math.round(employees.reduce((s, e) => s + (Number(e.bpjs_kesehatan_4pct) || 0), 0)),
+                    astek_ins_084: Math.round(employees.reduce((s, e) => s + (Number(e.astek_084pct) || 0), 0)),
+                    astek_ins_2: Math.round(employees.reduce((s, e) => s + (Number(e.astek_ins_2pct) || 0), 0)),
+                    pensiun_1: Math.round(employees.reduce((s, e) => s + (Number(e.pensiun_1pct) || 0), 0)),
+                    thr: Math.round(employees.reduce((s, e) => s + (Number(e.thr) || 0), 0)),
+                    bonus: Math.round(employees.reduce((s, e) => s + (Number(e.bonus) || 0), 0)),
+                    total_setahun: Math.round(employees.reduce((s, e) => s + ((Number(e.gaji_jan_nov) || 0) + (Number(e.thr) || 0) + (Number(e.bonus) || 0)), 0)),
+                    ptkp: Math.round(employees.reduce((s, e) => s + (Number(e.ptkp) || 0), 0)),
+                    pkp: Math.round(employees.reduce((s, e) => s + (Number(e.penghasilan_kena_pajak) || 0), 0))
+                }
+            },
+            kalkulasi: {
+                totals: {
+                    gaji_jan_nov: Math.round(employees.reduce((s, e) => s + (Number(e.gaji_jan_nov) || 0), 0)),
+                    thr: Math.round(employees.reduce((s, e) => s + (Number(e.thr) || 0), 0)),
+                    bonus: Math.round(employees.reduce((s, e) => s + (Number(e.bonus) || 0), 0)),
+                    bpjs_kesehatan_4pct: Math.round(employees.reduce((s, e) => s + (Number(e.bpjs_kesehatan_4pct) || 0), 0)),
+                    astek_084pct: Math.round(employees.reduce((s, e) => s + (Number(e.astek_084pct) || 0), 0)),
+                    total_penghasilan_setahun: Math.round(employees.reduce((s, e) => s + (Number(e.total_penghasilan_setahun) || 0), 0)),
+                    astek_ins_2pct: Math.round(employees.reduce((s, e) => s + (Number(e.astek_ins_2pct) || 0), 0)),
+                    biaya_jabatan: Math.round(employees.reduce((s, e) => s + (Number(e.biaya_jabatan) || 0), 0)),
+                    pensiun_1pct: Math.round(employees.reduce((s, e) => s + (Number(e.pensiun_1pct) || 0), 0)),
+                    total_potongan_tahunan: Math.round(employees.reduce((s, e) => s + (Number(e.total_potongan_tahunan) || 0), 0)),
+                    penghasilan_netto_setahun: Math.round(employees.reduce((s, e) => s + (Number(e.penghasilan_netto_setahun) || 0), 0)),
+                    ptkp: Math.round(employees.reduce((s, e) => s + (Number(e.ptkp) || 0), 0)),
+                    pkp: Math.round(employees.reduce((s, e) => s + (Number(e.penghasilan_kena_pajak) || 0), 0)),
+                    pph21_kena_pajak: Math.round(employees.reduce((s, e) => s + (Number(e.pph21_kena_pajak) || 0), 0))
+                }
+            },
+            monthly_pph21_adtrans_totals: monthlyTotalsByMode.pph21_adtrans
+        };
+
+        return {
+            employees,
+            year,
+            available_months: availableMonths.sort((a, b) => a - b),
+            summary: annualSummary
+        };
     }
 
     /**
@@ -1405,7 +1502,7 @@ class TaxReportService {
         divisionCode?: string,
         gangCode?: string,
         gangPrefix?: string
-    ): Promise<{ employees: AstekBpjsMonthlyRow[]; year: number; available_months: number[] }> {
+    ): Promise<any> {
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
         let effectiveGangPrefix = gangPrefix;
@@ -1561,7 +1658,73 @@ class TaxReportService {
             });
         }
 
-        return { employees, year, available_months: availableMonths.sort((a, b) => a - b) };
+        const modeKeys = [
+            'bpjs_kes_majikan',
+            'bpjs_kes_pekerja',
+            'astek_majikan',
+            'astek_pekerja',
+            'bpjs_pensiun_majikan',
+            'bpjs_pensiun_pekerja'
+        ] as const;
+
+        const monthlyTotalsByMode: Record<string, number[]> = {
+            total: Array.from({ length: 12 }, (_, m) =>
+                Math.round(
+                    employees.reduce((s, emp) => {
+                        const md = emp.monthly_data?.[String(m + 1)];
+                        if (!md) return s;
+                        return s
+                            + (Number(md.astek_pekerja) || 0)
+                            + (Number(md.astek_majikan) || 0)
+                            + (Number(md.bpjs_kes_pekerja) || 0)
+                            + (Number(md.bpjs_kes_majikan) || 0)
+                            + (Number(md.bpjs_pensiun_pekerja) || 0)
+                            + (Number(md.bpjs_pensiun_majikan) || 0);
+                    }, 0)
+                )
+            )
+        };
+
+        for (const mode of modeKeys) {
+            monthlyTotalsByMode[mode] = Array.from({ length: 12 }, (_, m) =>
+                Math.round(
+                    employees.reduce((s, emp) => {
+                        const md = emp.monthly_data?.[String(m + 1)] as any;
+                        return s + (Number(md?.[mode]) || 0);
+                    }, 0)
+                )
+            );
+        }
+
+        const annualTotalsByMode: Record<string, number> = {
+            total: Math.round(
+                employees.reduce((s, emp) =>
+                    s
+                    + (Number(emp.total?.astek_pekerja) || 0)
+                    + (Number(emp.total?.astek_majikan) || 0)
+                    + (Number(emp.total?.bpjs_kes_pekerja) || 0)
+                    + (Number(emp.total?.bpjs_kes_majikan) || 0)
+                    + (Number(emp.total?.bpjs_pensiun_pekerja) || 0)
+                    + (Number(emp.total?.bpjs_pensiun_majikan) || 0), 0)
+            )
+        };
+
+        for (const mode of modeKeys) {
+            annualTotalsByMode[mode] = Math.round(
+                employees.reduce((s, emp) => s + (Number((emp.total as any)?.[mode]) || 0), 0)
+            );
+        }
+
+        return {
+            employees,
+            year,
+            available_months: availableMonths.sort((a, b) => a - b),
+            summary: {
+                employee_count: employees.length,
+                monthly_totals_by_mode: monthlyTotalsByMode,
+                annual_totals_by_mode: annualTotalsByMode
+            }
+        };
     }
 
     /**
@@ -1604,7 +1767,7 @@ class TaxReportService {
         divisionCode?: string,
         gangCode?: string,
         gangPrefix?: string
-    ): Promise<{ employees: DecemberTaxRow[]; year: number; available_months: number[] }> {
+    ): Promise<any> {
         // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
         let effectiveDivisionCode = divisionCode;
         let effectiveGangPrefix = gangPrefix;
@@ -1968,7 +2131,44 @@ class TaxReportService {
             });
         }
 
-        return { employees, year, available_months: Array.from(new Set(availableMonths)).sort((a, b) => a - b) };
+        const sumDecember = (selector: (emp: DecemberTaxRow) => number): number =>
+            Math.round(employees.reduce((s, emp) => s + (selector(emp) || 0), 0));
+
+        const decemberTotals = {
+            gaji_pokok_des: sumDecember(e => Number(e.gaji_pokok_des) || 0),
+            tunjangan_des: sumDecember(e => Number(e.tunjangan_des) || 0),
+            premi_asuransi_des: sumDecember(e => Number(e.premi_asuransi_des) || 0),
+            tunjangan_pph_des: sumDecember(e => Number(e.tunjangan_pph_des) || 0),
+            bruto_des: sumDecember(e => Number(e.bruto_des) || 0),
+            thr: sumDecember(e => Number(e.thr) || 0),
+            bonus: sumDecember(e => Number(e.bonus) || 0),
+            tantiem: sumDecember(e => Number(e.tantiem) || 0),
+            gaji_pokok_setahun: sumDecember(e => Number(e.gaji_pokok_setahun) || 0),
+            tunjangan_lainnya_setahun: sumDecember(e => Number(e.tunjangan_lainnya_setahun) || 0),
+            premi_asuransi_setahun: sumDecember(e => Number(e.premi_asuransi_setahun) || 0),
+            tunjangan_pph_setahun: sumDecember(e => Number(e.tunjangan_pph_setahun) || 0),
+            natura_setahun: sumDecember(e => Number(e.natura_setahun) || 0),
+            thr_bonus_tantiem_setahun: sumDecember(e => Number(e.thr_bonus_tantiem_setahun) || 0),
+            bruto_setahun: sumDecember(e => Number(e.bruto_setahun) || 0),
+            biaya_jabatan: sumDecember(e => Number(e.biaya_jabatan) || 0),
+            iuran_jht_jp_setahun: sumDecember(e => Number(e.iuran_jht_jp_setahun) || 0),
+            netto_setahun: sumDecember(e => Number(e.netto_setahun) || 0),
+            pkp: sumDecember(e => Number(e.pkp) || 0),
+            pph21_setahun: sumDecember(e => Number(e.pph21_setahun) || 0),
+            pph21_non_npwp: sumDecember(e => Number(e.pph21_setahun) || 0),
+            pph21_jan_nov: sumDecember(e => Number(e.pph21_jan_nov) || 0),
+            pph21_desember: sumDecember(e => Number(e.pph21_desember) || 0)
+        };
+
+        return {
+            employees,
+            year,
+            available_months: Array.from(new Set(availableMonths)).sort((a, b) => a - b),
+            summary: {
+                employee_count: employees.length,
+                totals: decemberTotals
+            }
+        };
     }
 }
 

@@ -95,13 +95,14 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                 useHistory
             });
             const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory);
-            const potPph21Sum = result?.employees?.reduce((s, e) => s + (e.pot_pph21 || 0), 0) ?? 0;
-            const pph21TerSum = result?.employees?.reduce((s, e) => s + (e.pph21_ter || 0), 0) ?? 0;
+            const summary = result?.summary || {};
+            const monthlyTotals = summary?.monthly_table_totals || {};
+            const pph21Summary = summary?.pph21 || {};
             console.log('[TaxReportPage] Monthly tax data loaded:', {
                 employeeCount: result?.employees?.length || 0,
-                total_pot_pph21: potPph21Sum,          // Matches Daftar Upah
-                total_pph21_ter: pph21TerSum,           // Calculated TER
-                selisih: pph21TerSum - potPph21Sum,     // Difference
+                total_pot_pph21: monthlyTotals?.pph21_input || 0,
+                total_pph21_ter: monthlyTotals?.pph21_ter || 0,
+                selisih: pph21Summary?.selisih || 0,
                 data_source: result?.data_source,
                 sample_employee: result?.employees?.[0] ? {
                     emp_name: result.employees[0].emp_name,
@@ -447,17 +448,17 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                         <tfoot>
                             <tr>
                                 <td colSpan={7} className="text-right"><strong>GRAND TOTAL</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.hk || 0), 0))}</strong></td>
-                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + (e.upah_dasar || 0), 0))}</td>
-                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + (e.gaji_pokok_ideal || 0), 0))}</td>
-                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + ((e.upah_dasar || 0) * 30), 0))}</td>
-                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + (e.gaji_pokok_aktual || 0), 0))}</td>
-                                <td className="text-right">{formatNumber(data.employees.reduce((s, e) => s + (e.koreksi_hk || 0), 0))}</td>
-                                <td className="text-right" style={{ color: '#059669', fontWeight: '600' }}>{formatNumber(data.employees.reduce((s, e) => s + (e.pendapatan_tidak_tetap_thp || 0), 0))}</td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.upah_kotor || 0), 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.penghasilan_bruto || 0), 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.monthly_table_totals?.hk || 0)}</strong></td>
+                                <td className="text-right">{formatNumber(data.summary?.monthly_table_totals?.upah_dasar || 0)}</td>
+                                <td className="text-right">{formatNumber(data.summary?.monthly_table_totals?.gaji_pokok_ideal || 0)}</td>
+                                <td className="text-right">{formatNumber(data.summary?.monthly_table_totals?.gaji_standar || 0)}</td>
+                                <td className="text-right">{formatNumber(data.summary?.monthly_table_totals?.gaji_pokok_aktual || 0)}</td>
+                                <td className="text-right">{formatNumber(data.summary?.monthly_table_totals?.koreksi_hk || 0)}</td>
+                                <td className="text-right" style={{ color: '#059669', fontWeight: '600' }}>{formatNumber(data.summary?.monthly_table_totals?.pendapatan_tidak_tetap_thp || 0)}</td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.monthly_table_totals?.upah_kotor || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.monthly_table_totals?.penghasilan_bruto || 0)}</strong></td>
                                 <td></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.pot_pph21 || 0), 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.monthly_table_totals?.pph21_input || 0)}</strong></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -717,52 +718,37 @@ function AnnualTaxTab({ token, month, year, setMonth, setYear, division, gang, g
                                 {subTab === 'penghasilan' ? (
                                     <tr>
                                         <td colSpan={6} className="text-right"><strong>TOTAL</strong></td>
-                                        {Array.from({ length: 12 }, (_, m) => {
-                                            const monthTotal = data.employees.reduce((s, e) => {
-                                                const val = penghasilanMode === 'gaji'
-                                                    ? (e.monthly_gaji_kotor?.[m + 1] || 0)
-                                                    : penghasilanMode === 'bpjs_kesehatan'
-                                                        ? (e.monthly_bpjs_kesehatan?.[m + 1] || 0)
-                                                        : penghasilanMode === 'astek_ins_084'
-                                                            ? (e.monthly_astek_ins_084?.[m + 1] || 0)
-                                                            : penghasilanMode === 'astek_ins_2'
-                                                                ? (e.monthly_astek_ins_2?.[m + 1] || 0)
-                                                                : (e.monthly_pensiun_1?.[m + 1] || 0);
-                                                return s + val;
-                                            }, 0);
-                                            return <td key={m} className="text-right"><strong>{formatNumber(monthTotal) || '-'}</strong></td>;
-                                        })}
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (
-                                            penghasilanMode === 'gaji' ? (e.gaji_jan_nov || 0) :
-                                                penghasilanMode === 'bpjs_kesehatan' ? (e.bpjs_kesehatan_4pct || 0) :
-                                                    penghasilanMode === 'astek_ins_084' ? (e.astek_084pct || 0) :
-                                                        penghasilanMode === 'astek_ins_2' ? (e.astek_ins_2pct || 0) : (e.pensiun_1pct || 0)
-                                        ), 0))}</strong></td>
+                                        {Array.from({ length: 12 }, (_, m) => (
+                                            <td key={m} className="text-right">
+                                                <strong>{formatNumber((data.summary?.penghasilan?.monthly_totals_by_mode?.[penghasilanMode] || [])[m] || 0) || '-'}</strong>
+                                            </td>
+                                        ))}
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.penghasilan?.totals?.[penghasilanMode] || 0)}</strong></td>
 
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.thr || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.bonus || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + ((e.gaji_jan_nov || 0) + (e.thr || 0) + (e.bonus || 0)), 0))}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.penghasilan?.totals?.thr || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.penghasilan?.totals?.bonus || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.penghasilan?.totals?.total_setahun || 0)}</strong></td>
 
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.ptkp || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.penghasilan_kena_pajak || 0), 0))}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.penghasilan?.totals?.ptkp || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.penghasilan?.totals?.pkp || 0)}</strong></td>
                                     </tr>
                                 ) : (
                                     <tr>
                                         <td colSpan={3} className="text-right"><strong>TOTAL</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.gaji_jan_nov || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.thr || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.bonus || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.bpjs_kesehatan_4pct || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.astek_084pct || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.total_penghasilan_setahun || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.astek_ins_2pct || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.biaya_jabatan || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.pensiun_1pct || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.total_potongan_tahunan || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.penghasilan_netto_setahun || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.ptkp || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.penghasilan_kena_pajak || 0), 0))}</strong></td>
-                                        <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + (e.pph21_kena_pajak || 0), 0))}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.gaji_jan_nov || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.thr || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.bonus || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.bpjs_kesehatan_4pct || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.astek_084pct || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.total_penghasilan_setahun || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.astek_ins_2pct || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.biaya_jabatan || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.pensiun_1pct || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.total_potongan_tahunan || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.penghasilan_netto_setahun || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.ptkp || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.pkp || 0)}</strong></td>
+                                        <td className="text-right"><strong>{formatNumber(data.summary?.kalkulasi?.totals?.pph21_kena_pajak || 0)}</strong></td>
                                     </tr>
                                 )}
                             </tfoot>
@@ -920,24 +906,13 @@ function AstekBpjsTab({ token, month, year, setMonth, setYear, division, gang, g
                             <tr>
                                 <td colSpan={4} className="text-right"><strong>TOTAL</strong></td>
                                 <td></td>
-                                {Array.from({ length: 12 }, (_, m) => {
-                                    const monthTotal = data.employees.reduce((s, emp) => {
-                                        const md = emp.monthly_data?.[String(m + 1)];
-                                        if (!md) return s;
-                                        if (astekMode === 'total') {
-                                            return s + md.astek_pekerja + md.astek_majikan + md.bpjs_kes_pekerja + md.bpjs_kes_majikan + md.bpjs_pensiun_pekerja + md.bpjs_pensiun_majikan;
-                                        }
-                                        return s + (md[astekMode] || 0);
-                                    }, 0);
-                                    return <td key={m} className="text-right">{formatNumber(monthTotal)}</td>;
-                                })}
+                                {Array.from({ length: 12 }, (_, m) => (
+                                    <td key={m} className="text-right">
+                                        {formatNumber((data.summary?.monthly_totals_by_mode?.[astekMode] || [])[m] || 0)}
+                                    </td>
+                                ))}
                                 <td className="text-right">
-                                    <strong>{formatNumber(data.employees.reduce((s, emp) => {
-                                        if (astekMode === 'total') {
-                                            return s + (emp.total?.astek_pekerja || 0) + (emp.total?.astek_majikan || 0) + (emp.total?.bpjs_kes_pekerja || 0) + (emp.total?.bpjs_kes_majikan || 0) + (emp.total?.bpjs_pensiun_pekerja || 0) + (emp.total?.bpjs_pensiun_majikan || 0);
-                                        }
-                                        return s + (emp.total?.[astekMode] || 0);
-                                    }, 0))}</strong>
+                                    <strong>{formatNumber(data.summary?.annual_totals_by_mode?.[astekMode] || 0)}</strong>
                                 </td>
                             </tr>
                         </tfoot>
@@ -1087,7 +1062,7 @@ function MonthlyPph21GridTab({ token, month, year, setMonth, setYear, division, 
                                 {Array.from({ length: 12 }, (_, m) => (
                                     <td key={m} className="text-right">
                                         <strong>
-                                            {formatNumber(data.employees.reduce((s, e) => s + (e.monthly_pph21_adtrans?.[String(m + 1)] || 0), 0))}
+                                            {formatNumber((data.summary?.monthly_pph21_adtrans_totals || [])[m] || 0)}
                                         </strong>
                                     </td>
                                 ))}
@@ -1439,35 +1414,35 @@ function DecemberTaxTab({ token, year, division, gang, gangPrefix, refreshKey })
                         <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 10 }}>
                             <tr className="summary-row">
                                 <td colSpan="10" className="text-right"><strong>TOTAL</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.gaji_pokok_des, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.tunjangan_des, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.premi_asuransi_des, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.tunjangan_pph_des, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.bruto_des, 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.gaji_pokok_des || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.tunjangan_des || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.premi_asuransi_des || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.tunjangan_pph_des || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.bruto_des || 0)}</strong></td>
 
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.thr, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.bonus, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.tantiem, 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.thr || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.bonus || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.tantiem || 0)}</strong></td>
 
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.gaji_pokok_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.tunjangan_lainnya_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.premi_asuransi_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.tunjangan_pph_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.natura_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.thr_bonus_tantiem_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.bruto_setahun, 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.gaji_pokok_setahun || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.tunjangan_lainnya_setahun || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.premi_asuransi_setahun || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.tunjangan_pph_setahun || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.natura_setahun || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.thr_bonus_tantiem_setahun || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.bruto_setahun || 0)}</strong></td>
 
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.biaya_jabatan, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.iuran_jht_jp_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.netto_setahun, 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.biaya_jabatan || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.iuran_jht_jp_setahun || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.netto_setahun || 0)}</strong></td>
 
                                 <td className="text-right"><strong>-</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.pkp, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.pph21_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.pph21_setahun, 0))}</strong></td>
-                                <td className="text-right"><strong>{formatNumber(data.employees.reduce((s, e) => s + e.pph21_jan_nov, 0))}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.pkp || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.pph21_setahun || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.pph21_non_npwp || 0)}</strong></td>
+                                <td className="text-right"><strong>{formatNumber(data.summary?.totals?.pph21_jan_nov || 0)}</strong></td>
                                 <td className="text-right" style={{ backgroundColor: '#f0fdf4', color: '#15803d', fontWeight: 800 }}>
-                                    <strong>{formatNumber(data.employees.reduce((s, e) => s + e.pph21_desember, 0))}</strong>
+                                    <strong>{formatNumber(data.summary?.totals?.pph21_desember || 0)}</strong>
                                 </td>
                             </tr>
                         </tfoot>
@@ -1518,7 +1493,11 @@ function DecemberTaxTab({ token, year, division, gang, gangPrefix, refreshKey })
                                         <tr className="pph21-popup-result">
                                             <td><strong>TOTAL SETAHUN</strong></td>
                                             <td className="text-right">
-                                                <strong>{formatNumber(Object.values(popupData).reduce((s, v) => s + (v || 0), 0))}</strong>
+                                                <strong>{formatNumber(
+                                                    popupMeta.type === 'premi_asuransi'
+                                                        ? (popupMeta.emp?.premi_asuransi_setahun || 0)
+                                                        : (popupMeta.emp?.iuran_jht_jp_setahun || 0)
+                                                )}</strong>
                                             </td>
                                         </tr>
                                     </tbody>
