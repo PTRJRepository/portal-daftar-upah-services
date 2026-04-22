@@ -665,8 +665,8 @@ export class SummaryService {
         }
     }
 
-    public async getDivisionsFromHrGang(): Promise<string[]> {
-        return divisionDefinition.getAllDivisions();
+    public async getDivisionsFromHrGang(includeVirtual: boolean = true): Promise<string[]> {
+        return divisionDefinition.getAllDivisions(includeVirtual);
     }
 
     // --- Comparison Logic ---
@@ -1303,7 +1303,7 @@ COUNT(DISTINCT e.EmpCode) as total_employees,
         }
     }
 
-    public async getDivisionSummary(divisionCode?: string, month?: number, year?: number) {
+    public async getDivisionSummary(divisionCode?: string, month?: number, year?: number, _includeVirtual?: boolean) {
         // [FIX] Fetch gang descriptions separately (HR_GANG is in different database)
         const gangDescs = await this.getAllGangDescriptions();
         

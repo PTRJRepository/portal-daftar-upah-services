@@ -32,12 +32,15 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
     // Data
     const [periods, setPeriods] = useState([]);
     const [summaryData, setSummaryData] = useState([]);
-    // grandTotal from API is ignored for IJL specific calculation
+    const [grandTotal, setGrandTotal] = useState(null);
+    const [groupSubtotals, setGroupSubtotals] = useState({});
+    const [kpiTotalsData, setKpiTotalsData] = useState(null);
     const [virtualDivisions, setVirtualDivisions] = useState([]);
 
     // Comparison State - Initialize from URL param
     const [comparisonMode, setComparisonMode] = useState(searchParams.get('mode') === 'comparison');
     const [comparisonData, setComparisonData] = useState(null);
+    const [comparisonGrandTotal, setComparisonGrandTotal] = useState(null);
 
     // Sync comparisonMode if URL search params change
     useEffect(() => {
@@ -120,9 +123,10 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
 
         try {
             if (comparisonMode) {
-                const result = await fetchComparisonSummary(token, { month, year });
+                const result = await fetchComparisonSummary(token, { month, year, scope: 'ijl' });
                 if (result.success) {
                     setComparisonData(result);
+                    setComparisonGrandTotal(result.grand_total || null);
                 } else {
                     setError('Failed to fetch comparison data');
                 }
@@ -130,10 +134,14 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                 const result = await fetchAllDivisionsTotals(token, { 
                     month, 
                     year,
-                    includeVirtual: divisionType !== 'real' // 'all' or 'virtual' -> true
+                    includeVirtual: divisionType !== 'real', // 'all' or 'virtual' -> true
+                    scope: 'ijl'
                 });
                 if (result.success) {
                     setSummaryData(result.data || []);
+                    setGrandTotal(result.grand_total || null);
+                    setGroupSubtotals(result.group_subtotals || {});
+                    setKpiTotalsData(result.kpi_totals || null);
                 } else {
                     setError('Failed to fetch summary data');
                 }
@@ -164,74 +172,13 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
         loadVirtualDivisions();
     }, [token]);
 
-    // --- IJL FILTERING LOGIC ---
-
-    // Helper function to check if division is IJL
-    // IJL divisions have codes like I1, I2, I3, I1A, I1B, etc. (I followed by digit)
-    // Or description contains 'Impian Jaya Lestari' or 'IJL'
-    const isIJLDivision = (d) => {
-        const code = (d.division_code || '').toUpperCase();
-        const desc = (d.description || '').toUpperCase();
-
-        // Check if code starts with 'I' followed by a digit (I1, I2, I1A, etc.)
-        const ijlCodePattern = /^I\d/;
-        if (ijlCodePattern.test(code)) return true;
-
-        // Check description for IJL indicators
-        if (desc.includes('IMPIAN JAYA LESTARI') || desc.includes('IJL')) return true;
-        if (desc.includes('ESTATE I ')) return true;
-
-        return false;
-    };
-
-    // Filter Summary Data
+    // --- IJL DATA (scoped from backend) ---
     const ijlSummaryData = useMemo(() => {
-        return summaryData.filter(d => {
-            if (d.is_grand_total) return false;
-            return isIJLDivision(d);
-        });
+        return summaryData.filter(d => !d.is_grand_total);
     }, [summaryData]);
 
-    // Calculate Grand Total for IJL
-    const ijlGrandTotal = useMemo(() => {
-        if (ijlSummaryData.length === 0) return null;
-        const leafRows = ijlSummaryData.filter(d => !d.is_subtotal);
-
-        return leafRows.reduce((acc, curr) => ({
-            total_employees: (acc.total_employees || 0) + (Number(curr.total_employees) || 0),
-            total_hk: (acc.total_hk || 0) + (Number(curr.total_hk) || 0),
-            total_pph21: (acc.total_pph21 || 0) + (Number(curr.total_pph21) || 0),
-            total_spsi: (acc.total_spsi || 0) + (Number(curr.total_spsi) || 0),
-            total_premi: (acc.total_premi || 0) + (Number(curr.total_premi) || 0),
-            total_lembur: (acc.total_lembur || 0) + (Number(curr.total_lembur) || 0),
-            total_manual: (acc.total_manual || 0) + (Number(curr.total_manual) || 0),
-            thumb_print: (acc.thumb_print || 0) + (Number(curr.thumb_print) || 0),
-            selisih: (acc.selisih || 0) + (Number(curr.selisih) || 0),
-        }), {});
-    }, [ijlSummaryData]);
-
-    // Filter Comparison Data for IJL
-    const ijlComparisonData = useMemo(() => {
-        if (!comparisonData || !comparisonData.divisions) return null;
-
-        // Use the isIJLDivision helper function defined above
-        const filteredDivisions = comparisonData.divisions.filter(isIJLDivision);
-
-        const currentEstateGaji = filteredDivisions.reduce((sum, d) => sum + (d.current_month?.gaji || 0), 0);
-        const previousEstateGaji = filteredDivisions.reduce((sum, d) => sum + (d.previous_month?.gaji || 0), 0);
-        const currentTBS = filteredDivisions.reduce((sum, d) => sum + (d.current_month?.tbs_weight || 0), 0);
-        const previousTBS = filteredDivisions.reduce((sum, d) => sum + (d.previous_month?.tbs_weight || 0), 0);
-
-        return {
-            ...comparisonData,
-            divisions: filteredDivisions,
-            kpi_summary: {
-                estate_gaji: { current: currentEstateGaji, previous: previousEstateGaji },
-                mill_gaji: { current: 0, previous: 0 },
-                tbs_weight: { current: currentTBS, previous: previousTBS }
-            }
-        };
-    }, [comparisonData]);
+    const ijlGrandTotal = grandTotal;
+    const ijlComparisonData = comparisonData;
 
     // --- VIEW CALCULATIONS ---
 
@@ -252,7 +199,6 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
     const groupedData = useMemo(() => {
         const groups = {};
         const regularData = ijlSummaryData.filter(d => !d.is_subtotal);
-        const subtotals = ijlSummaryData.filter(d => d.is_subtotal);
 
         regularData.forEach(div => {
             const prefix = 'I';
@@ -262,22 +208,20 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
             groups[prefix].divisions.push(div);
         });
 
-        const ijlSubtotal = subtotals.find(st => (st.description || '').toUpperCase().includes('IMPIAN'));
-        if (groups['I'] && ijlSubtotal) {
-            groups['I'].subtotal = ijlSubtotal;
+        if (groups['I']) {
+            groups['I'].subtotal = groupSubtotals?.I?.totals || null;
         }
         return groups;
-    }, [ijlSummaryData]);
+    }, [ijlSummaryData, groupSubtotals]);
 
     const kpiTotals = useMemo(() => {
-        const divisionCount = ijlSummaryData.filter(d => !d.is_subtotal).length;
         return {
-            divisions: divisionCount,
-            workers: ijlGrandTotal?.total_employees || 0,
-            hk: ijlGrandTotal?.total_hk || 0,
-            netPay: ijlGrandTotal?.total_manual || 0
+            divisions: Number(kpiTotalsData?.divisions || 0),
+            workers: Number(kpiTotalsData?.workers ?? ijlGrandTotal?.total_employees ?? 0),
+            hk: Number(kpiTotalsData?.hk ?? ijlGrandTotal?.total_hk ?? 0),
+            netPay: Number(kpiTotalsData?.netPay ?? ijlGrandTotal?.total_manual ?? 0)
         };
-    }, [ijlSummaryData, ijlGrandTotal]);
+    }, [kpiTotalsData, ijlGrandTotal]);
 
     // --- ACTIONS ---
 
@@ -362,20 +306,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
         const { divisions, previous_period, current_period } = ijlComparisonData;
         const prevMonthName = getMonthName(previous_period.month).toUpperCase();
         const currMonthName = getMonthName(current_period.month).toUpperCase();
-
-        const grandTotal = {
-            workers_previous: divisions.reduce((sum, d) => sum + (d.workers_previous || 0), 0),
-            workers_current: divisions.reduce((sum, d) => sum + (d.workers_current || 0), 0),
-            total_pph21_current: divisions.reduce((sum, d) => sum + (d.total_pph21_current || 0), 0),
-            total_spsi_current: divisions.reduce((sum, d) => sum + (d.total_spsi_current || 0), 0),
-            total_premi_current: divisions.reduce((sum, d) => sum + (d.total_premi_current || 0), 0),
-            total_lembur_current: divisions.reduce((sum, d) => sum + (d.total_lembur_current || 0), 0),
-            prev_gaji: divisions.reduce((sum, d) => sum + (d.previous_month?.gaji || 0), 0),
-            prev_tbs: divisions.reduce((sum, d) => sum + (d.previous_month?.tbs_weight || 0), 0),
-            curr_gaji: divisions.reduce((sum, d) => sum + (d.current_month?.gaji || 0), 0),
-            curr_tbs: divisions.reduce((sum, d) => sum + (d.current_month?.tbs_weight || 0), 0),
-            selisih: divisions.reduce((sum, d) => sum + (d.selisih || 0), 0)
-        };
+        const grandTotal = comparisonGrandTotal || {};
 
         return (
             <div className="wsp-table-wrapper">

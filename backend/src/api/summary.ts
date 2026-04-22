@@ -7,8 +7,197 @@ import { Config } from "../config";
 import { deductionAdjustmentService } from "../services/deductionAdjustmentService";
 import { luasAreaService } from "../services/luasAreaService";
 import { thumbprintService } from "../services/thumbprintService";
+import { parseBooleanQueryParam } from "../utils/queryParsers";
 
 const authService = AuthService.getInstance();
+type SummaryScope = "all" | "rebinmas" | "ijl";
+
+const SUMMARY_GROUP_LABELS: Record<string, string> = {
+    P: "ESTATE PARIT GUNUNG",
+    A: "ESTATE AIR RUAK",
+    N: "NURSERY",
+    W: "WORKSHOP (PG & AR)",
+    K: "ESTATE DME",
+    I: "DIVISI INFRASTRUKTUR",
+    M: "OPERASI MILL"
+};
+
+const parseSummaryScope = (value?: string): SummaryScope => {
+    const normalized = (value || "").toLowerCase();
+    if (normalized === "rebinmas" || normalized === "ijl") return normalized;
+    return "all";
+};
+
+const isIJLDivision = (divisionCode?: string, description?: string): boolean => {
+    const code = (divisionCode || "").toUpperCase();
+    const desc = (description || "").toUpperCase();
+    if (/^I\d/.test(code)) return true;
+    if (desc.includes("IMPIAN JAYA LESTARI")) return true;
+    if (desc.includes("IJL")) return true;
+    if (desc.includes("ESTATE I ")) return true;
+    return false;
+};
+
+const isIncludedByScope = (scope: SummaryScope, divisionCode?: string, description?: string): boolean => {
+    if (scope === "all") return true;
+    const ijlDivision = isIJLDivision(divisionCode, description);
+    return scope === "ijl" ? ijlDivision : !ijlDivision;
+};
+
+const getGroupPrefix = (divisionCode?: string, description?: string): string => {
+    const code = (divisionCode || "").toUpperCase();
+    const desc = (description || "").toUpperCase();
+    let prefix = (description || divisionCode || "").charAt(0).toUpperCase() || "#";
+    if (code === "INF" || desc.includes("INFRA")) prefix = "I";
+    if (code === "NRS" || desc.includes("NURSERY")) prefix = "N";
+    if (code.startsWith("WKS") || desc.includes("WORKSHOP")) prefix = "W";
+    return prefix;
+};
+
+const emptySummaryTotals = () => ({
+    total_premi: 0,
+    total_employees: 0,
+    total_hk: 0,
+    total_upah_bersih: 0,
+    total_pph21: 0,
+    total_spsi: 0,
+    total_lembur: 0,
+    total_gangs: 0,
+    thumb_print: 0,
+    total_manual: 0,
+    selisih: 0,
+    total_premi_excluding_special: 0
+});
+
+const accumulateSummaryTotals = (acc: ReturnType<typeof emptySummaryTotals>, row: any) => {
+    acc.total_premi += Number(row.total_premi || 0);
+    acc.total_employees += Number(row.total_employees || 0);
+    acc.total_hk += Number(row.total_hk || 0);
+    acc.total_upah_bersih += Number(row.total_upah_bersih || 0);
+    acc.total_pph21 += Number(row.total_pph21 || 0);
+    acc.total_spsi += Number(row.total_spsi || 0);
+    acc.total_lembur += Number(row.total_lembur || 0);
+    acc.total_gangs += Number(row.total_gangs || 0);
+    acc.thumb_print += Number(row.thumb_print || 0);
+    acc.total_manual += Number(row.total_manual || 0);
+    acc.selisih += Number(row.selisih || 0);
+    acc.total_premi_excluding_special += Number(row.total_premi_excluding_special || row.total_premi || 0);
+    return acc;
+};
+
+const buildSummaryTotals = (rows: any[]) => rows.reduce(
+    (acc, row) => accumulateSummaryTotals(acc, row),
+    emptySummaryTotals()
+);
+
+const buildSummaryGroupSubtotals = (rows: any[]) => {
+    const groups: Record<string, { key: string; label: string; totals: ReturnType<typeof emptySummaryTotals> }> = {};
+    for (const row of rows) {
+        const key = getGroupPrefix(row.division_code, row.description);
+        if (!groups[key]) {
+            groups[key] = {
+                key,
+                label: SUMMARY_GROUP_LABELS[key] || `ESTATE ${key}`,
+                totals: emptySummaryTotals()
+            };
+        }
+        accumulateSummaryTotals(groups[key].totals, row);
+    }
+    return groups;
+};
+
+const buildSummaryKpiTotals = (rows: any[]) => {
+    const totals = buildSummaryTotals(rows);
+    return {
+        divisions: rows.length,
+        workers: totals.total_employees,
+        hk: totals.total_hk,
+        netPay: totals.total_manual,
+        gangs: totals.total_gangs
+    };
+};
+
+const emptyComparisonGrandTotal = () => ({
+    workers_previous: 0,
+    workers_current: 0,
+    total_pph21_current: 0,
+    total_spsi_current: 0,
+    total_premi_previous: 0,
+    total_premi_current: 0,
+    total_prunning_current: 0,
+    total_brondol_current: 0,
+    total_insentif_current: 0,
+    total_kinerja_current: 0,
+    total_lembur_previous: 0,
+    total_lembur_current: 0,
+    prev_gaji: 0,
+    prev_tbs: 0,
+    prev_thumb_print: 0,
+    curr_gaji: 0,
+    curr_tbs: 0,
+    curr_thumb_print: 0,
+    selisih: 0
+});
+
+const buildComparisonGrandTotal = (rows: any[]) => rows.reduce((acc, row) => {
+    acc.workers_previous += Number(row.workers_previous || 0);
+    acc.workers_current += Number(row.workers_current || 0);
+    acc.total_pph21_current += Number(row.total_pph21_current || 0);
+    acc.total_spsi_current += Number(row.total_spsi_current || 0);
+    acc.total_premi_previous += Number(row.total_premi_previous || 0);
+    acc.total_premi_current += Number(row.total_premi_current || 0);
+    acc.total_prunning_current += Number(row.total_prunning_current || 0);
+    acc.total_brondol_current += Number(row.total_brondol_current || 0);
+    acc.total_insentif_current += Number(row.total_insentif_current || 0);
+    acc.total_kinerja_current += Number(row.total_kinerja_current || 0);
+    acc.total_lembur_previous += Number(row.total_lembur_previous || 0);
+    acc.total_lembur_current += Number(row.total_lembur_current || 0);
+    acc.prev_gaji += Number(row.previous_month?.gaji || 0);
+    acc.prev_tbs += Number(row.previous_month?.tbs_weight || 0);
+    acc.prev_thumb_print += Number(row.previous_month?.thumb_print || 0);
+    acc.curr_gaji += Number(row.current_month?.gaji || 0);
+    acc.curr_tbs += Number(row.current_month?.tbs_weight || 0);
+    acc.curr_thumb_print += Number(row.current_month?.thumb_print || 0);
+    acc.selisih += Number(row.selisih || 0);
+    return acc;
+}, emptyComparisonGrandTotal());
+
+const buildComparisonKpiSummary = (rows: any[]) => {
+    const estateRows = rows.filter((r) => (r.division_code || "").toUpperCase() !== "MILL");
+    const millRows = rows.filter((r) => (r.division_code || "").toUpperCase() === "MILL");
+    const sum = (targetRows: any[], selector: (row: any) => number) =>
+        targetRows.reduce((acc, row) => acc + selector(row), 0);
+
+    return {
+        estate_gaji: {
+            current: sum(estateRows, (row) => Number(row.current_month?.gaji || 0)),
+            previous: sum(estateRows, (row) => Number(row.previous_month?.gaji || 0))
+        },
+        mill_gaji: {
+            current: sum(millRows, (row) => Number(row.current_month?.gaji || 0)),
+            previous: sum(millRows, (row) => Number(row.previous_month?.gaji || 0))
+        },
+        tbs_weight: {
+            current: sum(rows, (row) => Number(row.current_month?.tbs_weight || 0)),
+            previous: sum(rows, (row) => Number(row.previous_month?.tbs_weight || 0))
+        },
+        total_premi: {
+            current: sum(rows, (row) => Number(row.total_premi_current || 0)),
+            previous: sum(rows, (row) => Number(row.total_premi_previous || 0))
+        },
+        total_lembur: {
+            current: sum(rows, (row) => Number(row.total_lembur_current || 0)),
+            previous: sum(rows, (row) => Number(row.total_lembur_previous || 0))
+        }
+    };
+};
+
+const buildComparisonPremiBreakdownCurrent = (rows: any[]) => ({
+    total_prunning_current: rows.reduce((acc, row) => acc + Number(row.total_prunning_current || 0), 0),
+    total_brondol_current: rows.reduce((acc, row) => acc + Number(row.total_brondol_current || 0), 0),
+    total_insentif_current: rows.reduce((acc, row) => acc + Number(row.total_insentif_current || 0), 0),
+    total_kinerja_current: rows.reduce((acc, row) => acc + Number(row.total_kinerja_current || 0), 0)
+});
 
 export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     .derive(async ({ headers }) => {
@@ -75,40 +264,33 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     .get("/all-divisions", async ({ query, set }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
+        const useHistory = parseBooleanQueryParam(query.use_history) ?? false;
         const includeVirtual = query.include_virtual === 'true'; // Optional parameter to include virtual divisions
+        const scope = parseSummaryScope(query.scope);
 
         try {
+            summaryService.setUseHistoryDb(useHistory);
             // ⚠️ OPTIMIZED: Summary Report ALWAYS uses extend_db_ptrj (SERVER_PROFILE_1)
             // includeVirtual controls whether virtual divisions (INF, NRS, WKS_PG, WKS_AR, ARC, MILL) are included
             const data = await summaryService.getAllDivisionsPremiTotals(month, year, includeVirtual);
-
-            // Calculate Grand Total
-            const gt = data.reduce((acc, curr) => ({
-                total_premi: acc.total_premi + curr.total_premi,
-                total_employees: acc.total_employees + curr.total_employees,
-                total_hk: acc.total_hk + curr.total_hk,
-                total_upah_bersih: acc.total_upah_bersih + curr.total_upah_bersih,
-                total_pph21: acc.total_pph21 + curr.total_pph21,
-                total_spsi: acc.total_spsi + curr.total_spsi,
-                total_lembur: acc.total_lembur + curr.total_lembur,
-                total_gangs: acc.total_gangs + curr.total_gangs,
-                thumb_print: acc.thumb_print + (curr.thumb_print || 0),
-                total_manual: acc.total_manual + curr.total_manual,
-                selisih: acc.selisih + curr.selisih
-            }), {
-                total_premi: 0, total_employees: 0, total_hk: 0, total_upah_bersih: 0,
-                total_pph21: 0, total_spsi: 0, total_lembur: 0, total_gangs: 0,
-                thumb_print: 0, total_manual: 0, selisih: 0
-            });
+            const leafRows = data.filter(row => !row.is_subtotal && !row.is_grand_total);
+            const scopedRows = leafRows.filter(row => isIncludedByScope(scope, row.division_code, row.description));
+            const grandTotal = buildSummaryTotals(scopedRows);
+            const grandTotalLabel = scope === "ijl" ? "GRAND TOTAL (IJL)" : scope === "rebinmas" ? "GRAND TOTAL (REBINMAS)" : "GRAND TOTAL";
 
             return {
                 success: true,
-                month, year,
-                count: data.length,
-                data,
+                month,
+                year,
+                scope,
+                use_history: useHistory,
+                count: scopedRows.length,
+                data: scopedRows,
+                kpi_totals: buildSummaryKpiTotals(scopedRows),
+                group_subtotals: buildSummaryGroupSubtotals(scopedRows),
                 grand_total: {
-                    description: "GRAND TOTAL",
-                    ...gt,
+                    description: grandTotalLabel,
+                    ...grandTotal,
                     is_grand_total: true
                 }
             };
@@ -127,19 +309,22 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
                 error: error.message || "Failed to fetch all divisions summary",
                 details: process.env.RUN_MODE === 'dev' ? error.stack : undefined
             };
+        } finally {
+            summaryService.setUseHistoryDb(false);
         }
     }, {
         query: t.Object({
             month: t.String(),
             year: t.String(),
             use_history: t.Optional(t.String()),
-            include_virtual: t.Optional(t.String()) // Set to 'true' to include virtual divisions
+            include_virtual: t.Optional(t.String()), // Set to 'true' to include virtual divisions
+            scope: t.Optional(t.String())
         })
     })
     // --- Division Detail Summary ---
     .get("/division", async ({ query }) => {
         const { division, month, year } = query;
-        const useHistory = query.use_history === 'true';
+        const useHistory = parseBooleanQueryParam(query.use_history) ?? false;
         const includeVirtual = query.include_virtual === 'true'; // Support virtual divisions
 
         try {
@@ -174,12 +359,25 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     .get("/comparison", async ({ query, set }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
-        const useHistory = query.use_history === 'true';
+        const useHistory = parseBooleanQueryParam(query.use_history) ?? false;
+        const scope = parseSummaryScope(query.scope);
 
         try {
             summaryService.setUseHistoryDb(useHistory);
             const result = await summaryService.getAllDivisionsComparison(month, year);
-            return { success: true, ...result };
+            const scopedDivisions = (result.divisions || []).filter((row: any) =>
+                isIncludedByScope(scope, row.division_code, row.description)
+            );
+            return {
+                success: true,
+                ...result,
+                scope,
+                count: scopedDivisions.length,
+                divisions: scopedDivisions,
+                kpi_summary: buildComparisonKpiSummary(scopedDivisions),
+                grand_total: buildComparisonGrandTotal(scopedDivisions),
+                premi_breakdown_current: buildComparisonPremiBreakdownCurrent(scopedDivisions)
+            };
         } catch (error: any) {
             console.error("[SummaryRoutes] Error in comparison report:", error);
             console.error("[SummaryRoutes] Error details:", {
@@ -201,14 +399,15 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
         query: t.Object({
             month: t.String(),
             year: t.String(),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            scope: t.Optional(t.String())
         })
     })
     // --- Impact Report ---
     .get("/impact-report", async ({ query }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
-        const useHistory = query.use_history === 'true';
+        const useHistory = parseBooleanQueryParam(query.use_history) ?? false;
 
         try {
             summaryService.setUseHistoryDb(useHistory);
@@ -228,7 +427,7 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     .get("/analysis-report", async ({ query }) => {
         const month = parseInt(query.month);
         const year = parseInt(query.year);
-        const useHistory = query.use_history === 'true';
+        const useHistory = parseBooleanQueryParam(query.use_history) ?? false;
 
         try {
             summaryService.setUseHistoryDb(useHistory);
