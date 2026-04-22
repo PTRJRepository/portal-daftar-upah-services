@@ -1163,9 +1163,18 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             return { error: "division_code, month, and year are required" };
         }
 
-        // Permission check
+        // Permission check - Use NORMALIZED division check like non-SSE endpoints
         if (user && user.role !== UserRole.ADMIN) {
-            if (divisionCode && !user.divisions.includes(divisionCode)) {
+            const { divisionDefinition } = await import("../services/divisionDefinition");
+            const requestedDiv = divisionDefinition.resolveDivisionCode(String(divisionCode).trim().toUpperCase());
+
+            const hasPermission = user.divisions.some(d => {
+                const div = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
+                return div === requestedDiv;
+            });
+
+            if (!hasPermission) {
+                console.warn(`[Stream] KERANI/USER ${user.username} denied. Divs: ${JSON.stringify(user.divisions)}, Req: ${requestedDiv}`);
                 set.status = 403;
                 return { error: "Division not accessible" };
             }

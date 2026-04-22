@@ -39,6 +39,7 @@ export interface GangMember {
     division_code: string;
     bank_acc_no: string;
     bank_code: string;
+    alamat: string;
 }
 
 export interface GangAttendanceRow {
@@ -47,6 +48,7 @@ export interface GangAttendanceRow {
     nik: string;
     gang_code: string;
     bank_acc_no: string;
+    alamat: string;
     upah_dasar: number;  // Added for Kurang HK warning
     daily: Record<number, DailyCell>;  // 1-31 => status with hours, amount, and is_short flag
     /** Face verification data from IT Solution API (absen_import). Key = day (1-31), value = hasWork (true/false) */
@@ -142,7 +144,8 @@ class GangAttendanceService {
                 gang_code: (r.gang_code || '').trim(),
                 division_code: (r.division_code || '').trim(),
                 bank_acc_no: '',
-                bank_code: ''
+                bank_code: '',
+                alamat: ''
             }));
         } catch (e) {
             console.error("[GangAttendanceService] Error fetching from HR_GANGLN:", e);
@@ -151,11 +154,11 @@ class GangAttendanceService {
     }
 
     /**
-     * Resolve NIK (NewICNo) from HR_EMPLOYEE by EmpCode (batch)
+     * Resolve NIK (NewICNo) and Address from HR_EMPLOYEE by EmpCode (batch)
      * emp_code is the authoritative key from HR_GANGLN; NIK is derived from it.
      */
-    private async resolveNikByEmpCodes(empCodes: string[]): Promise<Map<string, string>> {
-        const result = new Map<string, string>();
+    private async resolveNikByEmpCodes(empCodes: string[]): Promise<Map<string, { nik: string; alamat: string }>> {
+        const result = new Map<string, { nik: string; alamat: string }>();
         if (empCodes.length === 0) return result;
 
         // Always trim all empCodes to ensure consistent key matching
@@ -167,17 +170,22 @@ class GangAttendanceService {
             const chunk = cleanCodes.slice(i, i + CHUNK);
             const placeholders = chunk.map(() => '?').join(',');
             try {
-                const rows = await this.db.query<{ EmpCode: string; NewICNo: string }>(`
-                    SELECT RTRIM(EmpCode) as EmpCode, RTRIM(ISNULL(NewICNo, '')) as NewICNo
+                const rows = await this.db.query<{ EmpCode: string; NewICNo: string; ResAddress: string }>(`
+                    SELECT RTRIM(EmpCode) as EmpCode, 
+                           RTRIM(ISNULL(NewICNo, '')) as NewICNo,
+                           RTRIM(ISNULL(ResAddress, '')) as ResAddress
                     FROM HR_EMPLOYEE
                     WHERE RTRIM(EmpCode) IN (${placeholders})
                 `, chunk);
                 for (const r of rows) {
                     // emp_code as key is always trimmed + uppercased
-                    result.set(r.EmpCode.trim().toUpperCase(), r.NewICNo?.trim() || '');
+                    result.set(r.EmpCode.trim().toUpperCase(), {
+                        nik: r.NewICNo?.trim() || '',
+                        alamat: r.ResAddress?.trim() || ''
+                    });
                 }
             } catch (e) {
-                console.error("[GangAttendanceService] Error resolving NIK:", e);
+                console.error("[GangAttendanceService] Error resolving NIK and Address:", e);
             }
         }
         return result;
@@ -403,10 +411,14 @@ class GangAttendanceService {
         //     }
         // }
 
-        // 6. Enrich members with NIK and bank account data
+        // 6. Enrich members with NIK, bank account data, and alamat
         for (const member of members) {
             const key = member.emp_code.toUpperCase();
-            member.nik = nikMap.get(key) || '';
+            const empInfo = nikMap.get(key);
+            if (empInfo) {
+                member.nik = empInfo.nik;
+                member.alamat = empInfo.alamat;
+            }
             const bank = bankMap.get(key);
             if (bank) {
                 member.bank_acc_no = bank.bank_acc_no;
@@ -556,6 +568,7 @@ class GangAttendanceService {
                     emp_code: member.emp_code,
                     emp_name: member.emp_name,
                     nik: member.nik,
+                    alamat: member.alamat || '',
                     gang_code: member.gang_code,
                     bank_acc_no: member.bank_acc_no,
                     upah_dasar: upahDasar,

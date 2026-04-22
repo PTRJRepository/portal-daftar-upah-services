@@ -20,6 +20,7 @@ import { DataExtractorService } from './dataExtractorService';
 import { currentPeriodService } from './currentPeriodService';
 import { EmployeeEstateService } from './employeeEstateService';
 import { cacheService } from './cacheService';
+import { filterTaxReportRows, resolveTaxReportDivisionScope } from '../utils/taxReportDivisionScope';
 
 /**
  * Auto-derive jabatan (job title) from the last character of gang code.
@@ -491,13 +492,10 @@ class TaxReportService {
             }
         }
 
-        // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
-        const isVirtual = divisionCode ? divisionDefinition.isVirtualDivision(divisionCode) : false;
-        // [ALIGNMENT] Stop resolving virtual divisions to source divisions here.
-        // DataExtractorService already handles virtual divisions (WKS, NRS, etc.) internally
-        // by resolving them to their constituent gangs. Over-resolving here causes 
-        // history database mapping issues (looking for virtual data under real division codes).
-        const sourceDivisions = [divisionCode || 'ALL'];
+        // Tax reports must preserve the requested virtual division scope.
+        // The shared helper keeps fetch/filter behavior identical across report variants.
+        const divisionScope = resolveTaxReportDivisionScope({ divisionCode, gangPrefix });
+        const sourceDivisions = [divisionScope.fetchDivisionCode];
 
         console.log(`[TaxReportService] Source divisions for ${divisionCode || 'ALL'}: ${sourceDivisions.join(', ')}`);
 
@@ -513,25 +511,10 @@ class TaxReportService {
             );
 
             if (chunk?.data_rows) {
-                // If it's a virtual division, we filter rows manually using the precise regex pattern
-                // if it's a real division we filter by gangPrefix if provided.
-                let filteredRows = chunk.data_rows;
-                
-                if (isVirtual && divisionCode) {
-                    filteredRows = chunk.data_rows.filter((r: any) => 
-                        divisionDefinition.matchGangToVirtualDivision(r.gang_code || '', divisionCode, r.gang_description || r.gang_desc || r.task_desc || '')
-                    );
+                const filteredRows = filterTaxReportRows(chunk.data_rows, divisionScope);
+
+                if (divisionScope.isVirtualDivision && divisionCode) {
                     console.log(`[TaxReportService] Virtual filter (${divisionCode}) on ${sourceDiv}: ${chunk.data_rows.length} -> ${filteredRows.length} rows.`);
-                } else if (gangPrefix) {
-                    const isNumericPrefix = /^\d+$/.test(gangPrefix);
-                    filteredRows = chunk.data_rows.filter((r: any) => {
-                        const gc = (r.gang_code || '').trim();
-                        if (isNumericPrefix) {
-                            const asistensi = divisionDefinition.getAsistensiFromGang(gc, divisionCode);
-                            return asistensi === gangPrefix;
-                        }
-                        return gc.startsWith(gangPrefix);
-                    });
                 }
 
                 allHistoryRows.push(...filteredRows);
@@ -556,7 +539,7 @@ class TaxReportService {
             dynamic_potongan_headers: Array.from(dynamicPotonganHeaders)
         };
 
-        const effectiveDivisionCode = sourceDivisions[0]; // Fallback for other income fetching
+        const effectiveDivisionCode = divisionScope.fetchDivisionCode;
 
         const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
         const ptkpMap = new Map<string, string>();
@@ -818,7 +801,7 @@ class TaxReportService {
                     empcode: empCodeTrimmedJabatan,
                     employee_name: row.nama || row.emp_name || '',
                     gang: row.gang_code || '',
-                    divisi_id: effectiveDivisionCode || '',
+                    divisi_id: effectiveDivisionCode,
                     jabatan: resolvedJabatan
                 });
             }
@@ -960,30 +943,9 @@ class TaxReportService {
         gangCode?: string,
         gangPrefix?: string
     ): Promise<any> {
-        // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
-        let effectiveDivisionCode = divisionCode;
-        let effectiveGangPrefix = gangPrefix;
-        if (divisionCode && divisionDefinition.isVirtualDivision(divisionCode)) {
-            const sourceDivisions = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-            effectiveDivisionCode = sourceDivisions[0]; // Use first source division for history query
-            // Auto-derive gangPrefix from virtual division pattern if not explicitly set
-            if (!effectiveGangPrefix) {
-                const vConfig = divisionDefinition.getVirtualDivisionConfig(divisionCode);
-                if (vConfig?.pattern) {
-                    const patternStr = vConfig.pattern.toString();
-                    // Extract ONLY alphabetic prefix from pattern like /^IN(?:F|T)$/i -> "IN"
-                    // Strategy: find letters at start, stop at any non-letter (including ( ? : | ) * $)
-                    const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
-                    if (alphaMatch && alphaMatch[1]) {
-                        effectiveGangPrefix = alphaMatch[1];
-                    } else {
-                        effectiveGangPrefix = patternStr.replace(/^\/\^?/, '').replace(/\$?\/i?$/, '').replace(/\*\$.*/, '');
-                    }
-                    console.log(`[TaxReportService] Auto-derived gangPrefix '${effectiveGangPrefix}' from virtual division ${divisionCode}`);
-                }
-            }
-            console.log(`[TaxReportService] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode}`);
-        }
+        // Reuse the same scope contract as monthly tax report so virtual divisions
+        // behave identically in annual aggregation paths.
+        const divisionScope = resolveTaxReportDivisionScope({ divisionCode, gangPrefix });
 
         // Collect all monthly data
         const monthlyResults: Map<string, any[]> = new Map();
@@ -994,7 +956,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, effectiveDivisionCode || 'ALL', gangCode || 'ALL', effectiveGangPrefix
+                    m, year, divisionScope.fetchDivisionCode, gangCode || 'ALL', divisionScope.gangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }
@@ -1034,7 +996,7 @@ class TaxReportService {
         const activeThr = loadActiveThrPeriode();
 
         // --- Fetch Database Other Incomes for the Year ---
-        const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivisionCode, gangCode);
+        const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, divisionScope.fetchDivisionCode, gangCode);
         const dbIncomeByMonthNik = new Map<string, { thr: number, exgratia: number, custom: number }>();
         const dbIncomeByNik = new Map<string, { thr: number, exgratia: number, custom: number }>();
 
@@ -1058,20 +1020,14 @@ class TaxReportService {
 
         // --- Fetch PPH dari history_adtrans (sumber utama) untuk seluruh tahun ---
         const adtransPphByYear = await historyDatabaseService.getPphFromAdtransByYear(
-            year, effectiveDivisionCode, gangCode
+            year, divisionScope.fetchDivisionCode, gangCode
         );
 
         for (const { month, data } of allMonthData) {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
 
-            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
-                const gc = (r.gang_code || '').trim();
-                if (/^\d+$/.test(effectiveGangPrefix)) {
-                    return divisionDefinition.getAsistensiFromGang(gc, effectiveDivisionCode) === effectiveGangPrefix;
-                }
-                return gc.startsWith(effectiveGangPrefix);
-            }) : data.data_rows;
+            const filteredRows = filterTaxReportRows(data.data_rows, divisionScope);
 
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
@@ -1503,28 +1459,8 @@ class TaxReportService {
         gangCode?: string,
         gangPrefix?: string
     ): Promise<any> {
-        // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
-        let effectiveDivisionCode = divisionCode;
-        let effectiveGangPrefix = gangPrefix;
-        if (divisionCode && divisionDefinition.isVirtualDivision(divisionCode)) {
-            const sourceDivisions = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-            effectiveDivisionCode = sourceDivisions[0]; // Use first source division for history query
-            // Auto-derive gangPrefix from virtual division pattern if not explicitly set
-            if (!effectiveGangPrefix) {
-                const vConfig = divisionDefinition.getVirtualDivisionConfig(divisionCode);
-                if (vConfig?.pattern) {
-                    const patternStr = vConfig.pattern.toString();
-                    const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
-                    if (alphaMatch && alphaMatch[1]) {
-                        effectiveGangPrefix = alphaMatch[1];
-                    } else {
-                        effectiveGangPrefix = patternStr.replace(/^\/\^?/, '').replace(/\$?\/i?$/, '').replace(/\*\$.*/, '');
-                    }
-                    console.log(`[TaxReportService] Auto-derived gangPrefix '${effectiveGangPrefix}' from virtual division ${divisionCode}`);
-                }
-            }
-            console.log(`[TaxReportService] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode}`);
-        }
+        // ASTEK/BPJS report follows the same virtual-division scope contract.
+        const divisionScope = resolveTaxReportDivisionScope({ divisionCode, gangPrefix });
 
         const availableMonths: number[] = [];
 
@@ -1533,7 +1469,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, effectiveDivisionCode || 'ALL', gangCode || 'ALL', effectiveGangPrefix
+                    m, year, divisionScope.fetchDivisionCode, gangCode || 'ALL', divisionScope.gangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }
@@ -1562,13 +1498,7 @@ class TaxReportService {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
 
-            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
-                const gc = (r.gang_code || '').trim();
-                if (/^\d+$/.test(effectiveGangPrefix)) {
-                    return divisionDefinition.getAsistensiFromGang(gc, effectiveDivisionCode) === effectiveGangPrefix;
-                }
-                return gc.startsWith(effectiveGangPrefix);
-            }) : data.data_rows;
+            const filteredRows = filterTaxReportRows(data.data_rows, divisionScope);
 
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
@@ -1768,28 +1698,9 @@ class TaxReportService {
         gangCode?: string,
         gangPrefix?: string
     ): Promise<any> {
-        // Resolve virtual division (e.g., "INF" -> "P1A") before querying history database
-        let effectiveDivisionCode = divisionCode;
-        let effectiveGangPrefix = gangPrefix;
-        if (divisionCode && divisionDefinition.isVirtualDivision(divisionCode)) {
-            const sourceDivisions = await divisionDefinition.getSourceDivisionsForAggregation(divisionCode);
-            effectiveDivisionCode = sourceDivisions[0]; // Use first source division for history query
-            // Auto-derive gangPrefix from virtual division pattern if not explicitly set
-            if (!effectiveGangPrefix) {
-                const vConfig = divisionDefinition.getVirtualDivisionConfig(divisionCode);
-                if (vConfig?.pattern) {
-                    const patternStr = vConfig.pattern.toString();
-                    const alphaMatch = patternStr.match(/[\/\^]?([A-Za-z]+)/);
-                    if (alphaMatch && alphaMatch[1]) {
-                        effectiveGangPrefix = alphaMatch[1];
-                    } else {
-                        effectiveGangPrefix = patternStr.replace(/^\/\^?/, '').replace(/\$?\/i?$/, '').replace(/\*\$.*/, '');
-                    }
-                    console.log(`[TaxReportService] Auto-derived gangPrefix '${effectiveGangPrefix}' from virtual division ${divisionCode}`);
-                }
-            }
-            console.log(`[TaxReportService] Virtual division ${divisionCode} resolved to ${effectiveDivisionCode}`);
-        }
+        // December report also keeps virtual divisions in-request, then filters rows
+        // with the same helper to avoid divergence from monthly/annual logic.
+        const divisionScope = resolveTaxReportDivisionScope({ divisionCode, gangPrefix });
 
         // Collect all monthly data
         const availableMonths: number[] = [];
@@ -1797,7 +1708,7 @@ class TaxReportService {
         for (let m = 1; m <= 12; m++) {
             monthPromises.push(
                 this.fetchPayrollData(
-                    m, year, effectiveDivisionCode || 'ALL', gangCode || 'ALL', effectiveGangPrefix
+                    m, year, divisionScope.fetchDivisionCode, gangCode || 'ALL', divisionScope.gangPrefix
                 ).then(({ data }) => ({ month: m, data }))
             );
         }
@@ -1823,13 +1734,7 @@ class TaxReportService {
             if (!data || data.data_rows.length === 0) continue;
             availableMonths.push(month);
 
-            const filteredRows = effectiveGangPrefix ? data.data_rows.filter((r: any) => {
-                const gc = (r.gang_code || '').trim();
-                if (/^\d+$/.test(effectiveGangPrefix)) {
-                    return divisionDefinition.getAsistensiFromGang(gc, effectiveDivisionCode) === effectiveGangPrefix;
-                }
-                return gc.startsWith(effectiveGangPrefix);
-            }) : data.data_rows;
+            const filteredRows = filterTaxReportRows(data.data_rows, divisionScope);
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
                 if (!employeeMap.has(empCode)) {
@@ -1843,7 +1748,7 @@ class TaxReportService {
                             empcode: trimmedEmpCode,
                             employee_name: row.nama || row.emp_name || '',
                             gang: row.gang_code || '',
-                            divisi_id: effectiveDivisionCode || '',
+                            divisi_id: divisionScope.fetchDivisionCode,
                             jabatan: resolvedJabatan
                         });
                     }

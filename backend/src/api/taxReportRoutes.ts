@@ -16,6 +16,7 @@ import { ptkpTaxService } from "../services/ptkpTaxService";
 import { EmployeeEstateService } from "../services/employeeEstateService";
 import { Database } from "../db/client";
 import { gangService } from "../services/gangService";
+import { resolveMonthlyTaxQuery } from "../utils/taxReportQuery";
 
 /**
  * Sanitize string for filename - remove/replace invalid filename characters
@@ -55,27 +56,25 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     // ========================================================
     // GET /tax-report/monthly
     // Monthly PPH21 tax report for a specific period
-    // Uses DataExtractorService (same as Daftar Upah) - always uses current DB
+    // Uses the same source-selection contract as Daftar Upah via use_history
     // ========================================================
     .get("/monthly", async ({ query, set, currentUser }) => {
         try {
-            const year = parseInt(query.year as string);
-            const month = parseInt(query.month as string);
-            let division = query.division as string || undefined;
-            const gang = query.gang as string || undefined;
-            const gangPrefix = query.gangPrefix as string || undefined;
+            const resolved = resolveMonthlyTaxQuery(query as any, currentUser);
 
-            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
-                division = currentUser.divisions[0];
-            }
-
-            if (!year || !month || month < 1 || month > 12) {
+            if (!resolved.hasValidPeriod) {
                 set.status = 400;
                 return { error: "Invalid year or month parameter" };
             }
 
-            // Always use current DB (same as Daftar Upah)
-            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, false);
+            const result = await taxReportService.getMonthlyTaxReport(
+                resolved.year,
+                resolved.month,
+                resolved.division,
+                resolved.gang,
+                resolved.gangPrefix,
+                resolved.useHistoryDb
+            );
             return result;
         } catch (error: any) {
             console.error("[TaxReport] Error fetching monthly tax report:", error);
@@ -88,36 +87,35 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             month: t.String(),
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
-            gangPrefix: t.Optional(t.String())
+            gangPrefix: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
         })
     })
 
     // ========================================================
     // GET /tax-report/monthly/excel
     // Download Monthly PPH21 tax report as Excel with formulas
-    // Uses DataExtractorService (same as Daftar Upah) - always uses current DB
+    // Uses the same source-selection contract as Daftar Upah via use_history
     // ========================================================
     .get("/monthly/excel", async ({ query, set, currentUser }) => {
         try {
-            const year = parseInt(query.year as string);
-            const month = parseInt(query.month as string);
-            let division = query.division as string || undefined;
-            const gang = query.gang as string || undefined;
-            const gangPrefix = query.gangPrefix as string || undefined;
+            const resolved = resolveMonthlyTaxQuery(query as any, currentUser);
 
-            console.log(`[TaxReport Excel] Request: year=${year}, month=${month}, division=${division}, gang=${gang}`);
+            console.log(`[TaxReport Excel] Request: year=${resolved.year}, month=${resolved.month}, division=${resolved.division}, gang=${resolved.gang}`);
 
-            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
-                division = currentUser.divisions[0];
-            }
-
-            if (!year || !month || month < 1 || month > 12) {
+            if (!resolved.hasValidPeriod) {
                 set.status = 400;
                 return { error: "Invalid year or month parameter" };
             }
 
-            // Always use current DB (same as Daftar Upah)
-            const data = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, false);
+            const data = await taxReportService.getMonthlyTaxReport(
+                resolved.year,
+                resolved.month,
+                resolved.division,
+                resolved.gang,
+                resolved.gangPrefix,
+                resolved.useHistoryDb
+            );
 
             console.log(`[TaxReport Excel] Data fetched: ${data?.employees?.length || 0} employees`);
 
@@ -126,7 +124,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "No data available for the selected period" };
             }
 
-            const gangLabel = gang || gangPrefix || 'ALL';
+            const gangLabel = resolved.gang || resolved.gangPrefix || 'ALL';
 
             // Get gang description for filename
             let gangDescForFilename = '';
@@ -142,7 +140,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // Generate Excel Buffer (pass premiKeys for dynamic column headers)
-            const excelBuffer = await generateMonthlyTaxExcel(data, year, month, division || 'ALL', gangLabel, data.premiKeys);
+            const excelBuffer = await generateMonthlyTaxExcel(data, resolved.year, resolved.month, resolved.division || 'ALL', gangLabel, data.premiKeys);
 
             console.log(`[TaxReport Excel] Excel generated: ${excelBuffer?.length || 0} bytes, type: ${typeof excelBuffer}`);
 
@@ -151,9 +149,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
-            const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
-            const filename = `PPH21_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
+            const isGroupOnly = resolved.gangPrefix && (!resolved.gang || resolved.gang === 'ALL');
+            const displayGangLabel = isGroupOnly ? `G${resolved.gangPrefix}` : gangLabel;
+            const filename = `PPH21_${resolved.division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${resolved.month}_${resolved.year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
 
@@ -169,30 +167,26 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             month: t.String(),
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
-            gangPrefix: t.Optional(t.String())
+            gangPrefix: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
         })
     })
 
     // ========================================================
     // GET /tax-report/monthly/excel/progressive
     // Download Monthly PPH21 using progressive extraction (avoids timeout)
-    // Uses dataExtractorService.extractPayrollDataProgressive() (same as Daftar Upah) - always uses current DB
+    // Uses dataExtractorService.extractPayrollDataProgressive() with the same source policy as Daftar Upah
     // ========================================================
     .get("/monthly/excel/progressive", async ({ query, set, currentUser }) => {
         try {
-            const year = parseInt(query.year as string);
-            const month = parseInt(query.month as string);
-            let division = query.division as string || undefined;
-            const gang = query.gang as string || undefined;
-            const gangPrefix = query.gangPrefix as string || undefined;
+            const resolved = resolveMonthlyTaxQuery(query as any, currentUser);
+            let division = resolved.division;
+            const gang = resolved.gang;
+            const gangPrefix = resolved.gangPrefix;
 
-            console.log(`[TaxReport Excel Progressive] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, gangPrefix=${gangPrefix}`);
+            console.log(`[TaxReport Excel Progressive] Request: year=${resolved.year}, month=${resolved.month}, division=${division}, gang=${gang}, gangPrefix=${gangPrefix}, useHistory=${resolved.useHistoryDb}`);
 
-            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
-                division = currentUser.divisions[0];
-            }
-
-            if (!year || !month || month < 1 || month > 12) {
+            if (!resolved.hasValidPeriod) {
                 set.status = 400;
                 return { error: "Invalid year or month parameter" };
             }
@@ -229,7 +223,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // Get PTKP data
-            const ptkpMaster = await ptkpTaxService.getPtkpByYear(year);
+            const ptkpMaster = await ptkpTaxService.getPtkpByYear(resolved.year);
             const ptkpMap = new Map<string, string>();
             for (const p of ptkpMaster) {
                 ptkpMap.set(p.emp_code.trim(), p.ptkp_status);
@@ -249,7 +243,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // Get other incomes for the year
-            const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivision, gang);
+            const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(resolved.year, effectiveDivision, gang);
             const dbIncomeByMonthNik = new Map<string, { thr: number; exgratia: number; custom: number }>();
             for (const inc of dbOtherIncomesYear) {
                 if (inc.is_taxable) {
@@ -306,8 +300,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             // Use progressive extraction - filter by specific gang if selected
             const progressiveStream = dataExtractor.extractPayrollDataProgressive(
-                month, year, targetGangCode, effectiveDivision,
-                Config.DB_PROFILE, targetGangCode === "ALL" ? effectiveGangPrefix : undefined
+                resolved.month, resolved.year, targetGangCode, effectiveDivision,
+                Config.DB_PROFILE, targetGangCode === "ALL" ? effectiveGangPrefix : undefined, resolved.useHistoryDb
             );
 
             for await (const chunk of progressiveStream) {
@@ -545,7 +539,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             month: t.String(),
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
-            gangPrefix: t.Optional(t.String())
+            gangPrefix: t.Optional(t.String()),
+            use_history: t.Optional(t.String())
         })
     })
 
@@ -557,20 +552,17 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     .get("/monthly/excel/fast", async ({ query, set, currentUser }) => {
         try {
             const startTime = Date.now();
-            const year = parseInt(query.year as string);
-            const month = parseInt(query.month as string);
-            let division = query.division as string || undefined;
-            const gang = query.gang as string || undefined;
-            const gangPrefix = query.gangPrefix as string || undefined;
-            const useHistoryDb = query.use_history === '1' || query.use_history === 'true';
+            const resolved = resolveMonthlyTaxQuery(query as any, currentUser);
+            const year = resolved.year;
+            const month = resolved.month;
+            const division = resolved.division;
+            const gang = resolved.gang;
+            const gangPrefix = resolved.gangPrefix;
+            const useHistoryDb = resolved.useHistoryDb;
 
             console.log(`[TaxReport Excel FAST] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistoryDb}`);
 
-            if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
-                division = currentUser.divisions[0];
-            }
-
-            if (!year || !month || month < 1 || month > 12) {
+            if (!resolved.hasValidPeriod) {
                 set.status = 400;
                 return { error: "Invalid year or month parameter" };
             }

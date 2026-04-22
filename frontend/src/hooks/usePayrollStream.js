@@ -25,11 +25,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
  * @param {number} params.year - Year
  * @param {string|null} params.gangPrefix - Gang prefix filter
  * @param {string|null} params.gangCode - Specific gang code (or "ALL")
+ * @param {boolean} params.useHistoryDb - Whether to force snapshot source
  * @param {boolean|null} params.enabled - Whether to start streaming
  *
  * @returns {Object} stream state
  */
-export function usePayrollStream({ token, division, month, year, gangPrefix, gangCode, enabled }) {
+export function usePayrollStream({ token, division, month, year, gangPrefix, gangCode, useHistoryDb, enabled }) {
     // State for gangs - array that grows progressively
     const [gangs, setGangs] = useState([]);           // Array of streamed gang objects
     const [meta, setMeta] = useState(null);           // Initial metadata from 'meta' event
@@ -112,7 +113,8 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
             const prefixParam = shouldSendGangPrefix && gangPrefix ? `&gang_prefix=${gangPrefix}` : '';
             const gangCodeParam = gangCode && gangCode !== 'ALL' ? `&gang_code=${gangCode}` : '';
-            const url = `/payroll/report/division-raw-tree/stream?division_code=${division}&month=${month}&year=${year}${prefixParam}${gangCodeParam}`;
+            const historyParam = `&use_history=${useHistoryDb ? 'true' : 'false'}`;
+            const url = `/payroll/report/division-raw-tree/stream?division_code=${division}&month=${month}&year=${year}${prefixParam}${gangCodeParam}${historyParam}`;
 
             console.log('[usePayrollStream] Starting SSE stream:', url);
 
@@ -255,16 +257,18 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                             }
 
                             case 'complete': {
+                                const gangsCount = data.gangs_count ?? data.total_gangs ?? 0;
+                                const employeesCount = data.employees_count ?? data.total_employees ?? 0;
                                 setGrandTotal(data.grand_total);
                                 setIsComplete(true);
                                 setProgress(prev => ({
                                     ...prev,
                                     stage: 'complete',
-                                    message: `Selesai! ${data.gangs_count} gang, ${data.employees_count} karyawan`,
-                                    processedGangs: data.gangs_count || 0,
-                                    totalGangs: data.gangs_count || 0,
-                                    processedEmployees: data.employees_count || 0,
-                                    totalEmployees: data.employees_count || 0,
+                                    message: `Selesai! ${gangsCount} gang, ${employeesCount} karyawan`,
+                                    processedGangs: gangsCount,
+                                    totalGangs: gangsCount,
+                                    processedEmployees: employeesCount,
+                                    totalEmployees: employeesCount,
                                     currentGang: null
                                 }));
                                 console.log('[usePayrollStream] Complete');
@@ -295,7 +299,7 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             setError(err.message);
             setProgress(prev => ({ ...prev, stage: 'error', message: err.message }));
         }
-    }, [token, division, month, year, gangPrefix, gangCode, enabled]);
+    }, [token, division, month, year, gangPrefix, gangCode, useHistoryDb, enabled]);
 
     const abort = useCallback(() => {
         if (abortControllerRef.current) {

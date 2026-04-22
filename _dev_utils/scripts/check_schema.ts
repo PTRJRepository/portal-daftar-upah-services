@@ -1,4 +1,4 @@
-import { Database } from "./src/db/client.ts";
+import { Database } from "../../backend/src/db/client";
 
 async function main() {
     console.log("=== Checking table schemas ===\n");

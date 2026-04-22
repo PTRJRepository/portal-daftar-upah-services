@@ -10,3 +10,8 @@ backend/nul
 nul 
 node_modules 
 dist 
+.worktrees/
+worktrees/
+backend/logs/
+logs/
+backend/tsconfig.tsbuildinfo

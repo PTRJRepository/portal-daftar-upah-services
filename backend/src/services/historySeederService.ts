@@ -18,6 +18,7 @@ import { PayrollDataService } from "./payrollDataService";
 import { employeeHrDataService } from "./employeeHrDataService";
 import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { duplicateNikMitigationService } from "./DuplicateNikMitigationService";
+import { resolveHistorySeederCleanupPolicy } from "../utils/historySeederCleanup";
 
 export interface SeederResult {
     success: boolean;
@@ -243,69 +244,54 @@ export class HistorySeederService {
         console.log(`[HistorySeeder] =======================================`);
 
         try {
-            // ⚠️ CRITICAL FIX: DELETE old data BEFORE seeding to prevent duplicates
-            // This ensures clean data when re-seeding same division/period
-            console.log(`[HistorySeeder] 🗑️  Step 0: Cleaning old data for ${options.divisionCode || 'ALL'} period ${options.periodMonth}/${options.periodYear}...`);
-            
-            try {
-                const deleteHistoryDb = Database.getExtendedInstance();
-                
-                // Build WHERE clause
-                const whereClauses: string[] = ['period_month = ?', 'period_year = ?'];
-                const deleteParams: any[] = [options.periodMonth, options.periodYear];
+            const cleanupPolicy = resolveHistorySeederCleanupPolicy(options);
 
-                if (options.divisionCode && options.divisionCode !== 'ALL') {
-                    whereClauses.push('division_code = ?');
-                    deleteParams.push(options.divisionCode);
-                }
+            if (cleanupPolicy.shouldDeleteAggregationHistory) {
+                console.log(`[HistorySeeder] 🗑️  Step 0: Cleaning aggregation snapshot for ${options.divisionCode} period ${options.periodMonth}/${options.periodYear}...`);
 
-                if (options.gangCode && options.gangCode !== 'ALL') {
-                    whereClauses.push('gang_code = ?');
-                    deleteParams.push(options.gangCode);
-                }
+                try {
+                    const deleteHistoryDb = Database.getExtendedInstance();
+                    const whereClauses: string[] = ["period_month = ?", "period_year = ?", "division_code = ?"];
+                    const deleteParams: any[] = [options.periodMonth, options.periodYear, options.divisionCode];
 
-                const whereClause = whereClauses.join(' AND ');
-                const deleteSql = `DELETE FROM dbo.daftar_upah_aggregation_history WHERE ${whereClause}`;
-
-                console.log(`[HistorySeeder] 🗑️  SQL: ${deleteSql}`);
-                console.log(`[HistorySeeder] 🗑️  Params: ${JSON.stringify(deleteParams)}`);
-                
-                // First, check what we're about to delete
-                const checkSql = deleteSql.replace('DELETE FROM', 'SELECT COUNT(*) as cnt FROM');
-                const checkResult = await deleteHistoryDb.query(checkSql, deleteParams);
-                const countBefore = checkResult?.[0]?.cnt || 0;
-                console.log(`[HistorySeeder] 📊 Found ${countBefore} records to delete`);
-
-                if (countBefore > 0) {
-                    // Show sample of what will be deleted
-                    const sampleSql = deleteSql.replace('DELETE FROM', 'SELECT TOP 3 division_code, gang_code FROM').split('WHERE')[0] + ' WHERE ' + deleteSql.split('WHERE')[1];
-                    // Or more simply, just replace the starting part properly:
-                    const simpleSampleSql = deleteSql.replace('DELETE FROM', 'SELECT TOP 3 division_code, gang_code FROM');
-                    const sampleResult = await deleteHistoryDb.query(sampleSql, deleteParams);
-                    console.log(`[HistorySeeder] 📋 Sample data to delete:`, sampleResult);
-
-                    // Execute delete
-                    await deleteHistoryDb.query(deleteSql, deleteParams);
-                    console.log(`[HistorySeeder] ✅ Delete executed`);
-
-                    // Verify deletion
-                    const verifyResult = await deleteHistoryDb.query(checkSql, deleteParams);
-                    const countAfter = verifyResult?.[0]?.cnt || 0;
-                    console.log(`[HistorySeeder] ✅ Records remaining: ${countAfter}`);
-
-                    if (countAfter > 0) {
-                        console.log(`[HistorySeeder] ❌ WARNING: ${countAfter} records still remain!`);
-                        const remainingSample = await deleteHistoryDb.query(sampleSql, deleteParams);
-                        console.log(`[HistorySeeder] ❌ Remaining data:`, remainingSample);
+                    if (options.gangCode && options.gangCode !== "ALL") {
+                        whereClauses.push("gang_code = ?");
+                        deleteParams.push(options.gangCode);
                     }
-                } else {
-                    console.log(`[HistorySeeder] ℹ️  No old data found to delete`);
-                }
 
-            } catch (deleteError: any) {
-                console.error(`[HistorySeeder] ❌ Delete failed:`, deleteError.message);
-                console.error(`[HistorySeeder] ❌ Stack:`, deleteError.stack);
-                result.errors.push(`Delete old data failed: ${deleteError.message}`);
+                    const whereClause = whereClauses.join(" AND ");
+                    const deleteSql = `DELETE FROM dbo.daftar_upah_aggregation_history WHERE ${whereClause}`;
+                    const countSql = `SELECT COUNT(*) as cnt FROM dbo.daftar_upah_aggregation_history WHERE ${whereClause}`;
+                    const sampleSql = `SELECT TOP 3 division_code, gang_code FROM dbo.daftar_upah_aggregation_history WHERE ${whereClause}`;
+
+                    console.log(`[HistorySeeder] 🗑️  SQL: ${deleteSql}`);
+                    console.log(`[HistorySeeder] 🗑️  Params: ${JSON.stringify(deleteParams)}`);
+
+                    const checkResult = await deleteHistoryDb.query(countSql, deleteParams);
+                    const countBefore = checkResult?.[0]?.cnt || 0;
+                    console.log(`[HistorySeeder] 📊 Found ${countBefore} aggregation rows to delete`);
+
+                    if (countBefore > 0) {
+                        const sampleResult = await deleteHistoryDb.query(sampleSql, deleteParams);
+                        console.log(`[HistorySeeder] 📋 Aggregation sample to delete:`, sampleResult);
+
+                        await deleteHistoryDb.query(deleteSql, deleteParams);
+
+                        const verifyResult = await deleteHistoryDb.query(countSql, deleteParams);
+                        const countAfter = verifyResult?.[0]?.cnt || 0;
+                        console.log(`[HistorySeeder] ✅ Aggregation rows remaining after cleanup: ${countAfter}`);
+                    } else {
+                        console.log(`[HistorySeeder] ℹ️  No aggregation snapshot rows found to delete`);
+                    }
+                } catch (deleteError: any) {
+                    console.error(`[HistorySeeder] ❌ Aggregation cleanup failed:`, deleteError.message);
+                    console.error(`[HistorySeeder] ❌ Stack:`, deleteError.stack);
+                    result.errors.push(`Delete old aggregation data failed: ${deleteError.message}`);
+                }
+            } else if (!options.force) {
+                console.log(`[HistorySeeder] force=false - skipping aggregation cleanup`);
+            } else {
+                console.log(`[HistorySeeder] No specific divisionCode provided - skipping aggregation cleanup to avoid broad deletion`);
             }
 
             // Set start time for timeout protection
@@ -332,7 +318,7 @@ export class HistorySeederService {
             // If divisionCode is undefined (seeding ALL divisions), DO NOT delete
             // because the DELETE would wipe ALL history for that period across all divisions.
             // The absence of divisionCode means "additive" seeding - preserve existing data.
-            if (options.force && options.divisionCode) {
+            if (cleanupPolicy.shouldDeletePayrollHistory) {
                 console.log(`[HistorySeeder] Deleting existing history for ${options.divisionCode}/${options.gangCode || 'ALL'} (${options.periodMonth}/${options.periodYear})...`);
                 await historyDatabaseService.deleteHistoryForPeriodAndLocation(
                     options.periodMonth,

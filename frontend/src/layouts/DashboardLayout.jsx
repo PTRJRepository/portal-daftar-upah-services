@@ -96,6 +96,9 @@ function TopBar({ user, collapsed, onToggle, periodDisplay }) {
             {/* Spacer */}
             <div style={{ flex: 1 }} />
 
+            {/* Header Actions Portal Target */}
+            <div id="header-actions-portal" style={{ display: 'flex', alignItems: 'center' }}></div>
+
             {/* Period Badge */}
             {periodDisplay && (
                 <div style={{

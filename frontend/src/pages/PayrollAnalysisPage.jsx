@@ -46,6 +46,8 @@ export default function PayrollAnalysisPage({
   const [gangs, setGangs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // [NEW] Backend-provided grand total for KPIs (single source of truth)
+  const [backendGrandTotal, setBackendGrandTotal] = useState(null);
 
   // State for active tab
   const [activeTab, setActiveTab] = useState('semua');
@@ -138,6 +140,9 @@ export default function PayrollAnalysisPage({
       const results = await Promise.all(divisionPromises);
 
       let allEmployees = [];
+      // [NEW] Accumulate grand_total from all divisions (single source of truth)
+      let accumulatedGrandTotal = null;
+
       results.forEach(result => {
         if (result.gangs && Array.isArray(result.gangs)) {
           result.gangs.forEach(gangData => {
@@ -147,9 +152,24 @@ export default function PayrollAnalysisPage({
             }
           });
         }
+
+        // Accumulate grand_total from each division response
+        if (result.grand_total) {
+          if (!accumulatedGrandTotal) {
+            accumulatedGrandTotal = { ...result.grand_total };
+          } else {
+            // Sum numeric fields for grand total across divisions
+            Object.keys(accumulatedGrandTotal).forEach(key => {
+              if (typeof accumulatedGrandTotal[key] === 'number' && key !== 'hari_kerja_count') {
+                accumulatedGrandTotal[key] += Number(result.grand_total[key] || 0);
+              }
+            });
+          }
+        }
       });
 
       setRawData(allEmployees);
+      setBackendGrandTotal(accumulatedGrandTotal);
     } catch (e) {
       console.error('[PayrollAnalysis] Error fetching data:', e);
       setError(e.message || 'Failed to fetch data');
@@ -253,8 +273,22 @@ export default function PayrollAnalysisPage({
       .slice(0, 5);
   }, [filteredData]);
 
-  // KPI
+  // KPI - [FIX] Use backend grand_total for consistent single source of truth
   const kpiData = useMemo(() => {
+    // If backend provides grand_total, use it directly (single source of truth)
+    if (backendGrandTotal) {
+      return {
+        employeeCount: backendGrandTotal.employee_count || 0,
+        totalHK: backendGrandTotal.jumlah_hk || 0,
+        totalPremi: backendGrandTotal.total_premi || 0,
+        totalLembur: backendGrandTotal.lembur_jumlah || 0,
+        totalUpahBersih: backendGrandTotal.upah_bersih || 0,
+        totalTunjangan: backendGrandTotal.total_tunjangan || 0,
+        totalPotongan: backendGrandTotal.total_potongan || 0,
+      };
+    }
+
+    // Fallback to frontend calculation only if backend grand_total not available
     const rawSum = (field) => filteredData.reduce((acc, row) => acc + (row[field] || 0), 0);
     return {
       employeeCount: filteredData.length,
@@ -265,7 +299,7 @@ export default function PayrollAnalysisPage({
       totalTunjangan: rawSum('total_tunjangan'),
       totalPotongan: rawSum('total_potongan_bersih'),
     };
-  }, [filteredData]);
+  }, [backendGrandTotal, filteredData]);
 
   // Formatters
   const formatNumber = (val) => new Intl.NumberFormat('id-ID').format(Math.round(val || 0));

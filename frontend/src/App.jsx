@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo, useCallback, lazy, Suspense, memo } from 'react'
+import { useEffect, useState, useMemo, useCallback, lazy, Suspense, memo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ReportProvider, useReport } from './context/ReportContext'
@@ -80,6 +81,27 @@ const OperationalReportWrapper = () => {
   // Seed data state
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedingStatus, setSeedingStatus] = useState('');
+
+  // Dropdown portal state
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [portalTarget, setPortalTarget] = useState(null);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    setPortalTarget(document.getElementById('header-actions-portal'));
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsActionsOpen(false);
+      }
+    };
+    if (isActionsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isActionsOpen]);
 
   // Using location.pathname as key FORCES remount when navigating, solving 'stuck' UI
   // Note: We return the actual content here, or wrap it.
@@ -345,19 +367,17 @@ const OperationalReportWrapper = () => {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Toolbar - Professional Header */}
-      <div style={{
-        padding: '0 1.25rem',
-        borderBottom: '1px solid #e2e8f0',
-        background: 'linear-gradient(to bottom, #ffffff, #f8fafc)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0',
-        flexShrink: 0
-      }}>
-
-        {/* Seeding Status Indicator */}
-        {seedingStatus && (
+      {/* Seeding Status Indicator (Only renders when seeding is active) */}
+      {seedingStatus && (
+        <div style={{
+          padding: '0 1.25rem',
+          borderBottom: '1px solid #e2e8f0',
+          background: 'linear-gradient(to bottom, #ffffff, #f8fafc)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0',
+          flexShrink: 0
+        }}>
           <div style={{
             padding: '0.5rem 0',
             backgroundColor: seedingStatus.includes('Success') || seedingStatus.includes('berhasil') ? '#d1fae5' : seedingStatus.includes('Error') || seedingStatus.includes('Gagal') ? '#fee2e2' : '#fef3c7',
@@ -380,612 +400,219 @@ const OperationalReportWrapper = () => {
             )}
             {seedingStatus}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Top Row: Title & Right Actions */}
+        {/* Filter Bar Portaled into TopBar */}
+        {portalTarget && createPortal(
+        <>
         <div style={{
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '10px 0',
-          borderBottom: gang ? '1px solid #f1f5f9' : 'none'
+          gap: '8px',
+          flexWrap: 'nowrap',
         }}>
-          {/* Left: Title */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Left: View Mode & Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               onClick={() => navigate('/')}
               style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#64748b',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '6px',
-                borderRadius: '6px',
-                transition: 'all 0.15s'
+                background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', color: '#f1f5f9',
+                display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px'
               }}
-              title="Kembali ke Dashboard"
-              onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#334155'; }}
-              onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#64748b'; }}
+              title="Kembali"
+              onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'; }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{
-                width: '32px',
+            
+            {/* View Mode Dropdown */}
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value)}
+              style={{
                 height: '32px',
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: '700',
-                boxShadow: '0 2px 4px rgba(30,64,175,0.25)'
-              }}>
-                📋
-              </div>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '0.95rem', color: '#0f172a', lineHeight: '1.2' }}>
-                  Daftar Upah
-                </div>
-                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>
-                  {division || '-'} {gang && gang !== 'ALL' ? `› ${gang}` : ''}
-                </div>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div style={{ width: '1px', height: '28px', backgroundColor: '#e2e8f0', margin: '0 4px' }}></div>
-
-            {/* View Mode Toggle */}
-            <div style={{
-              display: 'flex',
-              background: '#f1f5f9',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              overflow: 'hidden'
-            }}>
-              <button
-                onClick={() => setViewMode('table')}
-                style={{
-                  padding: '0 12px',
-                  height: '30px',
-                  border: 'none',
-                  background: viewMode === 'table' ? 'white' : 'transparent',
-                  color: viewMode === 'table' ? '#1e40af' : '#64748b',
-                  fontWeight: viewMode === 'table' ? '600' : '500',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                  boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                💰 Daftar Upah
-              </button>
-              <button
-                onClick={() => setViewMode('attendance')}
-                style={{
-                  padding: '0 12px',
-                  height: '30px',
-                  border: 'none',
-                  background: viewMode === 'attendance' ? 'white' : 'transparent',
-                  color: viewMode === 'attendance' ? '#059669' : '#64748b',
-                  fontWeight: viewMode === 'attendance' ? '600' : '500',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                  boxShadow: viewMode === 'attendance' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                📅 Absensi
-              </button>
-              <button
-                onClick={() => setViewMode('overtime')}
-                style={{
-                  padding: '0 12px',
-                  height: '30px',
-                  border: 'none',
-                  background: viewMode === 'overtime' ? 'white' : 'transparent',
-                  color: viewMode === 'overtime' ? '#d97706' : '#64748b',
-                  fontWeight: viewMode === 'overtime' ? '600' : '500',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                  boxShadow: viewMode === 'overtime' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                ⏰ Lembur
-              </button>
-              <button
-                onClick={() => setViewMode('employee-directory')}
-                style={{
-                  padding: '0 12px',
-                  height: '30px',
-                  border: 'none',
-                  background: viewMode === 'employee-directory' ? 'white' : 'transparent',
-                  color: viewMode === 'employee-directory' ? '#0f766e' : '#64748b',
-                  fontWeight: viewMode === 'employee-directory' ? '600' : '500',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                  boxShadow: viewMode === 'employee-directory' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                👥 Info Karyawan
-              </button>
-            </div>
-
-            {/* Sort Buttons */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '600' }}>Sort:</span>
-              {[
-                ['name', 'Nama'],
-                ['emp_code', 'EmpCode'],
-                ['nik', 'NIK']
-              ].map(([field, label]) => {
-                const isActive = employeeSortBy === field
-                return (
-                  <button
-                    key={field}
-                    onClick={() => handleEmployeeSort(field)}
-                    style={{
-                      height: '30px',
-                      padding: '0 10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px',
-                      borderRadius: '6px',
-                      fontSize: '0.72rem',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                      whiteSpace: 'nowrap',
-                      border: `1px solid ${isActive ? '#1e40af' : '#e2e8f0'}`,
-                      background: isActive ? '#1e40af' : '#f8fafc',
-                      color: isActive ? '#ffffff' : '#475569'
-                    }}
-                    title={`Sort by ${label} ${isActive ? (employeeSortOrder === 'asc' ? '↑' : '↓') : ''}`}
-                  >
-                    {label}
-                    {isActive && (
-                      <span style={{ fontSize: '9px', marginLeft: '2px' }}>
-                        {employeeSortOrder === 'asc' ? '↑' : '↓'}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Divider */}
-            <div style={{ width: '1px', height: '28px', backgroundColor: '#e2e8f0', margin: '0 4px' }}></div>
+                padding: '0 30px 0 10px',
+                border: '1px solid #dee2e6',
+                borderRadius: '6px',
+                fontSize: '0.85rem',
+                fontWeight: '600',
+                color: '#1e3a5f',
+                backgroundColor: '#f8f9fa',
+                cursor: 'pointer',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%231e3a5f' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                backgroundPosition: 'right 0.5rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1em'
+              }}
+            >
+              <option value="table">💰 Daftar Upah</option>
+              <option value="attendance">📅 Absensi</option>
+              <option value="overtime">⏰ Lembur</option>
+              <option value="employee-directory">👥 Info Karyawan</option>
+            </select>
           </div>
 
-          {/* Right: Action Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Seed Data Button */}
-            <button
-              onClick={handleSeedData}
-              disabled={isSeeding}
-              style={{
-                height: '34px',
-                padding: '0 12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                background: isSeeding ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                color: isSeeding ? '#92400e' : '#ffffff',
-                border: `1px solid ${isSeeding ? '#fde68a' : '#047857'}`,
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: isSeeding ? 'wait' : 'pointer',
-                transition: 'all 0.2s',
-                whiteSpace: 'nowrap',
-                opacity: isSeeding ? 0.7 : 1
-              }}
-              onMouseOver={(e) => { if (!isSeeding) { e.currentTarget.style.background = 'linear-gradient(135deg, #047857 0%, #065f46 100%)'; } }}
-              onMouseOut={(e) => { if (!isSeeding) { e.currentTarget.style.background = 'linear-gradient(135deg, #059669 0%, #047857 100%)'; } }}
-            >
-              {isSeeding ? (
+          {/* Center: Inline Filters */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, justifyContent: 'center' }}>
+            <select value={division} onChange={(e) => canChangeDivision && setDivision(e.target.value)} disabled={!canChangeDivision} style={{ height: '30px', padding: '0 24px 0 8px', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '0.8rem', backgroundColor: !canChangeDivision ? '#e9ecef' : 'white', cursor: !canChangeDivision ? 'not-allowed' : 'pointer', fontWeight: '500', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236c757d' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.3rem center', backgroundRepeat: 'no-repeat', backgroundSize: '0.8em' }}>
+              {allDivisions.map(d => (<option key={d} value={d}>{d}</option>))}
+            </select>
+
+            {availablePrefixes.length > 0 && (
+              <select value={gangPrefix} onChange={(e) => { setGangPrefix(e.target.value); setGang('ALL'); }} style={{ height: '30px', padding: '0 24px 0 8px', border: `1px solid ${gangPrefix ? '#1e3a5f' : '#dee2e6'}`, borderRadius: '4px', fontSize: '0.8rem', backgroundColor: gangPrefix ? '#f8f9fa' : 'white', color: gangPrefix ? '#1e3a5f' : '#212529', cursor: 'pointer', fontWeight: gangPrefix ? '600' : '500', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236c757d' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.3rem center', backgroundRepeat: 'no-repeat', backgroundSize: '0.8em' }}>
+                <option value="">Semua Group</option>
+                {availablePrefixes.map(prefix => (<option key={prefix} value={prefix}>Group {prefix}</option>))}
+              </select>
+            )}
+
+            <select value={gang || ""} onChange={(e) => { const v = e.target.value; setGang(v); if (v !== 'ALL') setGangPrefix(getAsistensi(v) || ''); }} disabled={gangLoading} style={{ height: '30px', padding: '0 24px 0 8px', border: `1px solid ${gang && gang !== 'ALL' ? '#2d6a4f' : '#dee2e6'}`, borderRadius: '4px', fontSize: '0.8rem', backgroundColor: gangLoading ? '#e9ecef' : (gang && gang !== 'ALL' ? '#d4edda' : 'white'), color: gang && gang !== 'ALL' ? '#155724' : '#212529', cursor: gangLoading ? 'wait' : 'pointer', fontWeight: gang && gang !== 'ALL' ? '600' : '500', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236c757d' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.3rem center', backgroundRepeat: 'no-repeat', backgroundSize: '0.8em', maxWidth: '180px' }}>
+              {gangLoading ? <option>Memuat...</option> : (
                 <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg> Seeding...
-                </>
-              ) : (
-                <>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 22V8" />
-                    <path d="M5 12l7-8 7 8" />
-                    <rect x="3" y="16" width="18" height="6" rx="2" />
-                  </svg> Seed Data
+                  <option value="ALL">🌐 Semua Kemandoran</option>
+                  {filteredGangs.map(g => (<option key={g.gang_code} value={g.gang_code}>{g.gang_code} — {g.description || '-'}</option>))}
                 </>
               )}
-            </button>
+            </select>
 
-            {/* Font Controls */}
-            <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
-              <button onClick={handleFontDecrease} style={{ padding: '0.4rem 0.6rem', background: 'white', border: 'none', borderRight: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.85rem', color: '#64748b' }}>A-</button>
-              <button onClick={handleFontReset} style={{ padding: '0.4rem 0.6rem', background: 'white', border: 'none', borderRight: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.85rem', color: '#64748b' }}>Reset</button>
-              <button onClick={handleFontIncrease} style={{ padding: '0.4rem 0.6rem', background: 'white', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#64748b' }}>A+</button>
-            </div>
+            <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} style={{ height: '30px', padding: '0 24px 0 8px', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '0.8rem', backgroundColor: 'white', cursor: 'pointer', fontWeight: '500', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236c757d' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.3rem center', backgroundRepeat: 'no-repeat', backgroundSize: '0.8em' }}>
+              {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'].map((name, i) => (<option key={i+1} value={i+1}>{name}</option>))}
+            </select>
 
-            {/* DB Mode Toggle */}
-            <button
-              onClick={() => setUseHistoryDb(!useHistoryDb)}
-              style={{
-                background: useHistoryDb ? 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)' : '#f8fafc',
-                color: useHistoryDb ? '#ffffff' : '#64748b',
-                border: `1px solid ${useHistoryDb ? '#7c3aed' : '#e2e8f0'}`,
-                padding: '0.35rem 0.75rem',
-                borderRadius: '6px',
-                fontSize: '0.78rem',
-                fontWeight: '600',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                transition: 'all 0.15s'
-              }}
-              title={useHistoryDb ? "Kembali ke Database Origin" : "Gunakan Database History"}
-            >
-              <span>{useHistoryDb ? '📚' : '⚡'}</span>
-              {useHistoryDb ? 'History DB' : 'Origin DB'}
-            </button>
+            <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} style={{ height: '30px', padding: '0 24px 0 8px', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '0.8rem', backgroundColor: 'white', cursor: 'pointer', fontWeight: '500', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236c757d' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.3rem center', backgroundRepeat: 'no-repeat', backgroundSize: '0.8em' }}>
+              {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (<option key={y} value={y}>{y}</option>))}
+            </select>
+          </div>
 
-            {/* Edit Mode Toggle */}
+          {/* Right: Highlighted Edit Button */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
             <button
               onClick={() => setIsEditMode(!isEditMode)}
               style={{
-                background: isEditMode ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : '#f8fafc',
-                color: isEditMode ? '#ffffff' : '#64748b',
-                border: `1px solid ${isEditMode ? '#d97706' : '#e2e8f0'}`,
-                padding: '0.35rem 0.75rem',
+                height: '32px',
+                padding: '0 16px',
+                backgroundColor: isEditMode ? '#d97706' : 'rgba(245, 158, 11, 0.1)',
+                color: isEditMode ? '#ffffff' : '#f59e0b',
+                border: `1px solid ${isEditMode ? '#b45309' : '#f59e0b'}`,
                 borderRadius: '6px',
-                fontSize: '0.78rem',
-                fontWeight: '600',
+                fontWeight: '700',
+                fontSize: '0.85rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px',
-                transition: 'all 0.15s'
+                gap: '6px',
+                transition: 'all 0.2s',
+                boxShadow: isEditMode ? '0 2px 4px rgba(217, 119, 6, 0.3)' : 'none'
               }}
-              title={isEditMode ? "Matikan Edit Mode" : "Aktifkan Edit Mode"}
+              title={isEditMode ? "Matikan Edit Mode" : "Aktifkan Edit Mode (Data Tabel)"}
             >
-              <span>{isEditMode ? '🔓' : '🔒'}</span>
-              {isEditMode ? 'Edit Aktif' : 'Edit Mode'}
-            </button>
-
-            {/* Payslip Print */}
-            <button
-              onClick={handlePrintPayslips}
-              disabled={selectedEmployees.length === 0}
-              style={{
-                padding: '0.4rem 0.85rem',
-                backgroundColor: selectedEmployees.length > 0 ? '#3b82f6' : '#f1f5f9',
-                color: selectedEmployees.length > 0 ? 'white' : '#94a3b8',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: '600',
-                fontSize: '0.78rem',
-                cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                transition: 'all 0.15s'
-              }}
-              title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu'}
-            >
-              🖨️ Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}
-            </button>
-
-            {/* Export */}
-            <button
-              onClick={handleExportExcel}
-              disabled={!exportHandler || exportLoading}
-              style={{
-                padding: '0.4rem 0.85rem',
-                backgroundColor: exportHandler && !exportLoading ? '#10b981' : '#f1f5f9',
-                color: exportHandler && !exportLoading ? 'white' : '#94a3b8',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: '600',
-                fontSize: '0.78rem',
-                cursor: exportHandler && !exportLoading ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                transition: 'all 0.15s'
-              }}
-            >
-              {exportLoading ? '...' : '⬇️ Export'}
-            </button>
-
-            {/* Lihat Laporan Pajak */}
-            <button
-              onClick={handleOpenTaxReport}
-              style={{
-                padding: '0.4rem 0.85rem',
-                backgroundColor: '#fef3c7',
-                color: '#92400e',
-                border: '1px solid #fbbf24',
-                borderRadius: '6px',
-                fontWeight: '600',
-                fontSize: '0.78rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                transition: 'all 0.15s'
-              }}
-              title="Buka halaman laporan pajak lengkap dengan kalkulasi PPH21"
-            >
-              🔍 Pajak
+              <span>{isEditMode ? '🔓' : '✏️'}</span>
+              {isEditMode ? 'Edit Aktif' : 'Mode Edit'}
             </button>
           </div>
         </div>
 
-        {/* Bottom Row: Filters */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '8px 0',
-          flexWrap: 'wrap'
-        }}>
-          {/* Division */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Divisi</label>
-            <select
-              value={division}
-              onChange={(e) => canChangeDivision && setDivision(e.target.value)}
-              disabled={!canChangeDivision}
+        {/* Action Buttons (Hidden Dropdown items that render in TopBar) */}
+          <div style={{ position: 'relative' }} ref={dropdownRef}>
+            <button
+              onClick={() => setIsActionsOpen(!isActionsOpen)}
               style={{
-                height: '30px',
-                padding: '0 1.75rem 0 0.6rem',
-                border: '1px solid #e2e8f0',
+                padding: '0.4rem 0.85rem',
+                backgroundColor: isActionsOpen ? '#1e293b' : 'transparent',
+                color: isActionsOpen ? '#f1f5f9' : '#94a3b8',
+                border: `1px solid ${isActionsOpen ? '#334155' : 'transparent'}`,
                 borderRadius: '6px',
-                fontSize: '0.82rem',
-                color: '#334155',
-                backgroundColor: !canChangeDivision ? '#f8fafc' : 'white',
-                cursor: !canChangeDivision ? 'not-allowed' : 'pointer',
-                fontWeight: '500',
-                appearance: 'none',
-                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: 'right 0.4rem center',
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: '0.9em',
-                minWidth: '80px'
+                fontWeight: '600',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s'
               }}
-            >
-              {allDivisions.map(d => (<option key={d} value={d}>{d}</option>))}
-            </select>
-          </div>
-
-          {/* Group */}
-          {availablePrefixes.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-              <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Group</label>
-              <select
-                value={gangPrefix}
-                onChange={(e) => {
-                  setGangPrefix(e.target.value);
-                  setGang('ALL');
-                }}
-                style={{
-                  height: '30px',
-                  padding: '0 1.75rem 0 0.6rem',
-                  border: `1px solid ${gangPrefix ? '#3b82f6' : '#e2e8f0'}`,
-                  borderRadius: '6px',
-                  fontSize: '0.82rem',
-                  color: '#334155',
-                  backgroundColor: gangPrefix ? '#eff6ff' : 'white',
-                  cursor: 'pointer',
-                  fontWeight: '500',
-                  appearance: 'none',
-                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                  backgroundPosition: 'right 0.4rem center',
-                  backgroundRepeat: 'no-repeat',
-                  backgroundSize: '0.9em',
-                  minWidth: '100px'
-                }}
-              >
-                <option value="">Semua Group</option>
-                {availablePrefixes.map(prefix => (
-                  <option key={prefix} value={prefix}>Group {prefix}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Gang */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Kemandoran
-              {gang && gang !== 'ALL' && filteredGangs.find(g => g.gang_code === gang) && (
-                <span style={{ color: '#3b82f6', marginLeft: '4px', fontWeight: '600' }}>
-                  [{filteredGangs.find(g => g.gang_code === gang)?.description || gang}]
-                </span>
-              )}
-            </label>
-            <select
-              value={gang || ""}
-              onChange={(e) => {
-                const selectedGang = e.target.value;
-                setGang(selectedGang);
-                // Auto-update group when selecting specific gang
-                if (selectedGang !== 'ALL') {
-                  setGangPrefix(getAsistensi(selectedGang) || '');
+              onMouseOver={(e) => {
+                if (!isActionsOpen) {
+                  e.currentTarget.style.backgroundColor = '#1e293b';
+                  e.currentTarget.style.color = '#f1f5f9';
                 }
               }}
-              disabled={gangLoading}
-              style={{
-                height: '30px',
-                padding: '0 1.75rem 0 0.6rem',
-                border: `1px solid ${gang && gang !== 'ALL' ? '#10b981' : '#e2e8f0'}`,
-                borderRadius: '6px',
-                fontSize: '0.82rem',
-                color: '#334155',
-                backgroundColor: gangLoading ? '#f8fafc' : 'white',
-                cursor: gangLoading ? 'wait' : 'pointer',
-                fontWeight: '500',
-                appearance: 'none',
-                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: 'right 0.4rem center',
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: '0.9em',
-                minWidth: '140px',
-                maxWidth: '200px'
+              onMouseOut={(e) => {
+                if (!isActionsOpen) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#94a3b8';
+                }
               }}
+              title="Toolbar Actions"
             >
-              {gangLoading ? <option>Memuat...</option> : (
-                <>
-                  <option value="ALL">🌐 Semua Gang</option>
-                  {filteredGangs.map(g => (
-                    <option key={g.gang_code} value={g.gang_code}>{g.gang_code} — {g.description || '-'}</option>
-                  ))}
-                </>
-              )}
-            </select>
-          </div>
-
-          {/* Divider */}
-          <div style={{ width: '1px', height: '30px', backgroundColor: '#e2e8f0', margin: '0 4px' }}></div>
-
-          {/* Period: Month */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bulan</label>
-            <select
-              value={month}
-              onChange={(e) => setMonth(parseInt(e.target.value))}
-              style={{
-                height: '30px',
-                padding: '0 1.75rem 0 0.6rem',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                fontSize: '0.82rem',
-                color: '#334155',
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                fontWeight: '500',
-                appearance: 'none',
-                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: 'right 0.4rem center',
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: '0.9em',
-                minWidth: '110px'
-              }}
-            >
-              {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'].map((name, i) => (
-                <option key={i+1} value={i+1}>{name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Period: Year */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            <label style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tahun</label>
-            <select
-              value={year}
-              onChange={(e) => setYear(parseInt(e.target.value))}
-              style={{
-                height: '30px',
-                padding: '0 1.75rem 0 0.6rem',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                fontSize: '0.82rem',
-                color: '#334155',
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                fontWeight: '500',
-                appearance: 'none',
-                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: 'right 0.4rem center',
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: '0.9em',
-                minWidth: '80px'
-              }}
-            >
-              {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Active filter indicator */}
-          {gang && gang !== 'ALL' && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '0.25rem 0.6rem',
-              background: '#ecfdf5',
-              border: '1px solid #6ee7b7',
-              borderRadius: '6px',
-              fontSize: '0.75rem',
-              color: '#065f46',
-              fontWeight: '600'
-            }}>
-              ✅ {gang} {gangPrefix ? `(Group ${gangPrefix})` : ''}
-            </div>
-          )}
-          {gang === 'ALL' && gangPrefix && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '0.25rem 0.6rem',
-              background: '#eff6ff',
-              border: '1px solid #93c5fd',
-              borderRadius: '6px',
-              fontSize: '0.75rem',
-              color: '#1e40af',
-              fontWeight: '600'
-            }}>
-              📂 Group {gangPrefix}
-            </div>
-          )}
-
-          {/* Centered Export Pajak DOM Button */}
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <button
-              onClick={handleExportTaxExcelDom}
-              disabled={taxDomExportLoading}
-              style={{
-                marginLeft: '10px',
-                padding: '0.4rem 1.2rem',
-                backgroundColor: taxDomExportLoading ? '#f1f5f9' : '#059669',
-                color: taxDomExportLoading ? '#94a3b8' : 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: '600',
-                fontSize: '0.78rem',
-                cursor: taxDomExportLoading ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                transition: 'all 0.15s',
-                boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)'
-              }}
-              title="Unduh Kalkulasi Pajak PPH21 (versi DOM sesuai UI)"
-            >
-              {taxDomExportLoading ? '⏳' : '📥'}
-              {taxDomExportLoading ? '...' : 'Export Pajak DOM'}
+              🛠️ Actions ▾
             </button>
-          </div>
-        </div>
-      </div>
+            
+            {isActionsOpen && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '0.5rem',
+                backgroundColor: 'white',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                padding: '0.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                zIndex: 50,
+                minWidth: '220px'
+              }}>
+                <button onClick={handleSeedData} disabled={isSeeding} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: isSeeding ? '#fef3c7' : 'transparent', color: isSeeding ? '#92400e' : '#334155', cursor: isSeeding ? 'wait' : 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Memuat Ulang / Seed Data Sesuai Pilihan Layar">
+                  {isSeeding ? '⏳ Seeding...' : '🌱 Seed Data UI'}
+                </button>
+                
+                {/* Column Toggles Portal Target */}
+                <div id="column-toggles-portal"></div>
+                
+                {/* DB Mode Toggle */}
+                <button onClick={() => setUseHistoryDb(!useHistoryDb)} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: useHistoryDb ? '#f3e8ff' : 'transparent', color: useHistoryDb ? '#6b21a8' : '#334155', cursor: 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Ganti antara Database History & Origin">
+                  {useHistoryDb ? '📚 Mode: History DB' : '⚡ Mode: Origin DB'}
+                </button>
+                
+                <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
+                
+                {/* Font Controls */}
+                <div style={{ display: 'flex', padding: '0.2rem', gap: '4px' }}>
+                  <button onClick={handleFontDecrease} style={{ flex: 1, padding: '0.4rem', background: '#f1f5f9', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }} title="Perkecil Text">A-</button>
+                  <button onClick={handleFontReset} style={{ flex: 1, padding: '0.4rem', background: '#f1f5f9', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }} title="Reset Text">Reset</button>
+                  <button onClick={handleFontIncrease} style={{ flex: 1, padding: '0.4rem', background: '#f1f5f9', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }} title="Perbesar Text">A+</button>
+                </div>
+                
+                <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
 
+                {/* Export Pajak DOM */}
+                <button onClick={handleExportTaxExcelDom} disabled={taxDomExportLoading} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: taxDomExportLoading ? '#f1f5f9' : 'transparent', color: taxDomExportLoading ? '#94a3b8' : '#059669', cursor: taxDomExportLoading ? 'not-allowed' : 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Unduh Kalkulasi Pajak PPH21 DOM sesuai tampilan UI">
+                  {taxDomExportLoading ? '⏳ Exporting...' : '📥 Export Pajak DOM'}
+                </button>
+
+                {/* Laporan Pajak */}
+                <button onClick={handleOpenTaxReport} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: 'transparent', color: '#b45309', cursor: 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Buka Halaman Laporan Pajak Tersendiri">
+                  🔍 Laporan Pajak Lengkap
+                </button>
+
+                {/* Export Excel */}
+                <button onClick={handleExportExcel} disabled={!exportHandler || exportLoading} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: exportHandler && !exportLoading ? '#ecfdf5' : 'transparent', color: exportHandler && !exportLoading ? '#059669' : '#94a3b8', cursor: exportHandler && !exportLoading ? 'pointer' : 'not-allowed', display: 'flex', gap: '8px', alignItems: 'center' }} title="Export grid data yang tampil sekarang ke Excel">
+                  {exportLoading ? '⏳ Loading...' : '⬇️ Export Grid Data'}
+                </button>
+
+                {/* Payslip Print */}
+                <button onClick={handlePrintPayslips} disabled={selectedEmployees.length === 0} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: selectedEmployees.length > 0 ? '#eff6ff' : 'transparent', color: selectedEmployees.length > 0 ? '#1d4ed8' : '#94a3b8', cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed', display: 'flex', gap: '8px', alignItems: 'center' }} title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu dari checkbox tabel'}>
+                  🖨️ Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}
+                </button>
+
+              </div>
+            )}
+          </div>
+        </>, portalTarget)}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {viewMode === 'table' ? (
           <CustomPayrollTable
@@ -1008,6 +635,7 @@ const OperationalReportWrapper = () => {
             gangPrefix={gangPrefix || null}
             sortBy={employeeSortBy}
             sortOrder={employeeSortOrder}
+            onSortChange={handleEmployeeSort}
           />
         ) : viewMode === 'employee-directory' ? (
           <GangEmployeeInfo

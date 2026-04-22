@@ -11,40 +11,22 @@
  * - RUN_MODE=dev: Menggunakan db_ptrj (real-time)
  *
  * ============================================================================
- * IMPORTANT: DATA APPEND-ONLY PATTERN (Immutable History)
+ * IMPORTANT: CURRENT HISTORY WRITE POLICY
  * ============================================================================
  *
- * PRINSIP: Sistem TIDAK menimpa atau mengedit data existing.
- *          Selalu tambahkan record baru. Data lama tetap tersimpan.
+ * History di repo ini sekarang memakai dua pola yang berbeda:
  *
- * PENERAPAN:
- * 1. NIK tidak bisa di-update - Jika NIK sudah ada, JANGAN update meskipun
- *    nilainya berubah di Plantware/db_ptrj. Gunakan data existing.
- * 2. Di aggregation/history: Hindari UPDATE. Selalu INSERT record baru.
- *    Gunakan version_index atau mekanisme serupa untuk mendapatkan data terkini.
- * 3. Untuk mengambil data terbaru: ORDER BY version_index DESC LIMIT 1
+ * 1. Identity-style records tertentu tetap append-first / no-overwrite
+ *    bila perubahan harus terlacak sebagai histori.
+ * 2. Snapshot payroll per periode/divisi/gang memakai scoped replace:
+ *    reseed dengan `force=true` akan menghapus snapshot lama pada scope yang
+ *    sama, lalu menulis ulang snapshot baru agar hasil tetap idempotent.
  *
- * CONTOH PENERAPAN:
- * ```sql
- * -- ❌ SALAH: Update jika data sudah ada
- * UPDATE table SET nik = ? WHERE emp_code = ?;
- *
- * -- ✅ BENAR: Cek existing dulu, jika belum ada baru insert
- * IF NOT EXISTS (SELECT 1 FROM table WHERE emp_code = ?)
- *     INSERT INTO table (...) VALUES (...);
- *
- * -- ✅ BENAR: Append-only dengan version_index
- * INSERT INTO aggregation_history (..., version_index)
- * SELECT ..., MAX(version_index) + 1
- * FROM aggregation_history
- * WHERE nik = ? AND period_month = ? AND period_year = ?;
- * ```
- *
- * Kenapa penting:
- * - Tracking history lengkap seorang karyawan dari waktu ke waktu
- * - Audit trail untuk semua perubahan
- * - Data lama tidak hilang (untuk keperluan referensi/histori)
- * - Konsistensi data antar periode payroll
+ * Implikasinya:
+ * - Jangan menganggap semua tabel history bersifat append-only.
+ * - Jangan melakukan broad delete lintas divisi/periode tanpa scope jelas.
+ * - Untuk payroll snapshot, source of truth terbaru adalah hasil seed terakhir
+ *   pada scope periode/divisi/gang yang sama.
  * ============================================================================
  */
 
@@ -1311,6 +1293,7 @@ export class HistoryDatabaseService {
                 pajak_npwp: finalNpwp,
                 religion: finalReligion,
                 res_address: liveHr?.res_address?.trim() || "",
+                alamat: liveHr?.res_address?.trim() || "", // Map res_address to alamat for frontend
                 hr_emp_type: liveHr?.hr_emp_type?.trim() || "",
                 nama: d.emp_name,
                 emp_code: d.emp_code,

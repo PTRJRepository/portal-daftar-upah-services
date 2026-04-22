@@ -48,6 +48,7 @@ export interface EmployeeRow {
     beras_rate: number;
     join_date: string | null;
     res_address: string;
+    alamat: string;
     hr_emp_type: string;
     pajak_npwp?: string;
 }
@@ -67,6 +68,7 @@ interface EmployeeQueryRow {
     beras_rate: number;
     join_date: string | null;
     res_address: string;
+    alamat: string;
     hr_emp_type: string;
 }
 
@@ -250,6 +252,7 @@ export class EmployeeExtractor {
                 beras_rate: r.beras_rate || 0,
                 join_date: r.join_date || null,
                 res_address: r.res_address?.trim() || "",
+                alamat: r.res_address?.trim() || "",
                 hr_emp_type: r.hr_emp_type?.trim() || ""
             };
         });

@@ -5,7 +5,7 @@
     position: relative;
     height: 100%;
     border: 1px solid #1a365d;
-    font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'IBM Plex Sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: white;
 }
 
@@ -20,23 +20,39 @@
 
 /* --- Headers (Solid, No Gaps) --- */
 .payroll-table thead th {
-    background-color: #1a365d;
-    color: white;
-    padding: 4px 8px;
-    /* Reduced padding */
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 4px 6px;
     margin: 0;
     border: none;
-    /* NO borders between header cells */
-    border-right: 1px solid rgba(255, 255, 255, 0.15);
-    /* Subtle vertical divider only */
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     font-weight: 600;
     text-align: center;
     vertical-align: middle;
-    font-size: 0.9em;
+    font-size: 0.68rem;
+    line-height: 1.2;
     user-select: none;
     box-sizing: border-box;
     white-space: nowrap;
 }
+
+.payroll-table thead tr:nth-child(1) th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+.payroll-table thead tr:nth-child(2) th {
+    font-size: 0.68rem;
+}
+
+.payroll-table thead tr:nth-child(3) th {
+    font-size: 0.68rem;
+}
+
 
 /* Last column no right border */
 .payroll-table thead th:last-child {
@@ -49,6 +65,7 @@
     z-index: 20;
     background-color: #1a365d;
     /* Ensure solid background */
+    backdrop-filter: blur(1px);
 }
 
 /* Sticky Columns (Body) */
@@ -67,12 +84,13 @@
 
 /* --- Body Cells --- */
 .payroll-table tbody td {
-    padding: 4px 8px;
+    padding: 3px 6px;
     border-right: 1px solid #e2e8f0;
     border-bottom: 1px solid #e2e8f0;
-    color: #2d3748;
+    color: #334155;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
+    font-size: 0.68rem;
     cursor: default;
     box-sizing: border-box;
 }

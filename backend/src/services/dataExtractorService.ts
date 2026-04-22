@@ -1587,7 +1587,7 @@ export class DataExtractorService {
                 SELECT 
                     emp_code, actual_nik, emp_name, gender, loc_code, 
                     gang_code, gang_desc, pay_rate, beras_rate, 
-                    join_date, res_address, hr_emp_type
+                    join_date, res_address, alamat, hr_emp_type
                 FROM (
                     SELECT 
                         RTRIM(e.EmpCode) as emp_code,
@@ -1604,6 +1604,7 @@ export class DataExtractorService {
                         END as beras_rate,
                         em.AppJoinGrpDate as join_date,
                         e.ResAddress as res_address,
+                        e.ResAddress as alamat,
                         e.HREmpType as hr_emp_type,
                         ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY e.EmpCode DESC) as rn -- Basic dedup
                     FROM HR_EMPLOYEE e
@@ -1660,7 +1661,7 @@ export class DataExtractorService {
                     SELECT 
                         emp_code, actual_nik, emp_name, gender, loc_code, 
                         gang_code, gang_desc, pay_rate, beras_rate, 
-                        join_date, res_address, hr_emp_type
+                        join_date, res_address, alamat, hr_emp_type
                     FROM (
                         SELECT 
                             RTRIM(e.EmpCode) as emp_code,
@@ -1677,6 +1678,7 @@ export class DataExtractorService {
                             END as beras_rate,
                             em.AppJoinGrpDate as join_date,
                             e.ResAddress as res_address,
+                            e.ResAddress as alamat,
                             e.HREmpType as hr_emp_type,
                             ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY e.EmpCode DESC) as rn
                         FROM HR_EMPLOYEE e
@@ -3166,7 +3168,8 @@ export class DataExtractorService {
         gangCode: string = "ALL",
         divisionCode?: string,
         serverProfile?: string,
-        gangPrefix?: string
+        gangPrefix?: string,
+        useHistoryDb?: boolean | null
     ): AsyncGenerator<{
         phase: 'identity' | 'attendance' | 'overtime' | 'premium' | 'complete';
         gangs: Map<string, any[]>;
@@ -3188,6 +3191,20 @@ export class DataExtractorService {
         const nextMonth = month === 12 ? 1 : month + 1;
         const nextYear = month === 12 ? year + 1 : year;
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`;
+
+        const buildProgressiveGangsMap = (rows: PayrollRow[]): Map<string, any[]> => {
+            const gangsMap = new Map<string, any[]>();
+
+            for (const row of rows) {
+                const normalizedGangCode = (row.gang_code || "UNKNOWN").trim() || "UNKNOWN";
+                if (!gangsMap.has(normalizedGangCode)) {
+                    gangsMap.set(normalizedGangCode, []);
+                }
+                gangsMap.get(normalizedGangCode)!.push(row);
+            }
+
+            return gangsMap;
+        };
 
         // Helper: timeout wrapper for enrichment queries - prevents stream from hanging
         async function withTimeout<T>(label: string, promise: Promise<T>, timeoutMs: number): Promise<T | null> {
@@ -3211,9 +3228,51 @@ export class DataExtractorService {
             return { month: month, year: year, is_cached: false };
         });
 
+        const currentPeriod = await currentPeriodPromise;
+        const isHistorical = (year < currentPeriod.year) || (year === currentPeriod.year && month < currentPeriod.month);
+
+        let shouldFetchHistory = isHistorical && historyDatabaseService.isHistoryMode();
+        if (useHistoryDb === true) {
+            shouldFetchHistory = true;
+        } else if (useHistoryDb === false) {
+            shouldFetchHistory = false;
+        }
+
+        if (shouldFetchHistory) {
+            const historyResult = await this.extractPayrollData(
+                month,
+                year,
+                gangCode,
+                divisionCode,
+                null,
+                serverProfile,
+                false,
+                useHistoryDb,
+                gangPrefix
+            );
+            const groupedHistoryRows = buildProgressiveGangsMap(historyResult.data_rows);
+
+            yield {
+                phase: "complete",
+                gangs: groupedHistoryRows,
+                meta: {
+                    total_gangs: groupedHistoryRows.size,
+                    total_employees: historyResult.data_rows.length,
+                    processed_employees: historyResult.data_rows.length,
+                    progress_pct: 100,
+                    message: "Loaded payroll rows from history snapshot"
+                },
+                dynamic_premi_headers: historyResult.dynamic_premi_headers,
+                dynamic_potongan_headers: historyResult.dynamic_potongan_headers,
+                dynamic_premi_titles: historyResult.premi_title_map,
+                dynamic_potongan_titles: historyResult.potongan_title_map
+            };
+            return;
+        }
+
         // Wait for gangs first (faster query)
         const allGangs = await allGangsPromise;
-        
+
         // Build gang condition
         let gangCondition = "1=1";
         let gangCodeInput: string | null = null;
@@ -3264,10 +3323,8 @@ export class DataExtractorService {
         const t0 = Date.now();
         
         // Get current period WITHOUT blocking employee query
-        const currentPeriod = await currentPeriodPromise;
         const currentMonth = currentPeriod.month;
         const currentYear = currentPeriod.year;
-        const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
         
         let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
         const phase0Time = Date.now() - t0;
@@ -3486,6 +3543,7 @@ export class DataExtractorService {
                 jabatan: emp.jabatan || '',
                 jabatan_estate: emp.jabatan_estate || emp.jabatan || '',  // Jabatan from employee_estate (extend_db_ptrj)
                 role: emp.role || '',        // Role from history
+                alamat: emp.res_address || '', // Map res_address to alamat for frontend
                 // Phase markers
                 _phase: 0,
                 _enriched: false,

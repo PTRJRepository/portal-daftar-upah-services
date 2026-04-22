@@ -1,27 +1,15 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import '../styles/CustomPayrollTable.css';
 import { getLockedRawTree, saveLockedManualEdit } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
-import { PayrollAggregator } from '../utils/PayrollAggregator';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
 import { getTablePreferences, DEFAULT_CELL_COLORS } from '../services/tablePreferencesService';
 import { usePayrollStream } from '../hooks/usePayrollStream';
-
-/**
- * Helper: Extract asistensi number from gang code
- * Must be defined at module level to avoid TDZ (Temporal Dead Zone) errors in minified builds
- */
-const getAsistensiLocal = (gang_code) => {
-    if (!gang_code) return '';
-    const gc = String(gang_code).trim().toUpperCase();
-    if (gc.startsWith('K2')) return '1';
-    const match = gc.match(/\d+/);
-    return match ? match[0] : '';
-};
 
 /**
  * DAFTAR UPAH (Payroll Register)
@@ -144,7 +132,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     onTaxExportReady = null, // Callback to expose data getter for Tax Export
     onRefresh = null,      // Callback to trigger parent refresh (for saving)
     sortBy = 'name',       // 'name' | 'emp_code' | 'nik'
-    sortOrder = 'asc'      // 'asc' | 'desc'
+    sortOrder = 'asc',     // 'asc' | 'desc'
+    onSortChange = null
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -219,6 +208,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         year,
         gangPrefix,
         gangCode,
+        useHistoryDb,
         enabled: !!token && !!division && !!month && !!year && streamEnabled
     });
 
@@ -309,21 +299,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             const gCode = gangData.gang_code;
             const employees = Array.isArray(gangData.employees) ? gangData.employees : [];
 
-            // Filter by gangPrefix if specified
-            const filteredEmployees = gangPrefix
-                ? employees.filter(emp => emp && getAsistensiLocal(emp.gang_code) === gangPrefix)
-                : employees;
-
-            // Filter by specific gangCode if specified
-            const gangFilteredEmployees = gangCode && gangCode !== 'ALL'
-                ? filteredEmployees.filter(emp => emp && emp.gang_code === gangCode)
-                : filteredEmployees;
-
             // Add gang header
             processedRows.push({ type: 'gang_header', gang_code: gCode, id: `HEADER_${gCode}` });
 
             // Add employees with numbering
-            gangFilteredEmployees.forEach(emp => {
+            employees.forEach(emp => {
                 if (!emp) return;
                 emp.no = globalNo++;
                 emp.type = 'employee';
@@ -337,12 +317,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             gangTotal.id = `TOTAL_${gCode}`;
             gangTotal.gang_code = gCode;
             gangTotal.nama = `TOTAL GANG ${gCode}`;
-            gangTotal.emp_code = `${gangFilteredEmployees.length} Kary.`;
+            gangTotal.emp_code = `${employees.length} Kary.`;
             processedRows.push(gangTotal);
         });
 
         return processedRows;
-    }, [stream.gangs, gangPrefix, gangCode]);
+    }, [stream.gangs]);
 
     // Determine active dynamic fields from streamed rows
     // Use meta headers as source of truth, not employee data values
@@ -1055,14 +1035,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
      * Shows data gang-by-gang to avoid blocking the UI thread.
      * No caching - direct display with progressive updates.
      */
-    const processRawData = useCallback(async (data, currentGangCode, currentGangPrefix) => {
+    const processRawData = useCallback(async (data) => {
         console.log('[CustomPayrollTable] 📥 processRawData called:', {
             hasData: !!data,
             dataKeys: data ? Object.keys(data) : [],
             gangsCount: data?.gangs?.length,
-            employeesCount: data?.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0),
-            currentGangCode,
-            currentGangPrefix
+            employeesCount: data?.gangs?.reduce((sum, g) => sum + (g.employees?.length || 0), 0)
         });
 
         if (!data) {
@@ -1102,49 +1080,26 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
             setDynamicHeaders({ premi: premWithTitles, potongan: potWithTitles });
 
-            // Step 2: Flatten data
-            setLoadingProgress(prev => ({ ...prev, message: 'Meratakan data karyawan...' }));
-            let flatRows = PayrollAggregator.flattenData(data, potWithTitles);
+            // Step 2: Normalize gang data directly from backend payload (single source of truth)
+            setLoadingProgress(prev => ({ ...prev, message: 'Menyusun data gang dari backend...' }));
+            const sourceGangs = Array.isArray(data.gangs) ? data.gangs : [];
+            const sortedGangs = [...sourceGangs]
+                .filter(gang => gang && typeof gang === 'object' && gang.gang_code)
+                .map(gang => ({
+                    gang_code: gang.gang_code,
+                    employees: Array.isArray(gang.employees) ? [...gang.employees] : [],
+                    gang_totals: gang.gang_totals || null
+                }))
+                .sort((a, b) => String(a.gang_code).localeCompare(String(b.gang_code), undefined, { numeric: true, sensitivity: 'base' }))
+                .filter(gang => gang.employees.length > 0);
 
-            // --- CLIENT-SIDE FILTERING ---
-            if (currentGangPrefix) {
-                flatRows = flatRows.filter(r => {
-                    const asist = getAsistensiLocal(r.gang_code);
-                    return asist === currentGangPrefix;
-                });
-            }
+            const totalEmployees = sortedGangs.reduce((sum, gang) => sum + gang.employees.length, 0);
 
-            if (currentGangCode && currentGangCode !== 'ALL') {
-                flatRows = flatRows.filter(r => r.gang_code === currentGangCode);
-            }
-
-            // Step 3: Build gang groups
-            setLoadingProgress(prev => ({ ...prev, message: 'Mengelompokkan data per gang...' }));
-            const gangsMap = {};
-            flatRows.forEach(row => {
-                const g = row.gang_code;
-                if (!gangsMap[g]) gangsMap[g] = [];
-                gangsMap[g].push(row);
-            });
-
-            const gangKeys = Object.keys(gangsMap).sort();
-            const totalEmployees = flatRows.length;
-            
-            // Build backend gang totals map
-            const backendGangTotalsMap = {};
-            if (data.gangs) {
-                data.gangs.forEach(gang => {
-                    if (gang.gang_totals) {
-                        backendGangTotalsMap[gang.gang_code] = gang.gang_totals;
-                    }
-                });
-            }
-
-            // Step 4: Progressive rendering - gang by gang
+            // Step 3: Progressive rendering - gang by gang
             setLoadingProgress({
                 stage: 'rendering',
-                message: `Memproses ${gangKeys.length} gang...`,
-                totalGangs: gangKeys.length,
+                message: `Memproses ${sortedGangs.length} gang...`,
+                totalGangs: sortedGangs.length,
                 processedGangs: 0,
                 totalEmployees,
                 processedEmployees: 0
@@ -1155,9 +1110,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             let processedCount = 0;
 
             // Process gangs in batches to avoid blocking UI
-            for (let i = 0; i < gangKeys.length; i++) {
-                const gCode = gangKeys[i];
-                const employees = gangsMap[gCode];
+            for (let i = 0; i < sortedGangs.length; i++) {
+                const gang = sortedGangs[i];
+                const gCode = gang.gang_code;
+                const employees = gang.employees;
                 
                 // Sort employees
                 employees.sort((a, b) => {
@@ -1177,33 +1133,31 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     processedRows.push(emp);
                 });
 
-                // Calculate gang total
-                let gangTotal = PayrollAggregator.calculateGangTotals(gCode, flatRows);
-                if (backendGangTotalsMap[gCode] && !currentGangPrefix && (!currentGangCode || currentGangCode === 'ALL')) {
-                    gangTotal = { ...gangTotal, ...backendGangTotalsMap[gCode] };
-                }
-                gangTotal.type = 'gang_total';
-                gangTotal.id = `TOTAL_${gCode}`;
-                gangTotal.gang_code = gCode;
-                gangTotal.nama = `TOTAL GANG ${gCode}`;
-                gangTotal.emp_code = `${employees.length} Kary.`;
+                const gangTotal = {
+                    ...(gang.gang_totals || {}),
+                    type: 'gang_total',
+                    id: `TOTAL_${gCode}`,
+                    gang_code: gCode,
+                    nama: `TOTAL GANG ${gCode}`,
+                    emp_code: `${employees.length} Kary.`
+                };
                 processedRows.push(gangTotal);
 
                 processedCount += employees.length;
 
                 // Update progress every 2 gangs or if it's the last one
-                if (i % 2 === 1 || i === gangKeys.length - 1) {
+                if (i % 2 === 1 || i === sortedGangs.length - 1) {
                     setLoadingProgress({
                         stage: 'rendering',
-                        message: `Memproses gang ${i + 1}/${gangKeys.length}: ${gCode}`,
-                        totalGangs: gangKeys.length,
+                        message: `Memproses gang ${i + 1}/${sortedGangs.length}: ${gCode}`,
+                        totalGangs: sortedGangs.length,
                         processedGangs: i + 1,
                         totalEmployees,
                         processedEmployees: processedCount
                     });
 
                     // Yield to browser to render current rows
-                    if (i < gangKeys.length - 1) {
+                    if (i < sortedGangs.length - 1) {
                         setRows([...processedRows]); // Update rows progressively
                         await new Promise(resolve => setTimeout(resolve, 50)); // 50ms yield
                     }
@@ -1214,21 +1168,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             setLoadingProgress({
                 stage: 'complete',
                 message: 'Selesai!',
-                totalGangs: gangKeys.length,
-                processedGangs: gangKeys.length,
+                totalGangs: sortedGangs.length,
+                processedGangs: sortedGangs.length,
                 totalEmployees,
                 processedEmployees: processedCount
             });
 
-            // Calculate grand total
-            const frontendGt = PayrollAggregator.calculateGrandTotal(flatRows);
-            frontendGt.emp_code = `${flatRows.length} Karyawan`;
-
-            const backendGrandTotal = data.grand_total;
-            if (backendGrandTotal && !currentGangPrefix && (!currentGangCode || currentGangCode === 'ALL')) {
-                setGrandTotal({ ...frontendGt, ...backendGrandTotal });
+            // Grand total must come from backend payload
+            if (data.grand_total && typeof data.grand_total === 'object') {
+                setGrandTotal({
+                    ...data.grand_total,
+                    emp_code: `${processedCount} Karyawan`
+                });
             } else {
-                setGrandTotal(frontendGt);
+                console.warn('[CustomPayrollTable] Backend payload missing grand_total');
+                setGrandTotal(null);
             }
 
             // Set final rows (all processed)
@@ -1271,7 +1225,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             setAllEmployeeNiks(employeeRows.map(r => r.nik).filter(Boolean));
             setSelection([]);
 
-            console.log(`[CustomPayrollTable] ✅ Progressive rendering complete: ${gangKeys.length} gangs, ${processedCount} employees`);
+            console.log(`[CustomPayrollTable] ✅ Progressive rendering complete: ${sortedGangs.length} gangs, ${processedCount} employees`);
         } catch (err) {
             console.error('[CustomPayrollTable] processRawData error:', err);
             setError(err.message);
@@ -1315,13 +1269,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 // In production, we might still want to filter by gangPrefix if showing ALL gangs
                 const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
                 data = await getLockedRawTree(
-                    token, division, month, year, false, // NEVER use history db
-                    shouldSendGangPrefix ? (gangPrefix || null) : null
+                    token, division, month, year, useHistoryDb,
+                    shouldSendGangPrefix ? (gangPrefix || null) : null,
+                    gangCode
                 );
             } else {
                 const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
                 const prefixParam = shouldSendGangPrefix && gangPrefix ? `&gang_prefix=${gangPrefix}` : '';      
-                const historyParam = useHistoryDb ? `&use_history=true` : '';
+                const historyParam = `&use_history=${useHistoryDb ? 'true' : 'false'}`;
                 const gangCodeParam = gangCode && gangCode !== 'ALL' ? `&gang_code=${gangCode}` : '';
                 const url = `/payroll/report/division-raw-tree?division_code=${division}&month=${month}&year=${year}${prefixParam}${historyParam}${gangCodeParam}`;
                 console.log('[CustomPayrollTable] 📡 FETCH URL:', url);
@@ -1349,7 +1304,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             }
 
             onDataLoaded?.(data);
-            processRawData(data, gangCode, gangPrefix);
+            processRawData(data);
 
         } catch (err) {
             if (err.name === 'AbortError') {
@@ -1388,7 +1343,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             // Checkbox Column
             {
                 field: 'checkbox',
-                headers: ['', null, null, '✓'],
+                headers: ['', null, '✓'],
                 w: 35,
                 className: 'text-center sticky-col',
                 left: 0,
@@ -1406,20 +1361,25 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 }
             },
             {
-                field: 'alamat',
-                headers: ['IDENTITAS', null, null, 'ALAMAT'],
-                w: 180,
-                className: 'text-left'
+                field: 'no',
+                headers: ['IDENTITAS', null, 'NO'],
+                w: 35,
+                className: 'text-center sticky-col',
+                left: 35
             },
-            { field: 'no', headers: ['IDENTITAS', null, null, 'NO'], w: 35, className: 'text-center', left: 35 },
-            { field: 'emp_code', headers: ['IDENTITAS', null, null, 'EMP CODE'], w: 75, className: 'text-center sticky-col', left: 35 },
-            { field: 'nik', headers: ['IDENTITAS', null, null, 'NIK'], w: 55, className: 'text-center sticky-col', left: 110 },
+            {
+                field: 'emp_code',
+                headers: ['IDENTITAS', null, 'EMP CODE'],
+                w: 75,
+                className: 'text-center sticky-col',
+                left: 70
+            },
             {
                 field: 'nama',
-                headers: ['IDENTITAS', null, null, 'NAMA'],
+                headers: ['IDENTITAS', null, 'NAMA'],
                 w: 160,
                 className: 'text-left sticky-col',
-                left: 165,
+                left: 145,
                 render: (row) => {
                     if (row.type !== 'employee') return row.nama || row.emp_code;
                     const koreksi = row.koreksi_hk || 0;
@@ -1460,12 +1420,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     );
                 }
             },
+            {
+                field: 'alamat',
+                headers: ['IDENTITAS', null, 'ALAMAT'],
+                w: 200,
+                className: 'text-left'
+            },
 
             // PAJAK [Conditionally Expanded]
             ...(isTaxExpanded ? [
                 {
                     field: 'status_ptkp',
-                    headers: ['PAJAK', '', null, 'PTKP'],
+                    headers: ['PAJAK', null, 'PTKP'],
                     w: 80,
                     className: 'text-center',
                     render: (row) => {
@@ -1491,22 +1457,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         return row.status_ptkp || '-';
                     }
                 },
-                { field: 'kategori_ter', headers: ['PAJAK', '', null, 'TER'], w: 55, className: 'text-center' },
-                { field: 'gaji_pokok_ideal', headers: ['PAJAK', '', null, 'GP IDEAL'], w: 85, className: 'text-right' },
-                { field: 'gaji_pokok_dibayarkan', headers: ['PAJAK', '', null, 'GP BAYAR'], w: 85, className: 'text-right' },
-                { field: 'koreksi_hk', headers: ['PAJAK', '', null, 'KOREKSI HK'], w: 85, className: 'text-right' },
+                { field: 'kategori_ter', headers: ['PAJAK', null, 'TER'], w: 55, className: 'text-center' },
+                { field: 'gaji_pokok_ideal', headers: ['PAJAK', null, 'GP IDEAL'], w: 85, className: 'text-right' },
+                { field: 'gaji_pokok_dibayarkan', headers: ['PAJAK', null, 'GP BAYAR'], w: 85, className: 'text-right' },
+                { field: 'koreksi_hk', headers: ['PAJAK', null, 'KOREKSI HK'], w: 85, className: 'text-right' },
                 // Additional Tax Group Columns
-                { field: 'astek_084', headers: ['PAJAK', '', null, 'ASTEK 0.84%'], w: 85, className: 'text-right' },
-                { field: 'pot_bpjs_kesehatan_majikan', colId: 'pajak_bpjs_kes_maj', headers: ['PAJAK', '', null, 'BPJS KES 4%'], w: 85, className: 'text-right' },
-                { field: 'beras_jumlah', colId: 'pajak_beras_jumlah', headers: ['PAJAK', '', null, 'TUNJ BERAS'], w: 85, className: 'text-right' },
-                { field: 'jabatan_jumlah', colId: 'pajak_jabatan_jumlah', headers: ['PAJAK', '', null, 'TUNJ JABATAN'], w: 85, className: 'text-right' },
-                { field: 'masa_kerja_jumlah', colId: 'pajak_masa_kerja', headers: ['PAJAK', '', null, 'MASA KERJA'], w: 85, className: 'text-right' },
-                { field: 'lembur_jumlah', colId: 'pajak_lembur_jumlah', headers: ['PAJAK', '', null, 'LEMBUR'], w: 85, className: 'text-right' },
-                { field: 'total_premi', colId: 'pajak_total_premi', headers: ['PAJAK', '', null, 'TOTAL PREMI'], w: 85, className: 'text-right' },
+                { field: 'astek_084', headers: ['PAJAK', null, 'ASTEK 0.84%'], w: 85, className: 'text-right' },
+                { field: 'pot_bpjs_kesehatan_majikan', colId: 'pajak_bpjs_kes_maj', headers: ['PAJAK', null, 'BPJS KES 4%'], w: 85, className: 'text-right' },
+                { field: 'beras_jumlah', colId: 'pajak_beras_jumlah', headers: ['PAJAK', null, 'TUNJ BERAS'], w: 85, className: 'text-right' },
+                { field: 'jabatan_jumlah', colId: 'pajak_jabatan_jumlah', headers: ['PAJAK', null, 'TUNJ JABATAN'], w: 85, className: 'text-right' },
+                { field: 'masa_kerja_jumlah', colId: 'pajak_masa_kerja', headers: ['PAJAK', null, 'MASA KERJA'], w: 85, className: 'text-right' },
+                { field: 'lembur_jumlah', colId: 'pajak_lembur_jumlah', headers: ['PAJAK', null, 'LEMBUR'], w: 85, className: 'text-right' },
+                { field: 'total_premi', colId: 'pajak_total_premi', headers: ['PAJAK', null, 'TOTAL PREMI'], w: 85, className: 'text-right' },
                 {
                     field: 'pot_koreksi',
                     colId: 'pajak_pot_koreksi',
-                    headers: ['PAJAK', '', null, 'KOREKSI'],
+                    headers: ['PAJAK', null, 'KOREKSI'],
                     w: 85,
                     className: 'text-right',
                     render: (row) => {
@@ -1527,7 +1493,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     const displayName = baseType.toUpperCase();
                     return {
                         field: taxField,
-                        headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, displayName],
+                        headers: ['PAJAK', 'INC. LAIN', displayName],
                         w: 85,
                         className: 'text-right',
                         render: (row) => {
@@ -1537,15 +1503,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         }
                     };
                 }),
-                { field: 'taxable_pendapatan_lainnya', headers: ['PAJAK', 'PENDAPATAN LAINNYA', null, 'TOTAL'], w: 85, className: 'text-right font-bold', render: (row) => {
+                { field: 'taxable_pendapatan_lainnya', headers: ['PAJAK', 'INC. LAIN', 'TOTAL'], w: 85, className: 'text-right font-bold', render: (row) => {
                     const val = Number(row.taxable_pendapatan_lainnya || row.pendapatan_lainnya || 0);
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }},
-                { field: 'penghasilan_bruto', headers: ['PAJAK', '', null, 'PENGHASILAN BRUTO'], w: 110, className: 'text-right font-bold' },
+                { field: 'penghasilan_bruto', headers: ['PAJAK', null, 'BRUTO'], w: 110, className: 'text-right font-bold' },
                 {
                     field: 'tarif_pajak_ter',
-                    headers: ['PAJAK', '', null, 'TARIF TER (%)'],
+                    headers: ['PAJAK', null, 'TER (%)'],
                     w: 80,
                     className: 'text-center',
                     render: (row) => {
@@ -1557,24 +1523,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             ] : []),
 
             // PPH21 TER (Always Visible Summary)
-            { field: 'pph21_ter', headers: isTaxExpanded ? ['PAJAK', '', null, 'PPH21 TER'] : ['PAJAK', null, null, 'PPH21 TER'], w: 95, className: 'text-right' },
+            { field: 'pph21_ter', headers: ['PAJAK', null, 'PPH21 TER'], w: 95, className: 'text-right' },
 
-            // Continue with other columns...
-            // ABSENSI > KEHADIRAN
-            { field: 'hari_kerja', headers: ['ABSENSI', 'KEHADIRAN', null, 'AN'], w: 40, className: 'text-center' },
-            // ABSENSI > KETIDAKHADIRAN
+            // ABSENSI
+            { field: 'hari_kerja', headers: ['ABSENSI', 'HADIR', 'HK'], w: 40, className: 'text-center' },
             ...(isAttendanceExpanded ? [
-                { field: 'cuti_tahunan_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'CUTI'], w: 45, className: 'text-center' },
-                { field: 'cuti_sakit_haid_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'SAKIT+HAID'], w: 70, className: 'text-center' },
-                { field: 'cuti_minggu_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'MINGGU'], w: 55, className: 'text-center' },
-                { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'KETIDAKHADIRAN', null, 'NASIONAL'], w: 60, className: 'text-center' },
+                { field: 'cuti_tahunan_hari', headers: ['ABSENSI', 'CUTI/OFF', 'TAHUNAN'], w: 45, className: 'text-center' },
+                { field: 'cuti_sakit_haid_hari', headers: ['ABSENSI', 'CUTI/OFF', 'SAKIT'], w: 70, className: 'text-center' },
+                { field: 'cuti_minggu_hari', headers: ['ABSENSI', 'CUTI/OFF', 'MINGGU'], w: 55, className: 'text-center' },
+                { field: 'cuti_nasional_hari', headers: ['ABSENSI', 'CUTI/OFF', 'NASIONAL'], w: 60, className: 'text-center' },
             ] : []),
-            // ABSENSI > JUMLAH HK
-            { field: 'jumlah_hk', headers: ['ABSENSI', null, null, 'JUMLAH HK'], w: 60, className: 'text-center font-bold' },
+            { field: 'jumlah_hk', headers: ['ABSENSI', null, 'TOTAL HK'], w: 60, className: 'text-center font-bold' },
             // ABSENSI > TOTAL JAM [NEW] - Marks employees with shortage hours (kurang jam)
             {
                 field: 'total_jam_kerja',
-                headers: ['ABSENSI', null, null, 'TOTAL JAM'],
+                headers: ['ABSENSI', null, 'TOTAL JAM'],
                 w: 80,
                 className: 'text-center',
                 render: (row) => {
@@ -1693,14 +1656,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             },
         ];
 
-        // PANEN (Harvest) - Collapsible
-        // Default: Show ONLY Total Janjang
-        // Expanded: Show Bunches Breakdown + Loose Fruit
+        // PANEN
         const showHarvestDetails = isHarvestExpanded;
-
         cols.push({
-            field: 'bunches_total', headers: ['PANEN', 'BUNCHES', null, 'TOTAL JANJANG'], w: 90, className: 'text-right',
-            // Add indicator to header if possible, but headers are strings here. Logic handled in header rendering.
+            field: 'bunches_total', headers: ['PANEN', null, 'TOTAL JANJANG'], w: 90, className: 'text-right',
             render: (row) => {
                 const val = row.bunches_total || 0;
                 if (val === 0) return '-';
@@ -1710,56 +1669,56 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         if (showHarvestDetails) {
             cols.push({
-                field: 'bunches_ripe', headers: ['PANEN', 'BUNCHES', null, 'MASAK'], w: 60, className: 'text-right', render: (row) => {
+                field: 'bunches_ripe', headers: ['PANEN', 'BUNCHES', 'MASAK'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_ripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             });
             cols.push({
-                field: 'bunches_underripe', headers: ['PANEN', 'BUNCHES', null, 'MENGKAL'], w: 60, className: 'text-right', render: (row) => {
+                field: 'bunches_underripe', headers: ['PANEN', 'BUNCHES', 'MENGKAL'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_underripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             });
             cols.push({
-                field: 'bunches_unripe', headers: ['PANEN', 'BUNCHES', null, 'MENTAH'], w: 60, className: 'text-right', render: (row) => {
+                field: 'bunches_unripe', headers: ['PANEN', 'BUNCHES', 'MENTAH'], w: 60, className: 'text-right', render: (row) => {
                     const val = row.bunches_unripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             });
             cols.push({
-                field: 'bunches_overripe', headers: ['PANEN', 'BUNCHES', null, 'LEWAT MASAK'], w: 75, className: 'text-right', render: (row) => {
+                field: 'bunches_overripe', headers: ['PANEN', 'BUNCHES', 'LEWAT MSK'], w: 75, className: 'text-right', render: (row) => {
                     const val = row.bunches_overripe || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             });
             cols.push({
-                field: 'bunches_rotten', headers: ['PANEN', 'BUNCHES', null, 'BUSUK'], w: 55, className: 'text-right', render: (row) => {
+                field: 'bunches_rotten', headers: ['PANEN', 'BUNCHES', 'BUSUK'], w: 55, className: 'text-right', render: (row) => {
                     const val = row.bunches_rotten || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             });
             cols.push({
-                field: 'bunches_abnormal', headers: ['PANEN', 'BUNCHES', null, 'ABNORMAL'], w: 65, className: 'text-right', render: (row) => {
+                field: 'bunches_abnormal', headers: ['PANEN', 'BUNCHES', 'ABNORMAL'], w: 65, className: 'text-right', render: (row) => {
                     const val = row.bunches_abnormal || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             });
             cols.push({
-                field: 'loose_fruit', headers: ['PANEN', 'BRONDOLAN', null, 'KG/QTY'], w: 70, className: 'text-right', render: (row) => {
+                field: 'loose_fruit', headers: ['PANEN', 'BRONDOL', 'KG/QTY'], w: 70, className: 'text-right', render: (row) => {
                     const val = row.loose_fruit || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
             });
             cols.push({
-                field: 'bunches_transactions', headers: ['PANEN', 'BUNCHES', null, 'JML TRX'], w: 65, className: 'text-center', render: (row) => {
+                field: 'bunches_transactions', headers: ['PANEN', 'BUNCHES', 'JML TRX'], w: 65, className: 'text-center', render: (row) => {
                     const val = row.bunches_transactions || 0;
                     if (val === 0) return '-';
                     return formatNumber(val);
@@ -1768,30 +1727,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
 
         // PENGGAJIAN
-        cols.push({ field: 'gaji_pokok_ideal', headers: ['PENGGAJIAN', null, null, 'GP IDEAL'], w: 85, className: 'text-right' });
+        cols.push({ field: 'gaji_pokok_ideal', headers: ['PENGGAJIAN', null, 'GP IDEAL'], w: 85, className: 'text-right' });
         cols.push({
             field: 'gaji_pokok_aktual',
-            headers: ['PENGGAJIAN', null, null, 'GP AKTUAL'],
+            headers: ['PENGGAJIAN', null, 'GP AKTUAL'],
             w: 95,
             className: 'text-right',
             render: (row) => {
                 const val = row.gaji_pokok_aktual || 0;
                 if (val === 0) return '-';
-
-                // Add warning if aktual > ideal for employees
                 const ideal = row.gaji_pokok_ideal || 0;
                 if (row.type === 'employee' && val > ideal) {
                     return (
                         <div
                             title={`⚠️ Gaji Tidak Benar: Aktual (${formatNumber(val)}) melebihi Ideal (${formatNumber(ideal)})`}
-                            style={{
-                                color: '#dc2626',
-                                fontWeight: 'bold',
-                                display: 'flex',
-                                justifyContent: 'flex-end',
-                                alignItems: 'center',
-                                gap: '4px'
-                            }}
+                            style={{ color: '#dc2626', fontWeight: 'bold', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px' }}
                         >
                             <span style={{ fontSize: '11px' }}>⚠️</span>
                             <span>{formatNumber(val)}</span>
@@ -1803,7 +1753,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
         cols.push({
             field: 'koreksi_hk',
-            headers: ['PENGGAJIAN', null, null, 'KOREKSI HK'],
+            headers: ['PENGGAJIAN', null, 'KOR. HK'],
             w: 85,
             className: 'text-right',
             render: (row) => {
@@ -1811,31 +1761,24 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 if (val === null || val === undefined || val === 0) return '-';
                 const isKurang = val < 0;
                 const color = isKurang ? '#dc2626' : '#ea580c';
-
-                // Display shortage dates for "Kurang Jam" warning
                 let label = isKurang ? 'Kurang Jam' : 'Salah Scan';
                 if (isKurang && row.shortage_details?.length > 0) {
                     const shortageDates = row.shortage_details.map(d => d.date.split('-').pop()).join(', ');
                     label = `KJ: ${shortageDates}`;
                 }
-
                 return (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: '1.1' }}>
-                        <span style={{ color, fontWeight: 'bold' }}>
-                            {isKurang ? '-' : '+'}{formatNumber(Math.abs(val))}
-                        </span>
-                        <span style={{ fontSize: '8px', color, opacity: 0.9, whiteSpace: 'nowrap' }}>
-                            ({label})
-                        </span>
+                        <span style={{ color, fontWeight: 'bold' }}>{isKurang ? '-' : '+'}{formatNumber(Math.abs(val))}</span>
+                        <span style={{ fontSize: '8px', color, opacity: 0.9, whiteSpace: 'nowrap' }}>({label})</span>
                     </div>
                 );
             }
         });
 
-        // JABATAN [NEW]
+        // JABATAN
         cols.push({
             field: 'jabatan_estate',
-            headers: ['IDENTITAS', null, null, 'JABATAN'],
+            headers: ['IDENTITAS', null, 'JABATAN'],
             w: 180,
             className: 'text-left p-0',
             render: (row) => {
@@ -1876,94 +1819,53 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         // ALAMAT
-        cols.push({
-            field: 'alamat',
-            headers: ['IDENTITAS', null, null, 'ALAMAT'],
-            w: 200,
-            className: 'text-left',
-            render: (row) => row.alamat || '-'
-        });
+        cols.push({ field: 'alamat', headers: ['IDENTITAS', null, 'ALAMAT'], w: 200, className: 'text-left', render: (row) => row.alamat || '-' });
 
-        // TUNJANGAN - Simplified
-        // Show Rates ONLY if expanded
+        // TUNJANGAN
         const showAllowanceRates = isAllowanceExpanded;
-
-        // TUNJANGAN > BERAS
         if (showAllowanceRates) {
-            cols.push({ field: 'beras_rate', headers: ['TUNJANGAN', 'BERAS', null, 'RATE'], w: 60, className: 'text-right' });
+            cols.push({ field: 'beras_rate', headers: ['TUNJANGAN', 'BERAS', 'RATE'], w: 60, className: 'text-right' });
         }
-        cols.push({ field: 'beras_jumlah', headers: ['TUNJANGAN', 'BERAS', null, 'JUMLAH'], w: 80, className: 'text-right' });
+        cols.push({ field: 'beras_jumlah', headers: ['TUNJANGAN', 'BERAS', 'JUMLAH'], w: 80, className: 'text-right' });
 
-        // TUNJANGAN > JABATAN (This is allowance amount, not title)
         if (showAllowanceRates) {
-            cols.push({
-                field: 'jabatan_rate',
-                headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, 'RATE'],
-                w: 60,
-                className: 'text-right',
-                render: (row) => formatNumber(row.jabatan_rate)
-            });
+            cols.push({ field: 'jabatan_rate', headers: ['TUNJANGAN', 'TUNJ JAB', 'RATE'], w: 60, className: 'text-right', render: (row) => formatNumber(row.jabatan_rate) });
         }
-        cols.push({
-            field: 'jabatan_jumlah',
-            headers: ['TUNJANGAN', 'TUNJ. JABATAN', null, 'JUMLAH'],
-            w: 80,
-            className: 'text-right',
-            render: (row) => formatNumber(row.jabatan_jumlah)
-        });
+        cols.push({ field: 'jabatan_jumlah', headers: ['TUNJANGAN', 'TUNJ JAB', 'JUMLAH'], w: 80, className: 'text-right', render: (row) => formatNumber(row.jabatan_jumlah) });
 
-        // TUNJANGAN > MASA KERJA (Always show Lama? or hide? "hanya menampilkan jumlah tanpa rate". Lama is not rate. Keep it for context.)
-        cols.push({ field: 'masa_kerja_tahun', headers: ['TUNJANGAN', 'MASA KERJA', null, 'LAMA'], w: 45, className: 'text-center' });
-        cols.push({ field: 'masa_kerja_jumlah', headers: ['TUNJANGAN', 'MASA KERJA', null, 'JUMLAH'], w: 80, className: 'text-right' });
+        cols.push({ field: 'masa_kerja_tahun', headers: ['TUNJANGAN', 'MASA KERJA', 'LAMA'], w: 45, className: 'text-center' });
+        cols.push({ field: 'masa_kerja_jumlah', headers: ['TUNJANGAN', 'MASA KERJA', 'JUMLAH'], w: 80, className: 'text-right' });
 
-        // TUNJANGAN > LEMBUR (Keep Jam + Jumlah)
-        cols.push({ field: 'lembur_jam', headers: ['TUNJANGAN', 'LEMBUR', null, 'JAM'], w: 45, className: 'text-center' });
-        cols.push({ field: 'lembur_jumlah', headers: ['TUNJANGAN', 'LEMBUR', null, 'JUMLAH'], w: 80, className: 'text-right' });
+        cols.push({ field: 'lembur_jam', headers: ['TUNJANGAN', 'LEMBUR', 'JAM'], w: 45, className: 'text-center' });
+        cols.push({ field: 'lembur_jumlah', headers: ['TUNJANGAN', 'LEMBUR', 'JUMLAH'], w: 80, className: 'text-right' });
 
-        // TUNJANGAN > TOTAL (Always show)
-        cols.push({ field: 'total_tunjangan', headers: ['TUNJANGAN', null, null, 'TOTAL TUNJANGAN'], w: 95, className: 'text-right font-bold' });
+        cols.push({ field: 'total_tunjangan', headers: ['TUNJANGAN', null, 'TOTAL TUNJ'], w: 95, className: 'text-right font-bold' });
 
-        // PENDAPATAN LAINNYA - THR, Bonus, Custom (Dipindahkan ke section POTONGAN UPAH BERSIH)
+        // PREMI
+        cols.push({ field: 'premi_brondol', headers: ['PREMI', null, 'BRONDOL'], w: 80, className: 'text-right' });
 
-        // PREMI - Static BRONDOL column (from separate query, always show if has values)
-        // BRONDOL is not in dynamic_premi_headers because it comes from brondol_data query
-        cols.push({ field: 'premi_brondol', headers: ['PREMI', null, null, 'BRONDOL'], w: 80, className: 'text-right' });
-
-        // PREMI (dynamic) - only show if has values in current gang
-        // Filter out 'brondol' - it's already rendered as a static column above
         Object.entries(dynamicHeaders.premi)
-            .filter(([label, field]) => {
-                if (field === 'brondol') return false; // Already rendered as static 'premi_brondol' column
-                return activePremiFields.includes(field) || isEditMode;
-            })
+            .filter(([label, field]) => field !== 'brondol' && (activePremiFields.includes(field) || isEditMode))
             .forEach(([label, field]) => {
                 const displayName = label.replace('PREMI ', '');
                 cols.push({
-                    field,
-                    headers: ['PREMI', null, null, displayName],
-                    w: 90,
-                    className: 'text-right',
+                    field, headers: ['PREMI', null, displayName], w: 90, className: 'text-right',
                     render: (row) => {
                         const val = row[field] || 0;
-                        // PREMI columns are NOT editable in edit mode - read-only
                         if (val === 0) return '-';
                         return formatNumber(val);
                     }
                 });
             });
-        cols.push({ field: 'total_premi', headers: ['PREMI', null, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold' });
+        cols.push({ field: 'total_premi', headers: ['PREMI', null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold' });
 
-        // PENDAPATAN LAINNYA (Dynamic) - (Tampil sebagai PENAMBAHAN di UPAH KOTOR)
-        // EXCLUDE: pendapatan_lainnya (total), pendapatan_kontan (kolom terpisah), pendapatan_tidak_tetap (duplikat)
+        // PENDAPATAN LAINNYA (Dynamic)
         const excludedPendapatanCols = ['pendapatan_lainnya', 'pendapatan_kontan', 'pendapatan_tidak_tetap'];
         activePendapatanFields.forEach(field => {
             if (excludedPendapatanCols.includes(field)) return;
             const displayName = field.replace('pendapatan_', '').toUpperCase() + ' (+)';
             cols.push({
-                field,
-                headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, displayName],
-                w: 85,
-                className: 'text-right',
+                field, headers: ['UPAH KOTOR', 'INC. LAIN', displayName], w: 85, className: 'text-right',
                 render: (row) => {
                     const val = Number(row[field] || 0);
                     if (val === 0) return '-';
@@ -1972,196 +1874,81 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             });
         });
 
-        // KONTAN - Other income column (always visible, editable only in edit mode)
+        // KONTAN
         cols.push({
             field: 'pendapatan_kontan',
-            headers: ['UPAH KOTOR', 'PENDAPATAN LAINNYA', null, 'KONTAN (+)'],
+            headers: ['UPAH KOTOR', 'INC. LAIN', 'KONTAN (+)'],
             w: 90,
             className: 'text-right',
             render: (row) => {
                 const val = Number(row.pendapatan_kontan || 0);
-                // Prefer real NIK (13+ digit KTP) over emp_code for storage
-                const isRealNik = (row.nik || '').length >= 13;
-                const realNik = isRealNik ? row.nik : null;
                 const empCode = row.emp_code || row.nik;
                 const editKey = `${empCode}-pendapatan_kontan`;
                 const cellEdit = editedKontanCells[editKey];
                 const displayVal = cellEdit ? cellEdit.value : val;
                 const isEdited = !!cellEdit;
 
-                // Only editable when edit mode is ON
                 if (isEditMode && row.type === 'employee') {
-                    // Check if this row has a pending delete (value explicitly set to 0)
                     const hasPendingDelete = cellEdit && cellEdit.value === 0;
                     return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                             <input
-                                type="number"
-                                className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
+                                type="number" className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
                                 value={displayVal}
                                 onChange={(e) => {
                                     const rawVal = e.target.value;
-                                    // Allow empty string (treat as 0 = delete)
-                                    if (rawVal === '') {
-                                        setEditedKontanCells(prev => ({
-                                            ...prev,
-                                            [editKey]: {
-                                                nik: realNik || row.emp_code,
-                                                emp_code: row.emp_code,
-                                                value: 0,
-                                                originalValue: val,
-                                                gang_code: row.gang_code
-                                            }
-                                        }));
-                                        setRows(prevRows => prevRows.map(r => {
-                                            if ((r.emp_code || r.nik) === empCode) {
-                                                return { ...r, pendapatan_kontan: 0 };
-                                            }
-                                            return r;
-                                        }));
-                                        return;
-                                    }
-                                    const numVal = parseFloat(rawVal);
-                                    if (isNaN(numVal)) return;
-                                    setEditedKontanCells(prev => ({
-                                        ...prev,
-                                        [editKey]: {
-                                            nik: realNik || row.emp_code,
-                                            emp_code: row.emp_code,
-                                            value: numVal,
-                                            originalValue: val,
-                                            gang_code: row.gang_code
-                                        }
-                                    }));
-                                    // Optimistically update UI
-                                    setRows(prevRows => prevRows.map(r => {
-                                        if ((r.emp_code || r.nik) === empCode) {
-                                            return { ...r, pendapatan_kontan: numVal };
-                                        }
-                                        return r;
-                                    }));
+                                    const newVal = rawVal === '' ? 0 : parseFloat(rawVal);
+                                    if (isNaN(newVal)) return;
+                                    setEditedKontanCells(prev => ({ ...prev, [editKey]: { nik: row.nik, emp_code: row.emp_code, value: newVal, originalValue: val, gang_code: row.gang_code } }));
+                                    setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: newVal } : r));
                                 }}
-                                placeholder="0"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{ width: '65px' }}
+                                placeholder="0" onClick={(e) => e.stopPropagation()} style={{ width: '65px' }}
                             />
                             {hasPendingDelete && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const confirmed = window.confirm(
-                                            `HAPUS KONTAN untuk ${row.emp_name || empCode}?\n\nCatatan: Nilai 0 akan menghapus data KONTAN dari database.`
-                                        );
-                                        if (!confirmed) {
-                                            // Cancel the delete - restore original value
-                                            setEditedKontanCells(prev => {
-                                                const updated = { ...prev };
-                                                delete updated[editKey];
-                                                return updated;
-                                            });
-                                            setRows(prevRows => prevRows.map(r => {
-                                                if ((r.emp_code || r.nik) === empCode) {
-                                                    return { ...r, pendapatan_kontan: val };
-                                                }
-                                                return r;
-                                            }));
-                                        }
-                                    }}
-                                    style={{
-                                        background: '#dc2626',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '3px',
-                                        cursor: 'pointer',
-                                        fontSize: '10px',
-                                        fontWeight: 'bold',
-                                        padding: '2px 5px',
-                                        width: '18px',
-                                        height: '18px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
-                                    }}
-                                    title="Klik untuk hapus (akan menghapus saat SIMPAN)"
-                                >
-                                    ✕
-                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Hapus KONTAN?')) { setEditedKontanCells(prev => { const upd = { ...prev }; delete upd[editKey]; return upd; }); setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: val } : r)); } }} style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', padding: '2px 5px' }} title="Batal Hapus">✕</button>
                             )}
                         </div>
                     );
                 }
-                // Read-only display
-                if (val === 0) return '-';
-                return formatNumber(val);
+                return val === 0 ? '-' : formatNumber(val);
             }
         });
 
-        // POTONGAN UPAH KOTOR - KOREKSI columns (all variations)
-        // Display each KOREKSI variation as a separate column
+        // POTONGAN UPAH KOTOR
         const koreksiFields = Object.entries(dynamicHeaders.potongan)
-            .filter(([label, field]) => field.toUpperCase().startsWith('KOREKSI') && (activePotFields.includes(field) || isEditMode)) // Show in edit mode
-            .sort(([a], [b]) => (a || '').localeCompare(b || '')); // Sort alphabetically
+            .filter(([label, field]) => field.toUpperCase().startsWith('KOREKSI') && (activePotFields.includes(field) || isEditMode))
+            .sort(([a], [b]) => (a || '').localeCompare(b || ''));
 
-        // If no KOREKSI variations found but koreksi data exists, show main column
         if (koreksiFields.length === 0 && !isEditMode) {
-            cols.push({
-                field: 'pot_koreksi',
-                headers: ['POTONGAN UPAH KOTOR', null, null, 'KOREKSI'],
-                w: 80,
-                className: 'text-right'
-            });
+            cols.push({ field: 'pot_koreksi', headers: ['POT KOTOR', null, 'KOREKSI'], w: 80, className: 'text-right' });
         } else {
-            // Show each KOREKSI variation as separate column
             for (const [label, field] of koreksiFields) {
-                // Clean up the label for display
-                const displayLabel = label.replace(/^KOREKSI\s*/i, 'KOREKSI ') || label;
+                const displayLabel = label.replace(/^KOREKSI\s*/i, 'KOR. ') || label;
                 cols.push({
-                    field,
-                    headers: ['POTONGAN UPAH KOTOR', null, null, displayLabel],
-                    w: 90,
-                    className: 'text-right',
+                    field, headers: ['POT KOTOR', null, displayLabel], w: 90, className: 'text-right',
                     render: (row) => {
                         const val = row[field] || 0;
                         if (isEditMode && row.type === 'employee') {
                             const editKey = `${row.nik}-${field}`;
                             const isEdited = !!editedCells[editKey];
-                            return (
-                                <input
-                                    type="number"
-                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                    value={val === 0 ? '' : val}
-                                    onChange={(e) => handleCellEdit(row.nik, field, e.target.value, val, row.gang_code, 'POTONGAN_KOTOR', displayLabel)}
-                                    placeholder="0"
-                                    onClick={(e) => e.stopPropagation()}
-                                />
-                            );
+                            return <input type="number" className={`edit-input ${isEdited ? 'cell-edited' : ''}`} value={val === 0 ? '' : val} onChange={(e) => handleCellEdit(row.nik, field, e.target.value, val, row.gang_code, 'POTONGAN_KOTOR', displayLabel)} placeholder="0" onClick={(e) => e.stopPropagation()} />;
                         }
-                        if (val === 0) return '-';
-                        return formatNumber(val);
+                        return val === 0 ? '-' : formatNumber(val);
                     }
                 });
             }
         }
+        cols.push({ field: 'potongan_upah_kotor_total', headers: ['POT KOTOR', null, 'TOT KOR.'], w: 95, className: 'text-right font-bold' });
 
-        // Total Koreksi
-        cols.push({ field: 'potongan_upah_kotor_total', headers: ['POTONGAN UPAH KOTOR', null, null, 'TOTAL KOREKSI'], w: 95, className: 'text-right font-bold' });
-
-        // UPAH KOTOR (separate group, not child of POTONGAN UPAH KOTOR) - sync with kontan
-        // Backend now includes total_pendapatan_lainnya in jumlah_upah_kotor
+        // UPAH KOTOR
         cols.push({
-            field: 'jumlah_upah_kotor',
-            headers: ['UPAH KOTOR', '', null, 'JUMLAH'],
-            w: 110,
-            className: 'text-right font-bold',
+            field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', null, 'JUMLAH'], w: 110, className: 'text-right font-bold',
             render: (row) => {
                 const empCode = row.emp_code || row.nik;
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
                 const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
-                const baseKontan = Number(row.pendapatan_kontan || 0);
-                // Backend already includes pendapatan_lainnya, just adjust for kontan
-                const val = Number(row.jumlah_upah_kotor || 0) - baseKontan + (kontanVal || 0);
-                if (val === 0) return '-';
-                return formatNumber(val);
+                const val = Number(row.jumlah_upah_kotor || 0) - Number(row.pendapatan_kontan || 0) + (kontanVal || 0);
+                return val === 0 ? '-' : formatNumber(val);
             }
         });
 
@@ -2173,119 +1960,56 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             // POTONGAN UPAH BERSIH > CARUMAN ASTEK
             cols.push({
                 field: 'pot_astek',
-                headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'PEKERJA'],
+                headers: ['POT BERSIH', 'ASTEK', 'PEK.'],
                 w: 75,
-                className: 'text-right',
-                render: (row) => {
-                    const val = row.pot_astek || 0;
-                    if (val === 0) return '-';
-                    const estimatedBase = val * 50; // 2% of base
-                    return (
-                        <div title={`Potongan Astek Pekerja (2%)\nEstimasi Dasar Perhitungan: 2% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
-                            {formatNumber(val)}
-                        </div>
-                    );
-                }
+                className: 'text-right'
             });
             cols.push({
                 field: 'pot_astek_maj',
-                headers: ['POTONGAN UPAH BERSIH', 'CARUMAN ASTEK', null, 'MAJIKAN'],
+                headers: ['POT BERSIH', 'ASTEK', 'MAJ.'],
                 w: 75,
-                className: 'text-right',
-                render: (row) => {
-                    const val = row.pot_astek_maj || 0;
-                    if (val === 0) return '-';
-                    return (
-                        <div title="Potongan Astek Majikan (JHT 3.7%, JKK, JKM)" style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
-                            {formatNumber(val)}
-                        </div>
-                    );
-                }
+                className: 'text-right'
             });
 
             // POTONGAN UPAH BERSIH > POTONGAN BPJS > KESEHATAN
             cols.push({
                 field: 'pot_bpjs_kesehatan_pekerja',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'PEKERJA'],
+                headers: ['POT BERSIH', 'BPJS KES', 'PEK.'],
                 w: 75,
-                className: 'text-right',
-                render: (row) => {
-                    const val = row.pot_bpjs_kesehatan_pekerja || 0;
-                    if (val === 0) return '-';
-                    const estimatedBase = val * 100; // 1% of base
-                    return (
-                        <div title={`Potongan BPJS Kesehatan Pekerja (1%)\nEstimasi Dasar Perhitungan: 1% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
-                            {formatNumber(val)}
-                        </div>
-                    );
-                }
+                className: 'text-right'
             });
             cols.push({
                 field: 'pot_bpjs_kesehatan_majikan',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'KESEHATAN', 'MAJIKAN'],
+                headers: ['POT BERSIH', 'BPJS KES', 'MAJ.'],
                 w: 75,
-                className: 'text-right',
-                render: (row) => {
-                    const val = row.pot_bpjs_kesehatan_majikan || 0;
-                    if (val === 0) return '-';
-                    const estimatedBase = val * 25; // 4% of base
-                    return (
-                        <div title={`Potongan BPJS Kesehatan Majikan (4%)\nEstimasi Dasar Perhitungan: 4% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
-                            {formatNumber(val)}
-                        </div>
-                    );
-                }
+                className: 'text-right'
             });
             // POTONGAN UPAH BERSIH > POTONGAN BPJS > PENSIUN
             cols.push({
                 field: 'pot_bpjs_pensiun_pekerja',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'PEKERJA'],
+                headers: ['POT BERSIH', 'BPJS PEN', 'PEK.'],
                 w: 75,
-                className: 'text-right',
-                render: (row) => {
-                    const val = row.pot_bpjs_pensiun_pekerja || 0;
-                    if (val === 0) return '-';
-                    const estimatedBase = val * 100; // 1% of base
-                    return (
-                        <div title={`Potongan BPJS Pensiun Pekerja (1%)\nEstimasi Dasar Perhitungan: 1% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
-                            {formatNumber(val)}
-                        </div>
-                    );
-                }
+                className: 'text-right'
             });
             cols.push({
                 field: 'pot_bpjs_pensiun_majikan',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', 'PENSIUN', 'MAJIKAN'],
+                headers: ['POT BERSIH', 'BPJS PEN', 'MAJ.'],
                 w: 75,
-                className: 'text-right',
-                render: (row) => {
-                    const val = row.pot_bpjs_pensiun_majikan || 0;
-                    if (val === 0) return '-';
-                    const estimatedBase = val * 50; // 2% of base
-                    return (
-                        <div title={`Potongan BPJS Pensiun Majikan (2%)\nEstimasi Dasar Perhitungan: 2% x Rp ${formatNumber(estimatedBase)}`} style={{ cursor: 'help', borderBottom: '1px dotted #9ca3af', display: 'inline-block' }}>
-                            {formatNumber(val)}
-                        </div>
-                    );
-                }
+                className: 'text-right'
             });
             // POTONGAN UPAH BERSIH > POTONGAN BPJS > JUMLAH
-            cols.push({ field: 'pot_bpjs_pekerja_total', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN BPJS', null, 'JUMLAH'], w: 80, className: 'text-right font-bold' });
-            // Other deductions (Dipindahkan ke POTONGAN LAINNYA)
-            cols.push({ field: 'pot_spsi', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'IURAN SPSI'], w: 80, className: 'text-right' });
-            cols.push({ field: 'pot_pph21', headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'POTONGAN PPH21 (-)'], w: 80, className: 'text-right' });
-
-            // [NEW] PREMI PPH - This is an ADDITION (+), not a deduction
-            // Display with + sign to indicate it's added to upah_bersih
+            cols.push({ field: 'pot_bpjs_pekerja_total', headers: ['POT BERSIH', 'BPJS', 'TOTAL'], w: 80, className: 'text-right font-bold' });
+            // Other deductions
+            cols.push({ field: 'pot_spsi', headers: ['POT BERSIH', 'LAINNYA', 'SPSI'], w: 80, className: 'text-right' });
+            cols.push({ field: 'pot_pph21', headers: ['POT BERSIH', 'LAINNYA', 'PPH21 (-)'], w: 80, className: 'text-right' });
             cols.push({
                 field: 'premi_pph',
-                headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, 'PREMI PPH (+)'],
+                headers: ['POT BERSIH', 'LAINNYA', 'PREMI PPH (+)'],
                 w: 90,
                 className: 'text-right cell-premi-pph',
                 render: (row) => {
                     const val = row.premi_pph || 0;
                     if (val === 0) return '-';
-                    // Show with a + sign and green color to indicate addition
                     return (
                         <span style={{ color: '#059669', fontWeight: 'bold' }}>
                             +{formatNumber(val)}
@@ -2294,36 +2018,20 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 }
             });
 
-            // Dynamic Potongan Bersih - show POTONGAN variations, PREMI_PPH, and PREMI items from TaskDesc
+            // Dynamic Potongan Bersih
             const potonganBersihFields = Object.entries(dynamicHeaders.potongan)
                 .filter(([label, field]) => {
-                    const upperLabel = label.toUpperCase();
-                    const upperField = (field || '').toUpperCase();
-
-                    // Exclude KOREKSI (shown in POTONGAN UPAH KOTOR)
-                    if (upperLabel.startsWith('KOREKSI') || upperField.startsWith('KOREKSI')) return false;
-
-                    // Exclude SPSI (static column already exists)
-                    if (upperLabel.includes('SPSI') || upperField === 'SPSI') return false;
-
-                    // Exclude PPH21 (static column already exists)
-                    if (upperField === 'PPH21') return false;
-
-                    // Exclude PREMI_PPH (static column already exists with + sign)
-                    if (upperField === 'PREMI_PPH') return false;
-
-                    // INCLUDE: POTONGAN X, and other dynamic items
-                    return true;
+                    const u = (field || '').toUpperCase();
+                    return !u.startsWith('KOREKSI') && u !== 'SPSI' && u !== 'PPH21' && u !== 'PREMI_PPH';
                 })
                 .filter(([label, field]) => activePotFields.includes(field) || isEditMode)
                 .sort(([a], [b]) => (a || '').localeCompare(b || ''));
 
             for (const [label, field] of potonganBersihFields) {
-                // Clean up the label for display
                 const displayLabel = (label || '').replace(/^(POTONGAN\s*|POT\s*)/i, '') || label;
                 cols.push({
                     field,
-                    headers: ['POTONGAN UPAH BERSIH', 'POTONGAN LAINNYA', null, displayLabel],
+                    headers: ['POT BERSIH', 'LAINNYA', displayLabel],
                     w: 90,
                     className: 'text-right',
                     render: (row) => {
@@ -2350,17 +2058,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         }
 
-        // PENDAPATAN LAINNYA (THR, Bonus, Custom, KONTAN) - shown BEFORE Total Potongan
-        // This includes ALL other incomes that are added to gross pay and deducted in total_potongan
+        // PENDAPATAN LAINNYA
         const activePendapatan = activePendapatanFields.filter(f => f !== 'pendapatan_lainnya');
         if (activePendapatan.length > 0 || isEditMode) {
-            // Individual income types (THR, Bonus, Custom, KONTAN)
             for (const field of activePendapatan) {
                 const baseType = field.replace('pendapatan_', '');
                 const displayName = baseType.toUpperCase() + ' (+)';
                 cols.push({
                     field,
-                    headers: ['PENDAPATAN LAINNYA', null, null, displayName],
+                    headers: ['INC. LAIN', null, displayName],
                     w: 90,
                     className: 'text-right font-bold',
                     render: (row) => {
@@ -2370,10 +2076,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     }
                 });
             }
-            // Total Pendapatan Lainnya (summary)
             cols.push({
                 field: 'total_pendapatan_lainnya',
-                headers: ['PENDAPATAN LAINNYA', null, null, 'TOTAL LAINNYA (+)'],
+                headers: ['INC. LAIN', null, 'TOTAL (+)'],
                 w: 100,
                 className: 'text-right font-bold',
                 render: (row) => {
@@ -2383,35 +2088,26 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             });
         }
 
-        // Total Potongan Bersih (Always Shown) - sync with kontan edits
-        // Backend already includes pendapatan_lainnya in total_potongan_bersih
-        // DO NOT add it again - that would be double counting!
-        // Adjust Level 1 header to preserve colspan merging (use empty string when expanded)
+        // Total Potongan Bersih
         cols.push({
             field: 'total_potongan_bersih',
-            headers: showDeductionDetails ? ['POTONGAN UPAH BERSIH', '', null, 'TOTAL POTONGAN'] : ['POTONGAN UPAH BERSIH', null, null, 'TOTAL POTONGAN'],
+            headers: ['POT BERSIH', null, 'TOTAL POT'],
             w: 100,
             className: 'text-right font-bold cell-deduction',
             render: (row) => {
                 const empCode = row.emp_code || row.nik;
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
                 const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
-                const baseKontan = Number(row.pendapatan_kontan || 0);
-                const baseVal = Number(row.total_potongan_bersih || 0);
-                // FIX: Backend already includes pendapatan_lainnya in total_potongan_bersih
-                // Only adjust for kontan edit (if user changed it in edit mode)
-                const val = baseVal - baseKontan + (kontanVal || 0);
+                const val = Number(row.total_potongan_bersih || 0) - Number(row.pendapatan_kontan || 0) + (kontanVal || 0);
                 if (val === 0) return '-';
                 return formatNumber(val);
             }
         });
 
-        // TOTAL UPAH (Summary group) - Upah Bersih
-        // Note: Kontan adds to both UPAH KOTOR (+) and POTONGAN BERSIH (+) equally,
-        // so upah_bersih stays the same. Use base value from backend.
+        // UPAH BERSIH
         cols.push({
             field: 'upah_bersih',
-            headers: ['UPAH BERSIH', null, null, 'JUMLAH'],
+            headers: ['UPAH BERSIH', null, 'JUMLAH'],
             w: 115,
             className: 'text-right font-bold cell-net-salary',
             render: (row) => {
@@ -2471,11 +2167,23 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     }, [displayRows, onTaxExportReady]);
 
 
-    // Helper function to get header color style — uniform dark color for ALL headers
-    const getHeaderStyle = useCallback(() => {
+    // Helper function to get header style by depth for better readability and compactness
+    const getHeaderStyle = useCallback((_label, level = 0) => {
+        const rowPalette = ['#0f172a', '#1e293b', '#334155'];
+        const bg = rowPalette[Math.min(level, rowPalette.length - 1)];
         return {
-            backgroundColor: '#1a365d',
-            color: 'white'
+            backgroundColor: bg,
+            color: '#f8fafc',
+            borderBottom: '1px solid rgba(148, 163, 184, 0.25)',
+            borderRight: '1px solid rgba(148, 163, 184, 0.15)',
+            letterSpacing: level === 0 ? '0.02em' : '0em',
+            textTransform: level === 0 ? 'uppercase' : 'none',
+            fontWeight: level === 0 ? 700 : (level === 1 ? 600 : 500),
+            fontSize: level === 0 ? '11px' : '10px',
+            padding: '4px 6px', // Optimized compact padding
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
         };
     }, []);
 
@@ -2490,122 +2198,81 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     }, [cellColors]);
 
     const headerRows = useMemo(() => {
-        const numRows = 4;
-        const numCols = columnDefs.length;
+        if (!columnDefs || columnDefs.length === 0) return [];
+        
+        const depth = Math.max(...columnDefs.map(c => c.headers.length));
+        const rows = Array(depth).fill(null).map(() => []);
 
-        // Create a grid to track which cells are occupied
-        const grid = Array(numRows).fill(null).map(() => Array(numCols).fill(null));
-
-        // Process each column's headers
-        columnDefs.forEach((col, colIdx) => {
-            const headers = col.headers;
-            let rowStart = 0;
-
-            for (let row = 0; row < numRows; row++) {
-                const label = headers[row];
-                if (label === null) {
-                    // This cell should be merged with the one above
-                    // Find the cell above that should extend down
-                    continue;
+        // Build a grid of labels to compute spans
+        const grid = [];
+        for (let c = 0; c < columnDefs.length; c++) {
+            const col = columnDefs[c];
+            grid[c] = [];
+            let lastValid = '';
+            for (let r = 0; r < depth; r++) {
+                if (r < col.headers.length && col.headers[r] !== null) {
+                    lastValid = col.headers[r];
                 }
-
-                // Find how many rows this cell should span
-                let rowSpan = 1;
-                for (let r = row + 1; r < numRows; r++) {
-                    if (headers[r] === null) rowSpan++;
-                    else break;
-                }
-
-                // Mark cells as occupied
-                for (let r = row; r < row + rowSpan; r++) {
-                    grid[r][colIdx] = { label, rowSpan, colSpan: 1, startRow: row, startCol: colIdx };
-                }
-                break; // Only process the first non-null header for this column at this level
+                grid[c][r] = { label: lastValid, col: col };
             }
+        }
 
-            // Now process remaining levels
-            for (let row = 0; row < numRows; row++) {
-                if (grid[row][colIdx] !== null) continue;
+        // Horizontal and Vertical merging
+        for (let r = 0; r < depth; r++) {
+            let c = 0;
+            while (c < columnDefs.length) {
+                let currentLabel = grid[c][r].label;
+                let colSpan = 1;
+                
+                // Calculate ColSpan: How many adjacent columns share the exact same path up to this row?
+                while (c + colSpan < columnDefs.length) {
+                    let match = true;
+                    for (let checkR = 0; checkR <= r; checkR++) {
+                        if (grid[c][checkR].label !== grid[c + colSpan][checkR].label) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (!match) break;
+                    colSpan++;
+                }
 
-                const label = headers[row];
-                if (label !== null) {
+                // Check if this label starts here (is not identical to the cell above it)
+                let isStartOfSpan = r === 0 || grid[c][r].label !== grid[c][r - 1].label;
+                
+                if (isStartOfSpan) {
                     let rowSpan = 1;
-                    for (let r = row + 1; r < numRows; r++) {
-                        if (headers[r] === null) rowSpan++;
-                        else break;
+                    // Calculate RowSpan: How many rows down does this label continue unchanged?
+                    while (r + rowSpan < depth && grid[c][r + rowSpan].label === currentLabel) {
+                        rowSpan++;
                     }
-                    for (let r = row; r < row + rowSpan; r++) {
-                        grid[r][colIdx] = { label, rowSpan, colSpan: 1, startRow: row, startCol: colIdx };
-                    }
-                }
-            }
-        });
 
-        // Merge adjacent cells with same label in same row
-        for (let row = 0; row < numRows; row++) {
-            for (let col = 0; col < numCols; col++) {
-                const cell = grid[row][col];
-                if (!cell || cell.merged) continue;
+                    const colObj = grid[c][r].col;
+                    const headerGroup = getHeaderGroup(colObj.headers[0]);
+                    const isCheckbox = colObj.field === 'checkbox' && r === 0;
 
-                // Look for adjacent cells with same label that started at same row
-                let colspan = 1;
-                for (let c = col + 1; c < numCols; c++) {
-                    const nextCell = grid[row][c];
-                    if (nextCell && nextCell.label === cell.label && nextCell.startRow === cell.startRow && nextCell.rowSpan === cell.rowSpan) {
-                        colspan++;
-                        nextCell.merged = true;
-                    } else {
-                        break;
-                    }
-                }
-                cell.colSpan = colspan;
-            }
-        }
-
-        // Build the header rows
-        const result = [];
-        for (let row = 0; row < numRows; row++) {
-            const rowCells = [];
-            for (let col = 0; col < numCols; col++) {
-                const cell = grid[row][col];
-                if (!cell) continue;
-                if (cell.merged) continue;
-                if (cell.startRow !== row) continue; // This cell started in a previous row
-
-                // Get header group for color styling
-                const headerGroup = getHeaderGroup(cell.label);
-                const headerStyle = getHeaderStyle(cell.label, row);
-
-                // Special handling for checkbox column header
-                if (columnDefs[col].field === 'checkbox') {
-                    rowCells.push({
-                        label: 'checkbox',
-                        colSpan: cell.colSpan,
-                        rowSpan: cell.rowSpan,
-                        isSticky: true,
-                        left: columnDefs[col].left,
-                        isCheckboxHeader: true,
-                        headerGroup: null,
-                        headerStyle: { backgroundColor: '#1a365d', color: 'white' }
-                    });
-                } else {
-                    rowCells.push({
-                        label: cell.label || '',
-                        colSpan: cell.colSpan,
-                        rowSpan: cell.rowSpan,
-                        isSticky: columnDefs[col].left !== undefined,
-                        left: columnDefs[col].left,
-                        headerGroup,
-                        headerStyle,
-                        level: row
+                    rows[r].push({
+                        label: currentLabel,
+                        colSpan: colSpan,
+                        rowSpan: rowSpan,
+                        isSticky: colObj.left !== undefined,
+                        left: colObj.left,
+                        headerGroup: headerGroup,
+                        headerStyle: getHeaderStyle(currentLabel, r),
+                        level: r,
+                        field: colSpan === 1 ? colObj.field : null,
+                        sortable: colSpan === 1 && ['emp_code', 'nik', 'nama'].includes(colObj.field),
+                        isCheckboxHeader: isCheckbox,
+                        topHeader: colObj.headers[0]
                     });
                 }
+                c += colSpan;
             }
-            result.push(rowCells);
         }
-
-        return result;
-    }, [columnDefs, allEmployeeNiks, getHeaderStyle, selectedEmployees]);
+        
+        // Remove empty rows if any
+        return rows.filter(r => r.length > 0);
+    }, [columnDefs, getHeaderStyle]);
 
     // Selection Logic - supports Ctrl+Click for multi-select
     const handleMouseDown = (e, rowIndex, colIndex, rowId) => {
@@ -2810,8 +2477,42 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const scale = fontSize / 100;
     const rowHeight = 28;
 
+    const togglePortalTarget = document.getElementById('column-toggles-portal');
+    const togglesElement = togglePortalTarget ? createPortal(
+        <>
+            <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
+            <div style={{ padding: '4px 8px', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>VISIBILITAS KOLOM</div>
+            {[
+                { label: 'Pajak (PPH21)', state: isTaxExpanded, toggle: () => toggleGroup('PAJAK') },
+                { label: 'Panen', state: isHarvestExpanded, toggle: () => toggleGroup('PANEN') },
+                { label: 'Absensi Detail', state: isAttendanceExpanded, toggle: () => toggleGroup('ABSENSI') },
+                { label: 'Tunjangan', state: isAllowanceExpanded, toggle: () => toggleGroup('TUNJANGAN') },
+                { label: 'Pendapatan Lain', state: isOtherIncomeExpanded, toggle: () => toggleGroup('PENDAPATAN LAINNYA') },
+                { label: 'Potongan Bersih', state: isDeductionExpanded, toggle: () => toggleGroup('POTONGAN_BERSIH') }
+            ].map(item => (
+                <button
+                    key={item.label}
+                    onClick={(e) => { e.stopPropagation(); item.toggle(); }}
+                    style={{
+                        width: '100%',
+                        textAlign: 'left', padding: '0.4rem 0.5rem', borderRadius: '4px', border: 'none',
+                        background: item.state ? '#eff6ff' : 'transparent',
+                        color: item.state ? '#1e3a8a' : '#475569',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        fontSize: '0.8rem'
+                    }}
+                >
+                    <span>{item.label}</span>
+                    <span>{item.state ? '✅' : '☐'}</span>
+                </button>
+            ))}
+        </>,
+        togglePortalTarget
+    ) : null;
+
     return (
         <div className="payroll-table-container" style={{ fontSize: `${11 * scale}px` }} onMouseUp={handleMouseUp}>
+            {togglesElement}
             {/* Loading / Streaming Progress Bar - Sticky Header */}
             {(loading || (effectiveProgress?.stage && effectiveProgress.stage !== 'complete')) && (
                 <div style={{
@@ -3035,8 +2736,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         top: rIdx * rowHeight,
                                         left: cell.left,
                                         height: cell.rowSpan * rowHeight,
+                                        cursor: cell.sortable ? 'pointer' : 'default',
                                         ...cell.headerStyle
                                     }}
+                                    onClick={() => cell.sortable && onSortChange && onSortChange(cell.field)}
                                 >
                                     {cell.label === 'JABATAN' ? (
                                         <div className="flex items-center justify-center gap-1">
@@ -3049,47 +2752,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                                 💾
                                             </button>
                                         </div>
-                                    ) : ['PAJAK', 'PANEN', 'ABSENSI', 'TUNJANGAN', 'PENDAPATAN LAINNYA', 'POTONGAN UPAH BERSIH'].includes(cell.label) ? (
-                                        (() => {
-                                            const isExpanded = cell.label === 'PAJAK' ? isTaxExpanded :
-                                                cell.label === 'PANEN' ? isHarvestExpanded :
-                                                    cell.label === 'ABSENSI' ? isAttendanceExpanded :
-                                                        cell.label === 'TUNJANGAN' ? isAllowanceExpanded :
-                                                            cell.label === 'PENDAPATAN LAINNYA' ? isOtherIncomeExpanded :
-                                                                cell.label === 'POTONGAN UPAH BERSIH' ? isDeductionExpanded : false;
-
-                                            return (
-                                                <div 
-                                                    className={`header-toggle-container ${isExpanded ? 'is-expanded' : ''}`}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const groupKey = cell.label === 'POTONGAN UPAH BERSIH' ? 'POTONGAN_BERSIH' : cell.label;
-                                                        toggleGroup(groupKey);
-                                                    }}
-                                                    title={isExpanded ? "Klik untuk sembunyikan detail" : "Klik untuk lihat detail"}
-                                                >
-                                                    <span className="header-label-text">{cell.label}</span>
-                                                    
-                                                    <span className="header-toggle-icon">
-                                                        {isExpanded ? '▼' : '▶'}
-                                                    </span>
-
-                                                    {cell.label === 'PENDAPATAN LAINNYA' && (
-                                                        <span className="kontan-badge">KONTAN</span>
-                                                    )}
-
-                                                    {isEditMode && cell.label === 'POTONGAN UPAH BERSIH' && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleAddColumn(cell.label); }}
-                                                            className="header-add-btn"
-                                                            title={`Tambah kolom ${cell.label} baru`}
-                                                        >
-                                                            +
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()
                                     ) : cell.label === '%TOGGLE_JUMLAH%' ? (
                                         <div className="flex flex-col items-center justify-center gap-0.5 w-full h-full">
                                             <span>JUMLAH</span>
@@ -3121,10 +2783,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                     ) : (
                                         <div className="flex items-center justify-center gap-1 h-full w-full relative group" style={{ textAlign: 'center', lineHeight: '1.2' }}>
                                             <div>{formatHeaderLabel(cell.label)}</div>
-                                            {isEditMode && cell.label === 'POTONGAN UPAH KOTOR' && (
-                                                <button onClick={(e) => { e.stopPropagation(); handleAddColumn(cell.label); }}
+                                            
+                                            {/* Sort Indicators */}
+                                            {cell.sortable && (
+                                                <span style={{ fontSize: '10px', color: sortBy === cell.field ? '#fff' : 'rgba(255,255,255,0.3)', marginLeft: '4px' }}>
+                                                    {sortBy === cell.field ? (sortOrder === 'asc' ? '▲' : '▼') : '↕'}
+                                                </span>
+                                            )}
+
+                                            {/* Add Columns Button in Edit Mode */}
+                                            {isEditMode && ((cell.topHeader === 'POT KOTOR' && cell.label === 'TOTAL POT') || (cell.topHeader === 'POT BERSIH' && cell.label === 'TOTAL POT')) && (
+                                                <button onClick={(e) => { 
+                                                        e.stopPropagation(); 
+                                                        handleAddColumn(cell.topHeader === 'POT KOTOR' ? 'POTONGAN UPAH KOTOR' : 'POTONGAN UPAH BERSIH'); 
+                                                    }}
                                                     style={{ marginLeft: 6, opacity: 0.9, background: '#f59e0b', color: 'white', border: 'none', borderRadius: '50%', width: 16, height: 16, fontSize: 12, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                    title={`Tambah kolom ${cell.label} baru`}
+                                                    title={`Tambah kolom potongan baru`}
                                                 >
                                                     +
                                                 </button>

@@ -39,14 +39,14 @@ export default function DashboardLayout({ children, title, subtitle, actions }) 
       {/* Top Header */}
       <header style={{
         height: '64px',
-        background: 'white',
-        borderBottom: '1px solid var(--border-color)',
+        background: '#1e3a5f', /* Corporate Clean Dark Slate */
+        borderBottom: '4px solid #2d6a4f', /* Corporate Clean Green Accent */
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 24px',
         zIndex: 10,
-        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
       }}>
         {/* Brand / Title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -65,12 +65,12 @@ export default function DashboardLayout({ children, title, subtitle, actions }) 
 
           <div style={{
             width: '40px', height: '40px',
-            background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', // Light green background
-            border: '1px solid #86efac',
+            background: 'linear-gradient(135deg, #f8f9fa 0%, #e2e8f0 100%)', // Light neutral background for contrast
+            border: '2px solid #2d6a4f',
             borderRadius: '10px',
             display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             overflow: 'hidden',
-            boxShadow: '0 2px 5px rgba(34, 197, 94, 0.15)'
+            boxShadow: '0 2px 5px rgba(0, 0, 0, 0.2)'
           }}
             title="Plantware Auto Report"
           >
@@ -92,11 +92,11 @@ export default function DashboardLayout({ children, title, subtitle, actions }) 
             </svg>
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+            <h1 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#f8f9fa', letterSpacing: '0.02em' }}>
               {title || 'Payroll Dashboard'}
             </h1>
             {subtitle && (
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+              <div style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: '500' }}>
                 {subtitle}
               </div>
             )}
@@ -111,25 +111,26 @@ export default function DashboardLayout({ children, title, subtitle, actions }) 
         {/* User Profile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ textAlign: 'right', display: 'none', '@media (min-width: 768px)': { display: 'block' } }}>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>{user?.full_name || user?.username}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{user?.divisions?.[0] || 'Staff'}</div>
+            <div style={{ fontSize: '14px', fontWeight: '600', color: '#f8f9fa' }}>{user?.full_name || user?.username}</div>
+            <div style={{ fontSize: '11px', color: '#cbd5e1' }}>{user?.divisions?.[0] || 'Staff'}</div>
           </div>
           <div
             onClick={() => { if (confirm('Logout?')) logout() }}
             style={{
               width: '38px', height: '38px',
               borderRadius: '50%',
-              background: 'var(--primary-50)',
-              color: 'var(--primary-700)',
+              background: '#2d6a4f',
+              color: '#ffffff',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: '600',
+              fontWeight: '700',
               cursor: 'pointer',
-              border: '1px solid var(--primary-200)',
-              transition: 'all 0.2s'
+              border: '2px solid #ffffff',
+              transition: 'all 0.2s',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
             }}
             title="Click to Logout"
-            onMouseOver={(e) => e.currentTarget.style.background = 'var(--primary-100)'}
-            onMouseOut={(e) => e.currentTarget.style.background = 'var(--primary-50)'}
+            onMouseOver={(e) => e.currentTarget.style.background = '#40916c'}
+            onMouseOut={(e) => e.currentTarget.style.background = '#2d6a4f'}
           >
             {(user?.username || 'U').charAt(0).toUpperCase()}
           </div>
