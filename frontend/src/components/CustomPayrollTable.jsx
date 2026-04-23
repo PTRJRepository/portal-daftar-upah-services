@@ -2372,7 +2372,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             letterSpacing: level === 0 ? '0.02em' : '0em',
             textTransform: level === 0 ? 'uppercase' : 'none',
             fontWeight: level === 0 ? 700 : (level === 1 ? 600 : 500),
-            fontSize: level === 0 ? '11px' : '10px',
+            fontSize: level === 0 ? '13px' : '12px',
             padding: '4px 6px',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
@@ -3207,12 +3207,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                     // Build group class + inline color for body cells
                                     const groupClass = col.group ? `cell-group-${col.group.toLowerCase().replace(/\s+/g, '-')}` : '';
                                     const cellGroupInline = getCellGroupStyle(col.group);
+                                    const syncFrameColor = row?.value_sync_frame?.[col.field];
+                                    const syncFrameClass = syncFrameColor === 'red'
+                                        ? 'cell-sync-red'
+                                        : syncFrameColor === 'green'
+                                            ? 'cell-sync-green'
+                                            : '';
 
                                     if (col.render) {
                                         return (
                                             <td
                                                 key={cIdx}
-                                                className={`${col.className} ${selected ? 'cell-selected' : ''} ${groupClass}`}
+                                                className={`${col.className} ${selected ? 'cell-selected' : ''} ${groupClass} ${syncFrameClass}`}
                                                 style={{ left: col.left, width: col.w, minWidth: col.w, ...cellGroupInline }}
                                                 data-active-group={col.group && focusedGroup ? String(col.group === focusedGroup) : undefined}
                                                 data-focus-dim={focusLensEnabled && col.group && focusedGroup ? String(col.group !== focusedGroup) : undefined}
@@ -3228,7 +3234,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                     return (
                                         <td
                                             key={cIdx}
-                                            className={`${col.className} ${selected ? 'cell-selected' : ''} ${groupClass}`}
+                                            className={`${col.className} ${selected ? 'cell-selected' : ''} ${groupClass} ${syncFrameClass}`}
                                             style={{ left: col.left, width: col.w, minWidth: col.w, ...cellGroupInline }}
                                             data-active-group={col.group && focusedGroup ? String(col.group === focusedGroup) : undefined}
                                             data-focus-dim={focusLensEnabled && col.group && focusedGroup ? String(col.group !== focusedGroup) : undefined}
