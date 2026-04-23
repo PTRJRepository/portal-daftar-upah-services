@@ -16,6 +16,21 @@ const TYPE_BY_GROUP = {
   'POTONGAN UPAH BERSIH': 'POTONGAN_BERSIH',
 };
 
+function escapeRegExp(input) {
+  return String(input || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function removeCanonicalPrefix(name, canonicalPrefix) {
+  if (!name || !canonicalPrefix) return '';
+  return String(name)
+    .replace(new RegExp(`^${escapeRegExp(canonicalPrefix)}(?:\\s+|$)`, 'i'), '')
+    .trim();
+}
+
+function normalizeIdentity(input) {
+  return String(input ?? '').trim();
+}
+
 export function sanitizeManualAdjustmentLabel(input) {
   return String(input || '')
     .replace(/[^A-Za-z0-9\s]/g, ' ')
@@ -28,7 +43,10 @@ export function buildCanonicalManualAdjustmentName(groupLabel, rawName) {
   const cleanedName = sanitizeManualAdjustmentLabel(rawName).toUpperCase();
 
   if (!canonicalPrefix || !cleanedName) return '';
-  return `${canonicalPrefix} ${cleanedName}`.trim();
+
+  const suffix = removeCanonicalPrefix(cleanedName, canonicalPrefix);
+  if (!suffix) return canonicalPrefix;
+  return `${canonicalPrefix} ${suffix}`.trim();
 }
 
 function toSnakeCase(input) {
@@ -39,12 +57,16 @@ function toSnakeCase(input) {
 }
 
 export function buildPendingManualColumn({ groupLabel, rawName, division, firstEmployee }) {
+  const canonicalPrefix = CANONICAL_PREFIX[groupLabel];
   const adjustmentName = buildCanonicalManualAdjustmentName(groupLabel, rawName);
   const fieldPrefix = FIELD_PREFIX_BY_GROUP[groupLabel];
   const adjustmentType = TYPE_BY_GROUP[groupLabel];
-  const fieldSuffix = toSnakeCase(sanitizeManualAdjustmentLabel(rawName));
+  const fieldSuffix = toSnakeCase(removeCanonicalPrefix(adjustmentName, canonicalPrefix));
+  const nik = normalizeIdentity(firstEmployee?.nik);
+  const gangCode = normalizeIdentity(firstEmployee?.gang_code);
+  const empCode = normalizeIdentity(firstEmployee?.emp_code) || nik;
 
-  if (!adjustmentName || !firstEmployee || !fieldPrefix || !adjustmentType || !fieldSuffix) {
+  if (!adjustmentName || !fieldPrefix || !adjustmentType || !fieldSuffix || !nik || !gangCode) {
     return null;
   }
 
@@ -54,9 +76,9 @@ export function buildPendingManualColumn({ groupLabel, rawName, division, firstE
     adjustmentName,
     activeFieldBucket: groupLabel === 'PREMI' ? 'premi' : 'potongan',
     payload: {
-      nik: firstEmployee.nik,
-      emp_code: firstEmployee.emp_code || firstEmployee.nik,
-      gang_code: firstEmployee.gang_code,
+      nik,
+      emp_code: empCode,
+      gang_code: gangCode,
       division_code: division,
       type: adjustmentType,
       name: adjustmentName,
