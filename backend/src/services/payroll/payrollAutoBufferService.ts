@@ -51,6 +51,13 @@ function normalizeRoleKey(value: unknown): string {
         .trim();
 }
 
+function shouldForceZeroJabatanRate(jabatanText?: string | null, roleText?: string | null): boolean {
+    const candidates = [normalizeRoleKey(jabatanText), normalizeRoleKey(roleText)].filter(Boolean);
+    return candidates.some((candidate) =>
+        candidate.startsWith("karyawan") || candidate.startsWith("karywan")
+    );
+}
+
 function resolveSyncColor(displayedValue: number, dbValue: number): PayrollSyncFrameColor {
     const displayed = toNumber(displayedValue);
     const db = toNumber(dbValue);
@@ -221,9 +228,12 @@ class PayrollAutoBufferService {
         const dbMasaKerjaJumlah = toNumber(input.dbMasaKerjaJumlah);
         const masaKerjaTahun = Math.max(0, Math.floor(toNumber(input.masaKerjaTahun)));
 
-        const jabatanRate = this.resolveJabatanRate(input.jabatanText, input.roleText);
-        const hasJabatanRate = Number.isFinite(jabatanRate || NaN) && (jabatanRate || 0) > 0;
-        const jabatanAmountAuto = hasJabatanRate && attendanceDays > 0 ? (jabatanRate as number) * attendanceDays : null;
+        const forceZeroRate = shouldForceZeroJabatanRate(input.jabatanText, input.roleText);
+        const jabatanRateResolved = forceZeroRate ? 0 : this.resolveJabatanRate(input.jabatanText, input.roleText);
+        const hasJabatanRate = forceZeroRate || (Number.isFinite(jabatanRateResolved || NaN) && (jabatanRateResolved || 0) > 0);
+        const jabatanAmountAuto = forceZeroRate
+            ? 0
+            : (hasJabatanRate && attendanceDays > 0 ? (jabatanRateResolved as number) * attendanceDays : null);
         const jabatanAmount = jabatanAmountAuto !== null ? jabatanAmountAuto : dbJabatanJumlah;
 
         const masaKerjaAmountAuto = this.resolveMasaKerjaAmount(masaKerjaTahun);

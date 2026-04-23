@@ -189,6 +189,7 @@ export interface PayrollRow {
     taxable_pendapatan_bonus?: number;
     taxable_pendapatan_custom?: number;
     upah_bersih: number;
+    value_sync_frame?: Record<string, "red" | "green">;
     other_incomes?: any[];
     pendapatan_thr?: number;
     pendapatan_bonus?: number;

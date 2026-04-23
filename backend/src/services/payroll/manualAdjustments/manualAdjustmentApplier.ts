@@ -5,6 +5,7 @@ export type ManualAdjustmentType =
     | 'POTONGAN_KOTOR'
     | 'POTONGAN_BERSIH'
     | 'PENDAPATAN_LAINNYA';
+type ManualFieldAdjustmentType = Exclude<ManualAdjustmentType, 'PENDAPATAN_LAINNYA'>;
 
 export type ManualAdjustmentApplyMode = 'additive' | 'override';
 
@@ -94,7 +95,10 @@ export function applyManualAdjustmentsToEmployee(input: ManualAdjustmentApplierI
     for (const adjustment of input.adjustments || []) {
         const amount = toAmount(adjustment.amount);
         const name = String(adjustment.adjustment_name || '');
-        const fieldName = toManualAdjustmentFieldName(adjustment.adjustment_type, name);
+        if (adjustment.adjustment_type === 'PENDAPATAN_LAINNYA') {
+            continue;
+        }
+        const fieldName = toManualAdjustmentFieldName(adjustment.adjustment_type as ManualFieldAdjustmentType, name);
         const aggregateKey = `${adjustment.adjustment_type}:${normalizeFieldIdentity(fieldName)}`;
 
         const current = aggregatedAdjustments.get(aggregateKey);
