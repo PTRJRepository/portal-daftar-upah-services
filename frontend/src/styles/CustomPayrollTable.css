@@ -352,10 +352,10 @@
     border: none;
     border-right: 1px solid rgba(255, 255, 255, 0.1);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    font-weight: 600;
+    font-weight: 700;
     text-align: center;
     vertical-align: middle;
-    font-size: 0.78rem;
+    font-size: 0.88rem;
     line-height: 1.2;
     user-select: none;
     box-sizing: border-box;
@@ -369,7 +369,7 @@
 }
 
 .payroll-table thead tr:nth-child(1) th {
-    font-size: 0.78rem;
+    font-size: 0.88rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding-top: 6px;
@@ -377,11 +377,11 @@
 }
 
 .payroll-table thead tr:nth-child(2) th {
-    font-size: 0.78rem;
+    font-size: 0.88rem;
 }
 
 .payroll-table thead tr:nth-child(3) th {
-    font-size: 0.78rem;
+    font-size: 0.88rem;
 }
 
 
@@ -421,7 +421,8 @@
     color: #334155;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
-    font-size: 0.78rem;
+    font-size: 0.88rem;
+    font-weight: 600;
     cursor: default;
     box-sizing: border-box;
 }
@@ -770,7 +771,7 @@
 }
 
 .payroll-table-shell.mode-simple .payroll-table thead th[data-header-level="1"] {
-    font-size: 0.78rem;
+    font-size: 0.88rem;
     letter-spacing: 0.05em;
 }
 
@@ -779,7 +780,7 @@
 .payroll-table-shell.mode-simple .payroll-table thead th[data-header-level="4"] {
     color: rgba(248, 250, 252, 0.76);
     font-weight: 500;
-    font-size: 0.78rem;
+    font-size: 0.88rem;
 }
 
 .payroll-table-shell.mode-detail .payroll-table thead th[data-header-level="2"],
@@ -787,7 +788,7 @@
 .payroll-table-shell.mode-detail .payroll-table thead th[data-header-level="4"] {
     color: rgba(248, 250, 252, 0.92);
     font-weight: 600;
-    font-size: 0.78rem;
+    font-size: 0.88rem;
 }
 
 .payroll-table-shell .payroll-table thead th[data-active-group="true"] {

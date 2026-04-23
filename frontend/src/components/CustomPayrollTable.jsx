@@ -2372,7 +2372,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             letterSpacing: level === 0 ? '0.02em' : '0em',
             textTransform: level === 0 ? 'uppercase' : 'none',
             fontWeight: level === 0 ? 700 : (level === 1 ? 600 : 500),
-            fontSize: level === 0 ? '13px' : '12px',
+            fontSize: level === 0 ? '14px' : '13px',
             padding: '4px 6px',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
