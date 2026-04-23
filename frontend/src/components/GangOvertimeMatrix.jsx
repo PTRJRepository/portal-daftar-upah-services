@@ -34,7 +34,15 @@ const getOvertimeColor = (hours) => {
     return { bg: '#b45309', color: '#ffffff', text: `${hours}h` }
 }
 
-export default function GangOvertimeMatrix({ token, gangCodes, month, year, compact = false, division }) {
+export default function GangOvertimeMatrix({
+    token,
+    gangCodes,
+    month,
+    year,
+    compact = false,
+    division,
+    onViewEmployeeDetail = null
+}) {
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -215,7 +223,24 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                                                         <td className="gom-td-no">{idx + 1}</td>
                                                         <td className="gom-td-name" title={emp.emp_code}>
                                                             <div className="gom-name-cell">
-                                                                <span className="gom-emp-name">{emp.emp_name}</span>
+                                                                {typeof onViewEmployeeDetail === 'function' ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="gom-emp-detail-btn"
+                                                                        title={`Buka detail ${emp.emp_name} (${emp.emp_code})`}
+                                                                        onClick={() => onViewEmployeeDetail({
+                                                                            emp_code: emp.emp_code,
+                                                                            emp_name: emp.emp_name,
+                                                                            nik: emp.emp_code,
+                                                                            gang_code: gang.gang_code,
+                                                                            division
+                                                                        })}
+                                                                    >
+                                                                        {emp.emp_name}
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="gom-emp-name">{emp.emp_name}</span>
+                                                                )}
                                                                 <span className="gom-emp-code">{emp.emp_code}</span>
                                                             </div>
                                                         </td>
@@ -515,6 +540,24 @@ export default function GangOvertimeMatrix({ token, gangCodes, month, year, comp
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
+                }
+                .gom-emp-detail-btn {
+                    border: none;
+                    background: transparent;
+                    color: #b45309;
+                    font-weight: 700;
+                    font-size: 11px;
+                    cursor: pointer;
+                    padding: 0;
+                    text-align: left;
+                    text-decoration: underline;
+                    text-underline-offset: 2px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .gom-emp-detail-btn:hover {
+                    color: #92400e;
                 }
                 .gom-emp-code {
                     font-size: 9px;

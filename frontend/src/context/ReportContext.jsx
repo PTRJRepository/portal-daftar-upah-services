@@ -34,7 +34,7 @@ export const useReport = () => useContext(ReportContext);
 
 export const ReportProvider = ({ children }) => {
     const { user, token, lockedDivision } = useAuth();
-    const { month, setMonth, year, setYear, data: currentPeriodData } = useCurrentPeriod();
+    const { month, setMonth, year, setYear, data: currentPeriodData, loading: currentPeriodLoading } = useCurrentPeriod();
 
     // State for filters - Initialize from localStorage
     const [division, setDivision] = useState(() => loadFromStorage(STORAGE_KEYS.DIVISION, ''));
@@ -207,12 +207,13 @@ export const ReportProvider = ({ children }) => {
         allDivisions,
         gangLoading,
         divisionsLoading,
+        currentPeriodLoading,
         isLockedMode,
         isAdminUser,
         currentPeriod: currentPeriodData
     }), [
         month, year, division, gang, gangPrefix, gangs, 
-        allDivisions, gangLoading, divisionsLoading, 
+        allDivisions, gangLoading, divisionsLoading, currentPeriodLoading,
         isLockedMode, isAdminUser, currentPeriodData
     ]);
 

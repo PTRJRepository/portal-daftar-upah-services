@@ -433,8 +433,8 @@ class TaxReportService {
      * when history is not available. This ensures seeded data is always preferred for archived periods.
      * @param useHistoryDb - Explicit override to use history database (from UI state)
      */
-    private async fetchPayrollData(month: number, year: number, divisionCode: string, gangCode?: string, gangPrefix?: string, useHistoryDb?: boolean) {
-        console.log(`[TaxReportService] Fetching payroll data via DataExtractorService: div=${divisionCode} m=${month} y=${year} useHistory=${useHistoryDb}`);
+    private async fetchPayrollData(month: number, year: number, divisionCode: string, gangCode?: string, gangPrefix?: string, useHistoryDb?: boolean, snapshotVersion?: number | null) {
+        console.log(`[TaxReportService] Fetching payroll data via DataExtractorService: div=${divisionCode} m=${month} y=${year} useHistory=${useHistoryDb} snapshotVersion=${snapshotVersion ?? 'latest'}`);
 
         try {
             // [ALIGNMENT] Trust DataExtractorService as the Single Source of Truth
@@ -449,7 +449,8 @@ class TaxReportService {
                 useHistoryDb, 
                 gangPrefix, 
                 true, // skipHarvest (Match payroll.ts)
-                false // skipHeavyDetails (Match payroll.ts default)
+                false, // skipHeavyDetails (Match payroll.ts default)
+                snapshotVersion
             );
 
             if (result && result.data_rows.length > 0) {
@@ -476,12 +477,14 @@ class TaxReportService {
         divisionCode?: string,
         gangCode?: string,
         gangPrefix?: string,
-        useHistoryDb?: boolean
+        useHistoryDb?: boolean,
+        snapshotVersion?: number | null
     ): Promise<any> {
-        console.log(`[TaxReportService] getMonthlyTaxReport: year=${year}, month=${month}, division=${divisionCode || 'ALL'}, gang=${gangCode || 'ALL'}, gangPrefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}`);
+        console.log(`[TaxReportService] getMonthlyTaxReport: year=${year}, month=${month}, division=${divisionCode || 'ALL'}, gang=${gangCode || 'ALL'}, gangPrefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}`);
 
         const currentPeriod = await currentPeriodService.getCurrentPeriod();
-        const cacheKey = cacheService.buildPayrollKey(`TAX_M_${gangCode || 'ALL'}_${gangPrefix || 'ALL'}`, month, year, divisionCode, useHistoryDb);
+        const snapshotCacheScope = useHistoryDb ? `SNAP_${snapshotVersion ?? 'LATEST'}` : 'LIVE';
+        const cacheKey = cacheService.buildPayrollKey(`TAX_M_${gangCode || 'ALL'}_${gangPrefix || 'ALL'}_${snapshotCacheScope}`, month, year, divisionCode, useHistoryDb);
         const shouldCache = cacheService.shouldCache(month, year, currentPeriod.month, currentPeriod.year);
 
         if (shouldCache) {
@@ -507,7 +510,7 @@ class TaxReportService {
 
         for (const sourceDiv of sourceDivisions) {
             const { data: chunk, isSourceCurrent: chunkIsSourceCurrent } = await this.fetchPayrollData(
-                month, year, sourceDiv, gangCode || 'ALL', gangPrefix, useHistoryDb
+                month, year, sourceDiv, gangCode || 'ALL', gangPrefix, useHistoryDb, snapshotVersion
             );
 
             if (chunk?.data_rows) {
@@ -913,6 +916,9 @@ class TaxReportService {
             total_pot_pph21: monthlyTableTotals.pph21_input,
             premiKeys,
             data_source: finalIsSourceCurrent ? 'current' : 'history',
+            snapshot_version: historyData.meta?.snapshot_version ?? null,
+            requested_snapshot_version: historyData.meta?.requested_snapshot_version ?? null,
+            available_snapshot_versions: historyData.meta?.available_snapshot_versions ?? [],
             summary: {
                 employee_count: employees.length,
                 monthly_table_totals: monthlyTableTotals,

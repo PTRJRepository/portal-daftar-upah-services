@@ -332,6 +332,13 @@ export class GangService {
     }
 
     /**
+     * Backward-compatible alias used by older extractor/report code.
+     */
+    public async getGangsByDivision(division?: string, includeVirtual: boolean = false): Promise<Gang[]> {
+        return this.fetchGangs(division, undefined, includeVirtual);
+    }
+
+    /**
      * Delegate to divisionConfigService for fetching gangs
      */
     public async fetchGangs(division?: string, search?: string, includeVirtual: boolean = false): Promise<Gang[]> {

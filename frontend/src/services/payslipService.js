@@ -2,6 +2,7 @@
  * Payslip Service - Fetches batch payslip data for multiple employees
  */
 import axios from 'axios'
+import { appendSnapshotVersionToObject } from '../utils/payrollSnapshotQuery'
 
 // Base URL changes based on mode
 const getBaseUrl = () => {
@@ -23,7 +24,7 @@ const getBaseUrl = () => {
  * @param {number} year - Year
  * @returns {Promise<Object>} Batch checkroll data
  */
-export async function getBatchEmployeeCheckroll(token, empCodes, month, year) {
+export async function getBatchEmployeeCheckroll(token, empCodes, month, year, useHistory = null, snapshotVersion = null) {
     try {
         if (!empCodes || empCodes.length === 0) {
             throw new Error('No employee codes provided')
@@ -34,6 +35,8 @@ export async function getBatchEmployeeCheckroll(token, empCodes, month, year) {
             month,
             year
         }
+        if (useHistory !== null && useHistory !== undefined) body.use_history = useHistory
+        appendSnapshotVersionToObject(body, snapshotVersion)
 
         const baseUrl = getBaseUrl()
         console.log(`[PayslipService] Fetching batch checkroll for ${empCodes.length} employees using POST`)

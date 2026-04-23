@@ -9,6 +9,7 @@ import { employeeCareerHistoryService } from "../services/employeeCareerHistoryS
 import { Config } from "../config";
 import { User } from "../types/user";
 import { divisionDefinition } from "../services/divisionDefinition";
+import { parseBooleanQueryParam, parsePositiveIntegerQueryParam } from "../utils/queryParsers";
 
 const authService = AuthService.getInstance();
 
@@ -151,7 +152,14 @@ export const employeeRoutes = new Elysia({ prefix: "/payroll/employee" })
         return { count: statuses.length, statuses };
     })
 // --- Batch Checkroll Handler ---
-const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: string | number, yearStr: string | number, set: any) => {
+const handleBatchCheckroll = async (
+    empCodesStr: string | string[],
+    monthStr: string | number,
+    yearStr: string | number,
+    set: any,
+    useHistoryDb?: boolean | null,
+    snapshotVersion?: number | null
+) => {
     try {
         let empCodes: string[] = [];
         if (Array.isArray(empCodesStr)) {
@@ -262,7 +270,7 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
             const divisionArray = Array.from(divisions);
             const payrollPromises = divisionArray.map(div =>
                 dataExtractorService.extractPayrollData(
-                    month, year, "ALL", div, undefined, undefined, false, null, undefined, true // skipHarvest=true
+                    month, year, "ALL", div, undefined, undefined, false, useHistoryDb, undefined, true, false, snapshotVersion // skipHarvest=true
                 )
             );
             const payrollResults = await Promise.all(payrollPromises);
@@ -351,7 +359,7 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
             const fallbackPromises = missedEmpCodes.map(async (empCode) => {
                 const normalizedCode = empCode.toUpperCase();
                 try {
-                    const individualResult = await employeeDetailService.getEmployeeCheckroll(normalizedCode, month, year, true); // skipHarvest=true
+                    const individualResult = await employeeDetailService.getEmployeeCheckroll(normalizedCode, month, year, true, useHistoryDb, snapshotVersion); // skipHarvest=true
                     if (!individualResult.error && individualResult.payroll_data) {
                         return individualResult;
                     } else {
@@ -389,21 +397,47 @@ const handleBatchCheckroll = async (empCodesStr: string | string[], monthStr: st
 
 employeeRoutes
     .get("/batch-checkroll", async ({ query, set }) => {
-        return handleBatchCheckroll(query.emp_codes || "", query.month, query.year, set);
+        return handleBatchCheckroll(
+            query.emp_codes || "",
+            query.month,
+            query.year,
+            set,
+            parseBooleanQueryParam(query.use_history),
+            parsePositiveIntegerQueryParam(query.snapshot_version)
+        );
     }, {
         query: t.Object({
             emp_codes: t.String(),
             month: t.String(),
-            year: t.String()
+            year: t.String(),
+            use_history: t.Optional(t.Union([t.String(), t.Boolean()])),
+            snapshot_version: t.Optional(t.String())
         })
     })
     .post("/batch-checkroll", async ({ body, set }) => {
-        return handleBatchCheckroll(body.emp_codes || [], String(body.month), String(body.year), set);
+        return handleBatchCheckroll(
+            body.emp_codes || [],
+            String(body.month),
+            String(body.year),
+            set,
+            typeof body.use_history === "boolean"
+                ? body.use_history
+                : parseBooleanQueryParam(typeof body.use_history === "string" ? body.use_history : undefined),
+            parsePositiveIntegerQueryParam(
+                typeof body.snapshot_version === "number"
+                    ? body.snapshot_version
+                    : typeof body.snapshot_version === "string"
+                        ? body.snapshot_version
+                        : undefined
+            )
+        );
     }, {
         body: t.Object({
             emp_codes: t.Array(t.String()),
             month: t.Union([t.String(), t.Number()]),
-            year: t.Union([t.String(), t.Number()])
+            year: t.Union([t.String(), t.Number()]),
+            use_history: t.Optional(t.Union([t.String(), t.Boolean()])),
+            snapshot_version: t.Optional(t.Union([t.String(), t.Number()]))
         })
     })
 
@@ -446,6 +480,8 @@ employeeRoutes
             let empCode = (params.emp_code || '').trim();
             const month = parseInt(query.month);
             const year = parseInt(query.year);
+            const useHistoryDb = parseBooleanQueryParam(query.use_history);
+            const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version);
 
             // NIK-to-EmpCode resolution: if the param looks like a KTP number (all digits, >10 chars),
             // resolve it to the actual EmpCode via HR_EMPLOYEE.NewICNo
@@ -497,7 +533,7 @@ employeeRoutes
                 }
             }
 
-            const result = await employeeDetailService.getEmployeeCheckroll(empCode, month, year, true); // skipHarvest=true
+            const result = await employeeDetailService.getEmployeeCheckroll(empCode, month, year, true, useHistoryDb, snapshotVersion); // skipHarvest=true
             console.log("[API DEBUG] Checkroll Result Keys:", Object.keys(result));
 
             if (result.error) {
@@ -514,7 +550,9 @@ employeeRoutes
         query: t.Object({
             month: t.String(),
             year: t.String(),
-            div: t.Optional(t.String())
+            div: t.Optional(t.String()),
+            use_history: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
     // --- Attendance Detail (Full Implementation) ---

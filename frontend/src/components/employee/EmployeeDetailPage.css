@@ -8,14 +8,16 @@
     min-height: 100vh;
     background-color: #e5e7eb;
     /* Gray background */
-    padding: 2rem;
+    padding: clamp(1rem, 2vw, 2rem);
+    padding-bottom: 6rem;
     font-family: 'Courier New', Courier, monospace;
     /* Monospace for Receipt feel */
+    box-sizing: border-box;
 }
 
 .payslip-container {
     background-color: #ffffff;
-    width: 210mm;
+    width: min(100%, 210mm);
     /* A4 Width approx */
     /* min-height: 148mm;  Removed to let content grow */
     padding: 10mm;
@@ -243,7 +245,7 @@
 
 .matrix-sections-container {
     width: 100%;
-    max-width: 1200px;
+    max-width: min(1200px, 100%);
     /* Limit max width for readability on very large screens */
     display: flex;
     flex-direction: column;
@@ -455,6 +457,43 @@
     color: #4b5563;
 }
 
+.overtime-upj-help {
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 10px;
+    border: 1px solid #ddd6fe;
+    background: linear-gradient(135deg, #faf5ff 0%, #f5f3ff 100%);
+    color: #4c1d95;
+}
+
+.overtime-upj-title {
+    font-size: 0.85rem;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+    letter-spacing: 0.2px;
+}
+
+.overtime-upj-help p {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.overtime-upj-badge {
+    margin-top: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    background: #ede9fe;
+    border: 1px solid #c4b5fd;
+    color: #5b21b6;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
 .overtime-table {
     width: 100%;
     font-size: 0.85rem;
@@ -526,10 +565,13 @@
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid #e5e7eb;
+    max-height: min(56vh, 520px);
+    overflow: auto;
 }
 
 .overtime-summary-table {
     width: 100%;
+    min-width: 1080px;
     font-size: 0.85rem;
     border-collapse: collapse;
 }
@@ -540,21 +582,35 @@
 }
 
 .overtime-summary-table th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
     text-align: left;
     padding: 0.75rem 0.5rem;
     font-weight: 600;
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
 .overtime-summary-table td {
     padding: 0.6rem 0.5rem;
     border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+}
+
+.overtime-summary-table tbody tr:nth-child(odd) {
+    background-color: #ffffff;
+}
+
+.overtime-summary-table tbody tr:nth-child(even) {
+    background-color: #faf5ff;
 }
 
 .overtime-summary-table tbody tr:hover {
-    background-color: #faf5ff;
+    background-color: #ede9fe;
 }
 
 .overtime-summary-table tbody tr:last-child td {
@@ -565,6 +621,73 @@
     text-align: center;
     font-weight: 600;
     color: #7e22ce;
+}
+
+.overtime-summary-table .rate-cell {
+    text-align: center;
+    font-weight: 700;
+    color: #6d28d9;
+}
+
+.overtime-summary-table .upj-cell {
+    text-align: right;
+    font-weight: 700;
+    color: #4c1d95;
+}
+
+.overtime-summary-table .formula-cell {
+    min-width: 260px;
+    white-space: normal;
+    line-height: 1.35;
+    color: #4b5563;
+}
+
+.formula-upj-inline {
+    color: #6d28d9;
+    font-weight: 700;
+}
+
+.overtime-summary-table.is-compact {
+    min-width: 760px;
+}
+
+.overtime-table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.overtime-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #d8b4fe;
+    border-radius: 999px;
+    padding: 2px;
+    background: #ffffff;
+}
+
+.overtime-mode-btn {
+    border: none;
+    background: transparent;
+    color: #6b7280;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.overtime-mode-btn.active {
+    background: #6d28d9;
+    color: #ffffff;
+}
+
+.overtime-scroll-tip {
+    font-size: 0.75rem;
+    color: #6b7280;
 }
 
 .overtime-summary-table .amount-cell {
@@ -617,6 +740,7 @@
     display: flex;
     gap: 1rem;
     z-index: 50;
+    flex-wrap: wrap;
 }
 
 .btn {
@@ -800,4 +924,57 @@
    ============================================================================ */
 body {
     background-color: #f1f5f9;
+}
+
+.activity-panel-header {
+    gap: 1rem;
+}
+
+.activity-panel-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.activity-panel-meta span {
+    background: #eef2f7;
+    border: 1px solid #dbe4ee;
+    border-radius: 999px;
+    padding: 0.18rem 0.55rem;
+}
+
+.activity-panel-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.activity-panel-toggle {
+    appearance: none;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #0f172a;
+    border-radius: 999px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.16s ease;
+}
+
+.activity-panel-toggle:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
+}
+
+.activity-panel-toggle.expanded {
+    background: #0f172a;
+    border-color: #0f172a;
+    color: #fff;
 }

@@ -35,6 +35,28 @@ export function getDayTypeDisplayName(dayType: DayType): string {
     return names[dayType] || dayType;
 }
 
+export function isReligiousHolidayDescription(description?: string | null): boolean {
+    const desc = String(description || "").toUpperCase();
+    return desc.includes("IDUL") || desc.includes("NATAL") ||
+        desc.includes("IMLEK") || desc.includes("WAISAK") ||
+        desc.includes("NYEPI") || desc.includes("ISRA") ||
+        desc.includes("MAULID");
+}
+
+export function resolveOvertimeDayType(
+    date: Date,
+    holiday?: { is_religious: boolean } | null
+): DayType {
+    if (holiday) {
+        return holiday.is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
+    }
+
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek === 0) return DayType.SUNDAY;
+    if (dayOfWeek === 5) return DayType.WORKDAY_SHORT;
+    return DayType.WORKDAY_LONG;
+}
+
 // Overtime Rate Configuration
 const OVERTIME_RATES: Record<string, { tier_1_rate: number; tier_2_rate: number; tier_3_rate: number; tier_1_boundary?: number; tier_1_boundary_short?: number; tier_1_boundary_long?: number }> = {
     // Workdays: 2-tier (1.5x first hour, 2x after)
@@ -64,6 +86,10 @@ export interface OvertimeBreakdown {
     tier_3_amount: number;
     total_rate: number;
     total_amount: number;
+    /** Human-readable rate description, e.g.: "7 jam @ 1.5x + 7 jam @ 2x" */
+    uraian: string;
+    /** UPJ value used in calculation */
+    upj_value: number;
 }
 
 export interface OvertimeRecord {
@@ -312,16 +338,7 @@ export class LemburCalculator {
                 // must use the religious holiday rate, not the Sunday rate)
                 const holidayKey = formatSystemDate(trxDate);
                 const holiday = holidays[holidayKey];
-                let dayType: DayType;
-                if (holiday) {
-                    dayType = holiday.is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
-                } else if (dayOfWeek === 0) {
-                    dayType = DayType.SUNDAY;
-                } else if (dayOfWeek === 5) {
-                    dayType = DayType.WORKDAY_SHORT;
-                } else {
-                    dayType = DayType.WORKDAY_LONG;
-                }
+                const dayType = resolveOvertimeDayType(trxDate, holiday);
 
                 const breakdown = this.calculateOvertimePayment(row.Hours, dayType, upj, dayOfWeek === 5);
 
@@ -360,6 +377,8 @@ export class LemburCalculator {
             amount: number;         // Calculated amount (from tier-based rate)
             raw_amount: number;      // Amount from PR_TASKREGLN table
             raw_rate: number;        // Rate from PR_TASKREGLN table
+            uraian: string;         // Human-readable rate description, e.g.: "7 jam @ 1.5x + 7 jam @ 2x"
+            upj_value: number;      // UPJ value used in calculation
             meta?: PayrollComponentMetadata;
         }>;
         meta?: PayrollComponentMetadata;
@@ -391,6 +410,8 @@ export class LemburCalculator {
                 amount: number;
                 raw_amount: number;
                 raw_rate: number;
+                uraian: string;
+                upj_value: number;
                 meta?: PayrollComponentMetadata;
             }>;
             meta?: PayrollComponentMetadata;
@@ -493,14 +514,8 @@ export class LemburCalculator {
         // 6. [OPTIMIZATION] Inline sync day classification — avoids await per transaction
         // holidays already fetched and cached above; direct lookup is O(1)
         const classifyDaySync = (date: Date): DayType => {
-            const dayOfWeek = date.getDay();
             const dateStr = formatSystemDate(date);
-            if (holidays[dateStr]) {
-                return holidays[dateStr].is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
-            }
-            if (dayOfWeek === 0) return DayType.SUNDAY;
-            if (dayOfWeek === 5) return DayType.WORKDAY_SHORT;
-            return DayType.WORKDAY_LONG;
+            return resolveOvertimeDayType(date, holidays[dateStr] || null);
         };
 
         const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -537,6 +552,8 @@ export class LemburCalculator {
                 amount: number;
                 raw_amount: number;
                 raw_rate: number;
+                uraian: string;
+                upj_value: number;
                 meta?: PayrollComponentMetadata;
             }> = [];
 
@@ -561,6 +578,8 @@ export class LemburCalculator {
                     amount: breakdown.total_amount,
                     raw_amount: row.Amount || 0,
                     raw_rate: row.Rate || 0,
+                    uraian: breakdown.uraian,
+                    upj_value: breakdown.upj_value,
                     meta: {
                         source: 'DATABASE_PLANTWARE',
                         description: `Overtime on ${formatSystemDate(trxDate)} (${taskDesc})`,
@@ -615,20 +634,17 @@ export class LemburCalculator {
     }
 
     private async classifyDay(date: Date, year: number): Promise<DayType> {
-        const dayOfWeek = date.getDay();
 
         // Check holidays FIRST — a Sunday that falls on a religious holiday
         // must use the religious holiday rate (higher), not the Sunday rate.
         const holidays = await this.getHolidays(year);
         const dateStr = formatSystemDate(date);
         if (holidays[dateStr]) {
-            return holidays[dateStr].is_religious ? DayType.HOLIDAY_RELIGIOUS : DayType.HOLIDAY_REGULAR;
+            return resolveOvertimeDayType(date, holidays[dateStr]);
         }
 
         // After holidays, classify by day of week
-        if (dayOfWeek === 0) return DayType.SUNDAY;
-        if (dayOfWeek === 5) return DayType.WORKDAY_SHORT;
-        return DayType.WORKDAY_LONG;
+        return resolveOvertimeDayType(date, null);
     }
 
     private async getHolidays(year: number): Promise<Record<string, { is_religious: boolean }>> {
@@ -645,10 +661,7 @@ export class LemburCalculator {
         for (const row of rows) {
             const dateStr = formatSystemDate(row.HolidayDate);
             const desc = (row.Description || "").toUpperCase();
-            const isReligious = desc.includes("IDUL") || desc.includes("NATAL") ||
-                desc.includes("IMLEK") || desc.includes("WAISAK") ||
-                desc.includes("NYEPI") || desc.includes("ISRA") ||
-                desc.includes("MAULID");
+            const isReligious = isReligiousHolidayDescription(desc);
             holidays[dateStr] = { is_religious: isReligious };
         }
 
@@ -694,6 +707,19 @@ export class LemburCalculator {
         const t2Amount = tier2Hours * upj * rates.tier_2_rate;
         const t3Amount = tier3Hours * upj * rates.tier_3_rate;
 
+        // Build uraian string: "7 jam @ 1.5x + 7 jam @ 2x"
+        const uraianParts: string[] = [];
+        if (tier1Hours > 0) {
+            uraianParts.push(`${tier1Hours} jam @ ${rates.tier_1_rate}x`);
+        }
+        if (tier2Hours > 0) {
+            uraianParts.push(`${tier2Hours} jam @ ${rates.tier_2_rate}x`);
+        }
+        if (tier3Hours > 0) {
+            uraianParts.push(`${tier3Hours} jam @ ${rates.tier_3_rate}x`);
+        }
+        const uraian = uraianParts.join(' + ') || `${hours} jam @ 0x`;
+
         return {
             tier_1_rate: rates.tier_1_rate,
             tier_1_hours: tier1Hours,
@@ -706,7 +732,9 @@ export class LemburCalculator {
             tier_3_hours: tier3Hours,
             tier_3_amount: t3Amount,
             total_rate: 0,
-            total_amount: t1Amount + t2Amount + t3Amount
+            total_amount: t1Amount + t2Amount + t3Amount,
+            uraian,
+            upj_value: upj
         };
     }
 }

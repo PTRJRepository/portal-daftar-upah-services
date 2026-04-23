@@ -9,7 +9,8 @@ describe("resolveMonthlyTaxQuery", () => {
             division: "PG1A",
             gang: "A1H",
             gangPrefix: "A1",
-            use_history: "true"
+            use_history: "true",
+            snapshot_version: "4"
         });
 
         expect(result.year).toBe(2026);
@@ -18,6 +19,7 @@ describe("resolveMonthlyTaxQuery", () => {
         expect(result.gang).toBe("A1H");
         expect(result.gangPrefix).toBe("A1");
         expect(result.useHistoryDb).toBe(true);
+        expect(result.snapshotVersion).toBe(4);
         expect(result.hasValidPeriod).toBe(true);
     });
 

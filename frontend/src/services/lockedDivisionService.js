@@ -3,6 +3,7 @@
  * Services for division-locked payroll endpoints using external JWT tokens
  */
 import axios from 'axios'
+import { appendSnapshotVersionToObject } from '../utils/payrollSnapshotQuery'
 
 // We omit the leading slash so Axios properly appends this to its defaults.baseURL
 // instead of treating it as an absolute path that bypasses the proxy mapping.
@@ -108,12 +109,13 @@ export async function getLockedReport(token, div, gangCode, month, year, skip = 
  * @param {boolean} useHistoryDb - Use historical snapshot
  * @param {string} gangPrefix - Optional prefix (Asistensi)
  */
-export async function getLockedRawTree(token, div, month, year, useHistoryDb = false, gangPrefix = null, gangCode = null) {
+export async function getLockedRawTree(token, div, month, year, useHistoryDb = false, gangPrefix = null, snapshotVersion = null, gangCode = null) {
     try {
         const params = { div, month, year };
         if (useHistoryDb) params.use_history = 'true';
         if (gangPrefix) params.gang_prefix = gangPrefix;
         if (gangCode && gangCode !== 'ALL') params.gang_code = gangCode;
+        appendSnapshotVersionToObject(params, snapshotVersion);
 
         const response = await axios.get(`${BASE_URL}/report/raw-tree`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -148,6 +150,30 @@ export async function saveLockedManualEdit(token, payload) {
         return response.data
     } catch (error) {
         console.error('[LockedDivisionService] Failed to save manual edit:', error)
+        throw error
+    }
+}
+
+export async function saveLockedProfileOverride(token, payload) {
+    try {
+        const response = await axios.post(`payroll/overrides/profile`, payload, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        return response.data
+    } catch (error) {
+        console.error('[LockedDivisionService] Failed to save profile override:', error)
+        throw error
+    }
+}
+
+export async function saveLockedValueOverrides(token, payload) {
+    try {
+        const response = await axios.post(`payroll/overrides/values`, payload, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        return response.data
+    } catch (error) {
+        console.error('[LockedDivisionService] Failed to save value overrides:', error)
         throw error
     }
 }

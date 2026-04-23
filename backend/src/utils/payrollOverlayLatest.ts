@@ -43,3 +43,16 @@ export function pickLatestValueOverrides(rows: PayrollValueOverrideRow[]) {
 export function pickLatestSnapshotVersion(rows: PayrollSnapshotBatchRow[]) {
     return rows.reduce((max, row) => Math.max(max, Number(row.snapshot_version || 0)), 0);
 }
+
+export function resolveSnapshotVersion(
+    rows: PayrollSnapshotBatchRow[],
+    requestedSnapshotVersion?: number | null
+) {
+    if (requestedSnapshotVersion == null) {
+        return pickLatestSnapshotVersion(rows);
+    }
+
+    return rows.some((row) => Number(row.snapshot_version || 0) === requestedSnapshotVersion)
+        ? requestedSnapshotVersion
+        : null;
+}

@@ -8,3 +8,16 @@ export function parseBooleanQueryParam(value?: string | boolean | null): boolean
 
     return null;
 }
+
+export function parsePositiveIntegerQueryParam(value?: string | number | null): number | null {
+    if (typeof value === "number") {
+        return Number.isInteger(value) && value > 0 ? value : null;
+    }
+    if (typeof value !== "string") return null;
+
+    const normalized = value.trim();
+    if (!/^\d+$/.test(normalized)) return null;
+
+    const parsed = Number.parseInt(normalized, 10);
+    return parsed > 0 ? parsed : null;
+}

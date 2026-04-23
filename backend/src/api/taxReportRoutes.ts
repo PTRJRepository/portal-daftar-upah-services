@@ -73,7 +73,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 resolved.division,
                 resolved.gang,
                 resolved.gangPrefix,
-                resolved.useHistoryDb
+                resolved.useHistoryDb,
+                resolved.snapshotVersion
             );
             return result;
         } catch (error: any) {
@@ -88,7 +89,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
             gangPrefix: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
 
@@ -114,7 +116,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 resolved.division,
                 resolved.gang,
                 resolved.gangPrefix,
-                resolved.useHistoryDb
+                resolved.useHistoryDb,
+                resolved.snapshotVersion
             );
 
             console.log(`[TaxReport Excel] Data fetched: ${data?.employees?.length || 0} employees`);
@@ -168,7 +171,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
             gangPrefix: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
 
@@ -184,7 +188,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const gang = resolved.gang;
             const gangPrefix = resolved.gangPrefix;
 
-            console.log(`[TaxReport Excel Progressive] Request: year=${resolved.year}, month=${resolved.month}, division=${division}, gang=${gang}, gangPrefix=${gangPrefix}, useHistory=${resolved.useHistoryDb}`);
+            console.log(`[TaxReport Excel Progressive] Request: year=${resolved.year}, month=${resolved.month}, division=${division}, gang=${gang}, gangPrefix=${gangPrefix}, useHistory=${resolved.useHistoryDb}, snapshotVersion=${resolved.snapshotVersion ?? 'latest'}`);
 
             if (!resolved.hasValidPeriod) {
                 set.status = 400;
@@ -301,7 +305,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             // Use progressive extraction - filter by specific gang if selected
             const progressiveStream = dataExtractor.extractPayrollDataProgressive(
                 resolved.month, resolved.year, targetGangCode, effectiveDivision,
-                Config.DB_PROFILE, targetGangCode === "ALL" ? effectiveGangPrefix : undefined, resolved.useHistoryDb
+                Config.DB_PROFILE, targetGangCode === "ALL" ? effectiveGangPrefix : undefined, resolved.useHistoryDb, resolved.snapshotVersion
             );
 
             for await (const chunk of progressiveStream) {
@@ -540,7 +544,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
             gangPrefix: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
 
@@ -559,8 +564,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const gang = resolved.gang;
             const gangPrefix = resolved.gangPrefix;
             const useHistoryDb = resolved.useHistoryDb;
+            const snapshotVersion = resolved.snapshotVersion;
 
-            console.log(`[TaxReport Excel FAST] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistoryDb}`);
+            console.log(`[TaxReport Excel FAST] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}`);
 
             if (!resolved.hasValidPeriod) {
                 set.status = 400;
@@ -579,7 +585,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             // Resolve gang/division
             const targetGangCode = gang && gang.trim() !== '' && gang !== 'ALL' ? gang.trim().toUpperCase() : undefined;
 
-            console.log(`[TaxReport Excel FAST] Using DataExtractorService (same as Daftar Upah): gang=${targetGangCode || 'ALL'}, division=${division || 'ALL'}, prefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}`);
+            console.log(`[TaxReport Excel FAST] Using DataExtractorService (same as Daftar Upah): gang=${targetGangCode || 'ALL'}, division=${division || 'ALL'}, prefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}`);
 
             // Use DataExtractorService EXACTLY like Daftar Upah - same data source, same logic
             // This ensures Excel export matches exactly what appears in Daftar Upah
@@ -592,7 +598,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 false, // skipDetailRecords
                 useHistoryDb, // Use the same useHistoryDb parameter as Daftar Upah
                 gangPrefix,
-                false  // skipHarvest [FIXED 2026-04-08]: Must match UI logic
+                false,  // skipHarvest [FIXED 2026-04-08]: Must match UI logic
+                false,
+                snapshotVersion
             );
 
             if (!extractorResult.data_rows || extractorResult.data_rows.length === 0) {
@@ -607,7 +615,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 dynamic_potongan_headers: extractorResult.dynamic_potongan_headers || [],
                 premi_title_map: extractorResult.premi_title_map || {},
                 potongan_title_map: extractorResult.potongan_title_map || {},
-                meta: { execution_time_ms: 0, row_count: extractorResult.data_rows.length, is_history_snapshot: false }
+                meta: {
+                    execution_time_ms: 0,
+                    row_count: extractorResult.data_rows.length,
+                    is_history_snapshot: Boolean(extractorResult.meta?.is_history_snapshot),
+                    snapshot_version: extractorResult.meta?.snapshot_version ?? null,
+                    requested_snapshot_version: extractorResult.meta?.requested_snapshot_version ?? null,
+                    available_snapshot_versions: extractorResult.meta?.available_snapshot_versions ?? []
+                }
             };
             console.log(`[TaxReport Excel FAST] DataExtractor: ${historyData.data_rows.length} rows, same as Daftar Upah`);
 
@@ -1033,7 +1048,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             division: t.Optional(t.String()),
             gang: t.Optional(t.String()),
             gangPrefix: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
 

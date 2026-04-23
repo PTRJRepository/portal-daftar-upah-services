@@ -1,51 +1,11 @@
 import { Database } from "../db/client";
-import { cacheService } from "./cacheService";
 import { Config } from "../config";
+import { Employee } from "../types/employee/Employee";
+import { divisionConfigService } from "./config/DivisionConfigService";
+import { currentPeriodService } from "./currentPeriodService";
+import { debug, error as logError } from "../utils/logger";
 
-// Gender mapping: 1=L (Laki-laki), 2=P (Perempuan)
-function mapGender(value: any): string {
-    try {
-        const i = parseInt(value);
-        if (i === 1) return "L";
-        if (i === 2) return "P";
-        return "L";
-    } catch {
-        return "L";
-    }
-}
-
-export interface Employee {
-    nik: string;
-    nama: string;
-    jenis_kelamin: string;
-    loc_code: string;
-    gang_code: string;
-    phone?: string;
-    upah_dasar?: number;
-    actual_nik?: string; // Expose permanent ICNo for history linking
-    religion?: string;
-    status?: string;
-    employee_type?: string;
-    birth_date?: string; // DOB from HR_EMPLOYEE
-    join_date?: string;
-}
-
-// Division to GangCode prefix mapping
-const DIVISION_PREFIX_MAP: Record<string, string[]> = {
-    "PG1A": ["A"],
-    "PG1B": ["B"],
-    "PG2A": ["C"],
-    "PG2B": ["D"],
-    "DME": ["E"],
-    "ARA": ["F"],
-    "ARB1": ["G"],
-    "ARB2": ["H"],
-    "INFRA": ["I"],
-    "ARC": ["J"],
-    "IJL": ["L"],
-    "STF-OFFICE": ["O"],
-    "SECURITY": ["SEC"]
-};
+const CATEGORY = "EmployeeRepository";
 
 export class EmployeeRepository {
     private static instance: EmployeeRepository;
@@ -62,586 +22,203 @@ export class EmployeeRepository {
         return EmployeeRepository.instance;
     }
 
-    /**
-     * Get history database instance for fallback
-     */
-    private getHistoryDb(): Database {
-        return Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
+    private mapGender(value: any): 'L' | 'P' {
+        const str = String(value).trim();
+        if (str === '2' || str === 'P') return 'P';
+        return 'L';
     }
 
     /**
-     * List employees from history database (fallback source)
+     * Get employees for payroll extraction (Legacy getEmployees from PayrollEmployeeRepository)
      */
-    private async listFromHistory(options: {
-        skip?: number;
-        limit?: number;
-        gangCode?: string;
-        division?: string;
-        religion?: string;
-        status?: string;
-        sortBy?: string;
-        sortOrder?: string;
-    } = {}): Promise<Employee[]> {
-        const { skip = 0, limit = 100, gangCode, division, religion, status, sortBy = "nama", sortOrder = "asc" } = options;
-        const histDb = this.getHistoryDb();
-
-        try {
-            let params: any[] = [];
-            let whereClauses: string[] = [];
-
-            if (division) {
-                const prefixes = DIVISION_PREFIX_MAP[division] || [];
-                if (prefixes.length > 0) {
-                    const conditions = prefixes.map((p) => `UPPER(RTRIM(gang_code)) LIKE ?`);
-                    whereClauses.push(`(${conditions.join(" OR ")})`);
-                    params.push(...prefixes.map(p => p + "%"));
-                }
-            }
-
-            if (gangCode && gangCode !== "ALL" && gangCode.trim()) {
-                whereClauses.push(`UPPER(RTRIM(gang_code)) = ?`);
-                params.push(gangCode.trim().toUpperCase());
-            }
-
-            if (religion) {
-                whereClauses.push(`UPPER(RTRIM(religion)) = ?`);
-                params.push(religion.trim().toUpperCase());
-            }
-
-            if (status) {
-                whereClauses.push(`UPPER(RTRIM(status)) = ?`);
-                params.push(status.trim().toUpperCase());
-            }
-
-            const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
-
-            // Validate and sanitize sort parameters
-            const validSortFields = ["nama", "nik", "emp_code"];
-            const sortField = validSortFields.includes(sortBy.toLowerCase()) ? sortBy.toLowerCase() : "nama";
-            const sortDirection = sortOrder.toLowerCase() === "desc" ? "DESC" : "ASC";
-            const sortColumn = sortField === "nik" || sortField === "emp_code" ? "emp_code" : "emp_name";
-
-            // Get latest record per employee
-            const sql = `
-                SELECT
-                    RTRIM(emp_code) AS nik,
-                    RTRIM(nik) AS actual_nik,
-                    emp_name AS nama,
-                    gender AS jenis_kelamin,
-                    RTRIM(loc_code) AS loc_code,
-                    RTRIM(gang_code) AS gang_code,
-                    RTRIM(religion) AS religion,
-                    RTRIM(status) AS status,
-                    RTRIM(employee_type) AS employee_type,
-                    CONVERT(VARCHAR, birth_date, 23) AS birth_date
-                FROM dbo.history_hr_employee h
-                ${whereClause}
-                AND period_year = (SELECT MAX(period_year) FROM dbo.history_hr_employee h2 WHERE h2.emp_code = h.emp_code)
-                AND period_month = (SELECT MAX(period_month) FROM dbo.history_hr_employee h3
-                    WHERE h3.emp_code = h.emp_code AND h3.period_year = h.period_year)
-                ORDER BY ${sortColumn} ${sortDirection}
-            `;
-
-            const rows = await histDb.query<any>(sql, params);
-            const all = rows.map((r: any) => ({
-                nik: r.nik?.trim() || "",
-                actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
-                nama: r.nama?.trim() || "",
-                jenis_kelamin: r.jenis_kelamin?.trim() || "L",
-                loc_code: r.loc_code?.trim() || "",
-                gang_code: r.gang_code?.trim() || "",
-                religion: r.religion?.trim() || "",
-                status: r.status?.trim() || "",
-                employee_type: r.employee_type?.trim() || "",
-                birth_date: r.birth_date || undefined
-            }));
-
-            return all.slice(skip, skip + limit);
-        } catch (e) {
-            console.error("[EmployeeRepository] listFromHistory failed:", e);
-            return [];
-        }
-    }
-
-    /**
-     * List employees with optional filters
-     */
-    public async list(options: {
-        skip?: number;
-        limit?: number;
-        gangCode?: string;
-        locCode?: string;
-        division?: string;
-        religion?: string;
-        status?: string;
-        forceHistory?: boolean;
-        sortBy?: string;
-        sortOrder?: string;
-    } = {}): Promise<{ employees: Employee[]; dataSource: string }> {
-        const { skip = 0, limit = 100, gangCode, locCode, division, religion, status, forceHistory = false, sortBy = "nama", sortOrder = "asc" } = options;
-
-        try {
-            console.log(`[EmployeeRepository] list() called with:`, { gangCode, division, religion, status, skip, limit, forceHistory, sortBy, sortOrder });
-            const gc = gangCode?.trim().toUpperCase() || null;
-
-            let employees: Employee[] = [];
-            let dataSource = "origin";
-
-            // Try origin DB first (unless forceHistory is set)
-            if (!forceHistory) {
-                employees = await this._listFromOrigin(options);
-
-                // Fallback to history DB if origin returns 0 rows
-                if (employees.length === 0) {
-                    console.log(`[EmployeeRepository] Origin DB returned 0 rows, falling back to history DB`);
-                    employees = await this.listFromHistory({ skip, limit, gangCode, division, religion, status, sortBy, sortOrder });
-                    dataSource = employees.length > 0 ? "history" : "origin";
-                }
-            } else {
-                // Force history mode
-                employees = await this.listFromHistory({ skip, limit, gangCode, division, religion, status, sortBy, sortOrder });
-                dataSource = employees.length > 0 ? "history" : "origin";
-            }
-
-            // Apply locCode filter if specified
-            if (locCode) {
-                const lcClean = locCode.trim().toUpperCase();
-                employees = employees.filter(e => e.loc_code.toUpperCase() === lcClean);
-            }
-
-            // Apply religion filter if specified
-            if (religion) {
-                const relClean = religion.trim().toUpperCase();
-                employees = employees.filter(e => (e.religion || '').toUpperCase() === relClean);
-            }
-
-            // Apply status filter if specified
-            if (status) {
-                const statClean = status.trim().toUpperCase();
-                employees = employees.filter(e => (e.status || '').toUpperCase() === statClean);
-            }
-
-            console.log(`[EmployeeRepository] Returning ${employees.length} employees from ${dataSource}`);
-            return { employees: employees.slice(skip, skip + limit), dataSource };
-        } catch (e) {
-            console.error("[EmployeeRepository] list failed:", e);
-            return { employees: [], dataSource: "origin" };
-        }
-    }
-
-    /**
-     * Internal: list from origin database (HR_EMPLOYEE, HR_GANGLN)
-     */
-    private async _listFromOrigin(options: {
-        skip?: number;
-        limit?: number;
-        gangCode?: string;
-        division?: string;
-        religion?: string;
-        status?: string;
-        sortBy?: string;
-        sortOrder?: string;
-    } = {}): Promise<Employee[]> {
-        const { gangCode, division, sortBy = "nama", sortOrder = "asc" } = options;
-        const gc = gangCode?.trim().toUpperCase() || null;
-
-        // Validate and sanitize sort parameters to prevent SQL injection
-        const validSortFields = ["nama", "nik", "emp_code"];
-        const sortField = validSortFields.includes(sortBy.toLowerCase()) ? sortBy.toLowerCase() : "nama";
-        const sortDirection = sortOrder.toLowerCase() === "desc" ? "DESC" : "ASC";
-
-        // Map sort field to SQL column
-        const sortColumn = sortField === "nik" || sortField === "emp_code" ? "e.EmpCode" : "e.EmpName";
-
-        if (gc === "ALL" || !gc) {
-            let params: any[] = [];
-            let whereClause = "";
-
-            if (division && DIVISION_PREFIX_MAP[division]) {
-                const prefixes = DIVISION_PREFIX_MAP[division];
-                const conditions = prefixes.map((p) => `UPPER(g.GangCode) LIKE ?`);
-                whereClause = `WHERE (${conditions.join(" OR ")})`;
-                params = prefixes.map(p => p + "%");
-            }
-
-            const sql = `
-                SELECT DISTINCT
-                    e.EmpCode AS nik,
-                    e.NewICNo AS actual_nik,
-                    e.EmpName AS nama,
-                    e.Gender AS jenis_kelamin,
-                    e.LocCode AS loc_code,
-                    g.GangCode AS gang_code,
-                    p.PayRate as upah_dasar,
-                    e.Religion AS religion,
-                    e.Status AS status,
-                    e.HREmpType AS employee_type,
-                    CONVERT(VARCHAR, e.DOB, 23) AS birth_date
-                FROM HR_EMPLOYEE e
-                JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
-                LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
-                ${whereClause}
-                ORDER BY ${sortColumn} ${sortDirection}
-            `;
-
-            const rows = await this.db.query<any>(sql, params);
-            return rows.map((r: any) => ({
-                nik: r.nik?.trim() || "",
-                actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
-                nama: r.nama?.trim() || "",
-                jenis_kelamin: mapGender(r.jenis_kelamin),
-                loc_code: r.loc_code?.trim() || "",
-                gang_code: r.gang_code?.trim() || "",
-                upah_dasar: r.upah_dasar || 0,
-                religion: r.religion?.trim() || "",
-                status: r.status?.trim() || "",
-                employee_type: r.employee_type?.trim() || "",
-                birth_date: r.birth_date || undefined
-            }));
+    public async getEmployeesForPayroll(
+        gangCondition: string, 
+        month: number, 
+        year: number, 
+        serverProfile?: string, 
+        isHistorical: boolean = false, 
+        gangCodeInput: string | null = null
+    ): Promise<Employee[]> {
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        
+        if (isHistorical) {
+            return this.getEmployeesHistorical(db, gangCondition, month, year, gangCodeInput, serverProfile);
         } else {
-            const rows = await this.db.query<any>(`
-                SELECT DISTINCT
-                    e.EmpCode AS nik,
-                    e.NewICNo AS actual_nik,
-                    e.EmpName AS nama,
-                    e.Gender AS jenis_kelamin,
-                    e.LocCode AS loc_code,
-                    g.GangCode AS gang_code,
-                    p.PayRate as upah_dasar,
-                    e.Religion AS religion,
-                    e.Status AS status,
-                    e.HREmpType AS employee_type,
-                    CONVERT(VARCHAR, e.DOB, 23) AS birth_date
-                FROM HR_EMPLOYEE e
-                JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
-                LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
-                WHERE g.GangCode = ?
-                ORDER BY ${sortColumn} ${sortDirection}
-            `, [gc]);
-
-            return rows.map((r: any) => ({
-                nik: r.nik?.trim() || "",
-                actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
-                nama: r.nama?.trim() || "",
-                jenis_kelamin: mapGender(r.jenis_kelamin),
-                loc_code: r.loc_code?.trim() || "",
-                gang_code: r.gang_code?.trim() || gc || "",
-                upah_dasar: r.upah_dasar || 0,
-                religion: r.religion?.trim() || "",
-                status: r.status?.trim() || "",
-                employee_type: r.employee_type?.trim() || "",
-                birth_date: r.birth_date || undefined
-            }));
+            return this.getEmployeesLive(db, gangCondition);
         }
     }
 
-    /**
-     * Get employee by NIK
-     */
-    public async getByNik(nik: string): Promise<Employee | null> {
-        try {
-            const rows = await this.db.query<any>(`
-                SELECT 
-                    e.EmpCode, e.EmpName, e.Gender, e.LocCode,
-                    g.GangCode, p.PayRate
-                FROM HR_EMPLOYEE e
-                LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
-                LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
-                WHERE e.EmpCode = ?
-            `, [nik.trim()]);
-            const row = rows[0];
-
-            if (!row) return null;
-
-            return {
-                nik: row.EmpCode?.trim() || "",
-                nama: row.EmpName?.trim() || "",
-                jenis_kelamin: mapGender(row.Gender),
-                loc_code: row.LocCode?.trim() || "",
-                gang_code: row.GangCode?.trim() || "",
-                upah_dasar: row.PayRate || 0
-            };
-        } catch (e) {
-            console.error("[EmployeeRepository] getByNik failed:", e);
-            return null;
+    private async getEmployeesHistorical(
+        db: Database,
+        gangCondition: string,
+        month: number,
+        year: number,
+        gangCodeInput: string | null,
+        serverProfile?: string
+    ): Promise<Employee[]> {
+        const { accMonth, accYear } = currentPeriodService.calendarToAccMonth(month, year);
+        let historicalCondition = gangCondition;
+        
+        if (gangCodeInput && gangCodeInput !== 'ALL') {
+            historicalCondition = `(UPPER(RTRIM(g.GangID)) = '${gangCodeInput}' OR UPPER(RTRIM(g.Description)) = '${gangCodeInput}')`;
+        } else {
+            historicalCondition = gangCondition.replace(/(gl|g)\.GangCode/ig, 'g.GangID');
         }
-    }
-
-    /**
-     * Get available gang codes, optionally filtered by division prefix
-     */
-    public async getAvailableGangs(division?: string): Promise<string[]> {
-        try {
-            let sql = `
-                SELECT DISTINCT g.GangCode FROM HR_GANGLN g
-                JOIN HR_EMPLOYEE e ON e.EmpCode = g.GangMember
-                WHERE g.GangCode IS NOT NULL AND g.GangCode != ''
-            `;
-            const params: any[] = [];
-
-            if (division && DIVISION_PREFIX_MAP[division]) {
-                const prefixes = DIVISION_PREFIX_MAP[division];
-                const conditions = prefixes.map((p) => `UPPER(g.GangCode) LIKE ?`);
-                sql += ` AND (${conditions.join(" OR ")})`;
-                params.push(...prefixes.map(p => p + "%"));
-            }
-
-            sql += ` ORDER BY g.GangCode`;
-
-            const rows = await this.db.query<{ GangCode: string }>(sql, params);
-            let gangs = rows.map(r => r.GangCode?.trim()).filter(Boolean) as string[];
-
-            // Fallback to history DB if origin returns 0
-            if (gangs.length === 0) {
-                console.log(`[EmployeeRepository] getAvailableGangs origin returned 0, falling back to history DB`);
-                gangs = await this._getAvailableGangsFromHistory(division);
-            }
-
-            return gangs;
-        } catch (e) {
-            console.error("[EmployeeRepository] getAvailableGangs failed:", e);
-            return [];
-        }
-    }
-
-    private async _getAvailableGangsFromHistory(division?: string): Promise<string[]> {
-        try {
-            const histDb = this.getHistoryDb();
-            let sql = `SELECT DISTINCT RTRIM(gang_code) AS gang_code FROM dbo.history_hr_employee WHERE gang_code IS NOT NULL AND RTRIM(gang_code) != ''`;
-            const params: any[] = [];
-
-            if (division) {
-                const prefixes = DIVISION_PREFIX_MAP[division] || [];
-                if (prefixes.length > 0) {
-                    const conditions = prefixes.map(() => `UPPER(RTRIM(gang_code)) LIKE ?`);
-                    sql += ` AND (${conditions.join(" OR ")})`;
-                    params.push(...prefixes.map(p => p + "%"));
-                }
-            }
-
-            sql += ` ORDER BY gang_code`;
-            const rows = await histDb.query<{ gang_code: string }>(sql, params);
-            return rows.map(r => r.gang_code?.trim()).filter(Boolean) as string[];
-        } catch (e) {
-            console.error("[EmployeeRepository] _getAvailableGangsFromHistory failed:", e);
-            return [];
-        }
-    }
-
-    /**
-     * Get employees count by gang
-     */
-    public async getEmployeeCountByGang(gangCode: string): Promise<number> {
-        try {
-            const rows = await this.db.query<{ count: number }>(`
-                SELECT COUNT(*) as count FROM HR_GANGLN WHERE GangCode = ?
-            `, [gangCode.trim()]);
-            const row = rows[0];
-            return row?.count || 0;
-        } catch (e) {
-            return 0;
-        }
-    }
-
-    /**
-     * Search employees by name or NIK
-     */
-    public async search(term: string, limit: number = 50, division?: string): Promise<{ employees: Employee[]; dataSource: string }> {
-        if (!term || term.length < 2) return { employees: [], dataSource: "origin" };
 
         try {
-            let whereClause = `(e.EmpCode LIKE ? OR e.EmpName LIKE ? OR e.NewICNo LIKE ?)`;
-            let params: any[] = [`%${term}%`, `%${term}%`, `%${term}%`];
-
-            if (division && DIVISION_PREFIX_MAP[division]) {
-                const prefixes = DIVISION_PREFIX_MAP[division];
-                const conditions = prefixes.map(() => `UPPER(g.GangCode) LIKE ?`);
-                whereClause = `(${whereClause}) AND (${conditions.join(" OR ")})`;
-                prefixes.forEach(p => params.push(p + "%"));
-            }
-
             const sql = `
-                SELECT DISTINCT TOP ${limit}
-                    e.EmpCode AS nik,
-                    e.NewICNo AS actual_nik,
-                    e.EmpName AS nama,
-                    e.Gender AS jenis_kelamin,
-                    e.LocCode AS loc_code,
-                    g.GangCode AS gang_code,
-                    e.Religion AS religion,
-                    e.Status AS status,
-                    e.HREmpType AS employee_type,
-                    p.PayRate as upah_dasar,
-                    CONVERT(VARCHAR, e.DOB, 23) AS birth_date
-                FROM HR_EMPLOYEE e
-                LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
-                LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
-                WHERE ${whereClause}
-                ORDER BY e.EmpName
+                SELECT 
+                    emp_code, actual_nik, emp_name, gender, loc_code, 
+                    gang_code, gang_desc, pay_rate, beras_rate, 
+                    join_date, res_address, hr_emp_type
+                FROM (
+                    SELECT 
+                        RTRIM(e.EmpCode) as emp_code, e.NewICNo as actual_nik, e.EmpName as emp_name, e.Gender as gender,
+                        RTRIM(e.LocCode) as loc_code, COALESCE(RTRIM(g.GangID), RTRIM(g.Description), CAST(gl.MasterID AS VARCHAR)) as gang_code,
+                        COALESCE(RTRIM(g.Description), CAST(gl.MasterID AS VARCHAR)) as gang_desc, COALESCE(p.PayRate, 0) as pay_rate,
+                        CASE WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0 ELSE COALESCE(p.RiceRation, 0) END as beras_rate,
+                        em.AppJoinGrpDate as join_date, e.ResAddress as res_address, e.HREmpType as hr_emp_type,
+                        ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY e.EmpCode DESC) as rn
+                    FROM HR_EMPLOYEE e
+                    INNER JOIN PR_GANGLN_ARC gl ON RTRIM(gl.EmpCode) = RTRIM(e.EmpCode) AND gl.AccMonth = ? AND gl.AccYear = ?
+                    LEFT JOIN PR_GANG g ON g.ID = gl.MasterID
+                    LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                    LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                    WHERE ${historicalCondition}
+                ) t WHERE rn = 1 ORDER BY emp_code
             `;
+            const rows = await db.query<any>(sql, [accMonth, accYear]);
+            if (rows.length > 0) return this.mapToEmployees(rows);
+
+            // Fallback query (relaxed)
+            const fallbackSql = sql.replace("AND gl.AccMonth = ? AND gl.AccYear = ?", "");
+            const fallbackRows = await db.query<any>(fallbackSql, []);
+            if (fallbackRows.length > 0) return this.mapToEmployees(fallbackRows);
+
+            return this.getEmployeesFallbackLive(gangCondition, serverProfile);
+        } catch (e: any) {
+            warn(CATEGORY, `Historical query failed, falling back to live: ${e.message}`);
+            return this.getEmployeesFallbackLive(gangCondition, serverProfile);
+        }
+    }
+
+    private async getEmployeesLive(db: Database, gangCondition: string): Promise<Employee[]> {
+        const rows = await db.query<any>(`
+            SELECT 
+                RTRIM(e.EmpCode) as emp_code, ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
+                e.EmpName as emp_name, e.Gender as gender, RTRIM(e.LocCode) as loc_code, RTRIM(gl.GangCode) as gang_code,
+                RTRIM(g.Description) as gang_desc, COALESCE(p.PayRate, 0) as pay_rate,
+                CASE WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0 ELSE COALESCE(p.RiceRation, 0) END as beras_rate,
+                em.AppJoinGrpDate as join_date, e.ResAddress as res_address, e.HREmpType as hr_emp_type
+            FROM HR_EMPLOYEE e
+            INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+            LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
+            LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+            LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+            WHERE ${gangCondition} ORDER BY e.EmpCode
+        `);
+        return this.mapToEmployees(rows);
+    }
+
+    public async getEmployeesFallbackLive(gangCondition: string, serverProfile?: string): Promise<Employee[]> {
+        const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        const rows = await db.query<any>(`
+            SELECT emp_code, actual_nik, emp_name, gender, loc_code, gang_code, gang_desc, pay_rate, beras_rate, join_date, res_address, hr_emp_type
+            FROM (
+                SELECT 
+                    RTRIM(e.EmpCode) as emp_code, ISNULL(NULLIF(RTRIM(e.NewICNo), ''), RTRIM(e.EmpCode)) as actual_nik,
+                    e.EmpName as emp_name, e.Gender as gender, RTRIM(e.LocCode) as loc_code, RTRIM(gl.GangCode) as gang_code,
+                    RTRIM(g.Description) as gang_desc, COALESCE(p.PayRate, 0) as pay_rate,
+                    CASE WHEN UPPER(CAST(p.RiceRationCode AS VARCHAR)) = 'BERASBHL' THEN 0 ELSE COALESCE(p.RiceRation, 0) END as beras_rate,
+                    em.AppJoinGrpDate as join_date, e.ResAddress as res_address, e.HREmpType as hr_emp_type,
+                    ROW_NUMBER() OVER(PARTITION BY e.EmpCode ORDER BY e.EmpCode DESC) as rn
+                FROM HR_EMPLOYEE e
+                INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
+                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
+                LEFT JOIN HR_EMPLOYMENT em ON RTRIM(em.EmpCode) = RTRIM(e.EmpCode)
+                WHERE ${gangCondition}
+            ) t WHERE rn = 1 ORDER BY emp_code
+        `);
+        return this.mapToEmployees(rows);
+    }
+
+    private mapToEmployees(rows: any[]): Employee[] {
+        return rows.map(r => ({
+            nik: r.emp_code || "",
+            actual_nik: r.actual_nik || r.emp_code || "",
+            nama: (r.emp_name || "").trim().toUpperCase(),
+            jenis_kelamin: this.mapGender(r.gender),
+            loc_code: r.loc_code || "",
+            gang_code: r.gang_code || "",
+            gang_desc: r.gang_desc || "",
+            upah_dasar: r.pay_rate || 0,
+            beras_rate: r.beras_rate || 0,
+            join_date: r.join_date ? new Date(r.join_date).toISOString().split('T')[0] : null,
+            res_address: r.res_address || "",
+            employee_type: r.hr_emp_type || ""
+        }));
+    }
+
+    /**
+     * List employees (Enhanced with DivisionConfigService)
+     */
+    public async list(options: any = {}): Promise<{ employees: Employee[]; dataSource: string }> {
+        const { skip = 0, limit = 100, gangCode, division } = options;
+        let whereClauses: string[] = ["1=1"];
+        let params: any[] = [];
+
+        if (division && division !== 'ALL') {
+            const { sql, params: divParams } = divisionConfigService.buildDivisionWhereClause(division, 'g.LocCode');
+            whereClauses.push(sql.substring(5)); // Remove leading " AND "
+            params.push(...divParams);
+        }
+
+        if (gangCode && gangCode !== 'ALL') {
+            whereClauses.push("g.GangCode = ?");
+            params.push(gangCode);
+        }
+
+        const sql = `
+            SELECT DISTINCT
+                e.EmpCode, e.NewICNo, e.EmpName, e.Gender, e.LocCode, g.GangCode, p.PayRate,
+                e.Religion, e.Status, e.HREmpType, CONVERT(VARCHAR, e.DOB, 23) AS birth_date
+            FROM HR_EMPLOYEE e
+            JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+            LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode
+            WHERE ${whereClauses.join(" AND ")}
+            ORDER BY e.EmpName
+        `;
+
+        try {
             const rows = await this.db.query<any>(sql, params);
-
-            const originEmployees = rows.map((r: any) => ({
-                nik: r.nik?.trim() || "",
-                actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
-                nama: r.nama?.trim() || "",
-                jenis_kelamin: mapGender(r.jenis_kelamin),
-                loc_code: r.loc_code?.trim() || "",
-                gang_code: r.gang_code?.trim() || "",
-                religion: r.religion?.trim() || "",
-                status: r.status?.trim() || "",
-                employee_type: r.employee_type?.trim() || "",
-                upah_dasar: r.upah_dasar || 0,
-                birth_date: r.birth_date || undefined
+            const emps = rows.map(r => ({
+                nik: r.EmpCode?.trim(), actual_nik: r.NewICNo?.trim() || r.EmpCode?.trim(),
+                nama: r.EmpName?.trim(), jenis_kelamin: this.mapGender(r.Gender),
+                loc_code: r.LocCode?.trim(), gang_code: r.GangCode?.trim(),
+                upah_dasar: r.PayRate || 0, religion: r.Religion?.trim(),
+                status: r.Status?.trim(), employee_type: r.HREmpType?.trim(), birth_date: r.birth_date
             }));
-
-            // Fallback to history DB if origin returns 0
-            if (originEmployees.length === 0) {
-                console.log(`[EmployeeRepository] search origin returned 0, falling back to history DB`);
-                const histEmployees = await this._searchFromHistory(term, limit, division);
-                return {
-                    employees: histEmployees,
-                    dataSource: histEmployees.length > 0 ? "history" : "origin"
-                };
-            }
-
-            return { employees: originEmployees, dataSource: "origin" };
-        } catch (e) {
-            console.error("[EmployeeRepository] search failed:", e);
+            return { employees: emps.slice(skip, skip + limit), dataSource: "origin" };
+        } catch (e: any) {
+            logError(CATEGORY, `list failed: ${e.message}`);
             return { employees: [], dataSource: "origin" };
         }
     }
 
-    /**
-     * Search from history database
-     */
-    private async _searchFromHistory(term: string, limit: number, division?: string): Promise<Employee[]> {
-        try {
-            const histDb = this.getHistoryDb();
-            let params: any[] = [`%${term}%`, `%${term}%`, `%${term}%`];
-            let whereClause = `(emp_code LIKE ? OR emp_name LIKE ? OR nik LIKE ?)`;
-
-            if (division) {
-                const prefixes = DIVISION_PREFIX_MAP[division] || [];
-                if (prefixes.length > 0) {
-                    const conditions = prefixes.map(() => `UPPER(RTRIM(gang_code)) LIKE ?`);
-                    whereClause += ` AND (${conditions.join(" OR ")})`;
-                    params.push(...prefixes.map(p => p + "%"));
-                }
-            }
-
-            const sql = `
-                SELECT TOP ${limit}
-                    RTRIM(emp_code) AS nik,
-                    RTRIM(nik) AS actual_nik,
-                    emp_name AS nama,
-                    gender AS jenis_kelamin,
-                    RTRIM(loc_code) AS loc_code,
-                    RTRIM(gang_code) AS gang_code,
-                    RTRIM(religion) AS religion,
-                    RTRIM(status) AS status,
-                    RTRIM(employee_type) AS employee_type,
-                    CONVERT(VARCHAR, birth_date, 23) AS birth_date
-                FROM dbo.history_hr_employee
-                WHERE ${whereClause}
-                ORDER BY emp_name
-            `;
-            const rows = await histDb.query<any>(sql, params);
-            return rows.map((r: any) => ({
-                nik: r.nik?.trim() || "",
-                actual_nik: r.actual_nik?.trim() || r.nik?.trim() || "",
-                nama: r.nama?.trim() || "",
-                jenis_kelamin: r.jenis_kelamin?.trim() || "L",
-                loc_code: r.loc_code?.trim() || "",
-                gang_code: r.gang_code?.trim() || "",
-                religion: r.religion?.trim() || "",
-                status: r.status?.trim() || "",
-                employee_type: r.employee_type?.trim() || "",
-                birth_date: r.birth_date || undefined
-            }));
-        } catch (e) {
-            console.error("[EmployeeRepository] _searchFromHistory failed:", e);
-            return [];
-        }
-    }
-    /**
-     * Get available religions for filter dropdown
-     */
-    public async getAvailableReligions(): Promise<string[]> {
-        try {
-            const rows = await this.db.query<{ Religion: string }>(`
-                SELECT DISTINCT Religion FROM HR_EMPLOYEE
-                WHERE Religion IS NOT NULL AND RTRIM(Religion) != ''
-                ORDER BY Religion
-            `);
-            let religions = rows.map(r => r.Religion?.trim()).filter(Boolean) as string[];
-
-            // Fallback to history DB if origin returns 0
-            if (religions.length === 0) {
-                religions = await this._getAvailableReligionsFromHistory();
-            }
-
-            return religions;
-        } catch (e) {
-            console.error("[EmployeeRepository] getAvailableReligions failed:", e);
-            return [];
-        }
-    }
-
-    private async _getAvailableReligionsFromHistory(): Promise<string[]> {
-        try {
-            const histDb = this.getHistoryDb();
-            const rows = await histDb.query<{ religion: string }>(`
-                SELECT DISTINCT RTRIM(religion) AS religion
-                FROM dbo.history_hr_employee
-                WHERE religion IS NOT NULL AND RTRIM(religion) != ''
-                ORDER BY religion
-            `);
-            return rows.map(r => r.religion?.trim()).filter(Boolean) as string[];
-        } catch (e) {
-            console.error("[EmployeeRepository] _getAvailableReligionsFromHistory failed:", e);
-            return [];
-        }
-    }
-
-    /**
-     * Get available statuses for filter dropdown
-     */
-    public async getAvailableStatuses(): Promise<string[]> {
-        try {
-            const rows = await this.db.query<{ Status: string }>(`
-                SELECT DISTINCT Status FROM HR_EMPLOYEE
-                WHERE Status IS NOT NULL AND RTRIM(Status) != ''
-                ORDER BY Status
-            `);
-            let statuses = rows.map(r => r.Status?.trim()).filter(Boolean) as string[];
-
-            // Fallback to history DB if origin returns 0
-            if (statuses.length === 0) {
-                statuses = await this._getAvailableStatusesFromHistory();
-            }
-
-            return statuses;
-        } catch (e) {
-            console.error("[EmployeeRepository] getAvailableStatuses failed:", e);
-            return [];
-        }
-    }
-
-    private async _getAvailableStatusesFromHistory(): Promise<string[]> {
-        try {
-            const histDb = this.getHistoryDb();
-            const rows = await histDb.query<{ status: string }>(`
-                SELECT DISTINCT RTRIM(status) AS status
-                FROM dbo.history_hr_employee
-                WHERE status IS NOT NULL AND RTRIM(status) != ''
-                ORDER BY status
-            `);
-            return rows.map(r => r.status?.trim()).filter(Boolean) as string[];
-        } catch (e) {
-            console.error("[EmployeeRepository] _getAvailableStatusesFromHistory failed:", e);
-            return [];
-        }
+    public async getByNik(nik: string): Promise<Employee | null> {
+        const rows = await this.db.query<any>(`
+            SELECT e.EmpCode, e.EmpName, e.Gender, e.LocCode, g.GangCode, p.PayRate
+            FROM HR_EMPLOYEE e LEFT JOIN HR_GANGLN g ON g.GangMember = e.EmpCode
+            LEFT JOIN HR_PAYROLL p ON p.EmpCode = e.EmpCode WHERE e.EmpCode = ?
+        `, [nik.trim()]);
+        if (!rows[0]) return null;
+        const r = rows[0];
+        return {
+            nik: r.EmpCode?.trim(), actual_nik: r.EmpCode?.trim(), nama: r.EmpName?.trim(),
+            jenis_kelamin: this.mapGender(r.Gender), loc_code: r.LocCode?.trim(),
+            gang_code: r.GangCode?.trim(), upah_dasar: r.PayRate || 0
+        };
     }
 }
 

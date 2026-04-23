@@ -20,6 +20,7 @@ import GangEmployeeInfo from '../components/GangEmployeeInfo'
 import PayrollTaxMatrix from '../components/PayrollTaxMatrix'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
+import { buildSelectedEmployeeRowMap } from '../utils/payrollRowAccessors'
 
 // Check if running in dev/test mode (admin mode)
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
@@ -143,7 +144,7 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Employee selection state for payslip printing
   const [selectedEmployees, setSelectedEmployees] = useState([])
-  const [employeeDataMap, setEmployeeDataMap] = useState({}) // Store all employee data from UI
+  const [payrollRowsGetter, setPayrollRowsGetter] = useState(null)
 
   // Handle toggle single employee selection
   const handleToggleEmployeeSelection = (nik) => {
@@ -173,15 +174,14 @@ export default function MainPage({ lockedDiv = null }) {
       return
     }
 
-    // OPTIMIZATION: Pass employee data directly from UI via sessionStorage
-    // This avoids re-fetching from API which causes long loading times
-    const selectedData = {}
-    selectedEmployees.forEach(empCode => {
-      const upperCode = empCode.toUpperCase()
-      if (employeeDataMap[upperCode]) {
-        selectedData[upperCode] = employeeDataMap[upperCode]
-      }
-    })
+    // OPTIMIZATION: Pull current employee rows on-demand from the table
+    // instead of keeping a full copy in parent state all the time.
+    const currentRows = payrollRowsGetter ? payrollRowsGetter() : []
+    const selectedData = buildSelectedEmployeeRowMap(currentRows, selectedEmployees)
+    if (Object.keys(selectedData).length === 0) {
+      alert('Data payslip dari tabel belum siap. Coba tunggu sebentar lalu ulangi.')
+      return
+    }
 
     // Store in sessionStorage for the payslip page to read
     const storageKey = `payslip_data_${month}_${year}_${Date.now()}`
@@ -1516,7 +1516,7 @@ export default function MainPage({ lockedDiv = null }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', background: 'var(--bg-body)' }}>
 
-      {/* Top Header Navigation */}
+      {/* Top Header Navigation - STICKY */}
       <div style={{
         height: '50px',
         background: '#ffffff',
@@ -1526,7 +1526,12 @@ export default function MainPage({ lockedDiv = null }) {
         justifyContent: 'space-between',
         padding: '0 1.5rem',
         zIndex: 50,
-        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+        boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+        position: 'sticky',
+        top: 0,
+        left: 0,
+        right: 0,
+        flexShrink: 0,
       }}>
 
         {/* Seeding Status Indicator */}
@@ -1597,10 +1602,10 @@ export default function MainPage({ lockedDiv = null }) {
             gangs={gangs}  // Full gang objects with description
             gangPrefix={gangPrefix}
             onGangPrefixChange={setGangPrefix}
-            onMonthYearChange={(m, y) => { setMonth(m); setYear(y); }}
+            onMonthYearChange={(m, y) => { console.log('[MainPage] onMonthYearChange:', m, y); setMonth(m); setYear(y); }}
             onDivisionChange={isLockedMode ? () => { } : handleDivisionChange}
             onGangChange={(g) => setGang(g)}
-            disableControls={gridLoading || gangLoading}
+            disableControls={gridLoading}
             divisionLocked={isLockedMode}
             onRefresh={handleRefresh}
             usePeriodSlider={usePeriodSlider}
@@ -1895,17 +1900,7 @@ export default function MainPage({ lockedDiv = null }) {
                 onOpenHrProfile={handleOpenHrProfile}
                 fontSize={fontSize}
                 onExportReady={(handler) => setExportHandler(() => handler)}
-                onDataReady={(employeeData) => {
-                  // Build employee data map from UI data
-                  const dataMap = {}
-                  employeeData.forEach(row => {
-                    const empCode = (row.emp_code || row.nik || '').toUpperCase()
-                    if (empCode) {
-                      dataMap[empCode] = row
-                    }
-                  })
-                  setEmployeeDataMap(dataMap)
-                }}
+                onRowsGetterReady={(getter) => setPayrollRowsGetter(() => getter)}
                 refreshTrigger={refreshTrigger}
                 selectedEmployees={selectedEmployees}
                 onToggleEmployeeSelection={handleToggleEmployeeSelection}

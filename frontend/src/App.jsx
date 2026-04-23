@@ -40,6 +40,9 @@ import ImpactReportPage from './pages/ImpactReportPage'
 import TaxReportPage from './pages/TaxReportPage'
 import OtherIncomesPage from './pages/OtherIncomesPage'
 import { downloadTaxReportExcel, downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
+import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from './utils/payrollSnapshotQuery'
+import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payrollSourceMode'
+import { getEmployeeRows } from './utils/payrollRowAccessors'
 import ProductivityReportPage from './pages/ProductivityReportPage'
 import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
@@ -55,7 +58,7 @@ const OperationalReportWrapper = () => {
     gang, setGang,
     month, year, setMonth, setYear,
     allDivisions, gangs,
-    gangLoading, isAdminUser, isLockedMode
+    gangLoading, isAdminUser, isLockedMode, currentPeriod, currentPeriodLoading
   } = useReport();
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -65,11 +68,14 @@ const OperationalReportWrapper = () => {
   const [exportHandler, setExportHandler] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [taxDomExportLoading, setTaxDomExportLoading] = useState(false);
-  const [domEmployeesData, setDomEmployeesData] = useState([]);
+  const [payrollRowsGetter, setPayrollRowsGetter] = useState(null);
   const [domPremiKeys, setDomPremiKeys] = useState([]);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [useHistoryDb, setUseHistoryDb] = useState(false);
+  const [snapshotVersion, setSnapshotVersion] = useState('');
+  const [resolvedSnapshotVersion, setResolvedSnapshotVersion] = useState(null);
+  const [availableSnapshotVersions, setAvailableSnapshotVersions] = useState([]);
   const [gangPrefix, setGangPrefix] = useState('');
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'attendance' | 'overtime' | 'employee-directory'
   const [hrSearchNik, setHrSearchNik] = useState('');
@@ -86,6 +92,19 @@ const OperationalReportWrapper = () => {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [portalTarget, setPortalTarget] = useState(null);
   const dropdownRef = useRef(null);
+  const { isHistoricalPeriod } = useMemo(() => getPayrollPeriodMode({
+    month,
+    year,
+    currentPeriod
+  }), [currentPeriod, month, year]);
+  const effectiveUseHistoryDb = useMemo(() => resolveEffectiveUseHistoryDb({
+    isHistoricalPeriod,
+    useHistoryDb
+  }), [isHistoricalPeriod, useHistoryDb]);
+  const effectiveSnapshotVersion = useMemo(
+    () => normalizeSnapshotVersion(snapshotVersion) ?? resolvedSnapshotVersion,
+    [snapshotVersion, resolvedSnapshotVersion]
+  );
 
   useEffect(() => {
     setPortalTarget(document.getElementById('header-actions-portal'));
@@ -110,6 +129,12 @@ const OperationalReportWrapper = () => {
   useEffect(() => {
     setGangPrefix('');
   }, [division]);
+
+  useEffect(() => {
+    setSnapshotVersion('');
+    setResolvedSnapshotVersion(null);
+    setAvailableSnapshotVersions([]);
+  }, [division, month, year, gang, gangPrefix, effectiveUseHistoryDb]);
 
   // Sync state with global context if props were passed (usually via SummaryReportWrapper style logic)
   // but here it's a direct route component.
@@ -166,6 +191,13 @@ const OperationalReportWrapper = () => {
     }
   }
 
+  const handlePayrollDataLoaded = useCallback((payload) => {
+    setDomPremiKeys(payload?.dynamic_premi_headers || [])
+    const meta = payload?.meta || {}
+    setResolvedSnapshotVersion(meta.snapshot_version ?? null)
+    setAvailableSnapshotVersions(Array.isArray(meta.available_snapshot_versions) ? meta.available_snapshot_versions : [])
+  }, [])
+
   const handleExportExcel = async () => {
     if (!exportHandler) {
       alert('Data belum siap untuk di-export')
@@ -182,7 +214,7 @@ const OperationalReportWrapper = () => {
   const handleExportTaxExcel = async () => {
     setTaxExportLoading(true)
     try {
-      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistoryDb)
+      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, effectiveUseHistoryDb, effectiveSnapshotVersion)
     } catch (err) {
       alert('Gagal mengunduh pajak: ' + (err.message || 'Unknown error'))
     } finally {
@@ -191,6 +223,8 @@ const OperationalReportWrapper = () => {
   }
 
   const handleExportTaxExcelDom = async () => {
+    const rows = payrollRowsGetter ? payrollRowsGetter() : []
+    const domEmployeesData = getEmployeeRows(rows)
     if (!domEmployeesData || domEmployeesData.length === 0) {
       alert('Data Daftar Upah belum siap atau kosong.');
       return;
@@ -212,8 +246,9 @@ const OperationalReportWrapper = () => {
       year: String(year),
       gang: gang || '',
       gangPrefix: gangPrefix || '',
-      use_history: useHistoryDb ? 'true' : 'false'
+      use_history: effectiveUseHistoryDb ? 'true' : 'false'
     });
+    appendSnapshotVersionToSearchParams(params, effectiveSnapshotVersion)
     const taxPath = buildAppPath(`/report-pajak?${params.toString()}`);
     window.open(taxPath, '_blank', 'noopener,noreferrer');
   }
@@ -247,8 +282,9 @@ const OperationalReportWrapper = () => {
       month: month,
       year: year,
       division: division,
-      use_history: useHistoryDb ? 'true' : 'false'
+      use_history: effectiveUseHistoryDb ? 'true' : 'false'
     });
+    appendSnapshotVersionToSearchParams(params, effectiveSnapshotVersion)
 
     const printPath = buildAppPath(`/payslip-print?${params.toString()}`);
     window.open(printPath, '_blank', 'noopener,noreferrer');
@@ -574,9 +610,50 @@ const OperationalReportWrapper = () => {
                 <div id="column-toggles-portal"></div>
                 
                 {/* DB Mode Toggle */}
-                <button onClick={() => setUseHistoryDb(!useHistoryDb)} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: useHistoryDb ? '#f3e8ff' : 'transparent', color: useHistoryDb ? '#6b21a8' : '#334155', cursor: 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Ganti antara Database History & Origin">
-                  {useHistoryDb ? '📚 Mode: History DB' : '⚡ Mode: Origin DB'}
+                <button
+                  onClick={() => {
+                    if (!isHistoricalPeriod) {
+                      setUseHistoryDb(!useHistoryDb);
+                    }
+                  }}
+                  disabled={isHistoricalPeriod}
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.5rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: effectiveUseHistoryDb ? '#f3e8ff' : 'transparent',
+                    color: effectiveUseHistoryDb ? '#6b21a8' : '#334155',
+                    cursor: isHistoricalPeriod ? 'default' : 'pointer',
+                    display: 'flex',
+                    gap: '8px',
+                    alignItems: 'center',
+                    opacity: isHistoricalPeriod ? 0.9 : 1
+                  }}
+                  title={isHistoricalPeriod ? 'Periode historis otomatis memakai History DB' : 'Ganti antara Database History & Origin'}
+                >
+                  {isHistoricalPeriod ? '📚 Mode: History DB (Auto)' : (effectiveUseHistoryDb ? '📚 Mode: History DB' : '⚡ Mode: Origin DB')}
                 </button>
+
+                {effectiveUseHistoryDb && (
+                  <div style={{ padding: '0.35rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>Snapshot Version</label>
+                    <select
+                      value={snapshotVersion}
+                      onChange={(e) => setSnapshotVersion(e.target.value)}
+                      style={{ width: '100%', padding: '0.45rem', borderRadius: '6px', border: '1px solid #d8b4fe', background: '#faf5ff', color: '#581c87' }}
+                    >
+                      <option value="">
+                        {resolvedSnapshotVersion ? `Latest (v${resolvedSnapshotVersion})` : 'Latest snapshot'}
+                      </option>
+                      {availableSnapshotVersions.map((version) => (
+                        <option key={version} value={String(version)}>
+                          {`Version ${version}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 
                 <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
                 
@@ -628,11 +705,14 @@ const OperationalReportWrapper = () => {
             selectedEmployees={selectedEmployees}
             onToggleEmployeeSelection={handleToggleEmployeeSelection}
             onSelectAllEmployees={handleSelectAllEmployees}
-            onDataReady={setDomEmployeesData}
-            onDataLoaded={(meta) => setDomPremiKeys(meta.dynamic_premi_headers || [])}
+            onDataLoaded={handlePayrollDataLoaded}
+            onRowsGetterReady={(getter) => setPayrollRowsGetter(() => getter)}
             isEditMode={isEditMode}
-            useHistoryDb={useHistoryDb}
+            useHistoryDb={effectiveUseHistoryDb}
+            snapshotVersion={snapshotVersion}
             gangPrefix={gangPrefix || null}
+            gangLoading={gangLoading}
+            currentPeriodLoading={currentPeriodLoading}
             sortBy={employeeSortBy}
             sortOrder={employeeSortOrder}
             onSortChange={handleEmployeeSort}
@@ -656,6 +736,7 @@ const OperationalReportWrapper = () => {
             month={month}
             year={year}
             division={division}
+            onViewEmployeeDetail={handleViewEmployeeDetail}
           />
         ) : (
           <GangOvertimeMatrix
@@ -664,6 +745,7 @@ const OperationalReportWrapper = () => {
             month={month}
             year={year}
             division={division}
+            onViewEmployeeDetail={handleViewEmployeeDetail}
           />
         )}
       </div>
@@ -751,7 +833,7 @@ function AppInner() {
           {/* Employee Detail Route - From Daftar Upah (Operational: payslip, attendance matrix) */}
           <Route path="/employee/detail" element={
             <ProtectedRoute>
-              <div style={{ height: '100vh', width: '100vw' }}>
+              <div style={{ height: '100vh', width: '100vw', overflowY: 'auto', overflowX: 'hidden', backgroundColor: '#e5e7eb' }}>
                 <EmployeeDetailRoute />
               </div>
             </ProtectedRoute>

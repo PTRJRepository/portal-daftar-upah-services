@@ -309,7 +309,7 @@ export class HeaderService {
                     { field: "total_premi", headerName: "Total" }
                 ]
             },
-            // [DYNAMIC] Pendapatan Lainnya - THR, Bonus, Custom, Kontan + dynamically discovered types
+            // [DYNAMIC] Pendapatan Lainnya - THR, Bonus, Custom + dynamically discovered types
             // Moved before POTONGAN as requested
             {
                 field: "pendapatan_lainnya",
@@ -317,7 +317,6 @@ export class HeaderService {
                 children: [
                     { field: "pendapatan_thr", headerName: "THR" },
                     { field: "pendapatan_bonus", headerName: "Bonus" },
-                    { field: "pendapatan_kontan", headerName: "Kontan" },
                     { field: "pendapatan_custom", headerName: "Custom" },
                     ...dynPendapatan.map(p => ({
                         field: `pendapatan_${p.type.toLowerCase()}`,

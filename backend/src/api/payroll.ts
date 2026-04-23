@@ -8,8 +8,9 @@ import { AuthService } from "../services/authService";
 import { currentPeriodService } from "../services/currentPeriodService";
 import { taxReportService } from "../services/taxReportService";
 import { divisionConfigService } from "../services/config/DivisionConfigService";
+import { dataExtractorService } from "../services/dataExtractorService";
 import { User, UserRole } from "../types/user";
-import { parseBooleanQueryParam } from "../utils/queryParsers";
+import { parseBooleanQueryParam, parsePositiveIntegerQueryParam } from "../utils/queryParsers";
 
 
 const authService = AuthService.getInstance();
@@ -247,6 +248,112 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             remarks: t.Optional(t.String())
         })
     })
+    /**
+     * SNAPSHOT TABLES ARE IMMUTABLE.
+     * NEVER WRITE USER EDITS DIRECTLY INTO SNAPSHOT TABLES.
+     * ALL MANUAL CHANGES MUST GO TO OVERLAY HISTORY TABLES.
+     */
+    .post("/overrides/profile", async ({ body, currentUser, set }) => {
+        try {
+            const { payrollOverlayService } = await import("../services/payrollOverlayService");
+            const { cacheService } = await import("../services/cacheService");
+            const username = currentUser?.username || "system";
+            const id = await payrollOverlayService.saveProfileOverride({
+                ...(body as any),
+                changed_by: username,
+                change_source: "DAFTAR_UPAH_UI"
+            });
+
+            cacheService.clear();
+            return { success: true, id };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            emp_code: t.String(),
+            nik: t.Optional(t.String()),
+            is_spsi_member: t.Boolean(),
+            effective_start_date: t.Optional(t.Union([t.String(), t.Null()])),
+            employee_status_at_change: t.Optional(t.String()),
+            change_reason: t.Optional(t.String())
+        })
+    })
+    /**
+     * SNAPSHOT TABLES ARE IMMUTABLE.
+     * NEVER WRITE USER EDITS DIRECTLY INTO SNAPSHOT TABLES.
+     * ALL MANUAL CHANGES MUST GO TO OVERLAY HISTORY TABLES.
+     */
+    .post("/overrides/values", async ({ body, currentUser, set }) => {
+        try {
+            const { payrollOverlayService } = await import("../services/payrollOverlayService");
+            const { cacheService } = await import("../services/cacheService");
+            const username = currentUser?.username || "system";
+            const ids = await payrollOverlayService.saveValueOverrides((body as any).items, username);
+
+            cacheService.clear();
+            return { success: true, ids };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            items: t.Array(t.Object({
+                period_month: t.Number(),
+                period_year: t.Number(),
+                division_code: t.String(),
+                gang_code: t.String(),
+                emp_code: t.String(),
+                nik: t.Optional(t.String()),
+                field_name: t.String(),
+                field_group: t.String(),
+                numeric_value: t.Optional(t.Union([t.Number(), t.Null()])),
+                text_value: t.Optional(t.Union([t.String(), t.Null()])),
+                change_reason: t.Optional(t.String())
+            }))
+        })
+    })
+    /**
+     * Join Date Override
+     * Updates join_date via employee_profile_override_history.effective_start_date
+     * This overrides join_date from history_hr_employee
+     */
+    .post("/overrides/join-date", async ({ body, currentUser, set }) => {
+        try {
+            const { payrollOverlayService } = await import("../services/payrollOverlayService");
+            const { cacheService } = await import("../services/cacheService");
+            const username = currentUser?.username || "system";
+            const { emp_code, join_date, change_reason } = body as { emp_code: string; join_date: string; change_reason?: string };
+
+            if (!emp_code || !join_date) {
+                set.status = 400;
+                return { success: false, error: "emp_code and join_date are required" };
+            }
+
+            const id = await payrollOverlayService.saveProfileOverride({
+                emp_code,
+                is_spsi_member: false, // Required field, default to false
+                effective_start_date: join_date,
+                changed_by: username,
+                change_source: "DAFTAR_UPAH_UI",
+                change_reason: change_reason || `Join date updated to ${join_date}`
+            });
+
+            cacheService.clear();
+            return { success: true, id };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            emp_code: t.String(),
+            join_date: t.String(),
+            change_reason: t.Optional(t.String())
+        })
+    })
     // --- BPJS Calculation (New) ---
     .get("/bpjs-calculate", async ({ query }) => {
         const masaKerjaJumlah = parseFloat(query.masa_kerja_jumlah || "0");
@@ -262,13 +369,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     // --- Report: Division Raw Tree ---
     .get("/report/division-raw-tree", async ({ query, set }): Promise<any> => {
         try {
-            const { dataExtractorService } = await import("../services/dataExtractorService");
 
             const divisionCode = query.division_code;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
             const useHistoryDb = parseBooleanQueryParam(query.use_history) ?? false;
             const gangPrefix = query.gang_prefix;
+            const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version);
 
             if (!divisionCode || !month || !year) {
                 set.status = 400;
@@ -281,7 +388,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // [DEBUG] Log input parameters
             console.log(`[PayrollRoutes] /report/division-raw-tree | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix || 'none'} DB_PROFILE=${Config.DB_PROFILE} useHistory=${useHistoryDb} RUN_MODE=${Config.RUN_MODE}`);
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix, skipHarvest);
+            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix, skipHarvest, false, snapshotVersion);
 
             // [DEBUG] Log result summary
             const { data_rows } = result;
@@ -338,7 +445,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             return response;
         } catch (e: any) {
             console.error("[PayrollRoutes] division-raw-tree error:", e);
-            set.status = 500;
+            set.status = String(e?.message || "").includes("Snapshot version") ? 404 : 500;
             return { error: e.message };
         }
     }, {
@@ -347,19 +454,20 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             month: t.String(),
             year: t.String(),
             use_history: t.Optional(t.String()),
-            gang_prefix: t.Optional(t.String())
+            gang_prefix: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
     // --- Locked Report: Raw Tree (Alias for Proxy/Frontend Compat) ---
     .get("/locked/report/raw-tree", async ({ query, set, currentUser }): Promise<any> => {
         try {
-            const { dataExtractorService } = await import("../services/dataExtractorService");
 
             // Frontend sends 'div' instead of 'division_code' for this endpoint
             const divisionCode = query.div;
             const month = parseInt(query.month);
             const year = parseInt(query.year);
             const useHistoryDb = parseBooleanQueryParam(query.use_history);
+            const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version);
 
             if (!divisionCode || !month || !year) {
                 set.status = 400;
@@ -438,7 +546,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             console.log(`[PayrollRoutes] /locked/report/raw-tree | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} gangPrefix=${gangPrefix} useHistory=${useHistoryDb}`);
 
-            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix, skipHarvest);
+            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix, skipHarvest, false, snapshotVersion);
 
             // [DEBUG] Log result summary
             const empCount = result?.data_rows?.length || 0;
@@ -491,7 +599,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             };
         } catch (e: any) {
             console.error("[PayrollRoutes] locked/report/raw-tree error:", e);
-            set.status = 500;
+            set.status = String(e?.message || "").includes("Snapshot version") ? 404 : 500;
             return { error: e.message };
         }
     }, {
@@ -502,7 +610,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             include_virtual: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
             gang_prefix: t.Optional(t.String()),
-            gang_code: t.Optional(t.String())
+            gang_code: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
     // --- Locked Manual Edit ---
@@ -790,7 +899,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     // --- Report: Gang Grid ---
     .get("/report", async ({ query, set }): Promise<any> => {
         try {
-            const { dataExtractorService } = await import("../services/dataExtractorService");
             const { calculatePayrollTotals, calculateGangTotalsMap, calculateGrandTotal } = await import("../services/payrollTotalsCalculator");
 
             const gangCode = query.gang_code || "ALL";
@@ -800,9 +908,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const gangPrefix = query.gang_prefix;
             const serverProfile = query.server_profile || Config.DB_PROFILE;
             const skipHeavyDetails = query.summary_only === 'true';
+            const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version);
 
             // Use provided serverProfile or default to Config.DB_PROFILE
-            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, serverProfile, false, useHistoryDb, gangPrefix, false, skipHeavyDetails);
+            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, undefined, null, serverProfile, false, useHistoryDb, gangPrefix, false, skipHeavyDetails, snapshotVersion);
 
             // [NEW] Calculate totals on backend to replace frontend calculation
             // Group data by gang_code
@@ -836,7 +945,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             };
         } catch (e: any) {
             console.error("[PayrollRoutes] report error:", e);
-            set.status = 500;
+            set.status = String(e?.message || "").includes("Snapshot version") ? 404 : 500;
             return { error: e.message };
         }
     }, {
@@ -849,7 +958,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             use_history: t.Optional(t.String()),
             gang_prefix: t.Optional(t.String()),
             server_profile: t.Optional(t.String()),
-            summary_only: t.Optional(t.String())
+            summary_only: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
 
@@ -865,7 +975,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      */
     .get("/report-with-components", async ({ query, set }): Promise<any> => {
         try {
-            const { dataExtractorService } = await import("../services/dataExtractorService");
 
             const gangCode = query.gang_code || "ALL";
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
@@ -903,7 +1012,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      */
     .get("/employee/:emp_code/components", async ({ params, query, set }): Promise<any> => {
         try {
-            const { dataExtractorService } = await import("../services/dataExtractorService");
 
             const empCode = params.emp_code;
             const month = parseInt(query.month || String(new Date().getMonth() + 1));
@@ -1157,6 +1265,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         const gangPrefix = query.gang_prefix;
         const gangCode = query.gang_code || "ALL";
         const useHistoryDb = parseBooleanQueryParam(query.use_history as string | undefined) ?? false;
+        const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version as string | undefined);
 
         if (!divisionCode || !month || !year) {
             set.status = 400;
@@ -1189,7 +1298,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             async start(controller) {
                 try {
                     // Import services
-                    const { dataExtractorService } = await import("../services/dataExtractorService");
                     const { Config } = await import("../config");
                     const { calculatePayrollTotals } = await import("../services/payrollTotalsCalculator");
 
@@ -1204,7 +1312,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     // Use TRUE lazy loading extraction - yields data in phases
                     const progressiveStream = dataExtractorService.extractPayrollDataProgressive(
                         month, year, gangCode, divisionCode,
-                        Config.DB_PROFILE, gangPrefix, useHistoryDb
+                        Config.DB_PROFILE, gangPrefix, useHistoryDb, snapshotVersion
                     );
 
                     let gangIndex = 0;
@@ -1217,6 +1325,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     const allDynamicPotonganHeaders = new Set<string>();
                     let globalPremiTitleMap: Record<string, string> = {};
                     let globalPotonganTitleMap: Record<string, string> = {};
+
+                    let streamComplete = false;
 
                     for await (const chunk of progressiveStream) {
                         if (cancelled) break;
@@ -1367,7 +1477,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                                 dynamic_premi_headers: Array.from(allDynamicPremiHeaders),
                                 dynamic_potongan_headers: Array.from(allDynamicPotonganHeaders),
                                 dynamic_premi_titles: globalPremiTitleMap,
-                                dynamic_potongan_titles: globalPotonganTitleMap
+                                dynamic_potongan_titles: globalPotonganTitleMap,
+                                snapshot_version: meta.snapshot_version ?? null,
+                                requested_snapshot_version: meta.requested_snapshot_version ?? null,
+                                available_snapshot_versions: meta.available_snapshot_versions ?? [],
+                                is_history_snapshot: meta.is_history_snapshot ?? false
                             })}\n\n`));
 
                             controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({
@@ -1379,10 +1493,15 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                                 gangs_count: meta.total_gangs,
                                 employees_count: meta.total_employees
                             })}\n\n`));
+
+                            streamComplete = true;
                         }
                     }
 
-                    controller.close();
+                    // Only close controller after the stream has truly finished
+                    if (streamComplete) {
+                        controller.close();
+                    }
 
                 } catch (e: any) {
                     console.error('[Stream] Error:', e);
@@ -1413,7 +1532,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             year: t.String(),
             gang_prefix: t.Optional(t.String()),
             gang_code: t.Optional(t.String()),
-            use_history: t.Optional(t.String())
+            use_history: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String())
         })
     })
 
@@ -1423,7 +1543,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      */
     .post("/warm-cache", async ({ body, set }): Promise<any> => {
         try {
-            const { dataExtractorService } = await import("../services/dataExtractorService");
             const { divisionConfigService } = await import("../services/config/DivisionConfigService");
             const { currentPeriodService } = await import("../services/currentPeriodService");
             const { cacheService } = await import("../services/cacheService");
@@ -1517,7 +1636,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      */
     .get("/gang-payroll-summary", async ({ query, set }): Promise<any> => {
         try {
-            const { dataExtractorService } = await import("../services/dataExtractorService");
             const month = parseInt(query.month);
             const year = parseInt(query.year);
             const gangCodes = (query.gang_codes || '').split(',').map((c: string) => c.trim()).filter(Boolean);
@@ -1586,13 +1704,14 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const division = query.div as string || undefined;
             const gangPrefix = query.gang_prefix as string || undefined;
             const useHistoryDb = parseBooleanQueryParam(query.use_history) ?? false;
+            const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version as string | undefined);
 
             if (!month || !year || month < 1 || month > 12) {
                 set.status = 400;
                 return { error: "Invalid month or year" };
             }
 
-            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistoryDb);
+            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistoryDb, snapshotVersion);
 
             // Build emp_code → pajak mapping
             const employeesMap: Record<string, any> = {};
@@ -1671,5 +1790,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             div: t.Optional(t.String()),
             gang_prefix: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
+            snapshot_version: t.Optional(t.String()),
         })
     })

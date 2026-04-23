@@ -52,7 +52,7 @@ const formatPercent = (val) => {
 // ================================================================
 // TAB 1: Pajak Bulanan (Monthly PPH21)
 // ================================================================
-function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey, useHistory }) {
+function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey, useHistory, snapshotVersion }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -94,7 +94,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                 monthName: MONTH_NAMES[month - 1],
                 useHistory
             });
-            const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory);
+            const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion);
             const summary = result?.summary || {};
             const monthlyTotals = summary?.monthly_table_totals || {};
             const pph21Summary = summary?.pph21 || {};
@@ -118,13 +118,13 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         } finally {
             setLoading(false);
         }
-    }, [token, year, month, division, gang, gangPrefix, refreshKey]);
+    }, [token, year, month, division, gang, gangPrefix, refreshKey, useHistory, snapshotVersion]);
 
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
         try {
             // Use the same useHistory state as the displayed data to ensure consistency
-            await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory);
+            await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion);
         } catch (err) {
             alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
         } finally {
@@ -136,7 +136,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         setExportingJson(true);
         try {
             // Use the same useHistory state as the displayed data to ensure consistency
-            await exportPajakJson(token, year, month, gang || 'ALL', division, gangPrefix, useHistory);
+            await exportPajakJson(token, year, month, gang || 'ALL', division, gangPrefix, useHistory, snapshotVersion);
         } catch (err) {
             alert('Gagal export JSON: ' + (err.message || 'Unknown error'));
         } finally {
@@ -147,7 +147,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     useEffect(() => {
         console.log('[TaxReportPage] useEffect triggered - calling loadData');
         loadData();
-    }, [loadData, useHistory]);
+    }, [loadData, useHistory, snapshotVersion]);
 
     if (loading) return (
         <div className="tax-report-loading">
@@ -242,7 +242,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                     {data.data_source === 'current' ? (
                         <>🟢 <strong>PERIODE AKTIF (CURRENT)</strong> — Data diambil langsung dari database original (live)</>
                     ) : (
-                        <>📦 <strong>PERIODE HISTORY</strong> — Data diambil dari snapshot history database</>
+                        <>📦 <strong>PERIODE HISTORY</strong> — Data diambil dari snapshot history database{data.snapshot_version ? ` (v${data.snapshot_version})` : ''}</>
                     )}
                 </div>
             )}
@@ -1593,6 +1593,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
     // Local state for non-shared filters
     const [activeTab, setActiveTab] = useState(() => loadFromStorage(STORAGE_KEYS.ACTIVE_TAB, 'monthly'));
     const [useHistory, setUseHistory] = useState(false);
+    const [snapshotVersion, setSnapshotVersion] = useState('');
 
     // Initial load from URL
     useEffect(() => {
@@ -1600,6 +1601,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
         if (params.get('use_history') === 'true') {
             setUseHistory(true);
         }
+        setSnapshotVersion(params.get('snapshot_version') || '');
     }, []);
 
     // Save to localStorage when values change
@@ -1762,6 +1764,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         gang={gang}
                         gangPrefix={gangPrefix}
                         useHistory={useHistory}
+                        snapshotVersion={snapshotVersion}
                     />
                 )}
                 {activeTab === 'annual' && (

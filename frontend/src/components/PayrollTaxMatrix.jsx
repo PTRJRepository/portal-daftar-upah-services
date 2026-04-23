@@ -119,6 +119,7 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
                 year,
                 useHistoryDb,
                 null,
+                null,
                 selectedGangCode
             )
             setData(result)

@@ -14,6 +14,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { appendSnapshotVersionToSearchParams } from '../utils/payrollSnapshotQuery';
+import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
 
 /**
  * Main stream hook
@@ -30,7 +32,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
  *
  * @returns {Object} stream state
  */
-export function usePayrollStream({ token, division, month, year, gangPrefix, gangCode, useHistoryDb, enabled }) {
+export function usePayrollStream({ token, division, month, year, gangPrefix, gangCode, useHistoryDb, snapshotVersion, refreshTrigger = 0, enabled }) {
+    const effectiveGangPrefix = resolveEffectiveGangPrefix(gangCode, gangPrefix);
+
     // State for gangs - array that grows progressively
     const [gangs, setGangs] = useState([]);           // Array of streamed gang objects
     const [meta, setMeta] = useState(null);           // Initial metadata from 'meta' event
@@ -54,31 +58,8 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
     const gangsMapRef = useRef({});                   // Track gangs by code for updates
     const mountedRef = useRef(true);
 
-    // Reset gangs when params change (but not on every render)
-    useEffect(() => {
-        if (mountedRef.current) {
-            setGangs([]);
-            setMeta(null);
-            setGrandTotal(null);
-            setError(null);
-            setIsComplete(false);
-            gangsMapRef.current = {};
-            setProgress({
-                stage: null,
-                message: '',
-                processedGangs: 0,
-                totalGangs: 0,
-                processedEmployees: 0,
-                totalEmployees: 0,
-                bytesReceived: 0,
-                currentGang: null,
-                progressPct: 0,
-                currentPhase: null
-            });
-        }
-    }, [division, month, year, gangPrefix, gangCode]);
-
     const startStream = useCallback(async () => {
+        console.log('[usePayrollStream] startStream called', { token: !!token, division, month, year, refreshTrigger, enabled });
         if (!token || !division || !month || !year || !enabled) return;
 
         // Abort any existing stream
@@ -110,20 +91,21 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
         });
 
         try {
-            const shouldSendGangPrefix = !gangCode || gangCode === 'ALL';
-            const prefixParam = shouldSendGangPrefix && gangPrefix ? `&gang_prefix=${gangPrefix}` : '';
-            const gangCodeParam = gangCode && gangCode !== 'ALL' ? `&gang_code=${gangCode}` : '';
-            const historyParam = `&use_history=${useHistoryDb ? 'true' : 'false'}`;
-            const url = `/payroll/report/division-raw-tree/stream?division_code=${division}&month=${month}&year=${year}${prefixParam}${gangCodeParam}${historyParam}`;
-
-            console.log('[usePayrollStream] Starting SSE stream:', url);
+            const params = new URLSearchParams({
+                division_code: division,
+                month: String(month),
+                year: String(year),
+                use_history: useHistoryDb ? 'true' : 'false'
+            });
+            if (effectiveGangPrefix) params.set('gang_prefix', effectiveGangPrefix);
+            if (gangCode && gangCode !== 'ALL') params.set('gang_code', gangCode);
+            appendSnapshotVersionToSearchParams(params, snapshotVersion);
+            const url = `/payroll/report/division-raw-tree/stream?${params.toString()}`;
 
             const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` },
                 signal: controller.signal
             });
-
-            console.log('[usePayrollStream] Response status:', response.status, 'ok:', response.ok);
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -142,7 +124,6 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                 const { done, value } = await reader.read();
 
                 if (done) {
-                    console.log('[usePayrollStream] Stream complete');
                     break;
                 }
 
@@ -177,7 +158,6 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                                     totalGangs: data.total_gangs || 0,
                                     totalEmployees: data.total_employees || 0
                                 }));
-                                console.log('[usePayrollStream] Meta:', data.total_gangs, 'gangs');
                                 break;
                             }
 
@@ -200,13 +180,6 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                             case 'gang':
                             case 'gang_update': {
                                 const { gang_code, employees, gang_totals, employees_count, gang_index, phase, is_complete } = data;
-
-                                // DEBUG: Log first employee's fields to see what data arrives
-                                if (employees && employees.length > 0 && phase === 'complete') {
-                                    console.log('[usePayrollStream] Sample employee fields:', Object.keys(employees[0]).slice(0, 40));
-                                    console.log('[usePayrollStream] Sample nik:', employees[0].nik);
-                                    console.log('[usePayrollStream] Sample jabatan:', employees[0].jabatan);
-                                }
 
                                 // Track if this gang data is from complete phase (fully enriched)
                                 gangsMapRef.current[gang_code] = {
@@ -245,13 +218,16 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
 
                             case 'headers': {
                                 // Update meta with dynamic headers when they arrive
-                                console.log('[usePayrollStream] Headers received:', data);
                                 setMeta(prev => ({
                                     ...(prev || {}),
                                     dynamic_premi_headers: data.dynamic_premi_headers || prev?.dynamic_premi_headers || [],
                                     dynamic_potongan_headers: data.dynamic_potongan_headers || prev?.dynamic_potongan_headers || [],
                                     premi_title_map: data.dynamic_premi_titles || prev?.premi_title_map || {},
-                                    potongan_title_map: data.dynamic_potongan_titles || prev?.potongan_title_map || {}
+                                    potongan_title_map: data.dynamic_potongan_titles || prev?.potongan_title_map || {},
+                                    snapshot_version: data.snapshot_version ?? prev?.snapshot_version ?? null,
+                                    requested_snapshot_version: data.requested_snapshot_version ?? prev?.requested_snapshot_version ?? null,
+                                    available_snapshot_versions: data.available_snapshot_versions || prev?.available_snapshot_versions || [],
+                                    is_history_snapshot: data.is_history_snapshot ?? prev?.is_history_snapshot ?? false
                                 }));
                                 break;
                             }
@@ -271,7 +247,6 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                                     totalEmployees: employeesCount,
                                     currentGang: null
                                 }));
-                                console.log('[usePayrollStream] Complete');
                                 break;
                             }
 
@@ -292,25 +267,29 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             }
         } catch (err) {
             if (err.name === 'AbortError') {
-                console.log('[usePayrollStream] Aborted');
                 return;
             }
             console.error('[usePayrollStream] Error:', err);
             setError(err.message);
             setProgress(prev => ({ ...prev, stage: 'error', message: err.message }));
         }
-    }, [token, division, month, year, gangPrefix, gangCode, useHistoryDb, enabled]);
+    }, [token, division, month, year, effectiveGangPrefix, gangCode, useHistoryDb, snapshotVersion, refreshTrigger, enabled]);
 
     const abort = useCallback(() => {
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
-            abortControllerRef.current = null;
-            console.log('[usePayrollStream] Stream aborted by user');
+            // Note: Do NOT set to null here. The abort() cleanup in useEffect runs
+            // synchronously BEFORE the new effect body, which would break the abort
+            // check in startStream (it checks `if (abortControllerRef.current)`).
+            // We only abort, and let startStream create a fresh AbortController.
         }
     }, []);
 
-    // Auto-start when enabled
+    // Auto-start: re-run whenever any filter param or enabled changes.
+    // We list ALL relevant params explicitly to guarantee a re-fetch on month/year/division change.
+    // startStream captures all these via its own useCallback deps, so calling it here is always fresh.
     useEffect(() => {
+        console.log('[usePayrollStream] Params/enabled changed, evaluating stream start', { enabled, division, month, year });
         mountedRef.current = true;
         if (enabled) {
             startStream();
@@ -321,7 +300,8 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             mountedRef.current = false;
             abort();
         };
-    }, [enabled, startStream, abort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [enabled, division, month, year, effectiveGangPrefix, gangCode, useHistoryDb, snapshotVersion, refreshTrigger, token]);
 
     // Return stream object with all properties the component expects
     // Component uses: stream.gangs, stream.meta, stream.progress, stream.grandTotal, stream.error, stream.isComplete, stream.gangsMap

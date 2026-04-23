@@ -4,6 +4,7 @@ import { divisionDefinition } from "./divisionDefinition";
 import { employeeHrDataService } from "./employeeHrDataService";
 import { gangService } from "./gangService";
 import { debug, info, warn, error as logError } from "../utils/logger";
+import { resolveThrCompatibleEffectiveStartDate } from "../utils/payrollProfileRules";
 
 const CATEGORY = "OtherIncomes";
 
@@ -60,13 +61,7 @@ export class OtherIncomesService {
      * Used for getting the most current join date.
      */
     private static getLatestValidDate(d1: any, d2: any): string | null {
-        const date1 = this.parseDate(d1); const date2 = this.parseDate(d2);
-        const isValid = (d: Date | null) => d && !isNaN(d.getTime()) && d.getFullYear() > 1905;
-        const v1 = isValid(date1) ? date1 : null; const v2 = isValid(date2) ? date2 : null;
-        let latest: Date | null = null;
-        if (v1 && v2) latest = v1.getTime() > v2.getTime() ? v1 : v2;
-        else latest = v1 || v2;
-        return latest ? latest.toISOString() : null;
+        return resolveThrCompatibleEffectiveStartDate(d1, d2);
     }
 
     /**

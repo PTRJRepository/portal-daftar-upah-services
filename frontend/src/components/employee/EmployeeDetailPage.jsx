@@ -19,6 +19,15 @@ const formatCurrency = (value) => {
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value)
 }
 
+const formatMultiplier = (value) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return '-'
+    const normalized = Number.isInteger(numeric)
+        ? numeric.toFixed(0)
+        : numeric.toFixed(2).replace(/\.?0+$/, '')
+    return `${normalized}x`
+}
+
 // ... existing code ...
 
 
@@ -109,6 +118,7 @@ export default function EmployeeDetailPage({
     const [error, setError] = useState('')
     const [checkrollData, setCheckrollData] = useState(null)
     const [historyModalNik, setHistoryModalNik] = useState({ isOpen: false, data: null, loading: false })
+    const [overtimeViewMode, setOvertimeViewMode] = useState('detail')
 
     // Prefer emp_code (Plantware code like B0075) over nik (KTP number)
     const empCode = employeeData?.emp_code || employeeData?.EmpCode || employeeData?.nik || employeeData?.NIK || ''
@@ -266,6 +276,12 @@ export default function EmployeeDetailPage({
     const attendance = checkrollData?.attendance || {}
     const overtime = checkrollData?.overtime || {}
     const harvest = checkrollData?.harvest || []
+    const overtimeTransactions = Array.isArray(overtime.list) ? overtime.list : []
+    const isOvertimeCompact = overtimeViewMode === 'compact'
+    const effectiveUpjValue = (() => {
+        const found = overtimeTransactions.find((trx) => Number(trx?.upj_value) > 0)
+        return found ? Number(found.upj_value) : 0
+    })()
 
     // Helper to safely get numeric values
     const getNum = (key) => {
@@ -1031,25 +1047,60 @@ export default function EmployeeDetailPage({
                     </div>
 
                     {/* Overtime List Detail - Per Transaksi */}
-                    {overtime.list && overtime.list.length > 0 && (
+                    {overtimeTransactions.length > 0 && (
                         <div className="overtime-list">
                             <h4>📋 Rincian Lembur Per Transaksi</h4>
+                            <div className="overtime-upj-help">
+                                <div className="overtime-upj-title">UPJ (Upah Per Jam)</div>
+                                <p>
+                                    UPJ adalah nilai dasar upah per jam yang dipakai untuk hitung lembur.
+                                    Rumus umum: <strong>payrate × 30 / 173</strong>.
+                                </p>
+                                {effectiveUpjValue > 0 && (
+                                    <div className="overtime-upj-badge">
+                                        UPJ periode ini: <strong>Rp {formatCurrency(effectiveUpjValue)}</strong>
+                                    </div>
+                                )}
+                            </div>
 
                             {/* Summary Table */}
-                            <div className="overtime-summary-box">
-                                <table className="overtime-summary-table">
+                            <div className="overtime-table-toolbar">
+                                <div className="overtime-mode-toggle" role="group" aria-label="Mode tampilan tabel lembur">
+                                    <button
+                                        type="button"
+                                        className={`overtime-mode-btn ${isOvertimeCompact ? 'active' : ''}`}
+                                        onClick={() => setOvertimeViewMode('compact')}
+                                    >
+                                        Mode Ringkas
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`overtime-mode-btn ${!isOvertimeCompact ? 'active' : ''}`}
+                                        onClick={() => setOvertimeViewMode('detail')}
+                                    >
+                                        Mode Detail
+                                    </button>
+                                </div>
+                                <span className="overtime-scroll-tip">Header tabel tetap terlihat saat scroll</span>
+                            </div>
+
+                            <div className={`overtime-summary-box ${isOvertimeCompact ? 'is-compact' : ''}`}>
+                                <table className={`overtime-summary-table ${isOvertimeCompact ? 'is-compact' : ''}`}>
                                     <thead>
                                         <tr>
                                             <th>Tanggal</th>
                                             <th>Hari</th>
                                             <th>Tipe Hari</th>
-                                            <th>Pekerjaan</th>
+                                            {!isOvertimeCompact && <th>Pekerjaan</th>}
                                             <th>Jam</th>
+                                            {!isOvertimeCompact && <th>Rate (x)</th>}
+                                            {!isOvertimeCompact && <th>UPJ</th>}
+                                            {!isOvertimeCompact && <th>Rumus</th>}
                                             <th>Jumlah</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {overtime.list
+                                        {overtimeTransactions
                                             .sort((a, b) => {
                                                 // Sort by date
                                                 const dateA = a.date || a.trx_date || '';
@@ -1064,6 +1115,9 @@ export default function EmployeeDetailPage({
                                                 const taskCode = trx.task_code || trx.task_desc || 'Lain-lain';
                                                 const hours = trx.hours || 0;
                                                 const amount = trx.amount_formula || trx.amount || 0;
+                                                const upjValue = Number(trx.upj_value) || 0;
+                                                const rateValue = Number(trx.formula_rate_total || trx.rate) || 0;
+                                                const formulaUraian = trx.formula_uraian || (rateValue > 0 ? `${hours} jam @ ${formatMultiplier(rateValue)}` : '-');
 
                                                 // Format date DD/MM/YYYY
                                                 const formattedDate = date ? new Date(date).toLocaleDateString('id-ID', {
@@ -1081,8 +1135,18 @@ export default function EmployeeDetailPage({
                                                                 {formatDayType(dayType, rawDayType)}
                                                             </span>
                                                         </td>
-                                                        <td>{taskCode}</td>
+                                                        {!isOvertimeCompact && <td>{taskCode}</td>}
                                                         <td className="hours-cell">{hours}</td>
+                                                        {!isOvertimeCompact && <td className="rate-cell">{formatMultiplier(rateValue)}</td>}
+                                                        {!isOvertimeCompact && <td className="upj-cell">{upjValue > 0 ? formatCurrency(upjValue) : '-'}</td>}
+                                                        {!isOvertimeCompact && (
+                                                            <td className="formula-cell">
+                                                                {formulaUraian}
+                                                                {upjValue > 0 && (
+                                                                    <span className="formula-upj-inline"> × {formatCurrency(upjValue)}</span>
+                                                                )}
+                                                            </td>
+                                                        )}
                                                         <td className="amount-cell">{formatCurrency(amount)}</td>
                                                     </tr>
                                                 );
@@ -1095,15 +1159,15 @@ export default function EmployeeDetailPage({
                             <div className="overtime-total-summary">
                                 <div className="summary-row">
                                     <span>Total Transaksi:</span>
-                                    <strong>{overtime.list.length}</strong>
+                                    <strong>{overtimeTransactions.length}</strong>
                                 </div>
                                 <div className="summary-row">
                                     <span>Total Jam:</span>
-                                    <strong>{overtime.list.reduce((sum, t) => sum + (t.hours || 0), 0)}</strong>
+                                    <strong>{overtimeTransactions.reduce((sum, t) => sum + (t.hours || 0), 0)}</strong>
                                 </div>
                                 <div className="summary-row">
                                     <span>Total Lembur:</span>
-                                    <strong>{formatCurrency(overtime.list.reduce((sum, t) => sum + (t.amount_formula || t.amount || 0), 0))}</strong>
+                                    <strong>{formatCurrency(overtimeTransactions.reduce((sum, t) => sum + (t.amount_formula || t.amount || 0), 0))}</strong>
                                 </div>
                             </div>
                         </div>

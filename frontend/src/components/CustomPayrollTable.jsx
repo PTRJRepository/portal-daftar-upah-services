@@ -15,6 +15,7 @@ import { usePayrollStream } from '../hooks/usePayrollStream';
 import { splitPayrollEdits } from '../utils/payrollEditPayloads';
 import { appendSnapshotVersionToSearchParams, buildPayrollSnapshotCacheKey, normalizeSnapshotVersion } from '../utils/payrollSnapshotQuery';
 import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
+import { resolveJabatanRate } from '../utils/payrollRowAccessors';
 import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
 import { buildCanonicalManualAdjustmentName, buildPendingManualColumn } from '../utils/payrollManualAdjustmentNames';
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
@@ -146,7 +147,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     onTaxExportReady = null, // Callback to expose data getter for Tax Export
     onRowsGetterReady = null, // Callback to expose displayRows getter without copying rows to parent
     onRefresh = null,      // Callback to trigger parent refresh (for saving)
-    sortBy = 'name',       // 'name' | 'emp_code' | 'nik'
+    sortBy = 'emp_code',     // 'name' | 'emp_code' | 'nik'
     sortOrder = 'asc',     // 'asc' | 'desc'
     onSortChange = null
 }) {
@@ -211,7 +212,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [displayMode, setDisplayMode] = useState(initialDisplayState.mode);
     const [focusLensEnabled, setFocusLensEnabled] = useState(initialDisplayState.focusLens);
     const [activeChapterGroup, setActiveChapterGroup] = useState(null);
-    const [isChapterBarVisible, setChapterBarVisible] = useState(false);
+    const [isChapterBarVisible, setChapterBarVisible] = useState(true);
     const [chapterViewportWindow, setChapterViewportWindow] = useState({ startRatio: 0, widthRatio: 1 });
     const hasPendingEdits = useMemo(
         () => Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0,
@@ -245,8 +246,20 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         gangCode,
         useHistoryDb,
         snapshotVersion,
+        refreshTrigger,
         enabled: canStartDataFlow && streamEnabled
     });
+
+    const triggerPayrollRefresh = useCallback(() => {
+        if (typeof onRefresh === 'function') {
+            onRefresh();
+            return;
+        }
+
+        if (typeof stream.startStream === 'function') {
+            void stream.startStream();
+        }
+    }, [onRefresh, stream.startStream]);
 
     // Sync stream grand total to component state
     useEffect(() => {
@@ -481,15 +494,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return;
         }
 
-        const currentFirstId = rows[0]?.id || null;
-        const currentLastId = rows[rows.length - 1]?.id || null;
-        const nextFirstId = streamRows[0]?.id || null;
-        const nextLastId = streamRows[streamRows.length - 1]?.id || null;
-
-        if (rows.length === streamRows.length && currentFirstId === nextFirstId && currentLastId === nextLastId) {
-            return;
-        }
-
+        // Always mirror the latest streamed payload once policy allows it.
+        // Period changes can keep row identities stable while numeric values change.
         setRows(streamRows);
     }, [hasPendingEdits, rows, stream.gangs, stream.isComplete, streamRows]);
 
@@ -870,7 +876,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         if (editsArray.length === 0) {
             setAddedColumns([]);
-            onRefresh?.();
+            triggerPayrollRefresh();
             return;
         }
 
@@ -1027,7 +1033,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 alert(`Berhasil menyimpan ${successCount} penyesuaian (kolom/nilai).`);
                 setEditedCells({}); // Clear edits after successful save
                 setAddedColumns([]);
-                onRefresh?.(); // Reload to get fresh data with recalculated totals
+                triggerPayrollRefresh(); // Reload to get fresh data with recalculated totals
             } else {
                 alert('Gagal menyimpan perubahan. Silakan coba lagi.');
             }
@@ -1152,7 +1158,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     alert(`Berhasil menyimpan ${successCount} nilai KONTAN.`);
                 }
                 setEditedKontanCells({});
-                onRefresh?.();
+                triggerPayrollRefresh();
             } else {
                 alert('Gagal menyimpan KONTAN. Silakan coba lagi.');
             }
@@ -2016,7 +2022,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         cols.push({ field: 'beras_jumlah', headers: ['TUNJANGAN', 'BERAS', 'JUMLAH'], w: 80, className: 'text-right' });
 
         if (showAllowanceRates) {
-            cols.push({ field: 'jabatan_rate', headers: ['TUNJANGAN', 'TUNJ JAB', 'RATE'], w: 60, className: 'text-right', render: (row) => formatNumber(row.jabatan_rate) });
+            cols.push({ field: 'jabatan_rate', headers: ['TUNJANGAN', 'TUNJ JAB', 'RATE'], w: 60, className: 'text-right', render: (row) => formatNumber(resolveJabatanRate(row)) });
         }
         cols.push({ field: 'jabatan_jumlah', headers: ['TUNJANGAN', 'TUNJ JAB', 'JUMLAH'], w: 80, className: 'text-right', render: (row) => formatNumber(row.jabatan_jumlah) });
 
@@ -2037,10 +2043,20 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 .filter(([label, field]) => field !== 'brondol' && (activePremiFields.includes(field) || isEditMode))
                 .forEach(([label, field]) => {
                     const displayName = label.replace('PREMI ', '');
+                    const canonicalName = buildCanonicalManualAdjustmentName('PREMI', label);
                     cols.push({
                         field, headers: [PREMI, null, displayName], w: 90, className: 'text-right',
                         render: (row) => {
-                            const val = row[field] || 0;
+                            const val = Number(row[field] || 0);
+                            const empCode = row.emp_code || row.nik;
+                            const editKey = `${empCode}-${field}`;
+                            const isEdited = !!editedCells[editKey];
+
+                            if (isEditMode && row.type === 'employee') {
+                                const displayVal = editedCells[editKey]?.value ?? val;
+                                return <input type="number" className={`edit-input ${isEdited ? 'cell-edited' : ''}`} value={displayVal === 0 ? '' : displayVal} onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'PREMI', canonicalName)} placeholder="0" onClick={(e) => e.stopPropagation()} />;
+                            }
+
                             if (val === 0) return '-';
                             return formatNumber(val);
                         }
@@ -2406,10 +2422,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         setActiveChapterGroup(group);
         setChapterViewportWindow(getPayrollChapterWindowForGroup(chapterSegments, group));
 
-        if (displayMode === 'simple' || !container) {
-            if (container) {
-                container.scrollTo({ left: 0, behavior: 'smooth' });
-            }
+        if (displayMode === 'simple') {
+            return;
+        }
+
+        if (!container) {
             return;
         }
 
@@ -2451,7 +2468,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     useEffect(() => {
         const container = tableContainerRef.current;
-        if (!container) return undefined;
+        if (!container || displayMode === 'simple') return undefined;
         let lastScrollLeft = container.scrollLeft;
 
         const handleScroll = () => {
@@ -2461,13 +2478,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             setChapterBarVisible(true);
             syncActiveChapter(container);
 
-            if (chapterBarHideTimerRef.current) {
-                clearTimeout(chapterBarHideTimerRef.current);
-            }
-
-            chapterBarHideTimerRef.current = setTimeout(() => {
-                setChapterBarVisible(false);
-            }, 900);
+            // Auto-hide disabled - footer should always stay visible for better UX
+            // User can click tabs to navigate without footer disappearing
         };
 
         container.addEventListener('scroll', handleScroll, { passive: true });
@@ -3108,7 +3120,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             )}
 
                                             {/* Add Columns Button in Edit Mode */}
-                                            {isEditMode && cell.level === 0 && cell.label === PREMI && (
+                                            {isEditMode && cell.topHeader === PREMI && cell.label === 'TOTAL PREMI' && (
                                                 <button onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleAddColumn(PREMI);
@@ -3270,13 +3282,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     </tfoot>
                 )}
             </table>
-            {/* Render Footer/Slider */}
+            {contextMenu && (
+                <TableContextMenu x={contextMenu.x} y={contextMenu.y} options={contextMenu.options} onClose={() => setContextMenu(null)} />
+            )}
+            </div>
+            {/* Render Footer OUTSIDE scrollable container so position:fixed works properly */}
             <PayrollScrollChapterBar
                 activeGroup={focusedGroup || 'IDENTITAS'}
                 allGroups={[...new Set(columnDefs.map(c => c.group).filter(Boolean))]}
                 isVisible={isChapterBarVisible}
                 onSelectGroup={(group) => {
-                    if (!group || displayMode === 'simple') return;
+                    if (!group) return;
+                    // Keep current mode; in simple mode this switches focused chapter directly.
                     scrollToChapterGroup(group);
                 }}
                 recentGangs={stream.gangs?.length > 0 ? stream.gangs : []}
@@ -3286,10 +3303,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 displayMode={displayMode}
                 onToggleDisplayMode={() => setDisplayMode(displayMode === 'simple' ? 'detail' : 'simple')}
             />
-            {contextMenu && (
-                <TableContextMenu x={contextMenu.x} y={contextMenu.y} options={contextMenu.options} onClose={() => setContextMenu(null)} />
-            )}
-            </div>
             <SelectionStatusBar stats={selectionStats} />
         </div>
     );

@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
     pickLatestSnapshotVersion,
     pickLatestProfileOverrides,
-    pickLatestValueOverrides
+    pickLatestValueOverrides,
+    resolveSnapshotVersion
 } from "./payrollOverlayLatest";
 
 describe("payrollOverlayLatest", () => {
@@ -48,5 +49,21 @@ describe("payrollOverlayLatest", () => {
             { snapshot_version: 3 },
             { snapshot_version: 2 }
         ] as any)).toBe(3);
+    });
+
+    it("returns the requested snapshot version when it exists", () => {
+        expect(resolveSnapshotVersion([
+            { snapshot_version: 1 },
+            { snapshot_version: 3 },
+            { snapshot_version: 2 }
+        ] as any, 2)).toBe(2);
+    });
+
+    it("returns null when the requested snapshot version does not exist", () => {
+        expect(resolveSnapshotVersion([
+            { snapshot_version: 1 },
+            { snapshot_version: 3 },
+            { snapshot_version: 2 }
+        ] as any, 7)).toBeNull();
     });
 });

@@ -156,30 +156,33 @@ function ViewModeToggle({ viewMode, onChange, disabled }) {
             border: '1px solid #e2e8f0',
             gap: '2px',
         }}>
-            {modes.map(mode => (
-                <button
-                    key={mode.key}
-                    onClick={() => onChange(mode.key)}
-                    disabled={disabled}
-                    style={{
-                        border: 'none',
-                        padding: '5px 12px',
-                        borderRadius: '6px',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.15s',
-                        backgroundColor: viewMode === mode.key ? '#ffffff' : 'transparent',
-                        color: viewMode === mode.key ? '#1d4ed8' : '#64748b',
-                        boxShadow: viewMode === mode.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                        opacity: disabled ? 0.5 : 1,
-                        fontFamily: "inherit",
-                        whiteSpace: 'nowrap',
-                    }}
-                >
-                    {mode.label}
-                </button>
-            ))}
+            {modes.map(mode => {
+                const isActive = viewMode === mode.key;
+                return (
+                    <button
+                        key={mode.key}
+                        onClick={() => onChange(mode.key)}
+                        disabled={disabled}
+                        style={{
+                            border: 'none',
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            fontSize: isActive ? '13px' : '11px',
+                            fontWeight: isActive ? '800' : '600',
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.15s',
+                            backgroundColor: isActive ? '#ffffff' : 'transparent',
+                            color: isActive ? '#1d4ed8' : '#64748b',
+                            boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            opacity: disabled ? 0.5 : 1,
+                            fontFamily: "inherit",
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        {mode.label}
+                    </button>
+                )
+            })}
         </div>
     )
 }

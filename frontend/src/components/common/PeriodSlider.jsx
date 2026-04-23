@@ -1,5 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import './PeriodSlider.css'
+import {
+    buildPeriodSliderPeriods,
+    getPeriodSliderIndex,
+    getPeriodSliderScrollLeft,
+} from '../../utils/periodSliderState'
 
 const MONTH_NAMES = [
     'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
@@ -12,135 +17,90 @@ export default function PeriodSlider({
     onPeriodChange,
     disableControls = false,
     minYear = 2024,
-    maxYear = null, // null means current year + 1
-    historyPeriods = [], // Array of { month, year } that use history data
-    useHistoryDb = false, // Flag to show if system is using history mode
-    currentProductionMonth = null, // Current production month from API
-    currentProductionYear = null // Current production year from API
+    maxYear = null,
+    historyPeriods = [],
+    useHistoryDb = false,
+    currentProductionMonth = null,
+    currentProductionYear = null
 }) {
-    // DEBUG: Log when component renders
-    console.log('[PeriodSlider] Rendering with props:', {
-        currentMonth,
-        currentYear,
-        currentProductionMonth,
-        currentProductionYear,
-        useHistoryDb,
-        disableControls
-    })
-
     const [isDragging, setIsDragging] = useState(false)
     const [startX, setStartX] = useState(0)
     const [scrollLeft, setScrollLeft] = useState(0)
     const sliderRef = useRef(null)
     const trackRef = useRef(null)
 
-    // Normalize currentMonth and currentYear to numbers
     const normalizedMonth = Number(currentMonth) || 1
     const normalizedYear = Number(currentYear) || new Date().getFullYear()
 
-    // Get current production period (for history comparison)
     const prodMonth = currentProductionMonth || new Date().getMonth() + 1
     const prodYear = currentProductionYear || new Date().getFullYear()
-
-    // Calculate max year (current year + 1 if not specified)
     const getMaxYear = () => maxYear || new Date().getFullYear() + 1
 
-    // Create a Set for quick history lookup
-    const historyPeriodSet = new Set(
-        (historyPeriods || []).map(p => `${p.year}-${p.month}`)
+    const periods = useMemo(
+        () => buildPeriodSliderPeriods(minYear, getMaxYear(), new Date()),
+        [minYear, maxYear]
     )
 
-    // Check if a period uses history data (before current production period)
-    const isHistoryPeriod = (month, year) => {
-        // A period is "history" if it's before the current production period
+    const getTotalWidth = () => periods.length * 80
+
+    const getCurrentIndex = () => (
+        getPeriodSliderIndex(periods, normalizedMonth, normalizedYear)
+    )
+
+    const isHistoryPeriod = useCallback((month, year) => {
         const periodValue = year * 100 + month
         const prodValue = prodYear * 100 + prodMonth
-        return periodValue < prodValue
-    }
+        const explicitHistory = historyPeriods.some((period) => (
+            Number(period?.month) === month && Number(period?.year) === year
+        ))
+        return explicitHistory || periodValue < prodValue
+    }, [historyPeriods, prodMonth, prodYear])
 
-    // Generate all periods from minYear to maxYear
-    const generatePeriods = () => {
-        const periods = []
-        const max = getMaxYear()
-
-        for (let year = minYear; year <= max; year++) {
-            for (let month = 1; month <= 12; month++) {
-                // Only include future months for current/max year
-                if (year === max) {
-                    const currentMaxMonth = new Date().getMonth() + 2 // +2 to include next month
-                    if (month > currentMaxMonth) continue
-                }
-                periods.push({ month, year })
-            }
-        }
-        return periods
-    }
-
-    const periods = generatePeriods()
-
-    // Calculate total width needed
-    const getTotalWidth = () => periods.length * 80 // 80px per period
-
-    // Calculate current period index
-    const getCurrentIndex = () => {
-        return periods.findIndex(p => p.month === normalizedMonth && p.year === normalizedYear)
-    }
-
-    // Scroll to current period
     const scrollToCurrent = useCallback(() => {
-        if (!trackRef.current) return
+        if (!sliderRef.current) return
 
         const index = getCurrentIndex()
         if (index === -1) return
 
-        const itemWidth = 80
         const containerWidth = sliderRef.current?.clientWidth || 0
-        const scrollPos = (index * itemWidth) - (containerWidth / 2) + (itemWidth / 2)
+        const scrollPos = getPeriodSliderScrollLeft(index, containerWidth, 80)
 
-        trackRef.current.scrollTo({
+        sliderRef.current.scrollTo({
             left: Math.max(0, scrollPos),
             behavior: 'smooth'
         })
     }, [normalizedMonth, normalizedYear, periods])
 
-    // Auto-scroll to current period on mount and period change
     useEffect(() => {
         scrollToCurrent()
     }, [scrollToCurrent])
 
-    // Handle drag start
     const handleDragStart = (e) => {
         if (disableControls) return
         setIsDragging(true)
-        setStartX(e.pageX - (trackRef.current?.offsetLeft || 0))
-        setScrollLeft(trackRef.current?.scrollLeft || 0)
+        setStartX(e.pageX - (sliderRef.current?.offsetLeft || 0))
+        setScrollLeft(sliderRef.current?.scrollLeft || 0)
     }
 
-    // Handle drag move
     const handleDragMove = (e) => {
         if (!isDragging || disableControls) return
         e.preventDefault()
-        const x = e.pageX - (trackRef.current?.offsetLeft || 0)
-        const walk = (x - startX) * 2 // Scroll speed multiplier
-        if (trackRef.current) {
-            trackRef.current.scrollLeft = scrollLeft - walk
+        const x = e.pageX - (sliderRef.current?.offsetLeft || 0)
+        const walk = (x - startX) * 2
+        if (sliderRef.current) {
+            sliderRef.current.scrollLeft = scrollLeft - walk
         }
     }
 
-    // Handle drag end
     const handleDragEnd = () => {
         setIsDragging(false)
     }
 
-    // Handle period click
     const handlePeriodClick = (month, year) => {
-        if (disableControls) return
-        if (onPeriodChange) {
-            onPeriodChange(month, year)
-        }
+        if (disableControls || !onPeriodChange) return
+        onPeriodChange(month, year)
     }
 
-    // Handle keyboard navigation
     const handleKeyDown = (e) => {
         if (disableControls) return
 
@@ -173,7 +133,6 @@ export default function PeriodSlider({
         }
     }
 
-    // Quick navigation functions
     const goToToday = () => {
         const now = new Date()
         if (onPeriodChange) {
@@ -201,16 +160,14 @@ export default function PeriodSlider({
         }
     }
 
-    // Check if period is current
-    const isCurrentPeriod = (month, year) => {
-        const now = new Date()
-        return month === now.getMonth() + 1 && year === now.getFullYear()
-    }
+    const now = new Date()
+    const isCurrentPeriod = (month, year) => (
+        month === now.getMonth() + 1 && year === now.getFullYear()
+    )
 
-    // Check if period is selected
-    const isSelectedPeriod = (month, year) => {
-        return month === normalizedMonth && year === normalizedYear
-    }
+    const isSelectedPeriod = (month, year) => (
+        month === normalizedMonth && year === normalizedYear
+    )
 
     return (
         <div className="period-slider-container">
@@ -225,7 +182,7 @@ export default function PeriodSlider({
                         disabled={disableControls || getCurrentIndex() === 0}
                         title="Bulan Sebelumnya"
                     >
-                        ◀
+                        ‹
                     </button>
                     <button
                         className="period-slider-btn period-slider-btn-small"
@@ -241,7 +198,7 @@ export default function PeriodSlider({
                         disabled={disableControls || getCurrentIndex() === periods.length - 1}
                         title="Bulan Selanjutnya"
                     >
-                        ▶
+                        ›
                     </button>
                 </div>
             </div>
@@ -266,10 +223,10 @@ export default function PeriodSlider({
                     className="period-slider-track"
                     style={{ width: `${getTotalWidth()}px` }}
                 >
-                    {periods.map((period, index) => {
-                        const isHistory = isHistoryPeriod(period.month, period.year);
-                        const isSelected = isSelectedPeriod(period.month, period.year);
-                        const isCurrent = isCurrentPeriod(period.month, period.year);
+                    {periods.map((period) => {
+                        const isHistory = isHistoryPeriod(period.month, period.year)
+                        const isSelected = isSelectedPeriod(period.month, period.year)
+                        const isCurrent = isCurrentPeriod(period.month, period.year)
 
                         return (
                             <button
@@ -281,31 +238,20 @@ export default function PeriodSlider({
                             >
                                 <span className="period-slider-month">{MONTH_NAMES[period.month - 1]}</span>
                                 <span className="period-slider-year">{period.year}</span>
-                                {useHistoryDb && isHistory && (
-                                    <span className="period-slider-indicator" title="Data History (Arsip)">📦</span>
-                                )}
+                                <span className="period-slider-markers" aria-hidden="true">
+                                    {isCurrent && <span className="period-slider-marker period-slider-marker-current" title="Bulan Ini">●</span>}
+                                    {isHistory && <span className="period-slider-marker period-slider-marker-history" title="Data History">H</span>}
+                                    {useHistoryDb && isHistory && <span className="period-slider-marker period-slider-marker-archive" title="History Mode">A</span>}
+                                </span>
                             </button>
-                        );
+                        )
                     })}
                 </div>
             </div>
 
             <div className="period-slider-footer">
                 <span className="period-slider-hint">
-                    {isDragging ? '🖱️ Tahan & geser...' : '🖱️ Klik atau geser untuk navigasi'}
-                </span>
-                <span className="period-slider-legend">
-                    {useHistoryDb && (
-                        <span className="period-slider-history-badge">
-                            📦 History Mode
-                        </span>
-                    )}
-                    <span className="period-slider-legend-item">
-                        <span className="period-slider-legend-dot period-slider-legend-current"></span> Bulan Ini
-                    </span>
-                    <span className="period-slider-legend-item">
-                        <span className="period-slider-legend-dot period-slider-legend-history"></span> History
-                    </span>
+                    {isDragging ? 'Tahan dan geser...' : 'Klik atau geser untuk navigasi'}
                 </span>
                 <span className="period-slider-position">
                     {getCurrentIndex() + 1} / {periods.length}

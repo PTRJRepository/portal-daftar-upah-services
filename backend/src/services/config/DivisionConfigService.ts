@@ -340,6 +340,33 @@ export class DivisionConfigService {
     }
 
     /**
+     * Get source divisions used to aggregate a division.
+     * Real divisions resolve to themselves, aggregate virtual divisions expand
+     * to their known sources.
+     */
+    public getSourceDivisions(input: string): string[] {
+        const division = this.getDivision(input);
+        if (!division) {
+            const resolved = this.resolveCode(input);
+            return resolved ? [resolved] : [];
+        }
+
+        if (division.type !== "virtual") {
+            return [division.code];
+        }
+
+        if (division.sourceDivision) {
+            return [division.sourceDivision];
+        }
+
+        if (division.code === "WORKSHOP") {
+            return ["PG1A", "AB2"];
+        }
+
+        return [];
+    }
+
+    /**
      * Match a gang to its virtual division
      * Returns the virtual division code if matched, null otherwise
      *
@@ -390,10 +417,39 @@ export class DivisionConfigService {
     }
 
     /**
+     * Compatibility alias used by older services.
+     */
+    public resolveVirtualDivision(
+        gangCode: string,
+        sourceLocCode: string,
+        description?: string
+    ): string | null {
+        return this.matchGangToVirtualDivision(gangCode, description, sourceLocCode);
+    }
+
+    /**
+     * Check whether a gang belongs to a specific virtual division.
+     */
+    public isGangInVirtualDivision(
+        gangCode: string,
+        virtualDivision: string,
+        description?: string,
+        sourceLocCode?: string
+    ): boolean {
+        const resolvedVirtual = this.resolveCode(virtualDivision);
+        const matchedVirtual = this.matchGangToVirtualDivision(gangCode, description, sourceLocCode);
+        return matchedVirtual === resolvedVirtual;
+    }
+
+    /**
      * Get all division codes
      */
-    public getAllDivisionCodes(): string[] {
-        return Array.from(this.divisions.keys());
+    public getAllDivisionCodes(includeVirtual: boolean = true): string[] {
+        const allCodes = Array.from(this.divisions.keys());
+        if (includeVirtual) {
+            return allCodes;
+        }
+        return allCodes.filter((code) => this.divisions.get(code)?.type !== "virtual");
     }
 
     /**
@@ -408,6 +464,49 @@ export class DivisionConfigService {
      */
     public getVirtualDivisions(): DivisionDefinition[] {
         return Array.from(this.divisions.values()).filter(d => d.type === 'virtual');
+    }
+
+    /**
+     * Get all gangs from all divisions (used by GangService.fetchAllGangs)
+     */
+    public async getAllGangs(): Promise<GangInfo[]> {
+        const db = Database.getInstance();
+
+        const query = `
+            SELECT DISTINCT
+                RTRIM(GangCode) as gang_code,
+                RTRIM(Description) as description,
+                RTRIM(LocCode) as loc_code
+            FROM (
+                SELECT GangCode, Description, LocCode FROM HR_GANG
+                UNION ALL
+                SELECT GangID as GangCode, Description, LocCode FROM PR_GANG
+            ) combined
+            WHERE RTRIM(GangCode) IS NOT NULL AND RTRIM(GangCode) != ''
+        `;
+
+        const results: GangInfo[] = [];
+        const seenCodes = new Set<string>();
+
+        try {
+            const rows = await db.query<any>(query, []);
+            for (const row of rows) {
+                const code = (row.gang_code || '').trim().toUpperCase();
+                if (code && !seenCodes.has(code)) {
+                    seenCodes.add(code);
+                    results.push({
+                        gang_code: code,
+                        description: (row.description || code).trim(),
+                        loc_code: (row.loc_code || '').trim(),
+                        division_code: '' // Unknown at this point
+                    });
+                }
+            }
+        } catch (e) {
+            console.error("[DivisionConfigService] Failed to get all gangs:", e);
+        }
+
+        return results;
     }
 
     /**
@@ -504,11 +603,15 @@ export class DivisionConfigService {
             
             // Apply filtering for virtual divisions vs real divisions
             if (division.type === 'virtual') {
-                 return results.filter(g => {
+                 const filtered = results.filter(g => {
                     const code = g.gang_code.toUpperCase();
                     const desc = g.description.toUpperCase();
                     return (division.gangPattern?.test(code)) || (division.descriptionPattern?.test(desc));
                 });
+                if (filtered.length > 0) {
+                    return filtered.sort((a, b) => a.gang_code.localeCompare(b.gang_code));
+                }
+                return this.getStaticVirtualGangFallback(division);
             } else {
                 // REAL DIVISION: Clean up by excluding virtual division gangs
                 // Get all virtual division definitions
@@ -536,8 +639,29 @@ export class DivisionConfigService {
             }
         } catch (e: any) {
             console.error(`[DivisionConfigService] Discovery failed for ${division.code}:`, e);
+            if (division.type === "virtual") {
+                return this.getStaticVirtualGangFallback(division);
+            }
             return [];
         }
+    }
+
+    private getStaticVirtualGangFallback(division: DivisionDefinition): GangInfo[] {
+        const sourceLocCode = division.sourceDivision || "";
+        const fallbackGangMap: Record<string, string[]> = {
+            INF: ["INF", "INT"],
+            NRS: ["B2N"],
+            WKS_AR: ["HMC"],
+            WKS_PG: ["AMC"],
+            WORKSHOP: ["AMC", "HMC"]
+        };
+
+        return (fallbackGangMap[division.code] || []).map((gangCode) => ({
+            gang_code: gangCode,
+            description: gangCode,
+            loc_code: sourceLocCode,
+            division_code: division.code
+        }));
     }
 
     /**

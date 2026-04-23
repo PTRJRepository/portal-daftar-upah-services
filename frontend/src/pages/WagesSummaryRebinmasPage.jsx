@@ -15,6 +15,7 @@ import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import PrintModeSelector from '../components/common/PrintModeSelector';
 import PrintSignature from '../components/common/PrintSignature';
+import CompactPeriodScroll from '../components/common/CompactPeriodScroll';
 import { initPrintMode } from '../utils/printOptimizer';
 import '../styles/wages-summary-professional.css';
 import '../styles/wages-summary-print-simple.css';
@@ -925,7 +926,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 <div className="report-header-info">
                     <h1>Wages Summary (Rebinmas)</h1>
                     <p>Laporan rincian upah lengkap untuk entitas PT Rebinmas Jaya.</p>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                         {/* Division Type Selector (All/Real/Virtual) */}
                         <select
                             value={divisionType}
@@ -946,27 +947,46 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                             <option value="real">Divisi Utama Saja</option>
                             <option value="virtual">Divisi Virtual Saja</option>
                         </select>
-                        
-                        <select
-                            value={month}
-                            onChange={(e) => setMonth(parseInt(e.target.value))}
-                            className="report-filter-badge"
-                            style={{ cursor: 'pointer', outline: 'none' }}
-                        >
-                            {monthOptions.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
-                        <select
-                            value={year}
-                            onChange={(e) => setYear(parseInt(e.target.value))}
-                            className="report-filter-badge"
-                            style={{ cursor: 'pointer', outline: 'none' }}
-                        >
-                            {yearOptions.map(y => (
-                                <option key={y} value={y}>{y}</option>
-                            ))}
-                        </select>
+
+                        {/* ── Period Slider (Highlighted & Prominent) ─────────────── */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
+                            border: '2px solid #60a5fa',
+                            borderRadius: '12px',
+                            padding: '5px 12px 5px 8px',
+                            boxShadow: '0 4px 16px rgba(37, 99, 235, 0.4), 0 0 0 3px rgba(96, 165, 250, 0.18)',
+                            transition: 'box-shadow 0.2s'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                fontSize: '10px',
+                                fontWeight: '800',
+                                color: '#93c5fd',
+                                letterSpacing: '0.08em',
+                                textTransform: 'uppercase',
+                                whiteSpace: 'nowrap'
+                            }}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                    <line x1="16" y1="2" x2="16" y2="6"/>
+                                    <line x1="8" y1="2" x2="8" y2="6"/>
+                                    <line x1="3" y1="10" x2="21" y2="10"/>
+                                </svg>
+                                Periode
+                            </div>
+                            <CompactPeriodScroll
+                                month={month}
+                                year={year}
+                                onChange={(m, y) => { setMonth(m); setYear(y); }}
+                                disableControls={loading}
+                            />
+                        </div>
+
                         <span className="report-filter-badge" style={{ backgroundColor: thrMode ? '#8b5cf6' : (comparisonMode ? '#10b981' : '#64748b') }}>
                             {thrMode ? 'Mode THR' : (comparisonMode ? 'Mode Perbandingan' : 'Mode Standar')}
                         </span>
@@ -1320,7 +1340,35 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                 </div>
                             )}
 
-                            {/* Signature Section */}
+                            {/* Signature / Papan Penanda Tangan - visible on screen AND print */}
+                            <div style={{
+                                marginTop: '40px',
+                                padding: '20px 24px',
+                                background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
+                                border: '2px solid #c7d2fe',
+                                borderRadius: '12px',
+                                boxShadow: '0 4px 16px rgba(99, 102, 241, 0.08)'
+                            }} className="no-print">
+                                <div style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: '800',
+                                    color: '#4f46e5',
+                                    letterSpacing: '0.12em',
+                                    textTransform: 'uppercase',
+                                    textAlign: 'center',
+                                    marginBottom: '16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '10px'
+                                }}>
+                                    <span style={{ display: 'inline-block', width: '48px', height: '1px', background: '#c7d2fe' }} />
+                                    ✍️ Papan Penanda Tangan
+                                    <span style={{ display: 'inline-block', width: '48px', height: '1px', background: '#c7d2fe' }} />
+                                </div>
+                                <PrintSignature />
+                            </div>
+                            {/* Print-only version */}
                             <div className="print-only" style={{ marginTop: '40px' }}>
                                 <PrintSignature />
                             </div>

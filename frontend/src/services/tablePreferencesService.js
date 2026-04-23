@@ -18,12 +18,13 @@ export const DEFAULT_CELL_COLORS = {
   IDENTITAS: { bg: '#F8FAFC', text: '#334155', border: '#CBD5E1' },      // Slate-50/700
   PAJAK: { bg: '#FAFAF9', text: '#44403C', border: '#D6D3D1' },          // Stone-50/700
   ABSENSI: { bg: '#F0FDF4', text: '#15803D', border: '#86EFAC' },        // Green-50/700
-  PANEN: { bg: '#FEFCE8', text: '#A16207', border: '#FDE047' },          // Yellow-50/700
+  PANEN: { bg: '#F1F5F9', text: '#64748B', border: '#CBD5E1' },          // Slate disabled
   PENGGAJIAN: { bg: '#F0F9FF', text: '#0369A1', border: '#7DD3FC' },     // Sky-50/700
   TUNJANGAN: { bg: '#FFF7ED', text: '#C2410C', border: '#FDBA74' },      // Orange-50/700
+  'PENDAPATAN LAINNYA': { bg: '#ECFDF5', text: '#047857', border: '#6EE7B7' }, // Emerald-50/700
   PREMI: { bg: '#FFFAF0', text: '#B45309', border: '#FCD34D' },          // Amber-50/700 (FloralWhite-ish)
   'POTONGAN UPAH KOTOR': { bg: '#FEF2F2', text: '#B91C1C', border: '#FCA5A5' }, // Red-50/700
-  'UPAH KOTOR': { bg: '#EEF2FF', text: '#4338CA', border: '#A5B4FC' },   // Indigo-50/700
+  'UPAH KOTOR': { bg: '#ECFDF5', text: '#166534', border: '#86EFAC' },   // Green-50/800
   'POTONGAN UPAH BERSIH': { bg: '#FDF2F8', text: '#BE185D', border: '#F9A8D4' }, // Pink-50/700
   'UPAH BERSIH': { bg: '#F0FDFA', text: '#0F766E', border: '#5EEAD4' }   // Teal-50/700 (Not dark green to keep it soft, but distinct)
 };

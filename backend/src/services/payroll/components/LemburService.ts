@@ -54,6 +54,10 @@ export interface LemburRecord {
     hours: number;
     rate: number;          // Weighted average rate
     amount: number;
+    /** Human-readable rate description, e.g.: "7 jam @ 1.5x + 7 jam @ 2x" */
+    uraian: string;
+    /** UPJ value used in calculation */
+    upj_value: number;
     meta: PayrollComponentMetadata;
 }
 
@@ -246,6 +250,8 @@ export class LemburService extends BasePayrollComponentService<LemburInput, Lemb
                 hours: rec.hours || 0,
                 rate: rec.breakdown?.total_rate || 0,
                 amount: rec.breakdown?.total_amount || rec.amount || 0,
+                uraian: rec.breakdown?.uraian || '',
+                upj_value: rec.breakdown?.upj_value || 0,
                 meta: this.buildMetadata('DATABASE_PLANTWARE', `Overtime transaction on ${rec.trx_date}`, {
                     calculation_basis: `Hours: ${rec.hours}, Rate: ${rec.breakdown?.total_rate || 0}`,
                     confidence_level: 'high',
@@ -267,6 +273,8 @@ export class LemburService extends BasePayrollComponentService<LemburInput, Lemb
             hours: rec.hours || 0,
             rate: rec.rate || 0,
             amount: rec.amount || 0,
+            uraian: rec.uraian || '',
+            upj_value: rec.upj_value || 0,
             meta: this.buildMetadata('DATABASE_PLANTWARE', `Overtime transaction`, {
                 calculation_basis: `Hours: ${rec.hours}, Rate: ${rec.rate}`,
                 confidence_level: 'high',

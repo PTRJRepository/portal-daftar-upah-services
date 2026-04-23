@@ -62,6 +62,8 @@ const DB_EXTEND_TRANS_DATABASE = Config.DB_EXTEND_TRANS_DATABASE;
 export interface PayrollHistoryMaster {
     id?: number;
     history_id: string;
+    snapshot_batch_id?: number;
+    snapshot_version?: number;
     period_month: number;
     period_year: number;
     division_code: string;
@@ -111,6 +113,8 @@ export interface PayrollHistoryDetail {
     id?: number;
     history_id: string;
     master_id: number;
+    snapshot_batch_id?: number;
+    snapshot_version?: number;
     emp_code: string;
     emp_name?: string;
     nik?: string;
@@ -178,6 +182,8 @@ export interface PayrollHistoryDetail {
     task_desc?: string;
     shortage_details?: string;
     shortage_total_hours?: number;
+    jabatan?: string;  // Job title from employee_estate
+    is_spsi_member?: boolean;  // SPSI membership status derived from pot_spsi > 0
     created_at?: Date;
 }
 
@@ -279,6 +285,8 @@ export interface HistoryHrEmployee {
     gang_code?: string;
     job_code?: string;
     position?: string;
+    jabatan?: string;  // Job title from employee_estate
+    is_spsi_member?: boolean;  // SPSI membership status derived from pot_spsi > 0
     join_date?: Date;
     terminate_date?: Date;
     status?: string;
@@ -679,136 +687,88 @@ export class HistoryDatabaseService {
     public async savePayrollHistoryMaster(data: PayrollHistoryMaster): Promise<number> {
         const db = this.getPayrollDatabase();
 
-        // Check if record exists
-        const existing = await db.queryOne<{ id: number }>(`
-            SELECT id FROM dbo.payroll_history_header
-            WHERE period_month = ? AND period_year = ? AND division_code = ? AND gang_code = ?
-        `, [data.period_month, data.period_year, data.division_code, data.gang_code]);
+        const hasSnapshotVersion = typeof data.snapshot_version === "number" && Number.isFinite(data.snapshot_version);
+        const existing = hasSnapshotVersion
+            ? await db.queryOne<{ id: number }>(`
+                SELECT id FROM dbo.payroll_history_header
+                WHERE period_month = ? AND period_year = ? AND division_code = ? AND gang_code = ? AND snapshot_version = ?
+            `, [data.period_month, data.period_year, data.division_code, data.gang_code, data.snapshot_version])
+            : await db.queryOne<{ id: number }>(`
+                SELECT id FROM dbo.payroll_history_header
+                WHERE period_month = ? AND period_year = ? AND division_code = ? AND gang_code = ?
+            `, [data.period_month, data.period_year, data.division_code, data.gang_code]);
+
+        const columnMap: Record<string, any> = {
+            history_id: data.history_id,
+            snapshot_batch_id: data.snapshot_batch_id,
+            snapshot_version: data.snapshot_version,
+            period_month: data.period_month,
+            period_year: data.period_year,
+            division_code: data.division_code,
+            gang_code: data.gang_code,
+            gang_description: data.gang_description,
+            total_employees: data.total_employees,
+            total_hk: data.total_hk,
+            total_hari_kerja: data.total_hari_kerja,
+            total_cuti_tahunan: data.total_cuti_tahunan,
+            total_cuti_sakit: data.total_cuti_sakit,
+            total_cuti_minggu: data.total_cuti_minggu,
+            total_cuti_nasional: data.total_cuti_nasional,
+            total_upah_dasar: data.total_upah_dasar,
+            total_upah_pokok: data.total_upah_pokok,
+            total_gaji_pokok: data.total_gaji_pokok,
+            total_beras: data.total_beras,
+            total_jabatan: data.total_jabatan,
+            total_masa_kerja: data.total_masa_kerja,
+            total_lembur: data.total_lembur,
+            total_tunjangan: data.total_tunjangan,
+            total_premi_brondol: data.total_premi_brondol,
+            total_premi_prunning: data.total_premi_prunning,
+            total_premi_insentif: data.total_premi_insentif,
+            total_premi_kinerja: data.total_premi_kinerja,
+            total_premi: data.total_premi,
+            dynamic_premi_data: data.dynamic_premi_data,
+            total_koreksi: data.total_koreksi,
+            total_potongan: data.total_potongan,
+            total_pph21: data.total_pph21,
+            total_bpjs_pekerja: data.total_bpjs_pekerja,
+            total_bpjs_majikan: data.total_bpjs_majikan,
+            total_spsi: data.total_spsi,
+            dynamic_potongan_data: data.dynamic_potongan_data,
+            total_upah_kotor: data.total_upah_kotor,
+            total_upah_bersih: data.total_upah_bersih,
+            total_ffb_weight: data.total_ffb_weight,
+            total_weight_tbs: data.total_weight_tbs,
+            informasi_tambahan: data.informasi_tambahan,
+            created_by: data.created_by,
+            source_endpoint: data.source_endpoint,
+            is_locked: data.is_locked ?? false,
+            lock_reason: data.lock_reason
+        };
 
         if (existing) {
-            // Update existing
+            const assignments = Object.keys(columnMap)
+                .map((column) => `${column} = ?`)
+                .join(",\n                    ");
             await db.query(`
                 UPDATE dbo.payroll_history_header SET
-                    history_id = ?,
-                    gang_description = ?,
-                    total_employees = ?,
-                    total_hk = ?,
-                    total_hari_kerja = ?,
-                    total_cuti_tahunan = ?,
-                    total_cuti_sakit = ?,
-                    total_cuti_minggu = ?,
-                    total_cuti_nasional = ?,
-                    total_upah_dasar = ?,
-                    total_upah_pokok = ?,
-                    total_gaji_pokok = ?,
-                    total_beras = ?,
-                    total_jabatan = ?,
-                    total_masa_kerja = ?,
-                    total_lembur = ?,
-                    total_tunjangan = ?,
-                    total_premi_brondol = ?,
-                    total_premi_prunning = ?,
-                    total_premi_insentif = ?,
-                    total_premi_kinerja = ?,
-                    total_premi = ?,
-                    dynamic_premi_data = ?,
-                    total_koreksi = ?,
-                    total_potongan = ?,
-                    total_pph21 = ?,
-                    total_bpjs_pekerja = ?,
-                    total_bpjs_majikan = ?,
-                    total_spsi = ?,
-                    dynamic_potongan_data = ?,
-                    total_upah_kotor = ?,
-                    total_upah_bersih = ?,
-                    total_ffb_weight = ?,
-                    total_weight_tbs = ?,
-                    informasi_tambahan = ?,
-                    created_by = ?,
-                    source_endpoint = ?,
-                    is_locked = ?,
-                    lock_reason = ?
+                    ${assignments}
                 WHERE id = ?
-            `, [
-                data.history_id,
-                data.gang_description,
-                data.total_employees,
-                data.total_hk,
-                data.total_hari_kerja,
-                data.total_cuti_tahunan,
-                data.total_cuti_sakit,
-                data.total_cuti_minggu,
-                data.total_cuti_nasional,
-                data.total_upah_dasar,
-                data.total_upah_pokok,
-                data.total_gaji_pokok,
-                data.total_beras,
-                data.total_jabatan,
-                data.total_masa_kerja,
-                data.total_lembur,
-                data.total_tunjangan,
-                data.total_premi_brondol,
-                data.total_premi_prunning,
-                data.total_premi_insentif,
-                data.total_premi_kinerja,
-                data.total_premi,
-                data.dynamic_premi_data,
-                data.total_koreksi,
-                data.total_potongan,
-                data.total_pph21,
-                data.total_bpjs_pekerja,
-                data.total_bpjs_majikan,
-                data.total_spsi,
-                data.dynamic_potongan_data,
-                data.total_upah_kotor,
-                data.total_upah_bersih,
-                data.total_ffb_weight,
-                data.total_weight_tbs,
-                data.informasi_tambahan,
-                data.created_by,
-                data.source_endpoint,
-                data.is_locked,
-                data.lock_reason,
-                existing.id
-            ]);
+            `, [...Object.values(columnMap), existing.id]);
             return existing.id;
-        } else {
-            // Insert new
-            const result = await db.query(`
-                INSERT INTO dbo.payroll_history_header (
-                    history_id, period_month, period_year, division_code, gang_code, gang_description,
-                    total_employees, total_hk, total_hari_kerja,
-                    total_cuti_tahunan, total_cuti_sakit, total_cuti_minggu, total_cuti_nasional,
-                    total_upah_dasar, total_upah_pokok, total_gaji_pokok,
-                    total_beras, total_jabatan, total_masa_kerja, total_lembur, total_tunjangan,
-                    total_premi_brondol, total_premi_prunning, total_premi_insentif, total_premi_kinerja, total_premi,
-                    dynamic_premi_data, total_koreksi, total_potongan, total_pph21,
-                    total_bpjs_pekerja, total_bpjs_majikan, total_spsi,
-                    dynamic_potongan_data, total_upah_kotor, total_upah_bersih,
-                    total_ffb_weight, total_weight_tbs, informasi_tambahan,
-                    created_by, source_endpoint, is_locked, lock_reason, created_at
-                ) OUTPUT INSERTED.id VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?
-                )
-            `, [
-                data.history_id, data.period_month, data.period_year, data.division_code, data.gang_code, data.gang_description,
-                data.total_employees, data.total_hk, data.total_hari_kerja,
-                data.total_cuti_tahunan, data.total_cuti_sakit, data.total_cuti_minggu, data.total_cuti_nasional,
-                data.total_upah_dasar, data.total_upah_pokok, data.total_gaji_pokok,
-                data.total_beras, data.total_jabatan, data.total_masa_kerja, data.total_lembur, data.total_tunjangan,
-                data.total_premi_brondol, data.total_premi_prunning, data.total_premi_insentif, data.total_premi_kinerja, data.total_premi,
-                data.dynamic_premi_data, data.total_koreksi, data.total_potongan, data.total_pph21,
-                data.total_bpjs_pekerja, data.total_bpjs_majikan, data.total_spsi,
-                data.dynamic_potongan_data, data.total_upah_kotor, data.total_upah_bersih,
-                data.total_ffb_weight, data.total_weight_tbs, data.informasi_tambahan,
-                data.created_by, data.source_endpoint, data.is_locked || false, data.lock_reason, new Date()
-            ]);
-            return result[0]?.id;
         }
+
+        const insertColumns = [...Object.keys(columnMap), "created_at"];
+        const placeholders = insertColumns.map(() => "?").join(", ");
+        const params = [...Object.values(columnMap), new Date()];
+        const result = await db.query(`
+            INSERT INTO dbo.payroll_history_header (
+                ${insertColumns.join(",\n                ")}
+            ) OUTPUT INSERTED.id VALUES (
+                ${placeholders}
+            )
+        `, params);
+        return result[0]?.id;
     }
 
     /**
@@ -916,6 +876,8 @@ export class HistoryDatabaseService {
         const columnMap: Record<string, any> = {
             history_id: data.history_id,
             master_id: data.master_id,
+            snapshot_batch_id: data.snapshot_batch_id,
+            snapshot_version: data.snapshot_version,
             emp_code: data.emp_code,
             emp_name: data.emp_name,
             nik: existing ? existing.nik : data.nik,
@@ -952,6 +914,9 @@ export class HistoryDatabaseService {
             lembur_records: data.lembur_records,
             total_tunjangan: data.total_tunjangan,
             premi_brondol: data.premi_brondol,
+            premi_brondol_loosefruit: data.premi_brondol_loosefruit,
+            premi_brondol_adtrans: data.premi_brondol_adtrans,
+            premi_brondol_total: data.premi_brondol_total,
             premi_pph: data.premi_pph,
             total_premi: data.total_premi,
             premi_detail: data.premi_detail,
@@ -978,7 +943,9 @@ export class HistoryDatabaseService {
             task_code: data.task_code,
             task_desc: data.task_desc,
             shortage_details: data.shortage_details,
-            shortage_total_hours: data.shortage_total_hours
+            shortage_total_hours: data.shortage_total_hours,
+            jabatan: data.jabatan,
+            is_spsi_member: data.is_spsi_member
         };
 
         const columns = Object.keys(columnMap);
@@ -1032,7 +999,7 @@ export class HistoryDatabaseService {
         const startTime = Date.now();
         const db = this.getPayrollDatabase();
 
-        let masterQuery = `SELECT id, dynamic_premi_data, dynamic_potongan_data FROM dbo.payroll_history_header WHERE period_month = ? AND period_year = ?`;
+        let masterQuery = `SELECT h.id, h.snapshot_version, h.dynamic_premi_data, h.dynamic_potongan_data FROM dbo.payroll_history_header h WHERE h.period_month = ? AND h.period_year = ?`;
         const masterParams: any[] = [periodMonth, periodYear];
         debug(CATEGORY, `getHistoricalPayrollDataAsExtractorFormat params: M:${periodMonth} Y:${periodYear} Gang:${gangCode} Div:${divisionCode}`);
 
@@ -1051,7 +1018,7 @@ export class HistoryDatabaseService {
                     
                     if (targets.length > 0) {
                         const placeholders = targets.map(() => '?').join(',');
-                        masterQuery += ` AND (gang_code IN (${placeholders}) OR division_code IN (${placeholders}))`;
+                        masterQuery += ` AND (h.gang_code IN (${placeholders}) OR h.division_code IN (${placeholders}))`;
                         masterParams.push(...targets, ...targets);
                     }
                 } else {
@@ -1071,9 +1038,9 @@ export class HistoryDatabaseService {
                     // [REFINEMENT] If we have specific divisions, don't include global 'ALL' headers
                     // This prevents duplication when fetching history that has both divisional and global records.
                     if (divisionCode === 'ALL') {
-                        masterQuery += ` AND division_code = 'ALL'`;
+                        masterQuery += ` AND h.division_code = 'ALL'`;
                     } else {
-                        masterQuery += ` AND division_code IN (${placeholders})`;
+                        masterQuery += ` AND h.division_code IN (${placeholders})`;
                         masterParams.push(...divList);
                     }
                 }
@@ -1083,11 +1050,22 @@ export class HistoryDatabaseService {
             }
         }
         if (gangCode && gangCode !== "ALL") {
-            masterQuery += ` AND gang_code = ?`;
+            masterQuery += ` AND h.gang_code = ?`;
             masterParams.push(gangCode);
         }
 
-        const masters = await db.query<{ id: number, dynamic_premi_data: string, dynamic_potongan_data: string }>(masterQuery, masterParams);
+        masterQuery += `
+            AND ISNULL(h.snapshot_version, 0) = (
+                SELECT ISNULL(MAX(h2.snapshot_version), 0)
+                FROM dbo.payroll_history_header h2
+                WHERE h2.period_month = h.period_month
+                  AND h2.period_year = h.period_year
+                  AND h2.division_code = h.division_code
+                  AND h2.gang_code = h.gang_code
+            )
+        `;
+
+        const masters = await db.query<{ id: number, snapshot_version: number, dynamic_premi_data: string, dynamic_potongan_data: string }>(masterQuery, masterParams);
 
         if (masters.length === 0) return null; // No history data seeded yet
 
@@ -1152,6 +1130,8 @@ export class HistoryDatabaseService {
             detailQuery += ` AND (division_code IN (${placeholders}) OR loc_code IN (${placeholders}))`;
             detailParams.push(...divList, ...divList);
         }
+
+        detailQuery += ` ORDER BY ISNULL(d.snapshot_version, 0) DESC, d.id DESC`;
 
         debug(CATEGORY, `detailQuery: ${detailQuery}`, detailParams);
         const rawDetails = await db.query<any>(detailQuery, detailParams);
@@ -1271,6 +1251,21 @@ export class HistoryDatabaseService {
             }
         }
 
+        const normalizePremiHeader = (key: string): string => {
+            const normalized = key.trim().replace(/\s+/g, "_").toUpperCase();
+            return normalized.startsWith("PREMI_") ? normalized : `PREMI_${normalized}`;
+        };
+
+        const normalizePotonganHeader = (key: string): string => {
+            const normalized = key.trim().replace(/\s+/g, "_").toUpperCase();
+            if (normalized.startsWith("KOREKSI")) return normalized;
+            return normalized.startsWith("POTONGAN_") ? normalized : `POTONGAN_${normalized}`;
+        };
+
+        const shouldTrackPremiHeader = (normalizedKey: string): boolean => {
+            return normalizedKey !== "PREMI_BRONDOL" && normalizedKey !== "PREMI_KOREKSI";
+        };
+
         const data_rows = finalDetails.map(d => {
             const empCodeClean = d.emp_code?.trim().toUpperCase() || "";
             const hrOverride = hrDataMap.get(empCodeClean);
@@ -1352,18 +1347,29 @@ export class HistoryDatabaseService {
                 pph21_ter: parseFloat(d.pph21_ter) || 0,
                 upah_bersih: parseFloat(d.upah_bersih) || 0,
                 shortage_details: d.shortage_details ? JSON.parse(d.shortage_details) : undefined,
-                shortage_total_hours: parseFloat(d.shortage_total_hours) || 0
+                shortage_total_hours: parseFloat(d.shortage_total_hours) || 0,
+                jabatan: (d.jabatan || '').trim(),
+                is_spsi_member: d.is_spsi_member ?? ((d.pot_spsi || 0) > 0)
             };
 
             // Dynamic fields
             try {
                 if (d.premi_detail) {
                     const pd = JSON.parse(d.premi_detail);
-                    Object.keys(pd).forEach(k => row[k] = parseFloat(pd[k]) || 0);
+                    Object.keys(pd).forEach(k => {
+                        row[k] = parseFloat(pd[k]) || 0;
+                        const normalizedKey = normalizePremiHeader(k);
+                        if (shouldTrackPremiHeader(normalizedKey)) {
+                            dynamicPremiSet.add(normalizedKey);
+                        }
+                    });
                 }
                 if (d.potongan_detail) {
                     const pd = JSON.parse(d.potongan_detail);
-                    Object.keys(pd).forEach(k => row[k] = parseFloat(pd[k]) || 0);
+                    Object.keys(pd).forEach(k => {
+                        row[k] = parseFloat(pd[k]) || 0;
+                        dynamicPotonganSet.add(normalizePotonganHeader(k));
+                    });
                 }
             } catch (e) { }
 
@@ -1724,15 +1730,29 @@ export class HistoryDatabaseService {
     public async saveHrEmployeeHistory(data: HistoryHrEmployee): Promise<number> {
         const db = this.getPayrollDatabase(); // HR history goes to extend_db_ptrj
 
-        // Check existing record to resolve new_nik
-        const existing = await db.queryOne<{ id: number; nik: string; new_nik: string }>(`
-            SELECT id, nik, new_nik FROM dbo.history_hr_employee
-            WHERE emp_code = ? AND period_month = ? AND period_year = ?
-        `, [data.emp_code, data.period_month, data.period_year]);
+        let schemaHasNewNik = true;
+        let existing: { id: number; nik: string; new_nik?: string } | null = null;
+
+        try {
+            existing = await db.queryOne<{ id: number; nik: string; new_nik: string }>(`
+                SELECT id, nik, new_nik FROM dbo.history_hr_employee
+                WHERE emp_code = ? AND period_month = ? AND period_year = ?
+            `, [data.emp_code, data.period_month, data.period_year]);
+        } catch (e: any) {
+            if (!this.isMissingColumnError(e, "new_nik")) {
+                throw e;
+            }
+
+            schemaHasNewNik = false;
+            existing = await db.queryOne<{ id: number; nik: string }>(`
+                SELECT id, nik FROM dbo.history_hr_employee
+                WHERE emp_code = ? AND period_month = ? AND period_year = ?
+            `, [data.emp_code, data.period_month, data.period_year]);
+        }
 
         let resolvedNewNik: string | undefined = undefined;
 
-        if (existing) {
+        if (schemaHasNewNik && existing) {
             // NIK source berbeda dari NIK lama yang tersimpan → tracking di new_nik
             // NIK lama TIDAK PERNAH diubah
             if (data.nik && existing.nik && data.nik !== existing.nik) {
@@ -1740,36 +1760,51 @@ export class HistoryDatabaseService {
             } else if (data.nik) {
                 resolvedNewNik = data.nik;
             }
-        } else {
+        } else if (schemaHasNewNik) {
             resolvedNewNik = data.new_nik;
         }
 
-        // Always INSERT - append-only pattern
-        const result = await db.query(`
-            INSERT INTO dbo.history_hr_employee(
-                history_id, period_month, period_year, nik, new_nik, emp_code, emp_name,
-                company_code, division_code, loc_code, gang_code, job_code, position,
-                join_date, terminate_date, status, employee_type, gender, religion,
-                birth_place, birth_date, marital_status,
-                tax_status, ptkp_beras, ptkp_pajak,
-                upah_dasar, total_hk, source_table
-            ) OUTPUT INSERTED.id VALUES(
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-        `, [
+        const columns = [
+            "history_id", "period_month", "period_year", "nik",
+            ...(schemaHasNewNik ? ["new_nik"] : []),
+            "emp_code", "emp_name",
+            "company_code", "division_code", "loc_code", "gang_code", "job_code", "position",
+            "jabatan", "is_spsi_member",
+            "join_date", "terminate_date", "status", "employee_type", "gender", "religion",
+            "birth_place", "birth_date", "marital_status",
+            "tax_status", "ptkp_beras", "ptkp_pajak",
+            "upah_dasar", "total_hk", "source_table"
+        ];
+        const values = [
             data.history_id, data.period_month, data.period_year,
             existing ? existing.nik : data.nik,  // JANGAN overwrite NIK lama
-            resolvedNewNik,
+            ...(schemaHasNewNik ? [resolvedNewNik] : []),
             data.emp_code,
             data.emp_name, data.company_code, data.division_code, data.loc_code, data.gang_code,
-            data.job_code, data.position, data.join_date, data.terminate_date, data.status,
+            data.job_code, data.position,
+            data.jabatan, data.is_spsi_member ?? null,
+            data.join_date, data.terminate_date, data.status,
             data.employee_type, data.gender, data.religion,
             data.birth_place, data.birth_date, data.marital_status,
             data.tax_status, data.ptkp_beras, data.ptkp_pajak,
             data.upah_dasar, data.total_hk, data.source_table
-        ]);
+        ];
+
+        // Always INSERT - append-only pattern
+        const result = await db.query(`
+            INSERT INTO dbo.history_hr_employee(
+                ${columns.join(", ")}
+            ) OUTPUT INSERTED.id VALUES(
+                ${columns.map(() => "?").join(", ")}
+            )
+        `, values);
 
         return result[0]?.id;
+    }
+
+    private isMissingColumnError(error: unknown, columnName: string): boolean {
+        const message = error instanceof Error ? error.message : String(error || "");
+        return message.toLowerCase().includes("invalid column name") && message.toLowerCase().includes(columnName.toLowerCase());
     }
 
     /**
@@ -1924,8 +1959,28 @@ export class HistoryDatabaseService {
      */
     public async migrateNewNikColumn(): Promise<void> {
         const db = this.getPayrollDatabase();
+        const transDb = this.getTransactionDatabase();
 
         try {
+            const ensureColumn = async (
+                targetDb: Database,
+                tableName: string,
+                columnName: string,
+                definition: string,
+                label: string
+            ) => {
+                await targetDb.query(`
+                    IF NOT EXISTS (
+                        SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_NAME='${tableName}' AND COLUMN_NAME='${columnName}'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.${tableName} ADD ${columnName} ${definition};
+                    END
+                `);
+                console.log(`[HistoryDatabaseService] Migrated: ${label}`);
+            };
+
             // payroll_history_detail
             await db.query(`
                 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
@@ -1955,6 +2010,126 @@ export class HistoryDatabaseService {
                 END
             `);
             console.log("[HistoryDatabaseService] Migrated: history_gang_member.jabatan");
+
+            // payroll_history_detail - add jabatan column
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='payroll_history_detail' AND COLUMN_NAME='jabatan')
+                BEGIN
+                    ALTER TABLE dbo.payroll_history_detail ADD jabatan VARCHAR(100) NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: payroll_history_detail.jabatan");
+
+            // payroll_history_detail - add is_spsi_member column
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='payroll_history_detail' AND COLUMN_NAME='is_spsi_member')
+                BEGIN
+                    ALTER TABLE dbo.payroll_history_detail ADD is_spsi_member BIT NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: payroll_history_detail.is_spsi_member");
+
+            // history_hr_employee - add columns for jabatan and is_spsi_member
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='history_hr_employee' AND COLUMN_NAME='jabatan')
+                BEGIN
+                    ALTER TABLE dbo.history_hr_employee ADD jabatan VARCHAR(100) NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: history_hr_employee.jabatan");
+
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='history_hr_employee' AND COLUMN_NAME='is_spsi_member')
+                BEGIN
+                    ALTER TABLE dbo.history_hr_employee ADD is_spsi_member BIT NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: history_hr_employee.is_spsi_member");
+
+            const payrollDetailColumns: Array<{ name: string; definition: string }> = [
+                { name: "beras_rate", definition: "DECIMAL(18,4) NULL DEFAULT 0" },
+                { name: "jabatan_rate", definition: "DECIMAL(18,4) NULL DEFAULT 0" },
+                { name: "masa_kerja_rate", definition: "DECIMAL(18,4) NULL DEFAULT 0" },
+                { name: "lembur_jam", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "lembur_rate", definition: "DECIMAL(18,4) NULL DEFAULT 0" },
+                { name: "lembur_records", definition: "NVARCHAR(MAX) NULL" },
+                { name: "total_tunjangan", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "premi_brondol_loosefruit", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "premi_brondol_adtrans", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "premi_brondol_total", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "premi_pph", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "premi_detail", definition: "NVARCHAR(MAX) NULL" },
+                { name: "pot_astek_pekerja", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "pot_astek_majikan", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "pot_astek_jumlah", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "potongan_detail", definition: "NVARCHAR(MAX) NULL" },
+                { name: "upah_kotor_pajak", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "penghasilan_bruto", definition: "DECIMAL(18,2) NULL DEFAULT 0" },
+                { name: "task_code", definition: "VARCHAR(20) NULL" },
+                { name: "task_desc", definition: "NVARCHAR(100) NULL" },
+                { name: "shortage_details", definition: "NVARCHAR(MAX) NULL" },
+                { name: "shortage_total_hours", definition: "DECIMAL(18,2) NULL" },
+                { name: "snapshot_batch_id", definition: "BIGINT NULL" },
+                { name: "snapshot_version", definition: "INT NULL" }
+            ];
+
+            for (const column of payrollDetailColumns) {
+                await ensureColumn(
+                    db,
+                    "payroll_history_detail",
+                    column.name,
+                    column.definition,
+                    `payroll_history_detail.${column.name}`
+                );
+            }
+
+            await ensureColumn(
+                db,
+                "payroll_history_header",
+                "snapshot_batch_id",
+                "BIGINT NULL",
+                "payroll_history_header.snapshot_batch_id"
+            );
+
+            await ensureColumn(
+                db,
+                "payroll_history_header",
+                "snapshot_version",
+                "INT NULL",
+                "payroll_history_header.snapshot_version"
+            );
+
+            const historyMetadataColumns: Array<{ name: string; definition: string }> = [
+                { name: "operation", definition: "VARCHAR(20) NULL" },
+                { name: "entity_type", definition: "VARCHAR(30) NULL" },
+                { name: "entity_id", definition: "INT NULL" },
+                { name: "gang_code", definition: "VARCHAR(20) NULL" },
+                { name: "description", definition: "NVARCHAR(255) NULL" },
+                { name: "old_values", definition: "NVARCHAR(MAX) NULL" },
+                { name: "new_values", definition: "NVARCHAR(MAX) NULL" },
+                { name: "record_count", definition: "INT NULL" },
+                { name: "status", definition: "VARCHAR(20) NULL" },
+                { name: "error_message", definition: "NVARCHAR(MAX) NULL" },
+                { name: "performed_by", definition: "VARCHAR(100) NULL" },
+                { name: "performed_at", definition: "DATETIME NULL DEFAULT GETDATE()" },
+                { name: "ip_address", definition: "VARCHAR(50) NULL" },
+                { name: "user_agent", definition: "NVARCHAR(255) NULL" },
+                { name: "session_id", definition: "VARCHAR(100) NULL" }
+            ];
+
+            for (const column of historyMetadataColumns) {
+                await ensureColumn(
+                    transDb,
+                    "history_metadata",
+                    column.name,
+                    column.definition,
+                    `history_metadata.${column.name}`
+                );
+            }
 
             console.log("[HistoryDatabaseService] All migrations completed successfully");
         } catch (e: any) {

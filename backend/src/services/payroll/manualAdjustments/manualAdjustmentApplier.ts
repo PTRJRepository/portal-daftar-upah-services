@@ -6,10 +6,21 @@ export type ManualAdjustmentType =
     | 'POTONGAN_BERSIH'
     | 'PENDAPATAN_LAINNYA';
 
+export type ManualAdjustmentApplyMode = 'additive' | 'override';
+
 export interface ManualAdjustmentLike {
     adjustment_type: ManualAdjustmentType;
     adjustment_name: string;
     amount: number;
+}
+
+export interface ManualAdjustmentFieldSyncMeta {
+    fieldName: string;
+    adjustmentType: ManualAdjustmentType;
+    adjustmentName: string;
+    previousAmount: number;
+    finalAmount: number;
+    hadDbValue: boolean;
 }
 
 export interface ManualAdjustmentApplierInput {
@@ -18,6 +29,7 @@ export interface ManualAdjustmentApplierInput {
     empPotongan: Record<string, number>;
     premiTitleMap: Record<string, string>;
     potonganTitleMap: Record<string, string>;
+    mode?: ManualAdjustmentApplyMode;
 }
 
 export interface ManualAdjustmentApplierResult {
@@ -29,48 +41,144 @@ export interface ManualAdjustmentApplierResult {
     totalPremiDelta: number;
     potKoreksiDelta: number;
     otherPotonganDelta: number;
+    fieldSyncMeta: ManualAdjustmentFieldSyncMeta[];
 }
 
 function toAmount(value: number): number {
     return Number(value) || 0;
 }
 
+function normalizeFieldIdentity(value: string): string {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function hasOwn(source: Record<string, number>, key: string): boolean {
+    return Object.prototype.hasOwnProperty.call(source, key);
+}
+
+function resolveExistingFieldKey(source: Record<string, number>, targetFieldName: string): string {
+    if (hasOwn(source, targetFieldName)) {
+        return targetFieldName;
+    }
+
+    const normalizedTarget = normalizeFieldIdentity(targetFieldName);
+    if (!normalizedTarget) {
+        return targetFieldName;
+    }
+
+    for (const key of Object.keys(source || {})) {
+        if (normalizeFieldIdentity(key) === normalizedTarget) {
+            return key;
+        }
+    }
+
+    return targetFieldName;
+}
+
 export function applyManualAdjustmentsToEmployee(input: ManualAdjustmentApplierInput): ManualAdjustmentApplierResult {
     const koreksiVariations: Record<string, number> = {};
+    const fieldSyncMeta: ManualAdjustmentFieldSyncMeta[] = [];
     let totalPremiDelta = 0;
     let potKoreksiDelta = 0;
     let otherPotonganDelta = 0;
+    const mode: ManualAdjustmentApplyMode = input.mode || 'additive';
+
+    const aggregatedAdjustments = new Map<
+        string,
+        { adjustmentType: ManualAdjustmentType; adjustmentName: string; fieldName: string; amount: number }
+    >();
 
     for (const adjustment of input.adjustments || []) {
         const amount = toAmount(adjustment.amount);
         const name = String(adjustment.adjustment_name || '');
+        const fieldName = toManualAdjustmentFieldName(adjustment.adjustment_type, name);
+        const aggregateKey = `${adjustment.adjustment_type}:${normalizeFieldIdentity(fieldName)}`;
 
-        if (adjustment.adjustment_type === 'PREMI') {
-            const fieldName = toManualAdjustmentFieldName('PREMI', name);
-            input.empPremi[fieldName] = (input.empPremi[fieldName] || 0) + amount;
+        const current = aggregatedAdjustments.get(aggregateKey);
+        if (!current) {
+            aggregatedAdjustments.set(aggregateKey, {
+                adjustmentType: adjustment.adjustment_type,
+                adjustmentName: name,
+                fieldName,
+                amount
+            });
+            continue;
+        }
+        current.amount += amount;
+        if (name) {
+            current.adjustmentName = name;
+        }
+    }
+
+    for (const adjustment of aggregatedAdjustments.values()) {
+        const amount = toAmount(adjustment.amount);
+        const name = String(adjustment.adjustmentName || '');
+
+        if (adjustment.adjustmentType === 'PREMI') {
+            const fieldName = resolveExistingFieldKey(input.empPremi, adjustment.fieldName);
+            const hadDbValue = hasOwn(input.empPremi, fieldName);
+            const previousAmount = toAmount(input.empPremi[fieldName]);
+            const finalAmount = mode === 'override' ? amount : previousAmount + amount;
+
+            input.empPremi[fieldName] = finalAmount;
             input.premiTitleMap[fieldName] = name;
-            totalPremiDelta += amount;
+            totalPremiDelta += mode === 'override' ? (finalAmount - previousAmount) : amount;
+            fieldSyncMeta.push({
+                fieldName,
+                adjustmentType: adjustment.adjustmentType,
+                adjustmentName: name,
+                previousAmount,
+                finalAmount,
+                hadDbValue
+            });
             continue;
         }
 
-        if (adjustment.adjustment_type === 'POTONGAN_KOTOR') {
-            const fieldName = toManualAdjustmentFieldName('POTONGAN_KOTOR', name);
-            input.empPotongan[fieldName] = (input.empPotongan[fieldName] || 0) + amount;
-            koreksiVariations[fieldName] = (koreksiVariations[fieldName] || 0) + amount;
+        if (adjustment.adjustmentType === 'POTONGAN_KOTOR') {
+            const fieldName = resolveExistingFieldKey(input.empPotongan, adjustment.fieldName);
+            const hadDbValue = hasOwn(input.empPotongan, fieldName);
+            const previousAmount = toAmount(input.empPotongan[fieldName]);
+            const finalAmount = mode === 'override' ? amount : previousAmount + amount;
+
+            input.empPotongan[fieldName] = finalAmount;
+            koreksiVariations[fieldName] = finalAmount;
             input.potonganTitleMap[fieldName] = name;
-            potKoreksiDelta += amount;
+            potKoreksiDelta += mode === 'override' ? (finalAmount - previousAmount) : amount;
+            fieldSyncMeta.push({
+                fieldName,
+                adjustmentType: adjustment.adjustmentType,
+                adjustmentName: name,
+                previousAmount,
+                finalAmount,
+                hadDbValue
+            });
             continue;
         }
 
-        if (adjustment.adjustment_type === 'POTONGAN_BERSIH') {
-            const fieldName = toManualAdjustmentFieldName('POTONGAN_BERSIH', name);
-            input.empPotongan[fieldName] = (input.empPotongan[fieldName] || 0) + amount;
+        if (adjustment.adjustmentType === 'POTONGAN_BERSIH') {
+            const fieldName = resolveExistingFieldKey(input.empPotongan, adjustment.fieldName);
+            const hadDbValue = hasOwn(input.empPotongan, fieldName);
+            const previousAmount = toAmount(input.empPotongan[fieldName]);
+            const finalAmount = mode === 'override' ? amount : previousAmount + amount;
+
+            input.empPotongan[fieldName] = finalAmount;
             input.potonganTitleMap[fieldName] = name;
-            otherPotonganDelta += amount;
+            otherPotonganDelta += mode === 'override' ? (finalAmount - previousAmount) : amount;
+            fieldSyncMeta.push({
+                fieldName,
+                adjustmentType: adjustment.adjustmentType,
+                adjustmentName: name,
+                previousAmount,
+                finalAmount,
+                hadDbValue
+            });
             continue;
         }
 
-        if (adjustment.adjustment_type === 'PENDAPATAN_LAINNYA') {
+        if (adjustment.adjustmentType === 'PENDAPATAN_LAINNYA') {
             continue;
         }
     }
@@ -83,6 +191,7 @@ export function applyManualAdjustmentsToEmployee(input: ManualAdjustmentApplierI
         koreksiVariations,
         totalPremiDelta,
         potKoreksiDelta,
-        otherPotonganDelta
+        otherPotonganDelta,
+        fieldSyncMeta
     };
 }

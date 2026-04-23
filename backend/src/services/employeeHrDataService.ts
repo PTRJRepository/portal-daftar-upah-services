@@ -123,7 +123,6 @@ export class EmployeeHrDataService {
             if (cleanCodes.length === 0) return new Map();
 
             const map = new Map<string, EmployeeHrData>();
-            // CHUNK to avoid SQL Server 2100 parameter limit
             const CHUNK_SIZE = 500;
             for (let i = 0; i < cleanCodes.length; i += CHUNK_SIZE) {
                 const chunk = cleanCodes.slice(i, i + CHUNK_SIZE);
@@ -158,13 +157,12 @@ export class EmployeeHrDataService {
         empCode: string,
         fieldName: string,
         newValue: string,
-        username: string = 'system'
+        username: string = "system"
     ): Promise<boolean> {
         try {
             const cleanEmpCode = empCode.trim().toUpperCase();
 
-            // CRITICAL: NIK is IMMUTABLE - reject any edit attempt
-            if (fieldName === 'nik_ktp' || fieldName === 'nik') {
+            if (fieldName === "nik_ktp" || fieldName === "nik") {
                 throw new Error(
                     `NIK (nik_ktp) tidak bisa di-edit. ` +
                     `NIK adalah immutable identifier. ` +
@@ -173,36 +171,31 @@ export class EmployeeHrDataService {
                 );
             }
 
-            // 1. Get existing data to find old_value and current version
             const existing = await this.getHrData(cleanEmpCode);
-            let oldValue = '';
+            let oldValue = "";
             let newVersion = 1;
 
             if (existing) {
-                // Determine old value safely
-                oldValue = (existing as any)[fieldName] || '';
+                oldValue = (existing as any)[fieldName] || "";
                 newVersion = (existing.version || 1) + 1;
             }
 
-            // If value hasn't changed, don't update
             if (oldValue === newValue) {
                 return true;
             }
 
-            // 2. Perform UPSERT and History INSERT in a transaction
             if (existing) {
-                // Update existing
                 const updateSql = `
-                    UPDATE dbo.employee_hr_data 
-                    SET [${fieldName}] = ?, 
-                        updated_at = GETDATE(), 
-                        updated_by = ?, 
+                    UPDATE dbo.employee_hr_data
+                    SET [${fieldName}] = ?,
+                        updated_at = GETDATE(),
+                        updated_by = ?,
                         version = ?
                     WHERE RTRIM(emp_code) = RTRIM(?)
                 `;
 
                 const historySql = `
-                    INSERT INTO dbo.employee_hr_data_history 
+                    INSERT INTO dbo.employee_hr_data_history
                     (emp_code, field_name, old_value, new_value, changed_by, version)
                     VALUES (?, ?, ?, ?, ?, ?)
                 `;
@@ -212,18 +205,17 @@ export class EmployeeHrDataService {
                     { sql: historySql, params: [cleanEmpCode, fieldName, oldValue, newValue, username, newVersion] }
                 ]);
             } else {
-                // Insert new record with just this one field populated
-                const fields = ['emp_code', 'updated_by', 'version', fieldName];
+                const fields = ["emp_code", "updated_by", "version", fieldName];
                 const values = [cleanEmpCode, username, 1, newValue];
-                const placeholders = values.map(() => '?').join(', ');
+                const placeholders = values.map(() => "?").join(", ");
 
                 const insertSql = `
-                    INSERT INTO dbo.employee_hr_data (${fields.join(', ')})
+                    INSERT INTO dbo.employee_hr_data (${fields.join(", ")})
                     VALUES (${placeholders})
                 `;
 
                 const historySql = `
-                    INSERT INTO dbo.employee_hr_data_history 
+                    INSERT INTO dbo.employee_hr_data_history
                     (emp_code, field_name, old_value, new_value, changed_by, version)
                     VALUES (?, ?, ?, ?, ?, 1)
                 `;
@@ -246,7 +238,7 @@ export class EmployeeHrDataService {
     public async getHrDataHistory(empCode: string): Promise<EmployeeHrDataHistory[]> {
         try {
             const rows = await this.db.query<EmployeeHrDataHistory>(
-                `SELECT * FROM dbo.employee_hr_data_history 
+                `SELECT * FROM dbo.employee_hr_data_history
                  WHERE RTRIM(emp_code) = RTRIM(?)
                  ORDER BY changed_at DESC`,
                 [empCode.trim()]
@@ -266,23 +258,20 @@ export class EmployeeHrDataService {
     public async rollbackHrDataField(empCode: string, fieldName: string): Promise<boolean> {
         const cleanEmpCode = empCode.trim().toUpperCase();
         try {
-            // Get history for this field, ordered by version DESC
             const historyRows = await this.db.query<EmployeeHrDataHistory>(
-                `SELECT * FROM dbo.employee_hr_data_history 
+                `SELECT * FROM dbo.employee_hr_data_history
                  WHERE RTRIM(emp_code) = RTRIM(?) AND field_name = ?
                  ORDER BY version DESC`,
                 [cleanEmpCode, fieldName]
             );
 
             if (historyRows.length === 0) {
-                // Nothing to rollback
                 return false;
             }
 
             const latestHistory = historyRows[0];
 
             if (historyRows.length === 1) {
-                // Only 1 version exists. Delete the override entirely to revert to original data.
                 await this.db.transaction([
                     { sql: `DELETE FROM dbo.employee_hr_data_history WHERE id = ?`, params: [latestHistory.id] },
                     { sql: `DELETE FROM dbo.employee_hr_data WHERE RTRIM(emp_code) = RTRIM(?)`, params: [cleanEmpCode] }
@@ -290,14 +279,13 @@ export class EmployeeHrDataService {
                 return true;
             }
 
-            // More than 1 version. Restore to the previous one (historyRows[1])
             const previousHistory = historyRows[1];
             const revertedValue = previousHistory.new_value;
             const revertedVersion = previousHistory.version;
 
             const updateSql = `
-                UPDATE dbo.employee_hr_data 
-                SET [${fieldName}] = ?, 
+                UPDATE dbo.employee_hr_data
+                SET [${fieldName}] = ?,
                     version = ?
                 WHERE RTRIM(emp_code) = RTRIM(?)
             `;

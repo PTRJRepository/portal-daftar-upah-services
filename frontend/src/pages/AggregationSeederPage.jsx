@@ -412,8 +412,18 @@ export default function AggregationSeederPage({ onBack }) {
                 }
             }
         } catch (e) {
-            addLog(`❌ Error: ${e.message}`, 'error');
-            if (e.message?.includes('Unable to connect')) {
+            const backendError = e?.response?.data;
+            const detailedErrors = Array.isArray(backendError?.errors) ? backendError.errors : [];
+            const primaryError = backendError?.error || backendError?.message || e.message || 'Unknown error';
+
+            addLog(`❌ Error: ${primaryError}`, 'error');
+            detailedErrors.forEach(err => addLog(`  • ${err}`, 'error'));
+
+            if (backendError?.details && !detailedErrors.length) {
+                addLog(`  • ${backendError.details}`, 'error');
+            }
+
+            if (primaryError?.includes('Unable to connect')) {
                 addLog('💡 Error koneksi database. Pastikan SQL Gateway dan database server berjalan.', 'error');
             }
         } finally {

@@ -28,4 +28,29 @@ describe('applyManualAdjustmentsToEmployee', () => {
         expect(result.potonganTitleMap.kontan).toBeUndefined();
         expect(result.empPotongan.kontan).toBeUndefined();
     });
+
+    it('supports override mode so manual values replace db baseline per field', () => {
+        const result = applyManualAdjustmentsToEmployee({
+            adjustments: [
+                { adjustment_type: 'PREMI', adjustment_name: 'PREMI INSENTIF', amount: 25000 },
+                { adjustment_type: 'POTONGAN_KOTOR', adjustment_name: 'KOREKSI DENDA PANEN', amount: 10000 },
+                { adjustment_type: 'POTONGAN_BERSIH', adjustment_name: 'POTONGAN LAINNYA KASBON', amount: 5000 }
+            ],
+            empPremi: { premi_insentif: 12000 },
+            empPotongan: { KOREKSI_DENDA_PANEN: 7000, potongan_lainnya_kasbon: 2000 },
+            premiTitleMap: {},
+            potonganTitleMap: {},
+            mode: 'override'
+        });
+
+        expect(result.empPremi.premi_insentif).toBe(25000);
+        expect(result.empPotongan.KOREKSI_DENDA_PANEN).toBe(10000);
+        expect(result.empPotongan.potongan_lainnya_kasbon).toBe(5000);
+        expect(result.totalPremiDelta).toBe(13000);
+        expect(result.potKoreksiDelta).toBe(3000);
+        expect(result.otherPotonganDelta).toBe(3000);
+        expect(result.fieldSyncMeta.length).toBe(3);
+        expect(result.fieldSyncMeta.find((x) => x.fieldName === 'premi_insentif')?.hadDbValue).toBe(true);
+        expect(result.fieldSyncMeta.find((x) => x.fieldName === 'KOREKSI_DENDA_PANEN')?.previousAmount).toBe(7000);
+    });
 });

@@ -144,7 +144,9 @@
       "mcp__mcp-otak-digital-atta__list_knowledge",
       "mcp__otak-digital-atta__store_knowledge",
       "mcp__otak-digital-atta__search_by_tags",
-      "mcp__otak-digital-atta__list_knowledge"
+      "mcp__otak-digital-atta__list_knowledge",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(bun pm *)"
     ],
     "deny": [],
     "ask": [],

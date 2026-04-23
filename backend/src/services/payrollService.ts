@@ -1,63 +1,15 @@
 import { Database } from "../db/client";
-import { cacheService } from "./cacheService";
-import { Config } from "../config";
-import { calculateAllCaruman } from './carumanDefinitions';
-import { duplicateNikMitigationService } from './DuplicateNikMitigationService';
+import { debug, error as logError } from "../utils/logger";
+import { PayrollCalculator } from "./payroll/components/PayrollCalculator";
+import { gajiPokokService } from "./payroll/components/GajiPokokService";
+import { dataExtractorService } from "./dataExtractorService";
 
-export interface BPJSComponents {
-    kesehatan_pekerja: number;
-    kesehatan_majikan: number;
-    kesehatan_total: number;
-    pensiun_pekerja: number;
-    pensiun_majikan: number;
-    pensiun_total: number;
-    jumlah: number;
-    pekerja_total: number;
-    majikan_total: number;
-    base_amount: number;
-}
+const CATEGORY = "PayrollService";
 
-export interface PayrollRow {
-    no: number;
-    nik: string;           // Backward compat — now contains correct KTP NIK (NewICNo)
-    new_nik: string;       // NEW: Explicit KTP NIK from HR_EMPLOYEE.NewICNo
-    emp_code: string;       // NEW: Plantware internal EmpCode
-    nama: string;
-    jenis_kelamin: string;
-    gang_code: string;
-    phone: string;
-    upah_dasar: number;
-    hari_kerja: number;
-    upah_pokok: number;
-    cuti_tahunan_hari: number;
-    cuti_sakit_haid_hari: number;
-    cuti_minggu_hari: number;
-    cuti_nasional_hari: number;
-    jumlah_hk: number;
-    gaji_pokok: number;
-    beras_rate: number;
-    beras_jumlah: number;
-    jabatan_rate: number;
-    jabatan_jumlah: number;
-    masa_kerja_tahun: number;
-    masa_kerja_jumlah: number;
-    lembur_jam: number;
-    lembur_jumlah: number;
-    total_tunjangan: number;
-    premi_brondol: number;
-    premi: Record<string, number>;
-    total_premi: number;
-    jumlah_upah_kotor: number;
-    pot_spsi: number;
-    pot_pph21: number;
-    pot_koreksi: number;
-    pot_bpjs_kesehatan_pekerja: number;
-    pot_bpjs_pensiun_pekerja: number;
-    pot_bpjs_pekerja_total: number;
-    total_potongan: number;
-    upah_bersih: number;
-}
-
+/**
+ * PayrollService - High-level payroll business operations
+ * Refactored to delegate calculations to specialized component services.
+ */
 export class PayrollService {
     private static instance: PayrollService;
     private db: Database;
@@ -73,341 +25,83 @@ export class PayrollService {
         return PayrollService.instance;
     }
 
-    // --- Core Calculation Methods ---
-
     /**
-     * Calculate Hari Kerja = HK - (Tahunan + Sakit + Minggu + Nasional)
+     * Get detailed payroll report for a gang
      */
-    public calculateHariKerja(
-        hkCount: number,
-        cutiTahunan: number,
-        cutiSakit: number,
-        hkMinggu: number,
-        hkNasional: number
-    ): number {
-        const totalCuti = cutiTahunan + cutiSakit + hkMinggu + hkNasional;
-        return Math.max(0, hkCount - totalCuti);
+    public async getGangPayrollReport(month: number, year: number, gangCode: string, divisionCode?: string) {
+        return dataExtractorService.extractWages({
+            month, year, divisionCode, gangCode, useCache: true
+        });
     }
 
     /**
-     * Calculate Gaji Pokok = (HK - Total Cuti) x Payrate
+     * Check if payroll is finalized for a period
      */
-    public calculateGajiPokok(
-        hkCount: number,
-        payrate: number,
-        cutiTahunan: number = 0,
-        cutiSakit: number = 0,
-        hkMinggu: number = 0,
-        hkNasional: number = 0
-    ): number {
-        const totalCuti = cutiTahunan + cutiSakit + hkMinggu + hkNasional;
-        const hariKerja = Math.max(0, hkCount - totalCuti);
-        return payrate ? hariKerja * payrate : 0;
+    public async isPayrollFinalized(month: number, year: number, divisionCode: string): Promise<boolean> {
+        try {
+            const histDb = Database.getExtendedInstance();
+            const row = await histDb.queryOne<{ is_locked: boolean }>(
+                `SELECT TOP 1 is_locked FROM dbo.payroll_history_header
+                 WHERE period_month = ? AND period_year = ? AND division_code = ?`,
+                [month, year, divisionCode]
+            );
+            return !!row?.is_locked;
+        } catch (e) {
+            return false;
+        }
     }
 
     /**
-     * Calculate Gaji Pokok (JML HK × Upah Dasar) - for gross calculation
+     * Get PayRates (upah_dasar) for multiple employees from HR_PAYROLL
+     * Returns Record<empCode, payRate>
+     *
+     * CRITICAL: Uses TOP 1 with ORDER BY PayRate DESC to get the LATEST non-zero payrate
+     * This follows the APPEND-INSERT pattern where multiple records exist per employee
      */
-    public calculateGajiPokokJmlHk(hkCount: number, payrate: number): number {
-        return payrate ? hkCount * payrate : 0;
-    }
-
-    /**
-     * Calculate Total Tunjangan = Beras + Jabatan + Masa Kerja + Lembur
-     */
-    public calculateTotalTunjangan(
-        hkCount: number,
-        berasPayrate: number,
-        jabatanAmount: number,
-        masaKerjaAmount: number,
-        lemburAmount: number
-    ): number {
-        const berasJumlah = berasPayrate > 0 ? hkCount * berasPayrate : 0;
-        return berasJumlah + jabatanAmount + masaKerjaAmount + lemburAmount;
-    }
-
-    /**
-     * Calculate Total Premi = BRONDOL + PRUNING + Dynamic Premi
-     * Note: Koreksi is NOT included in total_premi
-     */
-    public calculateTotalPremi(
-        brondolAmount: number,
-        dynamicPremiAmounts: number[]
-    ): number {
-        const totalDynamic = dynamicPremiAmounts.reduce((sum, val) => sum + val, 0);
-        return brondolAmount + totalDynamic;
-    }
-
-    /**
-     * Calculate BPJS components.
-     * BASE = (Upah Dasar × 30) + Masa Kerja Amount  (always 30 days, not actual HK)
-     * 
-     * BPJS Pensiun: Pekerja 1%, Majikan 2%
-     * BPJS Kesehatan: Pekerja 1%, Majikan 4%
-     */
-    public calculateBpjsComponents(masaKerjaJumlah: number, upahDasar: number = 0): BPJSComponents {
-        const caruman = calculateAllCaruman(upahDasar, masaKerjaJumlah);
-
-        const kesehatanPekerja = caruman.bpjs_kes_pekerja;
-        const kesehatanMajikan = caruman.bpjs_kes_majikan;
-        const pensiunPekerja = caruman.bpjs_pensiun_pekerja;
-        const pensiunMajikan = caruman.bpjs_pensiun_majikan;
-
-        const kesehatanTotal = kesehatanPekerja + kesehatanMajikan;
-        const pensiunTotal = pensiunPekerja + pensiunMajikan;
-        const pekerjaTotal = kesehatanPekerja + pensiunPekerja;
-        const majikanTotal = kesehatanMajikan + pensiunMajikan;
-
-        return {
-            kesehatan_pekerja: kesehatanPekerja,
-            kesehatan_majikan: kesehatanMajikan,
-            kesehatan_total: kesehatanTotal,
-            pensiun_pekerja: pensiunPekerja,
-            pensiun_majikan: pensiunMajikan,
-            pensiun_total: pensiunTotal,
-            jumlah: pekerjaTotal + majikanTotal,
-            pekerja_total: pekerjaTotal,
-            majikan_total: majikanTotal,
-            base_amount: caruman.base
-        };
-    }
-
-    /**
-     * Calculate Jumlah Upah Kotor = Gaji Pokok + Total Tunjangan + Total Premi
-     */
-    public calculateJumlahUpahKotor(
-        hkCount: number,
-        payrate: number,
-        totalTunjangan: number,
-        totalPremi: number
-    ): number {
-        const gajiPokok = this.calculateGajiPokokJmlHk(hkCount, payrate);
-        return gajiPokok + totalTunjangan + totalPremi;
-    }
-
-    /**
-     * Calculate Total Potongan = BPJS Pekerja + SPSI + PPH21
-     */
-    public calculateTotalPotongan(
-        bpjsPekerjaTotal: number,
-        spsiAmount: number,
-        pph21Amount: number
-    ): number {
-        return bpjsPekerjaTotal + spsiAmount + pph21Amount;
-    }
-
-    /**
-     * Calculate Upah Bersih = Jumlah Upah Kotor - Total Potongan
-     */
-    public calculateUpahBersih(jumlahUpahKotor: number, totalPotongan: number): number {
-        return jumlahUpahKotor - totalPotongan;
-    }
-
-    // --- Legacy Calculate Method (for basic API) ---
-    public calculate(
-        upahDasar: number,
-        hkCount: number,
-        allowances: Record<string, number>,
-        deductions: Record<string, number>
-    ): Record<string, any> {
-        const workingDays = hkCount;
-        const basicSalary = workingDays * upahDasar;
-        const totalAllowances = Object.values(allowances || {}).reduce((sum, val) => sum + val, 0);
-        const totalDeductions = Object.values(deductions || {}).reduce((sum, val) => sum + val, 0);
-        const netSalary = basicSalary + totalAllowances - totalDeductions;
-
-        return {
-            hk_count: hkCount,
-            working_days: workingDays,
-            basic_salary: basicSalary,
-            allowances,
-            deductions,
-            net_salary: netSalary
-        };
-    }
-
-    // --- Date Helper ---
-    private getDates(month: number, year: number): [string, string] {
-        const start = `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-01`;
-        const end = month === 12
-            ? `${(year + 1).toString().padStart(4, "0")}-01-01`
-            : `${year.toString().padStart(4, "0")}-${(month + 1).toString().padStart(2, "0")}-01`;
-        return [start, end];
-    }
-
-    // --- Payrate Map ---
     public async getPayratesMap(empCodes: string[], serverProfile?: string): Promise<Record<string, number>> {
-        if (!empCodes.length) return {};
+        if (!empCodes || empCodes.length === 0) return {};
 
-        const map: Record<string, number> = {};
-        const chunks = this.chunk(empCodes, 200);
-
-        // Use specific profile if requested, otherwise default
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
+        const result: Record<string, number> = {};
 
-        for (const chunk of chunks) {
-            const placeholders = chunk.map(() => `?`).join(",");
-            const rows = await db.query<{ EmpCode: string; PayRate: number }>(`
-                SELECT EmpCode, PayRate FROM HR_PAYROLL WHERE EmpCode IN (${placeholders})
-            `, chunk);
+        try {
+            // Build parameterized IN clause
+            const placeholders = empCodes.map(() => '?').join(',');
+            const query = `
+                SELECT EmpCode, PayRate
+                FROM HR_PAYROLL
+                WHERE RTRIM(EmpCode) IN (${placeholders})
+            `;
 
+            const rows = await db.query<{ EmpCode: string; PayRate: number }>(query, empCodes);
+
+            // Group by empCode and pick the latest (highest/non-zero) payrate
+            const empPayrates: Record<string, number[]> = {};
             for (const row of rows) {
-                map[row.EmpCode?.trim() || ""] = row.PayRate || 0;
+                const empCode = row.EmpCode?.trim() || '';
+                if (!empCode) continue;
+                if (!empPayrates[empCode]) empPayrates[empCode] = [];
+                empPayrates[empCode].push(row.PayRate || 0);
             }
-        }
 
-        return map;
-    }
-
-    // --- Loosefruit (Brondol) Map ---
-    public async getLoosefruitMap(
-        empCodes: string[],
-        startDate: string,
-        endDate: string
-    ): Promise<Record<string, number>> {
-        if (!empCodes.length) return {};
-
-        const map: Record<string, number> = {};
-        const chunks = this.chunk(empCodes, 200);
-
-        for (const chunk of chunks) {
-            const placeholders = chunk.map((_, i) => `@p${i}`).join(",");
-            const rows = await this.db.query<{ EmpCode: string; Total: number }>(`
-                SELECT LFLN.EmpCode, SUM(LFLN.Amount) as Total
-                FROM PR_LOOSEFRUIT_ARC LF
-                JOIN PR_LOOSEFRUITLN_ARC LFLN ON LF.ID = LFLN.MasterID
-                WHERE LFLN.EmpCode IN (${placeholders})
-                  AND LF.DocDate >= @p${chunk.length}
-                  AND LF.DocDate < @p${chunk.length + 1}
-                  AND CHARINDEX('_', LF.DocDate) = 0  -- Filter out ID codes like LF50317375_01, only use real dates
-                GROUP BY LFLN.EmpCode
-            `, [...chunk, startDate, endDate]);
-
-            for (const row of rows) {
-                map[row.EmpCode?.trim() || ""] = row.Total || 0;
+            // For each employee, pick the highest non-zero payrate
+            for (const empCode of empCodes) {
+                const empCodeTrimmed = empCode.trim();
+                const payrates = empPayrates[empCodeTrimmed] || [];
+                // Filter non-zero and pick the highest
+                const nonZero = payrates.filter(p => p > 0);
+                if (nonZero.length > 0) {
+                    result[empCodeTrimmed] = Math.max(...nonZero);
+                } else {
+                    result[empCodeTrimmed] = 0;
+                }
             }
+        } catch (e) {
+            logError(CATEGORY, "getPayratesMap failed", e);
+            // Return empty - caller should handle fallback to default UPJ
         }
 
-        return map;
-    }
-
-    // --- Premi Map (by DocDesc pattern) ---
-    public async getPremiMap(
-        empCodes: string[],
-        startDate: string,
-        endDate: string,
-        pattern: string,
-        exactMatch: boolean = false
-    ): Promise<Record<string, number>> {
-        if (!empCodes.length) return {};
-
-        const map: Record<string, number> = {};
-        const chunks = this.chunk(empCodes, 200);
-        const operator = exactMatch ? "=" : "LIKE";
-
-        for (const chunk of chunks) {
-            const placeholders = chunk.map((_, i) => `@p${i}`).join(",");
-            const rows = await this.db.query<{ EmpCode: string; Total: number }>(`
-                SELECT t.EmpCode, SUM(ln.Amount) as Total
-                FROM PR_ADTRANS_ARC t
-                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-                WHERE t.EmpCode IN (${placeholders})
-                  AND t.DocDate >= @p${chunk.length}
-                  AND t.DocDate < @p${chunk.length + 1}
-                  AND UPPER(t.DocDesc) ${operator} UPPER(@p${chunk.length + 2})
-                GROUP BY t.EmpCode
-            `, [...chunk, startDate, endDate, exactMatch ? pattern : `%${pattern}%`]);
-
-            for (const row of rows) {
-                map[row.EmpCode?.trim() || ""] = row.Total || 0;
-            }
-        }
-
-        return map;
-    }
-
-    // --- Normalize Premi Field Name ---
-    public normalizePremiFieldName(docDesc: string): string {
-        if (!docDesc) return "";
-
-        let name = docDesc.trim().toUpperCase();
-        const prefixes = ["TUNJANGAN PREMI", "TUNJANGAN", "PREMI"];
-
-        for (const prefix of prefixes) {
-            if (name.startsWith(prefix)) {
-                name = name.slice(prefix.length).trim();
-                break;
-            }
-        }
-
-        if (!name) {
-            if (docDesc.toUpperCase().includes("TUNJANGAN PREMI")) name = "TUNJANGAN_PREMI";
-            else if (docDesc.toUpperCase() === "PREMI") name = "PREMI";
-            else return "";
-        }
-
-        name = name.toLowerCase().replace(/ /g, "_");
-        name = name.replace(/[^a-z0-9_]/g, "");
-        name = name.replace(/_+/g, "_").replace(/^_|_$/g, "");
-
-        if (!name) return "";
-        return name.startsWith("premi_") ? name : `premi_${name}`;
-    }
-
-    // --- Helper: chunk array ---
-    private chunk<T>(arr: T[], size: number): T[][] {
-        const chunks: T[][] = [];
-        for (let i = 0; i < arr.length; i += size) {
-            chunks.push(arr.slice(i, i + size));
-        }
-        return chunks;
-    }
-
-    // ============================================================================
-    // DUPLICATE NIK HANDLING (New Integration)
-    // ============================================================================
-
-    /**
-     * Resolve employee identity from NIK, handling duplicate NIK cases
-     * Returns the correct EmpCode and resolution info
-     */
-    public async resolveEmployeeFromNik(
-        nik: string,
-        options?: {
-            preferredGang?: string;
-            preferredDivision?: string;
-        }
-    ) {
-        return await duplicateNikMitigationService.resolveEmpCode(nik, options);
-    }
-
-    /**
-     * Get all EmpCodes associated with a NIK for comprehensive history queries
-     */
-    public async getAllEmpCodesForNik(nik: string) {
-        return await duplicateNikMitigationService.getAllEmpCodesForNik(nik);
-    }
-
-    /**
-     * Check if a NIK has duplicate entries
-     */
-    public async hasDuplicateNik(nik: string): Promise<boolean> {
-        return await duplicateNikMitigationService.hasDuplicate(nik);
-    }
-
-    /**
-     * Build payroll query that handles duplicate NIKs
-     * Returns { where: string, params: any[] } for SQL query
-     */
-    public async buildPayrollQueryFilter(nik: string) {
-        return await duplicateNikMitigationService.buildHistoryQueryFilter(nik);
-    }
-
-    /**
-     * Get duplicate NIK report specifically for payroll employees
-     */
-    public async getPayrollDuplicateReport() {
-        return await duplicateNikMitigationService.generateDuplicateReport();
+        return result;
     }
 }
 

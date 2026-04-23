@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import EmployeeDetailPage from '../components/employee/EmployeeDetailPage'
 import LoadingScreen from '../components/common/LoadingScreen'
 
 export default function EmployeeDetailRoute() {
     const { token, loading: authLoading } = useAuth()
+    const location = useLocation()
     const [params, setParams] = useState(null)
     const [loadingParams, setLoadingParams] = useState(true)
 
@@ -12,7 +14,7 @@ export default function EmployeeDetailRoute() {
         let cancelled = false;
 
         const fetchParams = async () => {
-            const urlParams = new URLSearchParams(window.location.search)
+            const urlParams = new URLSearchParams(location.search)
             // Read 'nik' param which now contains emp_code (like B0075) or could still be a KTP NIK
             const rawNik = urlParams.get('nik')
             const empIdentifier = rawNik ? rawNik.trim() : null
@@ -64,7 +66,7 @@ export default function EmployeeDetailRoute() {
         return () => {
             cancelled = true;
         };
-    }, [token, authLoading])
+    }, [token, authLoading, location.search])
 
     if (authLoading || loadingParams) {
         return <LoadingScreen isLoading={true} message="Authenticating..." />
@@ -87,7 +89,7 @@ export default function EmployeeDetailRoute() {
     }
 
     return (
-        <div style={{ height: '100vh', width: '100vw', overflow: 'auto', backgroundColor: '#e5e7eb' }}>
+        <div style={{ minHeight: '100%', width: '100%', overflowY: 'auto', overflowX: 'hidden', backgroundColor: '#e5e7eb', paddingBottom: '4rem' }}>
             <EmployeeDetailPage
                 employeeData={{ nik: params.empIdentifier, emp_code: params.empIdentifier }}
                 month={params.month}

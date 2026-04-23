@@ -21,6 +21,7 @@
  */
 
 import { Database } from '../../../db/client';
+import { buildLeaveSqlExpressions } from './leaveRules';
 
 /**
  * CutiData - Leave breakdown per employee
@@ -75,6 +76,7 @@ export class LeaveExtractor {
             : this.db;
 
         const empList = empCodes.map(e => `'${e}'`).join(',');
+        const leaveSql = buildLeaveSqlExpressions('trl', 'h');
 
         /**
          * Consolidated query - single round-trip for all cuti types
@@ -93,58 +95,34 @@ export class LeaveExtractor {
                 -- LIVE table: all cuti types via conditional aggregation
                 SELECT
                     trl.EmpCode,
-                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
-                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid,
-                    CASE WHEN trl.TaskCode LIKE 'GA9127%'
-                        OR (DATEPART(weekday, trl.TrxDate) = 1
-                            AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1))
-                        THEN 1 ELSE 0 END as cuti_minggu,
-                    CASE WHEN trl.TaskCode LIKE 'GA9128%'
-                        OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)
-                        THEN 1 ELSE 0 END as cuti_nasional
+                    ${leaveSql.cutiTahunan} as cuti_tahunan,
+                    ${leaveSql.cutiSakitHaid} as cuti_sakit_haid,
+                    ${leaveSql.cutiMinggu} as cuti_minggu,
+                    ${leaveSql.cutiNasional} as cuti_nasional
                 FROM PR_TASKREGLN trl
                 JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ?
                   AND trl.TrxDate < ?
                   AND trl.OT = 0
-                  AND (
-                      trl.TaskCode LIKE 'GA9129%'
-                      OR trl.TaskCode LIKE 'GA9126%'
-                      OR trl.TaskCode LIKE 'GA9127%'
-                      OR trl.TaskCode LIKE 'GA9128%'
-                      OR DATEPART(weekday, trl.TrxDate) = 1
-                      OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)
-                  )
+                  AND ${leaveSql.whereClause}
 
                 UNION ALL
 
                 -- ARCHIVE table: same conditional aggregation
                 SELECT
                     trl.EmpCode,
-                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
-                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid,
-                    CASE WHEN trl.TaskCode LIKE 'GA9127%'
-                        OR (DATEPART(weekday, trl.TrxDate) = 1
-                            AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1))
-                        THEN 1 ELSE 0 END as cuti_minggu,
-                    CASE WHEN trl.TaskCode LIKE 'GA9128%'
-                        OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)
-                        THEN 1 ELSE 0 END as cuti_nasional
+                    ${leaveSql.cutiTahunan} as cuti_tahunan,
+                    ${leaveSql.cutiSakitHaid} as cuti_sakit_haid,
+                    ${leaveSql.cutiMinggu} as cuti_minggu,
+                    ${leaveSql.cutiNasional} as cuti_nasional
                 FROM PR_TASKREGLN_ARC trl
                 JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ?
                   AND trl.TrxDate < ?
                   AND trl.OT = 0
-                  AND (
-                      trl.TaskCode LIKE 'GA9129%'
-                      OR trl.TaskCode LIKE 'GA9126%'
-                      OR trl.TaskCode LIKE 'GA9127%'
-                      OR trl.TaskCode LIKE 'GA9128%'
-                      OR DATEPART(weekday, trl.TrxDate) = 1
-                      OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)
-                  )
+                  AND ${leaveSql.whereClause}
             ) combined
             GROUP BY RTRIM(EmpCode)
         `, [startDate, endDate, startDate, endDate]);

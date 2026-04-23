@@ -100,9 +100,17 @@ export class CacheService {
     /**
      * Build cache key for payroll data
      */
-    public buildPayrollKey(gangCode: string, month: number, year: number, divisionCode?: string, useHistoryDb: boolean | null = false): string {
+    public buildPayrollKey(
+        gangCode: string,
+        month: number,
+        year: number,
+        divisionCode?: string,
+        useHistoryDb: boolean | null = false,
+        snapshotVersion?: number | null
+    ): string {
         const historySuffix = useHistoryDb ? ':H' : ':L';
-        return `payroll:${gangCode || 'ALL'}:${month}:${year}:${divisionCode || 'ALL'}${historySuffix}`;
+        const snapshotSuffix = useHistoryDb && snapshotVersion != null ? `:V${snapshotVersion}` : '';
+        return `payroll:${gangCode || 'ALL'}:${month}:${year}:${divisionCode || 'ALL'}${historySuffix}${snapshotSuffix}`;
     }
 
     /**

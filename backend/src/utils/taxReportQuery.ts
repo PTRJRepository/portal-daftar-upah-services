@@ -1,4 +1,4 @@
-import { parseBooleanQueryParam } from "./queryParsers";
+import { parseBooleanQueryParam, parsePositiveIntegerQueryParam } from "./queryParsers";
 
 export interface MonthlyTaxQueryInput {
     year?: string;
@@ -7,6 +7,7 @@ export interface MonthlyTaxQueryInput {
     gang?: string;
     gangPrefix?: string;
     use_history?: string;
+    snapshot_version?: string;
 }
 
 export interface MonthlyTaxUserScope {
@@ -21,6 +22,7 @@ export interface ResolvedMonthlyTaxQuery {
     gang?: string;
     gangPrefix?: string;
     useHistoryDb: boolean;
+    snapshotVersion: number | null;
     hasValidPeriod: boolean;
 }
 
@@ -52,6 +54,7 @@ export function resolveMonthlyTaxQuery(
         gang,
         gangPrefix,
         useHistoryDb: parseBooleanQueryParam(query.use_history) ?? false,
+        snapshotVersion: parsePositiveIntegerQueryParam(query.snapshot_version),
         hasValidPeriod: Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12
     };
 }

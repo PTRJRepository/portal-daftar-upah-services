@@ -1,4 +1,3 @@
-/* Period Slider Container */
 .period-slider-container {
     display: flex;
     flex-direction: column;
@@ -7,7 +6,6 @@
     max-width: 600px;
 }
 
-/* Header with current period display and quick nav */
 .period-slider-header {
     display: flex;
     justify-content: space-between;
@@ -27,7 +25,6 @@
     gap: 4px;
 }
 
-/* Track wrapper - scrollable container */
 .period-slider-track-wrapper {
     position: relative;
     overflow-x: auto;
@@ -78,7 +75,6 @@
     box-shadow: none;
 }
 
-/* Track - holds all period items */
 .period-slider-track {
     display: flex;
     gap: 8px;
@@ -86,8 +82,8 @@
     min-width: min-content;
 }
 
-/* Individual period item */
 .period-slider-item {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -119,7 +115,6 @@
     opacity: 0.6;
 }
 
-/* Selected state */
 .period-slider-item.selected {
     background: linear-gradient(135deg, var(--primary-500, #3b82f6) 0%, var(--primary-600, #2563eb) 100%);
     border-color: var(--primary-600, #2563eb);
@@ -132,11 +127,6 @@
     color: white;
 }
 
-/* Current period indicator */
-.period-slider-item.current {
-    position: relative;
-}
-
 .period-slider-item.current:not(.selected) {
     border-color: var(--success-400, #4ade80);
     background: var(--success-50, #f0fdf4);
@@ -147,18 +137,7 @@
     font-weight: 600;
 }
 
-.period-slider-item.current::after {
-    content: '●';
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    font-size: 8px;
-    color: var(--success-500, #22c55e);
-}
-
-/* History period indicator */
 .period-slider-item.history-period {
-    position: relative;
     border-style: dashed;
     border-color: var(--neutral-400, #9ca3af);
 }
@@ -173,21 +152,51 @@
     font-style: italic;
 }
 
-/* History indicator badge */
-.period-slider-indicator {
+.period-slider-markers {
     position: absolute;
-    bottom: 2px;
-    right: 2px;
-    font-size: 8px;
-    opacity: 0.7;
+    left: 6px;
+    right: 6px;
+    bottom: 5px;
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    pointer-events: none;
 }
 
-.period-slider-item.selected .period-slider-indicator {
-    opacity: 1;
+.period-slider-marker {
+    min-width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    background: rgba(15, 23, 42, 0.08);
+    color: #334155;
+}
+
+.period-slider-marker-current {
+    background: var(--success-100, #dcfce7);
+    color: var(--success-700, #15803d);
+}
+
+.period-slider-marker-history {
+    background: var(--neutral-200, #e5e7eb);
+    color: var(--neutral-700, #374151);
+}
+
+.period-slider-marker-archive {
+    background: var(--primary-100, #dbeafe);
+    color: var(--primary-700, #1d4ed8);
+}
+
+.period-slider-item.selected .period-slider-marker {
+    background: rgba(255, 255, 255, 0.22);
     color: white;
 }
 
-/* Month and year labels */
 .period-slider-month {
     font-size: 13px;
     font-weight: 500;
@@ -202,7 +211,6 @@
     color: var(--text-secondary, #6b7280);
 }
 
-/* Footer with hints and position */
 .period-slider-footer {
     display: flex;
     justify-content: space-between;
@@ -217,46 +225,6 @@
     color: var(--text-secondary, #6b7280);
 }
 
-.period-slider-legend {
-    display: flex;
-    gap: 12px;
-    font-size: 10px;
-    color: var(--text-secondary, #6b7280);
-}
-
-.period-slider-legend-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.period-slider-legend-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    border: 1px solid;
-}
-
-.period-slider-legend-current {
-    background: var(--success-100, #dcfce7);
-    border-color: var(--success-500, #22c55e);
-}
-
-.period-slider-legend-history {
-    background: var(--neutral-100, #f3f4f6);
-    border-style: dashed;
-    border-color: var(--neutral-400, #9ca3af);
-}
-
-.period-slider-history-badge {
-    background: var(--neutral-200, #e5e7eb);
-    color: var(--neutral-700, #374151);
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 10px;
-    font-weight: 500;
-}
-
 .period-slider-position {
     font-size: 11px;
     font-weight: 500;
@@ -266,7 +234,6 @@
     border-radius: 10px;
 }
 
-/* Buttons */
 .period-slider-btn {
     display: flex;
     align-items: center;
@@ -300,7 +267,6 @@
     padding: 0;
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
     .period-slider-container {
         max-width: 100%;
@@ -325,7 +291,6 @@
     }
 }
 
-/* Dark mode support */
 @media (prefers-color-scheme: dark) {
     .period-slider-track-wrapper {
         background: var(--neutral-900, #111827);

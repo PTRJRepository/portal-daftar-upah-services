@@ -14,6 +14,8 @@ describe("payrollProfileRules", () => {
 
     it("normalizes editable effective start date", () => {
         expect(normalizeEffectiveStartDate(" 2026-03-15 ")).toBe("2026-03-15");
+        expect(normalizeEffectiveStartDate("2024-01-15 00:00:00.000")).toBe("2024-01-15");
+        expect(normalizeEffectiveStartDate(new Date(2024, 0, 15))).toBe("2024-01-15");
         expect(normalizeEffectiveStartDate("")).toBeNull();
     });
 
@@ -22,6 +24,16 @@ describe("payrollProfileRules", () => {
             years: 1,
             months: 2,
             label: "1 thn 2 bln"
+        });
+        expect(calculateMasaKerjaDisplay(new Date(2024, 0, 10), 4, 2026)).toEqual({
+            years: 2,
+            months: 3,
+            label: "2 thn 3 bln"
+        });
+        expect(calculateMasaKerjaDisplay("2024-01-15 00:00:00.000", 4, 2026)).toEqual({
+            years: 2,
+            months: 3,
+            label: "2 thn 3 bln"
         });
     });
 

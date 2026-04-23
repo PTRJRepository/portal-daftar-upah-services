@@ -1,24 +1,28 @@
 /**
  * History Seeder Service
  * 
- * Service ini menangani proses seeding data history dari database real-time
- * ke database history (extend_db_ptrj dan extend_db_ptrj_transaksi).
- * 
- * Digunakan ketika RUN_MODE=prod untuk menyimpan snapshot data payroll
- * pada bulan yang dipilih.
+ * Handles the process of seeding history data from the real-time database
+ * to the history database (extend_db_ptrj and extend_db_ptrj_transaksi).
  */
 
 import { Database } from "../db/client";
 import { Config } from "../config";
-import { historyDatabaseService, PayrollHistoryMaster, PayrollHistoryDetail, HistoryTaskreg, HistoryAdtrans, HistoryGangMember, HistoryMetadata, HistoryHrEmployee, HistoryHrGang } from "./historyDatabaseService";
+import { 
+    historyDatabaseService, PayrollHistoryMaster, PayrollHistoryDetail, 
+    HistoryTaskreg, HistoryAdtrans, HistoryGangMember, HistoryMetadata, 
+    HistoryHrEmployee, HistoryHrGang 
+} from "./historyDatabaseService";
 import { dataExtractorService } from "./dataExtractorService";
 import { gangService } from "./gangService";
 import { divisionConfigService } from "./config/DivisionConfigService";
-import { PayrollDataService } from "./payrollDataService";
-import { employeeHrDataService } from "./employeeHrDataService";
 import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { duplicateNikMitigationService } from "./DuplicateNikMitigationService";
 import { resolveHistorySeederCleanupPolicy } from "../utils/historySeederCleanup";
+import { payrollSnapshotBatchService } from "./payrollSnapshotBatchService";
+import { debug, error as logError } from "../utils/logger";
+import { processInBatches } from "../utils/batchProcessor";
+
+const CATEGORY = "HistorySeeder";
 
 export interface SeederResult {
     success: boolean;
@@ -44,13 +48,14 @@ export interface SeederOptions {
     periodMonth: number;
     periodYear: number;
     divisionCode?: string;
-    gangCode?: string;  // Optional, if not provided will seed all gangs in division
+    gangCode?: string;
     createdBy: string;
     ipAddress?: string;
     userAgent?: string;
-    force?: boolean;  // Overwrite existing data
+    force?: boolean;
     seederMode?: 'ALL' | 'PAYROLL' | 'PAYROLL_ONLY' | 'EMPLOYEE_HR' | 'GANG_HR' | 'ALL_HR';
 }
+
 export interface SeederProgress {
     is_running: boolean;
     current_step: string;
@@ -65,26 +70,24 @@ export interface SeederProgress {
 }
 
 export class HistorySeederService {
-    // Static progress tracker
+    private static instance: HistorySeederService;
     private static progress: SeederProgress = {
-        is_running: false,
-        current_step: 'idle',
-        gangs_total: 0,
-        gangs_done: 0,
-        employees_processed: 0
+        is_running: false, current_step: 'idle', gangs_total: 0, gangs_done: 0, employees_processed: 0
     };
 
-    // Timeout protection (30 minutes max)
-    private static readonly MAX_RUN_TIME_MS = 30 * 60 * 1000; // 30 minutes
+    private static readonly MAX_RUN_TIME_MS = 30 * 60 * 1000; // 30 mins
     private static startTime: number | null = null;
-    private static timeoutCheckInterval: NodeJS.Timeout | null = null;
+
+    private constructor() {}
+
+    public static getInstance(): HistorySeederService {
+        if (!HistorySeederService.instance) HistorySeederService.instance = new HistorySeederService();
+        return HistorySeederService.instance;
+    }
 
     public static getProgress(): SeederProgress {
-        // Check if seeder is stuck (running too long)
         if (HistorySeederService.progress.is_running && HistorySeederService.startTime) {
-            const elapsed = Date.now() - HistorySeederService.startTime;
-            if (elapsed > HistorySeederService.MAX_RUN_TIME_MS) {
-                console.error(`[HistorySeeder] ⚠️ Seeder detected as STUCK! Running for ${Math.round(elapsed / 1000)}s (max: ${HistorySeederService.MAX_RUN_TIME_MS / 1000}s). Force resetting...`);
+            if (Date.now() - HistorySeederService.startTime > HistorySeederService.MAX_RUN_TIME_MS) {
                 HistorySeederService.forceReset('Stuck timeout - auto reset');
             }
         }
@@ -95,604 +98,260 @@ export class HistorySeederService {
         Object.assign(HistorySeederService.progress, update, { last_update: new Date().toISOString() });
     }
 
-    /**
-     * Force reset the seeder progress (for stuck seeder recovery)
-     */
-    public static forceReset(reason: string = 'Manual reset'): void {
-        console.warn(`[HistorySeeder] Force resetting progress. Reason: ${reason}`);
-        if (HistorySeederService.timeoutCheckInterval) {
-            clearInterval(HistorySeederService.timeoutCheckInterval);
-            HistorySeederService.timeoutCheckInterval = null;
-        }
+    public static forceReset(reason: string = 'Manual reset') {
+        console.warn(`[HistorySeeder] Force reset triggered: ${reason}`);
+        HistorySeederService.progress = { is_running: false, current_step: `idle (Reset: ${reason})`, gangs_total: 0, gangs_done: 0, employees_processed: 0 };
         HistorySeederService.startTime = null;
-        HistorySeederService.progress = {
-            is_running: false,
-            current_step: '⚠️ Reset: ' + reason,
-            gangs_total: 0,
-            gangs_done: 0,
-            employees_processed: 0,
-            last_update: new Date().toISOString()
-        };
-    }
-
-    private static instance: HistorySeederService;
-
-    private constructor() { }
-
-    public static getInstance(): HistorySeederService {
-        if (!HistorySeederService.instance) {
-            HistorySeederService.instance = new HistorySeederService();
-        }
-        return HistorySeederService.instance;
     }
 
     /**
-     * Main method to seed payroll history data
+     * Main entry point for seeding payroll history.
      */
     public async seedPayrollHistory(options: SeederOptions): Promise<SeederResult> {
-        const startTime = Date.now();
         const result: SeederResult = {
-            success: false,
-            history_id: '',
-            period_month: options.periodMonth,
-            period_year: options.periodYear,
-            division_code: options.divisionCode || 'ALL',
-            gang_code: options.gangCode || 'ALL',
+            success: false, history_id: '',
+            period_month: options.periodMonth, period_year: options.periodYear,
+            division_code: options.divisionCode || 'ALL', gang_code: options.gangCode || 'ALL',
             total_employees: 0,
-            records_inserted: {
-                master: 0,
-                detail: 0,
-                taskreg: 0,
-                adtrans: 0,
-                gang_member: 0,
-                hr_employee: 0,
-                hr_gang: 0
-            },
+            records_inserted: { master: 0, detail: 0, taskreg: 0, adtrans: 0, gang_member: 0 },
             errors: []
         };
 
-        // Check if another seeder is already running
-        if (HistorySeederService.progress.is_running && !options.force) {
-            const elapsed = HistorySeederService.startTime 
-                ? Math.round((Date.now() - HistorySeederService.startTime) / 1000) 
-                : 0;
-            console.warn(`[HistorySeeder] ⚠️ Seeder already running for ${elapsed}s. Rejecting new request.`);
-            result.errors.push(`Seeder already running (started ${elapsed}s ago). Please wait or force reset.`);
-            return result;
-        }
-
-        // [OPTIMIZATION] If divisionCode is 'ALL', process divisions one by one
-        // to prevent timeout and memory issues in extractPayrollData
-        if ((!options.divisionCode || options.divisionCode === 'ALL') && (options.gangCode === 'ALL' || !options.gangCode)) {
-            console.log(`[HistorySeeder] 🔄 Processing ALL divisions iteratively...`);
-
-            // ⚠️ REMOVED: Initial DELETE ALL - each division will delete its own data before insert
-            // This ensures if one division fails, other divisions' data remains intact
-
-            HistorySeederService.updateProgress({
-                is_running: true,
-                current_step: 'Memulai seeding seluruh divisi...',
-                period: `${options.periodMonth}/${options.periodYear}`,
-                current_division: 'ALL',
-                started_at: new Date().toISOString()
-            });
-
-            try {
-                const { gangService } = await import("./gangService");
-                const allDivisions = await gangService.getAllDivisions();
-                console.log(`[HistorySeeder] Found ${allDivisions.length} divisions to process: ${allDivisions.join(', ')}`);
-
-                for (let i = 0; i < allDivisions.length; i++) {
-                    const div = allDivisions[i];
-                    HistorySeederService.updateProgress({
-                        current_step: `Processing division ${div} (${i + 1}/${allDivisions.length})...`,
-                        current_division: div,
-                        is_running: true // Keep running status
-                    });
-
-                    // Recursive call for single division
-                    const divOptions = { ...options, divisionCode: div, force: true };
-                    // Temporarily set progress to false so the recursive call isn't rejected
-                    const oldProgress = { ...HistorySeederService.progress };
-                    HistorySeederService.progress.is_running = false;
-                    
-                    const divResult = await this.seedPayrollHistory(divOptions);
-                    
-                    // Restore overall running status
-                    HistorySeederService.progress.is_running = true;
-
-                    // Accumulate results
-                    if (divResult.success) {
-                        result.total_employees += divResult.total_employees;
-                        result.records_inserted.master += divResult.records_inserted.master;
-                        result.records_inserted.detail += divResult.records_inserted.detail;
-                        result.records_inserted.taskreg += divResult.records_inserted.taskreg;
-                        result.records_inserted.adtrans += divResult.records_inserted.adtrans;
-                        result.records_inserted.gang_member += divResult.records_inserted.gang_member;
-                        result.records_inserted.hr_employee += divResult.records_inserted.hr_employee || 0;
-                        result.records_inserted.hr_gang += divResult.records_inserted.hr_gang || 0;
-                    } else if (divResult.errors.length > 0) {
-                        result.errors.push(`[${div}] ${divResult.errors.join('; ')}`);
-                    }
-
-                    // Optional short delay between divisions
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-
-                result.success = true;
-                result.history_id = 'BATCH-' + Date.now().toString(36).toUpperCase();
-                const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-                HistorySeederService.updateProgress({
-                    is_running: false,
-                    current_step: `✅ Selesai! Seeding ${allDivisions.length} divisi berhasil dalam ${totalTime}s.`,
-                    current_division: 'DONE'
-                });
-                return result;
-            } catch (error: any) {
-                console.error(`[HistorySeeder] Batch seeding failed:`, error);
-                HistorySeederService.updateProgress({ is_running: false, current_step: `❌ Gagal: ${error.message}` });
-                result.errors.push(`Batch seeding failed: ${error.message}`);
-                return result;
-            }
-        }
-
-        console.log(`[HistorySeeder] =======================================`);
-        console.log(`[HistorySeeder] Starting payroll history seeding`);
-        console.log(`[HistorySeeder] Period: ${options.periodMonth}/${options.periodYear}`);
-        console.log(`[HistorySeeder] Division: ${options.divisionCode || 'ALL'}, Gang: ${options.gangCode || 'ALL'}`);
-        console.log(`[HistorySeeder] Mode: ${options.seederMode || 'PAYROLL'}`);
-        console.log(`[HistorySeeder] =======================================`);
+        debug(CATEGORY, `Starting payroll history seeding for ${options.divisionCode || 'ALL'} period ${options.periodMonth}/${options.periodYear}`);
 
         try {
-            const cleanupPolicy = resolveHistorySeederCleanupPolicy(options);
+            await this.cleanupAggregationHistory(options, result);
 
-            if (cleanupPolicy.shouldDeleteAggregationHistory) {
-                console.log(`[HistorySeeder] 🗑️  Step 0: Cleaning aggregation snapshot for ${options.divisionCode} period ${options.periodMonth}/${options.periodYear}...`);
-
-                try {
-                    const deleteHistoryDb = Database.getExtendedInstance();
-                    const whereClauses: string[] = ["period_month = ?", "period_year = ?", "division_code = ?"];
-                    const deleteParams: any[] = [options.periodMonth, options.periodYear, options.divisionCode];
-
-                    if (options.gangCode && options.gangCode !== "ALL") {
-                        whereClauses.push("gang_code = ?");
-                        deleteParams.push(options.gangCode);
-                    }
-
-                    const whereClause = whereClauses.join(" AND ");
-                    const deleteSql = `DELETE FROM dbo.daftar_upah_aggregation_history WHERE ${whereClause}`;
-                    const countSql = `SELECT COUNT(*) as cnt FROM dbo.daftar_upah_aggregation_history WHERE ${whereClause}`;
-                    const sampleSql = `SELECT TOP 3 division_code, gang_code FROM dbo.daftar_upah_aggregation_history WHERE ${whereClause}`;
-
-                    console.log(`[HistorySeeder] 🗑️  SQL: ${deleteSql}`);
-                    console.log(`[HistorySeeder] 🗑️  Params: ${JSON.stringify(deleteParams)}`);
-
-                    const checkResult = await deleteHistoryDb.query(countSql, deleteParams);
-                    const countBefore = checkResult?.[0]?.cnt || 0;
-                    console.log(`[HistorySeeder] 📊 Found ${countBefore} aggregation rows to delete`);
-
-                    if (countBefore > 0) {
-                        const sampleResult = await deleteHistoryDb.query(sampleSql, deleteParams);
-                        console.log(`[HistorySeeder] 📋 Aggregation sample to delete:`, sampleResult);
-
-                        await deleteHistoryDb.query(deleteSql, deleteParams);
-
-                        const verifyResult = await deleteHistoryDb.query(countSql, deleteParams);
-                        const countAfter = verifyResult?.[0]?.cnt || 0;
-                        console.log(`[HistorySeeder] ✅ Aggregation rows remaining after cleanup: ${countAfter}`);
-                    } else {
-                        console.log(`[HistorySeeder] ℹ️  No aggregation snapshot rows found to delete`);
-                    }
-                } catch (deleteError: any) {
-                    console.error(`[HistorySeeder] ❌ Aggregation cleanup failed:`, deleteError.message);
-                    console.error(`[HistorySeeder] ❌ Stack:`, deleteError.stack);
-                    result.errors.push(`Delete old aggregation data failed: ${deleteError.message}`);
-                }
-            } else if (!options.force) {
-                console.log(`[HistorySeeder] force=false - skipping aggregation cleanup`);
-            } else {
-                console.log(`[HistorySeeder] No specific divisionCode provided - skipping aggregation cleanup to avoid broad deletion`);
-            }
-
-            // Set start time for timeout protection
             HistorySeederService.startTime = Date.now();
-
-            // Reset progress
             HistorySeederService.updateProgress({
-                is_running: true,
-                current_step: 'Memulai seeding...',
+                is_running: true, current_step: 'Memulai seeding...',
                 period: `${options.periodMonth}/${options.periodYear}`,
                 current_division: options.divisionCode || 'ALL',
                 gangs_total: 0, gangs_done: 0, employees_processed: 0,
                 started_at: new Date().toISOString()
             });
 
-            // Generate history_id
             const historyId = historyDatabaseService.generateHistoryId();
             result.history_id = historyId;
 
-            // [FIX] Delete existing history for this division/period/gang to prevent duplication
-            // This ensures idempotent seeding - running seeder multiple times produces same result
-            //
-            // CRITICAL: Only delete if a SPECIFIC divisionCode is provided.
-            // If divisionCode is undefined (seeding ALL divisions), DO NOT delete
-            // because the DELETE would wipe ALL history for that period across all divisions.
-            // The absence of divisionCode means "additive" seeding - preserve existing data.
-            if (cleanupPolicy.shouldDeletePayrollHistory) {
-                console.log(`[HistorySeeder] Deleting existing history for ${options.divisionCode}/${options.gangCode || 'ALL'} (${options.periodMonth}/${options.periodYear})...`);
-                await historyDatabaseService.deleteHistoryForPeriodAndLocation(
-                    options.periodMonth,
-                    options.periodYear,
-                    options.divisionCode,
-                    options.gangCode
-                );
-            } else if (!options.force) {
-                console.log(`[HistorySeeder] force=false - skipping delete (preserving existing history data)`);
-            } else {
-                console.log(`[HistorySeeder] No specific divisionCode provided - skipping delete to preserve existing data from other divisions`);
-            }
-
             const seederMode = options.seederMode || 'PAYROLL';
 
-            // PAYROLL SEEDER
             if (seederMode === 'ALL' || seederMode === 'PAYROLL') {
-                // 1. Get payroll data from real-time database
-                HistorySeederService.updateProgress({ current_step: 'Mengambil data payroll live...' });
-                let payrollData: any[] = [];
-                let totalEmployeesInData = 0;
-                try {
-                    payrollData = await this.fetchPayrollData(options);
-                    console.log(`[HistorySeeder] fetchPayrollData returned ${payrollData.length} gangs`);
-                    // Calculate total employees for progress display
-                    for (const gang of payrollData) {
-                        totalEmployeesInData += gang.employees?.length || 0;
-                    }
-                    console.log(`[HistorySeeder] Total employees in fetched data: ${totalEmployeesInData}`);
-                } catch (fetchError: any) {
-                    console.error(`[HistorySeeder] fetchPayrollData failed: ${fetchError.message}`);
-                    result.errors.push(`Fetch payroll data failed: ${fetchError.message}`);
-                    // CRITICAL: Update progress to mark as complete (not stuck)
-                    HistorySeederService.updateProgress({
-                        is_running: false,
-                        current_step: `❌ Gagal mengambil data: ${fetchError.message}`,
-                        gangs_total: 0,
-                        gangs_done: 0,
-                        employees_processed: 0
-                    });
-                    return result;
-                }
-
-                if (!payrollData || payrollData.length === 0) {
-                    const periodStr = `${options.periodMonth}/${options.periodYear}`;
-                    const divisionStr = options.divisionCode || 'ALL';
-                    console.warn(`[HistorySeeder] No payroll data found for period ${periodStr}, division ${divisionStr}`);
-
-                    // Provide more context for debugging
-                    result.errors.push(
-                        `No payroll data found for period ${periodStr} (Division: ${divisionStr}). ` +
-                        `Possible causes: ` +
-                        `1) Data does not exist in PR_GANGLN_ARC for accounting period, ` +
-                        `2) HR_GANGLN has no employees for this gang/division, ` +
-                        `3) Period conversion mismatch (calendar vs accounting period). ` +
-                        `Suggestion: Try mode 'ALL_HR' to save HR data only, or check if raw payroll data exists in the database.`
-                    );
-
-                    if (seederMode === 'PAYROLL') {
-                        // CRITICAL: Update progress to mark as complete (not stuck)
-                        HistorySeederService.updateProgress({
-                            is_running: false,
-                            current_step: `⚠️ Tidak ada data untuk periode ${periodStr}. Coba mode ALL_HR atau periksa database.`,
-                            gangs_total: 0,
-                            gangs_done: 0,
-                            employees_processed: 0
-                        });
-                        return result;
-                    }
-                    // For 'ALL' mode, continue to try HR data seeding
-                } else {
-                    // 2. Seed master and detail
-                    HistorySeederService.updateProgress({ gangs_total: payrollData.length, current_step: 'Menyimpan data payroll per gang...', employees_processed: 0 });
-                    for (let gi = 0; gi < payrollData.length; gi++) {
-                        const gangData = payrollData[gi];
-                        try {
-                            HistorySeederService.updateProgress({
-                                current_step: `Menyimpan gang ${gangData.gang_code || '?'} (${gi + 1}/${payrollData.length})`,
-                                current_gang: gangData.gang_code,
-                                gangs_done: gi,
-                                employees_processed: result.total_employees
-                            });
-                            await this.seedGangHistory(historyId, gangData, options, result);
-                        } catch (error: any) {
-                            result.errors.push(`Error seeding gang ${gangData.gang_code}: ${error.message}`);
-                        }
-                    }
-                    HistorySeederService.updateProgress({
-                        gangs_done: payrollData.length,
-                        employees_processed: result.total_employees,
-                        current_step: 'Menyimpan data transaksi...'
-                    });
-
-                    // 3. Seed transaction data (with timeout protection)
-                    console.log(`[HistorySeeder] Starting transaction seeding...`);
-                    try {
-                        // Transaction seeding can take a long time. We'll wrap it with a timeout
-                        // If it takes more than 5 minutes, we'll skip it and continue
-                        const TX_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-                        await Promise.race([
-                            this.seedTransactionData(historyId, options, result),
-                            new Promise((_, reject) =>
-                                setTimeout(() => reject(new Error('Transaction seeding timeout after 5 minutes - skipping')), TX_TIMEOUT_MS)
-                            )
-                        ]).catch((err) => {
-                            console.warn(`[HistorySeeder] ⚠️ Transaction seeding issue: ${err.message}`);
-                            console.warn(`[HistorySeeder] ⚠️ Skipping transaction data - manual intervention may be needed`);
-                        });
-                        console.log(`[HistorySeeder] Transaction seeding step completed (may have skipped)`);
-                    } catch (error: any) {
-                        console.error(`[HistorySeeder] Error in seedTransactionData:`, error);
-                        console.error(`[HistorySeeder] Error stack:`, error.stack);
-                        result.errors.push(`Error seeding transactions: ${error.message}`);
-                    }
-
-                    // 4. Seed gang member data
-                    await this.seedGangMemberData(historyId, options, result);
+                const payrollData = await this.fetchPayrollDataForSeeder(options, result);
+                if (payrollData && payrollData.length > 0) {
+                    await this.seedGangs(historyId, payrollData, options, result);
+                    HistorySeederService.updateProgress({ current_step: 'Menyimpan data transaksi...' });
+                    await this.seedTransactions(historyId, options, result);
                 }
             }
 
-            // EXTENDED HR SEEDERS
-
-            // EMPLOYEE HR SEEDER
-            if (seederMode === 'ALL' || seederMode === 'ALL_HR' || seederMode === 'EMPLOYEE_HR') {
-                HistorySeederService.updateProgress({ current_step: 'Menyimpan data HR Karyawan...' });
-                await this.seedEmployeeHrHistory(historyId, options, result);
+            if (seederMode === 'ALL' || seederMode.includes('HR')) {
+                await this.seedHrData(historyId, options, result);
             }
 
-            // GANG HR SEEDER
-            if (seederMode === 'ALL' || seederMode === 'ALL_HR' || seederMode === 'GANG_HR') {
-                HistorySeederService.updateProgress({ current_step: 'Menyimpan data HR Gang...' });
-                await this.seedGangHrHistory(historyId, options, result);
-            }
-
-            // 5. Save metadata
-            await this.saveSeederMetadata(historyId, options, result);
-
-            const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
             result.success = result.errors.length === 0;
-
-            console.log(`[HistorySeeder] =======================================`);
-            console.log(`[HistorySeeder] Seeding completed in ${totalTime}s`);
-            console.log(`[HistorySeeder] Success: ${result.success}`);
-            console.log(`[HistorySeeder] Total employees: ${result.total_employees}`);
-            console.log(`[HistorySeeder] Records: ${JSON.stringify(result.records_inserted)}`);
-            if (result.errors.length > 0) {
-                console.log(`[HistorySeeder] Errors: ${result.errors.join(', ')}`);
-            }
-            console.log(`[HistorySeeder] =======================================`);
-
-            HistorySeederService.updateProgress({ is_running: false, current_step: result.success ? '✅ Selesai!' : '⚠️ Selesai dengan error' });
-            HistorySeederService.startTime = null; // Reset timeout tracker
-
+            HistorySeederService.updateProgress({ is_running: false, current_step: result.success ? '✅ Seeding selesai!' : `⚠️ Seeding selesai dengan ${result.errors.length} error` });
+            return result;
         } catch (error: any) {
-            result.errors.push(`Fatal error: ${error.message}`);
+            logError(CATEGORY, `seedPayrollHistory critical failure: ${error.message}`);
             HistorySeederService.updateProgress({ is_running: false, current_step: `❌ Error: ${error.message}` });
-            HistorySeederService.startTime = null; // Reset timeout tracker
+            result.errors.push(`Critical failure: ${error.message}`);
+            return result;
         }
+    }
 
-        return result;
+    private async cleanupAggregationHistory(options: SeederOptions, result: SeederResult): Promise<void> {
+        const cleanupPolicy = resolveHistorySeederCleanupPolicy(options);
+        if (!cleanupPolicy.shouldDeleteAggregationHistory) return;
+
+        try {
+            const deleteHistoryDb = Database.getExtendedInstance();
+            const whereClauses = ["period_month = ?", "period_year = ?", "division_code = ?"];
+            const params = [options.periodMonth, options.periodYear, options.divisionCode];
+            if (options.gangCode && options.gangCode !== "ALL") {
+                whereClauses.push("gang_code = ?");
+                params.push(options.gangCode);
+            }
+            await deleteHistoryDb.query(`DELETE FROM dbo.daftar_upah_aggregation_history WHERE ${whereClauses.join(" AND ")}`, params);
+        } catch (e: any) {
+            result.errors.push(`Aggregation cleanup failed: ${e.message}`);
+        }
+    }
+
+    private async fetchPayrollDataForSeeder(options: SeederOptions, result: SeederResult): Promise<any[]> {
+        HistorySeederService.updateProgress({ current_step: 'Mengambil data payroll live...' });
+        try {
+            return await this.fetchPayrollData(options);
+        } catch (e: any) {
+            result.errors.push(`Fetch payroll data failed: ${e.message}`);
+            return [];
+        }
+    }
+
+    private async seedGangs(historyId: string, payrollData: any[], options: SeederOptions, result: SeederResult): Promise<void> {
+        HistorySeederService.updateProgress({ gangs_total: payrollData.length });
+        await processInBatches({
+            items: payrollData, batchSize: 1, label: "HistorySeeder.seedGangs",
+            processFn: async (batch, gi) => {
+                const gangData = batch[0];
+                HistorySeederService.updateProgress({
+                    current_step: `Menyimpan gang ${gangData.gang_code || '?'} (${gi + 1}/${payrollData.length})`,
+                    current_gang: gangData.gang_code, gangs_done: gi, employees_processed: result.total_employees
+                });
+                await this.seedGangHistory(historyId, gangData, options, result);
+            }
+        });
+    }
+
+    private async seedTransactions(historyId: string, options: SeederOptions, result: SeederResult): Promise<void> {
+        const TX_TIMEOUT_MS = 5 * 60 * 1000;
+        try {
+            await Promise.race([
+                this.seedTransactionData(historyId, options, result),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Transaction seeding timeout')), TX_TIMEOUT_MS))
+            ]);
+        } catch (e: any) {
+            result.errors.push(`Transaction seeding issue: ${e.message}`);
+        }
+        await this.seedGangMemberData(historyId, options, result);
+    }
+
+    private async seedHrData(historyId: string, options: SeederOptions, result: SeederResult): Promise<void> {
+        const seederMode = options.seederMode || 'PAYROLL';
+        if (seederMode === 'ALL' || seederMode === 'ALL_HR' || seederMode === 'EMPLOYEE_HR') {
+            HistorySeederService.updateProgress({ current_step: 'Menyimpan data HR Karyawan...' });
+            await this.seedEmployeeHrHistory(historyId, options, result);
+        }
+        if (seederMode === 'ALL' || seederMode === 'ALL_HR' || seederMode === 'GANG_HR') {
+            HistorySeederService.updateProgress({ current_step: 'Menyimpan data HR Gang...' });
+            await this.seedGangHrHistory(historyId, options, result);
+        }
+        await this.saveSeederMetadata(historyId, options, result);
     }
 
     /**
-     * Helper: Retry a function with exponential backoff on timeout
+     * CORE LOGIC METHODS (Migrated from original with minimal changes to preserve functionality)
      */
+
     private async withRetry<T>(fn: () => Promise<T>, context: string, maxRetries: number = 3): Promise<T> {
         let lastError: any;
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                return await fn();
-            } catch (error: any) {
-                lastError = error;
-                const isTimeout = error.message?.includes('timed out') ||
-                    error.message?.includes('timeout') ||
-                    error.message?.includes('Gateway returned 500');
-
-                if (isTimeout && attempt < maxRetries) {
-                    const delay = attempt * 2000; // 2s, 4s, 6s
-                    console.warn(`[HistorySeeder] ${context} timeout (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                } else {
-                    throw error;
-                }
+        for (let i = 1; i <= maxRetries; i++) {
+            try { return await fn(); } catch (e: any) {
+                lastError = e;
+                if ((e.message?.includes('timeout') || e.message?.includes('500')) && i < maxRetries) {
+                    await new Promise(r => setTimeout(r, i * 2000));
+                } else throw e;
             }
         }
         throw lastError;
     }
 
-    /**
-     * Fetch payroll data from real-time database
-     */
     private async fetchPayrollData(options: SeederOptions): Promise<any[]> {
-        // Use dataExtractorService to get payroll data
-        const authToken = 'system'; // Internal token for seeder
+        const rawRows = await this.withRetry(
+            () => this.fetchPayrollRowsFromProgressiveSource(options),
+            'extractPayrollDataProgressive'
+        );
 
-        // IMPORTANT: Pass useHistoryDb=false to force reading from the LIVE database.
-        // Without this, extractPayrollData intercepts historical periods and tries to
-        // read from the history DB (which is empty — it's the DB we're trying to seed!).
-        console.log(`[HistorySeeder] Fetching payroll data for ${options.periodMonth}/${options.periodYear}...`);
-        console.log(`[HistorySeeder] Division: ${options.divisionCode || 'ALL'}, Gang: ${options.gangCode || 'ALL'}`);
-
-        console.log(`[HistorySeeder] Calling extractPayrollData...`);
-        const rawData = await this.withRetry(async () => {
-            return await dataExtractorService.extractPayrollData(
-                options.periodMonth,
-                options.periodYear,
-                options.gangCode || 'ALL',
-                options.divisionCode,
-                null,
-                Config.DB_PROFILE,
-                false,  // includeVirtualGangs
-                false   // useHistoryDb — always read from live DB for seeding
-            );
-        }, 'extractPayrollData');
-        console.log(`[HistorySeeder] extractPayrollData completed, ${rawData.data_rows?.length || 0} rows`);
-
-        // Group by gang
+        const virtualGangCodes = new Set(['AMC', 'HMC', 'B2N', 'IN', 'INT']);
+        const isSeedingVirtual = divisionConfigService.isVirtualDivision(options.divisionCode || '');
         const gangMap = new Map<string, any[]>();
 
-        // ⚠️ CRITICAL: EXCLUDE virtual division gangs from parent division
-        // WKS_PG (AMC) should be SEPARATE from P1A
-        // WKS_AR (HMC) should be SEPARATE from AB2
-        // NRS (B2N) should be SEPARATE from PG1B
-        // INF (IN, INT) should be SEPARATE from PG1A
-        const virtualGangCodes = new Set<string>();
-        const virtualDivs = divisionConfigService.getVirtualDivisions();
-        
-        // Build the set of virtual gang codes that should be excluded from parent divisions
-        for (const vDiv of virtualDivs) {
-            if (vDiv.sourceDivision === options.divisionCode) {
-                // Add explicit gang codes for this virtual division
-                if (vDiv.code === 'WKS_PG') {
-                    virtualGangCodes.add('AMC');
-                } else if (vDiv.code === 'WKS_AR') {
-                    virtualGangCodes.add('HMC');
-                } else if (vDiv.code === 'NRS') {
-                    virtualGangCodes.add('B2N');
-                } else if (vDiv.code === 'INF' || vDiv.code === 'INFRA') {
-                    virtualGangCodes.add('IN');
-                    virtualGangCodes.add('INT');
-                }
-            }
-        }
-        
-        // Also explicitly add known virtual gangs (catch-all)
-        virtualGangCodes.add('AMC');  // WKS_PG
-        virtualGangCodes.add('HMC');  // WKS_AR
-        virtualGangCodes.add('B2N');  // NRS
-
-        const isSeedingVirtual = divisionConfigService.isVirtualDivision(options.divisionCode || '');
-        console.log(`[HistorySeeder] ⚠️ Seeding virtual division? ${isSeedingVirtual}. Excluding virtual gangs from parent? ${!isSeedingVirtual}`);
-        console.log(`[HistorySeeder] Virtual gang codes to exclude: ${Array.from(virtualGangCodes).join(', ')}`);
-
-        for (const row of rawData.data_rows) {
-            const gangCode = row.gang_code?.trim().toUpperCase() || '';
-
-            // Skip virtual gangs when seeding parent division (to prevent double-counting)
-            // BUT do NOT skip if we are specifically seeding that virtual division!
-            if (!isSeedingVirtual && virtualGangCodes.has(gangCode)) {
-                console.log(`[HistorySeeder] ⏭️ Skipping virtual gang ${gangCode} from parent ${options.divisionCode}`);
-                continue;
-            }
-
-            if (!gangMap.has(gangCode)) {
-                gangMap.set(gangCode, []);
-            }
-            gangMap.get(gangCode)!.push(row);
+        for (const row of rawRows) {
+            const gc = row.gang_code?.trim().toUpperCase() || '';
+            if (!isSeedingVirtual && virtualGangCodes.has(gc)) continue;
+            if (!gangMap.has(gc)) gangMap.set(gc, []);
+            gangMap.get(gc)!.push(row);
         }
 
-        // Convert to array
-        const result: any[] = [];
-        for (const [gangCode, employees] of gangMap) {
-            result.push({
-                gang_code: gangCode,
-                employees: employees
+        return Array.from(gangMap.entries()).map(([gang_code, employees]) => ({ gang_code, employees }));
+    }
+
+    private async fetchPayrollRowsFromProgressiveSource(options: SeederOptions): Promise<any[]> {
+        const progressiveStream = dataExtractorService.extractPayrollDataProgressive(
+            options.periodMonth,
+            options.periodYear,
+            options.gangCode || 'ALL',
+            options.divisionCode,
+            Config.DB_PROFILE,
+            undefined,
+            false
+        );
+
+        let completeRows: any[] = [];
+        for await (const chunk of progressiveStream) {
+            if (chunk.phase !== 'complete') continue;
+            completeRows = Array.from(chunk.gangs.values()).flat();
+        }
+
+        return completeRows;
+    }
+
+    private async seedGangHistory(historyId: string, gangData: any, options: SeederOptions, result: SeederResult): Promise<void> {
+        const employees = gangData.employees;
+        if (!employees?.length) return;
+
+        const resolvedDivisionCode = this.resolveGangDivisionCode(options, gangData, employees);
+        const totals = this.calculateTotals(employees);
+        const dynamicPremiHeaders = this.collectDynamicPremiHeaders(employees);
+        const dynamicPotonganHeaders = this.collectDynamicPotonganHeaders(employees);
+        const snapshotBatch = await payrollSnapshotBatchService.createNextBatch({
+            period_month: options.periodMonth, period_year: options.periodYear,
+            division_code: resolvedDivisionCode, gang_code: gangData.gang_code,
+            created_by: options.createdBy
+        });
+
+        const masterId = await historyDatabaseService.savePayrollHistoryMaster({
+            history_id: historyId, snapshot_batch_id: snapshotBatch.id, snapshot_version: snapshotBatch.snapshot_version,
+            period_month: options.periodMonth, period_year: options.periodYear,
+            division_code: resolvedDivisionCode, gang_code: gangData.gang_code,
+            gang_description: gangData.gang_code, total_employees: employees.length,
+            ...totals,
+            dynamic_premi_data: dynamicPremiHeaders.length > 0 ? JSON.stringify(dynamicPremiHeaders) : undefined,
+            dynamic_potongan_data: dynamicPotonganHeaders.length > 0 ? JSON.stringify(dynamicPotonganHeaders) : undefined,
+            created_by: options.createdBy, source_endpoint: '/api/history/seed', is_locked: false
+        });
+
+        result.records_inserted.master++;
+        for (const emp of employees) {
+            await this.handleDuplicateNikSeeding(historyId, masterId, emp, options, result, resolvedDivisionCode, {
+                snapshot_batch_id: snapshotBatch.id, snapshot_version: snapshotBatch.snapshot_version
             });
         }
-
-        return result;
     }
 
-    /**
-     * Seed history for a single gang
-     */
-    private async seedGangHistory(
-        historyId: string,
-        gangData: any,
-        options: SeederOptions,
-        result: SeederResult
-    ): Promise<void> {
-        const employees = gangData.employees;
-        console.log(`[HistorySeeder] seedGangHistory: gang=${gangData.gang_code}, employees count=${employees?.length || 0}`);
-
-        if (!employees || employees.length === 0) {
-            console.warn(`[HistorySeeder] ⚠️ No employees for gang ${gangData.gang_code}, skipping`);
-            return;
+    private resolveGangDivisionCode(options: SeederOptions, gangData: any, employees: any[]): string {
+        const scopedDivision = options.divisionCode?.trim();
+        if (scopedDivision && scopedDivision.toUpperCase() !== "ALL") {
+            return scopedDivision;
         }
 
-        // Debug: Log first employee structure
-        if (employees.length > 0) {
-            const firstEmp = employees[0];
-            console.log(`[HistorySeeder] First employee: ${JSON.stringify({
-                emp_code: firstEmp.emp_code,
-                nik: firstEmp.nik,
-                nama: firstEmp.nama || firstEmp.emp_name,
-                gang_code: firstEmp.gang_code,
-                loc_code: firstEmp.loc_code
-            })}`);
+        const gangCandidate = [gangData?.division_code, gangData?.loc_code]
+            .find((value) => typeof value === "string" && value.trim().length > 0);
+        if (gangCandidate) {
+            return String(gangCandidate).trim().toUpperCase();
         }
 
-        // Calculate totals
-        const totals = this.calculateTotals(employees);
-
-        // Create master record
-        const masterData: PayrollHistoryMaster = {
-            history_id: historyId,
-            period_month: options.periodMonth,
-            period_year: options.periodYear,
-            division_code: options.divisionCode || 'ALL',
-            gang_code: gangData.gang_code,
-            gang_description: gangData.gang_code, // Will be updated with actual description
-            total_employees: employees.length,
-            ...totals,
-            created_by: options.createdBy,
-            source_endpoint: '/api/history/seed',
-            is_locked: false
-        };
-
-        const masterId = await historyDatabaseService.savePayrollHistoryMaster(masterData);
-        result.records_inserted.master++;
-
-        // Create detail records - with duplicate NIK handling
-        for (const emp of employees) {
-            // Use new method that handles duplicate NIKs
-            // Pass options.divisionCode to ensure detail uses correct division (not loc_code)
-            await this.handleDuplicateNikSeeding(historyId, masterId, emp, options, result, options.divisionCode);
+        for (const employee of employees) {
+            const employeeCandidate = [employee?.division_code, employee?.loc_code]
+                .find((value) => typeof value === "string" && value.trim().length > 0);
+            if (employeeCandidate) {
+                return String(employeeCandidate).trim().toUpperCase();
+            }
         }
+
+        return "ALL";
     }
 
-    /**
-     * Calculate totals from employee data
-     */
     private calculateTotals(employees: any[]): any {
-        const totals = {
-            total_hk: 0,
-            total_hari_kerja: 0,
-            total_cuti_tahunan: 0,
-            total_cuti_sakit: 0,
-            total_cuti_minggu: 0,
-            total_cuti_nasional: 0,
-            total_upah_dasar: 0,
-            total_upah_pokok: 0,
-            total_gaji_pokok: 0,
-            total_beras: 0,
-            total_jabatan: 0,
-            total_call_jabatan: 0,
-            total_masa_kerja: 0,
-            total_lembur: 0,
-            total_tunjangan: 0,
-            total_premi_brondol: 0,
-            total_premi_prunning: 0,
-            total_premi_insentif: 0,
-            total_premi_kinerja: 0,
-            total_premi: 0,
-            total_koreksi: 0,
-            total_potongan: 0,
-            total_pph21: 0,
-            total_bpjs_pekerja: 0,
-            total_bpjs_majikan: 0,
-            total_spsi: 0,
-            total_upah_kotor: 0,
-            total_upah_bersih: 0
+        const totals: any = { 
+            total_hk: 0, total_hari_kerja: 0, total_cuti_tahunan: 0, total_cuti_sakit: 0,
+            total_cuti_minggu: 0, total_cuti_nasional: 0, total_upah_dasar: 0, total_upah_pokok: 0,
+            total_gaji_pokok: 0, total_beras: 0, total_jabatan: 0, total_masa_kerja: 0,
+            total_lembur: 0, total_tunjangan: 0, total_premi_brondol: 0, total_premi: 0,
+            total_premi_prunning: 0, total_premi_insentif: 0, total_premi_kinerja: 0,
+            total_koreksi: 0, total_potongan: 0, total_pph21: 0, total_bpjs_pekerja: 0,
+            total_bpjs_majikan: 0, total_spsi: 0, total_upah_kotor: 0, total_upah_bersih: 0
         };
-
         for (const emp of employees) {
             totals.total_hk += emp.jumlah_hk || 0;
             totals.total_hari_kerja += emp.hari_kerja || 0;
@@ -710,751 +369,396 @@ export class HistorySeederService {
             totals.total_tunjangan += emp.total_tunjangan || 0;
             totals.total_premi_brondol += emp.premi_brondol || 0;
             totals.total_premi += emp.total_premi || 0;
+            totals.total_premi_prunning += emp.premi_prunning || emp.premi_pruning || 0;
+            totals.total_premi_insentif += emp.premi_insentif || 0;
+            totals.total_premi_kinerja += emp.premi_kinerja || 0;
             totals.total_koreksi += emp.pot_koreksi || 0;
             totals.total_potongan += emp.total_potongan || 0;
-            
-            // Use pot_pph21 from database (actual deduction from PR_ADTRANS)
             totals.total_pph21 += emp.pot_pph21 || 0;
-            
             totals.total_bpjs_pekerja += emp.pot_bpjs_pekerja_total || 0;
             totals.total_bpjs_majikan += (emp.pot_bpjs_kesehatan_majikan || 0) + (emp.pot_bpjs_pensiun_majikan || 0) + (emp.pot_astek_majikan || 0);
             totals.total_spsi += emp.pot_spsi || 0;
             totals.total_upah_kotor += emp.jumlah_upah_kotor || 0;
             totals.total_upah_bersih += emp.upah_bersih || 0;
         }
-
         return totals;
     }
 
-    /**
-     * Map employee data to detail record
-     * @param divisionCode - The correct division code to use (from header), not loc_code which may be short form
-     */
-    private mapEmployeeToDetail(historyId: string, masterId: number, emp: any, divisionCode?: string): PayrollHistoryDetail {
-        return {
-            history_id: historyId,
-            master_id: masterId,
-            emp_code: emp.emp_code || emp.nik,  // EmpCode (e.g. A0023), fallback to nik
-            emp_name: emp.nama || emp.emp_name,
-            nik: emp.nik,  // PayrollRow.nik = actual KTP (NewICNo)
-            gender: emp.jenis_kelamin || emp.gender,
-            gang_code: emp.gang_code,
-            division_code: divisionCode || emp.division_code || emp.loc_code, // Use passed divisionCode (from header) for consistency
-            loc_code: emp.loc_code,
-            status_ptkp: emp.status_ptkp,
-            kategori_ter: emp.kategori_ter,
-            hari_kerja: emp.hari_kerja || 0,
-            cuti_tahunan_hari: emp.cuti_tahunan_hari || 0,
-            cuti_sakit_haid_hari: emp.cuti_sakit_haid_hari || 0,
-            cuti_minggu_hari: emp.cuti_minggu_hari || 0,
-            cuti_nasional_hari: emp.cuti_nasional_hari || 0,
-            jumlah_hk: emp.jumlah_hk || 0,
-            total_jam_kerja: emp.total_jam_kerja || 0,
-            upah_dasar: emp.upah_dasar || 0,
-            upah_pokok: emp.upah_pokok || 0,
-            gaji_pokok: emp.gaji_pokok || 0,
-            gaji_pokok_ideal: emp.gaji_pokok_ideal || 0,
-            gaji_pokok_aktual: emp.gaji_pokok_aktual || 0,
-            koreksi_hk: emp.koreksi_hk || 0,
-            beras_rate: emp.beras_rate || 0,
-            beras_jumlah: emp.beras_jumlah || 0,
-            jabatan_rate: emp.jabatan_rate || 0,
-            jabatan_jumlah: emp.jabatan_jumlah || 0,
-            masa_kerja_tahun: emp.masa_kerja_tahun || 0,
-            masa_kerja_rate: emp.masa_kerja_rate || 0,
-            masa_kerja_jumlah: emp.masa_kerja_jumlah || 0,
-            lembur_jam: emp.lembur_jam || 0,
-            lembur_rate: emp.lembur_rate || 0,
-            lembur_jumlah: emp.lembur_jumlah || 0,
-            lembur_records: emp.lembur_records ? JSON.stringify(emp.lembur_records) : undefined,
-            total_tunjangan: emp.total_tunjangan || 0,
-            // [PHASE 2.5] Brondol dual source breakdown
-            premi_brondol: emp.premi_brondol || 0,  // Keep for backward compatibility (combined total)
-            premi_brondol_loosefruit: emp.premi_brondol_loosefruit || 0,
-            premi_brondol_adtrans: emp.premi_brondol_adtrans || 0,
-            premi_brondol_total: emp.premi_brondol_total || (emp.premi_brondol || 0),
-            premi_pph: emp.premi_pph || 0,
-            total_premi: emp.total_premi || 0,
-            premi_detail: emp.premi ? JSON.stringify(emp.premi) : undefined,
-            pot_spsi: emp.pot_spsi || 0,
-            pot_pph21: emp.pot_pph21 || 0,
-            pot_koreksi: emp.pot_koreksi || 0,
-            pot_bpjs_kesehatan_pekerja: emp.pot_bpjs_kesehatan_pekerja || 0,
-            pot_bpjs_kesehatan_majikan: emp.pot_bpjs_kesehatan_majikan || 0,
-            pot_bpjs_pensiun_pekerja: emp.pot_bpjs_pensiun_pekerja || 0,
-            pot_bpjs_pensiun_majikan: emp.pot_bpjs_pensiun_majikan || 0,
-            pot_bpjs_pekerja_total: emp.pot_bpjs_pekerja_total || 0,
-            pot_astek_pekerja: emp.pot_astek_pekerja || emp.pot_astek || 0,
-            pot_astek_majikan: emp.pot_astek_majikan || emp.pot_astek_maj || 0,
-            pot_astek_jumlah: emp.pot_astek_jumlah || 0,
-            potongan_detail: this.extractDynamicPotonganDetail(emp),
-            total_potongan: emp.total_potongan || 0,
-            total_potongan_bersih: emp.total_potongan_bersih || 0,
-            jumlah_upah_kotor: emp.jumlah_upah_kotor || 0,
-            upah_kotor_pajak: emp.upah_kotor_pajak || 0,
-            penghasilan_bruto: emp.penghasilan_bruto || 0,
-            tarif_pajak_ter: emp.tarif_pajak_ter,
-            pph21_ter: emp.pph21_ter || 0,
-            upah_bersih: emp.upah_bersih || 0,
-            task_code: emp.task_code,
-            task_desc: emp.task_desc,
-            shortage_details: emp.shortage_details ? JSON.stringify(emp.shortage_details) : undefined,
-            shortage_total_hours: emp.shortage_total_hours
-        };
+    private normalizeDynamicHeader(prefix: 'PREMI' | 'POTONGAN', key: string): string {
+        const normalized = key.trim().replace(/\s+/g, '_').toUpperCase();
+        if (!normalized) return '';
+        if (prefix === 'POTONGAN' && normalized.startsWith('KOREKSI')) return normalized;
+        return normalized.startsWith(`${prefix}_`) ? normalized : `${prefix}_${normalized}`;
     }
 
-    /**
-     * Extract dynamic potongan fields (KOREKSI_*, POTONGAN_*) from employee row
-     * and serialize as JSON for storage in history detail.
-     */
-    private extractDynamicPotonganDetail(emp: any): string | undefined {
-        const potonganData: Record<string, number> = {};
-        for (const key of Object.keys(emp)) {
-            if ((key.startsWith('KOREKSI') || key.startsWith('POTONGAN_')) && typeof emp[key] === 'number' && emp[key] !== 0) {
-                potonganData[key] = emp[key];
+    private collectDynamicPremiHeaders(employees: any[]): string[] {
+        const headers = new Set<string>();
+        for (const emp of employees) {
+            if (emp.premi && typeof emp.premi === 'object') {
+                for (const key of Object.keys(emp.premi)) {
+                    const normalized = this.normalizeDynamicHeader('PREMI', key);
+                    if (!normalized || normalized === 'PREMI_BRONDOL' || normalized === 'PREMI_KOREKSI') continue;
+                    headers.add(normalized);
+                }
+            }
+
+            for (const key of Object.keys(emp)) {
+                const upperKey = key.trim().toUpperCase();
+                if (upperKey.startsWith('PREMI_') && !['PREMI_BRONDOL', 'PREMI_KOREKSI'].includes(upperKey)) {
+                    headers.add(upperKey);
+                }
             }
         }
-        return Object.keys(potonganData).length > 0 ? JSON.stringify(potonganData) : undefined;
+        return Array.from(headers).sort();
     }
 
-    /**
-     * NEW: Handle duplicate NIK when seeding history
-     * Ensures all EmpCodes for a duplicate NIK are included in history
-     */
-    private async handleDuplicateNikSeeding(
-        historyId: string,
-        masterId: number,
-        emp: any,
-        options: SeederOptions,
-        result: SeederResult,
-        divisionCode?: string
-    ): Promise<void> {
-        const nik = emp?.nik;
+    private collectDynamicPotonganHeaders(employees: any[]): string[] {
+        const headers = new Set<string>();
+        for (const emp of employees) {
+            if (emp.potongan && typeof emp.potongan === 'object') {
+                for (const key of Object.keys(emp.potongan)) {
+                    const normalized = this.normalizeDynamicHeader('POTONGAN', key);
+                    if (!normalized) continue;
+                    headers.add(normalized);
+                }
+            }
 
-        // Safety check: if nik is missing, skip this employee
-        if (!nik) {
-            console.warn(`[HistorySeeder] ⚠️ Skipping employee with missing NIK: ${JSON.stringify({ emp_code: emp?.emp_code, nama: emp?.nama || emp?.emp_name })}`);
-            return;
+            for (const key of Object.keys(emp)) {
+                const upperKey = key.trim().toUpperCase();
+                if (upperKey.startsWith('POTONGAN_') || upperKey.startsWith('KOREKSI')) {
+                    headers.add(upperKey);
+                }
+            }
         }
+        return Array.from(headers).sort();
+    }
 
+    private async handleDuplicateNikSeeding(historyId: string, masterId: number, emp: any, options: SeederOptions, result: SeederResult, divisionCode?: string, snapshotMeta?: any): Promise<void> {
+        if (!emp?.nik) return;
         try {
-            // Check if this NIK has duplicates
-            const hasDuplicate = await duplicateNikMitigationService.hasDuplicate(nik);
-
+            const hasDuplicate = await duplicateNikMitigationService.hasDuplicate(emp.nik);
             if (hasDuplicate) {
-                // Get all EmpCodes for this NIK
-                const empCodeMap = await duplicateNikMitigationService.getAllEmpCodesForNik(nik);
-
-                // Log for audit
-                console.log(`[HistorySeeder] Duplicate NIK detected: ${nik} has ${empCodeMap.emp_codes.length} EmpCodes: ${empCodeMap.emp_codes.join(', ')}`);
-
-                // Create detail records for ALL EmpCodes associated with this NIK
-                // This ensures complete history coverage
-                for (const empCode of empCodeMap.emp_codes) {
-                    const detailData = this.mapEmployeeToDetail(historyId, masterId, {
-                        ...emp,
-                        emp_code: empCode // Override with each EmpCode
-                    }, divisionCode);
-
-                    await historyDatabaseService.savePayrollHistoryDetail(detailData);
+                const map = await duplicateNikMitigationService.getAllEmpCodesForNik(emp.nik);
+                for (const ec of map.emp_codes) {
+                    await historyDatabaseService.savePayrollHistoryDetail(this.mapEmployeeToDetail(historyId, masterId, { ...emp, emp_code: ec }, divisionCode, snapshotMeta));
                     result.records_inserted.detail++;
                 }
-
-                result.total_employees += empCodeMap.emp_codes.length;
+                result.total_employees += map.emp_codes.length;
             } else {
-                // Normal flow - single employee
-                const detailData = this.mapEmployeeToDetail(historyId, masterId, emp, divisionCode);
-                await historyDatabaseService.savePayrollHistoryDetail(detailData);
+                await historyDatabaseService.savePayrollHistoryDetail(this.mapEmployeeToDetail(historyId, masterId, emp, divisionCode, snapshotMeta));
                 result.records_inserted.detail++;
                 result.total_employees += 1;
             }
-        } catch (err: any) {
-            // Log error but don't fail the whole gang
-            console.error(`[HistorySeeder] Error handling NIK ${nik}: ${err.message}`);
-            // Try to save at least one record
-            try {
-                const detailData = this.mapEmployeeToDetail(historyId, masterId, emp, divisionCode);
-                await historyDatabaseService.savePayrollHistoryDetail(detailData);
-                result.records_inserted.detail++;
-                result.total_employees += 1;
-            } catch (saveErr: any) {
-                console.error(`[HistorySeeder] Failed to save fallback record for NIK ${nik}: ${saveErr.message}`);
-            }
+        } catch (e) {
+            await historyDatabaseService.savePayrollHistoryDetail(this.mapEmployeeToDetail(historyId, masterId, emp, divisionCode, snapshotMeta));
+            result.records_inserted.detail++;
+            result.total_employees += 1;
         }
     }
 
-    /**
-     * Seed transaction data (Taskreg and ADTrans)
-     * Uses chunking to avoid SQL Server timeout on large IN clauses
-     * ⚠️ FIXED: Now DELETE old data BEFORE INSERT to prevent duplicates
-     */
-    private async seedTransactionData(
-        historyId: string,
-        options: SeederOptions,
-        result: SeederResult
-    ): Promise<void> {
-        // Use ExtendedInstance for history tables in extend_db_ptrj
-        const dbExtend = Database.getExtendedInstance();
-        // Use Instance for source tables in db_ptrj
+    private mapEmployeeToDetail(historyId: string, masterId: number, emp: any, divisionCode?: string, snapshotMeta?: any): PayrollHistoryDetail {
+        return {
+            history_id: historyId, master_id: masterId,
+            snapshot_batch_id: snapshotMeta?.snapshot_batch_id, snapshot_version: snapshotMeta?.snapshot_version,
+            emp_code: emp.emp_code || emp.nik, emp_name: emp.nama || emp.emp_name, nik: emp.nik, gender: emp.jenis_kelamin || emp.gender,
+            gang_code: emp.gang_code, division_code: divisionCode || emp.division_code || emp.loc_code, loc_code: emp.loc_code,
+            status_ptkp: emp.status_ptkp, kategori_ter: emp.kategori_ter, hari_kerja: emp.hari_kerja || 0,
+            cuti_tahunan_hari: emp.cuti_tahunan_hari || 0, cuti_sakit_haid_hari: emp.cuti_sakit_haid_hari || 0,
+            cuti_minggu_hari: emp.cuti_minggu_hari || 0, cuti_nasional_hari: emp.cuti_nasional_hari || 0,
+            jumlah_hk: emp.jumlah_hk || 0, total_jam_kerja: emp.total_jam_kerja || 0, upah_dasar: emp.upah_dasar || 0,
+            upah_pokok: emp.upah_pokok || 0, gaji_pokok: emp.gaji_pokok || 0, gaji_pokok_ideal: emp.gaji_pokok_ideal || 0,
+            gaji_pokok_aktual: emp.gaji_pokok_aktual || 0, koreksi_hk: emp.koreksi_hk || 0, beras_rate: emp.beras_rate || 0,
+            beras_jumlah: emp.beras_jumlah || 0, jabatan_rate: emp.jabatan_rate || 0, jabatan_jumlah: emp.jabatan_jumlah || 0,
+            masa_kerja_tahun: emp.masa_kerja_tahun || 0, masa_kerja_rate: emp.masa_kerja_rate || 0, masa_kerja_jumlah: emp.masa_kerja_jumlah || 0,
+            lembur_jam: emp.lembur_jam || 0, lembur_rate: emp.lembur_rate || 0, lembur_jumlah: emp.lembur_jumlah || 0,
+            lembur_records: emp.lembur_records ? JSON.stringify(emp.lembur_records) : undefined, total_tunjangan: emp.total_tunjangan || 0,
+            premi_brondol: emp.premi_brondol || 0, premi_brondol_loosefruit: emp.premi_brondol_loosefruit || 0,
+            premi_brondol_adtrans: emp.premi_brondol_adtrans || 0, premi_brondol_total: emp.premi_brondol_total || (emp.premi_brondol || 0),
+            premi_pph: emp.premi_pph || 0, total_premi: emp.total_premi || 0, premi_detail: emp.premi ? JSON.stringify(emp.premi) : undefined,
+            pot_spsi: emp.pot_spsi || 0, pot_pph21: emp.pot_pph21 || 0, pot_koreksi: emp.pot_koreksi || 0,
+            pot_bpjs_kesehatan_pekerja: emp.pot_bpjs_kesehatan_pekerja || 0, pot_bpjs_kesehatan_majikan: emp.pot_bpjs_kesehatan_majikan || 0,
+            pot_bpjs_pensiun_pekerja: emp.pot_bpjs_pensiun_pekerja || 0, pot_bpjs_pensiun_majikan: emp.pot_bpjs_pensiun_majikan || 0,
+            pot_bpjs_pekerja_total: emp.pot_bpjs_pekerja_total || 0, pot_astek_pekerja: emp.pot_astek_pekerja || emp.pot_astek || 0,
+            pot_astek_majikan: emp.pot_astek_majikan || emp.pot_astek_maj || 0, pot_astek_jumlah: emp.pot_astek_jumlah || 0,
+            potongan_detail: this.extractDynamicPotonganDetail(emp), total_potongan: emp.total_potongan || 0,
+            total_potongan_bersih: emp.total_potongan_bersih || 0, jumlah_upah_kotor: emp.jumlah_upah_kotor || 0,
+            upah_kotor_pajak: emp.upah_kotor_pajak || 0, penghasilan_bruto: emp.penghasilan_bruto || 0,
+            tarif_pajak_ter: emp.tarif_pajak_ter, pph21_ter: emp.pph21_ter || 0, upah_bersih: emp.upah_bersih || 0,
+            task_code: emp.task_code, task_desc: emp.task_desc, shortage_total_hours: emp.shortage_total_hours,
+            shortage_details: emp.shortage_details ? JSON.stringify(emp.shortage_details) : undefined,
+            jabatan: emp.jabatan || emp.jabatan_estate || '',  // Job title from employee_estate or history_gang_member
+            is_spsi_member: (emp.pot_spsi || 0) > 0,  // SPSI membership derived from pot_spsi > 0
+        };
+    }
+
+    private extractDynamicPotonganDetail(emp: any): string | undefined {
+        const data: any = {};
+        for (const k of Object.keys(emp)) if ((k.startsWith('KOREKSI') || k.startsWith('POTONGAN_')) && typeof emp[k] === 'number' && emp[k] !== 0) data[k] = emp[k];
+        return Object.keys(data).length > 0 ? JSON.stringify(data) : undefined;
+    }
+
+    private async seedTransactionData(historyId: string, options: SeederOptions, result: SeederResult): Promise<void> {
         const dbSource = Database.getInstance();
+        const start = `${options.periodYear}-${options.periodMonth.toString().padStart(2, '0')}-01`;
+        const end = options.periodMonth === 12 ? `${options.periodYear + 1}-01-01` : `${options.periodYear}-${(options.periodMonth + 1).toString().padStart(2, '0')}-01`;
+        
+        const empCodes = await this.getEmployeeCodes(options);
+        if (!empCodes.length) return;
 
-        // ⚠️ CRITICAL FIX: DELETE old transaction data BEFORE insert to prevent duplicates
-        console.log(`[HistorySeeder] 🗑️  Deleting old transaction data for period ${options.periodMonth}/${options.periodYear}, division ${options.divisionCode}...`);
+        const CHUNK = 100;
+        for (let i = 0; i < empCodes.length; i += CHUNK) {
+            const chunk = empCodes.slice(i, i + CHUNK);
+            const empList = chunk.map(e => `'${e}'`).join(',');
+            
+            const taskregRows = await dbSource.query<any>(`
+                SELECT tr.ID as master_id, tr.DocID as RegNo, tr.DocDate as RegDate, trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode, trl.Hours, trl.OT, trl.Rate, trl.Amount
+                FROM PR_TASKREGLN trl JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
+                WHERE trl.EmpCode IN (${empList}) AND trl.TrxDate >= '${start}' AND trl.TrxDate < '${end}'
+                UNION ALL
+                SELECT tr.ID as master_id, tr.DocID as RegNo, tr.DocDate as RegDate, trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode, trl.Hours, trl.OT, trl.Rate, trl.Amount
+                FROM PR_TASKREGLN_ARC trl JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
+                WHERE trl.EmpCode IN (${empList}) AND trl.TrxDate >= '${start}' AND trl.TrxDate < '${end}'
+            `);
 
-        try {
-            // Delete old taskreg history for this division/period
-            // Note: payroll_history_header is the actual table name (not history_payroll_master)
-            const deleteTaskregResult = await dbExtend.query(`
-                DELETE ht FROM history_taskreg ht
-                INNER JOIN payroll_history_header hpm ON ht.history_id = hpm.history_id
-                WHERE hpm.period_month = ?
-                  AND hpm.period_year = ?
-                  AND hpm.division_code = ?
-            `, [options.periodMonth, options.periodYear, options.divisionCode || 'ALL']);
-            console.log(`[HistorySeeder] ✅ Deleted ${deleteTaskregResult.affectedRows || 0} old taskreg rows`);
-
-            // Delete old adtrans history for this division/period
-            const deleteAdtransResult = await dbExtend.query(`
-                DELETE ha FROM history_adtrans ha
-                INNER JOIN payroll_history_header hpm ON ha.history_id = hpm.history_id
-                WHERE hpm.period_month = ?
-                  AND hpm.period_year = ?
-                  AND hpm.division_code = ?
-            `, [options.periodMonth, options.periodYear, options.divisionCode || 'ALL']);
-            console.log(`[HistorySeeder] ✅ Deleted ${deleteAdtransResult.affectedRows || 0} old adtrans rows`);
-
-        } catch (deleteError: any) {
-            console.warn(`[HistorySeeder] ⚠️ Failed to delete old transaction data: ${deleteError.message}`);
-            // Continue anyway - don't block seeding if delete fails
-        }
-
-        const startDate = `${options.periodYear}-${options.periodMonth.toString().padStart(2, '0')}-01`;
-        const nextMonth = options.periodMonth === 12 ? 1 : options.periodMonth + 1;
-        const nextYear = options.periodMonth === 12 ? options.periodYear + 1 : options.periodYear;
-        const endDate = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-01`;
-
-        // Get employee codes for this division/gang
-        console.log(`[HistorySeeder] Getting employee codes for ${options.divisionCode}...`);
-        const empCodes = await this.withRetry(
-            () => this.getEmployeeCodes(options),
-            'getEmployeeCodes'
-        );
-
-        console.log(`[HistorySeeder] Found ${empCodes.length} employee codes`);
-
-        if (empCodes.length === 0) {
-            console.log(`[HistorySeeder] No employee codes found, skipping transaction seeding`);
-            return;
-        }
-
-        // Chunk empCodes to avoid SQL timeout on large IN clauses
-        const CHUNK_SIZE = 100;
-        const chunks: string[][] = [];
-        for (let i = 0; i < empCodes.length; i += CHUNK_SIZE) {
-            chunks.push(empCodes.slice(i, i + CHUNK_SIZE));
-        }
-        console.log(`[HistorySeeder] Seeding transactions in ${chunks.length} chunks (${CHUNK_SIZE} empCodes each)`);
-
-        // 1. Seed Taskreg data - fetch AND save in same chunk
-        try {
-            for (const chunk of chunks) {
-                const taskregRows = await this.withRetry(async () => {
-                    const empList = chunk.map(e => `'${e}'`).join(',');
-                    return await dbSource.query<any>(`
-                        SELECT
-                            tr.ID as master_id, tr.DocID as RegNo, tr.DocDate as RegDate,
-                            trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode,
-                            trl.Hours, trl.OT, trl.Rate, trl.Amount
-                        FROM PR_TASKREGLN trl
-                        JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
-                        WHERE trl.EmpCode IN (${empList})
-                          AND trl.TrxDate >= '${startDate}' AND trl.TrxDate < '${endDate}'
-
-                        UNION ALL
-
-                        SELECT
-                            tr.ID as master_id, tr.DocID as RegNo, tr.DocDate as RegDate,
-                            trl.ID as line_id, trl.EmpCode, trl.TrxDate, trl.TaskCode,
-                            trl.Hours, trl.OT, trl.Rate, trl.Amount
-                        FROM PR_TASKREGLN_ARC trl
-                        JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
-                        WHERE trl.EmpCode IN (${empList})
-                          AND trl.TrxDate >= '${startDate}' AND trl.TrxDate < '${endDate}'
-                    `, []);
-                }, 'seedTransactionData Taskreg chunk');
-
-                // Save each row
-                for (const row of taskregRows) {
-                    const taskregData: HistoryTaskreg = {
-                        history_id: historyId,
-                        original_master_id: row.master_id,
-                        reg_no: row.RegNo,
-                        reg_date: row.RegDate,
-                        emp_code: row.EmpCode?.trim(),
-                        original_line_id: row.line_id,
-                        line_no: undefined,  // Column 'Line' doesn't exist in PR_TASKREGLN
-                        trx_date: row.TrxDate,
-                        task_code: row.TaskCode?.trim(),
-                        hours: row.Hours || 0,
-                        ot: row.OT === 1 || row.OT === true,
-                        rate: row.Rate,
-                        amount: row.Amount || 0,
-                        tapping_type: '',
-                        is_cuti_tahunan: false,
-                        is_cuti_sakit: false,
-                        is_cuti_minggu: false,
-                        is_cuti_nasional: false,
-                        is_hari_kerja: true,
-                        is_lembur: row.OT === 1 || row.OT === true,
-                        period_month: options.periodMonth,
-                        period_year: options.periodYear,
-                        source_table: row.master_id > 1000000000 ? 'PR_TASKREG_ARC' : 'PR_TASKREG'
-                    };
-                    await historyDatabaseService.saveTaskregHistory(taskregData);
-                    result.records_inserted.taskreg++;
-                }
+            for (const r of taskregRows) {
+                await historyDatabaseService.saveTaskregHistory({
+                    history_id: historyId, original_master_id: r.master_id, reg_no: r.RegNo, reg_date: r.RegDate,
+                    emp_code: r.EmpCode?.trim(), original_line_id: r.line_id, trx_date: r.TrxDate, task_code: r.TaskCode?.trim(),
+                    hours: r.Hours || 0, ot: !!r.OT, rate: r.Rate, amount: r.Amount || 0, tapping_type: '',
+                    is_cuti_tahunan: false, is_cuti_sakit: false, is_cuti_minggu: false, is_cuti_nasional: false, is_hari_kerja: true, is_lembur: !!r.OT,
+                    period_month: options.periodMonth, period_year: options.periodYear, source_table: r.master_id > 1000000000 ? 'PR_TASKREG_ARC' : 'PR_TASKREG'
+                });
+                result.records_inserted.taskreg++;
             }
-            console.log(`[HistorySeeder] Taskreg seeding completed`);
-        } catch (error: any) {
-            result.errors.push(`Error seeding taskreg: ${error.message}`);
-        }
 
-        // 2. Seed ADTrans data - fetch AND save in same chunk
-        try {
-            for (const chunk of chunks) {
-                const adtransRows = await this.withRetry(async () => {
-                    const empList = chunk.map(e => `'${e}'`).join(',');
-                    return await dbSource.query<any>(`
-                        SELECT
-                            t.ID as master_id, t.DocID as DocNo, t.DocDate, t.DocDesc, t.EmpCode,
-                            ln.ID as line_id, ln.TaskCode, ln.Amount,
-                            tc.TaskDesc
-                        FROM PR_ADTRANSLN ln
-                        JOIN PR_ADTRANS t ON t.ID = ln.MasterID
-                        LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
-                        WHERE t.EmpCode IN (${empList})
-                          AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
+            const adtransRows = await dbSource.query<any>(`
+                SELECT t.ID as master_id, t.DocID as DocNo, t.DocDate, t.DocDesc, t.EmpCode, ln.ID as line_id, ln.TaskCode, mt.TaskDesc, ln.Amount
+                FROM PR_ADTRANS t JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
+                WHERE t.EmpCode IN (${empList}) AND t.DocDate >= '${start}' AND t.DocDate < '${end}'
+                UNION ALL
+                SELECT t.ID as master_id, t.DocID as DocNo, t.DocDate, t.DocDesc, t.EmpCode, ln.ID as line_id, ln.TaskCode, mt.TaskDesc, ln.Amount
+                FROM PR_ADTRANS_ARC t JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
+                WHERE t.EmpCode IN (${empList}) AND t.DocDate >= '${start}' AND t.DocDate < '${end}'
+            `);
 
-                        UNION ALL
-
-                        SELECT
-                            t.ID as master_id, t.DocID as DocNo, t.DocDate, t.DocDesc, t.EmpCode,
-                            ln.ID as line_id, ln.TaskCode, ln.Amount,
-                            tc.TaskDesc
-                        FROM PR_ADTRANSLN_ARC ln
-                        JOIN PR_ADTRANS_ARC t ON t.ID = ln.MasterID
-                        LEFT JOIN PR_TASKCODE tc ON ln.TaskCode = tc.TaskCode
-                        WHERE t.EmpCode IN (${empList})
-                          AND t.DocDate >= '${startDate}' AND t.DocDate < '${endDate}'
-                    `, []);
-                }, 'seedTransactionData ADTrans chunk');
-
-                // Save each row
-                for (const row of adtransRows) {
-                    const docDesc = (row.DocDesc || '').toUpperCase();
-                    const taskDesc = (row.TaskDesc || '').toUpperCase();
-
-                    let category = 'OTHER';
-                    let subCategory: string | undefined;
-
-                    if (docDesc.includes('PREMI') || docDesc.includes('PRUN') || docDesc.includes('INSENTIF') || docDesc.includes('PANEN') || docDesc.includes('KINERJA')) {
-                        category = 'PREMI';
-                        if (docDesc.includes('BRONDOL')) subCategory = 'BRONDOL';
-                        else if (docDesc.includes('PRUN')) subCategory = 'PRUNING';
-                        else if (docDesc.includes('INSENTIF')) subCategory = 'INSENTIF';
-                        else if (docDesc.includes('KINERJA')) subCategory = 'KINERJA';
-                    } else if (docDesc.includes('BERAS') || docDesc.includes('JABATAN') || docDesc.includes('MASA KERJA') || docDesc.includes('LEMBUR')) {
-                        category = 'TUNJANGAN';
-                        if (docDesc.includes('BERAS')) subCategory = 'BERAS';
-                        else if (docDesc.includes('JABATAN')) subCategory = 'JABATAN';
-                        else if (docDesc.includes('MASA')) subCategory = 'MASA_KERJA';
-                        else if (docDesc.includes('LEMBUR')) subCategory = 'LEMBUR';
-                    } else if (docDesc.includes('KOREKSI') || docDesc.includes('POT') || docDesc.includes('PPH') || docDesc.includes('SPSI') || docDesc.includes('BPJS')) {
-                        category = 'POTONGAN';
-                        if (docDesc.includes('KOREKSI')) subCategory = 'KOREKSI';
-                        else if (docDesc.includes('PPH')) subCategory = 'PPH21';
-                        else if (docDesc.includes('SPSI')) subCategory = 'SPSI';
-                        else if (docDesc.includes('BPJS')) subCategory = 'BPJS';
-                    }
-
-                    const adtransData: HistoryAdtrans = {
-                        history_id: historyId,
-                        original_master_id: row.master_id,
-                        doc_no: row.DocNo?.trim(),
-                        doc_date: row.DocDate,
-                        doc_desc: row.DocDesc?.trim(),
-                        emp_code: row.EmpCode?.trim(),
-                        original_line_id: row.line_id,
-                        line_no: undefined,  // Column 'Line' doesn't exist in PR_ADTRANSLN
-                        task_code: row.TaskCode?.trim(),
-                        task_desc: row.TaskDesc?.trim(),
-                        amount: row.Amount || 0,
-                        quantity: undefined,  // Column 'Qty' doesn't exist in PR_ADTRANSLN
-                        uom: '',
-                        category,
-                        sub_category: subCategory,
-                        is_dynamic: false,
-                        is_premi_pph: taskDesc.includes('ACCRUALS-CHECKROLL'),
-                        is_koreksi: docDesc.includes('KOREKSI'),
-                        is_potongan: docDesc.includes('POT') || docDesc.includes('POTONGAN'),
-                        is_premi: docDesc.includes('PREMI'),
-                        period_month: options.periodMonth,
-                        period_year: options.periodYear,
-                        source_table: row.master_id > 1000000000 ? 'PR_ADTRANS_ARC' : 'PR_ADTRANS'
-                    };
-                    await historyDatabaseService.saveAdtransHistory(adtransData);
-                    result.records_inserted.adtrans++;
+            for (const r of adtransRows) {
+                const dd = (r.DocDesc || '').toUpperCase();
+                const td = (r.TaskDesc || '').toUpperCase();
+                let cat = 'OTHER', sub: string | undefined;
+                if (dd.includes('PREMI') || dd.includes('PRUN') || dd.includes('INSENTIF') || dd.includes('PANEN') || dd.includes('KINERJA')) {
+                    cat = 'PREMI';
+                    if (dd.includes('BRONDOL')) sub = 'BRONDOL';
+                    else if (dd.includes('PRUN')) sub = 'PRUNING';
+                    else if (dd.includes('INSENTIF')) sub = 'INSENTIF';
+                    else if (dd.includes('KINERJA')) sub = 'KINERJA';
+                } else if (dd.includes('BERAS') || dd.includes('JABATAN') || dd.includes('MASA KERJA') || dd.includes('LEMBUR')) {
+                    cat = 'TUNJANGAN';
+                    if (dd.includes('BERAS')) sub = 'BERAS';
+                    else if (dd.includes('JABATAN')) sub = 'JABATAN';
+                    else if (dd.includes('MASA')) sub = 'MASA_KERJA';
+                    else if (dd.includes('LEMBUR')) sub = 'LEMBUR';
+                } else if (dd.includes('KOREKSI') || dd.includes('POT') || dd.includes('PPH') || dd.includes('SPSI') || dd.includes('BPJS')) {
+                    cat = 'POTONGAN';
+                    if (dd.includes('KOREKSI')) sub = 'KOREKSI';
+                    else if (dd.includes('PPH')) sub = 'PPH21';
+                    else if (dd.includes('SPSI')) sub = 'SPSI';
+                    else if (dd.includes('BPJS')) sub = 'BPJS';
                 }
+
+                await historyDatabaseService.saveAdtransHistory({
+                    history_id: historyId, original_master_id: r.master_id, doc_no: r.DocNo?.trim(), doc_date: r.DocDate, doc_desc: r.DocDesc?.trim(),
+                    emp_code: r.EmpCode?.trim(), original_line_id: r.line_id, task_code: r.TaskCode?.trim(), task_desc: r.TaskDesc?.trim(),
+                    amount: r.Amount || 0, uom: '', category: cat, sub_category: sub, is_dynamic: false, is_premi_pph: td.includes('ACCRUALS-CHECKROLL'),
+                    is_koreksi: dd.includes('KOREKSI'), is_potongan: dd.includes('POT') || dd.includes('POTONGAN'), is_premi: dd.includes('PREMI'),
+                    period_month: options.periodMonth, period_year: options.periodYear, source_table: r.master_id > 1000000000 ? 'PR_ADTRANS_ARC' : 'PR_ADTRANS'
+                });
+                result.records_inserted.adtrans++;
             }
-            console.log(`[HistorySeeder] ADTrans seeding completed`);
-        } catch (error: any) {
-            result.errors.push(`Error seeding ADTrans: ${error.message}`);
         }
     }
 
-    /**
-     * Seed gang member data
-     */
-    private async seedGangMemberData(
-        historyId: string,
-        options: SeederOptions,
-        result: SeederResult
-    ): Promise<void> {
+    private async seedGangMemberData(historyId: string, options: SeederOptions, result: SeederResult): Promise<void> {
         const db = Database.getInstance();
-
         try {
-            // Get current period gang members
-            let sql = `
-                SELECT
-                    g.GangCode, g.Description as GangDesc, g.LocCode,
-                    gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate, e.NewICNo
-                FROM HR_GANG g
-                JOIN HR_GANGLN gl ON g.GangCode = gl.GangCode
-                JOIN HR_EMPLOYEE e ON gl.GangMember = e.EmpCode
-                LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
-                WHERE 1=1
-            `;
-
-            const queryParams: any[] = [];
-
+            let sql = `SELECT g.GangCode, g.Description as GangDesc, g.LocCode, gl.GangMember as EmpCode, e.EmpName, em.AppJoinGrpDate, e.NewICNo FROM HR_GANG g JOIN HR_GANGLN gl ON g.GangCode = gl.GangCode JOIN HR_EMPLOYEE e ON gl.GangMember = e.EmpCode LEFT JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode WHERE 1=1`;
+            const params: any[] = [];
             if (options.divisionCode && options.divisionCode !== 'ALL') {
-                // Use unified division mapping for LocCode filtering
-                const locCodes = gangService.getAllDivisionAliases(options.divisionCode);
-                const placeholders = locCodes.map(() => '?').join(',');
-                sql += ` AND g.LocCode IN (${placeholders})`;
-                queryParams.push(...locCodes);
+                const codes = gangService.getAllDivisionAliases(options.divisionCode);
+                sql += ` AND g.LocCode IN (${codes.map(() => '?').join(',')})`;
+                params.push(...codes);
             }
-
-            if (options.gangCode && options.gangCode !== 'ALL') {
-                sql += ` AND g.GangCode = ?`;
-                queryParams.push(options.gangCode);
-            }
-
-            // Order by date to help with latest code resolution
-            sql += ` ORDER BY em.AppJoinGrpDate DESC`;
-
-            const gangMembers = await db.query<any>(sql, queryParams);
-            
-            // Resolve latest codes
-            const niks = gangMembers.map((r: any) => r.NewICNo?.trim()).filter(Boolean);
-            const latestEmpCodeMap = await employeeGangHistoryService.resolveLatestEmpCodes(niks);
-
-            for (const row of gangMembers) {
-                const nikClean = row.NewICNo?.trim().toUpperCase() || "";
-                const latestEmpCode = latestEmpCodeMap.get(nikClean) || row.EmpCode;
-
-                const gangMemberData: HistoryGangMember = {
-                    history_id: historyId,
-                    gang_code: row.GangCode?.trim(),
-                    gang_description: row.GangDesc?.trim(),
-                    division_code: options.divisionCode || 'ALL',
-                    loc_code: row.LocCode?.trim(),
-                    emp_code: latestEmpCode?.trim(),
-                    emp_name: row.EmpName?.trim(),
-                    nik: row.NewICNo?.trim(),
-                    jabatan: '',  // Jabatan will be enriched separately
-                    period_month: options.periodMonth,
-                    period_year: options.periodYear,
-                    join_date: row.AppJoinGrpDate,
-                    is_active: true,
-                    source_table: 'HR_GANGLN'
-                };
-
-                await historyDatabaseService.saveGangMemberHistory(gangMemberData);
+            if (options.gangCode && options.gangCode !== 'ALL') { sql += ` AND g.GangCode = ?`; params.push(options.gangCode); }
+            const members = await db.query<any>(sql, params);
+            const latestEmpCodeMap = await employeeGangHistoryService.resolveLatestEmpCodes(members.map((r: any) => r.NewICNo?.trim()).filter(Boolean));
+            for (const r of members) {
+                const nik = r.NewICNo?.trim().toUpperCase() || "";
+                const scopedDivision = options.divisionCode?.trim();
+                const divisionCode = scopedDivision && scopedDivision.toUpperCase() !== "ALL"
+                    ? scopedDivision
+                    : (r.LocCode?.trim() || "ALL");
+                await historyDatabaseService.saveGangMemberHistory({
+                    history_id: historyId, gang_code: r.GangCode?.trim(), gang_description: r.GangDesc?.trim(), division_code: divisionCode,
+                    loc_code: r.LocCode?.trim(), emp_code: (latestEmpCodeMap.get(nik) || r.EmpCode)?.trim(), emp_name: r.EmpName?.trim(), nik: r.NewICNo?.trim(),
+                    jabatan: '', period_month: options.periodMonth, period_year: options.periodYear, join_date: r.AppJoinGrpDate, is_active: true, source_table: 'HR_GANGLN'
+                });
                 result.records_inserted.gang_member++;
             }
-        } catch (error: any) {
-            result.errors.push(`Error seeding gang members: ${error.message}`);
-        }
+        } catch (e: any) { result.errors.push(`Error seeding gang members: ${e.message}`); }
     }
 
-    /**
-     * EXTENDED: Seed Employee HR History
-     */
-    private async seedEmployeeHrHistory(
-        historyId: string,
-        options: SeederOptions,
-        result: SeederResult
-    ): Promise<void> {
+    private async seedEmployeeHrHistory(historyId: string, options: SeederOptions, result: SeederResult): Promise<void> {
         const db = Database.getInstance();
-
+        const extDb = Database.getExtendedInstance();
         try {
-            let sql = `
-                SELECT
-                    e.NewICNo as nik,
-                    e.EmpCode as emp_code,
-                    e.EmpName as emp_name,
-                    em.CompCode as company_code,
-                    g.LocCode as division_code,
-                    g.LocCode as loc_code,
-                    g.GangCode as gang_code,
-                    -- JobCode, Position, TaxStatus don't exist in HR_PAYROLL - use NULL
-                    NULL as job_code,
-                    NULL as position,
-                    em.AppJoinGrpDate as join_date,
-                    em.TerminateDate as terminate_date,
-                    e.Status as status,
-                    e.HREmpType as employee_type,
-                    e.Gender as gender,
-                    e.Religion as religion,
-                    e.MaritalStatus as marital_status,
-                    e.PlaceOfBirth as birth_place,
-                    e.DOB as birth_date,
-                    -- PayRate & RiceRation are the ONLY valid columns in HR_PAYROLL
-                    p.PayRate as upah_dasar,
-                    CAST(p.RiceRation AS VARCHAR) as ptkp_beras,
-                    NULL as ptkp_pajak,
-                    COALESCE((
-                        SELECT SUM(Hours)/7.0
-                        FROM PR_TASKREG tr
-                        JOIN PR_TASKREGLN trl ON tr.ID = trl.MasterID
-                        WHERE trl.EmpCode = e.EmpCode
-                          AND MONTH(trl.TrxDate) = ${options.periodMonth}
-                          AND YEAR(trl.TrxDate) = ${options.periodYear}
-                    ), 0) as total_hk
-                FROM HR_EMPLOYEE e
-                JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode
-                LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember
-                LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode
-                -- JOIN HR_PAYROLL to get rates (PayRate, JobCode, RiceRation only - Position & TaxStatus don't exist)
-                LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode)
-                WHERE 1=1
-            `;
-
-            const empQueryParams: any[] = [];
-
+            HistorySeederService.updateProgress({ current_step: 'Mengambil data HR Karyawan...', employees_processed: 0 });
+            let sql = `SELECT e.NewICNo as nik, e.EmpCode as emp_code, e.EmpName as emp_name, em.CompCode as company_code, g.LocCode as division_code, g.LocCode as loc_code, g.GangCode as gang_code, em.AppJoinGrpDate as join_date, em.TerminateDate as terminate_date, e.Status as status, e.HREmpType as employee_type, e.Gender as gender, e.Religion as religion, e.MaritalStatus as marital_status, e.PlaceOfBirth as birth_place, e.DOB as birth_date, p.PayRate as upah_dasar, CAST(p.RiceRation AS VARCHAR) as ptkp_beras, ISNULL(hk.total_hk, 0) as total_hk FROM HR_EMPLOYEE e JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode) LEFT JOIN (SELECT hk.emp_code, SUM(hk.hours) / 7.0 as total_hk FROM (SELECT RTRIM(EmpCode) as emp_code, ISNULL(Hours, 0) as hours FROM PR_TASKREGLN WHERE MONTH(TrxDate) = ${options.periodMonth} AND YEAR(TrxDate) = ${options.periodYear} UNION ALL SELECT RTRIM(EmpCode) as emp_code, ISNULL(Hours, 0) as hours FROM PR_TASKREGLN_ARC WHERE MONTH(TrxDate) = ${options.periodMonth} AND YEAR(TrxDate) = ${options.periodYear}) hk GROUP BY hk.emp_code) hk ON hk.emp_code = RTRIM(e.EmpCode) WHERE 1=1`;
+            const params: any[] = [];
             if (options.divisionCode && options.divisionCode !== 'ALL') {
-                // Use unified division mapping for LocCode filtering
-                const locCodes = gangService.getAllDivisionAliases(options.divisionCode);
-                const placeholders = locCodes.map(() => '?').join(',');
-                sql += ` AND g.LocCode IN (${placeholders})`;
-                empQueryParams.push(...locCodes);
+                const codes = gangService.getAllDivisionAliases(options.divisionCode);
+                sql += ` AND g.LocCode IN (${codes.map(() => '?').join(',')})`;
+                params.push(...codes);
+            }
+            if (options.gangCode && options.gangCode !== 'ALL') { sql += ` AND g.GangCode = ?`; params.push(options.gangCode); }
+            const emps = await db.query<any>(sql, params);
+            const latestEmpCodeMap = await employeeGangHistoryService.resolveLatestEmpCodes(emps.map((r: any) => r.nik?.trim()).filter(Boolean));
+
+            const empCodes = emps.map((r: any) => r.emp_code?.trim()).filter(Boolean);
+            const jabatanMap = new Map<string, string>();
+            const spsiMemberMap = new Map<string, boolean>();
+            const periodStart = `${options.periodYear}-${options.periodMonth.toString().padStart(2, '0')}-01`;
+            const periodEnd = options.periodMonth === 12
+                ? `${options.periodYear + 1}-01-01`
+                : `${options.periodYear}-${(options.periodMonth + 1).toString().padStart(2, '0')}-01`;
+
+            if (empCodes.length > 0) {
+                const CHUNK = 500;
+                for (let i = 0; i < empCodes.length; i += CHUNK) {
+                    const chunk = empCodes.slice(i, i + CHUNK);
+                    const placeholders = chunk.map(() => '?').join(',');
+
+                    const estateRows = await extDb.query<any>(
+                        `SELECT empcode, jabatan FROM employee_estate WHERE RTRIM(empcode) IN (${placeholders}) AND jabatan IS NOT NULL AND RTRIM(jabatan) != ''`,
+                        chunk
+                    );
+
+                    for (const row of estateRows) {
+                        const empCode = row.empcode?.trim().toUpperCase();
+                        if (empCode && !jabatanMap.has(empCode)) {
+                            jabatanMap.set(empCode, row.jabatan?.trim());
+                        }
+                    }
+
+                    const spsiRows = await db.query<any>(`
+                        SELECT DISTINCT RTRIM(src.emp_code) as emp_code
+                        FROM (
+                            SELECT
+                                t.EmpCode as emp_code,
+                                t.DocDesc as doc_desc,
+                                ln.TaskCode as task_code
+                            FROM PR_ADTRANS t
+                            JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                            WHERE RTRIM(t.EmpCode) IN (${placeholders})
+                              AND t.DocDate >= ?
+                              AND t.DocDate < ?
+
+                            UNION ALL
+
+                            SELECT
+                                t.EmpCode as emp_code,
+                                t.DocDesc as doc_desc,
+                                ln.TaskCode as task_code
+                            FROM PR_ADTRANS_ARC t
+                            JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                            WHERE RTRIM(t.EmpCode) IN (${placeholders})
+                              AND t.DocDate >= ?
+                              AND t.DocDate < ?
+                        ) src
+                        WHERE UPPER(ISNULL(src.doc_desc, '')) LIKE '%SPSI%'
+                           OR ISNULL(src.task_code, '') LIKE 'GA9112%'
+                    `, [...chunk, periodStart, periodEnd, ...chunk, periodStart, periodEnd]);
+
+                    for (const row of spsiRows) {
+                        const empCode = row.emp_code?.trim().toUpperCase();
+                        if (empCode) {
+                            spsiMemberMap.set(empCode, true);
+                        }
+                    }
+                }
             }
 
-            if (options.gangCode && options.gangCode !== 'ALL') {
-                sql += ` AND g.GangCode = ?`;
-                empQueryParams.push(options.gangCode);
-            }
+            if (!result.records_inserted['hr_employee']) result.records_inserted['hr_employee'] = 0;
+            HistorySeederService.updateProgress({ current_step: `Menyimpan data HR Karyawan... (0/${emps.length})`, employees_processed: 0 });
+            let processed = 0;
+            const shouldTrackHrAsTotalEmployees = result.total_employees === 0;
 
-            // ORDER BY to help with latest resolution
-            sql += ` ORDER BY em.AppJoinGrpDate DESC`;
+            await processInBatches({
+                items: emps,
+                batchSize: 100,
+                label: "HistorySeeder.seedEmployeeHrHistory",
+                processFn: async (batch) => {
+                    for (const r of batch) {
+                        const nik = r.nik?.trim().toUpperCase() || "";
+                        const empCode = (latestEmpCodeMap.get(nik) || r.emp_code)?.trim().toUpperCase() || "";
+                        const jabatan = (jabatanMap.get(empCode) || r.jabatan || "").trim();
+                        await historyDatabaseService.saveHrEmployeeHistory({
+                            history_id: historyId, period_month: options.periodMonth, period_year: options.periodYear, nik: r.nik?.trim(), emp_code: empCode,
+                            emp_name: r.emp_name?.trim(), company_code: r.company_code?.trim(), division_code: r.division_code?.trim(), loc_code: r.loc_code?.trim(),
+                            gang_code: r.gang_code?.trim(), position: jabatan || null, jabatan, is_spsi_member: spsiMemberMap.get(empCode) || false,
+                            join_date: r.join_date, terminate_date: r.terminate_date, status: r.status?.trim(), employee_type: r.employee_type?.trim(),
+                            gender: r.gender?.trim(), religion: r.religion?.trim(), birth_place: r.birth_place?.trim(), birth_date: r.birth_date, marital_status: r.marital_status?.trim(),
+                            ptkp_beras: r.ptkp_beras?.trim(), upah_dasar: r.upah_dasar ?? 0, total_hk: r.total_hk || 0, source_table: 'HR_EMPLOYEE_JOIN'
+                        });
+                        result.records_inserted['hr_employee']++;
+                        if (shouldTrackHrAsTotalEmployees) result.total_employees++;
+                        processed++;
+                    }
 
-            const employees = await db.query<any>(sql, empQueryParams);
-
-            if (!result.records_inserted['hr_employee']) {
-                result.records_inserted['hr_employee'] = 0;
-            }
-
-            // Resolve latest codes
-            const niks = employees.map((r: any) => r.nik?.trim()).filter(Boolean);
-            const latestEmpCodeMap = await employeeGangHistoryService.resolveLatestEmpCodes(niks);
-
-            for (const row of employees) {
-                const nikClean = row.nik?.trim().toUpperCase() || "";
-                const latestEmpCode = latestEmpCodeMap.get(nikClean) || row.emp_code;
-
-                const hrData: HistoryHrEmployee = {
-                    history_id: historyId,
-                    period_month: options.periodMonth,
-                    period_year: options.periodYear,
-                    nik: row.nik?.trim(),
-                    emp_code: latestEmpCode?.trim(),
-                    emp_name: row.emp_name?.trim(),
-                    company_code: row.company_code?.trim(),
-                    division_code: row.division_code?.trim(),
-                    loc_code: row.loc_code?.trim(),
-                    gang_code: row.gang_code?.trim(),
-                    job_code: row.job_code?.trim() || undefined,
-                    position: row.position?.trim() || undefined,
-                    join_date: row.join_date,
-                    terminate_date: row.terminate_date,
-                    status: row.status?.trim(),
-                    employee_type: row.employee_type?.trim(),
-                    gender: row.gender?.trim(),
-                    religion: row.religion?.trim(),
-                    birth_place: row.birth_place?.trim(),
-                    birth_date: row.birth_date,
-                    marital_status: row.marital_status?.trim(),
-                    tax_status: row.tax_status?.trim() || undefined,
-                    ptkp_beras: row.ptkp_beras?.trim() || undefined,
-                    ptkp_pajak: row.ptkp_pajak?.trim() || undefined,
-                    // upah_dasar: use actual PayRate from HR_PAYROLL
-                    // NOTE: PayRate can be 0 for valid cases (new employees, terminated, etc.)
-                    // DO NOT change this to skip/filter on 0 value - 0 is valid
-                    upah_dasar: row.upah_dasar ?? 0,
-                    total_hk: row.total_hk || 0,
-                    source_table: 'HR_EMPLOYEE_JOIN'
-                };
-
-                await historyDatabaseService.saveHrEmployeeHistory(hrData);
-                result.records_inserted['hr_employee']++;
-            }
-        } catch (error: any) {
-            result.errors.push(`Error seeding Employee HR: ${error.message}`);
-        }
+                    HistorySeederService.updateProgress({
+                        current_step: `Menyimpan data HR Karyawan... (${processed}/${emps.length})`,
+                        employees_processed: processed
+                    });
+                }
+            });
+        } catch (e: any) { result.errors.push(`Error seeding Employee HR: ${e.message}`); }
     }
 
-    /**
-     * EXTENDED: Seed Gang HR History
-     */
-    private async seedGangHrHistory(
-        historyId: string,
-        options: SeederOptions,
-        result: SeederResult
-    ): Promise<void> {
+    private async seedGangHrHistory(historyId: string, options: SeederOptions, result: SeederResult): Promise<void> {
         const db = Database.getInstance();
-
         try {
-            let sql = `
-                SELECT 
-                    g.LocCode as division_code,
-                    g.LocCode as loc_code,
-                    g.GangCode as gang_code,
-                    g.Description as gang_description,
-                    g.GangLeader as mandor_code,
-                    m1.EmpName as mandor_name,
-                    NULL as mandor_1_code,
-                    NULL as mandor_1_name,
-                    NULL as assistant_code,
-                    NULL as assistant_name,
-                    (SELECT COUNT(*) FROM HR_GANGLN gl WHERE gl.GangCode = g.GangCode) as total_members
-                FROM HR_GANG g
-                LEFT JOIN HR_EMPLOYEE m1 ON g.GangLeader = m1.EmpCode
-                WHERE 1=1
-            `;
-
-            const gangQueryParams: any[] = [];
-
+            let sql = `SELECT g.LocCode as division_code, g.LocCode as loc_code, g.GangCode as gang_code, g.Description as gang_description, g.GangLeader as mandor_code, m1.EmpName as mandor_name, (SELECT COUNT(*) FROM HR_GANGLN gl WHERE gl.GangCode = g.GangCode) as total_members FROM HR_GANG g LEFT JOIN HR_EMPLOYEE m1 ON g.GangLeader = m1.EmpCode WHERE 1=1`;
+            const params: any[] = [];
             if (options.divisionCode && options.divisionCode !== 'ALL') {
-                // Use unified division mapping for LocCode filtering
-                const locCodes = gangService.getAllDivisionAliases(options.divisionCode);
-                const placeholders = locCodes.map(() => '?').join(',');
-                sql += ` AND g.LocCode IN (${placeholders})`;
-                gangQueryParams.push(...locCodes);
+                const codes = gangService.getAllDivisionAliases(options.divisionCode);
+                sql += ` AND g.LocCode IN (${codes.map(() => '?').join(',')})`;
+                params.push(...codes);
             }
-
-            if (options.gangCode && options.gangCode !== 'ALL') {
-                sql += ` AND g.GangCode = ?`;
-                gangQueryParams.push(options.gangCode);
-            }
-
-            const gangs = await db.query<any>(sql, gangQueryParams);
-
-            if (!result.records_inserted['hr_gang']) {
-                result.records_inserted['hr_gang'] = 0;
-            }
-
-            for (const row of gangs) {
-                const hrGang: HistoryHrGang = {
-                    history_id: historyId,
-                    period_month: options.periodMonth,
-                    period_year: options.periodYear,
-                    division_code: row.division_code?.trim(),
-                    loc_code: row.loc_code?.trim(),
-                    gang_code: row.gang_code?.trim(),
-                    gang_description: row.gang_description?.trim(),
-                    mandor_code: row.mandor_code?.trim(),
-                    mandor_name: row.mandor_name?.trim(),
-                    mandor_1_code: row.mandor_1_code?.trim(),
-                    mandor_1_name: row.mandor_1_name?.trim(),
-                    assistant_code: row.assistant_code?.trim(),
-                    assistant_name: row.assistant_name?.trim(),
-                    total_members: row.total_members || 0,
-                    is_active: true, // Assuming active if present in current gang iteration
-                    source_table: 'HR_GANG'
-                };
-
-                await historyDatabaseService.saveHrGangHistory(hrGang);
+            if (options.gangCode && options.gangCode !== 'ALL') { sql += ` AND g.GangCode = ?`; params.push(options.gangCode); }
+            const gangs = await db.query<any>(sql, params);
+            if (!result.records_inserted['hr_gang']) result.records_inserted['hr_gang'] = 0;
+            for (const r of gangs) {
+                await historyDatabaseService.saveHrGangHistory({
+                    history_id: historyId, period_month: options.periodMonth, period_year: options.periodYear, division_code: r.division_code?.trim(),
+                    loc_code: r.loc_code?.trim(), gang_code: r.gang_code?.trim(), gang_description: r.gang_description?.trim(), mandor_code: r.mandor_code?.trim(),
+                    mandor_name: r.mandor_name?.trim(), total_members: r.total_members || 0, is_active: true, source_table: 'HR_GANG'
+                });
                 result.records_inserted['hr_gang']++;
             }
-        } catch (error: any) {
-            result.errors.push(`Error seeding Gang HR: ${error.message}`);
-        }
+        } catch (e: any) { result.errors.push(`Error seeding Gang HR: ${e.message}`); }
     }
 
-    /**
-     * Get employee codes for the specified division/gang
-     */
     private async getEmployeeCodes(options: SeederOptions): Promise<string[]> {
-        const db = Database.getInstance();
-
-        let sql = `
-            SELECT RTRIM(e.EmpCode) as emp_code
-            FROM HR_EMPLOYEE e
-            INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
-            INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
-        `;
-
-        const empCodeParams: any[] = [];
-
-        if (options.divisionCode && options.divisionCode !== 'ALL') {
-            // Use unified division mapping for LocCode filtering
-            const locCodes = gangService.getAllDivisionAliases(options.divisionCode);
-            const placeholders = locCodes.map(() => '?').join(',');
-            sql += ` WHERE g.LocCode IN (${placeholders})`;
-            empCodeParams.push(...locCodes);
-        } else {
-            sql += ` WHERE 1=1`;
-        }
-
-        if (options.gangCode && options.gangCode !== 'ALL') {
-            sql += ` AND g.GangCode = ?`;
-            empCodeParams.push(options.gangCode);
-        }
-
-        const rows = await db.query<{ emp_code: string }>(sql, empCodeParams);
-        // Remove duplicates in JavaScript instead of SQL
-        const uniqueEmpCodes = [...new Set(rows.map(r => r.emp_code))];
-        return uniqueEmpCodes;
+        const codes = gangService.getAllDivisionAliases(options.divisionCode || 'ALL');
+        const rows = await Database.getInstance().query<{ emp_code: string }>(`SELECT RTRIM(e.EmpCode) as emp_code FROM HR_EMPLOYEE e INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode) INNER JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode) WHERE g.LocCode IN (${codes.map(() => '?').join(',')}) ${options.gangCode && options.gangCode !== 'ALL' ? 'AND g.GangCode = ?' : ''}`, [...codes, ...(options.gangCode && options.gangCode !== 'ALL' ? [options.gangCode] : [])]);
+        return [...new Set(rows.map(r => r.emp_code))];
     }
 
-    /**
-     * Save seeder metadata
-     */
-    private async saveSeederMetadata(
-        historyId: string,
-        options: SeederOptions,
-        result: SeederResult
-    ): Promise<void> {
-        const metadata: HistoryMetadata = {
-            history_id: historyId,
-            operation: 'CREATE',
-            entity_type: 'BATCH',
-            period_month: options.periodMonth,
-            period_year: options.periodYear,
-            division_code: options.divisionCode,
-            gang_code: options.gangCode,
-            description: `Seeded payroll history for ${options.divisionCode} - ${options.gangCode || 'ALL'}`,
-            new_values: JSON.stringify(result.records_inserted),
-            record_count: result.total_employees,
-            status: result.success ? 'SUCCESS' : 'FAILED',
-            error_message: result.errors.length > 0 ? result.errors.join('; ') : undefined,
-            performed_by: options.createdBy,
-            ip_address: options.ipAddress,
-            user_agent: options.userAgent
-        };
-
-        await historyDatabaseService.saveHistoryMetadata(metadata);
+    private async saveSeederMetadata(historyId: string, options: SeederOptions, result: SeederResult): Promise<void> {
+        await historyDatabaseService.saveHistoryMetadata({
+            history_id: historyId, operation: 'CREATE', entity_type: 'BATCH', period_month: options.periodMonth, period_year: options.periodYear,
+            division_code: options.divisionCode || 'ALL', gang_code: options.gangCode, description: `Seeded payroll history for ${options.divisionCode} - ${options.gangCode || 'ALL'}`,
+            new_values: JSON.stringify(result.records_inserted), record_count: result.total_employees, status: result.success ? 'SUCCESS' : 'FAILED',
+            error_message: result.errors.length > 0 ? result.errors.join('; ') : undefined, performed_by: options.createdBy, ip_address: options.ipAddress, user_agent: options.userAgent
+        });
     }
 }
 

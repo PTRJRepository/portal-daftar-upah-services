@@ -1,82 +1,10 @@
-export interface ColumnAggregationConfig {
-    column_id: string;
-    column_name: string;
-    aggregation_type: 'sum' | 'avg' | 'count' | 'min' | 'max';
-    data_type: 'numeric' | 'string';
-    is_monetary: boolean;
-    is_hidden_when_empty: boolean;
-}
+import { 
+    ColumnAggregationConfig, PayrollSummary, PayrollStatistics, 
+    BusinessRulesResponse, AggregatedPayrollResponse 
+} from "../types/payroll/aggregation";
+import { debug, error as logError } from "../utils/logger";
 
-export interface PayrollSummary {
-    total_employees: number;
-    total_hk: number;
-    total_upah_dasar: number;
-    total_upah_pokok: number;
-    total_gaji_pokok: number;
-    total_tunjangan: number;
-    total_potongan: number;
-    total_upah_bersih: number;
-    average_upah_bersih: number;
-    min_upah_bersih: number;
-    max_upah_bersih: number;
-}
-
-export interface PayrollStatistics {
-    total_hadir: number;
-    total_cuti_tahunan: number;
-    total_cuti_sakit: number;
-    total_cuti_minggu: number;
-    total_cuti_nasional: number;
-    total_tidak_hadir: number;
-
-    total_beras: number;
-    total_jabatan: number;
-    total_masa_kerja: number;
-    total_lembur: number;
-
-    total_pph21: number;
-    total_koreksi: number;
-    total_bpjs_pekerja: number;
-    total_bpjs_majikan: number;
-    total_bpjs_pensiun_pekerja: number;
-    total_bpjs_pensiun_majikan: number;
-    total_spsi: number;
-
-    total_brondol: number;
-    total_pruning: number;
-    total_premi_dinamis_1: number;
-    total_premi_dinamis_2: number;
-    total_premi_dinamis_3: number;
-    total_premi_dinamis_4: number;
-    total_premi_dinamis_5: number;
-    total_premi_dinamis_6: number;
-    total_premi_dinamis_7: number;
-}
-
-export interface BusinessRulesResponse {
-    gang_code: string;
-    month: number;
-    year: number;
-    rules_applied: any[];
-    processed_data: any[];
-}
-
-export interface AggregatedPayrollResponse {
-    gang_code: string;
-    month: number;
-    year: number;
-    period: string;
-    generated_at: Date;
-    total_records: number;
-    processing_time_ms: number;
-    use_threading: boolean;
-    data_rows: any[];
-    summary: PayrollSummary;
-    statistics: PayrollStatistics;
-    columns_info: ColumnAggregationConfig[];
-    empty_columns: string[];
-    business_rules: BusinessRulesResponse;
-}
+const CATEGORY = "AggregationService";
 
 export class AggregationService {
     private static instance: AggregationService;
@@ -91,7 +19,6 @@ export class AggregationService {
     }
 
     public createColumnAggregationConfigs(): ColumnAggregationConfig[] {
-        // Defined based on Python service
         const aggregationRules: Record<string, { type: 'sum' | 'avg' | 'count' | 'min' | 'max'; monetary: boolean }> = {
             'hari_kerja': { type: 'sum', monetary: false },
             'cuti_tahunan_hari': { type: 'sum', monetary: false },
@@ -133,11 +60,6 @@ export class AggregationService {
             'bpjs_pensiun_pekerja': { type: 'sum', monetary: true },
             'bpjs_pensiun_majikan': { type: 'sum', monetary: true },
             'spsi': { type: 'sum', monetary: true },
-            'total1': { type: 'sum', monetary: true },
-            'total2': { type: 'sum', monetary: true },
-            'total3': { type: 'sum', monetary: true },
-            'total4': { type: 'sum', monetary: true },
-
             'upah_bersih': { type: 'sum', monetary: true },
         };
 
@@ -164,19 +86,17 @@ export class AggregationService {
 
     private aggregateColumn(dataRows: any[], columnId: string, type: string): number {
         if (!dataRows.length) return 0.0;
-
-        const values = dataRows
-            .map(row => this.getNumericValue(row, columnId))
-            .filter(val => val !== 0); // Optimization: usually 0s don't affect sum, but affect avg/min/max logic depending on implementation. Python version filters nulls/empty strings before appending.
-
+        const values = dataRows.map(row => this.getNumericValue(row, columnId)).filter(val => val !== 0);
         if (!values.length) return 0.0;
 
-        if (type === 'sum') return values.reduce((a, b) => a + b, 0);
-        if (type === 'avg') return values.reduce((a, b) => a + b, 0) / values.length;
-        if (type === 'count') return values.length;
-        if (type === 'min') return Math.min(...values);
-        if (type === 'max') return Math.max(...values);
-        return 0.0;
+        switch (type) {
+            case 'sum': return values.reduce((a, b) => a + b, 0);
+            case 'avg': return values.reduce((a, b) => a + b, 0) / values.length;
+            case 'count': return values.length;
+            case 'min': return Math.min(...values);
+            case 'max': return Math.max(...values);
+            default: return 0.0;
+        }
     }
 
     private calculateTotalPotongan(dataRows: any[]): number {
@@ -187,219 +107,102 @@ export class AggregationService {
         let total = 0.0;
         for (const key of Object.keys(row)) {
             const k = key.toLowerCase();
-            if (k.includes('majikan') || k.includes('total') || k.includes('jumlah')) continue;
-            if (k.endsWith('_maj') || k.includes('_maj_')) continue;
-            if (k.includes('upah_kotor')) continue;
-            if (k === 'pot_bpjs_kes') continue;
-
-            // NOTE: 'koreksi' is NOT included - it's already added in jumlah_upah_kotor
-            // Including it here would cause double subtraction (already fixed in PayrollCalculator)
-            // NOTE: 'pendapatan_lainnya' MUST be included to offset the + in jumlah_upah_kotor
-            // NOTE: 'pot_premi_pph' is EXCLUDED - it is an ADDITION to upah_bersih, not a deduction
-            if (k.startsWith('pot_') || k.startsWith('bpjs_') || ['pph21', 'spsi', 'pendapatan_lainnya', 'pot_premi_pph'].includes(k)) {
-                if (k === 'pot_premi_pph') continue; // pot_premi_pph is ADDITION, not deduction
+            if (k.includes('majikan') || k.includes('total') || k.includes('jumlah') || k.endsWith('_maj') || k.includes('_maj_') || k.includes('upah_kotor') || k === 'pot_bpjs_kes' || k === 'pot_premi_pph') continue;
+            if (k.startsWith('pot_') || k.startsWith('bpjs_') || ['pph21', 'spsi', 'pendapatan_lainnya'].includes(k)) {
                 total += this.getNumericValue(row, key);
             }
         }
         return total;
     }
 
-    private calculateRowTotalTunjangan(row: any): number {
-        return ['beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah']
-            .reduce((sum, col) => sum + this.getNumericValue(row, col), 0);
-    }
-
-    private calculateRowTotalPremi(row: any): number {
-        const premiCols = ['premi_brondol', 'premi_pruning', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7'];
-        return premiCols.reduce((sum, col) => sum + this.getNumericValue(row, col), 0);
-    }
-
     public applyBusinessRules(dataRows: any[], gangCode: string, month: number, year: number): BusinessRulesResponse {
-        const rulesApplied: any[] = [];
-        const originalCount = dataRows.length;
-
-        // ============================================================
-        // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
-        // FILTER: Selalu exclude karyawan dengan kehadiran = 0
-        //
-        // Using jumlah_hk for aggregation because the backend
-        // dataExtractorService already filtered out employees where
-        // hari_kerja <= 0 (kehadiran = 0) at the source.
-        // At aggregation level, jumlah_hk > 0 is sufficient indicator.
-        //
-        // Rule: EXCLUDE if jumlah_hk <= 0
-        // ============================================================
-        // Rule 1: Filter zero HK
         const filteredRows = dataRows.filter(row => this.getNumericValue(row, 'jumlah_hk') > 0);
+        const rulesApplied: any[] = [];
 
-        if (filteredRows.length < originalCount) {
-            rulesApplied.push({
-                rule: 'filter_zero_hk',
-                description: 'Filtered out employees with 0 working days',
-                original_count: originalCount,
-                filtered_count: filteredRows.length,
-                removed_count: originalCount - filteredRows.length
-            });
+        if (filteredRows.length < dataRows.length) {
+            rulesApplied.push({ rule: 'filter_zero_hk', removed_count: dataRows.length - filteredRows.length });
         }
 
-        // Rule 2: Calculate upah_bersih if missing
-        // Formula MUST match dataExtractorService.ts:3666
-        // upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph
-        // NOTE: pot_premi_pph is an ADDITION, not a deduction
         let calculatedCount = 0;
         for (const row of filteredRows) {
-            const upahBersih = this.getNumericValue(row, 'upah_bersih');
-            if (upahBersih === 0) {
-                const jumlahUpahKotor = this.getNumericValue(row, 'jumlah_upah_kotor');
-                const totalPotonganBersih = this.calculateRowTotalPotonganBersih(row);
-                const potPremiPph = this.getNumericValue(row, 'pot_premi_pph');
-
-                let calculatedUpahBersih = 0;
-                if (jumlahUpahKotor > 0) {
-                    // Use the standard formula: upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph
-                    calculatedUpahBersih = jumlahUpahKotor - totalPotonganBersih + potPremiPph;
+            if (this.getNumericValue(row, 'upah_bersih') === 0) {
+                const upahKotor = this.getNumericValue(row, 'jumlah_upah_kotor');
+                const potongan = this.calculateRowTotalPotonganBersih(row);
+                const premiPph = this.getNumericValue(row, 'pot_premi_pph');
+                
+                if (upahKotor > 0) {
+                    row['upah_bersih'] = upahKotor - potongan + premiPph;
                 } else {
-                    // Fallback: calculate from scratch if jumlah_upah_kotor is not available
-                    const gajiPokok = this.getNumericValue(row, 'gaji_pokok');
-                    const totalTunjangan = this.calculateRowTotalTunjangan(row);
-                    const totalPremi = this.calculateRowTotalPremi(row);
-                    const potKoreksi = this.getNumericValue(row, 'koreksi');
-                    const pendapatanLainya = this.getNumericValue(row, 'pot_pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_thr');
-
-                    // koreksi adalah pengurang dari penghasilan kotor (dikurang dari jumlah_upah_kotor)
-                    // koreksi TIDAK masuk total_potongan (avoid double deduction)
-                    const calculatedJumlahUpahKotor = (gajiPokok + totalTunjangan + totalPremi + pendapatanLainya) - potKoreksi;
-
-                    // upah_bersih = jumlah_upah_kotor - total_potongan + pot_premi_pph
-                    calculatedUpahBersih = calculatedJumlahUpahKotor - totalPotonganBersih + potPremiPph;
+                    const base = this.getNumericValue(row, 'gaji_pokok') + 
+                                 ['beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah'].reduce((s, c) => s + this.getNumericValue(row, c), 0) +
+                                 ['premi_brondol', 'premi_pruning', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7'].reduce((s, c) => s + this.getNumericValue(row, c), 0) +
+                                 (this.getNumericValue(row, 'pot_pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_lainnya') || this.getNumericValue(row, 'pendapatan_thr')) -
+                                 this.getNumericValue(row, 'koreksi');
+                    row['upah_bersih'] = base - potongan + premiPph;
                 }
-
-                row['upah_bersih'] = calculatedUpahBersih;
                 calculatedCount++;
             }
         }
 
-        if (calculatedCount > 0) {
-            rulesApplied.push({
-                rule: 'calculate_upah_bersih',
-                description: 'Calculated upah_bersih for missing values',
-                count: calculatedCount
-            });
-        }
+        if (calculatedCount > 0) rulesApplied.push({ rule: 'calculate_upah_bersih', count: calculatedCount });
 
-        return {
-            gang_code: gangCode,
-            month,
-            year,
-            rules_applied: rulesApplied,
-            processed_data: filteredRows
-        };
+        return { gang_code: gangCode, month, year, rules_applied: rulesApplied, processed_data: filteredRows };
     }
 
-    private calculatePayrollSummary(dataRows: any[]): PayrollSummary {
-        const upahBersihValues = dataRows.map(r => this.getNumericValue(r, 'upah_bersih'));
-        
-        return {
-            total_employees: dataRows.length,
-            total_hk: this.aggregateColumn(dataRows, 'jumlah_hk', 'sum'),
-            total_upah_dasar: this.aggregateColumn(dataRows, 'upah_dasar', 'sum'),
-            total_upah_pokok: this.aggregateColumn(dataRows, 'upah_pokok', 'sum'),
-            total_gaji_pokok: this.aggregateColumn(dataRows, 'gaji_pokok', 'sum'),
-            total_tunjangan: this.aggregateColumn(dataRows, 'total_tunjangan', 'sum'),
-            total_potongan: this.calculateTotalPotongan(dataRows),
-            total_upah_bersih: this.aggregateColumn(dataRows, 'upah_bersih', 'sum'),
-            average_upah_bersih: upahBersihValues.length ? upahBersihValues.reduce((a, b) => a + b, 0) / upahBersihValues.length : 0,
-            min_upah_bersih: upahBersihValues.length ? Math.min(...upahBersihValues) : 0,
-            max_upah_bersih: upahBersihValues.length ? Math.max(...upahBersihValues) : 0
-        };
-    }
+    public createAggregatedResponse(dataRows: any[], gangCode: string, month: number, year: number, processingTimeMs: number = 0, useThreading: boolean = false): AggregatedPayrollResponse {
+        const bizResult = this.applyBusinessRules(dataRows, gangCode, month, year);
+        const data = bizResult.processed_data;
+        const upahBersihValues = data.map(r => this.getNumericValue(r, 'upah_bersih'));
 
-    private calculatePayrollStatistics(dataRows: any[]): PayrollStatistics {
-        return {
-            total_hadir: this.aggregateColumn(dataRows, 'hari_kerja', 'sum'),
-            total_cuti_tahunan: this.aggregateColumn(dataRows, 'cuti_tahunan_hari', 'sum'),
-            total_cuti_sakit: this.aggregateColumn(dataRows, 'cuti_sakit_haid_hari', 'sum'),
-            total_cuti_minggu: this.aggregateColumn(dataRows, 'cuti_minggu_hari', 'sum'),
-            total_cuti_nasional: this.aggregateColumn(dataRows, 'cuti_nasional_hari', 'sum'),
-            total_tidak_hadir: this.aggregateColumn(dataRows, 'total_ketidakhadiran', 'sum'),
-
-            total_beras: this.aggregateColumn(dataRows, 'beras_jumlah', 'sum'),
-            total_jabatan: this.aggregateColumn(dataRows, 'jabatan_jumlah', 'sum'),
-            total_masa_kerja: this.aggregateColumn(dataRows, 'masa_kerja_amount', 'sum'),
-            total_lembur: this.aggregateColumn(dataRows, 'lembur_jumlah', 'sum'),
-
-            total_pph21: this.aggregateColumn(dataRows, 'pph21', 'sum'),
-            total_koreksi: this.aggregateColumn(dataRows, 'koreksi', 'sum'),
-            total_bpjs_pekerja: this.aggregateColumn(dataRows, 'bpjs_pek', 'sum'),
-            total_bpjs_majikan: this.aggregateColumn(dataRows, 'bpjs_maj', 'sum'),
-            total_bpjs_pensiun_pekerja: this.aggregateColumn(dataRows, 'bpjs_pensiun_pekerja', 'sum'),
-            total_bpjs_pensiun_majikan: this.aggregateColumn(dataRows, 'bpjs_pensiun_majikan', 'sum'),
-            total_spsi: this.aggregateColumn(dataRows, 'spsi', 'sum'),
-
-            total_brondol: this.aggregateColumn(dataRows, 'premi_brondol', 'sum'),
-            total_pruning: this.aggregateColumn(dataRows, 'premi_pruning', 'sum'),
-            total_premi_dinamis_1: this.aggregateColumn(dataRows, 'premi_dynamic_1', 'sum'),
-            total_premi_dinamis_2: this.aggregateColumn(dataRows, 'premi_dynamic_2', 'sum'),
-            total_premi_dinamis_3: this.aggregateColumn(dataRows, 'premi_dynamic_3', 'sum'),
-            total_premi_dinamis_4: this.aggregateColumn(dataRows, 'premi_dynamic_4', 'sum'),
-            total_premi_dinamis_5: this.aggregateColumn(dataRows, 'premi_dynamic_5', 'sum'),
-            total_premi_dinamis_6: this.aggregateColumn(dataRows, 'premi_dynamic_6', 'sum'),
-            total_premi_dinamis_7: this.aggregateColumn(dataRows, 'premi_dynamic_7', 'sum'),
-        };
-    }
-
-    private identifyEmptyColumns(dataRows: any[]): string[] {
-        if (!dataRows.length) return [];
-        const sample = dataRows[0];
-        const emptyCols: string[] = [];
-        
-        for (const key of Object.keys(sample)) {
-            let isEmpty = true;
-            for (const row of dataRows) {
-                if (this.getNumericValue(row, key) !== 0) {
-                    isEmpty = false;
-                    break;
-                }
-            }
-            if (isEmpty) emptyCols.push(key);
-        }
-        return emptyCols;
-    }
-
-    public createAggregatedResponse(
-        dataRows: any[],
-        gangCode: string,
-        month: number,
-        year: number,
-        processingTimeMs: number = 0,
-        useThreading: boolean = false
-    ): AggregatedPayrollResponse {
-        const businessRulesResult = this.applyBusinessRules(dataRows, gangCode, month, year);
-        const processedData = businessRulesResult.processed_data;
-        
-        const summary = this.calculatePayrollSummary(processedData);
-        const statistics = this.calculatePayrollStatistics(processedData);
-        const emptyColumns = this.identifyEmptyColumns(processedData);
-        const columnsInfo = this.createColumnAggregationConfigs();
-
-        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
         return {
-            gang_code: gangCode,
-            month,
-            year,
-            period: `${monthNames[month - 1]} ${year}`,
-            generated_at: new Date(),
-            total_records: processedData.length,
-            processing_time_ms: processingTimeMs,
-            use_threading: useThreading,
-            data_rows: processedData,
-            summary,
-            statistics,
-            columns_info: columnsInfo,
-            empty_columns: emptyColumns,
-            business_rules: businessRulesResult
+            gang_code: gangCode, month, year, period: `${monthNames[month - 1]} ${year}`, generated_at: new Date(),
+            total_records: data.length, processing_time_ms: processingTimeMs, use_threading: useThreading, data_rows: data,
+            summary: {
+                total_employees: data.length,
+                total_hk: this.aggregateColumn(data, 'jumlah_hk', 'sum'),
+                total_upah_dasar: this.aggregateColumn(data, 'upah_dasar', 'sum'),
+                total_upah_pokok: this.aggregateColumn(data, 'upah_pokok', 'sum'),
+                total_gaji_pokok: this.aggregateColumn(data, 'gaji_pokok', 'sum'),
+                total_tunjangan: this.aggregateColumn(data, 'total_tunjangan', 'sum'),
+                total_potongan: this.calculateTotalPotongan(data),
+                total_upah_bersih: this.aggregateColumn(data, 'upah_bersih', 'sum'),
+                average_upah_bersih: upahBersihValues.length ? upahBersihValues.reduce((a, b) => a + b, 0) / upahBersihValues.length : 0,
+                min_upah_bersih: upahBersihValues.length ? Math.min(...upahBersihValues) : 0,
+                max_upah_bersih: upahBersihValues.length ? Math.max(...upahBersihValues) : 0
+            },
+            statistics: {
+                total_hadir: this.aggregateColumn(data, 'hari_kerja', 'sum'),
+                total_cuti_tahunan: this.aggregateColumn(data, 'cuti_tahunan_hari', 'sum'),
+                total_cuti_sakit: this.aggregateColumn(data, 'cuti_sakit_haid_hari', 'sum'),
+                total_cuti_minggu: this.aggregateColumn(data, 'cuti_minggu_hari', 'sum'),
+                total_cuti_nasional: this.aggregateColumn(data, 'cuti_nasional_hari', 'sum'),
+                total_tidak_hadir: this.aggregateColumn(data, 'total_ketidakhadiran', 'sum'),
+                total_beras: this.aggregateColumn(data, 'beras_jumlah', 'sum'),
+                total_jabatan: this.aggregateColumn(data, 'jabatan_jumlah', 'sum'),
+                total_masa_kerja: this.aggregateColumn(data, 'masa_kerja_amount', 'sum'),
+                total_lembur: this.aggregateColumn(data, 'lembur_jumlah', 'sum'),
+                total_pph21: this.aggregateColumn(data, 'pph21', 'sum'),
+                total_koreksi: this.aggregateColumn(data, 'koreksi', 'sum'),
+                total_bpjs_pekerja: this.aggregateColumn(data, 'bpjs_pek', 'sum'),
+                total_bpjs_majikan: this.aggregateColumn(data, 'bpjs_maj', 'sum'),
+                total_bpjs_pensiun_pekerja: this.aggregateColumn(data, 'bpjs_pensiun_pekerja', 'sum'),
+                total_bpjs_pensiun_majikan: this.aggregateColumn(data, 'bpjs_pensiun_majikan', 'sum'),
+                total_spsi: this.aggregateColumn(data, 'spsi', 'sum'),
+                total_brondol: this.aggregateColumn(data, 'premi_brondol', 'sum'),
+                total_pruning: this.aggregateColumn(data, 'premi_pruning', 'sum'),
+                total_premi_dinamis_1: this.aggregateColumn(data, 'premi_dynamic_1', 'sum'),
+                total_premi_dinamis_2: this.aggregateColumn(data, 'premi_dynamic_2', 'sum'),
+                total_premi_dinamis_3: this.aggregateColumn(data, 'premi_dynamic_3', 'sum'),
+                total_premi_dinamis_4: this.aggregateColumn(data, 'premi_dynamic_4', 'sum'),
+                total_premi_dinamis_5: this.aggregateColumn(data, 'premi_dynamic_5', 'sum'),
+                total_premi_dinamis_6: this.aggregateColumn(data, 'premi_dynamic_6', 'sum'),
+                total_premi_dinamis_7: this.aggregateColumn(data, 'premi_dynamic_7', 'sum'),
+            },
+            columns_info: this.createColumnAggregationConfigs(),
+            empty_columns: data.length ? Object.keys(data[0]).filter(k => data.every(r => this.getNumericValue(r, k) === 0)) : [],
+            business_rules: bizResult
         };
     }
 }

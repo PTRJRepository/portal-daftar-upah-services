@@ -43,7 +43,6 @@ export async function getEmployeeCheckroll(token, empCode, month, year, division
         }
 
         const baseUrl = getBaseUrl()
-        console.log(`[EmployeeDetailService] Using endpoint: ${baseUrl}/${empCode}/checkroll`)
 
         const response = await axios.get(`${baseUrl}/${empCode}/checkroll`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -74,7 +73,6 @@ export async function getEmployeeComponents(token, empCode, month, year, divisio
         }
 
         const baseUrl = getBaseUrl()
-        console.log(`[EmployeeDetailService] Using endpoint: ${baseUrl}/${empCode}/components`)
 
         const response = await axios.get(`${baseUrl}/${empCode}/components`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -106,7 +104,6 @@ export async function getEmployeeHistory(token, empCode, options = {}) {
         }
 
         const baseUrl = getBaseUrl()
-        console.log(`[EmployeeDetailService] Using endpoint: ${baseUrl}/${empCode}/history`)
 
         const response = await axios.get(`${baseUrl}/${empCode}/history`, {
             headers: { Authorization: `Bearer ${token}` },

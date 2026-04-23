@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { appendSnapshotVersionToObject } from '../utils/payrollSnapshotQuery';
 
 /**
  * Helper to handle blob processes (checks for 0-byte, handles errors returned in blobs)
@@ -78,12 +79,13 @@ async function processBlobResponse(response, defaultFileName) {
 /**
  * Fetch monthly PPH21 tax report
  */
-export async function fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory) {
+export async function fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion = null) {
     const params = { year, month };
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
     if (useHistory !== undefined) params.use_history = useHistory.toString();
+    appendSnapshotVersionToObject(params, snapshotVersion);
 
     // Axios defaults handle auth if interceptor is present
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
@@ -198,12 +200,13 @@ async function handleBlobError(error, defaultMessage) {
  * Download monthly PPH21 tax report as Excel Document (Tax Report Page)
  * Uses FAST endpoint that reads directly from pre-computed history tables
  */
-export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory) {
+export async function downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion = null) {
     const params = { year: String(year), month: String(month) };
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
     if (useHistory !== undefined) params.use_history = useHistory.toString();
+    appendSnapshotVersionToObject(params, snapshotVersion);
 
     try {
         const response = await axios.get('tax-report/monthly/excel/fast', {
@@ -273,12 +276,13 @@ export async function downloadDecemberTaxReportExcel(token, year, division, gang
 /**
  * Export PPh21 TER + PPh21 Input JSON by gang
  */
-export async function exportPajakJson(token, year, month, gang, div, gangPrefix, useHistory) {
+export async function exportPajakJson(token, year, month, gang, div, gangPrefix, useHistory, snapshotVersion = null) {
     const params = { year: String(year), month: String(month) };
     if (gang && gang !== 'ALL') params.gang = gang;
     if (div) params.div = div;
     if (gangPrefix && gangPrefix !== 'ALL') params.gang_prefix = gangPrefix;
     if (useHistory !== undefined) params.use_history = useHistory.toString();
+    appendSnapshotVersionToObject(params, snapshotVersion);
 
     try {
         const response = await axios.get('payroll/export/pajak', {
@@ -296,12 +300,13 @@ export async function exportPajakJson(token, year, month, gang, div, gangPrefix,
  * Download tax report (PPH21) Excel from Operational page (App.jsx)
  * Uses FAST endpoint that reads directly from pre-computed history tables
  */
-export async function downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory) {
+export async function downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion = null) {
     const params = { year: String(year), month: String(month) };
     if (division) params.division = division;
     if (gang && gang !== 'ALL') params.gang = gang;
     if (gangPrefix && gangPrefix !== 'ALL') params.gangPrefix = gangPrefix;
     if (useHistory !== undefined) params.use_history = useHistory.toString();
+    appendSnapshotVersionToObject(params, snapshotVersion);
 
     console.log('[downloadTaxReportExcel] Requesting:', {
         url: 'tax-report/monthly/excel/fast',

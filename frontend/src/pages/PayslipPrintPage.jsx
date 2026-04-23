@@ -5,6 +5,7 @@ import { getBatchEmployeeCheckroll, savePayslipHistory } from '../services/paysl
 import PayslipCard from '../components/PayslipCard';
 import { generatePDF } from '../utils/pdfGenerator';
 import { Download, Printer, ArrowLeft, FileText, Database, RefreshCw } from 'lucide-react';
+import { buildPayrollSnapshotCacheKey, normalizeSnapshotVersion } from '../utils/payrollSnapshotQuery';
 import '../styles/payslip-print.css';
 
 /**
@@ -32,6 +33,7 @@ export default function PayslipPrintPage() {
     const division = searchParams.get('division') || '';
     const dataKey = searchParams.get('data_key') || '';  // sessionStorage key for UI data
     const useHistory = searchParams.get('use_history') === 'true';
+    const snapshotVersion = normalizeSnapshotVersion(searchParams.get('snapshot_version'));
 
     // Helper function to transform UI row data to PayslipCard format
     function transformUIToPayslipFormat(row, month, year) {
@@ -98,7 +100,13 @@ export default function PayslipPrintPage() {
                 }
 
                 // OPTIMIZATION: Check if data exists in localStorage from CustomPayrollTable
-                const storageKey = `payroll_cache_${division}_${month}_${year}_${useHistory ? 'hist' : 'origin'}`;
+                const storageKey = buildPayrollSnapshotCacheKey({
+                    division,
+                    month,
+                    year,
+                    useHistory,
+                    snapshotVersion
+                });
                 const cached = localStorage.getItem(storageKey);
 
                 if (cached) {
@@ -164,7 +172,7 @@ export default function PayslipPrintPage() {
                 }
 
                 console.log('[PayslipPrintPage] Fetching data from API...');
-                const result = await getBatchEmployeeCheckroll(token, empCodes, month, year);
+                const result = await getBatchEmployeeCheckroll(token, empCodes, month, year, useHistory, snapshotVersion);
 
                 if (result.success) {
                     setPayslipData(result.data || []);
@@ -181,7 +189,7 @@ export default function PayslipPrintPage() {
         }
 
         loadData();
-    }, [token, empCodes.join(','), month, year, useHistory]);
+    }, [token, empCodes.join(','), month, year, useHistory, snapshotVersion, division]);
 
     const handlePrint = () => {
         window.print();
@@ -297,6 +305,11 @@ export default function PayslipPrintPage() {
                     <span style={{ color: '#666', fontSize: '0.9rem', marginLeft: '1rem' }}>
                         {getMonthName(month)} {year}
                     </span>
+                    {useHistory && snapshotVersion && (
+                        <span style={{ color: '#7c3aed', fontSize: '0.9rem', marginLeft: '1rem', fontWeight: '600' }}>
+                            Snapshot v{snapshotVersion}
+                        </span>
+                    )}
                     {successMessage && (
                         <span style={{ color: '#059669', fontSize: '0.9rem', marginLeft: '1.5rem', fontWeight: '600' }}>
                             {successMessage}

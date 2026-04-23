@@ -24,6 +24,7 @@ import { calculateMasaKerjaDisplay, deriveInitialSpsiMember } from "../utils/pay
 import { debug, info, warn, error as logError } from "../utils/logger";
 import { PayrollCalculator } from "./payroll/components/PayrollCalculator";
 import { applyManualAdjustmentsToEmployee } from "./payroll/manualAdjustments/manualAdjustmentApplier";
+import { payrollAutoBufferService, resolveSyncFrameColor } from "./payroll/payrollAutoBufferService";
 import { divisionConfigService } from "./config/DivisionConfigService";
 import { buildLeaveSqlExpressions } from "./payroll/extractors/leaveRules";
 import { processInBatches } from "../utils/batchProcessor";
@@ -225,6 +226,7 @@ interface PayrollRow {
     taxable_pendapatan_thr: number;
     taxable_pendapatan_bonus: number;
     taxable_pendapatan_custom: number;
+    value_sync_frame?: Record<string, "red" | "green">;
     [key: string]: any;
 }
 
@@ -265,7 +267,8 @@ export class DataExtractorService {
         useHistoryDb?: boolean | null,
         gangPrefix?: string,
         skipHarvest: boolean = false,
-        skipHeavyDetails: boolean = false
+        skipHeavyDetails: boolean = false,
+        snapshotVersion?: number | null
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -1058,8 +1061,35 @@ export class DataExtractorService {
             const additionalBeras = isF2H ? empBerasDocDesc : 0;
             const berasJumlah = berasJumlahBase + additionalBeras;
 
-            const jabatanRate = hari_kerja > 0 ? empJabatan / hari_kerja : 0;
-            const masaKerjaRate = hari_kerja > 0 && empMasaKerjaJumlah > 0 ? empMasaKerjaJumlah / hari_kerja : 0;
+            const dbPotSpsi = Math.abs(empPotongan["SPSI"] || 0);
+            const isSpsiMember = typeof emp.is_spsi_member === "boolean"
+                ? emp.is_spsi_member
+                : deriveInitialSpsiMember(dbPotSpsi);
+            const autoBuffer = payrollAutoBufferService.calculateAutomaticValues({
+                jabatanText: empJobTitle,
+                roleText: emp.jabatan || "",
+                hariKerja: hari_kerja,
+                kehadiran: hk,
+                masaKerjaTahun: masaKerjaLama,
+                isSpsiMember,
+                dbJabatanJumlah: empJabatan,
+                dbMasaKerjaJumlah: empMasaKerjaJumlah
+            });
+            const empJabatanDisplay = autoBuffer.jabatanAmount;
+            const empMasaKerjaDisplay = autoBuffer.masaKerjaAmount;
+            const jabatanRate = autoBuffer.jabatanRate;
+            const masaKerjaRate = autoBuffer.masaKerjaRate;
+            const pot_spsi = autoBuffer.spsiDeduction;
+            const valueSyncFrame: Record<string, "red" | "green"> = {
+                jabatan_jumlah: resolveSyncFrameColor(empJabatanDisplay, empJabatan),
+                masa_kerja_jumlah: resolveSyncFrameColor(empMasaKerjaDisplay, empMasaKerjaJumlah),
+                pot_spsi: resolveSyncFrameColor(pot_spsi, dbPotSpsi)
+            };
+            valueSyncFrame.spsi = valueSyncFrame.pot_spsi;
+            if (hari_kerja > 0) {
+                valueSyncFrame.jabatan_rate = resolveSyncFrameColor(jabatanRate, empJabatan / hari_kerja);
+                valueSyncFrame.masa_kerja_rate = resolveSyncFrameColor(masaKerjaRate, empMasaKerjaJumlah / hari_kerja);
+            }
 
             const empLemburJumlahPure = empLemburDetails.jumlah || 0;
             const empLemburJamPure = empLemburDetails.jam || 0;
@@ -1067,7 +1097,7 @@ export class DataExtractorService {
             const gaji_pokok_ideal = gpResult?.gaji_pokok_ideal?.value || 0;
             const gaji_pokok_aktual = gpResult?.gaji_pokok_aktual?.value || 0;
             const gaji_pokok = gaji_pokok_aktual;
-            const total_tunjangan = berasJumlah + empJabatan + empMasaKerjaJumlah + empLemburJumlahPure;
+            const total_tunjangan = berasJumlah + empJabatanDisplay + empMasaKerjaDisplay + empLemburJumlahPure;
 
             // PREMI CALCULATION - Ensure everything is summed into total_premi
             // [PHASE 2.5] Brondol is now combined at line 570 (empBrondol = empBrondolTotal)
@@ -1103,7 +1133,8 @@ export class DataExtractorService {
                 empPremi,
                 empPotongan,
                 premiTitleMap,
-                potonganTitleMap
+                potonganTitleMap,
+                mode: 'override'
             });
 
             for (const key of Object.keys(manualApplied.empPremi)) {
@@ -1119,12 +1150,23 @@ export class DataExtractorService {
             }
 
             total_premi += manualApplied.totalPremiDelta;
+            for (const syncMeta of manualApplied.fieldSyncMeta) {
+                const syncColor = resolveSyncFrameColor(syncMeta.finalAmount, syncMeta.previousAmount);
+                valueSyncFrame[syncMeta.fieldName] = syncColor;
 
-            const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
+                if (syncMeta.adjustmentType === 'PREMI' && !syncMeta.fieldName.startsWith('premi_')) {
+                    valueSyncFrame[`premi_${syncMeta.fieldName}`] = syncColor;
+                }
+
+                if (syncMeta.adjustmentType !== 'PREMI') {
+                    const keyUpper = syncMeta.fieldName.toUpperCase();
+                    if (!keyUpper.startsWith('KOREKSI') && !syncMeta.fieldName.startsWith('potongan_')) {
+                        valueSyncFrame[`potongan_${syncMeta.fieldName}`] = syncColor;
+                    }
+                }
+            }
+
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
-            const isSpsiMember = typeof emp.is_spsi_member === "boolean"
-                ? emp.is_spsi_member
-                : deriveInitialSpsiMember(pot_spsi);
             // [NEW] Premi PPH from TaskDesc = 'ACCRUALS-CHECKROLL' (treated as potongan upah bersih)
             const pot_premi_pph = Math.abs(empPotongan["PREMI_PPH"] || 0);
 
@@ -1138,7 +1180,8 @@ export class DataExtractorService {
             let pot_koreksi = 0;
 
             for (const [key, val] of Object.entries(empPotongan)) {
-                if (key.startsWith("KOREKSI")) {
+                const keyUpper = String(key).toUpperCase();
+                if (keyUpper.startsWith("KOREKSI")) {
                     const amount = Math.abs(val as number);
                     koreksiVariations[key] = amount;
                     pot_koreksi += amount;
@@ -1147,7 +1190,6 @@ export class DataExtractorService {
             }
 
             Object.assign(koreksiVariations, manualApplied.koreksiVariations);
-            pot_koreksi += manualApplied.potKoreksiDelta;
 
             let other_potongan = 0;
             let db_bpjs_kes = 0;
@@ -1183,7 +1225,7 @@ export class DataExtractorService {
             // Manual POTONGAN_BERSIH entries were already merged into empPotongan above,
             // so the loop coverage here is the single source of truth for other_potongan.
 
-            const caruman = calculateAllCaruman(empUpahDasar, empMasaKerjaJumlah);
+            const caruman = calculateAllCaruman(empUpahDasar, empMasaKerjaDisplay);
 
             const pot_astek_pekerja = caruman.astek_pekerja_jht;
             const pot_astek_majikan = caruman.astek_majikan_total;
@@ -1464,8 +1506,8 @@ export class DataExtractorService {
                     // Earnings
                     gaji_pokok_aktual,
                     beras_jumlah: berasJumlah,
-                    jabatan_jumlah: empJabatan,
-                    masa_kerja_jumlah: empMasaKerjaJumlah,
+                    jabatan_jumlah: empJabatanDisplay,
+                    masa_kerja_jumlah: empMasaKerjaDisplay,
                     lembur_jumlah: empLemburJumlahPure,
                     total_tunjangan,
                     total_premi,
@@ -1554,13 +1596,13 @@ export class DataExtractorService {
                 beras_rate: berasRate,
                 beras_jumlah: berasJumlah,
                 jabatan_rate: jabatanRate,
-                jabatan_jumlah: empJabatan,
+                jabatan_jumlah: empJabatanDisplay,
                 masa_kerja_tahun: masaKerjaLama,
                 masa_kerja_display_years: masaKerjaDisplay.years,
                 masa_kerja_display_months: masaKerjaDisplay.months,
                 masa_kerja_label: masaKerjaDisplay.label,
                 masa_kerja_rate: masaKerjaRate,
-                masa_kerja_jumlah: empMasaKerjaJumlah,
+                masa_kerja_jumlah: empMasaKerjaDisplay,
                 // [FIX] Use pure overtime (OT=1) values to ensure detail records match the total
                 lembur_jam: empLemburJamPure,
                 lembur_rate: empLemburJumlahPure > 0 && empLemburJamPure > 0 ? empLemburJumlahPure / empLemburJamPure : 0,
@@ -1666,13 +1708,17 @@ export class DataExtractorService {
                 // It is already handled as the `premi_pph` field above.
                 ...Object.fromEntries(
                     Object.entries(empPotongan).filter(([key]) =>
-                        key !== "SPSI" && key !== "PPH21" && !key.startsWith("KOREKSI") && key !== "PREMI_PPH"
+                        key !== "SPSI" &&
+                        key !== "PPH21" &&
+                        !String(key).toUpperCase().startsWith("KOREKSI") &&
+                        key !== "PREMI_PPH"
                     )
                 ),
                 ...empPremi,
                 // [RESTORED] premi object for aggregation seeder compatibility
                 premi: empPremi,
-                premi_details: premiDetails[emp.emp_code] || []
+                premi_details: premiDetails[emp.emp_code] || [],
+                value_sync_frame: valueSyncFrame
             };
 
             dataRows.push(row);
@@ -3878,6 +3924,7 @@ export class DataExtractorService {
         const globalTaskCodesMap: Record<string, any> = {};
         const globalPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
         const globalPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
+        const baselinePotSpsiByEmp: Record<string, number> = {};
         const dynamicPremiSet = new Set<string>();
         const dynamicPotonganSet = new Set<string>();
 
@@ -3892,6 +3939,11 @@ export class DataExtractorService {
 
         const emptyPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
         const emptyPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
+        const manualAdjustmentsPromise = safeQuery(
+            'manualAdjustments',
+            () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode),
+            [] as any[]
+        );
 
         // [PHASE 1] Attendance + Cuti
         debug(CATEGORY, `📋 Phase 1: Loading attendance/cuti...`);
@@ -4048,6 +4100,9 @@ export class DataExtractorService {
                 }
             }
             for (const [empCode, empPot] of Object.entries(potB.amounts || {})) {
+                if (baselinePotSpsiByEmp[empCode] === undefined) {
+                    baselinePotSpsiByEmp[empCode] = Math.abs(Number((empPot as any)?.SPSI) || 0);
+                }
                 for (const key of Object.keys(empPot || {})) {
                     if (key !== "SPSI" && key !== "PPH21") {
                         // For KOREKSI: use key as-is (e.g., "KOREKSI_1", "KOREKSI_2")
@@ -4066,12 +4121,26 @@ export class DataExtractorService {
             }
         }
 
+        const manualAdjustmentsRaw = await manualAdjustmentsPromise;
+        const manualAdjustmentsByEmpCode = new Map<string, any[]>();
+        if (Array.isArray(manualAdjustmentsRaw)) {
+            for (const adjustment of manualAdjustmentsRaw) {
+                const empCodeKey = String(adjustment?.emp_code || '').trim().toUpperCase();
+                if (!empCodeKey) continue;
+                const current = manualAdjustmentsByEmpCode.get(empCodeKey) || [];
+                current.push(adjustment);
+                manualAdjustmentsByEmpCode.set(empCodeKey, current);
+            }
+        }
+
         // Update employees with premium data
         for (const emp of employees) {
             const empPremi = globalPremiResult.amounts[emp.emp_code] || {};
             const empPotongan = globalPotonganResult.amounts[emp.emp_code] || {};
             const empBrondol = globalBrondolMap[emp.emp_code] || 0;
             const empPremiBrondol = empPremi["brondol"] || 0;
+            const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
+            const valueSyncFrame: Record<string, "red" | "green"> = { ...(emp.value_sync_frame || {}) };
 
             let total_premi = 0;
             for (const [key, val] of Object.entries(empPremi)) {
@@ -4079,12 +4148,67 @@ export class DataExtractorService {
             }
             total_premi += empBrondol;
 
+            const empAdjustments = manualAdjustmentsByEmpCode.get(empCodeKey) || [];
+            if (empAdjustments.length > 0) {
+                const premiKeysBefore = new Set(Object.keys(empPremi));
+                const potonganKeysBefore = new Set(Object.keys(empPotongan));
+                const manualApplied = applyManualAdjustmentsToEmployee({
+                    adjustments: empAdjustments as any[],
+                    empPremi,
+                    empPotongan,
+                    premiTitleMap: globalPremiResult.titleMap,
+                    potonganTitleMap: globalPotonganResult.titleMap,
+                    mode: 'override'
+                });
+
+                for (const key of Object.keys(manualApplied.empPremi)) {
+                    if (premiKeysBefore.has(key) || key === "koreksi" || key === "brondol") continue;
+                    const fieldName = key.startsWith("premi_") ? key : `premi_${key}`;
+                    dynamicPremiSet.add(fieldName);
+                }
+
+                for (const key of Object.keys(manualApplied.empPotongan)) {
+                    if (potonganKeysBefore.has(key)) continue;
+
+                    const keyUpper = String(key).toUpperCase();
+                    if (keyUpper === "SPSI" || keyUpper === "PPH21" || keyUpper === "PREMI_PPH") continue;
+
+                    let fieldName: string;
+                    if (keyUpper.startsWith("KOREKSI")) {
+                        fieldName = key;
+                    } else if (key.startsWith("potongan_")) {
+                        fieldName = key;
+                    } else {
+                        fieldName = `potongan_${key}`;
+                    }
+                    dynamicPotonganSet.add(fieldName);
+                }
+
+                total_premi += manualApplied.totalPremiDelta;
+                for (const syncMeta of manualApplied.fieldSyncMeta) {
+                    const syncColor = resolveSyncFrameColor(syncMeta.finalAmount, syncMeta.previousAmount);
+                    valueSyncFrame[syncMeta.fieldName] = syncColor;
+
+                    if (syncMeta.adjustmentType === 'PREMI' && !syncMeta.fieldName.startsWith('premi_')) {
+                        valueSyncFrame[`premi_${syncMeta.fieldName}`] = syncColor;
+                    }
+
+                    if (syncMeta.adjustmentType !== 'PREMI') {
+                        const keyUpper = syncMeta.fieldName.toUpperCase();
+                        if (!keyUpper.startsWith('KOREKSI') && !syncMeta.fieldName.startsWith('potongan_')) {
+                            valueSyncFrame[`potongan_${syncMeta.fieldName}`] = syncColor;
+                        }
+                    }
+                }
+            }
+
             emp.premi = empPremi;
             emp.potongan = empPotongan;
             emp.premi_brondol = empBrondol + empPremiBrondol;
             emp.total_premi = total_premi;
             emp.task_code = globalTaskCodesMap[emp.emp_code]?.task_code || "";
             emp.task_desc = globalTaskCodesMap[emp.emp_code]?.task_desc || "";
+            emp.value_sync_frame = valueSyncFrame;
             emp._phase = 3;
         }
 
@@ -4100,6 +4224,7 @@ export class DataExtractorService {
                         total_premi: empData.total_premi,
                         task_code: empData.task_code,
                         task_desc: empData.task_desc,
+                        value_sync_frame: empData.value_sync_frame,
                         _phase: 3
                     });
                 }
@@ -4162,8 +4287,10 @@ export class DataExtractorService {
             const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
             const berasJumlah = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
             const upahDasar = globalUpahPokokMap[empCode] || emp.pay_rate || 0;
-            const jabatanJumlah = globalJabatanMap[empCode] || 0;
-            const masaKerjaJumlah = globalMasaKerjaMap[empCode] || 0;
+            const dbJabatanJumlah = globalJabatanMap[empCode] || 0;
+            const dbMasaKerjaJumlah = globalMasaKerjaMap[empCode] || 0;
+            const dbPotSpsi = baselinePotSpsiByEmp[empCode] ?? Math.abs(Number(empPotongan["SPSI"]) || 0);
+            const valueSyncFrame: Record<string, "red" | "green"> = { ...(emp.value_sync_frame || {}) };
 
             // [MASA_KERJA] Calculate masa kerja display from join_date
             const masaKerjaDisplay = calculateMasaKerjaDisplay(emp.join_date, month, year);
@@ -4179,6 +4306,34 @@ export class DataExtractorService {
             const hari_kerja = Math.max(0, hk - totalCuti);
             const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
 
+            const isSpsiMember = typeof emp.is_spsi_member === "boolean"
+                ? emp.is_spsi_member
+                : deriveInitialSpsiMember(dbPotSpsi);
+            emp.is_spsi_member = isSpsiMember;
+            const autoBuffer = payrollAutoBufferService.calculateAutomaticValues({
+                jabatanText: emp.jabatan_estate || emp.jabatan || "",
+                roleText: emp.jabatan || emp.role || "",
+                hariKerja: hari_kerja,
+                kehadiran: hk,
+                masaKerjaTahun,
+                isSpsiMember,
+                dbJabatanJumlah,
+                dbMasaKerjaJumlah
+            });
+            const jabatanJumlah = autoBuffer.jabatanAmount;
+            const masaKerjaJumlah = autoBuffer.masaKerjaAmount;
+            const jabatanRate = autoBuffer.jabatanRate;
+            const masaKerjaRate = autoBuffer.masaKerjaRate;
+            const pot_spsi = autoBuffer.spsiDeduction;
+            valueSyncFrame.jabatan_jumlah = resolveSyncFrameColor(jabatanJumlah, dbJabatanJumlah);
+            valueSyncFrame.masa_kerja_jumlah = resolveSyncFrameColor(masaKerjaJumlah, dbMasaKerjaJumlah);
+            valueSyncFrame.pot_spsi = resolveSyncFrameColor(pot_spsi, dbPotSpsi);
+            valueSyncFrame.spsi = valueSyncFrame.pot_spsi;
+            if (hari_kerja > 0) {
+                valueSyncFrame.jabatan_rate = resolveSyncFrameColor(jabatanRate, dbJabatanJumlah / hari_kerja);
+                valueSyncFrame.masa_kerja_rate = resolveSyncFrameColor(masaKerjaRate, dbMasaKerjaJumlah / hari_kerja);
+            }
+
             // Calculate totals
             // Lembur is INCLUDED in total_tunjangan for display consistency
             const total_tunjangan = berasJumlah + jabatanJumlah + masaKerjaJumlah + (empLembur.jumlah || 0);
@@ -4189,15 +4344,11 @@ export class DataExtractorService {
             total_premi += (globalBrondolMap[empCode] || 0);
 
             // Deductions
-            const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
-            if (typeof emp.is_spsi_member !== "boolean") {
-                emp.is_spsi_member = deriveInitialSpsiMember(pot_spsi);
-            }
             let pot_koreksi = 0;
             for (const [key, val] of Object.entries(empPotongan)) {
                 // KOREKSI should be NEGATIVE (it's a deduction from gross pay)
-                if (key.startsWith("KOREKSI")) pot_koreksi += (val as number);
+                if (String(key).toUpperCase().startsWith("KOREKSI")) pot_koreksi += Number(val) || 0;
             }
             // Ensure pot_koreksi is negative (if it's positive, make it negative)
             if (pot_koreksi > 0) pot_koreksi = -pot_koreksi;
@@ -4208,7 +4359,10 @@ export class DataExtractorService {
             // [FIX] Extract pot_premi_pph BEFORE other_potongan calculation (PREMI_PPH excluded from other_potongan)
             const pot_premi_pph = Math.abs(empPotongan["PREMI_PPH"] || 0);
             const other_potongan = Object.entries(empPotongan)
-                .filter(([key]) => !["SPSI", "PPH21", "PREMI_PPH"].includes(key) && !key.startsWith("KOREKSI"))
+                .filter(([key]) => {
+                    const keyUpper = String(key).toUpperCase();
+                    return !["SPSI", "PPH21", "PREMI_PPH"].includes(keyUpper) && !keyUpper.startsWith("KOREKSI");
+                })
                 .reduce((sum, [, val]) => sum + Math.abs(val as number), 0);
 
             // Calculate payroll components (match GajiPokokService formulas)
@@ -4236,6 +4390,10 @@ export class DataExtractorService {
             emp.hari_kerja = hari_kerja;
             emp.beras_rate = berasRate;
             emp.beras_jumlah = berasJumlah;
+            emp.jabatan_jumlah = jabatanJumlah;
+            emp.masa_kerja_jumlah = masaKerjaJumlah;
+            emp.jabatan_rate = jabatanRate;
+            emp.masa_kerja_rate = masaKerjaRate;
             emp.total_tunjangan = total_tunjangan;
             
             // Payroll fields (match frontend columnDefs)
@@ -4289,6 +4447,7 @@ export class DataExtractorService {
 
             emp.status_ptkp = statusPTKP;
             emp.kategori_ter = kategoriTER;
+            emp.value_sync_frame = valueSyncFrame;
             emp._phase = 4;
             emp._enriched = true;
             emp._loading = false;

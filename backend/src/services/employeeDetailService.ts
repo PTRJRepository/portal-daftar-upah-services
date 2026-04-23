@@ -442,7 +442,11 @@ export class EmployeeDetailService {
                 const day = record.trx_date.getDate();
                 const hours = record.hours;
                 const dbAmount = record.raw_amount || 0;
-                const formulaAmount = record.breakdown?.total_amount || 0;
+                const breakdown = record.breakdown || null;
+                const formulaAmount = breakdown?.total_amount || 0;
+                const formulaRateTotal = breakdown?.total_rate || 0;
+                const formulaDescription = breakdown?.uraian || '';
+                const upjValue = breakdown?.upj_value || lemburResult.upj || 0;
 
                 matrix[day].has_overtime = true;
                 matrix[day].hours += hours;
@@ -457,6 +461,9 @@ export class EmployeeDetailService {
                     task_desc: record.task_desc || record.task_code || "",
                     day_type: record.day_type ? getDayTypeDisplayName(record.day_type) : "-",
                     formula_amount: formulaAmount,
+                    formula_rate_total: formulaRateTotal,
+                    formula_uraian: formulaDescription,
+                    upj_value: upjValue,
                     shift_code: record.shift_code || ""
                 };
 
@@ -475,6 +482,9 @@ export class EmployeeDetailService {
                     amount_server: dbAmount,
                     amount_formula: formulaAmount,
                     rate: record.raw_rate || 0,
+                    formula_rate_total: formulaRateTotal,
+                    formula_uraian: formulaDescription,
+                    upj_value: upjValue,
                     task_code: record.task_code || "",
                     task_desc: record.task_desc || record.task_code || "",
                     day_type: detailObj.day_type,
@@ -548,7 +558,7 @@ export class EmployeeDetailService {
     }
 
     // --- Complete Checkroll ---
-    public async getEmployeeCheckroll(rawEmpCode: string, month: number, year: number, skipHarvest: boolean = false): Promise<any> {
+    public async getEmployeeCheckroll(rawEmpCode: string, month: number, year: number, skipHarvest: boolean = false, useHistoryDb?: boolean | null, snapshotVersion?: number | null): Promise<any> {
         const empCode = (rawEmpCode || '').trim().toUpperCase();
         console.log(`[EmployeeDetailService] getEmployeeCheckroll request for '${rawEmpCode}' -> Normalized: '${empCode}' (skipHarvest=${skipHarvest})`);
 
@@ -583,7 +593,7 @@ export class EmployeeDetailService {
             // Use Config.DB_PROFILE for payroll data - this reads from db_ptrj (production database)
             // skipHarvest=true means we skip harvest data which is optional
             const payrollResult = await dataExtractorService.extractPayrollData(
-                month, year, "ALL", undefined, empCode, Config.DB_PROFILE, false, null, undefined, skipHarvest
+                month, year, "ALL", undefined, empCode, Config.DB_PROFILE, false, useHistoryDb, undefined, skipHarvest, false, snapshotVersion
             );
             // Filter for this specific employee (handle whitespace)
             const targetNik = empCode.trim().toUpperCase();

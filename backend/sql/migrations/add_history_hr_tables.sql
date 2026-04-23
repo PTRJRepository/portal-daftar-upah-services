@@ -19,6 +19,8 @@ BEGIN
         [gang_code] [varchar](20) NULL,
         [job_code] [varchar](20) NULL,
         [position] [varchar](50) NULL,
+        [jabatan] [varchar](100) NULL,
+        [is_spsi_member] [bit] NULL,
         [join_date] [datetime] NULL,
         [terminate_date] [datetime] NULL,
         [status] [varchar](20) NULL,
@@ -46,6 +48,30 @@ BEGIN
     
     CREATE NONCLUSTERED INDEX [IX_history_hr_employee_nik] ON [dbo].[history_hr_employee]
     ([nik] ASC);
+END
+GO
+
+IF NOT EXISTS (
+    SELECT *
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = 'history_hr_employee'
+      AND COLUMN_NAME = 'jabatan'
+)
+BEGIN
+    ALTER TABLE [dbo].[history_hr_employee]
+    ADD [jabatan] [varchar](100) NULL;
+END
+GO
+
+IF NOT EXISTS (
+    SELECT *
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = 'history_hr_employee'
+      AND COLUMN_NAME = 'is_spsi_member'
+)
+BEGIN
+    ALTER TABLE [dbo].[history_hr_employee]
+    ADD [is_spsi_member] [bit] NULL;
 END
 GO
 
