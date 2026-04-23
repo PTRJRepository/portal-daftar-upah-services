@@ -3274,13 +3274,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             <PayrollScrollChapterBar
                 activeGroup={focusedGroup || 'IDENTITAS'}
                 allGroups={[...new Set(columnDefs.map(c => c.group).filter(Boolean))]}
-                isVisible={true}
+                isVisible={isChapterBarVisible}
                 onSelectGroup={(group) => {
-                    setActiveChapterGroup(group);
-                    const firstColInGroup = columnDefs.findIndex(c => c.group === group);
-                    if (firstColInGroup !== -1 && displayMode !== 'simple') {
-                        scrollToColumn(firstColInGroup);
-                    }
+                    if (!group || displayMode === 'simple') return;
+                    scrollToChapterGroup(group);
                 }}
                 recentGangs={stream.gangs?.length > 0 ? stream.gangs : []}
                 streamingStage={effectiveProgress?.stage}

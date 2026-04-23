@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import CustomPayrollTable from './CustomPayrollTable';
 
+const mocked = vi.hoisted(() => ({
+    chapterBarProps: null
+}));
+
 vi.mock('../utils/payrollViewportChapters', async () => {
     const actual = await vi.importActual('../utils/payrollViewportChapters');
     return {
@@ -53,6 +57,13 @@ vi.mock('../hooks/usePayrollStream', () => ({
     })
 }));
 
+vi.mock('./PayrollScrollChapterBar', () => ({
+    default: (props) => {
+        mocked.chapterBarProps = props;
+        return null;
+    }
+}));
+
 describe('CustomPayrollTable render', () => {
     it('renders without referencing header style before initialization', () => {
         expect(() => renderToString(
@@ -67,6 +78,7 @@ describe('CustomPayrollTable render', () => {
     });
 
     it('shows add-column affordances for premi and both potongan groups in edit mode', () => {
+        mocked.chapterBarProps = null;
         const html = renderToString(
             <CustomPayrollTable
                 token="test-token"
@@ -81,5 +93,7 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('Tambah kolom premi baru');
         expect(html).toContain('Tambah kolom potongan kotor baru');
         expect(html).toContain('Tambah kolom potongan bersih baru');
+        expect(mocked.chapterBarProps?.isVisible).toBe(false);
+        expect(() => mocked.chapterBarProps.onSelectGroup('IDENTITAS')).not.toThrow();
     });
 });
