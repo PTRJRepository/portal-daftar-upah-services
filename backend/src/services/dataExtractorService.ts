@@ -1180,7 +1180,8 @@ export class DataExtractorService {
                 dynamicPotonganSet.add(key);
             }
 
-            other_potongan += manualApplied.otherPotonganDelta;
+            // Manual POTONGAN_BERSIH entries were already merged into empPotongan above,
+            // so the loop coverage here is the single source of truth for other_potongan.
 
             const caruman = calculateAllCaruman(empUpahDasar, empMasaKerjaJumlah);
 
