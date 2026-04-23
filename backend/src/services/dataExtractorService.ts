@@ -20,9 +20,13 @@ import { calculateAllCaruman, getCarumanForPph21 } from './carumanDefinitions';
 import { cacheService } from "./cacheService";
 // PTKP mapping - Single Source of Truth
 import { mapBerasRateToPTKP, mapPTKPToTER } from './payroll/formulas/PTKPMapper';
+import { calculateMasaKerjaDisplay, deriveInitialSpsiMember } from "../utils/payrollProfileRules";
 import { debug, info, warn, error as logError } from "../utils/logger";
 import { PayrollCalculator } from "./payroll/components/PayrollCalculator";
+import { applyManualAdjustmentsToEmployee } from "./payroll/manualAdjustments/manualAdjustmentApplier";
 import { divisionConfigService } from "./config/DivisionConfigService";
+import { buildLeaveSqlExpressions } from "./payroll/extractors/leaveRules";
+import { processInBatches } from "../utils/batchProcessor";
 
 const CATEGORY = "DataExtractor";
 
@@ -464,6 +468,131 @@ export class DataExtractorService {
             };
         }
 
+        // Enrich join_date and SPSI membership using overlay + history table (extend_db_ptrj).
+        if (employees.length > 0) {
+            const empCodeList = employees.map(e => `'${e.emp_code}'`).join(',');
+
+            if (empCodeList) {
+                try {
+                    const extendDb = Database.getExtendedInstance();
+                    const joinDateMap = new Map<string, string>();
+
+                    // Priority 1: period/value override
+                    const valueOverrideRows = await extendDb.query<any>(`
+                        SELECT emp_code, text_value as join_date
+                        FROM dbo.payroll_value_override_history
+                        WHERE RTRIM(emp_code) IN (${empCodeList})
+                          AND field_name = 'join_date'
+                          AND is_active_record = 1
+                    `);
+                    for (const row of valueOverrideRows || []) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        const joinDate = row.join_date;
+                        if (!empCode || !joinDate || joinDateMap.has(empCode)) continue;
+                        joinDateMap.set(empCode, joinDate);
+                    }
+
+                    // Priority 2: profile override
+                    const profileJoinRows = await extendDb.query<any>(`
+                        SELECT p.emp_code, p.effective_start_date as join_date
+                        FROM dbo.employee_profile_override_history p
+                        INNER JOIN (
+                            SELECT emp_code, MAX(id) as max_id
+                            FROM dbo.employee_profile_override_history
+                            WHERE RTRIM(emp_code) IN (${empCodeList})
+                              AND effective_start_date IS NOT NULL
+                            GROUP BY emp_code
+                        ) latest ON p.emp_code = latest.emp_code AND p.id = latest.max_id
+                    `);
+                    for (const row of profileJoinRows || []) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        const joinDate = row.join_date;
+                        if (!empCode || !joinDate || joinDateMap.has(empCode)) continue;
+                        joinDateMap.set(empCode, joinDate);
+                    }
+
+                    // Priority 3: HR history base
+                    const historyJoinRows = await extendDb.query<any>(`
+                        SELECT h.emp_code, h.join_date
+                        FROM dbo.history_hr_employee h
+                        INNER JOIN (
+                            SELECT emp_code, MAX(id) as max_id
+                            FROM dbo.history_hr_employee
+                            WHERE RTRIM(emp_code) IN (${empCodeList})
+                              AND join_date IS NOT NULL
+                            GROUP BY emp_code
+                        ) latest ON h.emp_code = latest.emp_code AND h.id = latest.max_id
+                        WHERE h.join_date IS NOT NULL
+                    `);
+                    for (const row of historyJoinRows || []) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        const joinDate = row.join_date;
+                        if (!empCode || !joinDate || joinDateMap.has(empCode)) continue;
+                        joinDateMap.set(empCode, joinDate);
+                    }
+
+                    for (const emp of employees) {
+                        const joinDate = joinDateMap.get(String(emp.emp_code || '').trim().toUpperCase());
+                        if (joinDate) {
+                            emp.join_date = joinDate;
+                        }
+                    }
+                } catch (e: any) {
+                    warn(CATEGORY, `⚠️ Join date enrichment skipped: ${e.message}`);
+                }
+
+                try {
+                    const extendDb = Database.getExtendedInstance();
+                    const spsiMap = new Map<string, boolean>();
+
+                    // Priority 1: profile override
+                    const profileSpsiRows = await extendDb.query<any>(`
+                        SELECT p.emp_code, p.is_spsi_member
+                        FROM dbo.employee_profile_override_history p
+                        INNER JOIN (
+                            SELECT emp_code, MAX(id) as max_id
+                            FROM dbo.employee_profile_override_history
+                            WHERE RTRIM(emp_code) IN (${empCodeList})
+                              AND is_spsi_member IS NOT NULL
+                            GROUP BY emp_code
+                        ) latest ON p.emp_code = latest.emp_code AND p.id = latest.max_id
+                    `);
+                    for (const row of profileSpsiRows || []) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        if (!empCode || spsiMap.has(empCode)) continue;
+                        spsiMap.set(empCode, !!row.is_spsi_member);
+                    }
+
+                    // Priority 2: HR history base
+                    const historySpsiRows = await extendDb.query<any>(`
+                        SELECT h.emp_code, h.is_spsi_member
+                        FROM dbo.history_hr_employee h
+                        INNER JOIN (
+                            SELECT emp_code, MAX(id) as max_id
+                            FROM dbo.history_hr_employee
+                            WHERE RTRIM(emp_code) IN (${empCodeList})
+                              AND is_spsi_member IS NOT NULL
+                            GROUP BY emp_code
+                        ) latest ON h.emp_code = latest.emp_code AND h.id = latest.max_id
+                    `);
+                    for (const row of historySpsiRows || []) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        if (!empCode || spsiMap.has(empCode)) continue;
+                        spsiMap.set(empCode, !!row.is_spsi_member);
+                    }
+
+                    for (const emp of employees) {
+                        const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
+                        if (spsiMap.has(empCodeKey)) {
+                            emp.is_spsi_member = !!spsiMap.get(empCodeKey);
+                        }
+                    }
+                } catch (e: any) {
+                    warn(CATEGORY, `⚠️ SPSI membership enrichment skipped: ${e.message}`);
+                }
+            }
+        }
+
         const empCodes = employees.map(e => e.emp_code);
 
         const startParallel = performance.now();
@@ -546,24 +675,39 @@ export class DataExtractorService {
                 safeQuery(`getCuti[${idx}]`, () => this.getCuti(chunk, startDate, endDate, serverProfile), {}),
                 safeQuery(`getPremi[${idx}]`, () => this.getPremi(chunk, startDate, endDate, isHistorical, serverProfile), JSON.parse(JSON.stringify(emptyPremiForChunk))),
                 safeQuery(`getPotongan[${idx}]`, () => this.getPotongan(chunk, startDate, endDate, serverProfile), JSON.parse(JSON.stringify(emptyPotonganForChunk))),
-                safeQuery(`getLemburCalculator[${idx}]`, () => this.getLemburDetailsFromCalculator(chunk, month, year, serverProfile), {}),
+                skipHeavyDetails
+                    ? Promise.resolve({})
+                    : safeQuery(`getLemburCalculator[${idx}]`, () => this.getLemburDetailsFromCalculator(chunk, month, year, serverProfile), {}),
                 safeQuery(`getLemburDetails[${idx}]`, () => this.getLemburDetailsWithTaskBreakdown(chunk, month, year, serverProfile), {}),
-                safeQuery(`getLemburDocDesc[${idx}]`, () => this.getLemburFromDocDesc(chunk, startDate, endDate, serverProfile), {}),
-                safeQuery(`getBerasDocDesc[${idx}]`, () => this.getBerasFromDocDesc(chunk, startDate, endDate, serverProfile), {}),
+                skipHeavyDetails
+                    ? Promise.resolve({})
+                    : safeQuery(`getLemburDocDesc[${idx}]`, () => this.getLemburFromDocDesc(chunk, startDate, endDate, serverProfile), {}),
+                skipHeavyDetails
+                    ? Promise.resolve({})
+                    : safeQuery(`getBerasDocDesc[${idx}]`, () => this.getBerasFromDocDesc(chunk, startDate, endDate, serverProfile), {}),
                 safeQuery(`getJabatan[${idx}]`, () => this.getTunjanganAmount(chunk, startDate, endDate, "JABATAN", serverProfile), {}),
                 safeQuery(`getMasaKerja[${idx}]`, () => this.getTunjanganAmount(chunk, startDate, endDate, "MASA%KERJA", serverProfile), {}),
                 safeQuery(`getUpahPokok[${idx}]`, () => this.getUpahPokok(chunk, year, currentYear, serverProfile), {}),
                 safeQuery(`getBrondol[${idx}]`, () => this.getBrondol(chunk, startDate, endDate, serverProfile), {}),
                 safeQuery(`getTaskCodes[${idx}]`, () => this.getTaskCodes(chunk, startDate, endDate, serverProfile), {}),
                 (!skipHarvest && harvestChunk.length > 0) ? safeQuery(`getBunches[${idx}]`, () => this.getBunchesBatch(harvestChunk, month, year), new Map()) : Promise.resolve(new Map()),
-                safeQuery(`getPositionHistory[${idx}]`, () => this.getPositionHistory(chunk, month, year), {})
+                skipHeavyDetails
+                    ? Promise.resolve({})
+                    : safeQuery(`getPositionHistory[${idx}]`, () => this.getPositionHistory(chunk, month, year), {})
             ]);
             return { attB, cutiB, premiB, potB, lemburCalcB, lemburDetB, lemburDocB, berasDocB, jabatanB, masaKerjaB, upahB, brondolB, taskCodesB, bunchesB, posHistB };
         };
 
-        // [OPTIMIZATION] Run ALL chunks in parallel (~Nx speedup where N = chunk count)
-        // Object.assign merging is safe since each chunk writes to different emp_code keys
-        const chunkResults = await Promise.all(empCodeChunks.map((chunk, idx) => processChunk(chunk, idx)));
+        // Seeder/admin flows prioritize reliability over maximum fan-out.
+        // Running every chunk in parallel can overwhelm db_ptrj for large divisions like PG1A.
+        const chunkResults = skipHeavyDetails
+            ? await processInBatches({
+                items: empCodeChunks,
+                batchSize: 1,
+                label: "DataExtractor.extractPayrollData.sequentialChunks",
+                processFn: async (batch, batchIndex) => processChunk(batch[0], batchIndex)
+            })
+            : await Promise.all(empCodeChunks.map((chunk, idx) => processChunk(chunk, idx)));
 
         // Merge all chunk results into accumulators
         for (const result of chunkResults) {
@@ -905,15 +1049,8 @@ export class DataExtractorService {
             // Keep empBrondol for backward compatibility (total)
             const empBrondol = empBrondolTotal;
 
-            let masaKerjaLama = 0;
-            if (emp.join_date) {
-                const joinDate = new Date(emp.join_date);
-                if (!isNaN(joinDate.getTime())) {
-                    const now = new Date(year, month - 1, 1);
-                    masaKerjaLama = Math.floor((now.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24 * 365));
-                    if (masaKerjaLama < 0) masaKerjaLama = 0;
-                }
-            }
+            const masaKerjaDisplay = calculateMasaKerjaDisplay(emp.join_date, month, year);
+            const masaKerjaLama = masaKerjaDisplay.years;
 
             const berasRate = emp.beras_rate > 0 ? emp.beras_rate : 0;
             const berasJumlahBase = berasRate > 0 && hk > 0 ? berasRate * hk : 0;
@@ -959,25 +1096,36 @@ export class DataExtractorService {
                 }
             }
 
-            // [NEW] Inject PREMI Manual Adjustments
             const empAdjustments = manualAdjustments ? manualAdjustments.filter(a => String(a.emp_code).trim() === String(emp.emp_code).trim()) : [];
-            const empPremiAdjustments = empAdjustments.filter(a => a.adjustment_type === 'PREMI');
+            const premiKeysBefore = new Set(Object.keys(empPremi));
+            const potonganKeysBefore = new Set(Object.keys(empPotongan));
+            const manualApplied = applyManualAdjustmentsToEmployee({
+                adjustments: empAdjustments as any[],
+                empPremi,
+                empPotongan,
+                premiTitleMap,
+                potonganTitleMap
+            });
 
-            for (const adj of empPremiAdjustments) {
-                const adjName = adj.adjustment_name.toUpperCase().replace(/ /g, '_');
-                const key = `PREMI_${adjName}`;
-
-                // Add to premiums list
-                empPremi[key] = (empPremi[key] || 0) + adj.amount;
-                total_premi += adj.amount;
-                dynamicPremiSet.add(key);
-
-                // Add to title map so it looks nice on frontend
-                premiTitleMap[key] = adj.adjustment_name;
+            for (const key of Object.keys(manualApplied.empPremi)) {
+                if (!premiKeysBefore.has(key)) {
+                    dynamicPremiSet.add(key);
+                }
             }
+
+            for (const key of Object.keys(manualApplied.empPotongan)) {
+                if (!potonganKeysBefore.has(key)) {
+                    dynamicPotonganSet.add(key);
+                }
+            }
+
+            total_premi += manualApplied.totalPremiDelta;
 
             const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
+            const isSpsiMember = typeof emp.is_spsi_member === "boolean"
+                ? emp.is_spsi_member
+                : deriveInitialSpsiMember(pot_spsi);
             // [NEW] Premi PPH from TaskDesc = 'ACCRUALS-CHECKROLL' (treated as potongan upah bersih)
             const pot_premi_pph = Math.abs(empPotongan["PREMI_PPH"] || 0);
 
@@ -999,20 +1147,8 @@ export class DataExtractorService {
                 }
             }
 
-            // [NEW] Inject POTONGAN_KOTOR Manual Adjustments (acts like KOREKSI)
-            const empPotKotorAdjustments = empAdjustments.filter(a => a.adjustment_type === 'POTONGAN_KOTOR');
-            for (const adj of empPotKotorAdjustments) {
-                const adjName = adj.adjustment_name.toUpperCase().replace(/ /g, '_');
-                const key = `KOREKSI_${adjName}`; // Treated as koreksi so it deducts before Pajak
-
-                empPotongan[key] = (empPotongan[key] || 0) + adj.amount;
-
-                koreksiVariations[key] = (koreksiVariations[key] || 0) + adj.amount;
-                pot_koreksi += adj.amount;
-
-                dynamicPotonganSet.add(key);
-                potonganTitleMap[key] = adj.adjustment_name;
-            }
+            Object.assign(koreksiVariations, manualApplied.koreksiVariations);
+            pot_koreksi += manualApplied.potKoreksiDelta;
 
             let other_potongan = 0;
             let db_bpjs_kes = 0;
@@ -1045,18 +1181,7 @@ export class DataExtractorService {
                 dynamicPotonganSet.add(key);
             }
 
-            // [NEW] Inject POTONGAN_BERSIH Manual Adjustments
-            const empPotBersihAdjustments = empAdjustments.filter(a => a.adjustment_type === 'POTONGAN_BERSIH');
-            for (const adj of empPotBersihAdjustments) {
-                const adjName = adj.adjustment_name.toUpperCase().replace(/ /g, '_');
-                const key = `POTONGAN_${adjName}`;
-
-                empPotongan[key] = (empPotongan[key] || 0) + adj.amount;
-                other_potongan += adj.amount;
-
-                dynamicPotonganSet.add(key);
-                potonganTitleMap[key] = adj.adjustment_name;
-            }
+            other_potongan += manualApplied.otherPotonganDelta;
 
             const caruman = calculateAllCaruman(empUpahDasar, empMasaKerjaJumlah);
 
@@ -1402,6 +1527,9 @@ export class DataExtractorService {
                 loc_code: emp.loc_code,
                 gang_code: emp.gang_code,
                 alamat: emp.res_address || "",
+                join_date: emp.join_date || null,  // [JOIN_DATE] Latest from history_hr_employee MAX(id), enriched earlier
+                tanggal_masuk: emp.join_date || null,  // Alias for Excel export compatibility
+                is_spsi_member: isSpsiMember,
                 upah_dasar: empUpahDasar,
                 jumlah_hk: hk, // [UPDATED] Use Total HK (including Sundays & Holidays) as requested
                 total_jam_kerja: attData.total_hours,
@@ -1428,6 +1556,9 @@ export class DataExtractorService {
                 jabatan_rate: jabatanRate,
                 jabatan_jumlah: empJabatan,
                 masa_kerja_tahun: masaKerjaLama,
+                masa_kerja_display_years: masaKerjaDisplay.years,
+                masa_kerja_display_months: masaKerjaDisplay.months,
+                masa_kerja_label: masaKerjaDisplay.label,
                 masa_kerja_rate: masaKerjaRate,
                 masa_kerja_jumlah: empMasaKerjaJumlah,
                 // [FIX] Use pure overtime (OT=1) values to ensure detail records match the total
@@ -1938,6 +2069,7 @@ export class DataExtractorService {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
+        const leaveSql = buildLeaveSqlExpressions("trl", "h");
 
         // [OPTIMIZATION] Single query: summary + shortage details + excess details
         // Uses a derived table with row_type to distinguish aggregation vs detail rows
@@ -2150,6 +2282,7 @@ export class DataExtractorService {
         if (!empCodes.length) return {};
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
+        const leaveSql = buildLeaveSqlExpressions("trl", "h");
 
         // ============================================================
         // [OPTIMIZATION] Consolidated: 3 queries → 1 query
@@ -2166,46 +2299,32 @@ export class DataExtractorService {
                 -- LIVE table: all cuti types via conditional aggregation
                 SELECT
                     trl.EmpCode,
-                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
-                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid,
-                    CASE WHEN trl.TaskCode LIKE 'GA9127%' OR (DATEPART(weekday, trl.TrxDate) = 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)) THEN 1 ELSE 0 END as cuti_minggu,
-                    CASE WHEN trl.TaskCode LIKE 'GA9128%' OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1) THEN 1 ELSE 0 END as cuti_nasional
+                    ${leaveSql.cutiTahunan} as cuti_tahunan,
+                    ${leaveSql.cutiSakitHaid} as cuti_sakit_haid,
+                    ${leaveSql.cutiMinggu} as cuti_minggu,
+                    ${leaveSql.cutiNasional} as cuti_nasional
                 FROM PR_TASKREGLN trl
                 JOIN PR_TASKREG tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
-                  AND (
-                      trl.TaskCode LIKE 'GA9129%' 
-                      OR trl.TaskCode LIKE 'GA9126%'
-                      OR trl.TaskCode LIKE 'GA9127%'
-                      OR trl.TaskCode LIKE 'GA9128%'
-                      OR DATEPART(weekday, trl.TrxDate) = 1
-                      OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)
-                  )
+                  AND ${leaveSql.whereClause}
 
                 UNION ALL
 
                 -- ARCHIVE table: same conditional aggregation
                 SELECT
                     trl.EmpCode,
-                    CASE WHEN trl.TaskCode LIKE 'GA9129%' THEN 1 ELSE 0 END as cuti_tahunan,
-                    CASE WHEN trl.TaskCode LIKE 'GA9126%' THEN 1 ELSE 0 END as cuti_sakit_haid,
-                    CASE WHEN trl.TaskCode LIKE 'GA9127%' OR (DATEPART(weekday, trl.TrxDate) = 1 AND NOT EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)) THEN 1 ELSE 0 END as cuti_minggu,
-                    CASE WHEN trl.TaskCode LIKE 'GA9128%' OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1) THEN 1 ELSE 0 END as cuti_nasional
+                    ${leaveSql.cutiTahunan} as cuti_tahunan,
+                    ${leaveSql.cutiSakitHaid} as cuti_sakit_haid,
+                    ${leaveSql.cutiMinggu} as cuti_minggu,
+                    ${leaveSql.cutiNasional} as cuti_nasional
                 FROM PR_TASKREGLN_ARC trl
                 JOIN PR_TASKREG_ARC tr ON tr.ID = trl.MasterID
                 WHERE RTRIM(trl.EmpCode) IN (${empList})
                   AND trl.TrxDate >= ? AND trl.TrxDate < ?
                   AND trl.OT = 0
-                  AND (
-                      trl.TaskCode LIKE 'GA9129%' 
-                      OR trl.TaskCode LIKE 'GA9126%'
-                      OR trl.TaskCode LIKE 'GA9127%'
-                      OR trl.TaskCode LIKE 'GA9128%'
-                      OR DATEPART(weekday, trl.TrxDate) = 1
-                      OR EXISTS (SELECT 1 FROM HR_GPH h WHERE h.HolidayDate = trl.TrxDate AND h.Status = 1)
-                  )
+                  AND ${leaveSql.whereClause}
             ) combined
             GROUP BY RTRIM(EmpCode)
         `, [startDate, endDate, startDate, endDate]);
@@ -3376,6 +3495,170 @@ export class DataExtractorService {
                 debug(CATEGORY, `⚠️ history_hr_employee NIK lookup skipped: ${e.message}`);
             }
 
+            // [JOIN_DATE] Get join_date with override support
+            // Priority: 1) payroll_value_override_history (edit mode),
+            //           2) employee_profile_override_history.effective_start_date,
+            //           3) history_hr_employee (MAX id per employee)
+            let joinDateFound = 0;
+            try {
+                const extendDb = Database.getExtendedInstance();
+
+                // First: Check payroll_value_override_history for join_date overrides
+                const overrideRows = await withTimeout('Join date lookup (value override)',
+                    extendDb.query<any>(`
+                        SELECT emp_code, text_value as join_date
+                        FROM dbo.payroll_value_override_history
+                        WHERE RTRIM(emp_code) IN (${empCodeList})
+                          AND field_name = 'join_date'
+                          AND is_active_record = 1
+                    `),
+                    5000
+                );
+
+                const joinDateMap = new Map<string, string>();
+                if (overrideRows && overrideRows.length > 0) {
+                    for (const row of overrideRows) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        if (empCode && !joinDateMap.has(empCode)) {
+                            joinDateMap.set(empCode, row.join_date);
+                        }
+                    }
+                    debug(CATEGORY, `📋 Join date from value override: ${overrideRows.length} overrides found`);
+                }
+
+                // Second: Check employee_profile_override_history for effective_start_date overrides (MAX id per employee)
+                const profileOverrideRows = await withTimeout('Join date lookup (profile override MAX id)',
+                    extendDb.query<any>(`
+                        SELECT p.emp_code, p.effective_start_date as join_date
+                        FROM dbo.employee_profile_override_history p
+                        INNER JOIN (
+                            SELECT emp_code, MAX(id) as max_id
+                            FROM dbo.employee_profile_override_history
+                            WHERE RTRIM(emp_code) IN (${empCodeList})
+                              AND effective_start_date IS NOT NULL
+                            GROUP BY emp_code
+                        ) latest ON p.emp_code = latest.emp_code AND p.id = latest.max_id
+                    `),
+                    5000
+                );
+                if (profileOverrideRows && profileOverrideRows.length > 0) {
+                    for (const row of profileOverrideRows) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        // Profile override takes precedence over history_hr_employee but not over value override
+                        if (empCode && !joinDateMap.has(empCode)) {
+                            joinDateMap.set(empCode, row.join_date);
+                        }
+                    }
+                    debug(CATEGORY, `📋 Join date from profile override (MAX id): ${profileOverrideRows.length} found`);
+                }
+
+                // Third: Fill remaining from history_hr_employee (MAX id per employee)
+                const historyRows = await withTimeout('Join date lookup (history_hr_employee MAX id)',
+                    extendDb.query<any>(`
+                        SELECT h.emp_code, h.join_date
+                        FROM dbo.history_hr_employee h
+                        INNER JOIN (
+                            SELECT emp_code, MAX(id) as max_id
+                            FROM dbo.history_hr_employee
+                            WHERE RTRIM(emp_code) IN (${empCodeList})
+                              AND join_date IS NOT NULL
+                            GROUP BY emp_code
+                        ) latest ON h.emp_code = latest.emp_code AND h.id = latest.max_id
+                        WHERE h.join_date IS NOT NULL
+                    `),
+                    5000
+                );
+
+                if (historyRows) {
+                    for (const row of historyRows) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        // Only set if not already in map (override takes precedence)
+                        if (empCode && !joinDateMap.has(empCode)) {
+                            joinDateMap.set(empCode, row.join_date);
+                        }
+                    }
+                }
+
+                // Apply to employees
+                for (const emp of employees) {
+                    const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
+                    if (joinDateMap.has(empCodeKey)) {
+                        emp.join_date = joinDateMap.get(empCodeKey);
+                        joinDateFound++;
+                    }
+                }
+                debug(CATEGORY, `📋 Join date enriched: ${joinDateFound}/${employees.length}`);
+            } catch (e) {
+                debug(CATEGORY, `⚠️ join_date enrichment skipped: ${e.message}`);
+            }
+
+            // [IS_SPSI_MEMBER] Resolve SPSI membership:
+            // Priority: 1) employee_profile_override_history, 2) history_hr_employee base.
+            let spsiFound = 0;
+            try {
+                const extendDb = Database.getExtendedInstance();
+                const spsiMap = new Map<string, boolean>();
+
+                const profileSpsiRows = await withTimeout('SPSI member lookup (employee_profile_override_history MAX id)',
+                    extendDb.query<any>(`
+                        SELECT p.emp_code, p.is_spsi_member
+                        FROM dbo.employee_profile_override_history p
+                        INNER JOIN (
+                            SELECT emp_code, MAX(id) as max_id
+                            FROM dbo.employee_profile_override_history
+                            WHERE RTRIM(emp_code) IN (${empCodeList})
+                              AND is_spsi_member IS NOT NULL
+                            GROUP BY emp_code
+                        ) latest ON p.emp_code = latest.emp_code AND p.id = latest.max_id
+                    `),
+                    5000
+                );
+
+                if (profileSpsiRows && profileSpsiRows.length > 0) {
+                    for (const row of profileSpsiRows) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        if (!empCode || spsiMap.has(empCode)) continue;
+                        spsiMap.set(empCode, !!row.is_spsi_member);
+                    }
+                    debug(CATEGORY, `📋 is_spsi_member from employee_profile_override_history (MAX id): ${profileSpsiRows.length} source rows`);
+                }
+
+                const historySpsiRows = await withTimeout('SPSI member lookup (history_hr_employee MAX id)',
+                    extendDb.query<any>(`
+                        SELECT h.emp_code, h.is_spsi_member
+                        FROM dbo.history_hr_employee h
+                        INNER JOIN (
+                            SELECT emp_code, MAX(id) as max_id
+                            FROM dbo.history_hr_employee
+                            WHERE RTRIM(emp_code) IN (${empCodeList})
+                              AND is_spsi_member IS NOT NULL
+                            GROUP BY emp_code
+                        ) latest ON h.emp_code = latest.emp_code AND h.id = latest.max_id
+                    `),
+                    5000
+                );
+
+                if (historySpsiRows && historySpsiRows.length > 0) {
+                    for (const row of historySpsiRows) {
+                        const empCode = String(row.emp_code || '').trim().toUpperCase();
+                        if (!empCode || spsiMap.has(empCode)) continue;
+                        spsiMap.set(empCode, !!row.is_spsi_member);
+                    }
+                    debug(CATEGORY, `📋 is_spsi_member from history_hr_employee (MAX id): ${historySpsiRows.length} source rows`);
+                }
+
+                for (const emp of employees) {
+                    const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
+                    if (spsiMap.has(empCodeKey)) {
+                        emp.is_spsi_member = !!spsiMap.get(empCodeKey);
+                        spsiFound++;
+                    }
+                }
+                debug(CATEGORY, `📋 is_spsi_member enriched: ${spsiFound}/${employees.length}`);
+            } catch (e) {
+                debug(CATEGORY, `⚠️ is_spsi_member enrichment skipped: ${e.message}`);
+            }
+
             // Try Jabatan from history_gang_member (extend_db_ptrj)
             // NOTE: Jabatan (role text like "Mandor", "Kerani") is stored in extend_db_ptrj,
             // NOT in HR_GANGLN. HR_GANGLN only has GangMember/GangCode (gang membership), not jabatan.
@@ -3531,6 +3814,8 @@ export class DataExtractorService {
                 gangsMap.set(gang, []);
                 gangOrder.push(gang);
             }
+            const masaKerjaIdentity = calculateMasaKerjaDisplay(emp.join_date, month, year);
+            const isSpsiIdentity = typeof emp.is_spsi_member === "boolean" ? emp.is_spsi_member : false;
             gangsMap.get(gang)!.push({
                 emp_code: emp.emp_code,
                 nik: emp.actual_nik || emp.emp_code,  // NIK from extend_db_ptrj or fallback to emp_code
@@ -3538,6 +3823,13 @@ export class DataExtractorService {
                 gang_code: emp.gang_code,
                 loc_code: emp.loc_code,
                 gender: emp.gender,
+                join_date: emp.join_date || null,
+                tanggal_masuk: emp.join_date || null,
+                is_spsi_member: isSpsiIdentity,
+                masa_kerja_tahun: masaKerjaIdentity.years,
+                masa_kerja_display_years: masaKerjaIdentity.years,
+                masa_kerja_display_months: masaKerjaIdentity.months,
+                masa_kerja_label: masaKerjaIdentity.label,
                 // Jabatan ROLE TEXT (e.g. "Mandor", "Kerani") from extend_db_ptrj
                 // NOT from HR_GANGLN - Phase 3 enriches this from employee_estate or history_gang_member
                 jabatan: emp.jabatan || '',
@@ -3873,6 +4165,14 @@ export class DataExtractorService {
             const jabatanJumlah = globalJabatanMap[empCode] || 0;
             const masaKerjaJumlah = globalMasaKerjaMap[empCode] || 0;
 
+            // [MASA_KERJA] Calculate masa kerja display from join_date
+            const masaKerjaDisplay = calculateMasaKerjaDisplay(emp.join_date, month, year);
+            const masaKerjaTahun = masaKerjaDisplay.years;
+            emp.masa_kerja_tahun = masaKerjaTahun;
+            emp.masa_kerja_display_years = masaKerjaDisplay.years;
+            emp.masa_kerja_display_months = masaKerjaDisplay.months;
+            emp.masa_kerja_label = masaKerjaDisplay.label;
+
             // Effective HK
             const effective_hk = hk - (empCuti.cuti_minggu + empCuti.cuti_nasional);
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
@@ -3880,8 +4180,8 @@ export class DataExtractorService {
             const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
 
             // Calculate totals
-            // [FIX] total_tunjangan TIDAK termasuk lembur - lembur adalah komponen terpisah
-            const total_tunjangan = berasJumlah + jabatanJumlah + masaKerjaJumlah;
+            // Lembur is INCLUDED in total_tunjangan for display consistency
+            const total_tunjangan = berasJumlah + jabatanJumlah + masaKerjaJumlah + (empLembur.jumlah || 0);
             let total_premi = 0;
             for (const [key, val] of Object.entries(empPremi)) {
                 if (key !== "koreksi") total_premi += Number(val) || 0;
@@ -3891,6 +4191,9 @@ export class DataExtractorService {
             // Deductions
             const pot_spsi = Math.abs(empPotongan["SPSI"] || 0);
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
+            if (typeof emp.is_spsi_member !== "boolean") {
+                emp.is_spsi_member = deriveInitialSpsiMember(pot_spsi);
+            }
             let pot_koreksi = 0;
             for (const [key, val] of Object.entries(empPotongan)) {
                 // KOREKSI should be NEGATIVE (it's a deduction from gross pay)
@@ -4266,3 +4569,4 @@ export class DataExtractorService {
 }
 
 export const dataExtractorService = DataExtractorService.getInstance();
+

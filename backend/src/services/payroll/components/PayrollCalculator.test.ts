@@ -132,19 +132,32 @@ test('Balance: UPAH KOTOR = gaji_pokok + total_tunjangan + total_premi', () =>
         base.gaji_pokok_aktual + base.total_tunjangan + base.total_premi)
 );
 
-test('Balance: JUMLAH = UPAH_KOTOR + koreksi + lainnya', () =>
-    assert('balance JUMLAH', baseCalc.jumlah_upah_kotor, BASE_UPAH_KOTOR + base.pot_koreksi + base.pendapatan_lainnya)
+test('Balance: JUMLAH = UPAH_KOTOR - koreksi + lainnya', () =>
+    assert('balance JUMLAH', baseCalc.jumlah_upah_kotor, BASE_UPAH_KOTOR - base.pot_koreksi + base.pendapatan_lainnya)
 );
 
-test('Balance: PENGHASILAN BRUTO = UPAH_KOTOR + koreksi + lainnya + astek_m + bpjs_m', () =>
+test('Balance: PENGHASILAN BRUTO = UPAH_KOTOR - koreksi + lainnya + astek_m + bpjs_m', () =>
     assert('balance BRUTO', baseCalc.penghasilan_bruto,
-        BASE_UPAH_KOTOR + base.pot_koreksi + base.pendapatan_lainnya + base.astek_majikan + base.bpjs_majikan)
+        BASE_UPAH_KOTOR - base.pot_koreksi + base.pendapatan_lainnya + base.astek_majikan + base.bpjs_majikan)
 );
 
-test('Balance: UPAH_KOTOR PAJAK = UPAH_KOTOR + koreksi + lainnya + bpjs_pekerja', () =>
+test('Balance: UPAH_KOTOR PAJAK = UPAH_KOTOR - koreksi + lainnya + bpjs_pekerja', () =>
     assert('balance PAJAK', baseCalc.upah_kotor_pajak,
-        BASE_UPAH_KOTOR + base.pot_koreksi + base.pendapatan_lainnya + base.pot_bpjs_kesehatan_pekerja)
+        BASE_UPAH_KOTOR - base.pot_koreksi + base.pendapatan_lainnya + base.pot_bpjs_kesehatan_pekerja)
 );
+
+test('Manual adjustment deltas move gross, displayed gross, and net pay correctly', () => {
+    const adjusted = PayrollCalculator.calculate({
+        ...base,
+        total_premi: base.total_premi + 25_000,
+        pot_koreksi: base.pot_koreksi + 10_000,
+        other_potongan: base.other_potongan + 5_000
+    }, 'K/1', 2025);
+
+    return assert('upah_kotor + premi', adjusted.upah_kotor, baseCalc.upah_kotor + 25_000) &&
+        assert('jumlah_upah_kotor - koreksi', adjusted.jumlah_upah_kotor, baseCalc.jumlah_upah_kotor + 25_000 - 10_000) &&
+        assert('upah_bersih - potongan bersih', adjusted.upah_bersih, baseCalc.upah_bersih + 25_000 - 10_000 - 5_000);
+});
 
 // Edge: Zero koreksi & lainnya
 test('Edge: Zero koreksi & lainnya', () => {
