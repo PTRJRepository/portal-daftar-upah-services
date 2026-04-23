@@ -757,8 +757,7 @@ export class DataExtractorService {
             upah_dasar: (upahPokok[code] && upahPokok[code] > 0) ? upahPokok[code] : undefined
         }));
 
-        // Cast manual adjustments to expected type
-        const manualAdjustments = (manualAdjustmentsRaw || []) as any[];
+        const manualAdjustments = Array.isArray(manualAdjustmentsRaw) ? manualAdjustmentsRaw : [];
 
         // Destructure premi result - uses DocDesc as title
         const { amounts: premi, titleMap: premiTitleMap, details: premiDetails } = premiResult;
@@ -4510,9 +4509,10 @@ export class DataExtractorService {
                     // KOREKSI fields: keep as-is (KOREKSI_1, KOREKSI_2)
                     // Others: add potongan_ prefix
                     let fieldName;
-                    if (key.startsWith('KOREKSI')) {
+                    const keyUpper = String(key).toUpperCase();
+                    if (keyUpper.startsWith('KOREKSI')) {
                         fieldName = key; // KOREKSI_1, KOREKSI_2, etc.
-                    } else if (key.startsWith('potongan_')) {
+                    } else if (keyUpper.startsWith('POTONGAN_')) {
                         fieldName = key;
                     } else {
                         fieldName = `potongan_${key}`;
@@ -4523,7 +4523,7 @@ export class DataExtractorService {
             // Calculate total potongan upah kotor (sum of all KOREKSI)
             let totalKoreksi = 0;
             for (const [key, val] of Object.entries(emp)) {
-                if (key.startsWith('KOREKSI') && typeof val === 'number') {
+                if (String(key).toUpperCase().startsWith('KOREKSI') && typeof val === 'number') {
                     totalKoreksi += Math.abs(val);
                 }
             }

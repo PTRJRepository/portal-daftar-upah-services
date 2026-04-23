@@ -7,7 +7,8 @@ describe('applyManualAdjustmentsToEmployee', () => {
             adjustments: [
                 { adjustment_type: 'PREMI', adjustment_name: 'PREMI INSENTIF', amount: 25000 },
                 { adjustment_type: 'POTONGAN_KOTOR', adjustment_name: 'KOREKSI DENDA PANEN', amount: 10000 },
-                { adjustment_type: 'POTONGAN_BERSIH', adjustment_name: 'POTONGAN LAINNYA KASBON', amount: 5000 }
+                { adjustment_type: 'POTONGAN_BERSIH', adjustment_name: 'POTONGAN LAINNYA KASBON', amount: 5000 },
+                { adjustment_type: 'PENDAPATAN_LAINNYA', adjustment_name: 'KONTAN', amount: 9999 }
             ],
             empPremi: {},
             empPotongan: {},
@@ -24,5 +25,7 @@ describe('applyManualAdjustmentsToEmployee', () => {
         expect(result.premiTitleMap.premi_insentif).toBe('PREMI INSENTIF');
         expect(result.potonganTitleMap.koreksi_denda_panen).toBe('KOREKSI DENDA PANEN');
         expect(result.potonganTitleMap.potongan_lainnya_kasbon).toBe('POTONGAN LAINNYA KASBON');
+        expect(result.potonganTitleMap.kontan).toBeUndefined();
+        expect(result.empPotongan.kontan).toBeUndefined();
     });
 });

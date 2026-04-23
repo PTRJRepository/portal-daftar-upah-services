@@ -1,6 +1,10 @@
 import { toManualAdjustmentFieldName } from './manualAdjustmentNaming';
 
-export type ManualAdjustmentType = 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
+export type ManualAdjustmentType =
+    | 'PREMI'
+    | 'POTONGAN_KOTOR'
+    | 'POTONGAN_BERSIH'
+    | 'PENDAPATAN_LAINNYA';
 
 export interface ManualAdjustmentLike {
     adjustment_type: ManualAdjustmentType;
@@ -63,6 +67,11 @@ export function applyManualAdjustmentsToEmployee(input: ManualAdjustmentApplierI
             input.empPotongan[fieldName] = (input.empPotongan[fieldName] || 0) + amount;
             input.potonganTitleMap[fieldName] = name;
             otherPotonganDelta += amount;
+            continue;
+        }
+
+        if (adjustment.adjustment_type === 'PENDAPATAN_LAINNYA') {
+            continue;
         }
     }
 
