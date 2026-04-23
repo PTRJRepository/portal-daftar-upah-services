@@ -13,6 +13,13 @@ describe('manualAdjustmentNaming', () => {
         expect(toManualAdjustmentFieldName('POTONGAN_BERSIH', 'POTONGAN LAINNYA KASBON')).toBe('potongan_lainnya_kasbon');
     });
 
+    it('normalizes mixed-case and already canonical inputs for backward-compatible matching', () => {
+        expect(normalizeStoredAdjustmentName('premi    insentif')).toBe('PREMI INSENTIF');
+        expect(normalizeStoredAdjustmentName('  KOREKSI   DENDA   PANEN  ')).toBe('KOREKSI DENDA PANEN');
+        expect(normalizeStoredAdjustmentName('POTONGAN LAINNYA KASBON')).toBe('POTONGAN LAINNYA KASBON');
+        expect(toManualAdjustmentFieldName('PREMI', 'premi    insentif')).toBe('premi_insentif');
+    });
+
     it('retains zero-value placeholder rows with INIT_COLUMN remarks', () => {
         expect(shouldDeleteStoredAdjustment(0, 'INIT_COLUMN ...')).toBe(false);
         expect(shouldDeleteStoredAdjustment(0, 'Edited via UI')).toBe(true);

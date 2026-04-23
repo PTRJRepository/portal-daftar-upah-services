@@ -523,7 +523,7 @@ export class DataExtractorService {
                 const { EmployeeEstateService: EES } = await import("./employeeEstateService");
                 return EES.getEmployeeJobsWithNik(empCodes);
             }, { empcodeMap: {} as Record<string, string>, nikMap: {} as Record<string, string> }),
-            safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined), [])
+            safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode), [])
         ]);
         const jobTitles = jobTitlesResult.empcodeMap;
         const jobTitlesByNik = jobTitlesResult.nikMap;

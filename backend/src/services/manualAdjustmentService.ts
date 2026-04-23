@@ -5,6 +5,16 @@ import {
     shouldDeleteStoredAdjustment
 } from "./payroll/manualAdjustments/manualAdjustmentNaming";
 
+function buildNormalizedSqlNameExpression(columnName: string): string {
+    let expression = `UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(${columnName}, CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CHAR(160), ' '))))`;
+
+    for (let i = 0; i < 4; i += 1) {
+        expression = `REPLACE(${expression}, '  ', ' ')`;
+    }
+
+    return expression;
+}
+
 export interface ManualAdjustment {
     id?: number;
     period_month: number;
@@ -88,7 +98,7 @@ export class ManualAdjustmentService {
      */
     private async saveOtherIncome(db: Database, data: ManualAdjustment, parsedAmount: number, user?: string): Promise<number> {
         const incomeType = data.adjustment_name; // e.g. 'KONTAN'
-        const incomeName = data.adjustment_name; // e.g. 'KONTAN'
+        const incomeName = normalizeStoredAdjustmentName(data.adjustment_name); // e.g. 'KONTAN'
         // Use real NIK for nik field, emp_code for emp_code field
         const realNik = (data.nik || '').trim().toUpperCase() || (data.emp_code || '').trim().toUpperCase();
         const empCodeVal = (data.emp_code || '').trim().toUpperCase();
@@ -98,14 +108,16 @@ export class ManualAdjustmentService {
         // Check for existing record: try by nik, then by emp_code
         let existing = await db.queryOne<{ id: number; nik: string; emp_code: string }>(`
             SELECT id, nik, emp_code FROM dbo.employee_other_incomes
-            WHERE nik = ? AND period_month = ? AND period_year = ? AND income_name = ?
+            WHERE nik = ? AND period_month = ? AND period_year = ?
+            AND ${buildNormalizedSqlNameExpression('income_name')} = ?
         `, [realNik, data.period_month, data.period_year, incomeName]);
 
         // Fallback: check by emp_code if not found by nik
         if (!existing) {
             existing = await db.queryOne<{ id: number; nik: string; emp_code: string }>(`
                 SELECT id, nik, emp_code FROM dbo.employee_other_incomes
-                WHERE emp_code = ? AND period_month = ? AND period_year = ? AND income_name = ?
+                WHERE emp_code = ? AND period_month = ? AND period_year = ?
+                AND ${buildNormalizedSqlNameExpression('income_name')} = ?
             `, [empCodeVal, data.period_month, data.period_year, incomeName]);
         }
 
@@ -170,6 +182,7 @@ export class ManualAdjustmentService {
         // Ensure amount is a valid float
         const parsedAmount = parseFloat(data.amount.toString()) || 0;
         const normalizedAdjustmentName = normalizeStoredAdjustmentName(data.adjustment_name);
+        const normalizedAdjustmentNameSql = buildNormalizedSqlNameExpression('adjustment_name');
 
         // --- PENDAPATAN_LAINNYA: Save to employee_other_incomes ---
         if (data.adjustment_type === 'PENDAPATAN_LAINNYA') {
@@ -183,7 +196,8 @@ export class ManualAdjustmentService {
         const existing = await db.queryOne<{ id: number }>(`
             SELECT id FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ? 
-            AND emp_code = ? AND adjustment_type = ? AND adjustment_name = ?
+            AND emp_code = ? AND adjustment_type = ?
+            AND ${normalizedAdjustmentNameSql} = ?
         `, [data.period_month, data.period_year, data.emp_code, data.adjustment_type, normalizedAdjustmentName]);
 
         if (existing) {
