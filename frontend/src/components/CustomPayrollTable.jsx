@@ -17,6 +17,7 @@ import { appendSnapshotVersionToSearchParams, buildPayrollSnapshotCacheKey, norm
 import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
 import { resolveJabatanRate } from '../utils/payrollRowAccessors';
 import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
+import { isPayrollNumericField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
 import { buildCanonicalManualAdjustmentName, buildPendingManualColumn } from '../utils/payrollManualAdjustmentNames';
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
 import { buildPayrollHeaderRows, getPayrollChapterWindowForGroup } from '../utils/payrollHeaderLayout';
@@ -116,6 +117,39 @@ const formatHeaderLabel = (label) => {
     ));
 };
 
+const VALUE_PRIORITY_MODE_BADGE = {
+    smart: {
+        label: 'Smart: Adjustment + Buffer prioritas',
+        tone: 'smart'
+    },
+    db_ptrj_only: {
+        label: 'DB PTRJ saja',
+        tone: 'db'
+    },
+    manual_buffer_only: {
+        label: 'Adjustment + Buffer saja',
+        tone: 'manual'
+    }
+};
+
+const VALUE_PRIORITY_MODE_STORAGE_KEY = 'payroll.value_priority_mode';
+
+const normalizeValuePriorityMode = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'db_ptrj_only') return 'db_ptrj_only';
+    if (normalized === 'manual_buffer_only') return 'manual_buffer_only';
+    return 'smart';
+};
+
+const resolveInitialValuePriorityMode = () => {
+    try {
+        if (typeof window === 'undefined') return 'smart';
+        return normalizeValuePriorityMode(localStorage.getItem(VALUE_PRIORITY_MODE_STORAGE_KEY));
+    } catch {
+        return 'smart';
+    }
+};
+
 const {
     PAJAK,
     ABSENSI,
@@ -211,9 +245,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const initialDisplayState = useMemo(() => resolvePayrollDisplayModeState(), []);
     const [displayMode, setDisplayMode] = useState(initialDisplayState.mode);
     const [focusLensEnabled, setFocusLensEnabled] = useState(initialDisplayState.focusLens);
+    const [valuePriorityMode, setValuePriorityMode] = useState(resolveInitialValuePriorityMode);
     const [activeChapterGroup, setActiveChapterGroup] = useState(null);
     const [isChapterBarVisible, setChapterBarVisible] = useState(true);
     const [chapterViewportWindow, setChapterViewportWindow] = useState({ startRatio: 0, widthRatio: 1 });
+    const valuePriorityBadge = VALUE_PRIORITY_MODE_BADGE[valuePriorityMode] || VALUE_PRIORITY_MODE_BADGE.smart;
     const hasPendingEdits = useMemo(
         () => Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0,
         [editedCells, editedKontanCells]
@@ -245,6 +281,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         gangPrefix: effectiveGangPrefix,
         gangCode,
         useHistoryDb,
+        valuePriorityMode,
         snapshotVersion,
         refreshTrigger,
         enabled: canStartDataFlow && streamEnabled
@@ -260,6 +297,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             void stream.startStream();
         }
     }, [onRefresh, stream.startStream]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(VALUE_PRIORITY_MODE_STORAGE_KEY, normalizeValuePriorityMode(valuePriorityMode));
+        } catch {
+            // Ignore localStorage write errors
+        }
+    }, [valuePriorityMode]);
 
     // Sync stream grand total to component state
     useEffect(() => {
@@ -1462,7 +1507,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     token, division, month, year, useHistoryDb,
                     shouldSendGangPrefix ? effectiveGangPrefix : null,
                     snapshotVersion,
-                    gangCode
+                    gangCode,
+                    valuePriorityMode
                 );
             } else {
                 const params = new URLSearchParams({
@@ -1471,6 +1517,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     year: String(year),
                     use_history: useHistoryDb ? 'true' : 'false'
                 });
+                if (valuePriorityMode) params.set('value_priority_mode', valuePriorityMode);
                 if (effectiveGangPrefix) params.set('gang_prefix', effectiveGangPrefix);
                 if (gangCode && gangCode !== 'ALL') params.set('gang_code', gangCode);
                 appendSnapshotVersionToSearchParams(params, snapshotVersion);
@@ -1516,7 +1563,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 // Don't reset loadingProgress here - let it show complete state
             }
         }
-    }, [division, month, year, gangCode, effectiveGangPrefix, token, useHistoryDb, snapshotVersion, gangLoading, processRawData, onDataLoaded]);
+    }, [division, month, year, gangCode, effectiveGangPrefix, token, useHistoryDb, valuePriorityMode, snapshotVersion, gangLoading, processRawData, onDataLoaded]);
 
     // --- MAIN DATA EFFECT ---
     // When streaming is enabled: use SSE stream (handled by usePayrollStream hook)
@@ -1528,7 +1575,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         if (!streamEnabled) {
             fetchDivisionData();
         }
-    }, [canStartDataFlow, gangLoading, refreshTrigger, useHistoryDb, snapshotVersion, fetchDivisionData, streamEnabled]);
+    }, [canStartDataFlow, gangLoading, refreshTrigger, useHistoryDb, valuePriorityMode, snapshotVersion, fetchDivisionData, streamEnabled]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -2506,7 +2553,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 division,
                 gangCode,
                 month,
-                year
+                year,
+                valuePriorityMode: normalizeValuePriorityMode(valuePriorityMode)
             });
             return fileName;
         } catch (err) {
@@ -2514,7 +2562,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             alert('Gagal export ke Excel: ' + err.message);
             return null;
         }
-    }, [displayRows, columnDefs, grandTotal, division, gangCode, month, year]);
+    }, [displayRows, columnDefs, grandTotal, division, gangCode, month, year, valuePriorityMode]);
 
     // Expose export function to parent
     useEffect(() => {
@@ -2773,8 +2821,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     mode={displayMode}
                     focusLens={focusLensEnabled}
                     taxExpanded={isTaxExpanded}
+                    valuePriorityMode={valuePriorityMode}
                     onModeChange={setDisplayMode}
                     onFocusLensChange={setFocusLensEnabled}
+                    onValuePriorityModeChange={(nextMode) => setValuePriorityMode(normalizeValuePriorityMode(nextMode))}
                     onToggleTax={() => toggleGroup('PAJAK')}
                 />
             </div>
@@ -2813,6 +2863,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             }}
         >
             {togglesElement}
+            <div className={`payroll-source-indicator payroll-source-indicator--${valuePriorityBadge.tone}`}>
+                <span className="payroll-source-indicator__label">Sumber Nilai Aktif</span>
+                <span className="payroll-source-indicator__value">{valuePriorityBadge.label}</span>
+            </div>
             <div
                 className="payroll-table-container"
                 ref={tableContainerRef}
@@ -3259,17 +3313,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 // Special handling for specific columns
                                 if (col.field === 'nama') val = 'GRAND TOTAL';
                                 else if (col.field === 'no') val = '';
-                                else if (col.field === 'emp_code') val = `${displayRows.filter(r => !r.isTotal && !r.isHeader).length} KARYAWAN`;
-                                // For numeric columns, always show 0 instead of '-' if value is undefined
-                                else if (typeof val === 'number' || val !== undefined) {
-                                    // It's a number (could be 0), format it
-                                    const numVal = Number(val) || 0;
-                                    val = formatNumber(numVal);
+                                else if (col.field === 'emp_code') val = `${employeeRows.length} KARYAWAN`;
+                                else if (isPayrollNumericField(col.field)) {
+                                    const numericValue = resolveGrandTotalNumericValue({
+                                        grandTotal,
+                                        rows: employeeRows,
+                                        field: col.field
+                                    });
+                                    val = formatNumber(numericValue);
+                                } else if (val !== undefined && val !== null && val !== '') {
+                                    val = String(val);
                                 } else {
-                                    // Check if this is a numeric column (based on field name patterns)
-                                    const isNumericColumn = /^(jumlah_|total_|pot_|premi_|lembur_|gaji_|upah_|beras_|jabatan_|masa_|koreksi_|penghasilan_|pph21_|tarif_|astek_|bpjs_|thr_|bonus_|exgratia_|pendapatan_|hari_kerja|kehadiran)/.test(col.field);
-                                    // For numeric columns, show 0 instead of '-'
-                                    val = isNumericColumn ? '0' : '-';
+                                    val = '-';
                                 }
 
                                 return (

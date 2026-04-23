@@ -31,6 +31,26 @@ import { processInBatches } from "../utils/batchProcessor";
 
 const CATEGORY = "DataExtractor";
 
+export type PayrollValuePriorityMode = "smart" | "db_ptrj_only" | "manual_buffer_only";
+
+function normalizePayrollValuePriorityMode(value?: string | null): PayrollValuePriorityMode {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "db_ptrj_only") return "db_ptrj_only";
+    if (normalized === "manual_buffer_only") return "manual_buffer_only";
+    return "smart";
+}
+
+function pickStaticPotonganForManualBuffer(source: Record<string, number>): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [key, rawValue] of Object.entries(source || {})) {
+        const keyUpper = String(key).toUpperCase();
+        if (keyUpper === "SPSI" || keyUpper === "PPH21" || keyUpper === "PREMI_PPH") {
+            result[key] = Number(rawValue) || 0;
+        }
+    }
+    return result;
+}
+
 interface EmployeeRow {
     emp_code: string;
     emp_name: string;
@@ -268,7 +288,8 @@ export class DataExtractorService {
         gangPrefix?: string,
         skipHarvest: boolean = false,
         skipHeavyDetails: boolean = false,
-        snapshotVersion?: number | null
+        snapshotVersion?: number | null,
+        valuePriorityModeInput?: string | null
     ): Promise<{
         data_rows: PayrollRow[];
         dynamic_premi_headers: string[];
@@ -277,6 +298,10 @@ export class DataExtractorService {
         potongan_title_map: Record<string, string>;
         meta: { execution_time_ms: number; row_count: number }
     }> {
+        const valuePriorityMode = normalizePayrollValuePriorityMode(valuePriorityModeInput);
+        const useAutoBuffer = valuePriorityMode !== "db_ptrj_only";
+        const allowManualAdjustments = valuePriorityMode !== "db_ptrj_only";
+        const manualBufferOnlyMode = valuePriorityMode === "manual_buffer_only";
         const startTime = Date.now();
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const nextMonth = month === 12 ? 1 : month + 1;
@@ -314,7 +339,7 @@ export class DataExtractorService {
 
         // [OPTIMIZATION] Cache check
         const cacheKey = cacheService.buildPayrollKey(gangCode, month, year, divisionCode, useHistoryDb);
-        const useCache = !specificEmpCode;
+        const useCache = !specificEmpCode && valuePriorityMode === "smart";
         if (useCache) {
             const cached = cacheService.get<any>(cacheKey);
             if (cached) {
@@ -332,7 +357,7 @@ export class DataExtractorService {
             shouldFetchHistory = false;
         }
 
-        if (shouldFetchHistory) {
+        if (shouldFetchHistory && valuePriorityMode === "smart") {
             try {
                 const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
                     month, year, gangCode, divisionCode, specificEmpCode
@@ -655,7 +680,13 @@ export class DataExtractorService {
                 const { EmployeeEstateService: EES } = await import("./employeeEstateService");
                 return EES.getEmployeeJobsWithNik(empCodes);
             }, { empcodeMap: {} as Record<string, string>, nikMap: {} as Record<string, string> }),
-            safeQuery('getManualAdj', () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode), [])
+            safeQuery(
+                'getManualAdj',
+                () => allowManualAdjustments
+                    ? manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode)
+                    : Promise.resolve([]),
+                []
+            )
         ]);
         const jobTitles = jobTitlesResult.empcodeMap;
         const jobTitlesByNik = jobTitlesResult.nikMap;
@@ -760,7 +791,9 @@ export class DataExtractorService {
             upah_dasar: (upahPokok[code] && upahPokok[code] > 0) ? upahPokok[code] : undefined
         }));
 
-        const manualAdjustments = Array.isArray(manualAdjustmentsRaw) ? manualAdjustmentsRaw : [];
+        const manualAdjustments = allowManualAdjustments && Array.isArray(manualAdjustmentsRaw)
+            ? manualAdjustmentsRaw
+            : [];
 
         // Destructure premi result - uses DocDesc as title
         const { amounts: premi, titleMap: premiTitleMap, details: premiDetails } = premiResult;
@@ -1000,8 +1033,12 @@ export class DataExtractorService {
             // This filters out employees who only have auto-generated holiday attendance but no actual work/leave
             const effective_hk = hk - (empCuti.cuti_minggu + empCuti.cuti_nasional);
 
-            const empPremi = premi[emp.emp_code] || {};
-            const empPotongan = potongan[emp.emp_code] || {};
+            const dbEmpPremiSource = premi[emp.emp_code] || {};
+            const dbEmpPotonganSource = potongan[emp.emp_code] || {};
+            const empPremi = manualBufferOnlyMode ? {} : { ...dbEmpPremiSource };
+            const empPotongan = manualBufferOnlyMode
+                ? pickStaticPotonganForManualBuffer(dbEmpPotonganSource)
+                : { ...dbEmpPotonganSource };
             const empLembur = lembur[emp.emp_code] || { jam: 0, jumlah: 0 };
             const empLemburDetails = lemburWithDetails[emp.emp_code] || { jam: 0, jumlah: 0, task_breakdown: [] };
             const empLemburDocDesc = lemburDocDesc[emp.emp_code] || 0;
@@ -1045,8 +1082,8 @@ export class DataExtractorService {
 
             const upah_pokok = attData.total_amount_rp || 0;
             // [PHASE 2.5] Brondol dual source tracking
-            const empBrondolLoosefruit = brondol[emp.emp_code] || 0;
-            const empBrondolAdtrans = empPremi["brondol"] || 0; // From PR_ADTRANS (before adding loosefruit)
+            const empBrondolLoosefruit = manualBufferOnlyMode ? 0 : (brondol[emp.emp_code] || 0);
+            const empBrondolAdtrans = manualBufferOnlyMode ? 0 : (empPremi["brondol"] || 0); // From PR_ADTRANS (before adding loosefruit)
             const empBrondolTotal = empBrondolLoosefruit + empBrondolAdtrans;
             // Keep empBrondol for backward compatibility (total)
             const empBrondol = empBrondolTotal;
@@ -1061,25 +1098,33 @@ export class DataExtractorService {
             const additionalBeras = isF2H ? empBerasDocDesc : 0;
             const berasJumlah = berasJumlahBase + additionalBeras;
 
-            const dbPotSpsi = Math.abs(empPotongan["SPSI"] || 0);
+            const dbPotSpsi = Math.abs(dbEmpPotonganSource["SPSI"] || 0);
             const isSpsiMember = typeof emp.is_spsi_member === "boolean"
                 ? emp.is_spsi_member
                 : deriveInitialSpsiMember(dbPotSpsi);
-            const autoBuffer = payrollAutoBufferService.calculateAutomaticValues({
-                jabatanText: empJobTitle,
-                roleText: emp.jabatan || "",
-                hariKerja: hari_kerja,
-                kehadiran: hk,
-                masaKerjaTahun: masaKerjaLama,
-                isSpsiMember,
-                dbJabatanJumlah: empJabatan,
-                dbMasaKerjaJumlah: empMasaKerjaJumlah
-            });
-            const empJabatanDisplay = autoBuffer.jabatanAmount;
-            const empMasaKerjaDisplay = autoBuffer.masaKerjaAmount;
-            const jabatanRate = autoBuffer.jabatanRate;
-            const masaKerjaRate = autoBuffer.masaKerjaRate;
-            const pot_spsi = autoBuffer.spsiDeduction;
+            let empJabatanDisplay = empJabatan;
+            let empMasaKerjaDisplay = empMasaKerjaJumlah;
+            let jabatanRate = hari_kerja > 0 ? empJabatan / hari_kerja : 0;
+            let masaKerjaRate = hari_kerja > 0 ? empMasaKerjaJumlah / hari_kerja : 0;
+            let pot_spsi = dbPotSpsi;
+
+            if (useAutoBuffer) {
+                const autoBuffer = payrollAutoBufferService.calculateAutomaticValues({
+                    jabatanText: empJobTitle,
+                    roleText: emp.jabatan || "",
+                    hariKerja: hari_kerja,
+                    kehadiran: hk,
+                    masaKerjaTahun: masaKerjaLama,
+                    isSpsiMember,
+                    dbJabatanJumlah: empJabatan,
+                    dbMasaKerjaJumlah: empMasaKerjaJumlah
+                });
+                empJabatanDisplay = autoBuffer.jabatanAmount;
+                empMasaKerjaDisplay = autoBuffer.masaKerjaAmount;
+                jabatanRate = autoBuffer.jabatanRate;
+                masaKerjaRate = autoBuffer.masaKerjaRate;
+                pot_spsi = autoBuffer.spsiDeduction;
+            }
             const valueSyncFrame: Record<string, "red" | "green"> = {
                 jabatan_jumlah: resolveSyncFrameColor(empJabatanDisplay, empJabatan),
                 masa_kerja_jumlah: resolveSyncFrameColor(empMasaKerjaDisplay, empMasaKerjaJumlah),
@@ -1125,17 +1170,31 @@ export class DataExtractorService {
                 }
             }
 
-            const empAdjustments = manualAdjustments ? manualAdjustments.filter(a => String(a.emp_code).trim() === String(emp.emp_code).trim()) : [];
+            const empAdjustments = manualAdjustments
+                ? manualAdjustments.filter(a => String(a.emp_code).trim() === String(emp.emp_code).trim())
+                : [];
             const premiKeysBefore = new Set(Object.keys(empPremi));
             const potonganKeysBefore = new Set(Object.keys(empPotongan));
-            const manualApplied = applyManualAdjustmentsToEmployee({
-                adjustments: empAdjustments as any[],
-                empPremi,
-                empPotongan,
-                premiTitleMap,
-                potonganTitleMap,
-                mode: 'override'
-            });
+            const manualApplied = empAdjustments.length > 0
+                ? applyManualAdjustmentsToEmployee({
+                    adjustments: empAdjustments as any[],
+                    empPremi,
+                    empPotongan,
+                    premiTitleMap,
+                    potonganTitleMap,
+                    mode: 'override'
+                })
+                : {
+                    empPremi,
+                    empPotongan,
+                    premiTitleMap,
+                    potonganTitleMap,
+                    koreksiVariations: {},
+                    totalPremiDelta: 0,
+                    potKoreksiDelta: 0,
+                    otherPotonganDelta: 0,
+                    fieldSyncMeta: []
+                };
 
             for (const key of Object.keys(manualApplied.empPremi)) {
                 if (!premiKeysBefore.has(key)) {
@@ -3334,7 +3393,9 @@ export class DataExtractorService {
         divisionCode?: string,
         serverProfile?: string,
         gangPrefix?: string,
-        useHistoryDb?: boolean | null
+        useHistoryDb?: boolean | null,
+        snapshotVersion?: number | null,
+        valuePriorityModeInput?: string | null
     ): AsyncGenerator<{
         phase: 'identity' | 'attendance' | 'overtime' | 'premium' | 'complete';
         gangs: Map<string, any[]>;
@@ -3351,6 +3412,10 @@ export class DataExtractorService {
         dynamic_premi_titles?: Record<string, string>;
         dynamic_potongan_titles?: Record<string, string>;
     }> {
+        const valuePriorityMode = normalizePayrollValuePriorityMode(valuePriorityModeInput);
+        const useAutoBuffer = valuePriorityMode !== "db_ptrj_only";
+        const allowManualAdjustments = valuePriorityMode !== "db_ptrj_only";
+        const manualBufferOnlyMode = valuePriorityMode === "manual_buffer_only";
         const startTime = Date.now();
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const nextMonth = month === 12 ? 1 : month + 1;
@@ -3403,7 +3468,7 @@ export class DataExtractorService {
             shouldFetchHistory = false;
         }
 
-        if (shouldFetchHistory) {
+        if (shouldFetchHistory && valuePriorityMode === "smart") {
             const historyResult = await this.extractPayrollData(
                 month,
                 year,
@@ -3413,7 +3478,11 @@ export class DataExtractorService {
                 serverProfile,
                 false,
                 useHistoryDb,
-                gangPrefix
+                gangPrefix,
+                false,
+                false,
+                snapshotVersion,
+                valuePriorityMode
             );
             const groupedHistoryRows = buildProgressiveGangsMap(historyResult.data_rows);
 
@@ -3939,11 +4008,13 @@ export class DataExtractorService {
 
         const emptyPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
         const emptyPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
-        const manualAdjustmentsPromise = safeQuery(
-            'manualAdjustments',
-            () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode),
-            [] as any[]
-        );
+        const manualAdjustmentsPromise = allowManualAdjustments
+            ? safeQuery(
+                'manualAdjustments',
+                () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode),
+                [] as any[]
+            )
+            : Promise.resolve([] as any[]);
 
         // [PHASE 1] Attendance + Cuti
         debug(CATEGORY, `📋 Phase 1: Loading attendance/cuti...`);
@@ -4090,12 +4161,14 @@ export class DataExtractorService {
             Object.assign(globalTaskCodesMap, taskCodesB);
 
             // Collect dynamic headers
-            for (const [empCode, empPremi] of Object.entries(premiB.amounts || {})) {
-                for (const key of Object.keys(empPremi || {})) {
-                    if (key !== "koreksi" && key !== "brondol") {
-                        // Use prefixed field name to match frontend data
-                        const fieldName = key.startsWith('premi_') ? key : `premi_${key}`;
-                        dynamicPremiSet.add(fieldName);
+            if (!manualBufferOnlyMode) {
+                for (const [, empPremi] of Object.entries(premiB.amounts || {})) {
+                    for (const key of Object.keys(empPremi || {})) {
+                        if (key !== "koreksi" && key !== "brondol") {
+                            // Use prefixed field name to match frontend data
+                            const fieldName = key.startsWith('premi_') ? key : `premi_${key}`;
+                            dynamicPremiSet.add(fieldName);
+                        }
                     }
                 }
             }
@@ -4103,19 +4176,21 @@ export class DataExtractorService {
                 if (baselinePotSpsiByEmp[empCode] === undefined) {
                     baselinePotSpsiByEmp[empCode] = Math.abs(Number((empPot as any)?.SPSI) || 0);
                 }
-                for (const key of Object.keys(empPot || {})) {
-                    if (key !== "SPSI" && key !== "PPH21") {
-                        // For KOREKSI: use key as-is (e.g., "KOREKSI_1", "KOREKSI_2")
-                        // For others: use prefixed name (e.g., "potongan_X")
-                        let fieldName;
-                        if (key.startsWith("KOREKSI")) {
-                            fieldName = key; // Keep KOREKSI fields as-is for frontend matching
-                        } else if (key.startsWith('potongan_')) {
-                            fieldName = key;
-                        } else {
-                            fieldName = `potongan_${key}`;
+                if (!manualBufferOnlyMode) {
+                    for (const key of Object.keys(empPot || {})) {
+                        if (key !== "SPSI" && key !== "PPH21") {
+                            // For KOREKSI: use key as-is (e.g., "KOREKSI_1", "KOREKSI_2")
+                            // For others: use prefixed name (e.g., "potongan_X")
+                            let fieldName;
+                            if (key.startsWith("KOREKSI")) {
+                                fieldName = key; // Keep KOREKSI fields as-is for frontend matching
+                            } else if (key.startsWith('potongan_')) {
+                                fieldName = key;
+                            } else {
+                                fieldName = `potongan_${key}`;
+                            }
+                            dynamicPotonganSet.add(fieldName);
                         }
-                        dynamicPotonganSet.add(fieldName);
                     }
                 }
             }
@@ -4135,10 +4210,14 @@ export class DataExtractorService {
 
         // Update employees with premium data
         for (const emp of employees) {
-            const empPremi = globalPremiResult.amounts[emp.emp_code] || {};
-            const empPotongan = globalPotonganResult.amounts[emp.emp_code] || {};
-            const empBrondol = globalBrondolMap[emp.emp_code] || 0;
-            const empPremiBrondol = empPremi["brondol"] || 0;
+            const dbEmpPremiSource = globalPremiResult.amounts[emp.emp_code] || {};
+            const dbEmpPotonganSource = globalPotonganResult.amounts[emp.emp_code] || {};
+            const empPremi = manualBufferOnlyMode ? {} : { ...dbEmpPremiSource };
+            const empPotongan = manualBufferOnlyMode
+                ? pickStaticPotonganForManualBuffer(dbEmpPotonganSource)
+                : { ...dbEmpPotonganSource };
+            const empBrondol = manualBufferOnlyMode ? 0 : (globalBrondolMap[emp.emp_code] || 0);
+            const empPremiBrondol = manualBufferOnlyMode ? 0 : (empPremi["brondol"] || 0);
             const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
             const valueSyncFrame: Record<string, "red" | "green"> = { ...(emp.value_sync_frame || {}) };
 
@@ -4148,7 +4227,9 @@ export class DataExtractorService {
             }
             total_premi += empBrondol;
 
-            const empAdjustments = manualAdjustmentsByEmpCode.get(empCodeKey) || [];
+            const empAdjustments = allowManualAdjustments
+                ? (manualAdjustmentsByEmpCode.get(empCodeKey) || [])
+                : [];
             if (empAdjustments.length > 0) {
                 const premiKeysBefore = new Set(Object.keys(empPremi));
                 const potonganKeysBefore = new Set(Object.keys(empPotongan));
@@ -4201,6 +4282,10 @@ export class DataExtractorService {
                     }
                 }
             }
+
+            globalPremiResult.amounts[emp.emp_code] = empPremi;
+            globalPotonganResult.amounts[emp.emp_code] = empPotongan;
+            globalBrondolMap[emp.emp_code] = empBrondol;
 
             emp.premi = empPremi;
             emp.potongan = empPotongan;
@@ -4310,21 +4395,29 @@ export class DataExtractorService {
                 ? emp.is_spsi_member
                 : deriveInitialSpsiMember(dbPotSpsi);
             emp.is_spsi_member = isSpsiMember;
-            const autoBuffer = payrollAutoBufferService.calculateAutomaticValues({
-                jabatanText: emp.jabatan_estate || emp.jabatan || "",
-                roleText: emp.jabatan || emp.role || "",
-                hariKerja: hari_kerja,
-                kehadiran: hk,
-                masaKerjaTahun,
-                isSpsiMember,
-                dbJabatanJumlah,
-                dbMasaKerjaJumlah
-            });
-            const jabatanJumlah = autoBuffer.jabatanAmount;
-            const masaKerjaJumlah = autoBuffer.masaKerjaAmount;
-            const jabatanRate = autoBuffer.jabatanRate;
-            const masaKerjaRate = autoBuffer.masaKerjaRate;
-            const pot_spsi = autoBuffer.spsiDeduction;
+            let jabatanJumlah = dbJabatanJumlah;
+            let masaKerjaJumlah = dbMasaKerjaJumlah;
+            let jabatanRate = hari_kerja > 0 ? dbJabatanJumlah / hari_kerja : 0;
+            let masaKerjaRate = hari_kerja > 0 ? dbMasaKerjaJumlah / hari_kerja : 0;
+            let pot_spsi = dbPotSpsi;
+
+            if (useAutoBuffer) {
+                const autoBuffer = payrollAutoBufferService.calculateAutomaticValues({
+                    jabatanText: emp.jabatan_estate || emp.jabatan || "",
+                    roleText: emp.jabatan || emp.role || "",
+                    hariKerja: hari_kerja,
+                    kehadiran: hk,
+                    masaKerjaTahun,
+                    isSpsiMember,
+                    dbJabatanJumlah,
+                    dbMasaKerjaJumlah
+                });
+                jabatanJumlah = autoBuffer.jabatanAmount;
+                masaKerjaJumlah = autoBuffer.masaKerjaAmount;
+                jabatanRate = autoBuffer.jabatanRate;
+                masaKerjaRate = autoBuffer.masaKerjaRate;
+                pot_spsi = autoBuffer.spsiDeduction;
+            }
             valueSyncFrame.jabatan_jumlah = resolveSyncFrameColor(jabatanJumlah, dbJabatanJumlah);
             valueSyncFrame.masa_kerja_jumlah = resolveSyncFrameColor(masaKerjaJumlah, dbMasaKerjaJumlah);
             valueSyncFrame.pot_spsi = resolveSyncFrameColor(pot_spsi, dbPotSpsi);

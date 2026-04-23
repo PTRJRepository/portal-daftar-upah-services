@@ -28,11 +28,12 @@ import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
  * @param {string|null} params.gangPrefix - Gang prefix filter
  * @param {string|null} params.gangCode - Specific gang code (or "ALL")
  * @param {boolean} params.useHistoryDb - Whether to force snapshot source
+ * @param {string} params.valuePriorityMode - Source value priority mode
  * @param {boolean|null} params.enabled - Whether to start streaming
  *
  * @returns {Object} stream state
  */
-export function usePayrollStream({ token, division, month, year, gangPrefix, gangCode, useHistoryDb, snapshotVersion, refreshTrigger = 0, enabled }) {
+export function usePayrollStream({ token, division, month, year, gangPrefix, gangCode, useHistoryDb, valuePriorityMode = 'smart', snapshotVersion, refreshTrigger = 0, enabled }) {
     const effectiveGangPrefix = resolveEffectiveGangPrefix(gangCode, gangPrefix);
 
     // State for gangs - array that grows progressively
@@ -97,6 +98,7 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                 year: String(year),
                 use_history: useHistoryDb ? 'true' : 'false'
             });
+            if (valuePriorityMode) params.set('value_priority_mode', valuePriorityMode);
             if (effectiveGangPrefix) params.set('gang_prefix', effectiveGangPrefix);
             if (gangCode && gangCode !== 'ALL') params.set('gang_code', gangCode);
             appendSnapshotVersionToSearchParams(params, snapshotVersion);
@@ -273,7 +275,7 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             setError(err.message);
             setProgress(prev => ({ ...prev, stage: 'error', message: err.message }));
         }
-    }, [token, division, month, year, effectiveGangPrefix, gangCode, useHistoryDb, snapshotVersion, refreshTrigger, enabled]);
+    }, [token, division, month, year, effectiveGangPrefix, gangCode, useHistoryDb, valuePriorityMode, snapshotVersion, refreshTrigger, enabled]);
 
     const abort = useCallback(() => {
         if (abortControllerRef.current) {
@@ -301,7 +303,7 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             abort();
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [enabled, division, month, year, effectiveGangPrefix, gangCode, useHistoryDb, snapshotVersion, refreshTrigger, token]);
+    }, [enabled, division, month, year, effectiveGangPrefix, gangCode, useHistoryDb, valuePriorityMode, snapshotVersion, refreshTrigger, token]);
 
     // Return stream object with all properties the component expects
     // Component uses: stream.gangs, stream.meta, stream.progress, stream.grandTotal, stream.error, stream.isComplete, stream.gangsMap

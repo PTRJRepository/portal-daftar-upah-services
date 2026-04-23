@@ -5,13 +5,21 @@ const MODE_OPTIONS = [
     { id: 'detail', label: 'Semua' }
 ];
 
+const VALUE_PRIORITY_OPTIONS = [
+    { id: 'smart', label: 'Smart (Adj+Buffer prioritas)' },
+    { id: 'db_ptrj_only', label: 'DB PTRJ Saja' },
+    { id: 'manual_buffer_only', label: 'Adjustment + Buffer Saja' }
+];
+
 export default function PayrollViewModeToolbar({
     mode = 'simple',
     focusLens = false,
     taxExpanded = false,
+    valuePriorityMode = 'smart',
     onModeChange = () => {},
     onFocusLensChange = () => {},
-    onToggleTax = () => {}
+    onToggleTax = () => {},
+    onValuePriorityModeChange = () => {}
 }) {
     return (
         <div className="payroll-view-toolbar" role="toolbar" aria-label="Pengaturan tampilan tabel payroll">
@@ -45,6 +53,23 @@ export default function PayrollViewModeToolbar({
                         <span className="payroll-view-toolbar__toggle-title">Fokus Grup</span>
                         <span className="payroll-view-toolbar__toggle-subtitle">Opsional, sorot grup aktif</span>
                     </span>
+                </label>
+            </div>
+
+            <div className="payroll-view-toolbar__section">
+                <span className="payroll-view-toolbar__label">Sumber Nilai</span>
+                <label className="payroll-view-toolbar__select-wrap">
+                    <select
+                        className="payroll-view-toolbar__select"
+                        value={valuePriorityMode}
+                        onChange={(event) => onValuePriorityModeChange(event.target.value)}
+                    >
+                        {VALUE_PRIORITY_OPTIONS.map((option) => (
+                            <option key={option.id} value={option.id}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
                 </label>
             </div>
 

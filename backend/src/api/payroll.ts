@@ -376,6 +376,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const useHistoryDb = parseBooleanQueryParam(query.use_history) ?? false;
             const gangPrefix = query.gang_prefix;
             const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version);
+            const valuePriorityMode = query.value_priority_mode;
 
             if (!divisionCode || !month || !year) {
                 set.status = 400;
@@ -386,9 +387,23 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const skipHarvest = true;
 
             // [DEBUG] Log input parameters
-            console.log(`[PayrollRoutes] /report/division-raw-tree | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix || 'none'} DB_PROFILE=${Config.DB_PROFILE} useHistory=${useHistoryDb} RUN_MODE=${Config.RUN_MODE}`);
+            console.log(`[PayrollRoutes] /report/division-raw-tree | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix || 'none'} valuePriorityMode=${valuePriorityMode || 'smart'} DB_PROFILE=${Config.DB_PROFILE} useHistory=${useHistoryDb} RUN_MODE=${Config.RUN_MODE}`);
 
-            const result = await dataExtractorService.extractPayrollData(month, year, "ALL", divisionCode, null, Config.DB_PROFILE, false, useHistoryDb, gangPrefix, skipHarvest, false, snapshotVersion);
+            const result = await dataExtractorService.extractPayrollData(
+                month,
+                year,
+                "ALL",
+                divisionCode,
+                null,
+                Config.DB_PROFILE,
+                false,
+                useHistoryDb,
+                gangPrefix,
+                skipHarvest,
+                false,
+                snapshotVersion,
+                valuePriorityMode
+            );
 
             // [DEBUG] Log result summary
             const { data_rows } = result;
@@ -455,7 +470,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             year: t.String(),
             use_history: t.Optional(t.String()),
             gang_prefix: t.Optional(t.String()),
-            snapshot_version: t.Optional(t.String())
+            snapshot_version: t.Optional(t.String()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
     // --- Locked Report: Raw Tree (Alias for Proxy/Frontend Compat) ---
@@ -468,6 +484,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const year = parseInt(query.year);
             const useHistoryDb = parseBooleanQueryParam(query.use_history);
             const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version);
+            const valuePriorityMode = query.value_priority_mode;
 
             if (!divisionCode || !month || !year) {
                 set.status = 400;
@@ -544,9 +561,23 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // [OPTIMIZATION] Skip heavy bunches data (tandan) for the main table view
             const skipHarvest = true;
 
-            console.log(`[PayrollRoutes] /locked/report/raw-tree | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} gangPrefix=${gangPrefix} useHistory=${useHistoryDb}`);
+            console.log(`[PayrollRoutes] /locked/report/raw-tree | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} gangPrefix=${gangPrefix} valuePriorityMode=${valuePriorityMode || 'smart'} useHistory=${useHistoryDb}`);
 
-            const result = await dataExtractorService.extractPayrollData(month, year, gangCode, divisionCode, null, Config.DB_PROFILE, includeVirtual, useHistoryDb, gangPrefix, skipHarvest, false, snapshotVersion);
+            const result = await dataExtractorService.extractPayrollData(
+                month,
+                year,
+                gangCode,
+                divisionCode,
+                null,
+                Config.DB_PROFILE,
+                includeVirtual,
+                useHistoryDb,
+                gangPrefix,
+                skipHarvest,
+                false,
+                snapshotVersion,
+                valuePriorityMode
+            );
 
             // [DEBUG] Log result summary
             const empCount = result?.data_rows?.length || 0;
@@ -611,7 +642,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             use_history: t.Optional(t.String()),
             gang_prefix: t.Optional(t.String()),
             gang_code: t.Optional(t.String()),
-            snapshot_version: t.Optional(t.String())
+            snapshot_version: t.Optional(t.String()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
     // --- Locked Manual Edit ---
@@ -1266,6 +1298,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         const gangCode = query.gang_code || "ALL";
         const useHistoryDb = parseBooleanQueryParam(query.use_history as string | undefined) ?? false;
         const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version as string | undefined);
+        const valuePriorityMode = query.value_priority_mode as string | undefined;
 
         if (!divisionCode || !month || !year) {
             set.status = 400;
@@ -1289,7 +1322,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
         }
 
-        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} useHistory=${useHistoryDb}`);
+        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} valuePriorityMode=${valuePriorityMode || 'smart'} useHistory=${useHistoryDb}`);
 
         const encoder = new TextEncoder();
         let cancelled = false;
@@ -1312,7 +1345,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     // Use TRUE lazy loading extraction - yields data in phases
                     const progressiveStream = dataExtractorService.extractPayrollDataProgressive(
                         month, year, gangCode, divisionCode,
-                        Config.DB_PROFILE, gangPrefix, useHistoryDb, snapshotVersion
+                        Config.DB_PROFILE, gangPrefix, useHistoryDb, snapshotVersion, valuePriorityMode
                     );
 
                     let gangIndex = 0;
@@ -1533,7 +1566,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             gang_prefix: t.Optional(t.String()),
             gang_code: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
-            snapshot_version: t.Optional(t.String())
+            snapshot_version: t.Optional(t.String()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
 

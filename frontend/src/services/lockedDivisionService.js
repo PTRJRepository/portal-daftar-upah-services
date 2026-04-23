@@ -109,10 +109,11 @@ export async function getLockedReport(token, div, gangCode, month, year, skip = 
  * @param {boolean} useHistoryDb - Use historical snapshot
  * @param {string} gangPrefix - Optional prefix (Asistensi)
  */
-export async function getLockedRawTree(token, div, month, year, useHistoryDb = false, gangPrefix = null, snapshotVersion = null, gangCode = null) {
+export async function getLockedRawTree(token, div, month, year, useHistoryDb = false, gangPrefix = null, snapshotVersion = null, gangCode = null, valuePriorityMode = 'smart') {
     try {
         const params = { div, month, year };
         if (useHistoryDb) params.use_history = 'true';
+        if (valuePriorityMode) params.value_priority_mode = valuePriorityMode;
         if (gangPrefix) params.gang_prefix = gangPrefix;
         if (gangCode && gangCode !== 'ALL') params.gang_code = gangCode;
         appendSnapshotVersionToObject(params, snapshotVersion);

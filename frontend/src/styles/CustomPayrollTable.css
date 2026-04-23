@@ -23,6 +23,59 @@
     flex: 1 1 auto;
 }
 
+.payroll-source-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    padding: 6px 12px;
+    margin: 0 0 2px 0;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+}
+
+.payroll-source-indicator__label {
+    font-size: 0.67rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.payroll-source-indicator__value {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.payroll-source-indicator--smart {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.payroll-source-indicator--smart .payroll-source-indicator__value {
+    color: #166534;
+}
+
+.payroll-source-indicator--db {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+}
+
+.payroll-source-indicator--db .payroll-source-indicator__value {
+    color: #1d4ed8;
+}
+
+.payroll-source-indicator--manual {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.payroll-source-indicator--manual .payroll-source-indicator__value {
+    color: #b91c1c;
+}
+
 .payroll-view-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -58,6 +111,29 @@
     border: 1px solid #cbd5e1;
     border-radius: 999px;
     background: rgba(248, 250, 252, 0.92);
+}
+
+.payroll-view-toolbar__select-wrap {
+    display: inline-flex;
+    align-items: center;
+}
+
+.payroll-view-toolbar__select {
+    min-height: 34px;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.74rem;
+    font-weight: 600;
+    padding: 0 28px 0 12px;
+    outline: none;
+    cursor: pointer;
+}
+
+.payroll-view-toolbar__select:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+    border-color: #93c5fd;
 }
 
 .payroll-view-toolbar__button,

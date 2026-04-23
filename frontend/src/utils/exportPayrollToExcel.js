@@ -4,6 +4,7 @@
  */
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import { isPayrollNumericField, resolveGrandTotalNumericValue } from './payrollGrandTotalValue';
 
 // Color palette matching ag-grid-professional.css and CustomPayrollTable.css
 const COLORS = {
@@ -110,6 +111,13 @@ function getTotalColumnStyle(field) {
         return { fill: COLORS.upahBersih, font: COLORS.upahBersihText, bold: true };
     }
     return null;
+}
+
+function resolveValuePriorityModeLabel(mode) {
+    const normalized = String(mode || '').trim().toLowerCase();
+    if (normalized === 'db_ptrj_only') return 'DB PTRJ Saja';
+    if (normalized === 'manual_buffer_only') return 'Adjustment + Buffer Saja';
+    return 'Smart (Adjustment + Buffer Prioritas)';
 }
 
 /**
@@ -240,6 +248,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
         'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     const periodStr = `${monthNames[meta.month - 1]} ${meta.year}`;
     const sheetName = `Daftar Upah ${meta.division}`;
+    const sourceModeLabel = resolveValuePriorityModeLabel(meta?.valuePriorityMode);
 
     const worksheet = workbook.addWorksheet(sheetName.substring(0, 31), {
         pageSetup: {
@@ -260,7 +269,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
 
     // === SUB TITLE ROW ===
     const gangLabel = meta.gangCode === 'ALL' ? 'Semua Gang' : `Gang: ${meta.gangCode}`;
-    const subTitleRow = worksheet.addRow([gangLabel]);
+    const subTitleRow = worksheet.addRow([`${gangLabel} | Sumber Nilai: ${sourceModeLabel}`]);
     subTitleRow.height = 20;
     subTitleRow.getCell(1).font = { size: 12, italic: true, color: { argb: '666666' } };
     worksheet.mergeCells(2, 1, 2, enhancedColumnDefs.length);
@@ -409,12 +418,24 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
 
     // === GRAND TOTAL ROW ===
     if (grandTotal) {
+        const employeeCount = rows.filter((row) => row?.type === 'employee').length;
         const gtRowData = enhancedColumnDefs.map((col) => {
             if (col.field === 'nama') return 'GRAND TOTAL';
             if (col.field === 'no') return '';
+            if (col.field === 'emp_code') return `${employeeCount} KARYAWAN`;
+
             let val = grandTotal[col.field];
-            if (typeof val === 'number') return formatNumber(val);
-            return val ?? '-';
+            if (isPayrollNumericField(col.field)) {
+                const numericValue = resolveGrandTotalNumericValue({
+                    grandTotal,
+                    rows,
+                    field: col.field
+                });
+                return formatNumber(numericValue);
+            }
+
+            if (val !== undefined && val !== null && val !== '') return val;
+            return '-';
         });
 
         const gtRow = worksheet.addRow(gtRowData);
@@ -456,7 +477,8 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     }];
 
     // === GENERATE FILE ===
-    const fileName = `Daftar_Upah_${meta.division}_${meta.gangCode === 'ALL' ? 'AllGang' : meta.gangCode}_${meta.year}${String(meta.month).padStart(2, '0')}.xlsx`;
+    const sourceModeToken = String(meta?.valuePriorityMode || 'smart').trim().toLowerCase() || 'smart';
+    const fileName = `Daftar_Upah_${meta.division}_${meta.gangCode === 'ALL' ? 'AllGang' : meta.gangCode}_${meta.year}${String(meta.month).padStart(2, '0')}_SRC-${sourceModeToken}.xlsx`;
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
