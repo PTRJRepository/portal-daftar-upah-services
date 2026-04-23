@@ -1,5 +1,9 @@
 import { Database } from "../db/client";
 import { Config } from "../config";
+import {
+    normalizeStoredAdjustmentName,
+    shouldDeleteStoredAdjustment
+} from "./payroll/manualAdjustments/manualAdjustmentNaming";
 
 export interface ManualAdjustment {
     id?: number;
@@ -42,7 +46,8 @@ export class ManualAdjustmentService {
         month: number,
         year: number,
         gangCode?: string,
-        empCode?: string
+        empCode?: string,
+        divisionCode?: string
     ): Promise<ManualAdjustment[]> {
         const db = this.getDatabase();
         let query = `
@@ -50,6 +55,11 @@ export class ManualAdjustmentService {
             WHERE period_month = ? AND period_year = ?
         `;
         const params: any[] = [month, year];
+
+        if (divisionCode) {
+            query += ` AND division_code = ?`;
+            params.push(divisionCode);
+        }
 
         if (gangCode && gangCode !== 'ALL') {
             query += ` AND gang_code = ?`;
@@ -159,11 +169,12 @@ export class ManualAdjustmentService {
 
         // Ensure amount is a valid float
         const parsedAmount = parseFloat(data.amount.toString()) || 0;
+        const normalizedAdjustmentName = normalizeStoredAdjustmentName(data.adjustment_name);
 
         // --- PENDAPATAN_LAINNYA: Save to employee_other_incomes ---
         if (data.adjustment_type === 'PENDAPATAN_LAINNYA') {
-            console.log(`[saveAdjustment] PENDAPATAN_LAINNYA: emp_code=${data.emp_code}, gang=${data.gang_code}, name=${data.adjustment_name}, amount=${parsedAmount}`);
-            return await this.saveOtherIncome(db, data, parsedAmount, user);
+            console.log(`[saveAdjustment] PENDAPATAN_LAINNYA: emp_code=${data.emp_code}, gang=${data.gang_code}, name=${normalizedAdjustmentName}, amount=${parsedAmount}`);
+            return await this.saveOtherIncome(db, { ...data, adjustment_name: normalizedAdjustmentName }, parsedAmount, user);
         }
 
         // --- Standard adjustments: Save to payroll_manual_adjustments ---
@@ -173,10 +184,10 @@ export class ManualAdjustmentService {
             SELECT id FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ? 
             AND emp_code = ? AND adjustment_type = ? AND adjustment_name = ?
-        `, [data.period_month, data.period_year, data.emp_code, data.adjustment_type, data.adjustment_name]);
+        `, [data.period_month, data.period_year, data.emp_code, data.adjustment_type, normalizedAdjustmentName]);
 
         if (existing) {
-            if (parsedAmount === 0 && !data.remarks?.includes('INIT_COLUMN')) {
+            if (shouldDeleteStoredAdjustment(parsedAmount, data.remarks)) {
                 // If amount is 0, delete it from the table
                 await db.query(`DELETE FROM dbo.payroll_manual_adjustments WHERE id = ?`, [existing.id]);
                 return existing.id;
@@ -190,7 +201,7 @@ export class ManualAdjustmentService {
                 return existing.id;
             }
         } else {
-            if (parsedAmount === 0 && !data.remarks?.includes('INIT_COLUMN')) return 0; // Don't insert zero
+            if (shouldDeleteStoredAdjustment(parsedAmount, data.remarks)) return 0; // Don't insert zero
 
             // Insert
             const result = await db.query(`
@@ -202,7 +213,7 @@ export class ManualAdjustmentService {
                 )
             `, [
                 data.period_month, data.period_year, data.emp_code, data.gang_code, data.division_code || null,
-                data.adjustment_type, data.adjustment_name, parsedAmount, data.remarks || null, user || 'system'
+                data.adjustment_type, normalizedAdjustmentName, parsedAmount, data.remarks || null, user || 'system'
             ]);
             return result[0]?.id;
         }
