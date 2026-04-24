@@ -141,10 +141,13 @@ export default function DashboardLayout({ children, title, subtitle, actions }) 
       <main style={{
         flex: 1,
         background: 'var(--bg-body)',
-        overflow: 'hidden', // AG Grid handles scrolling
+        // Allow page-level scroll (needed for non-grid views like Attendance/Overtime)
+        overflowY: 'auto',
+        overflowX: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        position: 'relative'
+        position: 'relative',
+        minHeight: 0
       }}>
         {children}
       </main>

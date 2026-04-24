@@ -141,6 +141,34 @@ const normalizeValuePriorityMode = (value) => {
     return 'smart';
 };
 
+const normalizeFieldKey = (value) => String(value || '').trim().toLowerCase();
+
+const isPremiFieldKey = (value) => normalizeFieldKey(value).startsWith('premi_');
+
+const isPotonganFieldKey = (value) => {
+    const normalized = normalizeFieldKey(value);
+    return normalized.startsWith('potongan_') || normalized.startsWith('koreksi');
+};
+
+const formatFallbackPotonganLabel = (field) => {
+    const normalized = normalizeFieldKey(field);
+    if (!normalized) return String(field || '').trim().toUpperCase();
+
+    if (normalized.startsWith('koreksi_')) {
+        return `KOREKSI ${normalized.slice('koreksi_'.length).replace(/_/g, ' ').trim()}`.trim().toUpperCase();
+    }
+
+    if (normalized.startsWith('potongan_lainnya_')) {
+        return `POTONGAN LAINNYA ${normalized.slice('potongan_lainnya_'.length).replace(/_/g, ' ').trim()}`.trim().toUpperCase();
+    }
+
+    if (normalized.startsWith('potongan_')) {
+        return `POTONGAN ${normalized.slice('potongan_'.length).replace(/_/g, ' ').trim()}`.trim().toUpperCase();
+    }
+
+    return String(field || '').replace(/_/g, ' ').trim().toUpperCase();
+};
+
 const resolveInitialValuePriorityMode = () => {
     try {
         if (typeof window === 'undefined') return 'smart';
@@ -250,6 +278,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [activeChapterGroup, setActiveChapterGroup] = useState(null);
     const [isChapterBarVisible, setChapterBarVisible] = useState(true);
     const [chapterViewportWindow, setChapterViewportWindow] = useState({ startRatio: 0, widthRatio: 1 });
+    const [tableHorizontalState, setTableHorizontalState] = useState({
+        scrollLeft: 0,
+        maxScrollLeft: 0,
+        ratio: 0,
+        viewportRatio: 1,
+        canScroll: false
+    });
     const valuePriorityBadge = VALUE_PRIORITY_MODE_BADGE[valuePriorityMode] || VALUE_PRIORITY_MODE_BADGE.smart;
     const hasPendingEdits = useMemo(
         () => Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0,
@@ -452,7 +487,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const allFieldKeys = new Set();
         employeeRows.forEach(row => {
             Object.keys(row).forEach(key => {
-                if (key.startsWith('premi_') || key.startsWith('potongan_')) {
+                if (isPremiFieldKey(key) || isPotonganFieldKey(key)) {
                     allFieldKeys.add(key);
                 }
             });
@@ -461,12 +496,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         // Merge both sources - prefer meta headers, add any extras from data
         const activePremi = [...new Set([
             ...dynPrem,
-            ...Array.from(allFieldKeys).filter(k => k.startsWith('premi_'))
+            ...Array.from(allFieldKeys).filter((key) => isPremiFieldKey(key))
         ])];
 
         const activePot = [...new Set([
             ...dynPot,
-            ...Array.from(allFieldKeys).filter(k => k.startsWith('potongan_'))
+            ...Array.from(allFieldKeys).filter((key) => isPotonganFieldKey(key))
         ])];
 
         const excludedPendapatan = ['pendapatan_tidak_tetap', 'pendapatan_lainnya'];
@@ -807,7 +842,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             setActivePotFields(prev => [...new Set([...prev, pendingColumn.fieldName])]);
         }
 
-        setAddedColumns(prev => [...prev, pendingColumn.payload]);
+        setAddedColumns(prev => [...prev, { ...pendingColumn.payload, field: pendingColumn.fieldName }]);
     };
 
     // Handle Manual Cell Edit
@@ -2247,9 +2282,55 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             }
         });
 
+        const dynamicPotonganEntriesMap = new Map();
+        const activePotFieldSet = new Set((activePotFields || []).map((field) => normalizeFieldKey(field)));
+        const addedPotonganTypeByField = new Map();
+
+        for (const addedColumn of addedColumns || []) {
+            if (!addedColumn || !addedColumn.field) continue;
+            if (addedColumn.type !== 'POTONGAN_KOTOR' && addedColumn.type !== 'POTONGAN_BERSIH') continue;
+            addedPotonganTypeByField.set(normalizeFieldKey(addedColumn.field), addedColumn.type);
+        }
+
+        const registerDynamicPotonganEntry = (label, field) => {
+            const normalizedField = normalizeFieldKey(field);
+            if (!normalizedField || dynamicPotonganEntriesMap.has(normalizedField)) return;
+            dynamicPotonganEntriesMap.set(normalizedField, [label, field]);
+        };
+
+        for (const [label, field] of Object.entries(dynamicHeaders.potongan || {})) {
+            registerDynamicPotonganEntry(label, field);
+        }
+
+        for (const field of activePotFields || []) {
+            const normalizedField = normalizeFieldKey(field);
+            if (!normalizedField || dynamicPotonganEntriesMap.has(normalizedField)) continue;
+            registerDynamicPotonganEntry(formatFallbackPotonganLabel(field), field);
+        }
+
+        if (isEditMode) {
+            for (const addedColumn of addedColumns || []) {
+                if (!addedColumn || !addedColumn.field) continue;
+                if (addedColumn.type !== 'POTONGAN_KOTOR' && addedColumn.type !== 'POTONGAN_BERSIH') continue;
+                registerDynamicPotonganEntry(
+                    addedColumn.name || formatFallbackPotonganLabel(addedColumn.field),
+                    addedColumn.field
+                );
+            }
+        }
+
+        const dynamicPotonganEntries = Array.from(dynamicPotonganEntriesMap.values());
+
         // POTONGAN UPAH KOTOR
-        const koreksiFields = Object.entries(dynamicHeaders.potongan)
-            .filter(([label, field]) => field.toUpperCase().startsWith('KOREKSI') && (activePotFields.includes(field) || isEditMode))
+        const koreksiFields = dynamicPotonganEntries
+            .filter(([label, field]) => {
+                const normalizedField = normalizeFieldKey(field);
+                const normalizedLabel = String(label || '').trim().toUpperCase();
+                const addedType = addedPotonganTypeByField.get(normalizedField);
+                const isKoreksiField = normalizedField.startsWith('koreksi') || normalizedLabel.startsWith('KOREKSI');
+                if (!(isKoreksiField || addedType === 'POTONGAN_KOTOR')) return false;
+                return activePotFieldSet.has(normalizedField) || isEditMode;
+            })
             .sort(([a], [b]) => (a || '').localeCompare(b || ''));
 
         if (koreksiFields.length === 0 && !isEditMode) {
@@ -2381,12 +2462,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             });
 
             // Dynamic Potongan Bersih
-            const potonganBersihFields = Object.entries(dynamicHeaders.potongan)
+            const potonganBersihFields = dynamicPotonganEntries
                 .filter(([label, field]) => {
-                    const u = (field || '').toUpperCase();
+                    const normalizedField = normalizeFieldKey(field);
+                    const u = normalizedField.toUpperCase();
+                    const addedType = addedPotonganTypeByField.get(normalizedField);
+                    if (addedType === 'POTONGAN_KOTOR') return false;
+                    if (addedType === 'POTONGAN_BERSIH') return true;
                     return !u.startsWith('KOREKSI') && u !== 'SPSI' && u !== 'PPH21' && u !== 'PREMI_PPH';
                 })
-                .filter(([label, field]) => activePotFields.includes(field) || isEditMode)
+                .filter(([label, field]) => activePotFieldSet.has(normalizeFieldKey(field)) || isEditMode)
                 .sort(([a], [b]) => (a || '').localeCompare(b || ''));
 
             for (const [label, field] of potonganBersihFields) {
@@ -2456,7 +2541,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells, addedColumns]);
 
     const chapterSegments = useMemo(() => buildPayrollViewportChapters(columnDefs), [columnDefs]);
     const firstScrollableGroup = useMemo(
@@ -2524,6 +2609,64 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         setChapterViewportWindow(getPayrollViewportWindow(chapterSegments, viewport));
     }, [activeChapterGroup, chapterSegments, displayMode, firstScrollableGroup]);
 
+    const syncHorizontalScrollState = useCallback((container = tableContainerRef.current) => {
+        if (!container) {
+            setTableHorizontalState({
+                scrollLeft: 0,
+                maxScrollLeft: 0,
+                ratio: 0,
+                viewportRatio: 1,
+                canScroll: false
+            });
+            return;
+        }
+
+        const maxScrollLeft = Math.max((container.scrollWidth || 0) - (container.clientWidth || 0), 0);
+        const scrollLeft = Math.max(0, Math.min(maxScrollLeft, container.scrollLeft || 0));
+        const ratio = maxScrollLeft > 0 ? scrollLeft / maxScrollLeft : 0;
+        const viewportRatio = container.scrollWidth > 0
+            ? Math.min(1, Math.max((container.clientWidth || 0) / container.scrollWidth, 0.06))
+            : 1;
+
+        setTableHorizontalState((prev) => {
+            if (
+                prev.maxScrollLeft === maxScrollLeft &&
+                prev.scrollLeft === scrollLeft &&
+                Math.abs(prev.ratio - ratio) < 0.0008 &&
+                Math.abs(prev.viewportRatio - viewportRatio) < 0.0008 &&
+                prev.canScroll === (maxScrollLeft > 8)
+            ) {
+                return prev;
+            }
+
+            return {
+                scrollLeft,
+                maxScrollLeft,
+                ratio,
+                viewportRatio,
+                canScroll: maxScrollLeft > 8
+            };
+        });
+    }, []);
+
+    const handleHorizontalSliderChange = useCallback((nextRatio) => {
+        const container = tableContainerRef.current;
+        if (!container) return;
+
+        const maxScrollLeft = Math.max((container.scrollWidth || 0) - (container.clientWidth || 0), 0);
+        if (maxScrollLeft <= 0) {
+            syncHorizontalScrollState(container);
+            return;
+        }
+
+        const ratio = Math.max(0, Math.min(1, Number(nextRatio) || 0));
+        const nextLeft = Math.round(maxScrollLeft * ratio);
+        container.scrollTo({ left: nextLeft, behavior: 'auto' });
+        setChapterBarVisible(true);
+        syncActiveChapter(container);
+        syncHorizontalScrollState(container);
+    }, [syncActiveChapter, syncHorizontalScrollState]);
+
     const scrollToChapterGroup = useCallback((group) => {
         const container = tableContainerRef.current;
         if (!group) return;
@@ -2577,8 +2720,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     useEffect(() => {
         const container = tableContainerRef.current;
-        if (!container || displayMode === 'simple') return undefined;
+        if (!container) return undefined;
         let lastScrollLeft = container.scrollLeft;
+        syncHorizontalScrollState(container);
 
         const handleScroll = () => {
             if (container.scrollLeft === lastScrollLeft) return;
@@ -2586,6 +2730,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             lastScrollLeft = container.scrollLeft;
             setChapterBarVisible(true);
             syncActiveChapter(container);
+            syncHorizontalScrollState(container);
 
             // Auto-hide disabled - footer should always stay visible for better UX
             // User can click tabs to navigate without footer disappearing
@@ -2599,7 +2744,17 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 clearTimeout(chapterBarHideTimerRef.current);
             }
         };
-    }, [displayMode, syncActiveChapter]);
+    }, [displayMode, syncActiveChapter, syncHorizontalScrollState]);
+
+    useEffect(() => {
+        syncHorizontalScrollState();
+    }, [displayRows.length, renderColumnDefs.length, displayMode, syncHorizontalScrollState]);
+
+    useEffect(() => {
+        const onResize = () => syncHorizontalScrollState();
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, [syncHorizontalScrollState]);
 
     // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
     const handleExportToExcel = useCallback(async () => {
@@ -2922,7 +3077,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             style={{ 
                 height: 'calc(100vh - 120px)', 
                 minHeight: '400px',
-                '--payroll-bottom-safe-area': '60px',
+                '--payroll-bottom-safe-area': '112px',
                 '--payroll-grand-total-offset': '50px'
             }}
         >
@@ -2936,7 +3091,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 ref={tableContainerRef}
                 style={{
                     fontSize: `${11 * scale}px`,
-                    '--payroll-bottom-safe-area': '56px',
+                    '--payroll-bottom-safe-area': '112px',
                     '--payroll-grand-total-offset': '36px'
                 }}
             >
@@ -3427,6 +3582,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 processedGangs={effectiveProgress?.processedGangs || 0}
                 displayMode={displayMode}
                 onToggleDisplayMode={() => setDisplayMode(displayMode === 'simple' ? 'detail' : 'simple')}
+                horizontalScrollRatio={tableHorizontalState.ratio}
+                horizontalViewportRatio={tableHorizontalState.viewportRatio}
+                horizontalCanScroll={tableHorizontalState.canScroll}
+                onHorizontalScrollChange={handleHorizontalSliderChange}
             />
             <SelectionStatusBar stats={selectionStats} />
         </div>

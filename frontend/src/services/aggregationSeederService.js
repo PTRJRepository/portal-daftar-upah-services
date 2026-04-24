@@ -53,6 +53,18 @@ export async function seedTonaseOnly(token, month, year) {
 }
 
 /**
+ * Seed auto buffer values to payroll_manual_adjustments (AUTO_BUFFER)
+ */
+export async function seedAutoBufferManualAdjustments(token, payload) {
+    const response = await axios.post('payroll/manual-adjustment/seed-auto-buffer', payload, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+    return response.data;
+}
+
+/**
  * Fetch aggregation history
  */
 export async function fetchAggregationHistory(token, month = null, year = null, division = null) {

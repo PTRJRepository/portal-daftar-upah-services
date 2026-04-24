@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import {
     checkAggregationHealth,
     seedAggregation,
+    seedAutoBufferManualAdjustments,
     fetchAggregationSummary,
     fetchAggregationDivisions,
     fetchAggregationPeriods,
@@ -48,6 +49,7 @@ export default function AggregationSeederPage({ onBack }) {
     // State
     const [isRunning, setIsRunning] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isAutoBufferSeeding, setIsAutoBufferSeeding] = useState(false);
     const [isHistoryRunning, setIsHistoryRunning] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState('checking');
     const [historyConnectionStatus, setHistoryConnectionStatus] = useState('checking');
@@ -171,7 +173,7 @@ export default function AggregationSeederPage({ onBack }) {
 
     // Run seeder
     const handleRunSeeder = async () => {
-        if (isRunning) return;
+        if (isRunning || isAutoBufferSeeding) return;
         if (connectionStatus !== 'connected') {
             addLog('❌ Database not connected. Cannot run seeder.', 'error');
             return;
@@ -213,9 +215,103 @@ export default function AggregationSeederPage({ onBack }) {
         }
     };
 
+    // Seed auto buffer values into manual adjustment table (AUTO_BUFFER)
+    const handleSeedAutoBuffer = async () => {
+        if (isAutoBufferSeeding || isRunning || isSyncing || isHistoryRunning || isPtkpRunning) return;
+        if (connectionStatus !== 'connected') {
+            addLog('ERROR: Database not connected. Cannot run auto buffer seeder.', 'error');
+            return;
+        }
+
+        const targetDivisions = division === 'ALL'
+            ? divisions.filter((item) => item && item !== 'ALL')
+            : [division];
+
+        if (targetDivisions.length === 0) {
+            addLog('ERROR: No target division available for auto buffer seeding.', 'error');
+            return;
+        }
+
+        const scopeLabel = division === 'ALL'
+            ? `ALL divisions (${targetDivisions.length})`
+            : division;
+        const confirmMsg = `Seed Auto Buffer -> Manual Adjustment for ${scopeLabel} period ${formatMonthName(month)} ${year}?`;
+        if (!window.confirm(confirmMsg)) return;
+
+        setIsAutoBufferSeeding(true);
+        addLog('='.repeat(40), 'info');
+        addLog('Starting Auto Buffer -> Manual Adjustment seeder...');
+        addLog(`Period: ${formatMonthName(month)} ${year}`);
+        addLog(`Scope: ${scopeLabel}`);
+
+        let successCount = 0;
+        let failedCount = 0;
+        const aggregate = {
+            source_rows: 0,
+            seeded_entries: 0,
+            inserted: 0,
+            updated: 0,
+            deleted_existing: 0
+        };
+
+        try {
+            for (const divisionCode of targetDivisions) {
+                addLog(`Seeding AUTO_BUFFER for division ${divisionCode}...`, 'info');
+                try {
+                    const result = await seedAutoBufferManualAdjustments(token, {
+                        period_month: month,
+                        period_year: year,
+                        division_code: divisionCode,
+                        gang_code: 'ALL',
+                        use_history_db: false,
+                        replace_existing: true
+                    });
+
+                    if (!result?.success) {
+                        failedCount += 1;
+                        addLog(`${divisionCode}: ${result?.error || 'Seeder failed'}`, 'error');
+                        continue;
+                    }
+
+                    const data = result.data || {};
+                    successCount += 1;
+                    aggregate.source_rows += Number(data.source_rows || 0);
+                    aggregate.seeded_entries += Number(data.seeded_entries || 0);
+                    aggregate.inserted += Number(data.inserted || 0);
+                    aggregate.updated += Number(data.updated || 0);
+                    aggregate.deleted_existing += Number(data.deleted_existing || 0);
+
+                    addLog(
+                        `${divisionCode}: rows=${Number(data.source_rows || 0)}, seed=${Number(data.seeded_entries || 0)}, insert=${Number(data.inserted || 0)}, update=${Number(data.updated || 0)}`,
+                        'success'
+                    );
+                } catch (error) {
+                    failedCount += 1;
+                    const message = error?.response?.data?.error || error?.message || 'Seeder failed';
+                    addLog(`${divisionCode}: ${message}`, 'error');
+                }
+            }
+
+            addLog('='.repeat(40), 'info');
+            if (failedCount === 0) {
+                addLog('Auto buffer seeding completed.', 'success');
+            } else {
+                addLog(`Auto buffer seeding completed with ${failedCount} failure(s).`, 'warn');
+            }
+            addLog(`Success divisions: ${successCount}/${targetDivisions.length}`);
+            addLog(`Total source rows: ${aggregate.source_rows}`);
+            addLog(`Total seeded entries: ${aggregate.seeded_entries}`);
+            addLog(`Total inserted: ${aggregate.inserted}`);
+            addLog(`Total updated: ${aggregate.updated}`);
+            addLog(`Total replaced(old rows): ${aggregate.deleted_existing}`);
+        } finally {
+            setIsAutoBufferSeeding(false);
+        }
+    };
+
     // Run spreadsheet sync
     const handleSyncSpreadsheet = async () => {
-        if (isSyncing || isRunning) return;
+        if (isSyncing || isRunning || isAutoBufferSeeding) return;
 
         setIsSyncing(true);
         addLog('='.repeat(40), 'info');
@@ -295,7 +391,7 @@ export default function AggregationSeederPage({ onBack }) {
 
     // Run history seeder (terpisah dari aggregation seeder)
     const handleRunHistorySeeder = async () => {
-        if (isHistoryRunning) return;
+        if (isHistoryRunning || isAutoBufferSeeding) return;
 
         // Check authentication first
         if (!token) {
@@ -574,7 +670,7 @@ export default function AggregationSeederPage({ onBack }) {
                         <select
                             value={division}
                             onChange={(e) => setDivision(e.target.value)}
-                            disabled={isRunning}
+                            disabled={isRunning || isAutoBufferSeeding}
                         >
                             {divisions.map(d => (
                                 <option key={d} value={d}>{d}</option>
@@ -588,7 +684,7 @@ export default function AggregationSeederPage({ onBack }) {
                         <select
                             value={month}
                             onChange={(e) => setMonth(parseInt(e.target.value))}
-                            disabled={isRunning}
+                            disabled={isRunning || isAutoBufferSeeding}
                         >
                             {monthOptions.map(m => (
                                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -602,7 +698,7 @@ export default function AggregationSeederPage({ onBack }) {
                         <select
                             value={year}
                             onChange={(e) => setYear(parseInt(e.target.value))}
-                            disabled={isRunning}
+                            disabled={isRunning || isAutoBufferSeeding}
                         >
                             {yearOptions.map(y => (
                                 <option key={y} value={y}>{y}</option>
@@ -616,7 +712,7 @@ export default function AggregationSeederPage({ onBack }) {
                         <select
                             value={syncType}
                             onChange={(e) => setSyncType(e.target.value)}
-                            disabled={isRunning || isSyncing}
+                            disabled={isRunning || isSyncing || isAutoBufferSeeding}
                         >
                             <option value="DAFTAR_UPAH">Daftar Upah</option>
                             <option value="OTHER_REPORT" disabled>Laporan Lain (Coming Soon)</option>
@@ -628,15 +724,24 @@ export default function AggregationSeederPage({ onBack }) {
                     {/* Action Buttons */}
                     <button
                         onClick={handleRunSeeder}
-                        disabled={isRunning || connectionStatus !== 'connected'}
+                        disabled={isRunning || isAutoBufferSeeding || connectionStatus !== 'connected'}
                         className="agg-btn agg-btn-primary"
                     >
                         {isRunning ? '⏳ Running...' : '🚀 Run Seeder'}
                     </button>
 
                     <button
+                        onClick={handleSeedAutoBuffer}
+                        disabled={isRunning || isSyncing || isHistoryRunning || isAutoBufferSeeding || connectionStatus !== 'connected'}
+                        className="agg-btn"
+                        style={{ backgroundColor: '#f59e0b', borderColor: '#d97706', color: 'white', marginTop: '8px' }}
+                    >
+                        {isAutoBufferSeeding ? 'â³ Seeding Auto Buffer...' : 'ðŸ§ª Seed Auto Buffer -> Manual Adj'}
+                    </button>
+
+                    <button
                         onClick={handleSyncSpreadsheet}
-                        disabled={isRunning || isSyncing || connectionStatus !== 'connected'}
+                        disabled={isRunning || isSyncing || isAutoBufferSeeding || connectionStatus !== 'connected'}
                         className="agg-btn agg-btn-success"
                         style={{ backgroundColor: '#10b981', borderColor: '#059669', color: 'white', marginTop: '8px' }}
                     >
@@ -645,7 +750,7 @@ export default function AggregationSeederPage({ onBack }) {
 
                     <button
                         onClick={handleCheckStatus}
-                        disabled={isRunning || isSyncing}
+                        disabled={isRunning || isSyncing || isAutoBufferSeeding}
                         className="agg-btn agg-btn-secondary"
                     >
                         🔍 Check Status
@@ -653,7 +758,7 @@ export default function AggregationSeederPage({ onBack }) {
 
                     <button
                         onClick={handleViewSummary}
-                        disabled={isRunning}
+                        disabled={isRunning || isAutoBufferSeeding}
                         className="agg-btn agg-btn-secondary"
                     >
                         📈 View Summary
@@ -668,7 +773,7 @@ export default function AggregationSeederPage({ onBack }) {
                         <select
                             value={historySeederType}
                             onChange={(e) => setHistorySeederType(e.target.value)}
-                            disabled={isHistoryRunning || isRunning}
+                            disabled={isHistoryRunning || isRunning || isAutoBufferSeeding}
                         >
                             <option value="PAYROLL">Payroll & Transactions (Master/Detail)</option>
                             <option value="EMPLOYEE_HR">Data Karyawan (HR Employee)</option>
@@ -748,7 +853,7 @@ export default function AggregationSeederPage({ onBack }) {
 
                     <button
                         onClick={handleRunHistorySeeder}
-                        disabled={isHistoryRunning || isRunning || historyConnectionStatus !== 'connected'}
+                        disabled={isHistoryRunning || isRunning || isAutoBufferSeeding || historyConnectionStatus !== 'connected'}
                         className="agg-btn"
                         style={{
                             backgroundColor: '#8b5cf6',
@@ -789,7 +894,7 @@ export default function AggregationSeederPage({ onBack }) {
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                             onClick={handlePreviewPtkp}
-                            disabled={isPtkpRunning || isHistoryRunning || isRunning || historyConnectionStatus !== 'connected'}
+                            disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || historyConnectionStatus !== 'connected'}
                             className="agg-btn"
                             style={{
                                 flex: 1,
@@ -804,7 +909,7 @@ export default function AggregationSeederPage({ onBack }) {
 
                         <button
                             onClick={handleRunPtkpUpdate}
-                            disabled={isPtkpRunning || isHistoryRunning || isRunning || historyConnectionStatus !== 'connected'}
+                            disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || historyConnectionStatus !== 'connected'}
                             className="agg-btn"
                             style={{
                                 flex: 2,
