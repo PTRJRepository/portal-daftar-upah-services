@@ -1,5 +1,7 @@
 import { Elysia, t } from "elysia";
 import { AuthService } from "../services/authService";
+import { Config } from "../config";
+import { UserRole } from "../types/user";
 
 export const authRoutes = new Elysia({ prefix: "/auth" })
     .decorate("authService", AuthService.getInstance())
@@ -33,6 +35,25 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         })
     })
     .derive(async ({ headers, authService }) => {
+        // Check X-API-Key header for bypass
+        const apiKey = headers["x-api-key"];
+        if (apiKey && Config.API_KEY_BYPASS && apiKey === Config.API_KEY_BYPASS) {
+            console.log("[Auth] API Key bypass used. Granting ADMIN access.");
+            return {
+                user: {
+                    id: 0,
+                    username: "api_key_admin",
+                    email: "apikey@admin.com",
+                    full_name: "API Key Admin (Bypass)",
+                    role: UserRole.ADMIN,
+                    divisions: AuthService.ALL_DIVISIONS,
+                    is_active: true,
+                    created_at: new Date(),
+                    updated_at: new Date()
+                }
+            };
+        }
+
         const authHeader = headers["authorization"];
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
             return { user: null };
