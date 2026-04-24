@@ -1604,11 +1604,8 @@ export class DataExtractorService {
                 console.log(`[DataExtractor DEBUG] Processing ${emp.emp_code} (${emp.gang_code}): hari_kerja=${hari_kerja}, found=${!rowFound}`);
             }
 
+            // Keep every employee that passed strict effective_hk validation above.
             seenEmpCodes.add(emp.emp_code);
-
-            // [FILTER] "kehadiran > 0 gausah tampil"
-            // Hide employees who have worked (hari_kerja > 0)
-            if (hari_kerja > 0) continue;
 
             // formula handled inside OOP logic
             const koreksi_hk = gpResult?.koreksi_hk?.value || 0;
