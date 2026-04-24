@@ -63,6 +63,7 @@ export class ManualAdjustmentService {
         let query = `
             SELECT * FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ?
+              AND adjustment_type IN ('PREMI', 'POTONGAN_KOTOR', 'POTONGAN_BERSIH', 'PENDAPATAN_LAINNYA')
         `;
         const params: any[] = [month, year];
 

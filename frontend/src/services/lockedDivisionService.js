@@ -135,7 +135,8 @@ export default {
     getLockedInfo,
     getLockedGangs,
     getLockedReport,
-    getLockedRawTree
+    getLockedRawTree,
+    seedLockedAutoBufferToManualAdjustment
 }
 
 /**
@@ -175,6 +176,18 @@ export async function saveLockedValueOverrides(token, payload) {
         return response.data
     } catch (error) {
         console.error('[LockedDivisionService] Failed to save value overrides:', error)
+        throw error
+    }
+}
+
+export async function seedLockedAutoBufferToManualAdjustment(token, payload) {
+    try {
+        const response = await axios.post(`${BASE_URL}/manual-adjustment/seed-auto-buffer`, payload, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        return response.data
+    } catch (error) {
+        console.error('[LockedDivisionService] Failed to seed auto buffer to manual adjustment:', error)
         throw error
     }
 }

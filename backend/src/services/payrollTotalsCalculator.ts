@@ -117,22 +117,11 @@ export function calculatePayrollTotals(employees: any[], label: string): Payroll
         return createEmptyTotals(label);
     }
 
-    // Helper to sum a numeric field across all ACTIVE employees - EXACT same as frontend agg()
+    // Helper to sum a numeric field across all ACTIVE employees.
+    // Canonical payroll rows should already contain normalized derived values.
     const agg = (field: string): number => {
         return Math.round(
             activeEmployees.reduce((total, emp) => {
-                // ⚠️ SPECIAL CASE: jumlah_upah_kotor
-                // Backend dataExtractorService might return jumlah_upah_kotor that INCLUDES koreksi
-                // But frontend uses jumlah_upah_kotor that EXCLUDES koreksi
-                // So we need to SUBTRACT koreksi from jumlah_upah_kotor to match frontend
-                if (field === 'jumlah_upah_kotor') {
-                    const juk = Number(emp.jumlah_upah_kotor || 0);
-                    const koreksi = Number(emp.pot_koreksi || 0);
-                    const premiKoreksi = Number(emp.premi_koreksi || 0);
-                    // Subtract koreksi to get the correct jumlah_upah_kotor
-                    return total + (juk - koreksi - premiKoreksi);
-                }
-                
                 const val = Number(emp[field] || 0);
                 return total + val;
             }, 0)

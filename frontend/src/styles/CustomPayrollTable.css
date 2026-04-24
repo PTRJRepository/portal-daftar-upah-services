@@ -181,6 +181,22 @@
     padding-right: 10px;
 }
 
+.payroll-view-toolbar__button--seed {
+    border-color: #f59e0b;
+    color: #92400e;
+    background: #fffbeb;
+}
+
+.payroll-view-toolbar__button--seed:hover:not(:disabled) {
+    border-color: #f59e0b;
+    background: #fef3c7;
+}
+
+.payroll-view-toolbar__button--seed:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
 .payroll-view-toolbar__button-state {
     display: inline-flex;
     align-items: center;

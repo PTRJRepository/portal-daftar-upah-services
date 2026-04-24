@@ -368,7 +368,7 @@ Gross Monthly Income (Upah Kotor)
 upah_kotor = gaji_pokok_aktual + total_tunjangan + total_premi
 
 // Level 2: JUMLAH UPAH KOTOR (Daftar Upah display)
-jumlah_upah_kotor = upah_kotor + pot_koreksi + pendapatan_lainnya
+jumlah_upah_kotor = upah_kotor - pot_koreksi + pendapatan_lainnya
 // NOTE: koreksi SUBTRACTED from display, lainnya ADDED
 
 // Level 3: PENGHASILAN BRUTO (For PPh21 TER)

@@ -27,7 +27,7 @@ export interface PayrollFormulaInput {
     lembur_jumlah: number;
     total_tunjangan: number;    // beras + jabatan + masa_kerja + lembur
     total_premi: number;        // all premi EXCLUDING koreksi
-    pot_koreksi: number;        // koreksi HK - added to gross, NOT in total_potongan
+    pot_koreksi: number;        // koreksi HK - subtracted in gross display, NOT in total_potongan
     pendapatan_lainnya: number;  // THR + Bonus + Custom + KONTAN - in both gross AND total_potongan
 
     // Deductions (worker/employee portions)
@@ -50,12 +50,12 @@ export interface PayrollFormulaInput {
 export interface PayrollFormulaResult {
     // Core gross wage (3 levels)
     upah_kotor: number;           // gaji + tunjangan + total_premi (tanpa koreksi/lainnya)
-    jumlah_upah_kotor: number;    // upah_kotor + pot_koreksi + pendapatan_lainnya
+    jumlah_upah_kotor: number;    // upah_kotor - pot_koreksi + pendapatan_lainnya
     potongan_upah_kotor: number;   // pot_koreksi (displayed separately)
 
     // Tax calculation
-    upah_kotor_pajak: number;    // taxable: upah_kotor + pot_koreksi + pendapatan_lainnya + bpjs_pekerja
-    penghasilan_bruto: number;    // for PPh21 TER: upah_kotor + pot_koreksi + pendapatan_lainnya + astek_m + bpjs_m
+    upah_kotor_pajak: number;    // taxable: upah_kotor - pot_koreksi + pendapatan_lainnya + bpjs_pekerja
+    penghasilan_bruto: number;    // for PPh21 TER: upah_kotor - pot_koreksi + pendapatan_lainnya + astek_m + bpjs_m
     tarif_pajak_ter: number;       // TER rate percentage
     pph21_ter: number;            // PPh21 using TER method
     taxable_pendapatan_lainnya: number;
@@ -83,7 +83,7 @@ export interface KomponenKotor {
     subtotal: number;   // gaji_pokok + tunjangan + lembur + premi
     koreksi: number;
     lainnya: number;
-    grand_subtotal: number;  // subtotal + koreksi + lainnya = jumlah_upah_kotor
+    grand_subtotal: number;  // subtotal - koreksi + lainnya = jumlah_upah_kotor
 }
 
 /**

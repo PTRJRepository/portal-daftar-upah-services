@@ -16,10 +16,12 @@ export default function PayrollViewModeToolbar({
     focusLens = false,
     taxExpanded = false,
     valuePriorityMode = 'smart',
+    isSeedingAutoBuffer = false,
     onModeChange = () => {},
     onFocusLensChange = () => {},
     onToggleTax = () => {},
-    onValuePriorityModeChange = () => {}
+    onValuePriorityModeChange = () => {},
+    onSeedAutoBuffer = () => {}
 }) {
     return (
         <div className="payroll-view-toolbar" role="toolbar" aria-label="Pengaturan tampilan tabel payroll">
@@ -83,6 +85,18 @@ export default function PayrollViewModeToolbar({
                 >
                     <span className="payroll-view-toolbar__button-copy">Pajak</span>
                     <span className="payroll-view-toolbar__button-state">{taxExpanded ? 'Terbuka' : 'Ringkas'}</span>
+                </button>
+            </div>
+
+            <div className="payroll-view-toolbar__section">
+                <span className="payroll-view-toolbar__label">Seeder</span>
+                <button
+                    type="button"
+                    className={`payroll-view-toolbar__button payroll-view-toolbar__button--seed ${isSeedingAutoBuffer ? 'is-active' : ''}`}
+                    onClick={onSeedAutoBuffer}
+                    disabled={isSeedingAutoBuffer}
+                >
+                    {isSeedingAutoBuffer ? 'Menyimpan Buffer...' : 'Seed Buffer -> Manual'}
                 </button>
             </div>
         </div>

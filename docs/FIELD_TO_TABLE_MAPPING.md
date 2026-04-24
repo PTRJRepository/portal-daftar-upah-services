@@ -3,6 +3,9 @@
 **Updated:** 2026-04-22  
 **Source:** `dataExtractorService.ts`, `PayrollCalculator.ts`, `carumanDefinitions.ts`
 
+Canonical source precedence and derived-field flow:
+- See `docs/PAYROLL_SOURCE_FLOW.md`
+
 ---
 
 ## DAFTAR UPAH - TABLE-TO-FIELD MAPPING

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from '
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import '../styles/CustomPayrollTable.css';
-import { getLockedRawTree, saveLockedManualEdit, saveLockedProfileOverride, saveLockedValueOverrides } from '../services/lockedDivisionService';
+import { getLockedRawTree, saveLockedManualEdit, saveLockedProfileOverride, saveLockedValueOverrides, seedLockedAutoBufferToManualAdjustment } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
 import PayrollScrollChapterBar from './PayrollScrollChapterBar';
@@ -219,6 +219,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [editedCells, setEditedCells] = useState({}); // { 'nik-field': { value, originalValue, gang_code, type, name } }
     const [addedColumns, setAddedColumns] = useState([]); // Track new columns added in edit mode
     const [isSavingEdits, setIsSavingEdits] = useState(false);
+    const [isSeedingAutoBuffer, setIsSeedingAutoBuffer] = useState(false);
 
     // Kontan (Other Income) State - Always editable column
     const [editedKontanCells, setEditedKontanCells] = useState({}); // { 'nik-kontan': { value, originalValue, gang_code } }
@@ -1273,6 +1274,67 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             setLoading(false);
         }
     };
+
+    const handleSeedAutoBufferToManualAdjustment = useCallback(async () => {
+        if (!token || !division || !month || !year) {
+            alert('Periode/divisi belum lengkap. Seeder tidak bisa dijalankan.');
+            return;
+        }
+
+        const gangScopeLabel = gangCode && gangCode !== 'ALL' ? `gang ${gangCode}` : 'semua gang';
+        const confirmText = `Seed buffer otomatis ke manual adjustment untuk ${division} (${gangScopeLabel}) periode ${month}/${year}?`;
+        if (!window.confirm(confirmText)) return;
+
+        setIsSeedingAutoBuffer(true);
+        try {
+            const payload = {
+                period_month: Number(month),
+                period_year: Number(year),
+                division_code: String(division || '').trim().toUpperCase(),
+                gang_code: gangCode && gangCode !== 'ALL' ? gangCode : 'ALL',
+                use_history_db: !!useHistoryDb,
+                snapshot_version: snapshotVersion ?? undefined,
+                replace_existing: true
+            };
+
+            let responseJson;
+            if (isProdMode()) {
+                responseJson = await seedLockedAutoBufferToManualAdjustment(token, payload);
+            } else {
+                const response = await fetch('/payroll/manual-adjustment/seed-auto-buffer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                responseJson = await response.json();
+                if (!response.ok) {
+                    throw new Error(responseJson?.error || `HTTP ${response.status}`);
+                }
+            }
+
+            if (!responseJson?.success) {
+                throw new Error(responseJson?.error || 'Seeder auto buffer gagal dijalankan');
+            }
+
+            const data = responseJson?.data || {};
+            alert(
+                `Seeder auto buffer selesai.\n` +
+                `Source rows: ${Number(data.source_rows || 0)}\n` +
+                `Seeded entries: ${Number(data.seeded_entries || 0)}\n` +
+                `Inserted: ${Number(data.inserted || 0)}\n` +
+                `Updated: ${Number(data.updated || 0)}`
+            );
+            triggerPayrollRefresh();
+        } catch (error) {
+            console.error('[CustomPayrollTable] Seed auto buffer failed:', error);
+            alert(`Gagal seed auto buffer: ${error.message}`);
+        } finally {
+            setIsSeedingAutoBuffer(false);
+        }
+    }, [token, division, month, year, gangCode, useHistoryDb, snapshotVersion, triggerPayrollRefresh]);
 
     /**
      * processRawData: Transform raw API data → display rows with PROGRESSIVE rendering.
@@ -2822,9 +2884,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     focusLens={focusLensEnabled}
                     taxExpanded={isTaxExpanded}
                     valuePriorityMode={valuePriorityMode}
+                    isSeedingAutoBuffer={isSeedingAutoBuffer}
                     onModeChange={setDisplayMode}
                     onFocusLensChange={setFocusLensEnabled}
                     onValuePriorityModeChange={(nextMode) => setValuePriorityMode(normalizeValuePriorityMode(nextMode))}
+                    onSeedAutoBuffer={handleSeedAutoBufferToManualAdjustment}
                     onToggleTax={() => toggleGroup('PAJAK')}
                 />
             </div>

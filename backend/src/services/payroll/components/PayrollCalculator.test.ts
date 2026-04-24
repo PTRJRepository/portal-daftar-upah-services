@@ -4,9 +4,9 @@
  * 1. UPAH KOTOR = gaji + (tunjangan - lembur) + lembur + total_premi
  *    = gaji_pokok_aktual + (total_tunjangan - lembur_jumlah) + lembur_jumlah + total_premi
  *    = gaji_pokok_aktual + tunjangan_non_lembur + lembur + total_premi
- * 2. JUMLAH UPAH KOTOR = UPAH KOTOR + pot_koreksi + pendapatan_lainnya (tampilan)
- * 3. PENGHASILAN BRUTO = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + astek_m + bpjs_m
- * 4. UPAH KOTOR PAJAK = UPAH KOTOR + pot_koreksi + pendapatan_lainnya + bpjs_pekerja
+ * 2. JUMLAH UPAH KOTOR = UPAH KOTOR - pot_koreksi + pendapatan_lainnya (tampilan)
+ * 3. PENGHASILAN BRUTO = UPAH KOTOR - pot_koreksi + pendapatan_lainnya + astek_m + bpjs_m
+ * 4. UPAH KOTOR PAJAK = UPAH KOTOR - pot_koreksi + pendapatan_lainnya + bpjs_pekerja
  * 5. TOTAL POTONGAN = bpjs_kes + bpjs_pensiun + astek + spsi + pph (NO koreksi/lainnya/other)
  * 6. UPAH BERSIH = UPAH KOTOR - TOTAL POTONGAN + premi_pph
  */

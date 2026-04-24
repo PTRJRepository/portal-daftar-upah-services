@@ -474,6 +474,48 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             value_priority_mode: t.Optional(t.String())
         })
     })
+    // --- Seed Auto Buffer -> Manual Adjustment ---
+    .post("/manual-adjustment/seed-auto-buffer", async ({ body, currentUser, set }) => {
+        try {
+            const { autoBufferManualAdjustmentSeederService } = await import("../services/autoBufferManualAdjustmentSeederService");
+            const { cacheService } = await import("../services/cacheService");
+            const payload = body as any;
+
+            const result = await autoBufferManualAdjustmentSeederService.seedPeriod({
+                period_month: payload.period_month,
+                period_year: payload.period_year,
+                division_code: payload.division_code,
+                gang_code: payload.gang_code,
+                use_history_db: payload.use_history_db,
+                snapshot_version: payload.snapshot_version,
+                replace_existing: payload.replace_existing,
+                created_by: currentUser?.username || "system"
+            });
+
+            const pattern = `:${payload.period_month}:${payload.period_year}`;
+            cacheService.clearByPattern(pattern);
+
+            return {
+                success: true,
+                message: "Auto buffer berhasil disimpan ke payroll_manual_adjustments (AUTO_BUFFER)",
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/seed-auto-buffer error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            gang_code: t.Optional(t.String()),
+            use_history_db: t.Optional(t.Boolean()),
+            snapshot_version: t.Optional(t.Number()),
+            replace_existing: t.Optional(t.Boolean())
+        })
+    })
     // --- Locked Report: Raw Tree (Alias for Proxy/Frontend Compat) ---
     .get("/locked/report/raw-tree", async ({ query, set, currentUser }): Promise<any> => {
         try {
@@ -1568,6 +1610,47 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             use_history: t.Optional(t.String()),
             snapshot_version: t.Optional(t.String()),
             value_priority_mode: t.Optional(t.String())
+        })
+    })
+    .post("/locked/manual-adjustment/seed-auto-buffer", async ({ body, set, currentUser }) => {
+        try {
+            const { autoBufferManualAdjustmentSeederService } = await import("../services/autoBufferManualAdjustmentSeederService");
+            const { cacheService } = await import("../services/cacheService");
+            const payload = body as any;
+
+            const result = await autoBufferManualAdjustmentSeederService.seedPeriod({
+                period_month: payload.period_month,
+                period_year: payload.period_year,
+                division_code: payload.division_code,
+                gang_code: payload.gang_code,
+                use_history_db: payload.use_history_db,
+                snapshot_version: payload.snapshot_version,
+                replace_existing: payload.replace_existing,
+                created_by: currentUser?.username || "system"
+            });
+
+            const pattern = `:${payload.period_month}:${payload.period_year}`;
+            cacheService.clearByPattern(pattern);
+
+            return {
+                success: true,
+                message: "Auto buffer berhasil disimpan ke payroll_manual_adjustments (AUTO_BUFFER)",
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] locked/manual-adjustment/seed-auto-buffer error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            gang_code: t.Optional(t.String()),
+            use_history_db: t.Optional(t.Boolean()),
+            snapshot_version: t.Optional(t.Number()),
+            replace_existing: t.Optional(t.Boolean())
         })
     })
 

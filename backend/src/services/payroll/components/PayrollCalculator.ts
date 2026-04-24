@@ -50,7 +50,7 @@ export interface PayrollCalculatorInput {
     lembur_jumlah: number;
     total_tunjangan: number;   // beras + jabatan + masa_kerja + lembur
     total_premi: number;       // all premi EXCLUDING koreksi (koreksi handled separately)
-    pot_koreksi: number;       // displayed separately in potongan_upah_kotor; part of taxable income
+    pot_koreksi: number;       // displayed separately in potongan_upah_kotor; subtracted in gross display
     pendapatan_lainnya: number; // THR + Bonus + Custom + custom types; ALL taxable
 
     // Deductions components
@@ -70,12 +70,12 @@ export interface PayrollCalculatorInput {
 export interface PayrollCalculatorResult {
     // Core gross wage (3 levels)
     upah_kotor: number;           // UPAH KOTOR: gaji + tunjangan + total_premi (tanpa koreksi/lainnya)
-    jumlah_upah_kotor: number;    // Tampilan: upah_kotor + pot_koreksi + pendapatan_lainnya
+    jumlah_upah_kotor: number;    // Tampilan: upah_kotor - pot_koreksi + pendapatan_lainnya
     potongan_upah_kotor: number;   // pot_koreksi (displayed separately)
 
     // Tax calculation
-    upah_kotor_pajak: number;    // taxable: upah_kotor + pot_koreksi + pendapatan_lainnya + bpjs_pekerja
-    penghasilan_bruto: number;    // for PPh21 TER: upah_kotor + pot_koreksi + pendapatan_lainnya + astek_m + bpjs_m
+    upah_kotor_pajak: number;    // taxable: upah_kotor - pot_koreksi + pendapatan_lainnya + bpjs_pekerja
+    penghasilan_bruto: number;    // for PPh21 TER: upah_kotor - pot_koreksi + pendapatan_lainnya + astek_m + bpjs_m
     tarif_pajak_ter: number;       // TER rate percentage (5, 15, or 25)
     pph21_ter: number;            // PPh21 using TER method
     taxable_pendapatan_lainnya: number; // same as pendapatan_lainnya (all taxable)

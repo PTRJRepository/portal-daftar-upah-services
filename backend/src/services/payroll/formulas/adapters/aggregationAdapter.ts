@@ -26,14 +26,29 @@ function getNumeric(row: any, ...keys: string[]): number {
 }
 
 /**
+ * Check if row has an explicit numeric value for the given key.
+ * This lets us distinguish "field absent" vs "field present with 0".
+ */
+function hasNumeric(row: any, key: string): boolean {
+    const val = row?.[key];
+    if (val === null || val === undefined || val === '') return false;
+    return !isNaN(Number(val));
+}
+
+/**
  * Calculate total tunjangan from row components
  */
 function calculateRowTotalTunjangan(row: any): number {
-    return getNumeric(row, 'total_tunjangan')
-         + getNumeric(row, 'beras_jumlah')
-         + getNumeric(row, 'jabatan_jumlah')
-         + getNumeric(row, 'masa_kerja_jumlah')
-         + getNumeric(row, 'lembur_jumlah');
+    // Canonical contract:
+    // - if total_tunjangan is provided, treat it as authoritative.
+    // - only derive from components when total_tunjangan is missing.
+    if (hasNumeric(row, 'total_tunjangan')) {
+        return getNumeric(row, 'total_tunjangan');
+    }
+    return getNumeric(row, 'beras_jumlah')
+        + getNumeric(row, 'jabatan_jumlah')
+        + getNumeric(row, 'masa_kerja_jumlah')
+        + getNumeric(row, 'lembur_jumlah');
 }
 
 /**
@@ -44,7 +59,6 @@ function calculateRowTotalPremi(row: any): number {
         'premi_brondol', 'premi_pruning',
         'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3',
         'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7',
-        'total_premi',
     ];
     return premiCols.reduce((sum, col) => sum + getNumeric(row, col), 0);
 }
