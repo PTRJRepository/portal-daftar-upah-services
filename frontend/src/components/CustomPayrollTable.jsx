@@ -2225,7 +2225,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
                             if (isEditMode && row.type === 'employee') {
                                 const displayVal = editedCells[editKey]?.value ?? val;
-                                return <input type="number" className={`edit-input ${isEdited ? 'cell-edited' : ''}`} value={displayVal === 0 ? '' : displayVal} onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'PREMI', canonicalName)} placeholder="0" onClick={(e) => e.stopPropagation()} />;
+                                return <input type="number" step="any" className={`edit-input ${isEdited ? 'cell-edited' : ''}`} value={displayVal === 0 ? '' : displayVal} onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'PREMI', canonicalName)} placeholder="0" onClick={(e) => e.stopPropagation()} />;
                             }
 
                             if (val === 0) return '-';
@@ -2276,7 +2276,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                             <input
-                                type="number" className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
+                                type="number" step="any" className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
                                 value={displayVal}
                                 onChange={(e) => {
                                     const rawVal = e.target.value;
@@ -2384,9 +2384,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     render: (row) => {
                         const val = row[field] || 0;
                         if (isEditMode && row.type === 'employee') {
-                            const editKey = `${row.nik}-${field}`;
+                            const empCode = row.emp_code || row.nik;
+                            const editKey = `${empCode}-${field}`;
                             const isEdited = !!editedCells[editKey];
-                            return <input type="number" className={`edit-input ${isEdited ? 'cell-edited' : ''}`} value={val === 0 ? '' : val} onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'POTONGAN_KOTOR', canonicalName)} placeholder="0" onClick={(e) => e.stopPropagation()} />;
+                            const displayVal = editedCells[editKey]?.value ?? val;
+                            return <input type="number" step="any" className={`edit-input ${isEdited ? 'cell-edited' : ''}`} value={displayVal === 0 ? '' : displayVal} onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'POTONGAN_KOTOR', canonicalName)} placeholder="0" onClick={(e) => e.stopPropagation()} />;
                         }
                         return val === 0 ? '-' : formatNumber(val);
                     }
@@ -2526,13 +2528,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     render: (row) => {
                         const val = row[field] || 0;
                         if (isEditMode && row.type === 'employee') {
-                            const editKey = `${row.nik}-${field}`;
+                            const empCode = row.emp_code || row.nik;
+                            const editKey = `${empCode}-${field}`;
                             const isEdited = !!editedCells[editKey];
+                            const displayVal = editedCells[editKey]?.value ?? val;
                             return (
                                 <input
                                     type="number"
+                                    step="any"
                                     className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                    value={val === 0 ? '' : val}
+                                    value={displayVal === 0 ? '' : displayVal}
                                     onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'POTONGAN_BERSIH', canonicalName)}
                                     placeholder="0"
                                     onClick={(e) => e.stopPropagation()}

@@ -1472,6 +1472,13 @@
     font-size: 12px;
     width: 70px;
     text-align: right;
+    color: #111827;
+    background-color: #ffffff;
+}
+
+.edit-input::placeholder {
+    color: #111827;
+    opacity: 1;
 }
 
 /* Cell edited indicator */

@@ -262,7 +262,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 periodYear,
                 query.gang_code || undefined,
                 query.emp_code || undefined,
-                query.division_code || undefined
+                query.division_code || undefined,
+                query.adjustment_type || undefined,
+                query.adjustment_name || undefined
             );
 
             return {
@@ -281,7 +283,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             period_year: t.String(),
             gang_code: t.Optional(t.String()),
             emp_code: t.Optional(t.String()),
-            division_code: t.Optional(t.String())
+            division_code: t.Optional(t.String()),
+            adjustment_type: t.Optional(t.String()),
+            adjustment_name: t.Optional(t.String())
         })
     })
     .post("/manual-adjustment/by-api-key", async ({ body, headers, set }) => {

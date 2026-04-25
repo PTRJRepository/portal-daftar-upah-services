@@ -22,14 +22,6 @@ function normalizeString(value: unknown): string {
     return String(value || "").trim();
 }
 
-function buildNormalizedSqlNameExpression(columnName: string): string {
-    let expression = `UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(${columnName}, CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CHAR(160), ' '))))`;
-    for (let i = 0; i < 4; i += 1) {
-        expression = `REPLACE(${expression}, '  ', ' ')`;
-    }
-    return expression;
-}
-
 export interface AutoBufferManualAdjustmentSeedInput {
     period_month: number;
     period_year: number;
@@ -37,6 +29,7 @@ export interface AutoBufferManualAdjustmentSeedInput {
     gang_code?: string;
     use_history_db?: boolean;
     snapshot_version?: number | null;
+    // Backward-compatible request field; seeder now always replaces scoped AUTO_BUFFER rows.
     replace_existing?: boolean;
     created_by?: string;
 }
@@ -92,6 +85,8 @@ export function buildAutoBufferSeedEntries(
         );
 
         const dbPotSpsi = Math.abs(toNumber(row.pot_spsi));
+        const dbJabatanJumlah = toNumber(row.jabatan_jumlah);
+        const dbMasaKerjaJumlah = toNumber(row.masa_kerja_jumlah);
         const isSpsiMember = typeof row.is_spsi_member === "boolean"
             ? row.is_spsi_member
             : deriveInitialSpsiMember(dbPotSpsi);
@@ -103,8 +98,8 @@ export function buildAutoBufferSeedEntries(
             kehadiran,
             masaKerjaTahun,
             isSpsiMember,
-            dbJabatanJumlah: toNumber(row.jabatan_jumlah),
-            dbMasaKerjaJumlah: toNumber(row.masa_kerja_jumlah)
+            dbJabatanJumlah,
+            dbMasaKerjaJumlah
         });
 
         entries.push(
@@ -119,7 +114,8 @@ export function buildAutoBufferSeedEntries(
                 amount: auto.jabatanAmount,
                 remarks: buildAutoBufferSeedRemark(
                     AUTO_BUFFER_ADJUSTMENT_NAME.jabatan,
-                    auto.jabatanAmount
+                    auto.jabatanAmount,
+                    dbJabatanJumlah
                 )
             },
             {
@@ -133,7 +129,8 @@ export function buildAutoBufferSeedEntries(
                 amount: auto.masaKerjaAmount,
                 remarks: buildAutoBufferSeedRemark(
                     AUTO_BUFFER_ADJUSTMENT_NAME.masaKerja,
-                    auto.masaKerjaAmount
+                    auto.masaKerjaAmount,
+                    dbMasaKerjaJumlah
                 )
             },
             {
@@ -147,7 +144,8 @@ export function buildAutoBufferSeedEntries(
                 amount: auto.spsiDeduction,
                 remarks: buildAutoBufferSeedRemark(
                     AUTO_BUFFER_ADJUSTMENT_NAME.spsi,
-                    auto.spsiDeduction
+                    auto.spsiDeduction,
+                    dbPotSpsi
                 )
             }
         );
@@ -177,7 +175,6 @@ export class AutoBufferManualAdjustmentSeederService {
         const gangCode = normalizeString(input.gang_code || "ALL").toUpperCase() || "ALL";
         const useHistoryDb = input.use_history_db === true;
         const snapshotVersion = input.snapshot_version == null ? null : Math.floor(toNumber(input.snapshot_version));
-        const replaceExisting = input.replace_existing !== false;
         const createdBy = normalizeString(input.created_by) || "system";
 
         if (periodMonth < 1 || periodMonth > 12) {
@@ -214,73 +211,36 @@ export class AutoBufferManualAdjustmentSeederService {
         );
 
         const db = this.getDatabase();
-        let deletedExisting = 0;
-        if (replaceExisting) {
-            const countQuery = `
-                SELECT COUNT(1) as count
-                FROM dbo.payroll_manual_adjustments
-                WHERE period_month = ? AND period_year = ?
-                  AND division_code = ?
-                  AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
-                  ${gangCode !== "ALL" ? "AND gang_code = ?" : ""}
-            `;
-            const countParams = gangCode !== "ALL"
-                ? [periodMonth, periodYear, divisionCode, gangCode]
-                : [periodMonth, periodYear, divisionCode];
-            const countRow = await db.queryOne<{ count: number }>(countQuery, countParams);
-            deletedExisting = toNumber(countRow?.count);
+        const countQuery = `
+            SELECT COUNT(1) as count
+            FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ? AND period_year = ?
+              AND division_code = ?
+              AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
+              ${gangCode !== "ALL" ? "AND gang_code = ?" : ""}
+        `;
+        const countParams = gangCode !== "ALL"
+            ? [periodMonth, periodYear, divisionCode, gangCode]
+            : [periodMonth, periodYear, divisionCode];
+        const countRow = await db.queryOne<{ count: number }>(countQuery, countParams);
+        const deletedExisting = toNumber(countRow?.count);
 
-            const deleteQuery = `
-                DELETE FROM dbo.payroll_manual_adjustments
-                WHERE period_month = ? AND period_year = ?
-                  AND division_code = ?
-                  AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
-                  ${gangCode !== "ALL" ? "AND gang_code = ?" : ""}
-            `;
-            const deleteParams = gangCode !== "ALL"
-                ? [periodMonth, periodYear, divisionCode, gangCode]
-                : [periodMonth, periodYear, divisionCode];
-            await db.query(deleteQuery, deleteParams);
-        }
+        const deleteQuery = `
+            DELETE FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ? AND period_year = ?
+              AND division_code = ?
+              AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
+              ${gangCode !== "ALL" ? "AND gang_code = ?" : ""}
+        `;
+        const deleteParams = gangCode !== "ALL"
+            ? [periodMonth, periodYear, divisionCode, gangCode]
+            : [periodMonth, periodYear, divisionCode];
+        await db.query(deleteQuery, deleteParams);
 
         let inserted = 0;
-        let updated = 0;
-        const normalizedAdjustmentNameSql = buildNormalizedSqlNameExpression("adjustment_name");
+        const updated = 0;
 
         for (const entry of entries) {
-            const existing = await db.queryOne<{ id: number }>(`
-                SELECT id
-                FROM dbo.payroll_manual_adjustments
-                WHERE period_month = ? AND period_year = ?
-                  AND emp_code = ?
-                  AND adjustment_type = ?
-                  AND ${normalizedAdjustmentNameSql} = ?
-            `, [
-                entry.period_month,
-                entry.period_year,
-                entry.emp_code,
-                entry.adjustment_type,
-                entry.adjustment_name.toUpperCase()
-            ]);
-
-            if (existing) {
-                await db.query(`
-                    UPDATE dbo.payroll_manual_adjustments
-                    SET gang_code = ?, division_code = ?, amount = ?, remarks = ?,
-                        updated_at = GETDATE(), updated_by = ?
-                    WHERE id = ?
-                `, [
-                    entry.gang_code,
-                    entry.division_code,
-                    entry.amount,
-                    entry.remarks,
-                    createdBy,
-                    existing.id
-                ]);
-                updated += 1;
-                continue;
-            }
-
             await db.query(`
                 INSERT INTO dbo.payroll_manual_adjustments (
                     period_month, period_year, emp_code, gang_code, division_code,
@@ -311,7 +271,7 @@ export class AutoBufferManualAdjustmentSeederService {
             inserted,
             updated,
             deleted_existing: deletedExisting,
-            replace_existing: replaceExisting,
+            replace_existing: true,
             value_priority_mode_source: "db_ptrj_only"
         };
     }

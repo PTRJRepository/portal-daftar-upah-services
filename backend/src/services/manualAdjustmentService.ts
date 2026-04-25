@@ -23,7 +23,7 @@ export interface ManualAdjustment {
     emp_code: string;   // Emp code (B0065, etc.) - for lookup
     gang_code: string;
     division_code?: string;
-    adjustment_type: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH' | 'PENDAPATAN_LAINNYA';
+    adjustment_type: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH' | 'PENDAPATAN_LAINNYA' | 'AUTO_BUFFER';
     adjustment_name: string;
     amount: number;
     remarks?: string;
@@ -57,13 +57,15 @@ export class ManualAdjustmentService {
         year: number,
         gangCode?: string,
         empCode?: string,
-        divisionCode?: string
+        divisionCode?: string,
+        adjustmentType?: string,
+        adjustmentName?: string
     ): Promise<ManualAdjustment[]> {
         const db = this.getDatabase();
         let query = `
             SELECT * FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ?
-              AND adjustment_type IN ('PREMI', 'POTONGAN_KOTOR', 'POTONGAN_BERSIH', 'PENDAPATAN_LAINNYA')
+              AND adjustment_type IN ('PREMI', 'POTONGAN_KOTOR', 'POTONGAN_BERSIH', 'PENDAPATAN_LAINNYA', 'AUTO_BUFFER')
         `;
         const params: any[] = [month, year];
 
@@ -80,6 +82,16 @@ export class ManualAdjustmentService {
         if (empCode) {
             query += ` AND emp_code = ?`;
             params.push(empCode);
+        }
+
+        if (adjustmentType) {
+            query += ` AND adjustment_type = ?`;
+            params.push(adjustmentType);
+        }
+
+        if (adjustmentName) {
+            query += ` AND UPPER(adjustment_name) LIKE ?`;
+            params.push(`%${adjustmentName.toUpperCase()}%`);
         }
 
         return await db.query<ManualAdjustment>(query, params);

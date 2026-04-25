@@ -24,7 +24,15 @@ describe("parsePayrollInputNumber", () => {
   it("parses valid input strings and numbers", () => {
     expect(parsePayrollInputNumber("5000")).toBe(5000);
     expect(parsePayrollInputNumber("5,000")).toBe(5000);
+    expect(parsePayrollInputNumber("5.000")).toBe(5000);
     expect(parsePayrollInputNumber(5000)).toBe(5000);
+  });
+
+  it("supports decimal input with both dot and comma separators", () => {
+    expect(parsePayrollInputNumber("5.5")).toBe(5.5);
+    expect(parsePayrollInputNumber("5,5")).toBe(5.5);
+    expect(parsePayrollInputNumber("1,250.75")).toBe(1250.75);
+    expect(parsePayrollInputNumber("1.250,75")).toBe(1250.75);
   });
 
   it("maps empty value to zero and keeps invalid as null", () => {
