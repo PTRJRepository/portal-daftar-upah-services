@@ -13,6 +13,36 @@ import './styles/print-overrides.css'
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
+const VALUE_PRIORITY_MODE_STORAGE_KEY = 'payroll.value_priority_mode';
+
+const normalizeValuePriorityMode = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'db_ptrj_only') return 'db_ptrj_only';
+  if (normalized === 'manual_buffer_only') return 'manual_buffer_only';
+  return 'smart';
+};
+
+const VALUE_PRIORITY_MODE_META = {
+  smart: {
+    label: 'Smart: Adjustment + Buffer prioritas',
+    color: '#16a34a',
+    ringColor: '#86efac',
+    haloColor: 'rgba(22, 163, 74, 0.18)'
+  },
+  db_ptrj_only: {
+    label: 'DB PTRJ saja',
+    color: '#2563eb',
+    ringColor: '#93c5fd',
+    haloColor: 'rgba(37, 99, 235, 0.18)'
+  },
+  manual_buffer_only: {
+    label: 'Adjustment + Buffer saja',
+    color: '#dc2626',
+    ringColor: '#fecaca',
+    haloColor: 'rgba(220, 38, 38, 0.18)'
+  }
+};
+
 // Lazy load pages - TEMPORARILY STATIC
 import DashboardHome from './pages/DashboardHome'
 import EmployeeDetailRoute from './pages/EmployeeDetailRoute'
@@ -79,6 +109,15 @@ const OperationalReportWrapper = () => {
   const [gangPrefix, setGangPrefix] = useState('');
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'attendance' | 'overtime' | 'employee-directory'
   const [hrSearchNik, setHrSearchNik] = useState('');
+  const [headerValuePriorityMode, setHeaderValuePriorityMode] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return 'smart';
+      return normalizeValuePriorityMode(localStorage.getItem(VALUE_PRIORITY_MODE_STORAGE_KEY));
+    } catch {
+      return 'smart';
+    }
+  });
+  const headerValuePriorityMeta = VALUE_PRIORITY_MODE_META[headerValuePriorityMode] || VALUE_PRIORITY_MODE_META.smart;
 
   // Employee sorting state
   const [employeeSortBy, setEmployeeSortBy] = useState('name'); // 'name' | 'emp_code' | 'nik'
@@ -108,6 +147,15 @@ const OperationalReportWrapper = () => {
 
   useEffect(() => {
     setPortalTarget(document.getElementById('header-actions-portal'));
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event.key !== VALUE_PRIORITY_MODE_STORAGE_KEY) return;
+      setHeaderValuePriorityMode(normalizeValuePriorityMode(event.newValue));
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   useEffect(() => {
@@ -551,6 +599,22 @@ const OperationalReportWrapper = () => {
         </div>
 
         {/* Action Buttons (Hidden Dropdown items that render in TopBar) */}
+          {viewMode === 'table' && (
+            <span
+              title={`Sumber Nilai Aktif: ${headerValuePriorityMeta.label}`}
+              aria-label={`Sumber Nilai Aktif: ${headerValuePriorityMeta.label}`}
+              style={{
+                width: '12px',
+                height: '12px',
+                borderRadius: '999px',
+                border: '2px solid #ffffff',
+                backgroundColor: headerValuePriorityMeta.color,
+                boxShadow: `0 0 0 1px ${headerValuePriorityMeta.ringColor}, 0 0 0 4px ${headerValuePriorityMeta.haloColor}`,
+                marginRight: '8px',
+                flexShrink: 0
+              }}
+            />
+          )}
           <div style={{ position: 'relative' }} ref={dropdownRef}>
             <button
               onClick={() => setIsActionsOpen(!isActionsOpen)}
@@ -707,6 +771,7 @@ const OperationalReportWrapper = () => {
             onSelectAllEmployees={handleSelectAllEmployees}
             onDataLoaded={handlePayrollDataLoaded}
             onRowsGetterReady={(getter) => setPayrollRowsGetter(() => getter)}
+            onValuePriorityModeResolved={setHeaderValuePriorityMode}
             isEditMode={isEditMode}
             useHistoryDb={effectiveUseHistoryDb}
             snapshotVersion={snapshotVersion}

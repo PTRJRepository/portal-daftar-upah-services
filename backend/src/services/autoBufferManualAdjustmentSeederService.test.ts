@@ -27,6 +27,13 @@ describe("autoBufferManualAdjustmentSeederService", () => {
 
         const spsiEntry = entries.find((entry) => entry.adjustment_name === "AUTO SPSI");
         expect(Number(spsiEntry?.amount || 0)).toBe(4000);
+        expect(spsiEntry?.remarks).toBe("AUTO SPSI | potongan spsi | 4000");
+
+        const masaKerjaEntry = entries.find((entry) => entry.adjustment_name === "AUTO MASA KERJA");
+        expect(masaKerjaEntry?.remarks).toBe(`AUTO MASA KERJA | masa kerja | ${Number(masaKerjaEntry?.amount || 0)}`);
+
+        const jabatanEntry = entries.find((entry) => entry.adjustment_name === "AUTO TUNJANGAN JABATAN");
+        expect(jabatanEntry?.remarks).toBe(`AUTO TUNJANGAN JABATAN | tunjangan jabatan | ${Number(jabatanEntry?.amount || 0)}`);
     });
 
     it("forces jabatan amount to zero for karyawan role", () => {

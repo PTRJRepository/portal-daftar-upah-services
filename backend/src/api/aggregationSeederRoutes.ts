@@ -11,6 +11,7 @@ import { divisionDefinition } from "../services/divisionDefinition";
 
 import { Config } from "../config";
 import { PayrollDataService, AggregationRecord } from "../services/payrollDataService";
+import { getForwardAuthorizationHeader } from "../utils/authBypass";
 
 // Interface moved to PayrollDataService
 
@@ -85,8 +86,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .post("/seed", async ({ body, headers, set }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -127,8 +128,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     // Seed based on exact UI filters (ensures 100% match with Daftar Upah)
     .post("/seed-ui", async ({ body, headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -165,8 +166,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .post("/seed-tonase", async ({ body, headers, set }) => {
         // Seed ONLY tonase (FFB weight) from db_ptrj_mill (server_3)
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -257,8 +258,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .get("/seed/progress", async ({ headers, set }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -283,8 +284,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .get("/history", async ({ query, headers }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             return { success: false, error: "Unauthorized" };
         }
 
@@ -345,8 +346,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .get("/summary", async ({ query, headers }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             return { success: false, error: "Unauthorized" };
         }
 
@@ -438,8 +439,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .get("/divisions", async ({ headers }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             return { success: false, error: "Unauthorized" };
         }
 
@@ -470,8 +471,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .get("/periods", async ({ headers }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             return { success: false, error: "Unauthorized" };
         }
 
@@ -499,8 +500,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .get("/status/:month/:year", async ({ params, headers }) => {
         // Check aggregation status for a specific period
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             return { success: false, error: "Unauthorized" };
         }
 
@@ -540,8 +541,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
     })
     .get("/validate", async ({ query, headers }) => {
         // Validate aggregation totals against real-time payroll calculations
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             return { success: false, error: "Unauthorized" };
         }
 
@@ -583,7 +584,7 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
             for (const div of divisionsToValidate) {
                 // Extract payroll data using PayrollDataService (Source of Truth)
                 try {
-                    const authHeader = headers["authorization"] || "";
+                    const authHeader = getForwardAuthorizationHeader(headers) || "";
 
                     const payrollData = await PayrollDataService.fetchPayrollData(div, month, year, authHeader);
 
@@ -981,8 +982,6 @@ export async function seedAggregationToDb(division: string | undefined, month: n
 
 
 
-
-
 // Process each gang from the raw-tree response
 
 
@@ -1301,3 +1300,5 @@ export async function fetchMillData(month: number, year: number) {
         dynamic_premi_data: "[]", informasi_tambahan: "Source: VenusHR", total_koreksi: 0
     };
 }
+
+

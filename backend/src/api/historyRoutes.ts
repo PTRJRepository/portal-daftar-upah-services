@@ -17,6 +17,10 @@ import { Config } from "../config";
 import { currentPeriodService } from "../services/currentPeriodService";
 import { ptkpTaxService } from "../services/ptkpTaxService";
 import { upahBersihDetailService, FilterMode } from "../services/upahBersihDetailService";
+import {
+    getForwardAuthorizationHeader,
+    hasValidApiKeyBypass
+} from "../utils/authBypass";
 
 // Helper to get month name in Indonesian
 function getMonthName(month: number): string {
@@ -57,8 +61,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
     // Force reset seeder (for stuck seeder recovery)
     .post("/seed/reset", async ({ body, headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -82,8 +86,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     // Run migration: adds missing columns to payroll_history_detail / history_metadata
     // Call once after deploying the updated codebase.
     .post("/migrate", async ({ headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -168,11 +172,17 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     // Seed history data
     // NOTE: Accept system token for admin operations (seeder doesn't need external user auth)
     .post("/seed", async ({ body, headers, set }) => {
-        const authHeader = headers["authorization"];
+        const authHeader = getForwardAuthorizationHeader(headers);
         
         // Accept system token OR regular Bearer token
         let createdBy = "system";
         let allowAccess = false;
+
+        if (hasValidApiKeyBypass(headers)) {
+            allowAccess = true;
+            createdBy = "api_key_admin";
+            console.log('[HistoryRoutes] API key bypass accepted for seeder');
+        }
         
         if (authHeader) {
             if (authHeader.startsWith("Bearer system") || authHeader === "system-reseed") {
@@ -192,7 +202,7 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
             set.status = 401;
             return { 
                 success: false, 
-                error: "Unauthorized: Use 'Bearer system' as Authorization header" 
+                error: "Unauthorized: provide Bearer token or valid x-api-key"
             };
         }
 
@@ -264,8 +274,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     // Get history list
     .get("/", async ({ query, headers, set }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -309,8 +319,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     // Get history by ID with details
     .get("/:history_id", async ({ params, headers, set }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -357,8 +367,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     // Delete history
     .delete("/:history_id", async ({ params, headers, set }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -428,8 +438,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     // Lock history
     .post("/:history_id/lock", async ({ params, body, headers, set }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -496,8 +506,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     // Get audit trail
     .get("/audit/trail", async ({ query, headers, set }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -572,8 +582,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     // Get available periods
     .get("/periods/available", async ({ headers, set }) => {
         // Verify authentication
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -668,8 +678,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
     // Update PTKP status for a given year
     .post("/ptkp/update", async ({ body, headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -713,8 +723,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
     // Get PTKP changelog / audit history
     .get("/ptkp/changelog", async ({ query, headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -746,8 +756,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
     // Preview PTKP update (dry run)
     .get("/ptkp/preview/:year", async ({ params, headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -771,8 +781,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
     // Get PTKP data for a specific year
     .get("/ptkp/:year", async ({ params, headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -798,8 +808,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
     // Get PTKP history for an employee
     .get("/ptkp/employee/:empCode", async ({ params, headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }
@@ -828,8 +838,8 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
 
     // Get detailed upah bersih report with lembur/premi drill-down
     .get("/upah-bersih-detail", async ({ query, headers, set }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }

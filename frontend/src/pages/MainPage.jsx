@@ -139,7 +139,7 @@ export default function MainPage({ lockedDiv = null }) {
   const [activeMatrixView, setActiveMatrixView] = useState(null) // null | 'attendance' | 'overtime' | 'employee' | 'pajak'
 
   // Employee sorting state (for employee info view)
-  const [employeeSortBy, setEmployeeSortBy] = useState('name') // 'name' | 'emp_code' | 'hk'
+  const [employeeSortBy, setEmployeeSortBy] = useState('emp_code') // 'name' | 'emp_code' | 'hk'
   const [employeeSortOrder, setEmployeeSortOrder] = useState('asc') // 'asc' | 'desc'
 
   // Employee selection state for payslip printing

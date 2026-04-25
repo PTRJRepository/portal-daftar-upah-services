@@ -2,12 +2,13 @@ import { Elysia, t } from "elysia";
 import { PayrollDataService, AggregationRecord } from "../services/payrollDataService";
 import { AppsScriptService } from "../services/appsScriptService";
 import { divisionDefinition } from "../services/divisionDefinition";
+import { getForwardAuthorizationHeader } from "../utils/authBypass";
 
 export const spreadsheetRoutes = new Elysia({ prefix: "/spreadsheet" })
     .post("/sync", async ({ body, headers, set }) => {
         // Auth check (simple bearer token check if needed, or open for now if internal)
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
             set.status = 401;
             return { success: false, error: "Unauthorized" };
         }

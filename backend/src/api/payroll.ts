@@ -11,6 +11,7 @@ import { divisionConfigService } from "../services/config/DivisionConfigService"
 import { dataExtractorService } from "../services/dataExtractorService";
 import { User, UserRole } from "../types/user";
 import { parseBooleanQueryParam, parsePositiveIntegerQueryParam } from "../utils/queryParsers";
+import { hasValidApiKeyBypass, resolveUserFromHeaders } from "../utils/authBypass";
 
 
 const authService = AuthService.getInstance();
@@ -32,21 +33,7 @@ function slimEmployee(emp: any): any {
 
 // Helper to get user from header
 async function getUserFromHeader(headers: Record<string, string | undefined>): Promise<User | null> {
-    const authHeader = headers["authorization"];
-    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-    const token = authHeader.split(" ")[1];
-
-    // [INTERNAL] Bypass for system token
-    if (token === Config.SYSTEM_TOKEN) {
-        return {
-            id: "system",
-            username: "system",
-            role: UserRole.ADMIN,
-            divisions: ["ALL"]
-        } as any;
-    }
-
-    return authService.verifyToken(token);
+    return resolveUserFromHeaders(headers, authService, { allowSystemToken: true });
 }
 
 export const payrollRoutes = new Elysia({ prefix: "/payroll" })
@@ -243,6 +230,90 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             gang_code: t.String(),
             division_code: t.Optional(t.String()),
             adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH, PENDAPATAN_LAINNYA
+            adjustment_name: t.String(),
+            amount: t.Number(),
+            remarks: t.Optional(t.String())
+        })
+    })
+    // --- Manual Adjustment via API Key Bypass (x-api-key) ---
+    .get("/manual-adjustment/by-api-key", async ({ query, headers, set }) => {
+        try {
+            if (!hasValidApiKeyBypass(headers as Record<string, string | undefined>)) {
+                set.status = 401;
+                return { success: false, error: "Unauthorized: invalid x-api-key" };
+            }
+
+            const periodMonth = Number(query.period_month);
+            const periodYear = Number(query.period_year);
+
+            if (!Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12) {
+                set.status = 400;
+                return { success: false, error: "period_month harus 1-12" };
+            }
+
+            if (!Number.isInteger(periodYear) || periodYear < 2000) {
+                set.status = 400;
+                return { success: false, error: "period_year tidak valid" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const rows = await manualAdjustmentService.getAdjustments(
+                periodMonth,
+                periodYear,
+                query.gang_code || undefined,
+                query.emp_code || undefined,
+                query.division_code || undefined
+            );
+
+            return {
+                success: true,
+                count: rows.length,
+                data: rows
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/by-api-key GET error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            period_month: t.String(),
+            period_year: t.String(),
+            gang_code: t.Optional(t.String()),
+            emp_code: t.Optional(t.String()),
+            division_code: t.Optional(t.String())
+        })
+    })
+    .post("/manual-adjustment/by-api-key", async ({ body, headers, set }) => {
+        try {
+            if (!hasValidApiKeyBypass(headers as Record<string, string | undefined>)) {
+                set.status = 401;
+                return { success: false, error: "Unauthorized: invalid x-api-key" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            const data = body as any;
+            const resultId = await manualAdjustmentService.saveAdjustment(data, "api_key_bypass");
+
+            const pattern = `:${data.period_month}:${data.period_year}`;
+            cacheService.clearByPattern(pattern);
+
+            return { success: true, id: resultId, message: "Manual adjustment saved successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/by-api-key POST error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            nik: t.Optional(t.String()),
+            emp_code: t.String(),
+            gang_code: t.String(),
+            division_code: t.Optional(t.String()),
+            adjustment_type: t.String(),
             adjustment_name: t.String(),
             amount: t.Number(),
             remarks: t.Optional(t.String())
@@ -1324,14 +1395,12 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      */
     // Progressive streaming endpoint - uses SSE to stream data progressively
     // Falls back to standard fetch if SSE not supported
-    .get("/report/division-raw-tree/stream", async ({ headers, query, set }): Promise<any> => {
-        const authHeader = headers["authorization"] as string | undefined;
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    .get("/report/division-raw-tree/stream", async ({ headers, query, set, currentUser }): Promise<any> => {
+        const user = currentUser;
+        if (!user) {
             set.status = 401;
             return { error: "Unauthorized" };
         }
-        const token = authHeader.split(" ")[1];
-        const user = await authService.verifyToken(token);
 
         const divisionCode = query.division_code;
         const month = parseInt(query.month);

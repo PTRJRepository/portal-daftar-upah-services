@@ -1,15 +1,13 @@
 import { Elysia, t } from "elysia";
 import { AuthService } from "../services/authService";
 import { User, UserRole } from "../types/user";
+import { resolveUserFromHeaders } from "../utils/authBypass";
 
 const authService = AuthService.getInstance();
 
 // Helper to get current user from token
 async function getUserFromHeader(headers: Record<string, string | undefined>): Promise<User | null> {
-    const authHeader = headers["authorization"];
-    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-    const token = authHeader.split(" ")[1];
-    return authService.verifyToken(token);
+    return resolveUserFromHeaders(headers, authService);
 }
 
 export const usersRoutes = new Elysia({ prefix: "/users" })

@@ -16,6 +16,7 @@ import { summaryService } from "../services/summaryService";
 import { AuthService } from "../services/authService";
 import { Database } from "../db/client";
 import { User } from "../types/user";
+import { resolveUserFromHeaders } from "../utils/authBypass";
 
 const authService = AuthService.getInstance();
 
@@ -64,10 +65,7 @@ async function fetchTonaseForWagesComparison(month: number, year: number): Promi
 
 // Helper to get user from header
 async function getUserFromHeader(headers: Record<string, string | undefined>): Promise<User | null> {
-    const authHeader = headers["authorization"];
-    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-    const token = authHeader.split(" ")[1];
-    return authService.verifyToken(token);
+    return resolveUserFromHeaders(headers, authService);
 }
 
 // Helper to get month name

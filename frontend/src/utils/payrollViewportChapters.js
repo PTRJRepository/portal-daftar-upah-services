@@ -45,11 +45,18 @@ export const detectActivePayrollChapter = (chapters = [], viewport = {}) => {
     if (!chapters.length) return null;
 
     const scrollLeft = Number(viewport.scrollLeft) || 0;
-    const clientWidth = Number(viewport.clientWidth) || 0;
-    const midpoint = scrollLeft + (clientWidth / 2);
+    const clientWidth = Math.max(0, Number(viewport.clientWidth) || 0);
+    const stickyOffset = Math.max(0, Number(viewport.stickyOffset) || 0);
+    const anchorOffset = clientWidth > 0
+        ? Math.min(Math.max(stickyOffset + 1, 1), clientWidth - 1)
+        : stickyOffset + 1;
+    const anchor = scrollLeft + anchorOffset;
 
-    const active = chapters.find((chapter) => midpoint >= chapter.start && midpoint < chapter.end);
-    return active?.group || chapters[0].group;
+    const active = chapters.find((chapter) => anchor >= chapter.start && anchor < chapter.end);
+    if (active?.group) return active.group;
+
+    const fallback = [...chapters].reverse().find((chapter) => anchor >= chapter.start);
+    return fallback?.group || chapters[0].group;
 };
 
 export const getPayrollChapterScrollLeft = (chapters = [], group) => {

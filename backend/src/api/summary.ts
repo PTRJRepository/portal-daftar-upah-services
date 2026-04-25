@@ -8,6 +8,7 @@ import { deductionAdjustmentService } from "../services/deductionAdjustmentServi
 import { luasAreaService } from "../services/luasAreaService";
 import { thumbprintService } from "../services/thumbprintService";
 import { parseBooleanQueryParam } from "../utils/queryParsers";
+import { resolveUserFromHeaders } from "../utils/authBypass";
 
 const authService = AuthService.getInstance();
 type SummaryScope = "all" | "rebinmas" | "ijl";
@@ -201,12 +202,7 @@ const buildComparisonPremiBreakdownCurrent = (rows: any[]) => ({
 
 export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     .derive(async ({ headers }) => {
-        const authHeader = headers["authorization"];
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return { user: null };
-        }
-        const token = authHeader.split(" ")[1];
-        const user = await authService.verifyToken(token);
+        const user = await resolveUserFromHeaders(headers, authService);
         return { user };
     })
     .onBeforeHandle(({ user, set }) => {

@@ -19,6 +19,8 @@ import { resolveJabatanRate } from '../utils/payrollRowAccessors';
 import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
 import { isPayrollNumericField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
 import { buildCanonicalManualAdjustmentName, buildPendingManualColumn } from '../utils/payrollManualAdjustmentNames';
+import { parsePayrollInputNumber, resolvePersistentOriginalNumber, toFinitePayrollNumber } from '../utils/payrollNumericValues';
+import { getPayrollEffectiveScale, getPayrollResponsiveScaleForWidth } from '../utils/payrollResponsiveScale';
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
 import { buildPayrollHeaderRows, getPayrollChapterWindowForGroup } from '../utils/payrollHeaderLayout';
 import { resolvePayrollClientRuntimePolicy } from '../utils/payrollClientRuntime';
@@ -98,11 +100,20 @@ const formatDecimal = (value) => {
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
 };
 
+const toFiniteNumber = toFinitePayrollNumber;
+
 const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const clampNumber = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
+
+const getInitialViewportWidth = () => {
+    if (typeof window === 'undefined') return 1920;
+    return window.innerWidth || 1920;
 };
 
 // Format header label to support newlines manually across environments
@@ -112,24 +123,9 @@ const formatHeaderLabel = (label) => {
     return label.split('\n').map((part, i) => (
         <React.Fragment key={i}>
             {i > 0 && <br />}
-            {i === 1 ? <span style={{ fontSize: '9px', fontWeight: 'normal', color: '#cbd5e1' }}>{part}</span> : part}
+            {i === 1 ? <span style={{ fontSize: '0.72em', fontWeight: 'normal', color: '#cbd5e1' }}>{part}</span> : part}
         </React.Fragment>
     ));
-};
-
-const VALUE_PRIORITY_MODE_BADGE = {
-    smart: {
-        label: 'Smart: Adjustment + Buffer prioritas',
-        tone: 'smart'
-    },
-    db_ptrj_only: {
-        label: 'DB PTRJ saja',
-        tone: 'db'
-    },
-    manual_buffer_only: {
-        label: 'Adjustment + Buffer saja',
-        tone: 'manual'
-    }
 };
 
 const VALUE_PRIORITY_MODE_STORAGE_KEY = 'payroll.value_priority_mode';
@@ -208,6 +204,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     onDataReady = null,    // Callback to expose displayRows data to parent
     onTaxExportReady = null, // Callback to expose data getter for Tax Export
     onRowsGetterReady = null, // Callback to expose displayRows getter without copying rows to parent
+    onValuePriorityModeResolved = null, // Callback to sync active source mode to parent/header
     onRefresh = null,      // Callback to trigger parent refresh (for saving)
     sortBy = 'emp_code',     // 'name' | 'emp_code' | 'nik'
     sortOrder = 'asc',     // 'asc' | 'desc'
@@ -285,7 +282,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         viewportRatio: 1,
         canScroll: false
     });
-    const valuePriorityBadge = VALUE_PRIORITY_MODE_BADGE[valuePriorityMode] || VALUE_PRIORITY_MODE_BADGE.smart;
+    const [tableContainerWidth, setTableContainerWidth] = useState(getInitialViewportWidth);
     const hasPendingEdits = useMemo(
         () => Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0,
         [editedCells, editedKontanCells]
@@ -294,6 +291,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const tableRef = useRef(null);
     const tableContainerRef = useRef(null);
     const chapterBarHideTimerRef = useRef(null);
+    const isHorizontalSliderDraggingRef = useRef(false);
+    const pauseAutoFocusUntilRef = useRef(0);
+    const scrollSyncRafRef = useRef(0);
 
     // ================================================================
     // PROGRESSIVE STREAMING (SSE)
@@ -341,6 +341,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             // Ignore localStorage write errors
         }
     }, [valuePriorityMode]);
+
+    useEffect(() => {
+        onValuePriorityModeResolved?.(normalizeValuePriorityMode(valuePriorityMode));
+    }, [onValuePriorityModeResolved, valuePriorityMode]);
 
     // Sync stream grand total to component state
     useEffect(() => {
@@ -590,17 +594,26 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         if (stream.gangs && stream.gangs.length > 0 && rows.length > 0) {
             // Merge stream rows with any pending edits
             if (Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0) {
+                const editedCellEntries = Object.values(editedCells);
                 resultRows = rows.map(row => {
                     if (row.type !== 'employee') return row;
                     const empCode = row.emp_code || row.nik;
-                    const editKey = `${empCode}`;
-                    const edit = editedCells[editKey];
-                    const kontanEdit = editedKontanCells[editKey];
-                    if (!edit && !kontanEdit) return row;
+                    const employeeEdits = editedCellEntries.filter((item) => (item?.emp_code || item?.nik) === empCode);
+                    const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
+                    if (employeeEdits.length === 0 && !kontanEdit) return row;
+
+                    const merged = { ...row };
+                    for (const edit of employeeEdits) {
+                        if (!edit?.field) continue;
+                        merged[edit.field] = edit.value;
+                    }
+
+                    if (kontanEdit) {
+                        merged.pendapatan_kontan = toFiniteNumber(kontanEdit.value);
+                    }
+
                     return {
-                        ...row,
-                        ...(edit ? { [edit.field]: edit.value } : {}),
-                        ...(kontanEdit ? { pendapatan_kontanan: kontanEdit.value } : {})
+                        ...merged
                     };
                 });
             } else {
@@ -849,23 +862,27 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const handleCellEdit = (row, field, value, originalValue, type, name) => {
         const empCode = row.emp_code || row.nik;
         const key = `${empCode}-${field}`;
-        const numValue = value === '' ? 0 : parseFloat(value);
+        const numValue = parsePayrollInputNumber(value);
 
-        if (isNaN(numValue)) return;
+        if (numValue === null) return;
 
-        setEditedCells(prev => ({
-            ...prev,
-            [key]: {
-                emp_code: empCode,
-                nik: row.nik,
-                field,
-                value: numValue,
-                originalValue,
-                gang_code: row.gang_code,
-                type,
-                name
-            }
-        }));
+        setEditedCells(prev => {
+            const existingEdit = prev[key];
+            const persistedOriginal = resolvePersistentOriginalNumber(existingEdit?.originalValue, originalValue);
+            return {
+                ...prev,
+                [key]: {
+                    emp_code: empCode,
+                    nik: row.nik,
+                    field,
+                    value: numValue,
+                    originalValue: persistedOriginal,
+                    gang_code: row.gang_code,
+                    type,
+                    name
+                }
+            };
+        });
 
         // Optimistically update the UI
         setRows(prevRows => prevRows.map(row => {
@@ -1684,8 +1701,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 field: 'checkbox',
                 headers: ['IDENTITAS', null, '✓'],
                 w: 35,
-                className: 'text-center sticky-col',
-                left: 0,
+                className: 'text-center',
                 render: (row) => {
                     if (row.type !== 'employee') return null;
                     return (
@@ -1703,22 +1719,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 field: 'no',
                 headers: ['IDENTITAS', null, 'NO'],
                 w: 35,
-                className: 'text-center sticky-col',
-                left: 35
+                className: 'text-center'
             },
             {
                 field: 'emp_code',
                 headers: ['IDENTITAS', null, 'EMP CODE'],
                 w: 75,
-                className: 'text-center sticky-col',
-                left: 70
+                className: 'text-center sticky-col frozen-col-theme',
+                left: 0
             },
             {
                 field: 'nama',
                 headers: ['IDENTITAS', null, 'NAMA'],
-                w: displayMode === 'detail' ? 140 : 160,
-                className: 'text-left sticky-col',
-                left: 145,
+                w: displayMode === 'detail' ? 140 : 120,
+                className: `text-left sticky-col frozen-col-theme ${displayMode === 'simple' ? 'cell-wrap cell-wrap-name' : ''}`.trim(),
+                left: 75,
                 render: (row) => {
                     if (row.type !== 'employee') return row.nama || row.emp_code;
                     const koreksi = row.koreksi_hk || 0;
@@ -1734,9 +1749,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         ? `⚠️ Pembayaran Tidak Benar\nKoreksi HK: ${formatNumber(koreksi)}\nGP Aktual < GP Ideal`
                         : `🔴 Salah Scan / Jam Lebih\nKoreksi HK: +${formatNumber(koreksi)}\nGP Aktual > GP Ideal`;
 
+                    const compactNameLayout = displayMode === 'simple';
                     return (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nama}</span>
+                        <div style={{ display: 'flex', alignItems: compactNameLayout ? 'flex-start' : 'center', gap: '4px', width: '100%' }}>
+                            <span
+                                style={{
+                                    flex: 1,
+                                    overflow: compactNameLayout ? 'visible' : 'hidden',
+                                    textOverflow: compactNameLayout ? 'clip' : 'ellipsis',
+                                    whiteSpace: compactNameLayout ? 'normal' : 'nowrap',
+                                    wordBreak: compactNameLayout ? 'break-word' : 'normal',
+                                    lineHeight: compactNameLayout ? '1.2' : 'normal'
+                                }}
+                            >
+                                {nama}
+                            </span>
                             <span
                                 title={tooltipText}
                                 style={{
@@ -1762,8 +1789,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             {
                 field: 'alamat',
                 headers: ['IDENTITAS', null, 'ALAMAT'],
-                w: 200,
-                className: 'text-left',
+                w: displayMode === 'detail' ? 200 : 130,
+                className: 'text-left cell-wrap cell-wrap-address',
                 render: (row) => row.alamat || row.res_address || '-'
             },
             {
@@ -2241,7 +2268,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 const empCode = row.emp_code || row.nik;
                 const editKey = `${empCode}-pendapatan_kontan`;
                 const cellEdit = editedKontanCells[editKey];
-                const displayVal = cellEdit ? cellEdit.value : val;
+                const displayVal = cellEdit ? toFiniteNumber(cellEdit.value) : val;
                 const isEdited = !!cellEdit;
 
                 if (isEditMode && row.type === 'employee') {
@@ -2253,15 +2280,28 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 value={displayVal}
                                 onChange={(e) => {
                                     const rawVal = e.target.value;
-                                    const newVal = rawVal === '' ? 0 : parseFloat(rawVal);
-                                    if (isNaN(newVal)) return;
-                                    setEditedKontanCells(prev => ({ ...prev, [editKey]: { nik: row.nik, emp_code: row.emp_code, value: newVal, originalValue: val, gang_code: row.gang_code } }));
+                                    const newVal = parsePayrollInputNumber(rawVal);
+                                    if (newVal === null) return;
+                                    setEditedKontanCells(prev => {
+                                        const existingEdit = prev[editKey];
+                                        const persistedOriginal = resolvePersistentOriginalNumber(existingEdit?.originalValue, val);
+                                        return {
+                                            ...prev,
+                                            [editKey]: {
+                                                nik: row.nik,
+                                                emp_code: row.emp_code,
+                                                value: newVal,
+                                                originalValue: persistedOriginal,
+                                                gang_code: row.gang_code
+                                            }
+                                        };
+                                    });
                                     setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: newVal } : r));
                                 }}
                                 placeholder="0" onClick={(e) => e.stopPropagation()} style={{ width: '65px' }}
                             />
                             {hasPendingDelete && (
-                                <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Hapus KONTAN?')) { setEditedKontanCells(prev => { const upd = { ...prev }; delete upd[editKey]; return upd; }); setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: val } : r)); } }} style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', padding: '2px 5px' }} title="Batal Hapus">✕</button>
+                                <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Hapus KONTAN?')) { const restoreValue = resolvePersistentOriginalNumber(cellEdit?.originalValue, val); setEditedKontanCells(prev => { const upd = { ...prev }; delete upd[editKey]; return upd; }); setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: restoreValue } : r)); } }} style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', padding: '2px 5px' }} title="Batal Hapus">✕</button>
                             )}
                         </div>
                     );
@@ -2361,8 +2401,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             render: (row) => {
                 const empCode = row.emp_code || row.nik;
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
-                const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
-                const val = Number(row.jumlah_upah_kotor || 0) - Number(row.pendapatan_kontan || 0) + (kontanVal || 0);
+                const originalKontan = toFiniteNumber(kontanEdit?.originalValue ?? row.pendapatan_kontan);
+                const currentKontan = toFiniteNumber(kontanEdit?.value ?? row.pendapatan_kontan);
+                const val = toFiniteNumber(row.jumlah_upah_kotor) - originalKontan + currentKontan;
                 return val === 0 ? '-' : formatNumber(val);
             }
         });
@@ -2515,8 +2556,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             render: (row) => {
                 const empCode = row.emp_code || row.nik;
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
-                const kontanVal = kontanEdit ? kontanEdit.value : Number(row.pendapatan_kontan || 0);
-                const val = Number(row.total_potongan_bersih || 0) - Number(row.pendapatan_kontan || 0) + (kontanVal || 0);
+                const originalKontan = toFiniteNumber(kontanEdit?.originalValue ?? row.pendapatan_kontan);
+                const currentKontan = toFiniteNumber(kontanEdit?.value ?? row.pendapatan_kontan);
+                const val = toFiniteNumber(row.total_potongan_bersih) - originalKontan + currentKontan;
                 if (val === 0) return '-';
                 return formatNumber(val);
             }
@@ -2541,9 +2583,17 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells, addedColumns]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells, addedColumns, displayMode]);
 
     const chapterSegments = useMemo(() => buildPayrollViewportChapters(columnDefs), [columnDefs]);
+    const stickyPaneWidth = useMemo(() => (
+        columnDefs.reduce((maxRight, column) => {
+            if (column.left === undefined || column.left === null) return maxRight;
+            const left = Number(column.left) || 0;
+            const width = Number(column.w) || 0;
+            return Math.max(maxRight, left + width);
+        }, 0)
+    ), [columnDefs]);
     const firstScrollableGroup = useMemo(
         () => chapterSegments.find((chapter) => chapter.group && chapter.group !== PAYROLL_HEADER_GROUPS.IDENTITAS)?.group
             || chapterSegments[0]?.group
@@ -2553,8 +2603,109 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const focusedGroup = activeChapterGroup || firstScrollableGroup;
     const renderColumnDefs = useMemo(() => {
         if (displayMode !== 'simple' || !focusedGroup) return columnDefs;
-        return columnDefs.filter((column) => column.left !== undefined || column.group === focusedGroup);
-    }, [columnDefs, displayMode, focusedGroup]);
+        const simpleColumns = columnDefs.filter((column) => column.left !== undefined || column.group === focusedGroup);
+        const viewportWidth = Math.max(320, Number(tableContainerWidth) || 0);
+        const totalWidth = simpleColumns.reduce((sum, column) => sum + (Number(column.w) || 0), 0);
+
+        if (totalWidth <= viewportWidth) {
+            return simpleColumns;
+        }
+
+        const stickyWidth = simpleColumns.reduce((maxRight, column) => {
+            if (column.left === undefined || column.left === null) return maxRight;
+            const left = Number(column.left) || 0;
+            const width = Number(column.w) || 0;
+            return Math.max(maxRight, left + width);
+        }, 0);
+        const fitCandidateColumns = simpleColumns.filter((column) => column.left === undefined || column.left === null);
+        const fitCandidateWidth = fitCandidateColumns.reduce((sum, column) => sum + (Number(column.w) || 0), 0);
+        const availableWidth = Math.max(160, viewportWidth - stickyWidth);
+
+        if (!fitCandidateColumns.length || fitCandidateWidth <= 0 || fitCandidateWidth <= availableWidth) {
+            return simpleColumns;
+        }
+
+        const fitScale = availableWidth / fitCandidateWidth;
+        return simpleColumns.map((column) => {
+            if (column.left !== undefined && column.left !== null) return column;
+
+            const baseWidth = Number(column.w) || 0;
+            if (baseWidth <= 0) return column;
+
+            const className = String(column.className || '');
+            const isTextColumn = className.includes('text-left');
+            const minWidth = column.field === 'alamat'
+                ? 92
+                : column.field === 'nama'
+                    ? 110
+                    : (isTextColumn ? 86 : 54);
+            const nextWidth = Math.max(minWidth, Math.round(baseWidth * fitScale));
+
+            if (nextWidth === baseWidth) return column;
+            return { ...column, w: nextWidth };
+        });
+    }, [columnDefs, displayMode, focusedGroup, tableContainerWidth]);
+    const responsiveScale = useMemo(
+        () => getPayrollResponsiveScaleForWidth(tableContainerWidth),
+        [tableContainerWidth]
+    );
+    const effectiveScale = useMemo(
+        () => getPayrollEffectiveScale({ containerWidth: tableContainerWidth, fontSize }),
+        [tableContainerWidth, fontSize]
+    );
+    const responsiveMetrics = useMemo(() => {
+        const tableFontPx = Number(clampNumber(11 * effectiveScale, 8.5, 14).toFixed(2));
+        const headerTopFontPx = Math.round(clampNumber(14 * effectiveScale, 11, 16));
+        const headerSubFontPx = Math.round(clampNumber(13 * effectiveScale, 10, 15));
+        const headerPadY = Math.round(clampNumber(4 * effectiveScale, 2, 7));
+        const headerPadX = Math.round(clampNumber(6 * effectiveScale, 4, 10));
+        const bodyPadY = Math.round(clampNumber(3 * effectiveScale, 2, 6));
+        const bodyPadX = Math.round(clampNumber(6 * effectiveScale, 4, 10));
+        const rowHeight = Math.round(clampNumber(28 * effectiveScale, 22, 36));
+        const toolbarScale = Number(clampNumber(effectiveScale, 0.86, 1.08).toFixed(3));
+        const dockScale = Number(clampNumber(effectiveScale, 0.82, 1).toFixed(3));
+        const detailBottomSafeArea = Math.round(clampNumber(112 * dockScale, 88, 128));
+        const simpleBottomSafeArea = Math.round(clampNumber(56 * dockScale, 46, 84));
+
+        return {
+            tableFontPx,
+            headerTopFontPx,
+            headerSubFontPx,
+            headerPadY,
+            headerPadX,
+            bodyPadY,
+            bodyPadX,
+            rowHeight,
+            toolbarScale,
+            dockScale,
+            detailBottomSafeArea,
+            simpleBottomSafeArea
+        };
+    }, [effectiveScale]);
+    const rowHeight = responsiveMetrics.rowHeight;
+    const payrollResponsiveVars = useMemo(() => ({
+        '--payroll-responsive-scale': String(responsiveScale.toFixed(3)),
+        '--payroll-effective-scale': String(effectiveScale.toFixed(3)),
+        '--payroll-toolbar-scale': String(responsiveMetrics.toolbarScale),
+        '--payroll-dock-scale': String(responsiveMetrics.dockScale),
+        '--payroll-font-size-base': `${responsiveMetrics.tableFontPx}px`,
+        '--payroll-header-font-size': `${responsiveMetrics.headerSubFontPx}px`,
+        '--payroll-header-pad-y': `${responsiveMetrics.headerPadY}px`,
+        '--payroll-header-pad-x': `${responsiveMetrics.headerPadX}px`,
+        '--payroll-body-pad-y': `${responsiveMetrics.bodyPadY}px`,
+        '--payroll-body-pad-x': `${responsiveMetrics.bodyPadX}px`
+    }), [
+        effectiveScale,
+        responsiveScale,
+        responsiveMetrics.bodyPadX,
+        responsiveMetrics.bodyPadY,
+        responsiveMetrics.dockScale,
+        responsiveMetrics.headerPadX,
+        responsiveMetrics.headerPadY,
+        responsiveMetrics.headerSubFontPx,
+        responsiveMetrics.tableFontPx,
+        responsiveMetrics.toolbarScale
+    ]);
     const getHeaderStyle = useCallback((_label, level = 0) => {
         const rowPalette = ['#0f172a', '#1e293b', '#334155'];
         const bg = rowPalette[Math.min(level, rowPalette.length - 1)];
@@ -2566,13 +2717,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             letterSpacing: level === 0 ? '0.02em' : '0em',
             textTransform: level === 0 ? 'uppercase' : 'none',
             fontWeight: level === 0 ? 700 : (level === 1 ? 600 : 500),
-            fontSize: level === 0 ? '14px' : '13px',
-            padding: '4px 6px',
+            fontSize: `${level === 0 ? responsiveMetrics.headerTopFontPx : responsiveMetrics.headerSubFontPx}px`,
+            padding: `${responsiveMetrics.headerPadY}px ${responsiveMetrics.headerPadX}px`,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis'
         };
-    }, []);
+    }, [responsiveMetrics.headerPadX, responsiveMetrics.headerPadY, responsiveMetrics.headerSubFontPx, responsiveMetrics.headerTopFontPx]);
     const headerRows = useMemo(
         () => buildPayrollHeaderRows({ columnDefs: renderColumnDefs, getHeaderStyle }),
         [renderColumnDefs, getHeaderStyle]
@@ -2587,27 +2738,43 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         if (displayMode === 'simple') {
             const nextGroup = activeChapterGroup || firstScrollableGroup || chapterSegments[0]?.group || null;
-            setActiveChapterGroup(nextGroup);
+            setActiveChapterGroup((prev) => (prev === nextGroup ? prev : nextGroup));
             setChapterViewportWindow(getPayrollChapterWindowForGroup(chapterSegments, nextGroup));
             return;
         }
 
         if (!container) {
             const nextGroup = chapterSegments[0]?.group ?? null;
-            setActiveChapterGroup(nextGroup);
+            setActiveChapterGroup((prev) => (prev === nextGroup ? prev : nextGroup));
             setChapterViewportWindow(getPayrollChapterWindowForGroup(chapterSegments, nextGroup));
             return;
         }
 
         const viewport = {
             scrollLeft: container.scrollLeft,
-            clientWidth: container.clientWidth
+            clientWidth: container.clientWidth,
+            stickyOffset: stickyPaneWidth
         };
 
         const nextGroup = detectActivePayrollChapter(chapterSegments, viewport);
-        setActiveChapterGroup(nextGroup);
+        setActiveChapterGroup((prev) => (prev === nextGroup ? prev : nextGroup));
         setChapterViewportWindow(getPayrollViewportWindow(chapterSegments, viewport));
-    }, [activeChapterGroup, chapterSegments, displayMode, firstScrollableGroup]);
+    }, [activeChapterGroup, chapterSegments, displayMode, firstScrollableGroup, stickyPaneWidth]);
+    const syncTableContainerWidth = useCallback((container = tableContainerRef.current) => {
+        if (!container) {
+            setTableContainerWidth((prev) => {
+                const fallback = getInitialViewportWidth();
+                return prev === fallback ? prev : fallback;
+            });
+            return;
+        }
+
+        const nextWidth = Math.max(0, Math.round(Number(container.clientWidth) || 0));
+        setTableContainerWidth((prev) => {
+            if (Math.abs(prev - nextWidth) < 1) return prev;
+            return nextWidth;
+        });
+    }, []);
 
     const syncHorizontalScrollState = useCallback((container = tableContainerRef.current) => {
         if (!container) {
@@ -2655,24 +2822,33 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         const maxScrollLeft = Math.max((container.scrollWidth || 0) - (container.clientWidth || 0), 0);
         if (maxScrollLeft <= 0) {
-            syncHorizontalScrollState(container);
             return;
         }
 
         const ratio = Math.max(0, Math.min(1, Number(nextRatio) || 0));
         const nextLeft = Math.round(maxScrollLeft * ratio);
-        container.scrollTo({ left: nextLeft, behavior: 'auto' });
+        pauseAutoFocusUntilRef.current = Date.now() + 180;
+        container.scrollLeft = nextLeft;
         setChapterBarVisible(true);
-        syncActiveChapter(container);
-        syncHorizontalScrollState(container);
-    }, [syncActiveChapter, syncHorizontalScrollState]);
+    }, []);
+
+    const handleHorizontalSliderDragStateChange = useCallback((isDragging) => {
+        isHorizontalSliderDraggingRef.current = Boolean(isDragging);
+        if (!isDragging) {
+            pauseAutoFocusUntilRef.current = Date.now() + 120;
+            if (displayMode === 'detail') {
+                syncActiveChapter();
+            }
+        }
+    }, [displayMode, syncActiveChapter]);
 
     const scrollToChapterGroup = useCallback((group) => {
         const container = tableContainerRef.current;
-        if (!group) return;
+        const normalizedGroup = normalizePayrollHeaderGroup(group) || group;
+        if (!normalizedGroup) return;
 
-        setActiveChapterGroup(group);
-        setChapterViewportWindow(getPayrollChapterWindowForGroup(chapterSegments, group));
+        setActiveChapterGroup(normalizedGroup);
+        setChapterViewportWindow(getPayrollChapterWindowForGroup(chapterSegments, normalizedGroup));
 
         if (displayMode === 'simple') {
             return;
@@ -2682,13 +2858,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return;
         }
 
-        const left = getPayrollChapterScrollLeft(chapterSegments, group);
+        const chapterStart = getPayrollChapterScrollLeft(chapterSegments, normalizedGroup);
+        const left = Math.max(0, chapterStart - stickyPaneWidth);
         container.scrollTo({ left, behavior: 'smooth' });
         setChapterViewportWindow(getPayrollViewportWindow(chapterSegments, {
             scrollLeft: left,
-            clientWidth: container.clientWidth
+            clientWidth: container.clientWidth,
+            stickyOffset: stickyPaneWidth
         }));
-    }, [chapterSegments, displayMode]);
+    }, [chapterSegments, displayMode, stickyPaneWidth]);
 
     const handleStepChapter = useCallback((direction) => {
         if (!chapterSegments.length) return;
@@ -2722,39 +2900,74 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const container = tableContainerRef.current;
         if (!container) return undefined;
         let lastScrollLeft = container.scrollLeft;
+        syncTableContainerWidth(container);
         syncHorizontalScrollState(container);
 
         const handleScroll = () => {
-            if (container.scrollLeft === lastScrollLeft) return;
+            const nextScrollLeft = container.scrollLeft;
+            if (nextScrollLeft === lastScrollLeft) return;
 
-            lastScrollLeft = container.scrollLeft;
-            setChapterBarVisible(true);
-            syncActiveChapter(container);
-            syncHorizontalScrollState(container);
+            lastScrollLeft = nextScrollLeft;
+            if (scrollSyncRafRef.current) return;
 
-            // Auto-hide disabled - footer should always stay visible for better UX
-            // User can click tabs to navigate without footer disappearing
+            scrollSyncRafRef.current = window.requestAnimationFrame(() => {
+                scrollSyncRafRef.current = 0;
+                setChapterBarVisible(true);
+                syncHorizontalScrollState(container);
+
+                const shouldAutoFocusChapter =
+                    displayMode === 'detail' &&
+                    !isHorizontalSliderDraggingRef.current &&
+                    Date.now() >= pauseAutoFocusUntilRef.current;
+
+                if (shouldAutoFocusChapter) {
+                    syncActiveChapter(container);
+                }
+            });
         };
 
         container.addEventListener('scroll', handleScroll, { passive: true });
 
         return () => {
             container.removeEventListener('scroll', handleScroll);
+            if (scrollSyncRafRef.current) {
+                window.cancelAnimationFrame(scrollSyncRafRef.current);
+                scrollSyncRafRef.current = 0;
+            }
             if (chapterBarHideTimerRef.current) {
                 clearTimeout(chapterBarHideTimerRef.current);
             }
         };
-    }, [displayMode, syncActiveChapter, syncHorizontalScrollState]);
+    }, [displayMode, syncActiveChapter, syncHorizontalScrollState, syncTableContainerWidth]);
 
     useEffect(() => {
+        syncTableContainerWidth();
         syncHorizontalScrollState();
-    }, [displayRows.length, renderColumnDefs.length, displayMode, syncHorizontalScrollState]);
+    }, [displayRows.length, renderColumnDefs.length, displayMode, syncHorizontalScrollState, syncTableContainerWidth]);
 
     useEffect(() => {
-        const onResize = () => syncHorizontalScrollState();
+        const onResize = () => {
+            syncTableContainerWidth();
+            syncHorizontalScrollState();
+        };
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
-    }, [syncHorizontalScrollState]);
+    }, [syncHorizontalScrollState, syncTableContainerWidth]);
+
+    useEffect(() => {
+        const container = tableContainerRef.current;
+        const table = tableRef.current;
+        if (!container || typeof ResizeObserver === 'undefined') return undefined;
+
+        const observer = new ResizeObserver(() => {
+            syncTableContainerWidth(container);
+            syncHorizontalScrollState(container);
+        });
+        observer.observe(container);
+        if (table) observer.observe(table);
+
+        return () => observer.disconnect();
+    }, [syncHorizontalScrollState, syncTableContainerWidth, displayMode, renderColumnDefs.length, displayRows.length]);
 
     // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
     const handleExportToExcel = useCallback(async () => {
@@ -3025,12 +3238,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         );
     }
 
-    const scale = fontSize / 100;
-    const rowHeight = 28;
+    const activeBottomSafeArea = displayMode === 'detail'
+        ? responsiveMetrics.detailBottomSafeArea
+        : responsiveMetrics.simpleBottomSafeArea;
+    const shellGrandTotalOffset = Math.round(clampNumber(50 * responsiveMetrics.dockScale, 40, 64));
+    const tableGrandTotalOffset = Math.round(clampNumber(36 * responsiveMetrics.dockScale, 30, 52));
 
     const togglePortalTarget = document.getElementById('column-toggles-portal');
     const togglesElement = togglePortalTarget ? createPortal(
-        <>
+        <div style={payrollResponsiveVars}>
             <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
             <div style={{ padding: '4px 8px', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>TAMPILAN TABEL</div>
             <div style={{ padding: '6px 8px 8px' }}>
@@ -3066,7 +3282,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     <span>{item.state ? '✅' : '☐'}</span>
                 </button>
             ))}
-        </>,
+        </div>,
         togglePortalTarget
     ) : null;
 
@@ -3077,22 +3293,20 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             style={{ 
                 height: 'calc(100vh - 120px)', 
                 minHeight: '400px',
-                '--payroll-bottom-safe-area': '112px',
-                '--payroll-grand-total-offset': '50px'
+                ...payrollResponsiveVars,
+                '--payroll-bottom-safe-area': `${activeBottomSafeArea}px`,
+                '--payroll-grand-total-offset': `${shellGrandTotalOffset}px`
             }}
         >
             {togglesElement}
-            <div className={`payroll-source-indicator payroll-source-indicator--${valuePriorityBadge.tone}`}>
-                <span className="payroll-source-indicator__label">Sumber Nilai Aktif</span>
-                <span className="payroll-source-indicator__value">{valuePriorityBadge.label}</span>
-            </div>
             <div
                 className="payroll-table-container"
                 ref={tableContainerRef}
                 style={{
-                    fontSize: `${11 * scale}px`,
-                    '--payroll-bottom-safe-area': '112px',
-                    '--payroll-grand-total-offset': '36px'
+                    ...payrollResponsiveVars,
+                    fontSize: `${responsiveMetrics.tableFontPx}px`,
+                    '--payroll-bottom-safe-area': `${activeBottomSafeArea}px`,
+                    '--payroll-grand-total-offset': `${tableGrandTotalOffset}px`
                 }}
             >
             {/* Loading / Streaming Progress Bar - Sticky Header */}
@@ -3537,7 +3751,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                     const numericValue = resolveGrandTotalNumericValue({
                                         grandTotal,
                                         rows: employeeRows,
-                                        field: col.field
+                                        field: col.field,
+                                        preferRows: hasPendingEdits
                                     });
                                     val = formatNumber(numericValue);
                                 } else if (val !== undefined && val !== null && val !== '') {
@@ -3570,7 +3785,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             <PayrollScrollChapterBar
                 activeGroup={focusedGroup || 'IDENTITAS'}
                 allGroups={[...new Set(columnDefs.map(c => c.group).filter(Boolean))]}
-                isVisible={isChapterBarVisible}
+                isVisible={displayMode === 'simple' ? true : isChapterBarVisible}
                 onSelectGroup={(group) => {
                     if (!group) return;
                     // Keep current mode; in simple mode this switches focused chapter directly.
@@ -3582,10 +3797,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 processedGangs={effectiveProgress?.processedGangs || 0}
                 displayMode={displayMode}
                 onToggleDisplayMode={() => setDisplayMode(displayMode === 'simple' ? 'detail' : 'simple')}
-                horizontalScrollRatio={tableHorizontalState.ratio}
-                horizontalViewportRatio={tableHorizontalState.viewportRatio}
-                horizontalCanScroll={tableHorizontalState.canScroll}
-                onHorizontalScrollChange={handleHorizontalSliderChange}
             />
             <SelectionStatusBar stats={selectionStats} />
         </div>

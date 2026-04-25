@@ -17,6 +17,7 @@ import { EmployeeEstateService } from "../services/employeeEstateService";
 import { Database } from "../db/client";
 import { gangService } from "../services/gangService";
 import { resolveMonthlyTaxQuery } from "../utils/taxReportQuery";
+import { getApiKeyHeader, getAuthorizationHeader, resolveUserFromHeaders } from "../utils/authBypass";
 
 /**
  * Sanitize string for filename - remove/replace invalid filename characters
@@ -32,16 +33,14 @@ function sanitizeForFilename(str: string): string {
 const authService = AuthService.getInstance();
 
 async function getUserFromHeader(headers: Record<string, string | undefined>): Promise<User | null> {
-    const authHeader = headers["authorization"];
-    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-    const token = authHeader.split(" ")[1];
-    return authService.verifyToken(token);
+    return resolveUserFromHeaders(headers, authService);
 }
 
 export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
     .derive(async ({ headers }) => {
-        const authHeader = headers["authorization"];
-        console.log(`[TaxReport] Auth header: ${authHeader ? 'present' : 'missing'}`);
+        const authHeader = getAuthorizationHeader(headers);
+        const apiKeyHeader = getApiKeyHeader(headers);
+        console.log(`[TaxReport] Auth header: ${authHeader ? 'present' : apiKeyHeader ? 'api-key' : 'missing'}`);
         const user = await getUserFromHeader(headers);
         return { currentUser: user };
     })

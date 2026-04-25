@@ -36,6 +36,20 @@ describe('resolveGrandTotalNumericValue', () => {
 
     expect(value).toBe(3500);
   });
+
+  it('can prefer live row sum over stale grand total value when edits are pending', () => {
+    const value = resolveGrandTotalNumericValue({
+      grandTotal: { pendapatan_kontan: 1000 },
+      rows: [
+        { type: 'employee', pendapatan_kontan: 2500 },
+        { type: 'employee', pendapatan_kontan: 1500 },
+      ],
+      field: 'pendapatan_kontan',
+      preferRows: true,
+    });
+
+    expect(value).toBe(4000);
+  });
 });
 
 describe('isPayrollNumericField', () => {

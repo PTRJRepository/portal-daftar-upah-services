@@ -146,7 +146,9 @@
       "mcp__otak-digital-atta__search_by_tags",
       "mcp__otak-digital-atta__list_knowledge",
       "PowerShell(Get-NetTCPConnection *)",
-      "Bash(bun pm *)"
+      "Bash(bun pm *)",
+      "Bash(ls backend/.env*)",
+      "Bash(grep -n \"API_KEY_BYPASS\" backend/.env)"
     ],
     "deny": [],
     "ask": [],

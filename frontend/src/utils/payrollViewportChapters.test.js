@@ -39,13 +39,25 @@ describe('buildPayrollViewportChapters', () => {
 });
 
 describe('detectActivePayrollChapter', () => {
-    it('chooses the chapter occupying the viewport midpoint', () => {
+    it('chooses the chapter at the leading visible edge', () => {
         const active = detectActivePayrollChapter(
             [
                 { group: 'IDENTITAS', start: 0, end: 200, width: 200 },
                 { group: 'PREMI', start: 200, end: 500, width: 300 }
             ],
             { scrollLeft: 180, clientWidth: 240 }
+        );
+
+        expect(active).toBe('IDENTITAS');
+    });
+
+    it('uses sticky offset to detect chapter after frozen pane', () => {
+        const active = detectActivePayrollChapter(
+            [
+                { group: 'IDENTITAS', start: 0, end: 200, width: 200 },
+                { group: 'PREMI', start: 200, end: 500, width: 300 }
+            ],
+            { scrollLeft: 180, clientWidth: 240, stickyOffset: 40 }
         );
 
         expect(active).toBe('PREMI');

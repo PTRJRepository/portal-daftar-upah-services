@@ -2,6 +2,7 @@ import { Database } from "../db/client";
 import { Config } from "../config";
 import { dataExtractorService } from "./dataExtractorService";
 import { payrollAutoBufferService } from "./payroll/payrollAutoBufferService";
+import { buildAutoBufferSeedRemark } from "./payroll/manualAdjustments/autoBufferAdcodeMap";
 import { deriveInitialSpsiMember } from "../utils/payrollProfileRules";
 
 const AUTO_BUFFER_ADJUSTMENT_TYPE = "AUTO_BUFFER";
@@ -69,11 +70,6 @@ type ExtractedPayrollLike = {
     is_spsi_member?: boolean;
 };
 
-function buildSeedRemark(field: string, rate: number, hariKerja: number, extras?: string): string {
-    const base = `AUTO_BUFFER_SEED|field=${field}|rate=${rate.toFixed(2)}|hari_kerja=${hariKerja}`;
-    return extras ? `${base}|${extras}` : base;
-}
-
 export function buildAutoBufferSeedEntries(
     rows: ExtractedPayrollLike[],
     periodMonth: number,
@@ -121,7 +117,10 @@ export function buildAutoBufferSeedEntries(
                 adjustment_type: AUTO_BUFFER_ADJUSTMENT_TYPE,
                 adjustment_name: AUTO_BUFFER_ADJUSTMENT_NAME.jabatan,
                 amount: auto.jabatanAmount,
-                remarks: buildSeedRemark("jabatan_jumlah", auto.jabatanRate, hariKerja)
+                remarks: buildAutoBufferSeedRemark(
+                    AUTO_BUFFER_ADJUSTMENT_NAME.jabatan,
+                    auto.jabatanAmount
+                )
             },
             {
                 period_month: periodMonth,
@@ -132,7 +131,10 @@ export function buildAutoBufferSeedEntries(
                 adjustment_type: AUTO_BUFFER_ADJUSTMENT_TYPE,
                 adjustment_name: AUTO_BUFFER_ADJUSTMENT_NAME.masaKerja,
                 amount: auto.masaKerjaAmount,
-                remarks: buildSeedRemark("masa_kerja_jumlah", auto.masaKerjaRate, hariKerja, `tahun=${masaKerjaTahun}`)
+                remarks: buildAutoBufferSeedRemark(
+                    AUTO_BUFFER_ADJUSTMENT_NAME.masaKerja,
+                    auto.masaKerjaAmount
+                )
             },
             {
                 period_month: periodMonth,
@@ -143,7 +145,10 @@ export function buildAutoBufferSeedEntries(
                 adjustment_type: AUTO_BUFFER_ADJUSTMENT_TYPE,
                 adjustment_name: AUTO_BUFFER_ADJUSTMENT_NAME.spsi,
                 amount: auto.spsiDeduction,
-                remarks: buildSeedRemark("pot_spsi", 0, hariKerja, `is_member=${isSpsiMember ? 1 : 0}`)
+                remarks: buildAutoBufferSeedRemark(
+                    AUTO_BUFFER_ADJUSTMENT_NAME.spsi,
+                    auto.spsiDeduction
+                )
             }
         );
     }

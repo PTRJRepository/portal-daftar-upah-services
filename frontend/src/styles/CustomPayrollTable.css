@@ -17,6 +17,16 @@
     flex-direction: column;
     gap: 10px;
     min-height: 0;
+    --payroll-responsive-scale: 1;
+    --payroll-effective-scale: 1;
+    --payroll-toolbar-scale: 1;
+    --payroll-dock-scale: 1;
+    --payroll-font-size-base: 12px;
+    --payroll-header-font-size: 0.88rem;
+    --payroll-header-pad-y: 4px;
+    --payroll-header-pad-x: 6px;
+    --payroll-body-pad-y: 3px;
+    --payroll-body-pad-x: 6px;
 }
 
 .payroll-table-shell .payroll-table-container {
@@ -80,10 +90,10 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px 14px;
-    padding: 10px 12px;
+    gap: calc(10px * var(--payroll-toolbar-scale, 1)) calc(14px * var(--payroll-toolbar-scale, 1));
+    padding: calc(10px * var(--payroll-toolbar-scale, 1)) calc(12px * var(--payroll-toolbar-scale, 1));
     border: 1px solid #dbe4ee;
-    border-radius: 16px;
+    border-radius: calc(16px * var(--payroll-toolbar-scale, 1));
     background: #f8fafc;
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
 }
@@ -91,12 +101,12 @@
 .payroll-view-toolbar__section {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: calc(8px * var(--payroll-toolbar-scale, 1));
     flex-wrap: wrap;
 }
 
 .payroll-view-toolbar__label {
-    font-size: 0.66rem;
+    font-size: calc(0.66rem * var(--payroll-toolbar-scale, 1));
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -106,8 +116,8 @@
 .payroll-view-toolbar__group {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 3px;
+    gap: calc(4px * var(--payroll-toolbar-scale, 1));
+    padding: calc(3px * var(--payroll-toolbar-scale, 1));
     border: 1px solid #cbd5e1;
     border-radius: 999px;
     background: rgba(248, 250, 252, 0.92);
@@ -119,14 +129,14 @@
 }
 
 .payroll-view-toolbar__select {
-    min-height: 34px;
+    min-height: calc(34px * var(--payroll-toolbar-scale, 1));
     border-radius: 999px;
     border: 1px solid #cbd5e1;
     background: #ffffff;
     color: #0f172a;
-    font-size: 0.74rem;
+    font-size: calc(0.74rem * var(--payroll-toolbar-scale, 1));
     font-weight: 600;
-    padding: 0 28px 0 12px;
+    padding: 0 calc(28px * var(--payroll-toolbar-scale, 1)) 0 calc(12px * var(--payroll-toolbar-scale, 1));
     outline: none;
     cursor: pointer;
 }
@@ -141,18 +151,18 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    min-height: 34px;
+    gap: calc(8px * var(--payroll-toolbar-scale, 1));
+    min-height: calc(34px * var(--payroll-toolbar-scale, 1));
     border-radius: 999px;
     border: 1px solid transparent;
     color: #475569;
-    font-size: 0.78rem;
+    font-size: calc(0.78rem * var(--payroll-toolbar-scale, 1));
     font-weight: 600;
     transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .payroll-view-toolbar__button {
-    padding: 0 14px;
+    padding: 0 calc(14px * var(--payroll-toolbar-scale, 1));
     background: transparent;
     cursor: pointer;
 }
@@ -200,12 +210,12 @@
 .payroll-view-toolbar__button-state {
     display: inline-flex;
     align-items: center;
-    min-height: 22px;
-    padding: 0 8px;
+    min-height: calc(22px * var(--payroll-toolbar-scale, 1));
+    padding: 0 calc(8px * var(--payroll-toolbar-scale, 1));
     border-radius: 999px;
     background: rgba(226, 232, 240, 0.95);
     color: #475569;
-    font-size: 0.68rem;
+    font-size: calc(0.68rem * var(--payroll-toolbar-scale, 1));
     font-weight: 700;
 }
 
@@ -216,7 +226,7 @@
 
 .payroll-view-toolbar__toggle {
     position: relative;
-    padding: 6px 10px 6px 8px;
+    padding: calc(6px * var(--payroll-toolbar-scale, 1)) calc(10px * var(--payroll-toolbar-scale, 1)) calc(6px * var(--payroll-toolbar-scale, 1)) calc(8px * var(--payroll-toolbar-scale, 1));
     cursor: pointer;
     background: rgba(255, 255, 255, 0.78);
 }
@@ -230,8 +240,8 @@
 
 .payroll-view-toolbar__toggle-indicator {
     position: relative;
-    width: 36px;
-    height: 22px;
+    width: calc(36px * var(--payroll-toolbar-scale, 1));
+    height: calc(22px * var(--payroll-toolbar-scale, 1));
     border-radius: 999px;
     background: #cbd5e1;
     flex-shrink: 0;
@@ -241,10 +251,10 @@
 .payroll-view-toolbar__toggle-indicator::after {
     content: '';
     position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 16px;
-    height: 16px;
+    top: calc(3px * var(--payroll-toolbar-scale, 1));
+    left: calc(3px * var(--payroll-toolbar-scale, 1));
+    width: calc(16px * var(--payroll-toolbar-scale, 1));
+    height: calc(16px * var(--payroll-toolbar-scale, 1));
     border-radius: 50%;
     background: #ffffff;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
@@ -256,7 +266,7 @@
 }
 
 .payroll-view-toolbar__toggle.is-active .payroll-view-toolbar__toggle-indicator::after {
-    transform: translateX(14px);
+    transform: translateX(calc(14px * var(--payroll-toolbar-scale, 1)));
 }
 
 .payroll-view-toolbar__toggle-copy {
@@ -268,13 +278,13 @@
 
 .payroll-view-toolbar__toggle-title {
     color: #0f172a;
-    font-size: 0.76rem;
+    font-size: calc(0.76rem * var(--payroll-toolbar-scale, 1));
     font-weight: 700;
 }
 
 .payroll-view-toolbar__toggle-subtitle {
     color: #64748b;
-    font-size: 0.67rem;
+    font-size: calc(0.67rem * var(--payroll-toolbar-scale, 1));
 }
 
 .payroll-scroll-dock {
@@ -432,14 +442,14 @@
     border-spacing: 0;
     width: max-content;
     min-width: 100%;
-    font-size: 12px;
+    font-size: var(--payroll-font-size-base, 12px);
 }
 
 /* --- Headers (Solid, No Gaps) --- */
 .payroll-table thead th {
     background-color: #0f172a;
     color: #f8fafc;
-    padding: 4px 6px;
+    padding: var(--payroll-header-pad-y, 4px) var(--payroll-header-pad-x, 6px);
     margin: 0;
     border: none;
     border-right: 1px solid rgba(255, 255, 255, 0.1);
@@ -447,7 +457,7 @@
     font-weight: 700;
     text-align: center;
     vertical-align: middle;
-    font-size: 0.88rem;
+    font-size: var(--payroll-header-font-size, 0.88rem);
     line-height: 1.2;
     user-select: none;
     box-sizing: border-box;
@@ -461,19 +471,19 @@
 }
 
 .payroll-table thead tr:nth-child(1) th {
-    font-size: 0.88rem;
+    font-size: var(--payroll-header-font-size, 0.88rem);
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    padding-top: 6px;
-    padding-bottom: 6px;
+    padding-top: calc(var(--payroll-header-pad-y, 4px) + 2px);
+    padding-bottom: calc(var(--payroll-header-pad-y, 4px) + 2px);
 }
 
 .payroll-table thead tr:nth-child(2) th {
-    font-size: 0.88rem;
+    font-size: var(--payroll-header-font-size, 0.88rem);
 }
 
 .payroll-table thead tr:nth-child(3) th {
-    font-size: 0.88rem;
+    font-size: var(--payroll-header-font-size, 0.88rem);
 }
 
 
@@ -498,6 +508,16 @@
     background-color: #fff;
 }
 
+.payroll-table tbody td.sticky-col.frozen-col-theme {
+    background-color: #1a365d !important;
+    color: #f8fafc !important;
+    border-right: 1px solid rgba(148, 163, 184, 0.32);
+}
+
+.payroll-table tbody td.sticky-col.frozen-col-theme * {
+    color: inherit !important;
+}
+
 /* Corner cell (both sticky row and column) */
 .sticky-corner {
     z-index: 30 !important;
@@ -507,13 +527,13 @@
 
 /* --- Body Cells --- */
 .payroll-table tbody td {
-    padding: 3px 6px;
+    padding: var(--payroll-body-pad-y, 3px) var(--payroll-body-pad-x, 6px);
     border-right: 1px solid #e2e8f0;
     border-bottom: 1px solid #e2e8f0;
     color: #334155;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
-    font-size: 0.88rem;
+    font-size: var(--payroll-font-size-base, 12px);
     font-weight: 600;
     cursor: default;
     box-sizing: border-box;
@@ -560,9 +580,51 @@
     color: #f8fafc !important;
 }
 
+.payroll-table tbody tr.row-even .sticky-col.frozen-col-theme,
+.payroll-table tbody tr.row-odd .sticky-col.frozen-col-theme,
+.payroll-table tbody tr:hover .sticky-col.frozen-col-theme,
+.payroll-table tbody tr.row-highlighted .sticky-col.frozen-col-theme,
+.payroll-table tbody tr.row-highlighted:hover .sticky-col.frozen-col-theme {
+    background-color: #1a365d !important;
+    color: #f8fafc !important;
+}
+
+.payroll-table-shell.mode-detail .payroll-table tbody td.sticky-col.frozen-col-theme,
+.payroll-table-shell.mode-simple .payroll-table tbody td.sticky-col.frozen-col-theme {
+    background-color: #1a365d !important;
+    color: #f8fafc !important;
+}
+
+.payroll-table-shell.mode-detail .payroll-table tbody td.sticky-col.frozen-col-theme,
+.payroll-table-shell.mode-detail .payroll-table tfoot td.sticky-col.frozen-col-theme {
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: calc(var(--payroll-font-size-base, 12px) + 1px) !important;
+    font-weight: 700 !important;
+    line-height: 1.25;
+}
+
+.payroll-table-shell.mode-detail .payroll-table tbody td.sticky-col.frozen-col-theme[data-active-group="true"],
+.payroll-table-shell.mode-detail .payroll-table tbody td.sticky-col.frozen-col-theme[data-focus-dim="true"],
+.payroll-table-shell.mode-detail .payroll-table tfoot td.sticky-col.frozen-col-theme[data-active-group="true"] {
+    background-color: #1a365d !important;
+    color: #f8fafc !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+}
+
 .payroll-table tbody tr.row-highlighted td *,
 .payroll-table tbody tr.row-highlighted .sticky-col * {
     color: inherit !important;
+}
+
+.payroll-table tbody td.cell-wrap {
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.2;
 }
 
 /* --- Cell Selection --- */
@@ -570,6 +632,13 @@
     background-color: rgba(33, 150, 243, 0.2) !important;
     outline: 1px solid #2196f3;
     outline-offset: -1px;
+}
+
+.payroll-table tbody td.sticky-col.frozen-col-theme.cell-selected {
+    background-color: #1a365d !important;
+    color: #f8fafc !important;
+    outline: 1px solid rgba(148, 163, 184, 0.55);
+    box-shadow: none !important;
 }
 
 .cell-sync-red {
@@ -585,7 +654,7 @@
     background-color: #e2e8f0;
     font-weight: bold;
     color: #1a365d;
-    padding: 8px 12px;
+    padding: calc(var(--payroll-body-pad-y, 3px) + 5px) calc(var(--payroll-body-pad-x, 6px) + 6px);
     border-top: 2px solid #94a3b8;
     border-bottom: 2px solid #94a3b8;
 }
@@ -663,8 +732,8 @@
     position: static;
     background: linear-gradient(to right, #f8f9fa, #e9ecef);
     border-top: 1px solid #dee2e6;
-    padding: 6px 16px;
-    font-size: 11px;
+    padding: calc(6px * var(--payroll-effective-scale, 1)) calc(16px * var(--payroll-effective-scale, 1));
+    font-size: calc(11px * var(--payroll-effective-scale, 1));
     display: flex;
     gap: 24px;
     justify-content: flex-end;
@@ -859,11 +928,11 @@
 .header-label-text {
     font-weight: 700;
     letter-spacing: 0.025em;
-    font-size: 11px;
+    font-size: calc(11px * var(--payroll-effective-scale, 1));
 }
 
 .payroll-table-shell.mode-simple .payroll-table thead th[data-header-level="1"] {
-    font-size: 0.88rem;
+    font-size: var(--payroll-header-font-size, 0.88rem);
     letter-spacing: 0.05em;
 }
 
@@ -872,7 +941,7 @@
 .payroll-table-shell.mode-simple .payroll-table thead th[data-header-level="4"] {
     color: rgba(248, 250, 252, 0.76);
     font-weight: 500;
-    font-size: 0.88rem;
+    font-size: var(--payroll-header-font-size, 0.88rem);
 }
 
 .payroll-table-shell.mode-detail .payroll-table thead th[data-header-level="2"],
@@ -880,7 +949,7 @@
 .payroll-table-shell.mode-detail .payroll-table thead th[data-header-level="4"] {
     color: rgba(248, 250, 252, 0.92);
     font-weight: 600;
-    font-size: 0.88rem;
+    font-size: var(--payroll-header-font-size, 0.88rem);
 }
 
 .payroll-table-shell .payroll-table thead th[data-active-group="true"] {
@@ -1549,8 +1618,8 @@
     z-index: 9999 !important;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 8px 14px 10px;
+    gap: calc(8px * var(--payroll-dock-scale, 1));
+    padding: calc(8px * var(--payroll-dock-scale, 1)) calc(14px * var(--payroll-dock-scale, 1)) calc(10px * var(--payroll-dock-scale, 1));
     box-shadow: 0 -10px 24px rgba(2, 6, 23, 0.48), 0 -1px 0 rgba(148, 163, 184, 0.2);
     transition: transform 0.24s ease, opacity 0.24s ease;
     pointer-events: auto !important;
@@ -1573,10 +1642,10 @@
     --payroll-slider-progress: 0%;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: calc(8px * var(--payroll-dock-scale, 1));
     width: 100%;
-    padding: 8px 10px;
-    border-radius: 12px;
+    padding: calc(8px * var(--payroll-dock-scale, 1)) calc(10px * var(--payroll-dock-scale, 1));
+    border-radius: calc(12px * var(--payroll-dock-scale, 1));
     border: 1px solid rgba(71, 85, 105, 0.82);
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 41, 59, 0.93) 100%);
     box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.18);
@@ -1586,15 +1655,24 @@
     opacity: 0.72;
 }
 
+.payroll-footer-scrollbar--native {
+    justify-content: space-between;
+}
+
+.payroll-footer-scrollbar--native .payroll-footer-scrollbar__meta {
+    width: 100%;
+    align-items: center;
+}
+
 .payroll-footer-scrollbar__nudge {
     flex-shrink: 0;
-    width: 30px;
-    height: 30px;
+    width: calc(30px * var(--payroll-dock-scale, 1));
+    height: calc(30px * var(--payroll-dock-scale, 1));
     border-radius: 999px;
     border: 1px solid rgba(71, 85, 105, 0.92);
     background: #0f172a;
     color: #f8fafc;
-    font-size: 0.92rem;
+    font-size: calc(0.92rem * var(--payroll-dock-scale, 1));
     font-weight: 800;
     line-height: 1;
     cursor: pointer;
@@ -1618,16 +1696,16 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: calc(5px * var(--payroll-dock-scale, 1));
 }
 
 .payroll-footer-scrollbar__meta {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 10px;
+    gap: calc(10px * var(--payroll-dock-scale, 1));
     color: #cbd5e1;
-    font-size: 0.64rem;
+    font-size: calc(0.64rem * var(--payroll-dock-scale, 1));
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -1637,7 +1715,7 @@
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    height: 18px;
+    height: calc(18px * var(--payroll-dock-scale, 1));
     background: transparent;
     cursor: pointer;
 }
@@ -1647,7 +1725,7 @@
 }
 
 .payroll-footer-scrollbar__range::-webkit-slider-runnable-track {
-    height: 8px;
+    height: calc(8px * var(--payroll-dock-scale, 1));
     border-radius: 999px;
     border: 1px solid rgba(148, 163, 184, 0.5);
     background: linear-gradient(90deg,
@@ -1661,9 +1739,9 @@
 .payroll-footer-scrollbar__range::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 20px;
-    height: 20px;
-    margin-top: -7px;
+    width: calc(20px * var(--payroll-dock-scale, 1));
+    height: calc(20px * var(--payroll-dock-scale, 1));
+    margin-top: calc(-7px * var(--payroll-dock-scale, 1));
     border-radius: 999px;
     border: 2px solid var(--payroll-slider-accent);
     background: #f8fafc;
@@ -1671,7 +1749,7 @@
 }
 
 .payroll-footer-scrollbar__range::-moz-range-track {
-    height: 8px;
+    height: calc(8px * var(--payroll-dock-scale, 1));
     border-radius: 999px;
     border: 1px solid rgba(148, 163, 184, 0.5);
     background: rgba(51, 65, 85, 0.96);
@@ -1679,14 +1757,14 @@
 }
 
 .payroll-footer-scrollbar__range::-moz-range-progress {
-    height: 8px;
+    height: calc(8px * var(--payroll-dock-scale, 1));
     border-radius: 999px;
     background: var(--payroll-slider-accent);
 }
 
 .payroll-footer-scrollbar__range::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
+    width: calc(18px * var(--payroll-dock-scale, 1));
+    height: calc(18px * var(--payroll-dock-scale, 1));
     border-radius: 999px;
     border: 2px solid var(--payroll-slider-accent);
     background: #f8fafc;
@@ -1696,7 +1774,7 @@
 .payroll-footer-tabs {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: calc(10px * var(--payroll-dock-scale, 1));
     width: 100%;
 }
 
@@ -1704,10 +1782,10 @@
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
-    gap: 8px;
+    gap: calc(8px * var(--payroll-dock-scale, 1));
     overflow-x: auto;
-    padding: 4px 6px 8px;
-    border-radius: 10px;
+    padding: calc(4px * var(--payroll-dock-scale, 1)) calc(6px * var(--payroll-dock-scale, 1)) calc(8px * var(--payroll-dock-scale, 1));
+    border-radius: calc(10px * var(--payroll-dock-scale, 1));
     border: 1px solid rgba(71, 85, 105, 0.82);
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.76) 0%, rgba(15, 23, 42, 0.92) 100%);
     scrollbar-width: auto;
@@ -1732,9 +1810,9 @@
     background: #111827;
     color: #94a3b8;
     border: 1px solid #334155;
-    padding: 8px 14px;
-    border-radius: 8px;
-    font-size: 0.68rem;
+    padding: calc(8px * var(--payroll-dock-scale, 1)) calc(14px * var(--payroll-dock-scale, 1));
+    border-radius: calc(8px * var(--payroll-dock-scale, 1));
+    font-size: calc(0.68rem * var(--payroll-dock-scale, 1));
     font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
@@ -1782,8 +1860,8 @@
 
 .payroll-footer-stream-bar {
     margin-bottom: 0;
-    padding: 6px 8px 7px;
-    border-radius: 10px;
+    padding: calc(6px * var(--payroll-dock-scale, 1)) calc(8px * var(--payroll-dock-scale, 1)) calc(7px * var(--payroll-dock-scale, 1));
+    border-radius: calc(10px * var(--payroll-dock-scale, 1));
     border: 1px solid rgba(71, 85, 105, 0.65);
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(30, 41, 59, 0.96) 100%);
     box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.18), 0 2px 10px rgba(2, 6, 23, 0.35);
@@ -1791,12 +1869,12 @@
 
 .stream-progress-track {
     width: 100%;
-    height: 9px;
+    height: calc(9px * var(--payroll-dock-scale, 1));
     padding: 1px;
     background: linear-gradient(180deg, #0b1220 0%, #111b2e 100%);
     border: 1px solid rgba(71, 85, 105, 0.85);
     border-radius: 999px;
-    margin-bottom: 7px;
+    margin-bottom: calc(7px * var(--payroll-dock-scale, 1));
     box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.8);
     overflow: hidden;
 }
@@ -1811,21 +1889,21 @@
 
 .stream-chips {
     display: flex;
-    gap: 4px;
+    gap: calc(4px * var(--payroll-dock-scale, 1));
     align-items: center;
 }
 
 .stream-status-text {
     color: #94a3b8;
-    font-size: 10px;
+    font-size: calc(10px * var(--payroll-dock-scale, 1));
 }
 
 .stream-chip {
-    font-size: 10px;
-    padding: 2px 6px;
+    font-size: calc(10px * var(--payroll-dock-scale, 1));
+    padding: calc(2px * var(--payroll-dock-scale, 1)) calc(6px * var(--payroll-dock-scale, 1));
     background: #334155;
     color: #e2e8f0;
-    border-radius: 4px;
+    border-radius: calc(4px * var(--payroll-dock-scale, 1));
 }
 
 
@@ -1834,9 +1912,9 @@
     background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
     color: #fff;
     border: 1px solid rgba(245, 158, 11, 0.75);
-    padding: 8px 14px;
-    border-radius: 8px;
-    font-size: 0.68rem;
+    padding: calc(8px * var(--payroll-dock-scale, 1)) calc(14px * var(--payroll-dock-scale, 1));
+    border-radius: calc(8px * var(--payroll-dock-scale, 1));
+    font-size: calc(0.68rem * var(--payroll-dock-scale, 1));
     font-weight: 800;
     cursor: pointer;
     white-space: nowrap;

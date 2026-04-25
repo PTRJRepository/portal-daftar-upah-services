@@ -35,8 +35,15 @@ const isEmployeeRow = (row) => {
   return true;
 };
 
-export function resolveGrandTotalNumericValue({ grandTotal = {}, rows = [], field = '' }) {
+export function resolveGrandTotalNumericValue({ grandTotal = {}, rows = [], field = '', preferRows = false }) {
   const sourceField = resolveGrandTotalSourceField(field);
+  const employeeRows = Array.isArray(rows) ? rows.filter(isEmployeeRow) : [];
+
+  if (preferRows && employeeRows.length > 0) {
+    return Math.round(
+      employeeRows.reduce((sum, row) => sum + Number(row[sourceField] || 0), 0)
+    );
+  }
 
   const direct = toNumberOrNull(grandTotal[field]);
   if (direct !== null) return direct;
@@ -44,7 +51,6 @@ export function resolveGrandTotalNumericValue({ grandTotal = {}, rows = [], fiel
   const aliased = toNumberOrNull(grandTotal[sourceField]);
   if (aliased !== null) return aliased;
 
-  const employeeRows = Array.isArray(rows) ? rows.filter(isEmployeeRow) : [];
   if (employeeRows.length === 0) return 0;
 
   return Math.round(

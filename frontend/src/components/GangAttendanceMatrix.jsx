@@ -82,19 +82,15 @@ const getTargetHoursForDay = (day, month, year) => {
     return new Date(year, month - 1, day).getDay() === 5 ? 5 : 7
 }
 
-const normalizeStatusCode = ({ rawStatus, isSunday, isHoliday, hours, amount }) => {
+const normalizeStatusCode = ({ rawStatus, rawRemarks, isSunday, isHoliday, hours, amount }) => {
     const normalized = String(rawStatus ?? '')
         .trim()
         .toUpperCase()
         .replace(/[\s-]+/g, '_')
+    const normalizedRemarks = String(rawRemarks ?? '').trim().toUpperCase()
 
     if (STATUS_ALIAS_MAP[normalized]) {
-        const mappedStatus = STATUS_ALIAS_MAP[normalized]
-        const hasWorkSignal = hours > 0 || amount > 0
-        if (hasWorkSignal && !['H', 'M', 'N', 'L'].includes(mappedStatus)) {
-            return 'H'
-        }
-        return mappedStatus
+        return STATUS_ALIAS_MAP[normalized]
     }
 
     if (!normalized || normalized === 'NO_DATA') {
@@ -103,17 +99,27 @@ const normalizeStatusCode = ({ rawStatus, isSunday, isHoliday, hours, amount }) 
         return '-'
     }
 
-    if (hours > 0 || amount > 0) return 'H'
+    // Heuristic fallback (keep aligned with EmployeeDetail semantics)
+    if (normalized.includes('SAKIT') || normalizedRemarks.includes('SAKIT')) return 'S'
+    if (normalized.includes('CUTI') || normalizedRemarks.includes('CUTI')) return 'C'
+    if (normalized.includes('ALPA') || normalizedRemarks.includes('ALPA')) return 'A'
+    if (normalized.includes('MINGGU') || normalizedRemarks.includes('MINGGU')) return 'M'
+    if (normalized.includes('LIBUR') || normalizedRemarks.includes('LIBUR')) return isHoliday ? 'N' : 'L'
+
     if (isSunday) return 'M'
     if (isHoliday) return 'N'
+
+    if (hours > 0 || amount > 0) return 'H'
     return '-'
 }
 
 const buildDayState = ({ dayData, day, month, year, isSunday, isHoliday }) => {
     const hours = toNumber(dayData?.hours)
     const amount = toNumber(dayData?.amount)
+    const remarks = typeof dayData?.remarks === 'string' ? dayData.remarks.trim() : ''
     const statusCode = normalizeStatusCode({
         rawStatus: dayData?.status,
+        rawRemarks: remarks,
         isSunday,
         isHoliday,
         hours,
@@ -122,7 +128,6 @@ const buildDayState = ({ dayData, day, month, year, isSunday, isHoliday }) => {
     const cfg = STATUS_CONFIG[statusCode] || STATUS_CONFIG['-']
     const targetHours = getTargetHoursForDay(day, month, year)
     const isShort = statusCode === 'H' && hours > 0 && hours < targetHours && !isSunday && !isHoliday
-    const remarks = typeof dayData?.remarks === 'string' ? dayData.remarks.trim() : ''
 
     return {
         statusCode,

@@ -3,15 +3,13 @@ import { AuthService } from "../services/authService";
 import { User } from "../types/user";
 import { reportService } from "../services/reportService";
 import { generateDaftarUpahExcel } from "../services/daftarUpahExcelService";
+import { resolveUserFromHeaders } from "../utils/authBypass";
 
 const authService = AuthService.getInstance();
 
 // Helper to get user from header
 async function getUserFromHeader(headers: Record<string, string | undefined>): Promise<User | null> {
-    const authHeader = headers["authorization"];
-    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-    const token = authHeader.split(" ")[1];
-    return authService.verifyToken(token);
+    return resolveUserFromHeaders(headers, authService);
 }
 
 // Simple in-memory job store
