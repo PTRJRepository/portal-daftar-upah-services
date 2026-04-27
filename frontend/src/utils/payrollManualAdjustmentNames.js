@@ -66,22 +66,25 @@ export function buildPendingManualColumn({ groupLabel, rawName, division, firstE
   const gangCode = normalizeIdentity(firstEmployee?.gang_code);
   const empCode = normalizeIdentity(firstEmployee?.emp_code) || nik;
 
-  if (!adjustmentName || !fieldPrefix || !adjustmentType || !fieldSuffix || !nik || !gangCode) {
+  if (!adjustmentName || !fieldPrefix || !adjustmentType || !fieldSuffix) {
     return null;
   }
+
+  const payload = {
+    division_code: division,
+    type: adjustmentType,
+    name: adjustmentName,
+  };
+
+  if (nik) payload.nik = nik;
+  if (empCode) payload.emp_code = empCode;
+  if (gangCode) payload.gang_code = gangCode;
 
   return {
     fieldName: `${fieldPrefix}_${fieldSuffix}`,
     adjustmentType,
     adjustmentName,
     activeFieldBucket: groupLabel === 'PREMI' ? 'premi' : 'potongan',
-    payload: {
-      nik,
-      emp_code: empCode,
-      gang_code: gangCode,
-      division_code: division,
-      type: adjustmentType,
-      name: adjustmentName,
-    },
+    payload,
   };
 }

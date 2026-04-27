@@ -189,6 +189,29 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             deductions: t.Optional(t.Record(t.String(), t.Number()))
         })
     })
+    // --- Manual Adjustment TaskCode Options ---
+    .get("/manual-adjustment/taskcode-options", async ({ query, set }) => {
+        try {
+            const { taskCodeOptionService } = await import("../services/taskCodeOptionService");
+            const data = await taskCodeOptionService.searchOptions({
+                search: query.search || undefined,
+                divisionCode: query.division_code || undefined,
+                limit: query.limit ? Number(query.limit) : undefined
+            });
+
+            return { success: true, count: data.length, data };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/taskcode-options error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            search: t.Optional(t.String()),
+            division_code: t.Optional(t.String()),
+            limit: t.Optional(t.String())
+        })
+    })
     // --- Save Manual Edit ---
     .post("/manual-edit", async ({ body, currentUser, set }) => {
         try {
@@ -233,6 +256,118 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             adjustment_name: t.String(),
             amount: t.Number(),
             remarks: t.Optional(t.String())
+        })
+    })
+    // --- Manual Adjustment for authenticated UI ---
+    .get("/manual-adjustment", async ({ query, set }) => {
+        try {
+            const periodMonth = Number(query.period_month);
+            const periodYear = Number(query.period_year);
+
+            if (!Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12) {
+                set.status = 400;
+                return { success: false, error: "period_month harus 1-12" };
+            }
+
+            if (!Number.isInteger(periodYear) || periodYear < 2000) {
+                set.status = 400;
+                return { success: false, error: "period_year tidak valid" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const rows = await manualAdjustmentService.getAdjustments(
+                periodMonth,
+                periodYear,
+                query.gang_code || undefined,
+                query.emp_code || undefined,
+                query.division_code || undefined,
+                query.adjustment_type || undefined,
+                query.adjustment_name || undefined
+            );
+
+            return { success: true, count: rows.length, data: rows };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment GET error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            period_month: t.String(),
+            period_year: t.String(),
+            gang_code: t.Optional(t.String()),
+            emp_code: t.Optional(t.String()),
+            division_code: t.Optional(t.String()),
+            adjustment_type: t.Optional(t.String()),
+            adjustment_name: t.Optional(t.String())
+        })
+    })
+    .post("/manual-adjustment", async ({ body, currentUser, set }) => {
+        try {
+            const data = body as any;
+            const allowedTypes = ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH", "PENDAPATAN_LAINNYA"];
+
+            if (!allowedTypes.includes(data.adjustment_type)) {
+                set.status = 400;
+                return { success: false, error: "adjustment_type tidak valid untuk input UI" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            const resultId = await manualAdjustmentService.saveAdjustment(data, currentUser?.username || "system");
+
+            const pattern = `:${data.period_month}:${data.period_year}`;
+            cacheService.clearByPattern(pattern);
+
+            return { success: true, id: resultId, message: "Manual adjustment saved successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment POST error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            nik: t.Optional(t.String()),
+            emp_code: t.String(),
+            gang_code: t.String(),
+            division_code: t.Optional(t.String()),
+            adjustment_type: t.String(),
+            adjustment_name: t.String(),
+            amount: t.Number(),
+            remarks: t.Optional(t.String())
+        })
+    })
+    .delete("/manual-adjustment/:id", async ({ params, query, set }) => {
+        try {
+            const id = Number(params.id);
+            if (!Number.isInteger(id) || id <= 0) {
+                set.status = 400;
+                return { success: false, error: "id tidak valid" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            await manualAdjustmentService.deleteAdjustment(id);
+
+            if (query.period_month && query.period_year) {
+                cacheService.clearByPattern(`:${query.period_month}:${query.period_year}`);
+            } else {
+                cacheService.clear();
+            }
+
+            return { success: true, message: "Manual adjustment deleted successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment DELETE error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        params: t.Object({ id: t.String() }),
+        query: t.Object({
+            period_month: t.Optional(t.String()),
+            period_year: t.Optional(t.String())
         })
     })
     // --- Manual Adjustment via API Key Bypass (x-api-key) ---
@@ -550,6 +685,66 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         })
     })
     // --- Seed Auto Buffer -> Manual Adjustment ---
+    
+    /**
+     * @route POST /payroll/manual-adjustment/check-adtrans/by-api-key
+     * @description Checks PR_ADTRANS directly for given employees and specific allowance/deduction patterns
+     * @access Public (with X-API-Key)
+     */
+    .post("/manual-adjustment/check-adtrans/by-api-key", async ({ body, headers, set }) => {
+        try {
+            // Verify API Key
+            const apiKey = headers["x-api-key"];
+            if (!apiKey || apiKey !== process.env.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, message: "Unauthorized - Invalid API Key" };
+            }
+
+            const data = body as any;
+            const { period_month, period_year, emp_codes, filters } = data;
+
+            if (!period_month || !period_year) {
+                set.status = 400;
+                return { success: false, message: "period_month and period_year are required" };
+            }
+
+            if (!Array.isArray(emp_codes) || emp_codes.length === 0) {
+                set.status = 400;
+                return { success: false, message: "emp_codes array is required and cannot be empty" };
+            }
+
+            if (!Array.isArray(filters) || filters.length === 0) {
+                set.status = 400;
+                return { success: false, message: "filters array is required (e.g. ['spsi', 'masa kerja', 'jabatan'])" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const result = await manualAdjustmentService.checkAdtransDirectly(
+                Number(period_month),
+                Number(period_year),
+                emp_codes,
+                filters
+            );
+
+            return {
+                success: true,
+                message: "Adtrans check completed successfully",
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/check-adtrans error:", e);
+            set.status = 500;
+            return { success: false, message: e.message || "Internal server error" };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            emp_codes: t.Array(t.String()),
+            filters: t.Array(t.String())
+        })
+    })
+
     .post("/manual-adjustment/seed-auto-buffer", async ({ body, currentUser, set }) => {
         try {
             const { autoBufferManualAdjustmentSeederService } = await import("../services/autoBufferManualAdjustmentSeederService");
@@ -1724,6 +1919,37 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             use_history_db: t.Optional(t.Boolean()),
             snapshot_version: t.Optional(t.Number()),
             replace_existing: t.Optional(t.Boolean())
+        })
+    })
+    .post("/locked/manual-adjustment/auto-buffer-validate", async ({ body, set, currentUser }) => {
+        try {
+            const { autoBufferManualAdjustmentSeederService } = await import("../services/autoBufferManualAdjustmentSeederService");
+            const payload = body as any;
+
+            const result = await autoBufferManualAdjustmentSeederService.validatePeriod({
+                period_month: payload.period_month,
+                period_year: payload.period_year,
+                division_code: payload.division_code,
+                gang_code: payload.gang_code,
+                created_by: currentUser?.username || "system"
+            });
+
+            return {
+                success: true,
+                message: "Auto buffer validation completed",
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] locked/manual-adjustment/auto-buffer-validate error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            gang_code: t.Optional(t.String())
         })
     })
 

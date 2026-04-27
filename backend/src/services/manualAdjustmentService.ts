@@ -253,6 +253,89 @@ export class ManualAdjustmentService {
         const db = this.getDatabase();
         await db.query(`DELETE FROM dbo.payroll_manual_adjustments WHERE id = ?`, [id]);
     }
+
+    /**
+     * Checks PR_ADTRANS (and ARC) directly for specific employee adjustments.
+     * Uses PhyMonth and PhyYear to map to the real calendar month.
+     */
+    public async checkAdtransDirectly(
+        periodMonth: number,
+        periodYear: number,
+        empCodes: string[],
+        filters: string[]
+    ): Promise<any[]> {
+        const dbMain = Database.getInstance(); // db_ptrj
+
+        if (!empCodes || empCodes.length === 0) {
+            return [];
+        }
+
+        if (!filters || filters.length === 0) {
+            return [];
+        }
+
+        // Format empCodes for IN clause
+        const empList = empCodes.map(e => `'${e.trim()}'`).join(",");
+        
+        // Build the CASE statements dynamically based on requested filters
+        // Using UPPER for case-insensitive matching in SQL Server
+        const caseStatements = filters.map(f => {
+            const filterKey = f.toLowerCase().trim();
+            let sqlLike = `'%DEFAULTPATTERN%'`; // Fallback
+            
+            // Map common requested filters to actual DocDesc patterns
+            if (filterKey.includes('spsi')) {
+                sqlLike = `'%SPSI%'`;
+            } else if (filterKey.includes('masa')) {
+                sqlLike = `'MASA%KERJA%'`;
+            } else if (filterKey.includes('jabatan')) {
+                sqlLike = `'%JABATAN%'`;
+            } else if (filterKey.includes('premi')) {
+                sqlLike = `'%PREMI%'`;
+            } else if (filterKey.includes('potongan')) {
+                sqlLike = `'POT%'`;
+            } else {
+                // If not a predefined alias, use the raw filter word
+                sqlLike = `'%${f.toUpperCase()}%'`;
+            }
+
+            return `SUM(CASE WHEN UPPER(DocDesc) LIKE ${sqlLike} THEN Amount ELSE 0 END) as [${filterKey}]`;
+        }).join(", ");
+
+        // IMPORTANT: diambil dari phymonth dan phyyear itu adalah real monthnya sesuai kalender
+        const adtransQuery = `
+            SELECT 
+                emp_code, 
+                ${caseStatements}
+            FROM (
+                SELECT 
+                    RTRIM(t.EmpCode) as emp_code,
+                    t.DocDesc,
+                    ln.Amount
+                FROM PR_ADTRANS t
+                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList}) 
+                  AND t.PhyMonth = ? 
+                  AND t.PhyYear = ?
+
+                UNION ALL
+
+                SELECT 
+                    RTRIM(t.EmpCode) as emp_code,
+                    t.DocDesc,
+                    ln.Amount
+                FROM PR_ADTRANS_ARC t
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE RTRIM(t.EmpCode) IN (${empList}) 
+                  AND t.PhyMonth = ? 
+                  AND t.PhyYear = ?
+            ) src
+            GROUP BY emp_code
+        `;
+        
+        const rows = await dbMain.query<any>(adtransQuery, [periodMonth, periodYear, periodMonth, periodYear]);
+        return rows;
+    }
 }
 
 export const manualAdjustmentService = ManualAdjustmentService.getInstance();
