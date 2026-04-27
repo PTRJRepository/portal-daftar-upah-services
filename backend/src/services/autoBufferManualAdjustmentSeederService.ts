@@ -275,6 +275,141 @@ export class AutoBufferManualAdjustmentSeederService {
             value_priority_mode_source: "db_ptrj_only"
         };
     }
+
+    public async validatePeriod(input: AutoBufferManualAdjustmentSeedInput) {
+        const periodMonth = Math.floor(toNumber(input.period_month));
+        const periodYear = Math.floor(toNumber(input.period_year));
+        const divisionCode = normalizeString(input.division_code).toUpperCase();
+        const gangCode = normalizeString(input.gang_code || "ALL").toUpperCase();
+        const updatedBy = normalizeString(input.created_by) || "system";
+
+        if (periodMonth < 1 || periodMonth > 12) throw new Error("period_month harus 1-12");
+        if (periodYear < 2000) throw new Error("period_year tidak valid");
+        if (!divisionCode) throw new Error("division_code wajib diisi");
+
+        const extendDb = this.getDatabase();
+        
+        // 1. Fetch current AUTO_BUFFER records
+        const fetchQuery = `
+            SELECT id, emp_code, adjustment_name, amount, remarks
+            FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ? AND period_year = ?
+              AND division_code = ?
+              AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
+              ${gangCode !== "ALL" ? "AND gang_code = ?" : ""}
+        `;
+        const fetchParams = gangCode !== "ALL"
+            ? [periodMonth, periodYear, divisionCode, gangCode]
+            : [periodMonth, periodYear, divisionCode];
+            
+        const existingRecords = await extendDb.query<any>(fetchQuery, fetchParams);
+        
+        if (existingRecords.length === 0) {
+            return { processed: 0, updated: 0, matches: 0, misses: 0 };
+        }
+
+        // Prepare date range for db_ptrj query
+        const startDate = `${periodYear}-${String(periodMonth).padStart(2, "0")}-01`;
+        const endDateObj = new Date(periodYear, periodMonth, 1);
+        const endDate = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, "0")}-01`;
+
+        // 2. Query true values from PR_ADTRANS and PR_ADTRANS_ARC in db_ptrj
+        // We use inner join with HR_GANGLN just like dataExtractorService to limit to specific gangs/divisions
+        const dbMain = Database.getInstance(); // Uses SERVER_PROFILE_2 natively or SERVER_PROFILE_1 in DEV
+        
+        // Build gang filter if needed
+        let gangJoin = `INNER JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(t.EmpCode)`;
+        let gangCondition = ``;
+        
+        if (gangCode !== "ALL") {
+            gangCondition = `AND RTRIM(gl.GangCode) = '${gangCode}'`;
+        }
+
+        const trueValuesQuery = `
+            SELECT RTRIM(t.EmpCode) as emp_code, 
+                   CASE 
+                       WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'AUTO TUNJANGAN JABATAN'
+                       WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'AUTO MASA KERJA'
+                       WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'AUTO SPSI'
+                   END as adjustment_name,
+                   SUM(ln.Amount) as total
+            FROM (
+                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
+                FROM PR_ADTRANS t
+                ${gangJoin}
+                WHERE t.DocDate >= ? AND t.DocDate < ? ${gangCondition}
+                
+                UNION ALL
+                
+                SELECT t.EmpCode, t.ID, t.DocDesc, t.DocDate
+                FROM PR_ADTRANS_ARC t
+                ${gangJoin}
+                WHERE t.DocDate >= ? AND t.DocDate < ? ${gangCondition}
+            ) t
+            JOIN (
+                SELECT MasterID, Amount FROM PR_ADTRANSLN
+                UNION ALL
+                SELECT MasterID, Amount FROM PR_ADTRANSLN_ARC
+            ) ln ON t.ID = ln.MasterID
+            WHERE UPPER(t.DocDesc) LIKE '%JABATAN%' 
+               OR UPPER(t.DocDesc) LIKE '%MASA%KERJA%' 
+               OR UPPER(t.DocDesc) LIKE '%SPSI%'
+            GROUP BY RTRIM(t.EmpCode),
+                   CASE 
+                       WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'AUTO TUNJANGAN JABATAN'
+                       WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'AUTO MASA KERJA'
+                       WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'AUTO SPSI'
+                   END
+        `;
+        
+        const trueValues = await dbMain.query<any>(trueValuesQuery, [startDate, endDate, startDate, endDate]);
+        
+        // Map true values for quick lookup
+        const trueValuesMap = new Map<string, number>();
+        for (const row of trueValues) {
+            const key = `${row.emp_code}_${row.adjustment_name}`;
+            trueValuesMap.set(key, toNumber(row.total));
+        }
+
+        let updatedCount = 0;
+        let matches = 0;
+        let misses = 0;
+
+        // 3. Compare and Update
+        for (const record of existingRecords) {
+            const key = `${record.emp_code}_${record.adjustment_name}`;
+            const dbAmount = trueValuesMap.get(key) || 0;
+            const currentAmount = Math.abs(toNumber(record.amount)); // Comparing absolute values for safety since SPSI is a deduction
+            const absoluteDbAmount = Math.abs(dbAmount);
+            
+            // Build the new remark containing the match status
+            const newRemark = buildAutoBufferSeedRemark(record.adjustment_name, currentAmount, absoluteDbAmount);
+            
+            // Check if it's a match
+            if (Math.abs(currentAmount - absoluteDbAmount) <= 0.01) {
+                matches++;
+            } else {
+                misses++;
+            }
+
+            // Update if the remark has changed (e.g. status flipped from MISS to MATCH or amount changed)
+            if (record.remarks !== newRemark) {
+                await extendDb.query(`
+                    UPDATE dbo.payroll_manual_adjustments
+                    SET remarks = ?, updated_at = GETDATE(), updated_by = ?
+                    WHERE id = ?
+                `, [newRemark, updatedBy, record.id]);
+                updatedCount++;
+            }
+        }
+
+        return {
+            processed: existingRecords.length,
+            updated: updatedCount,
+            matches: matches,
+            misses: misses
+        };
+    }
 }
 
 export const autoBufferManualAdjustmentSeederService = AutoBufferManualAdjustmentSeederService.getInstance();

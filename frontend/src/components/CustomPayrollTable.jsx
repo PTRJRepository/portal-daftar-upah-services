@@ -7,6 +7,7 @@ import { isProdMode } from '../utils/prodModeUtils';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
 import PayrollScrollChapterBar from './PayrollScrollChapterBar';
 import PayrollViewModeToolbar from './PayrollViewModeToolbar';
+import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
@@ -243,6 +244,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     // Manual Edit State
     const [editedCells, setEditedCells] = useState({}); // { 'nik-field': { value, originalValue, gang_code, type, name } }
     const [addedColumns, setAddedColumns] = useState([]); // Track new columns added in edit mode
+    const [manualAdjustmentModal, setManualAdjustmentModal] = useState({ isOpen: false, groupLabel: null });
     const [isSavingEdits, setIsSavingEdits] = useState(false);
     const [isSeedingAutoBuffer, setIsSeedingAutoBuffer] = useState(false);
 
@@ -830,13 +832,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     }, []);
 
     const handleAddColumn = (groupLabel) => {
-        const firstEmp = displayRows.find(r => r.type === 'employee');
-        const rawName = window.prompt(`Masukkan nama kolom baru untuk ${groupLabel}:\n(Contoh: PINJAMAN, BPJS, INSENTIF)`);
+        setManualAdjustmentModal({ isOpen: true, groupLabel });
+    };
+
+    const handleManualAdjustmentSaved = (columnDefinition) => {
+        const groupLabelByType = {
+            PREMI,
+            POTONGAN_KOTOR: POTONGAN_UPAH_KOTOR,
+            POTONGAN_BERSIH: POTONGAN_UPAH_BERSIH
+        };
+        const effectiveGroupLabel = groupLabelByType[columnDefinition.adjustment_type] || manualAdjustmentModal.groupLabel;
         const pendingColumn = buildPendingManualColumn({
-            groupLabel,
-            rawName,
+            groupLabel: effectiveGroupLabel,
+            rawName: columnDefinition.adjustment_name,
             division,
-            firstEmployee: firstEmp
+            firstEmployee: null
         });
 
         if (!pendingColumn) return;
@@ -855,7 +865,36 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             setActivePotFields(prev => [...new Set([...prev, pendingColumn.fieldName])]);
         }
 
-        setAddedColumns(prev => [...prev, { ...pendingColumn.payload, field: pendingColumn.fieldName }]);
+        setAddedColumns(prev => {
+            const nextColumn = {
+                ...pendingColumn.payload,
+                field: pendingColumn.fieldName,
+                remarks: columnDefinition.remarks
+            };
+            const exists = prev.some((item) => item.field === nextColumn.field && item.type === nextColumn.type);
+            return exists ? prev : [...prev, nextColumn];
+        });
+    };
+
+    const handleRemoveAddedColumn = (field) => {
+        const targetColumn = addedColumns.find((item) => item.field === field);
+        if (!targetColumn) return;
+
+        if (!window.confirm(`Hapus kolom ${targetColumn.name || field}?`)) return;
+
+        setAddedColumns(prev => prev.filter((item) => item.field !== field));
+        setActivePremiFields(prev => prev.filter((item) => item !== field));
+        setActivePotFields(prev => prev.filter((item) => item !== field));
+        setDynamicHeaders(prev => ({
+            premi: Object.fromEntries(Object.entries(prev.premi || {}).filter(([, value]) => value !== field)),
+            potongan: Object.fromEntries(Object.entries(prev.potongan || {}).filter(([, value]) => value !== field))
+        }));
+        setEditedCells(prev => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.endsWith(`-${field}`))));
+        setRows(prev => prev.map((row) => {
+            if (!row || !(field in row)) return row;
+            const { [field]: _removed, ...rest } = row;
+            return rest;
+        }));
     };
 
     // Handle Manual Cell Edit
@@ -1727,6 +1766,38 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 w: 75,
                 className: 'text-center sticky-col frozen-col-theme',
                 left: 0
+            },
+            {
+                field: 'manual_adjustment_action',
+                headers: ['IDENTITAS', null, 'MANUAL'],
+                w: 72,
+                className: 'text-center',
+                render: (row) => {
+                    if (!isEditMode || row.type !== 'employee') return '-';
+                    return (
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                handleAddColumn(PREMI);
+                            }}
+                            title="Tambah manual adjustment berbasis ADTrans"
+                            style={{
+                                border: '1px solid #bbf7d0',
+                                background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                                color: 'white',
+                                borderRadius: 999,
+                                padding: '3px 8px',
+                                fontSize: 10,
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                boxShadow: '0 4px 10px rgba(22, 163, 74, 0.24)'
+                            }}
+                        >
+                            + AD
+                        </button>
+                    );
+                }
             },
             {
                 field: 'nama',
@@ -3598,6 +3669,32 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             title={cell.level === 0 && isPayrollGroupToggleable(cell.label) ? 'Klik untuk melihat/menyembunyikan detail' : undefined}
                                         >
                                             <div>{formatHeaderLabel(cell.label)}</div>
+                                            {isEditMode && cell.field && addedColumns.some((item) => item.field === cell.field) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleRemoveAddedColumn(cell.field);
+                                                    }}
+                                                    title="Hapus kolom manual adjustment ini"
+                                                    style={{
+                                                        border: 0,
+                                                        background: '#dc2626',
+                                                        color: '#fff',
+                                                        borderRadius: 999,
+                                                        width: 16,
+                                                        height: 16,
+                                                        lineHeight: '16px',
+                                                        fontSize: 11,
+                                                        fontWeight: 900,
+                                                        cursor: 'pointer',
+                                                        padding: 0,
+                                                        marginLeft: 4
+                                                    }}
+                                                >
+                                                    ×
+                                                </button>
+                                            )}
                                             {cell.level === 0 && isPayrollGroupToggleable(cell.label) && (
                                                 <span style={{ fontSize: '10px', marginLeft: '4px' }}>
                                                     {getGroupExpandedState(cell.label) ? '▼' : '▶'}
@@ -3804,6 +3901,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 onToggleDisplayMode={() => setDisplayMode(displayMode === 'simple' ? 'detail' : 'simple')}
             />
             <SelectionStatusBar stats={selectionStats} />
+            <ManualAdjustmentColumnModal
+                isOpen={manualAdjustmentModal.isOpen}
+                onClose={() => setManualAdjustmentModal({ isOpen: false, groupLabel: null })}
+                onSaved={handleManualAdjustmentSaved}
+                token={token}
+                division={division}
+            />
         </div>
     );
 });

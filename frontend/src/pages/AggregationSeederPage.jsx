@@ -31,13 +31,13 @@ import {
 } from '../services/historyService';
 import '../styles/aggregation-seeder.css';
 
-export default function AggregationSeederPage({ onBack }) {
+export default function AggregationSeederPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
 
     // Parameters
     const [division, setDivision] = useState('ALL');
-    const [month, setMonth] = useState(new Date().getMonth() + 1);
-    const [year, setYear] = useState(new Date().getFullYear());
+    const [month, setMonth] = useState(initialMonth || null);
+    const [year, setYear] = useState(initialYear || null);
     const [syncType, setSyncType] = useState('DAFTAR_UPAH');
     const [historySeederType, setHistorySeederType] = useState('PAYROLL');
 
@@ -60,6 +60,11 @@ export default function AggregationSeederPage({ onBack }) {
 
     // Log ref for auto-scroll
     const logEndRef = useRef(null);
+
+    useEffect(() => {
+        if (initialMonth) setMonth(initialMonth);
+        if (initialYear) setYear(initialYear);
+    }, [initialMonth, initialYear]);
 
     // Add log entry
     const addLog = useCallback((message, type = 'info') => {
@@ -142,8 +147,8 @@ export default function AggregationSeederPage({ onBack }) {
                 if (periodRes.ok) {
                     const periodData = await periodRes.json();
                     if (periodData.month && periodData.year) {
-                        setMonth(periodData.month);
-                        setYear(periodData.year);
+                        if (!initialMonth) setMonth(periodData.month);
+                        if (!initialYear) setYear(periodData.year);
                         addLog(`📅 Database aktif: ${formatMonthName(periodData.month)} ${periodData.year}`);
                     }
                 }
@@ -152,7 +157,7 @@ export default function AggregationSeederPage({ onBack }) {
             }
         }
         checkConnection();
-    }, [token, addLog]);
+    }, [token, addLog, initialMonth, initialYear]);
 
     // Load divisions
     useEffect(() => {
@@ -332,13 +337,15 @@ export default function AggregationSeederPage({ onBack }) {
                 addLog('✅ Spreadsheet Sync complete!', 'success');
                 if (result.results) {
                     const synced = result.results.filter(r => r.status === 'SUCCESS').length;
-                    const skipped = result.results.filter(r => r.status === 'SKIPPED_NO_DATA').length;
-                    const failed = result.results.filter(r => r.status === 'FAILED').length;
-                    addLog(`📈 Synced: ${synced}, Skipped: ${skipped}, Failed: ${failed}`);
+                    const missed = result.results.filter(r => r.status === 'SKIPPED_NO_DATA').length;
+                    const failed = result.results.filter(r => r.status === 'FAILED' || r.status === 'ERROR').length;
+                    addLog(`📈 Synced: ${synced}, Miss: ${missed}, Failed: ${failed}`);
 
                     // Log details for failures
-                    result.results.filter(r => r.status === 'FAILED').forEach(r => {
-                        addLog(`❌ ${r.division}: ${r.error}`, 'error');
+                    result.results
+                        .filter(r => r.status === 'FAILED' || r.status === 'ERROR')
+                        .forEach(r => {
+                        addLog(`❌ ${r.division}: ${r.error || r.message || 'Unknown error'}`, 'error');
                     });
                 }
             } else {

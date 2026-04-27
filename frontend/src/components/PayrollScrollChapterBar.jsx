@@ -53,7 +53,9 @@ export default function PayrollScrollChapterBar({
                     onClick={onToggleDisplayMode}
                     title={displayMode === 'simple' ? 'Tampilkan Semua Kolom' : 'Gunakan Mode Fokus'}
                 >
-                    {displayMode === 'simple' ? '🔍 FOKUS' : '👁️ SEMUA'}
+                    <span className="footer-mode-toggle__label">
+                        {displayMode === 'simple' ? 'FOKUS' : 'SEMUA'}
+                    </span>
                 </button>
                 <div className="tabs-scroll-container">
                     {allGroups.map((group) => (

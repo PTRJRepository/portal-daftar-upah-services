@@ -21,40 +21,20 @@ import PayrollTaxMatrix from '../components/PayrollTaxMatrix'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { checkReportAccess } from '../services/summaryReportService'
 import { buildSelectedEmployeeRowMap } from '../utils/payrollRowAccessors'
+import {
+  getAllowedDivisionsForUser,
+  isDivisionAllowed,
+  isValidPeriod,
+  loadLegacyPayrollSelection,
+  loadPayrollSelection,
+  savePayrollSelection
+} from '../utils/payrollSelectionStorage'
 
 // Check if running in dev/test mode (admin mode)
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
-
-// LocalStorage keys for persisting MainPage filter selections
-const STORAGE_KEYS = {
-    DIVISION: 'payroll_mainpage_division',
-    GANG: 'payroll_mainpage_gang',
-    GANG_PREFIX: 'payroll_mainpage_gang_prefix'
-}
-
-// Load persisted value from localStorage, returns null if not found
-const loadFromStorage = (key) => {
-    try {
-        const val = localStorage.getItem(key)
-        return val !== null ? val : null
-    } catch {
-        return null
-    }
-}
-
-// Save value to localStorage
-const saveToStorage = (key, value) => {
-    try {
-        if (value) {
-            localStorage.setItem(key, value)
-        } else {
-            localStorage.removeItem(key)
-        }
-    } catch { /* ignore */ }
-}
 
 export default function MainPage({ lockedDiv = null }) {
   const { user, token, logout, lockedDivision } = useAuth()
@@ -74,8 +54,8 @@ export default function MainPage({ lockedDiv = null }) {
   const externalLockedDiv = isAdminUser ? null : (lockedDiv || lockedDivision || null)
   const isLockedMode = !isAdminUser && !!(externalLockedDiv || prodDivision)
 
-  // Use current period from API (calculated from PR_TASKREGLN_ARC latest date)
-  const { month, setMonth, year, setYear, data: currentPeriodData } = useCurrentPeriod()
+  // Use current period from API as the default period when no valid saved selection exists
+  const { month, setMonth, year, setYear, data: currentPeriodData, loading: currentPeriodLoading } = useCurrentPeriod()
 
   // Calculate if currently viewed period is historical
   const isHistorical = currentPeriodData ? (year * 100 + month) < (currentPeriodData.year * 100 + currentPeriodData.month) : false;
@@ -84,9 +64,10 @@ export default function MainPage({ lockedDiv = null }) {
   const currentProductionMonth = currentPeriodData?.month
   const currentProductionYear = currentPeriodData?.year
 
-  const [division, setDivision] = useState(() => loadFromStorage(STORAGE_KEYS.DIVISION) || '')
-  const [gang, setGang] = useState(() => loadFromStorage(STORAGE_KEYS.GANG) || '')
-  const [gangPrefix, setGangPrefix] = useState(() => loadFromStorage(STORAGE_KEYS.GANG_PREFIX) || '1') // Default to Group 1
+  const [division, setDivision] = useState('')
+  const [gang, setGang] = useState('')
+  const [gangPrefix, setGangPrefix] = useState('1')
+  const [filtersInitialized, setFiltersInitialized] = useState(false)
 
   const [gangs, setGangs] = useState([])
   const [gangLoading, setGangLoading] = useState(false)
@@ -102,16 +83,18 @@ export default function MainPage({ lockedDiv = null }) {
     return match ? match[0] : null;
   }, []);
 
+  const getAvailablePrefixes = useCallback((gangList) => {
+    if (!gangList || gangList.length === 0) return []
+    const prefixes = new Set()
+    gangList.forEach(g => {
+      const a = getAsistensi(g.gang_code)
+      if (a) prefixes.add(a)
+    })
+    return Array.from(prefixes).sort((a, b) => Number(a) - Number(b))
+  }, [getAsistensi])
+
   // Compute available asistensi groups from loaded gangs
-  const availablePrefixes = useMemo(() => {
-    if (!gangs || gangs.length === 0) return [];
-    const prefixes = new Set();
-    gangs.forEach(g => {
-      const a = getAsistensi(g.gang_code);
-      if (a) prefixes.add(a);
-    });
-    return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
-  }, [gangs, getAsistensi]);
+  const availablePrefixes = useMemo(() => getAvailablePrefixes(gangs), [gangs, getAvailablePrefixes]);
 
   const [gridLoading, setGridLoading] = useState(false)
   const [isReportGenerated, setIsReportGenerated] = useState(false)
@@ -133,6 +116,13 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Period Slider Mode State (enabled by default)
   const [usePeriodSlider, setUsePeriodSlider] = useState(true)
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('payroll.headerCollapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
 
   // Matrix View State
   // Matrix View State
@@ -198,6 +188,14 @@ export default function MainPage({ lockedDiv = null }) {
     const payslipPath = buildAppPath(`/payslip-print?${params.toString()}`)
     window.open(payslipPath, '_blank', 'noopener,noreferrer')
   }
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('payroll.headerCollapsed', String(isHeaderCollapsed))
+    } catch {
+      // Ignore storage failures in private/incognito modes.
+    }
+  }, [isHeaderCollapsed])
 
   // Refresh handler
   const handleRefresh = () => {
@@ -360,86 +358,133 @@ export default function MainPage({ lockedDiv = null }) {
     }
   }, [inProdMode, isAdminUser])
 
+  const storageContext = useMemo(() => ({
+    isAdminUser,
+    isLockedMode,
+    externalLockedDiv,
+    prodDivision
+  }), [isAdminUser, isLockedMode, externalLockedDiv, prodDivision])
 
-  // Initialize Division from User or first available
+  const allowedDivisions = useMemo(() => {
+    return getAllowedDivisionsForUser(user, allDivisions, storageContext)
+  }, [user, allDivisions, storageContext])
+
+  const loadGangList = useCallback(async (selectedDivision) => {
+    if (!selectedDivision || !token) return []
+    return isLockedMode
+      ? await getLockedGangs(token, selectedDivision)
+      : await fetchGangs(token, selectedDivision, null, true)
+  }, [token, isLockedMode])
+
   useEffect(() => {
-    // For LOCKED users (non-admin with locked division), always use the locked value
-    // For ADMIN users, try localStorage first, then fallback
+    let cancelled = false
 
-    let initialDivision = ''
+    async function initializeFilters() {
+      if (!token || !user || currentPeriodLoading) return
+      if (!currentPeriodData?.month || !currentPeriodData?.year) return
+      if (allowedDivisions.length === 0 && !externalLockedDiv && !prodDivision) return
 
-    // Locked divisions always take priority (cannot be overridden by localStorage)
-    if (externalLockedDiv) {
-      initialDivision = externalLockedDiv
-    } else if (inProdMode && prodDivision) {
-      initialDivision = prodDivision
-    } else if (!isAdminUser && (user?.divisions?.length > 0 || user?.divisi)) {
-      // Non-admin user with assigned divisions
-      initialDivision = user?.divisions?.[0] || user?.divisi
-    } else {
-      // Admin users: try persisted value from localStorage first
-      const persistedDivision = loadFromStorage(STORAGE_KEYS.DIVISION)
-      if (persistedDivision) {
-        initialDivision = persistedDivision
+      const savedSelection = loadPayrollSelection(user, storageContext)
+      const legacySelection = savedSelection ? null : loadLegacyPayrollSelection()
+      const candidateSelection = savedSelection || legacySelection || {}
+
+      const resolvedMonth = isValidPeriod(candidateSelection.month, candidateSelection.year)
+        ? Number(candidateSelection.month)
+        : currentPeriodData.month
+      const resolvedYear = isValidPeriod(candidateSelection.month, candidateSelection.year)
+        ? Number(candidateSelection.year)
+        : currentPeriodData.year
+
+      let resolvedDivision = ''
+      if (!isAdminUser && externalLockedDiv) {
+        resolvedDivision = externalLockedDiv
+      } else if (!isAdminUser && prodDivision) {
+        resolvedDivision = prodDivision
+      } else if (isDivisionAllowed(candidateSelection.division, allowedDivisions, isAdminUser)) {
+        resolvedDivision = candidateSelection.division
+      } else {
+        resolvedDivision = allowedDivisions[0] || ''
       }
-      // Fallback to first division from API
-      else if (allDivisions.length > 0) {
-        initialDivision = allDivisions[0]
+
+      let list = []
+      if (resolvedDivision) {
+        setGangLoading(true)
+        try {
+          list = await loadGangList(resolvedDivision)
+        } catch (e) {
+          console.error('Failed to load gangs:', e)
+          list = []
+        }
       }
-      // General fallback
-      else if (user?.divisions?.length > 0) {
-        initialDivision = user.divisions[0]
-      }
-      else if (user?.divisi) {
-        initialDivision = user.divisi
-      }
+
+      if (cancelled) return
+
+      const availableGroupPrefixes = getAvailablePrefixes(list)
+      const savedGang = candidateSelection.gang
+      const resolvedGang = savedGang === 'ALL' || list.some(g => g.gang_code === savedGang)
+        ? savedGang
+        : 'ALL'
+      const savedPrefix = candidateSelection.gangPrefix
+      const resolvedGangPrefix = savedPrefix && availableGroupPrefixes.includes(savedPrefix)
+        ? savedPrefix
+        : (availableGroupPrefixes.includes('1') ? '1' : (availableGroupPrefixes[0] || ''))
+
+      setMonth(resolvedMonth)
+      setYear(resolvedYear)
+      setDivision(resolvedDivision)
+      setGangs(list || [])
+      setGang(resolvedGang)
+      setGangPrefix(resolvedGangPrefix)
+      setFiltersInitialized(true)
+      setGangLoading(false)
     }
 
-    // Only set if we have a value and it's different (or initial load)
-    if (initialDivision && !division) {
-      setDivision(initialDivision)
+    if (!filtersInitialized) {
+      initializeFilters()
     }
-  }, [user, inProdMode, prodDivision, externalLockedDiv, allDivisions, isAdminUser, division])
 
-  // Load Gangs when Division changes
+    return () => {
+      cancelled = true
+    }
+  }, [
+    token,
+    user,
+    currentPeriodLoading,
+    currentPeriodData,
+    allowedDivisions,
+    externalLockedDiv,
+    prodDivision,
+    isAdminUser,
+    storageContext,
+    loadGangList,
+    getAvailablePrefixes,
+    setMonth,
+    setYear,
+    filtersInitialized
+  ])
+
+  // Load Gangs when Division changes after initialization
   useEffect(() => {
     async function load() {
+      if (!filtersInitialized) return
       if (!division || !token) {
         setGangs([])
         setGang('')
-        // Only reset gangPrefix to default '1' if it's empty
         setGangPrefix(prev => prev || '1')
         return
       }
       setGangLoading(true)
       try {
-        // Use locked service endpoint when in locked mode
-        let list
-        if (isLockedMode) {
-
-          list = await getLockedGangs(token, division)
-        } else {
-          list = await fetchGangs(token, division, null, true)
-        }
+        const list = await loadGangList(division)
 
         if (list && list.length > 0) {
           setGangs(list)
-          // Validate persisted gang exists in new list; if not, default to "ALL"
-          // gangPrefix stays at persisted value (default '1')
-          if (!gang || !list.find(g => g.gang_code === gang)) {
+          if (!gang || (gang !== 'ALL' && !list.find(g => g.gang_code === gang))) {
             setGang('ALL')
           }
-          // Validate gangPrefix exists in new division; if not, reset to first available prefix
-          const availableGroupPrefixes = [...new Set(
-            list.map(g => {
-              const gc = g.gang_code.trim().toUpperCase()
-              if (gc.startsWith('K2')) return '1'
-              const match = gc.match(/\d+/)
-              return match ? match[0] : null
-            }).filter(Boolean)
-          )]
+          const availableGroupPrefixes = getAvailablePrefixes(list)
           if (gangPrefix && !availableGroupPrefixes.includes(gangPrefix)) {
-            setGangPrefix(availableGroupPrefixes[0] || '')
+            setGangPrefix(availableGroupPrefixes.includes('1') ? '1' : (availableGroupPrefixes[0] || ''))
           }
         } else {
           setGangs([])
@@ -454,7 +499,7 @@ export default function MainPage({ lockedDiv = null }) {
       }
     }
     load()
-  }, [division, token, isLockedMode])
+  }, [division, token, filtersInitialized, loadGangList])
 
   // Reset gang when division changes
   const handleDivisionChange = (newDivision) => {
@@ -473,18 +518,16 @@ export default function MainPage({ lockedDiv = null }) {
     }
   }, [gang])
 
-  // Persist filter selections to localStorage
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.DIVISION, division)
-  }, [division])
-
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.GANG, gang)
-  }, [gang])
-
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.GANG_PREFIX, gangPrefix)
-  }, [gangPrefix])
+    if (!filtersInitialized || !user || !month || !year) return
+    savePayrollSelection(user, storageContext, {
+      month,
+      year,
+      division,
+      gang,
+      gangPrefix
+    })
+  }, [filtersInitialized, user, storageContext, month, year, division, gang, gangPrefix])
 
   // Filter gang list by current asistensi prefix
   const filteredGangs = useMemo(() => {
@@ -588,6 +631,8 @@ export default function MainPage({ lockedDiv = null }) {
     return (
       <AggregationSeederPage
         onBack={handleBackFromAggregationSeeder}
+        initialMonth={month}
+        initialYear={year}
       />
     )
   }
@@ -846,10 +891,10 @@ export default function MainPage({ lockedDiv = null }) {
                       onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
                     >
                       <option value="">Pilih Divisi</option>
-                      {allDivisions.map(d => (
+                      {allowedDivisions.map(d => (
                         <option key={d} value={d}>{d}</option>
                       ))}
-                      {isLockedMode && externalLockedDiv && !allDivisions.includes(externalLockedDiv) && (
+                      {isLockedMode && externalLockedDiv && !allowedDivisions.includes(externalLockedDiv) && (
                         <option key={externalLockedDiv} value={externalLockedDiv}>{externalLockedDiv}</option>
                       )}
                     </select>
@@ -1514,10 +1559,46 @@ export default function MainPage({ lockedDiv = null }) {
 
   // -- DASHBOARD SCREEN (Grid View) --
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', background: 'var(--bg-body)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', background: 'var(--bg-body)', position: 'relative' }}>
+
+      {isHeaderCollapsed && (
+        <button
+          type="button"
+          onClick={() => setIsHeaderCollapsed(false)}
+          aria-label="Tampilkan header aplikasi"
+          aria-expanded="false"
+          title="Tampilkan header aplikasi"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '96px',
+            height: '24px',
+            border: '1px solid rgba(15, 23, 42, 0.18)',
+            borderTop: 'none',
+            borderRadius: '0 0 999px 999px',
+            background: 'linear-gradient(180deg, #0f172a 0%, #1e3a8a 100%)',
+            color: '#ffffff',
+            zIndex: 80,
+            cursor: 'pointer',
+            boxShadow: '0 10px 24px rgba(15, 23, 42, 0.24)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            fontSize: '11px',
+            fontWeight: 800,
+            letterSpacing: '0.08em'
+          }}
+        >
+          <span style={{ lineHeight: 1 }}>⌄</span>
+          <span style={{ width: '28px', height: '3px', borderRadius: '999px', background: 'rgba(255,255,255,0.72)' }} />
+        </button>
+      )}
 
       {/* Top Header Navigation - STICKY */}
-      <div style={{
+      {!isHeaderCollapsed && <div style={{
         height: '50px',
         background: '#ffffff',
         borderBottom: '1px solid var(--border-color)',
@@ -1567,6 +1648,30 @@ export default function MainPage({ lockedDiv = null }) {
 
         {/* Brand & Title */}
         <div className="flex-center gap-4">
+          <button
+            type="button"
+            onClick={() => setIsHeaderCollapsed(true)}
+            aria-label="Sembunyikan header aplikasi"
+            aria-expanded="true"
+            title="Sembunyikan header aplikasi"
+            style={{
+              width: '30px',
+              height: '30px',
+              border: '1px solid var(--neutral-200)',
+              borderRadius: '999px',
+              background: '#f8fafc',
+              color: '#334155',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '13px',
+              fontWeight: 900,
+              boxShadow: '0 1px 2px rgba(15,23,42,0.08)'
+            }}
+          >
+            ⌃
+          </button>
           <img src="/images/rebinmas.webp" alt="Logo" style={{ height: '32px' }} onError={(e) => e.target.style.display = 'none'} />
           <div style={{ borderLeft: '1px solid var(--neutral-200)', paddingLeft: '1rem' }}>
             <div style={{ fontSize: '0.9rem', fontWeight: '800', color: 'var(--primary-900)', lineHeight: 1.1 }}>PT REBINMAS JAYA</div>
@@ -1835,7 +1940,7 @@ export default function MainPage({ lockedDiv = null }) {
             🚪
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* Main Content - Full Grid with Font Size Control */}
       <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'auto' }}>

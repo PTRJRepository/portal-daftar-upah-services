@@ -106,12 +106,14 @@ export default function SpreadsheetSyncPage({ onBack }) {
                 addLog('✅ Spreadsheet Sync complete!', 'success');
                 if (result.results) {
                     const synced = result.results.filter(r => r.status === 'SUCCESS').length;
-                    const skipped = result.results.filter(r => r.status === 'SKIPPED_NO_DATA').length;
-                    const failed = result.results.filter(r => r.status === 'FAILED').length;
-                    addLog(`📈 Synced: ${synced}, Skipped: ${skipped}, Failed: ${failed}`);
+                    const missed = result.results.filter(r => r.status === 'SKIPPED_NO_DATA').length;
+                    const failed = result.results.filter(r => r.status === 'FAILED' || r.status === 'ERROR').length;
+                    addLog(`📈 Synced: ${synced}, Miss: ${missed}, Failed: ${failed}`);
 
-                    result.results.filter(r => r.status === 'FAILED').forEach(r => {
-                        addLog(`❌ ${r.division}: ${r.error}`, 'error');
+                    result.results
+                        .filter(r => r.status === 'FAILED' || r.status === 'ERROR')
+                        .forEach(r => {
+                        addLog(`❌ ${r.division}: ${r.error || r.message || 'Unknown error'}`, 'error');
                     });
                 }
             } else {

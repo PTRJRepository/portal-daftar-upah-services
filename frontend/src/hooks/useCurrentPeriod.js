@@ -3,12 +3,6 @@ import { useAuth } from '../context/AuthContext'
 import { fetchCurrentPeriod } from '../services/gangService'
 import { isHistoricalPeriod as checkIsHistorical } from '../services/historyService'
 
-// localStorage keys for shared period persistence
-const STORAGE_KEYS = {
-  MONTH: 'report_period_month',
-  YEAR: 'report_period_year'
-}
-
 /**
  * Custom hook to fetch and use the current payroll period
  * 
@@ -20,9 +14,8 @@ const STORAGE_KEYS = {
 export function useCurrentPeriod() {
   const { token } = useAuth()
 
-  // Initialize state using current calendar date as fallback until API responds
-  const [monthState, setMonthState] = useState(new Date().getMonth() + 1)
-  const [yearState, setYearState] = useState(new Date().getFullYear())
+  const [monthState, setMonthState] = useState(null)
+  const [yearState, setYearState] = useState(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -39,6 +32,8 @@ export function useCurrentPeriod() {
 
   const loadCurrentPeriod = useCallback(async () => {
     if (!token) {
+      setMonthState(null)
+      setYearState(null)
       setLoading(false)
       return
     }
@@ -67,6 +62,7 @@ export function useCurrentPeriod() {
 
   // Display name for the current period
   const display = useMemo(() => {
+    if (!monthState || !yearState) return ''
     return getMonthName(monthState) + ' ' + yearState
   }, [monthState, yearState])
 
@@ -92,7 +88,7 @@ export function useCurrentPeriod() {
  */
 export function useIsHistoricalPeriod(month, year) {
   const { token } = useAuth()
-  const { currentMonth, currentYear } = useCurrentPeriod()
+  const { month: currentMonth, year: currentYear } = useCurrentPeriod()
   const [isHistorical, setIsHistorical] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -118,10 +114,13 @@ export function useIsHistoricalPeriod(month, year) {
       } catch (err) {
         console.error('[useIsHistoricalPeriod] Error:', err)
         setError(err.message || 'Failed to check period')
-        // Fallback to calculation
-        const requested = year * 100 + month
-        const current = currentYear * 100 + currentMonth
-        setIsHistorical(requested < current)
+        if (currentMonth && currentYear) {
+          const requested = year * 100 + month
+          const current = currentYear * 100 + currentMonth
+          setIsHistorical(requested < current)
+        } else {
+          setIsHistorical(null)
+        }
       } finally {
         setLoading(false)
       }
