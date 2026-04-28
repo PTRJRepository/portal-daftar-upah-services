@@ -7,6 +7,8 @@ const CATEGORY_OPTIONS = [
     { value: 'POTONGAN_BERSIH', label: 'Potongan Bersih', color: '#dc2626' }
 ];
 
+const KOREKSI_DEFAULT_AD_CODE = 'DE0004';
+
 function resolveAdCode(taskCodeOption) {
     return taskCodeOption?.ad_code || taskCodeOption?.base_task_code || taskCodeOption?.task_code || '';
 }
@@ -40,6 +42,12 @@ export default function ManualAdjustmentColumnModal({
         [adjustmentType]
     );
 
+    const koreksiDefaultOption = useMemo(
+        () => options.find((option) => resolveAdCode(option) === KOREKSI_DEFAULT_AD_CODE && option.task_desc === '(DE) POTONGAN PREMI')
+            || options.find((option) => resolveAdCode(option) === KOREKSI_DEFAULT_AD_CODE),
+        [options]
+    );
+
     useEffect(() => {
         if (!isOpen) return;
         setAdjustmentType('PREMI');
@@ -50,6 +58,15 @@ export default function ManualAdjustmentColumnModal({
         setOptions([]);
         setError('');
     }, [isOpen]);
+
+    useEffect(() => {
+        if (adjustmentType !== 'POTONGAN_KOTOR' || !koreksiDefaultOption) return;
+
+        setSelectedTaskCode(koreksiDefaultOption);
+        if (!docDescTouched) {
+            setDocDesc(koreksiDefaultOption.doc_desc || koreksiDefaultOption.task_desc || '(DE) POTONGAN PREMI');
+        }
+    }, [adjustmentType, koreksiDefaultOption, docDescTouched]);
 
     useEffect(() => {
         if (!isOpen || !token) return;
@@ -186,7 +203,16 @@ export default function ManualAdjustmentColumnModal({
                                     <button
                                         key={option.value}
                                         type="button"
-                                        onClick={() => setAdjustmentType(option.value)}
+                                        onClick={() => {
+                                            setAdjustmentType(option.value);
+                                            if (option.value === 'POTONGAN_KOTOR') {
+                                                setSearch(KOREKSI_DEFAULT_AD_CODE);
+                                                setDocDescTouched(false);
+                                            } else {
+                                                setSelectedTaskCode(null);
+                                                setSearch(docDesc);
+                                            }
+                                        }}
                                         style={{
                                             border: adjustmentType === option.value ? `2px solid ${option.color}` : '1px solid #cbd5e1',
                                             background: adjustmentType === option.value ? `${option.color}12` : '#ffffff',
@@ -210,7 +236,7 @@ export default function ManualAdjustmentColumnModal({
                             <input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Cari ADCode, TaskCode, atau TaskDesc AL/DE..."
+                                placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'Otomatis DE0004 - (DE) POTONGAN PREMI' : 'Cari ADCode, TaskCode, atau TaskDesc AL/DE...'}
                                 style={{ width: '100%', padding: 10, borderRadius: 9, border: '1px solid #cbd5e1', marginBottom: 8 }}
                             />
                             <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>

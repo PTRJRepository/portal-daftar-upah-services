@@ -869,6 +869,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             const nextColumn = {
                 ...pendingColumn.payload,
                 field: pendingColumn.fieldName,
+                ad_code: columnDefinition.ad_code,
+                task_code: columnDefinition.task_code,
+                base_task_code: columnDefinition.base_task_code,
+                task_desc: columnDefinition.task_desc,
+                loc_code: columnDefinition.loc_code,
                 remarks: columnDefinition.remarks
             };
             const exists = prev.some((item) => item.field === nextColumn.field && item.type === nextColumn.type);
@@ -1007,7 +1012,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             editsArray.push({
                 ...pending,
                 value: 0,
-                remarks: 'INIT_COLUMN - Kolom ditambahkan tanpa nilai'
+                remarks: pending.remarks
+                    ? `${pending.remarks}; INIT_COLUMN - Kolom ditambahkan tanpa nilai`
+                    : 'INIT_COLUMN - Kolom ditambahkan tanpa nilai'
             });
         }
 
