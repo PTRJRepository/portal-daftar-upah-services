@@ -1191,8 +1191,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (resOk && resJson?.success) successCount++;
         }
 
-        if (successCount === 0) {
-            throw new Error('Tidak ada perubahan manual/profile yang berhasil disimpan.');
+        if (successCount !== editsArray.length) {
+            throw new Error(`${successCount}/${editsArray.length} perubahan manual/profile berhasil disimpan. Perubahan yang belum pasti tersimpan tetap ditahan di layar.`);
         }
 
         setEditedCells({});
@@ -1284,8 +1284,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             }
         }
 
-        if (successCount === 0) {
-            throw new Error('Tidak ada perubahan KONTAN yang berhasil disimpan.');
+        if (successCount !== kontanEdits.length) {
+            throw new Error(`${successCount}/${kontanEdits.length} perubahan KONTAN berhasil disimpan. Perubahan yang belum pasti tersimpan tetap ditahan di layar.`);
         }
 
         setEditedKontanCells({});

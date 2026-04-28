@@ -1040,9 +1040,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 WHERE nik = ? AND period_month = ? AND period_year = ? AND income_type = ?
             `, [realNik, data.period_month, data.period_year, incomeType]);
             
-            const pattern = `payroll_data:${data.period_month}:${data.period_year}`;
+            const pattern = `:${data.period_month}:${data.period_year}`;
             cacheService.clearByPattern(pattern);
-            
+            console.log(`[PayrollRoutes] Cleared cache for pattern: ${pattern} after income delete`);
+
             return { success: true, message: `${incomeType} deleted successfully for NIK ${realNik}` };
         } catch (e: any) {
             set.status = 500; return { success: false, error: e.message };
