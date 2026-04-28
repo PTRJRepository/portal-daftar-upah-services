@@ -913,6 +913,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         setEditedCells(prev => {
             const existingEdit = prev[key];
             const persistedOriginal = resolvePersistentOriginalNumber(existingEdit?.originalValue, originalValue);
+            const addedColumn = addedColumns.find((item) => item.field === field && item.type === type);
             return {
                 ...prev,
                 [key]: {
@@ -923,7 +924,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     originalValue: persistedOriginal,
                     gang_code: row.gang_code,
                     type,
-                    name
+                    name,
+                    ad_code: addedColumn?.ad_code,
+                    task_code: addedColumn?.task_code,
+                    base_task_code: addedColumn?.base_task_code,
+                    task_desc: addedColumn?.task_desc,
+                    remarks: addedColumn?.remarks
                 }
             };
         });
@@ -1139,7 +1145,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     adjustment_type: edit.type,
                     adjustment_name: edit.name,
                     amount: edit.value,
-                    remarks: edit.remarks || `Edited via UI on ${new Date().toLocaleString()}`
+                    remarks: edit.remarks || `Edited via UI on ${new Date().toLocaleString()}`,
+                    ad_code: edit.ad_code,
+                    task_code: edit.task_code,
+                    base_task_code: edit.base_task_code,
+                    task_desc: edit.task_desc
                 };
 
                 let resOk = false;
