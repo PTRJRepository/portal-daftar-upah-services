@@ -102,6 +102,14 @@ const formatDecimal = (value) => {
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
 };
 
+const formatRawInputValue = (value) => {
+    if (value === null || value === undefined || value === '') return '-';
+    if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak';
+    const n = Number(value);
+    if (!Number.isNaN(n) && String(value).trim() !== '') return formatNumber(n);
+    return String(value);
+};
+
 const toFiniteNumber = toFinitePayrollNumber;
 
 const formatBytes = (bytes) => {
@@ -196,6 +204,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     selectedEmployees = [], onToggleEmployeeSelection = () => { },
     onSelectAllEmployees = () => { },
     isEditMode = false,
+    showDbPtrjInputColumns = false,
     useHistoryDb = false,
     snapshotVersion = null,
     gangPrefix = null,
@@ -2361,6 +2370,30 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         cols.push({ field: 'total_tunjangan', headers: ['TUNJANGAN', null, 'TOTAL TUNJ'], w: 95, className: 'text-right font-bold cell-total-soft' });
 
+        if (showDbPtrjInputColumns) {
+            const dbPtrjBaseColumns = [
+                { field: 'is_spsi_member', label: 'SPSI MEMBER', w: 88, className: 'text-center', render: (row) => row.is_spsi_member ? 'Ya' : 'Tidak' },
+                { field: 'pot_spsi', label: 'SPSI NILAI', w: 88, className: 'text-right' },
+                { field: 'masa_kerja_tahun', label: 'MASA THN', w: 72, className: 'text-center' },
+                { field: 'masa_kerja_label', label: 'MASA LABEL', w: 92, className: 'text-center' },
+                { field: 'masa_kerja_jumlah', label: 'MASA NILAI', w: 88, className: 'text-right' },
+                { field: 'beras_rate', label: 'BERAS RATE', w: 88, className: 'text-right' },
+                { field: 'beras_jumlah', label: 'BERAS NILAI', w: 88, className: 'text-right' },
+                { field: 'jabatan_rate', label: 'JAB RATE', w: 82, className: 'text-right', render: (row) => formatRawInputValue(resolveJabatanRate(row)) },
+                { field: 'jabatan_jumlah', label: 'JAB NILAI', w: 88, className: 'text-right' }
+            ];
+
+            for (const column of dbPtrjBaseColumns) {
+                cols.push({
+                    field: `db_ptrj_input_${column.field}`,
+                    headers: ['DB_PTRJ INPUT', 'MASTER/POT', column.label],
+                    w: column.w,
+                    className: column.className,
+                    render: column.render || ((row) => formatRawInputValue(row[column.field]))
+                });
+            }
+        }
+
         // PREMI
         const showPremiDetails = true;
         if (showPremiDetails) {
@@ -2391,6 +2424,28 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 });
         }
         cols.push({ field: 'total_premi', headers: [PREMI, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold cell-total-soft' });
+
+        if (showDbPtrjInputColumns) {
+            cols.push({
+                field: 'db_ptrj_input_premi_brondol',
+                headers: ['DB_PTRJ INPUT', 'PREMI', 'BRONDOL'],
+                w: 88,
+                className: 'text-right',
+                render: (row) => formatRawInputValue(row.premi_brondol)
+            });
+
+            Object.entries(dynamicHeaders.premi)
+                .filter(([, field]) => field !== 'brondol' && (activePremiFields.includes(field) || isEditMode))
+                .forEach(([label, field]) => {
+                    cols.push({
+                        field: `db_ptrj_input_${field}`,
+                        headers: ['DB_PTRJ INPUT', 'PREMI', label.replace('PREMI ', '')],
+                        w: 90,
+                        className: 'text-right',
+                        render: (row) => formatRawInputValue(row[field])
+                    });
+                });
+        }
 
         // PENDAPATAN LAINNYA
         const activePendapatan = getOtherIncomeDetailFields(activePendapatanFields);
@@ -2766,7 +2821,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells, addedColumns, displayMode]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, showDbPtrjInputColumns, editedKontanCells, addedColumns, displayMode]);
 
     const chapterSegments = useMemo(() => buildPayrollViewportChapters(columnDefs), [columnDefs]);
     const stickyPaneWidth = useMemo(() => (

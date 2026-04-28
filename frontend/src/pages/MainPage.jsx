@@ -113,6 +113,7 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Edit Mode State (New)
   const [isEditMode, setIsEditMode] = useState(false)
+  const [showDbPtrjInputColumns, setShowDbPtrjInputColumns] = useState(false)
 
   // Period Slider Mode State (enabled by default)
   const [usePeriodSlider, setUsePeriodSlider] = useState(true)
@@ -1848,6 +1849,33 @@ export default function MainPage({ lockedDiv = null }) {
             </button>
           )}
 
+          {/* DB_PTRJ Input Columns Toggle */}
+          {isReportGenerated && !activeMatrixView && (
+            <button
+              onClick={() => setShowDbPtrjInputColumns(prev => !prev)}
+              style={{
+                background: showDbPtrjInputColumns ? 'linear-gradient(135deg, #0f766e 0%, #115e59 100%)' : 'white',
+                color: showDbPtrjInputColumns ? '#ffffff' : '#334155',
+                border: '1px solid #99f6e4',
+                padding: '0.4rem 0.8rem',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                height: '36px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                transition: 'all 0.2s'
+              }}
+              title={showDbPtrjInputColumns ? 'Sembunyikan kolom input asli db_ptrj' : 'Tampilkan kolom input asli db_ptrj'}
+            >
+              <span>{showDbPtrjInputColumns ? '◉' : '◎'}</span>
+              <span>{showDbPtrjInputColumns ? 'DB_PTRJ Input' : 'Show DB_PTRJ'}</span>
+            </button>
+          )}
+
           {/* Edit Mode Toggle Button */}
           {isReportGenerated && (
             <button
@@ -2011,6 +2039,7 @@ export default function MainPage({ lockedDiv = null }) {
                 onToggleEmployeeSelection={handleToggleEmployeeSelection}
                 onSelectAllEmployees={handleSelectAllEmployees}
                 isEditMode={isEditMode}
+                showDbPtrjInputColumns={showDbPtrjInputColumns}
                 useHistoryDb={isHistorical}
                 onRefresh={() => setRefreshTrigger(prev => prev + 1)}
                 sortBy={activeMatrixView === 'employee' ? undefined : employeeSortBy}
