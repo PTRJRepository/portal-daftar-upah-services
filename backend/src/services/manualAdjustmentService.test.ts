@@ -65,6 +65,21 @@ describe("manual adjustment ADCode rules", () => {
         })).toBe("AD CODE: DE001 - (DE) POTONGAN");
     });
 
+    it("preserves pipe-formatted sync remarks without adding ADCode prefix", () => {
+        expect(buildManualAdjustmentRemarks({
+            period_month: 4,
+            period_year: 2026,
+            emp_code: "A0001",
+            gang_code: "G1H",
+            adjustment_type: "POTONGAN_KOTOR",
+            adjustment_name: "KOREKSI DENDA",
+            amount: 0,
+            ad_code: "DE0004",
+            task_desc: "(DE) POTONGAN PREMI",
+            remarks: "KOREKSI DENDA | DE0004 - (DE) POTONGAN PREMI | 0 | sync:MISS | match:MISMATCH"
+        })).toBe("KOREKSI DENDA | DE0004 - (DE) POTONGAN PREMI | 0 | sync:MISS | match:MISMATCH");
+    });
+
     it("rejects new manual column initialization without ADCode before querying", async () => {
         const originalGetInstance = Database.getInstance;
         let queryCalled = false;

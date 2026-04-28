@@ -108,7 +108,7 @@ export function buildManualAdjustmentRemarks(data: ManualAdjustment): string | n
 
     const adCodeRemark = `AD CODE: ${adCode}${taskDesc ? ` - ${taskDesc}` : ''}`;
     if (!existingRemarks) return adCodeRemark;
-    if (existingRemarks.toUpperCase().includes('AD CODE:')) return existingRemarks;
+    if (existingRemarks.toUpperCase().includes('AD CODE:') || existingRemarks.toUpperCase().includes('SYNC:')) return existingRemarks;
 
     return `${adCodeRemark}; ${existingRemarks}`;
 }
@@ -117,7 +117,7 @@ function validateManualAdjustmentAdCode(data: ManualAdjustment): void {
     if (!manualAdjustmentRequiresAdCode(data.adjustment_type)) return;
 
     const remarks = normalizeText(data.remarks).toUpperCase();
-    const isManualColumnRequest = remarks.includes('INIT_COLUMN') || remarks.includes('AD CODE:');
+    const isManualColumnRequest = remarks.includes('INIT_COLUMN') || remarks.includes('AD CODE:') || remarks.includes('SYNC:');
     if (!isManualColumnRequest) return;
     if (resolveManualAdjustmentAdCode(data)) return;
 

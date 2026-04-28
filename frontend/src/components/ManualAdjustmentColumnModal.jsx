@@ -15,11 +15,11 @@ function resolveAdCode(taskCodeOption) {
     return taskCodeOption?.ad_code || taskCodeOption?.base_task_code || taskCodeOption?.task_code || '';
 }
 
-function buildRemarks(taskCodeOption) {
+function buildRemarks(taskCodeOption, adjustmentName, amount = 0) {
     if (!taskCodeOption) return '';
     const adCode = resolveAdCode(taskCodeOption);
     const taskDesc = taskCodeOption.task_desc || taskCodeOption.doc_desc || '';
-    return `AD CODE: ${adCode}${taskDesc ? ` - ${taskDesc}` : ''}`;
+    return `${adjustmentName} | ${adCode}${taskDesc ? ` - ${taskDesc}` : ''} | ${amount} | sync:MISS | match:MISMATCH`;
 }
 
 function removeLeadingPrefix(value, prefix) {
@@ -169,7 +169,7 @@ export default function ManualAdjustmentColumnModal({
                 base_task_code: selectedTaskCode.base_task_code || resolveAdCode(selectedTaskCode),
                 task_desc: selectedTaskCode.task_desc,
                 loc_code: selectedTaskCode.loc_code,
-                remarks: buildRemarks(selectedTaskCode)
+                remarks: buildRemarks(selectedTaskCode, resolvedAdjustmentName, 0)
             });
             onClose?.();
         } catch (e) {

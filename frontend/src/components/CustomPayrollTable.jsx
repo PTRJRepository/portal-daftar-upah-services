@@ -250,7 +250,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     // Kontan (Other Income) State - Always editable column
     const [editedKontanCells, setEditedKontanCells] = useState({}); // { 'nik-kontan': { value, originalValue, gang_code } }
-    const [isSavingKontan, setIsSavingKontan] = useState(false);
+    const [payrollToast, setPayrollToast] = useState(null);
+    const [payrollConfirm, setPayrollConfirm] = useState(null);
 
     // Tunjangan Mode & Rates
     const [tunjanganMode, setTunjanganMode] = useState('DB'); // 'DB' or 'CALC'
@@ -285,10 +286,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         canScroll: false
     });
     const [tableContainerWidth, setTableContainerWidth] = useState(getInitialViewportWidth);
-    const hasPendingEdits = useMemo(
-        () => Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0,
-        [editedCells, editedKontanCells]
-    );
+    const pendingSaveSummary = useMemo(() => {
+        const manualCount = Object.keys(editedCells).length;
+        const kontanValues = Object.values(editedKontanCells);
+        const kontanCount = kontanValues.length;
+        const deleteCount = kontanValues.filter((item) => item.value === 0).length;
+        const addedColumnCount = addedColumns.length;
+        return {
+            manualCount,
+            kontanCount,
+            deleteCount,
+            addedColumnCount,
+            totalCount: manualCount + kontanCount + addedColumnCount
+        };
+    }, [addedColumns.length, editedCells, editedKontanCells]);
+    const hasPendingEdits = pendingSaveSummary.totalCount > 0;
 
     const tableRef = useRef(null);
     const tableContainerRef = useRef(null);
@@ -335,6 +347,26 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             void stream.startStream();
         }
     }, [onRefresh, stream.startStream]);
+
+    const showPayrollToast = useCallback((type, title, message) => {
+        setPayrollToast({ type, title, message });
+        window.setTimeout(() => {
+            setPayrollToast((current) => (current?.title === title && current?.message === message ? null : current));
+        }, 4200);
+    }, []);
+
+    const closePayrollConfirm = useCallback(() => {
+        setPayrollConfirm(null);
+    }, []);
+
+    const openPayrollConfirm = useCallback((config) => {
+        setPayrollConfirm({
+            variant: 'warning',
+            confirmText: 'Lanjutkan',
+            cancelText: 'Batal',
+            ...config
+        });
+    }, []);
 
     useEffect(() => {
         try {
@@ -885,21 +917,28 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const targetColumn = addedColumns.find((item) => item.field === field);
         if (!targetColumn) return;
 
-        if (!window.confirm(`Hapus kolom ${targetColumn.name || field}?`)) return;
-
-        setAddedColumns(prev => prev.filter((item) => item.field !== field));
-        setActivePremiFields(prev => prev.filter((item) => item !== field));
-        setActivePotFields(prev => prev.filter((item) => item !== field));
-        setDynamicHeaders(prev => ({
-            premi: Object.fromEntries(Object.entries(prev.premi || {}).filter(([, value]) => value !== field)),
-            potongan: Object.fromEntries(Object.entries(prev.potongan || {}).filter(([, value]) => value !== field))
-        }));
-        setEditedCells(prev => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.endsWith(`-${field}`))));
-        setRows(prev => prev.map((row) => {
-            if (!row || !(field in row)) return row;
-            const { [field]: _removed, ...rest } = row;
-            return rest;
-        }));
+        openPayrollConfirm({
+            variant: 'danger',
+            title: 'Hapus kolom tambahan?',
+            message: `Kolom ${targetColumn.name || field} dan semua nilai edit yang belum disimpan pada kolom ini akan dihapus dari layar.`,
+            confirmText: 'Hapus Kolom',
+            onConfirm: () => {
+                setAddedColumns(prev => prev.filter((item) => item.field !== field));
+                setActivePremiFields(prev => prev.filter((item) => item !== field));
+                setActivePotFields(prev => prev.filter((item) => item !== field));
+                setDynamicHeaders(prev => ({
+                    premi: Object.fromEntries(Object.entries(prev.premi || {}).filter(([, value]) => value !== field)),
+                    potongan: Object.fromEntries(Object.entries(prev.potongan || {}).filter(([, value]) => value !== field))
+                }));
+                setEditedCells(prev => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.endsWith(`-${field}`))));
+                setRows(prev => prev.map((row) => {
+                    if (!row || !(field in row)) return row;
+                    const { [field]: _removed, ...rest } = row;
+                    return rest;
+                }));
+                showPayrollToast('info', 'Kolom dihapus', `Kolom ${targetColumn.name || field} dibatalkan dari perubahan.`);
+            }
+        });
     };
 
     // Handle Manual Cell Edit
@@ -1005,11 +1044,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }));
     };
 
-    // Save Manual Edits (excludes kontan - kontan has its own save)
-    const handleSaveEdits = async () => {
+    const saveEditedCellsAndColumns = async () => {
         const editsArray = Object.values(editedCells);
-
-        // Include new columns that act as empty placeholders
         const pendingColumns = addedColumns.filter(newCol =>
             !editsArray.some(e => e.name === newCol.name && e.type === newCol.type)
         );
@@ -1018,152 +1054,216 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             editsArray.push({
                 ...pending,
                 value: 0,
-                remarks: pending.remarks
-                    ? `${pending.remarks}; INIT_COLUMN - Kolom ditambahkan tanpa nilai`
-                    : 'INIT_COLUMN - Kolom ditambahkan tanpa nilai'
+                remarks: pending.remarks || `${pending.name} | ${pending.ad_code || pending.base_task_code || pending.task_code || ''}${pending.task_desc ? ` - ${pending.task_desc}` : ''} | 0 | sync:MISS | match:MISMATCH`
             });
         }
 
         if (editsArray.length === 0) {
-            setAddedColumns([]);
-            triggerPayrollRefresh();
-            return;
+            return { changedCount: 0 };
         }
 
-        setIsSavingEdits(true);
-        try {
-            let successCount = 0;
+        let successCount = 0;
+        const masterTaxEdits = editsArray.filter(e => e.type === 'MASTER_TAX');
+        const normalEdits = editsArray.filter(e => e.type !== 'MASTER_TAX');
+        const { profileItems, valueItems } = splitPayrollEdits({
+            month,
+            year,
+            division,
+            edits: normalEdits
+        });
+        const overlayFields = new Set(['is_spsi_member', 'effective_start_date', 'premi_dynamic', 'pot_koreksi', 'pot_lainnya']);
+        const legacyEdits = normalEdits.filter(edit => !overlayFields.has(edit.field));
 
-            // Separate MASTER_TAX edits from normal numeric edits
-            const masterTaxEdits = editsArray.filter(e => e.type === 'MASTER_TAX');
-            const normalEdits = editsArray.filter(e => e.type !== 'MASTER_TAX');
-            const { profileItems, valueItems } = splitPayrollEdits({
-                month,
-                year,
-                division,
-                edits: normalEdits
-            });
-            const overlayFields = new Set(['is_spsi_member', 'effective_start_date', 'premi_dynamic', 'pot_koreksi', 'pot_lainnya']);
-            const legacyEdits = normalEdits.filter(edit => !overlayFields.has(edit.field));
+        for (const edit of masterTaxEdits) {
+            try {
+                const res = await axios.put(`tax-report/ptkp/${encodeURIComponent(edit.nik)}`, {
+                    year,
+                    ptkp_status: edit.value
+                }, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.data?.success) successCount++;
+            } catch (err) {
+                console.error('Error saving PTKP edit:', err);
+            }
+        }
 
-            // --- Save MASTER_TAX edits (PTKP) via dedicated endpoint ---
-            for (const edit of masterTaxEdits) {
+        for (const profile of profileItems) {
+            let resOk = false;
+            let resJson = null;
+
+            if (isProdMode()) {
                 try {
-                    const res = await axios.put(`tax-report/ptkp/${encodeURIComponent(edit.nik)}`, {
-                        year: year,
-                        ptkp_status: edit.value
-                    }, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    });
-                    
-                    if (res.data?.success) {
-                        successCount++;
-                    } else {
-                        console.error('PTKP update failed:', resJson?.error);
-                    }
+                    resJson = await saveLockedProfileOverride(token, profile);
+                    resOk = true;
                 } catch (err) {
-                    console.error('Error saving PTKP edit:', err);
+                    console.error('Prod Mode profile override failed:', err);
+                }
+            } else {
+                const res = await fetch('/payroll/overrides/profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(profile)
+                });
+                if (res.ok) {
+                    resOk = true;
+                    resJson = await res.json();
                 }
             }
 
-            // --- Save overlay profile edits ---
-            for (const profile of profileItems) {
-                let resOk = false;
-                let resJson = null;
+            if (resOk && resJson?.success) successCount++;
+        }
 
-                if (isProdMode()) {
-                    try {
-                        resJson = await saveLockedProfileOverride(token, profile);
-                        resOk = true;
-                    } catch (err) {
-                        console.error('Prod Mode profile override failed:', err);
-                    }
-                } else {
-                    const res = await fetch('/payroll/overrides/profile', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify(profile)
-                    });
+        if (valueItems.length > 0) {
+            let resOk = false;
+            let resJson = null;
 
-                    if (res.ok) {
-                        resOk = true;
-                        resJson = await res.json();
-                    }
+            if (isProdMode()) {
+                try {
+                    resJson = await saveLockedValueOverrides(token, { items: valueItems });
+                    resOk = true;
+                } catch (err) {
+                    console.error('Prod Mode value overrides failed:', err);
                 }
-
-                if (resOk && resJson?.success) {
-                    successCount++;
+            } else {
+                const res = await fetch('/payroll/overrides/values', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ items: valueItems })
+                });
+                if (res.ok) {
+                    resOk = true;
+                    resJson = await res.json();
                 }
             }
 
-            // --- Save period-scoped overlay value edits ---
-            if (valueItems.length > 0) {
-                let resOk = false;
-                let resJson = null;
+            if (resOk && resJson?.success) successCount += valueItems.length;
+        }
 
-                if (isProdMode()) {
-                    try {
-                        resJson = await saveLockedValueOverrides(token, { items: valueItems });
-                        resOk = true;
-                    } catch (err) {
-                        console.error('Prod Mode value overrides failed:', err);
-                    }
-                } else {
-                    const res = await fetch('/payroll/overrides/values', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ items: valueItems })
-                    });
+        for (const edit of legacyEdits) {
+            const payload = {
+                period_month: month,
+                period_year: year,
+                emp_code: edit.emp_code || edit.nik,
+                gang_code: edit.gang_code,
+                division_code: division,
+                adjustment_type: edit.type,
+                adjustment_name: edit.name,
+                amount: edit.value,
+                remarks: edit.remarks || `Edited via UI on ${new Date().toLocaleString()}`,
+                ad_code: edit.ad_code,
+                task_code: edit.task_code,
+                base_task_code: edit.base_task_code,
+                task_desc: edit.task_desc
+            };
 
-                    if (res.ok) {
-                        resOk = true;
-                        resJson = await res.json();
-                    }
+            let resOk = false;
+            let resJson = null;
+
+            if (isProdMode()) {
+                try {
+                    resJson = await saveLockedManualEdit(token, payload);
+                    resOk = true;
+                } catch (err) {
+                    console.error('Prod Mode specific manual edit failed:', err);
                 }
-
-                if (resOk && resJson?.success) {
-                    successCount += valueItems.length;
+            } else {
+                const res = await fetch('/payroll/manual-edit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    resOk = true;
+                    resJson = await res.json();
                 }
             }
 
-            // --- Save legacy manual edits ---
-            for (const edit of legacyEdits) {
-                const payload = {
-                    period_month: month,
-                    period_year: year,
-                    emp_code: edit.emp_code || edit.nik,
-                    gang_code: edit.gang_code,
-                    division_code: division,
-                    adjustment_type: edit.type,
-                    adjustment_name: edit.name,
-                    amount: edit.value,
-                    remarks: edit.remarks || `Edited via UI on ${new Date().toLocaleString()}`,
-                    ad_code: edit.ad_code,
-                    task_code: edit.task_code,
-                    base_task_code: edit.base_task_code,
-                    task_desc: edit.task_desc
-                };
+            if (resOk && resJson?.success) successCount++;
+        }
 
-                let resOk = false;
-                let resJson = null;
+        if (successCount === 0) {
+            throw new Error('Tidak ada perubahan manual/profile yang berhasil disimpan.');
+        }
 
-                if (isProdMode()) {
-                    try {
+        setEditedCells({});
+        setAddedColumns([]);
+        return { changedCount: successCount };
+    };
+
+    const saveEditedKontanCells = async () => {
+        const kontanEdits = Object.values(editedKontanCells);
+        if (kontanEdits.length === 0) return { changedCount: 0, deleteCount: 0 };
+
+        let successCount = 0;
+        let deleteCount = 0;
+        for (const k of kontanEdits) {
+            const payload = {
+                period_month: month,
+                period_year: year,
+                nik: k.nik,
+                emp_code: k.emp_code,
+                gang_code: k.gang_code,
+                division_code: division,
+                adjustment_type: 'PENDAPATAN_LAINNYA',
+                adjustment_name: 'KONTAN',
+                amount: k.value,
+                remarks: k.value === 0
+                    ? `KONTAN DELETED via UI on ${new Date().toLocaleString()}`
+                    : `KONTAN edited via UI on ${new Date().toLocaleString()}`
+            };
+
+            let resOk = false;
+            let resJson = null;
+
+            if (isProdMode()) {
+                try {
+                    if (k.value === 0) {
+                        const delPayload = {
+                            nik: k.nik,
+                            period_month: month,
+                            period_year: year,
+                            income_type: 'KONTAN'
+                        };
+                        const delRes = await fetch('/payroll/locked/income-delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify(delPayload)
+                        });
+                        resJson = await delRes.json();
+                        resOk = delRes.ok;
+                    } else {
                         resJson = await saveLockedManualEdit(token, payload);
                         resOk = true;
-                    } catch (err) {
-                        console.error("Prod Mode specific manual edit failed:", err);
                     }
+                } catch (err) {
+                    console.error('Prod Mode kontan save failed:', err);
+                }
+            } else {
+                let res;
+                if (k.value === 0) {
+                    const delPayload = {
+                        nik: k.nik,
+                        period_month: month,
+                        period_year: year,
+                        income_type: 'KONTAN'
+                    };
+                    res = await fetch('/payroll/locked/income-delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify(delPayload)
+                    });
                 } else {
-                    const res = await fetch('/payroll/manual-edit', {
+                    res = await fetch('/payroll/manual-edit', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1171,157 +1271,85 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         },
                         body: JSON.stringify(payload)
                     });
-
-                    if (res.ok) {
-                        resOk = true;
-                        resJson = await res.json();
-                    }
                 }
-
-                if (resOk && resJson?.success) {
-                    successCount++;
+                if (res.ok) {
+                    resOk = true;
+                    resJson = await res.json();
                 }
             }
 
-            if (successCount > 0) {
-                alert(`Berhasil menyimpan ${successCount} penyesuaian (kolom/nilai).`);
-                setEditedCells({}); // Clear edits after successful save
-                setAddedColumns([]);
-                triggerPayrollRefresh(); // Reload to get fresh data with recalculated totals
-            } else {
-                alert('Gagal menyimpan perubahan. Silakan coba lagi.');
+            if (resOk && resJson?.success) {
+                successCount++;
+                if (k.value === 0) deleteCount++;
             }
+        }
+
+        if (successCount === 0) {
+            throw new Error('Tidak ada perubahan KONTAN yang berhasil disimpan.');
+        }
+
+        setEditedKontanCells({});
+        return { changedCount: successCount, deleteCount };
+    };
+
+    const performSaveAllEdits = async () => {
+        setIsSavingEdits(true);
+        try {
+            let savedCount = 0;
+            let deleteCount = 0;
+
+            if (Object.keys(editedCells).length > 0 || addedColumns.length > 0) {
+                const result = await saveEditedCellsAndColumns();
+                savedCount += result.changedCount;
+            }
+
+            if (Object.keys(editedKontanCells).length > 0) {
+                const result = await saveEditedKontanCells();
+                savedCount += result.changedCount;
+                deleteCount += result.deleteCount;
+            }
+
+            if (savedCount === 0) {
+                showPayrollToast('info', 'Tidak ada perubahan', 'Belum ada data edit yang perlu disimpan.');
+                return;
+            }
+
+            showPayrollToast(
+                'success',
+                'Perubahan tersimpan',
+                deleteCount > 0
+                    ? `${savedCount} perubahan tersimpan, termasuk ${deleteCount} penghapusan KONTAN.`
+                    : `${savedCount} perubahan berhasil disimpan.`
+            );
+            triggerPayrollRefresh();
         } catch (error) {
-            console.error('Error saving edits:', error);
-            alert('Terjadi kesalahan saat menyimpan perubahan: ' + error.message);
+            console.error('Error saving payroll changes:', error);
+            showPayrollToast('error', 'Gagal menyimpan', error.message || 'Terjadi kesalahan saat menyimpan perubahan.');
         } finally {
             setIsSavingEdits(false);
         }
     };
 
-    // Save Kontan (Other Income) - separate from main edits
-    const handleSaveKontan = async () => {
-        const kontanEdits = Object.values(editedKontanCells);
-        if (kontanEdits.length === 0) return;
+    const handleSaveAllEdits = () => {
+        if (!hasPendingEdits) {
+            showPayrollToast('info', 'Tidak ada perubahan', 'Edit nilai di tabel sebelum menyimpan.');
+            return;
+        }
 
-        // Check for delete operations (amount = 0)
-        const deleteRows = kontanEdits.filter(k => k.value === 0);
-        const saveRows = kontanEdits.filter(k => k.value !== 0);
-
+        const deleteRows = Object.values(editedKontanCells).filter(k => k.value === 0);
         if (deleteRows.length > 0) {
             const names = deleteRows.map(k => k.emp_code || k.nik).join(', ');
-            const confirmed = window.confirm(
-                `HAPUS KONTAN untuk ${deleteRows.length} karyawan?\n\n` +
-                `Karyawan: ${names}\n\n` +
-                `Nilai 0 berarti data KONTAN akan DIHAPUS dari database.\n` +
-                `Tindakan ini TIDAK DAPAT DIBATALKAN!`
-            );
-            if (!confirmed) return;
+            openPayrollConfirm({
+                variant: 'danger',
+                title: 'Konfirmasi hapus KONTAN',
+                message: `${deleteRows.length} nilai KONTAN akan dihapus untuk: ${names}. Nilai 0 berarti data KONTAN dihapus dari database.`,
+                confirmText: 'Hapus & Simpan',
+                onConfirm: performSaveAllEdits
+            });
+            return;
         }
 
-        setIsSavingKontan(true);
-        try {
-            let successCount = 0;
-            let deleteCount = 0;
-            for (const k of kontanEdits) {
-                const payload = {
-                    period_month: month,
-                    period_year: year,
-                    nik: k.nik,                    // Real NIK (KTP)
-                    emp_code: k.emp_code,          // Emp code (B0065, etc.)
-                    gang_code: k.gang_code,
-                    division_code: division,
-                    adjustment_type: 'PENDAPATAN_LAINNYA',
-                    adjustment_name: 'KONTAN',
-                    amount: k.value,
-                    remarks: k.value === 0
-                        ? `KONTAN DELETED via UI on ${new Date().toLocaleString()}`
-                        : `KONTAN edited via UI on ${new Date().toLocaleString()}`
-                };
-                console.log(`[handleSaveKontan] Saving: nik=${k.nik}, emp_code=${k.emp_code}, gang=${k.gang_code}, amount=${k.value}, period=${month}/${year}`);
-
-                let resOk = false;
-                let resJson = null;
-
-                if (isProdMode()) {
-                    try {
-                        const { saveLockedManualEdit } = await import('../services/lockedDivisionService');
-                        if (k.value === 0) {
-                            // Use EXPLICIT DELETE endpoint
-                            const delPayload = {
-                                nik: k.nik,
-                                period_month: month,
-                                period_year: year,
-                                income_type: 'KONTAN'
-                            };
-                            const delRes = await fetch('/payroll/locked/income-delete', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                body: JSON.stringify(delPayload)
-                            });
-                            resJson = await delRes.json();
-                            resOk = delRes.ok;
-                        } else {
-                            resJson = await saveLockedManualEdit(token, payload);
-                            resOk = true;
-                        }
-                    } catch (err) {
-                        console.error("Prod Mode kontan save failed:", err);
-                    }
-                } else {
-                    let res;
-                    if (k.value === 0) {
-                         const delPayload = {
-                            nik: k.nik,
-                            period_month: month,
-                            period_year: year,
-                            income_type: 'KONTAN'
-                        };
-                        res = await fetch('/payroll/locked/income-delete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                            body: JSON.stringify(delPayload)
-                        });
-                    } else {
-                        res = await fetch('/payroll/manual-edit', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                    }
-                    if (res.ok) {
-                        resOk = true;
-                        resJson = await res.json();
-                    }
-                }
-
-                if (resOk && resJson?.success) {
-                    successCount++;
-                    if (k.value === 0) deleteCount++;
-                }
-            }
-
-            if (successCount > 0) {
-                console.log(`[handleSaveKontan] SUCCESS: ${successCount} KONTAN values saved, triggering refresh`);
-                if (deleteCount > 0) {
-                    alert(`Berhasil menghapus ${deleteCount} data KONTAN.\nBerhasil menyimpan ${saveRows.length} nilai KONTAN.`);
-                } else {
-                    alert(`Berhasil menyimpan ${successCount} nilai KONTAN.`);
-                }
-                setEditedKontanCells({});
-                triggerPayrollRefresh();
-            } else {
-                alert('Gagal menyimpan KONTAN. Silakan coba lagi.');
-            }
-        } catch (error) {
-            console.error('Error saving kontan:', error);
-            alert('Terjadi kesalahan saat menyimpan KONTAN: ' + error.message);
-        } finally {
-            setIsSavingKontan(false);
-        }
+        performSaveAllEdits();
     };
 
     // --- DATA FETCHING ---
@@ -2389,7 +2417,29 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 placeholder="0" onClick={(e) => e.stopPropagation()} style={{ width: '65px' }}
                             />
                             {hasPendingDelete && (
-                                <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Hapus KONTAN?')) { const restoreValue = resolvePersistentOriginalNumber(cellEdit?.originalValue, val); setEditedKontanCells(prev => { const upd = { ...prev }; delete upd[editKey]; return upd; }); setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: restoreValue } : r)); } }} style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', padding: '2px 5px' }} title="Batal Hapus">✕</button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openPayrollConfirm({
+                                            variant: 'danger',
+                                            title: 'Batalkan hapus KONTAN?',
+                                            message: `Nilai KONTAN untuk ${row.nama || row.nik || empCode} akan dikembalikan ke nilai sebelumnya.`,
+                                            confirmText: 'Batalkan Hapus',
+                                            onConfirm: () => {
+                                                const restoreValue = resolvePersistentOriginalNumber(cellEdit?.originalValue, val);
+                                                setEditedKontanCells(prev => {
+                                                    const upd = { ...prev };
+                                                    delete upd[editKey];
+                                                    return upd;
+                                                });
+                                                setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: restoreValue } : r));
+                                                showPayrollToast('info', 'Hapus KONTAN dibatalkan', 'Nilai KONTAN dikembalikan ke nilai sebelumnya.');
+                                            }
+                                        });
+                                    }}
+                                    style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', padding: '2px 5px' }}
+                                    title="Batal Hapus"
+                                >✕</button>
                             )}
                         </div>
                     );
@@ -3514,101 +3564,51 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
             {/* Edit Mode Save Banner */}
             {isEditMode && (
-                <div style={{
-                    position: 'sticky',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    zIndex: 1000,
-                    backgroundColor: '#fffbeb',
-                    border: '1px solid #f59e0b',
-                    padding: '10px 20px',
-                    borderRadius: '0 0 8px 8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '12px',
-                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
-                    color: '#b45309',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    flexWrap: 'wrap'
-                }}>
-                    {/* Kontan Save Button - Always visible in edit mode */}
-                    <button
-                        onClick={handleSaveKontan}
-                        disabled={isSavingKontan || Object.keys(editedKontanCells).length === 0}
-                        style={{
-                            backgroundColor: Object.keys(editedKontanCells).length > 0 ? '#10b981' : '#94a3b8',
-                            color: 'white',
-                            border: 'none',
-                            padding: '4px 12px',
-                            borderRadius: '4px',
-                            cursor: Object.keys(editedKontanCells).length > 0 ? 'pointer' : 'not-allowed',
-                            fontWeight: 'bold',
-                            fontSize: '12px'
-                        }}
-                        title="Simpan semua nilai KONTAN. Nilai 0 = HAPUS data."
-                    >
-                        {isSavingKontan ? '💾 Menyimpan...' : (() => {
-                            const editCount = Object.keys(editedKontanCells).length;
-                            const deleteCount = Object.values(editedKontanCells).filter(k => k.value === 0).length;
-                            if (editCount === 0) return '💾 SIMPAN KONTAN';
-                            if (deleteCount > 0) return `💾 SIMPAN KONTAN (${editCount} | ${deleteCount} HAPUS)`;
-                            return `💾 SIMPAN KONTAN (${editCount})`;
-                        })()}
-                    </button>
+                <div className={`payroll-edit-save-dock ${hasPendingEdits ? 'has-pending' : ''}`}>
+                    <div className="payroll-edit-save-dock__copy">
+                        <span className="payroll-edit-save-dock__eyebrow">Mode Edit Aktif</span>
+                        <strong>{hasPendingEdits ? `${pendingSaveSummary.totalCount} perubahan belum disimpan` : 'Siap menerima perubahan'}</strong>
+                    </div>
 
-                    {/* Separator */}
-                    <div style={{ width: '1px', height: '24px', backgroundColor: '#f59e0b', opacity: 0.5 }} />
+                    <div className="payroll-edit-save-dock__metrics" aria-label="Ringkasan perubahan">
+                        <span className="payroll-edit-save-dock__metric">Manual/Profile <b>{pendingSaveSummary.manualCount}</b></span>
+                        <span className="payroll-edit-save-dock__metric">KONTAN <b>{pendingSaveSummary.kontanCount}</b></span>
+                        <span className="payroll-edit-save-dock__metric">Kolom Baru <b>{pendingSaveSummary.addedColumnCount}</b></span>
+                        {pendingSaveSummary.deleteCount > 0 && (
+                            <span className="payroll-edit-save-dock__metric is-danger">Hapus <b>{pendingSaveSummary.deleteCount}</b></span>
+                        )}
+                    </div>
 
-                    {/* Other edits save */}
-                    {(Object.keys(editedCells).length > 0 || addedColumns.length > 0) && (
-                        <>
-                            <span>⚠️ {Object.keys(editedCells).length + addedColumns.length} penyesuaian (kolom/nilai) belum disimpan</span>
-                            <button
-                                onClick={handleSaveEdits}
-                                disabled={isSavingEdits}
-                                style={{
-                                    backgroundColor: '#f59e0b',
-                                    color: 'white',
-                                    border: 'none',
-                                    padding: '4px 12px',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontWeight: 'bold'
-                                }}
-                            >
-                                {isSavingEdits ? 'Menyimpan...' : 'Simpan Perubahan'}
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (confirm('Batal semua perubahan dan penambahan kolom?')) {
-                                        setEditedCells({});
-                                        setAddedColumns([]);
-                                        setEditedKontanCells({});
-                                        onRefresh?.();
-                                    }
-                                }}
-                                disabled={isSavingEdits}
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    color: '#b45309',
-                                    border: '1px solid #f59e0b',
-                                    padding: '4px 12px',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Batal Semua
-                            </button>
-                        </>
-                    )}
-
-                    {/* When nothing to save */}
-                    {Object.keys(editedCells).length === 0 && addedColumns.length === 0 && Object.keys(editedKontanCells).length === 0 && (
-                        <span style={{ color: '#10b981' }}>✓ Mode Edit Aktif - Edit nilai di kolom atau klik 💾 SIMPAN KONTAN</span>
-                    )}
+                    <div className="payroll-edit-save-dock__actions">
+                        <button
+                            type="button"
+                            className="payroll-edit-save-dock__primary"
+                            onClick={handleSaveAllEdits}
+                            disabled={isSavingEdits || !hasPendingEdits}
+                        >
+                            {isSavingEdits ? 'Menyimpan...' : `Simpan Semua Perubahan${hasPendingEdits ? ` (${pendingSaveSummary.totalCount})` : ''}`}
+                        </button>
+                        <button
+                            type="button"
+                            className="payroll-edit-save-dock__secondary"
+                            onClick={() => openPayrollConfirm({
+                                title: 'Batalkan semua perubahan?',
+                                message: 'Semua edit manual, KONTAN, dan kolom baru yang belum disimpan akan dikosongkan dari layar.',
+                                confirmText: 'Batal Semua',
+                                variant: 'danger',
+                                onConfirm: () => {
+                                    setEditedCells({});
+                                    setAddedColumns([]);
+                                    setEditedKontanCells({});
+                                    onRefresh?.();
+                                    showPayrollToast('info', 'Perubahan dibatalkan', 'Semua perubahan yang belum disimpan sudah dikosongkan.');
+                                }
+                            })}
+                            disabled={isSavingEdits || !hasPendingEdits}
+                        >
+                            Batal Semua
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -3925,6 +3925,44 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 token={token}
                 division={division}
             />
+            {payrollToast && (
+                <div className={`payroll-toast payroll-toast--${payrollToast.type}`} role="status">
+                    <div className="payroll-toast__rail" />
+                    <div>
+                        <strong>{payrollToast.title}</strong>
+                        <p>{payrollToast.message}</p>
+                    </div>
+                    <button type="button" onClick={() => setPayrollToast(null)} aria-label="Tutup notifikasi">×</button>
+                </div>
+            )}
+            {payrollConfirm && (
+                <div className="payroll-confirm-backdrop" role="presentation">
+                    <div className={`payroll-confirm-card payroll-confirm-card--${payrollConfirm.variant}`} role="dialog" aria-modal="true" aria-labelledby="payroll-confirm-title">
+                        <div className="payroll-confirm-card__mark" />
+                        <div className="payroll-confirm-card__body">
+                            <span className="payroll-confirm-card__eyebrow">Konfirmasi Perubahan</span>
+                            <h3 id="payroll-confirm-title">{payrollConfirm.title}</h3>
+                            <p>{payrollConfirm.message}</p>
+                        </div>
+                        <div className="payroll-confirm-card__actions">
+                            <button type="button" className="payroll-confirm-card__cancel" onClick={closePayrollConfirm}>
+                                {payrollConfirm.cancelText}
+                            </button>
+                            <button
+                                type="button"
+                                className="payroll-confirm-card__confirm"
+                                onClick={() => {
+                                    const onConfirm = payrollConfirm.onConfirm;
+                                    closePayrollConfirm();
+                                    onConfirm?.();
+                                }}
+                            >
+                                {payrollConfirm.confirmText}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 });

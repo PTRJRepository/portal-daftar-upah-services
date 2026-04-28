@@ -20,8 +20,9 @@ describe('manualAdjustmentNaming', () => {
         expect(toManualAdjustmentFieldName('PREMI', 'premi    insentif')).toBe('premi_insentif');
     });
 
-    it('retains zero-value placeholder rows with INIT_COLUMN remarks', () => {
+    it('retains zero-value placeholder rows with INIT_COLUMN or sync remarks', () => {
         expect(shouldDeleteStoredAdjustment(0, 'INIT_COLUMN ...')).toBe(false);
+        expect(shouldDeleteStoredAdjustment(0, 'KOREKSI DENDA | DE0004 - (DE) POTONGAN PREMI | 0 | sync:MISS | match:MISMATCH')).toBe(false);
         expect(shouldDeleteStoredAdjustment(0, 'Edited via UI')).toBe(true);
     });
 });

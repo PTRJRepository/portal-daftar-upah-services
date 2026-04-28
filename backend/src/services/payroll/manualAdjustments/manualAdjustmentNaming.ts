@@ -34,5 +34,6 @@ export function toManualAdjustmentFieldName(
 }
 
 export function shouldDeleteStoredAdjustment(amount: number, remarks?: string | null): boolean {
-    return Number(amount || 0) === 0 && !String(remarks || '').includes('INIT_COLUMN');
+    const text = String(remarks || '');
+    return Number(amount || 0) === 0 && !text.includes('INIT_COLUMN') && !text.includes('sync:');
 }
