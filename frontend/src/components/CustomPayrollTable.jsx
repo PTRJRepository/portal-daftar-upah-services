@@ -846,7 +846,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             groupLabel: effectiveGroupLabel,
             rawName: columnDefinition.adjustment_name,
             division,
-            firstEmployee: null
+            firstEmployee: employeeRows[0]
         });
 
         if (!pendingColumn) return;
