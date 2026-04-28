@@ -212,6 +212,93 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             limit: t.Optional(t.String())
         })
     })
+    // --- Manual Adjustment Presets ---
+    .get("/manual-adjustment-presets", async ({ query, set }) => {
+        try {
+            const { manualAdjustmentPresetService } = await import("../services/manualAdjustmentPresetService");
+            const data = await manualAdjustmentPresetService.listPresets({
+                adjustmentType: query.adjustment_type || undefined,
+                search: query.search || undefined,
+                divisionCode: query.division_code || undefined,
+                includeInactive: parseBooleanQueryParam(query.include_inactive)
+            });
+
+            return { success: true, count: data.length, data };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment-presets GET error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            adjustment_type: t.Optional(t.String()),
+            search: t.Optional(t.String()),
+            division_code: t.Optional(t.String()),
+            include_inactive: t.Optional(t.String())
+        })
+    })
+    .post("/manual-adjustment-presets", async ({ body, currentUser, set }) => {
+        try {
+            const { manualAdjustmentPresetService } = await import("../services/manualAdjustmentPresetService");
+            const id = await manualAdjustmentPresetService.createPreset(body as any, currentUser?.username || "system");
+            return { success: true, id, message: "Manual adjustment preset saved successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment-presets POST error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            adjustment_type: t.String(),
+            adjustment_name: t.String(),
+            ad_code: t.String(),
+            task_code: t.Optional(t.String()),
+            base_task_code: t.Optional(t.String()),
+            task_desc: t.Optional(t.String()),
+            division_code: t.Optional(t.String())
+        })
+    })
+    .post("/manual-adjustment-presets/infer", async ({ body, set }) => {
+        try {
+            const {
+                inferManualAdjustmentAdCodeFromRemarks,
+                normalizeManualAdjustmentPresetName
+            } = await import("../utils/manualAdjustmentRemarkParser");
+            const data = body as any;
+            return {
+                success: true,
+                adjustment_name: normalizeManualAdjustmentPresetName(data.remarks),
+                ...inferManualAdjustmentAdCodeFromRemarks(data.remarks)
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment-presets infer error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            remarks: t.String()
+        })
+    })
+    .delete("/manual-adjustment-presets/:id", async ({ params, currentUser, set }) => {
+        try {
+            const id = Number(params.id);
+            if (!Number.isInteger(id) || id <= 0) {
+                set.status = 400;
+                return { success: false, error: "id tidak valid" };
+            }
+
+            const { manualAdjustmentPresetService } = await import("../services/manualAdjustmentPresetService");
+            await manualAdjustmentPresetService.deletePreset(id, currentUser?.username || "system");
+            return { success: true, message: "Manual adjustment preset deleted successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment-presets DELETE error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        params: t.Object({ id: t.String() })
+    })
     // --- Save Manual Edit ---
     .post("/manual-edit", async ({ body, currentUser, set }) => {
         try {

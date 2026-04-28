@@ -113,7 +113,7 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Edit Mode State (New)
   const [isEditMode, setIsEditMode] = useState(false)
-  const [showDbPtrjInputColumns, setShowDbPtrjInputColumns] = useState(false)
+  const [valuePriorityMode, setValuePriorityMode] = useState('smart')
 
   // Period Slider Mode State (enabled by default)
   const [usePeriodSlider, setUsePeriodSlider] = useState(true)
@@ -965,16 +965,16 @@ export default function MainPage({ lockedDiv = null }) {
                         const selectedGang = e.target.value;
                         setGang(selectedGang);
 
-                        // When selecting a specific gang, auto-update gangPrefix to match that gang's group
-                        // When selecting "SEMUA GANG", keep gangPrefix at '1' (default Group 1)
+                        // When selecting a specific gang, auto-update gangPrefix to match that gang's group.
+                        // When selecting "SEMUA GANG", clear gangPrefix so the request covers the whole division.
                         if (selectedGang !== 'ALL') {
                           const groupOfGang = getAsistensi(selectedGang);
                           if (groupOfGang) {
                             setGangPrefix(groupOfGang);
                           }
+                        } else {
+                          setGangPrefix('');
                         }
-                        // Do NOT reset gangPrefix to '' when selecting SEMUA GANG
-                        // Keep it at '1' (Group 1) as the default view
                       }}
                       disabled={gangLoading}
                       onFocus={(e) => { e.target.style.borderColor = '#1e3a8a'; e.target.style.boxShadow = '0 0 0 3px rgba(30, 58, 138, 0.1)'; }}
@@ -1007,7 +1007,7 @@ export default function MainPage({ lockedDiv = null }) {
                     </select>
                     {division && gang === 'ALL' && (
                       <div style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span>✅</span> Menampilkan seluruh karyawan divisi {division}
+                        <span>✅</span> {gangPrefix ? `Menampilkan seluruh karyawan Group ${gangPrefix}` : `Menampilkan seluruh karyawan divisi ${division}`}
                       </div>
                     )}
                   </div>
@@ -1849,33 +1849,6 @@ export default function MainPage({ lockedDiv = null }) {
             </button>
           )}
 
-          {/* DB_PTRJ Input Columns Toggle */}
-          {isReportGenerated && !activeMatrixView && (
-            <button
-              onClick={() => setShowDbPtrjInputColumns(prev => !prev)}
-              style={{
-                background: showDbPtrjInputColumns ? 'linear-gradient(135deg, #0f766e 0%, #115e59 100%)' : 'white',
-                color: showDbPtrjInputColumns ? '#ffffff' : '#334155',
-                border: '1px solid #99f6e4',
-                padding: '0.4rem 0.8rem',
-                borderRadius: '4px',
-                fontSize: '0.8rem',
-                fontWeight: '600',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-                height: '36px',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                transition: 'all 0.2s'
-              }}
-              title={showDbPtrjInputColumns ? 'Sembunyikan kolom input asli db_ptrj' : 'Tampilkan kolom input asli db_ptrj'}
-            >
-              <span>{showDbPtrjInputColumns ? '◉' : '◎'}</span>
-              <span>{showDbPtrjInputColumns ? 'DB_PTRJ Input' : 'Show DB_PTRJ'}</span>
-            </button>
-          )}
-
           {/* Edit Mode Toggle Button */}
           {isReportGenerated && (
             <button
@@ -2039,7 +2012,8 @@ export default function MainPage({ lockedDiv = null }) {
                 onToggleEmployeeSelection={handleToggleEmployeeSelection}
                 onSelectAllEmployees={handleSelectAllEmployees}
                 isEditMode={isEditMode}
-                showDbPtrjInputColumns={showDbPtrjInputColumns}
+                valuePriorityMode={valuePriorityMode}
+                onValuePriorityModeChange={setValuePriorityMode}
                 useHistoryDb={isHistorical}
                 onRefresh={() => setRefreshTrigger(prev => prev + 1)}
                 sortBy={activeMatrixView === 'employee' ? undefined : employeeSortBy}

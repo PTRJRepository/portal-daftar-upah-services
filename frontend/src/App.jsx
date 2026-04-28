@@ -615,7 +615,7 @@ const OperationalReportWrapper = () => {
               }}
             />
           )}
-          <div style={{ position: 'relative' }} ref={dropdownRef}>
+          <div style={{ position: 'relative', zIndex: 220 }} ref={dropdownRef}>
             <button
               onClick={() => setIsActionsOpen(!isActionsOpen)}
               style={{
@@ -663,7 +663,7 @@ const OperationalReportWrapper = () => {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
-                zIndex: 50,
+                zIndex: 240,
                 minWidth: '220px'
               }}>
                 <button onClick={handleSeedData} disabled={isSeeding} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: isSeeding ? '#fef3c7' : 'transparent', color: isSeeding ? '#92400e' : '#334155', cursor: isSeeding ? 'wait' : 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Memuat Ulang / Seed Data Sesuai Pilihan Layar">

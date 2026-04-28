@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchTaskCodeOptions } from '../services/manualAdjustmentService';
+import {
+    createManualAdjustmentPreset,
+    fetchManualAdjustmentPresets
+} from '../services/manualAdjustmentPresetService';
 
 const CATEGORY_OPTIONS = [
     { value: 'PREMI', label: 'Premi', color: '#16a34a' },
@@ -13,6 +17,18 @@ const POTONGAN_PREFIX = 'POTONGAN';
 
 function resolveAdCode(taskCodeOption) {
     return taskCodeOption?.ad_code || taskCodeOption?.base_task_code || taskCodeOption?.task_code || '';
+}
+
+function presetToTaskCodeOption(preset) {
+    const adCode = preset?.ad_code || preset?.base_task_code || preset?.task_code || '';
+    return {
+        ad_code: adCode,
+        task_code: preset?.task_code || adCode,
+        base_task_code: preset?.base_task_code || adCode,
+        task_desc: preset?.task_desc || '',
+        doc_desc: preset?.task_desc || preset?.adjustment_name || '',
+        loc_code: preset?.division_code || null
+    };
 }
 
 function buildRemarks(taskCodeOption, adjustmentName, amount = 0) {
@@ -67,10 +83,14 @@ export default function ManualAdjustmentColumnModal({
     const [docDesc, setDocDesc] = useState('');
     const [search, setSearch] = useState('');
     const [options, setOptions] = useState([]);
+    const [presets, setPresets] = useState([]);
     const [selectedTaskCode, setSelectedTaskCode] = useState(null);
     const [loadingOptions, setLoadingOptions] = useState(false);
+    const [loadingPresets, setLoadingPresets] = useState(false);
+    const [presetSaving, setPresetSaving] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [presetError, setPresetError] = useState('');
 
     const selectedCategory = useMemo(
         () => CATEGORY_OPTIONS.find((item) => item.value === adjustmentType) || CATEGORY_OPTIONS[0],
@@ -100,7 +120,9 @@ export default function ManualAdjustmentColumnModal({
         setSearch('');
         setSelectedTaskCode(null);
         setOptions([]);
+        setPresets([]);
         setError('');
+        setPresetError('');
     }, [isOpen]);
 
     useEffect(() => {
@@ -137,7 +159,29 @@ export default function ManualAdjustmentColumnModal({
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [isOpen, token, search, docDesc, division]);
+    }, [isOpen, token, search, docDesc, division, adjustmentType]);
+
+    const loadPresets = async () => {
+        if (!isOpen || !token) return;
+        setLoadingPresets(true);
+        setPresetError('');
+        try {
+            const result = await fetchManualAdjustmentPresets(token, {
+                adjustment_type: adjustmentType,
+                division_code: division
+            });
+            setPresets(Array.isArray(result) ? result : result?.data || []);
+        } catch (e) {
+            setPresets([]);
+            setPresetError(e?.response?.data?.error || e.message || 'Gagal memuat preset manual adjustment');
+        } finally {
+            setLoadingPresets(false);
+        }
+    };
+
+    useEffect(() => {
+        loadPresets();
+    }, [isOpen, token, adjustmentType, division]);
 
     const canSave = Boolean(
         resolvedAdjustmentName
@@ -148,6 +192,37 @@ export default function ManualAdjustmentColumnModal({
 
     const handleOptionSelect = (option) => {
         setSelectedTaskCode(option);
+    };
+
+    const handlePresetSelect = (preset) => {
+        const presetOption = presetToTaskCodeOption(preset);
+        const matchingOption = options.find((option) => resolveAdCode(option) === resolveAdCode(presetOption)) || presetOption;
+        setAdjustmentType(preset.adjustment_type || adjustmentType);
+        setDocDesc(preset.adjustment_name || '');
+        setSearch(resolveAdCode(presetOption));
+        setSelectedTaskCode(matchingOption);
+    };
+
+    const handleSavePreset = async () => {
+        if (!resolvedAdjustmentName || !selectedTaskCode || presetSaving) return;
+        setPresetSaving(true);
+        setPresetError('');
+        try {
+            await createManualAdjustmentPreset(token, {
+                adjustment_type: adjustmentType,
+                adjustment_name: resolvedAdjustmentName,
+                ad_code: resolveAdCode(selectedTaskCode),
+                task_code: selectedTaskCode.task_code,
+                base_task_code: selectedTaskCode.base_task_code || resolveAdCode(selectedTaskCode),
+                task_desc: selectedTaskCode.task_desc,
+                division_code: division && division !== 'ALL' ? division : undefined
+            });
+            await loadPresets();
+        } catch (e) {
+            setPresetError(e?.response?.data?.error || e.message || 'Gagal menyimpan preset');
+        } finally {
+            setPresetSaving(false);
+        }
     };
 
     const handleSubmit = (event) => {
@@ -223,6 +298,61 @@ export default function ManualAdjustmentColumnModal({
 
                 <form onSubmit={handleSubmit} style={{ padding: 22, overflowY: 'auto', maxHeight: 'calc(90vh - 86px)' }}>
                     <div style={{ display: 'grid', gap: 14 }}>
+                        <div style={{ padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+                                <div>
+                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Preset Manual Adjustment</div>
+                                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                                        {loadingPresets ? 'Memuat preset...' : `${presets.length} preset tersedia untuk kategori ini`}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSavePreset}
+                                    disabled={!resolvedAdjustmentName || !selectedTaskCode || presetSaving}
+                                    style={{
+                                        border: 0,
+                                        borderRadius: 8,
+                                        padding: '8px 10px',
+                                        background: resolvedAdjustmentName && selectedTaskCode && !presetSaving ? '#0f172a' : '#94a3b8',
+                                        color: 'white',
+                                        fontWeight: 800,
+                                        cursor: resolvedAdjustmentName && selectedTaskCode && !presetSaving ? 'pointer' : 'not-allowed',
+                                        fontSize: 12
+                                    }}
+                                >
+                                    {presetSaving ? 'Menyimpan...' : 'Simpan sebagai preset'}
+                                </button>
+                            </div>
+                            {presets.length > 0 && (
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    {presets.map((preset) => (
+                                        <button
+                                            key={preset.id || `${preset.adjustment_type}-${preset.adjustment_name}-${preset.ad_code}`}
+                                            type="button"
+                                            onClick={() => handlePresetSelect(preset)}
+                                            style={{
+                                                border: '1px solid #cbd5e1',
+                                                background: '#ffffff',
+                                                borderRadius: 999,
+                                                padding: '7px 10px',
+                                                cursor: 'pointer',
+                                                color: '#0f172a',
+                                                fontSize: 12,
+                                                fontWeight: 800
+                                            }}
+                                            title={`${preset.adjustment_name} · ${preset.ad_code}${preset.task_desc ? ` · ${preset.task_desc}` : ''}`}
+                                        >
+                                            {preset.adjustment_name} · {preset.ad_code}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {presetError && (
+                                <div style={{ marginTop: 8, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>{presetError}</div>
+                            )}
+                        </div>
+
                         <div>
                             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>DocDesc / Nama Kolom</label>
                             {(adjustmentType === 'POTONGAN_KOTOR' || adjustmentType === 'POTONGAN_BERSIH') ? (

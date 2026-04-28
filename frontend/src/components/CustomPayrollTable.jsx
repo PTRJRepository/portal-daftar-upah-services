@@ -102,14 +102,6 @@ const formatDecimal = (value) => {
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
 };
 
-const formatRawInputValue = (value) => {
-    if (value === null || value === undefined || value === '') return '-';
-    if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak';
-    const n = Number(value);
-    if (!Number.isNaN(n) && String(value).trim() !== '') return formatNumber(n);
-    return String(value);
-};
-
 const toFiniteNumber = toFinitePayrollNumber;
 
 const formatBytes = (bytes) => {
@@ -149,11 +141,24 @@ const normalizeValuePriorityMode = (value) => {
 
 const normalizeFieldKey = (value) => String(value || '').trim().toLowerCase();
 
+const formatSourceCompareValue = (value) => {
+    if (value === null || value === undefined || value === '') return '-';
+    if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak';
+    const n = Number(value);
+    if (!Number.isNaN(n) && String(value).trim() !== '') return formatNumber(n);
+    return String(value);
+};
+
 const isPremiFieldKey = (value) => normalizeFieldKey(value).startsWith('premi_');
+
+const isGrossDeductionFieldKey = (value) => {
+    const normalized = normalizeFieldKey(value);
+    return normalized.startsWith('koreksi') || normalized === 'pot_koreksi' || normalized === 'premi_koreksi' || normalized === 'potongan_upah_kotor_total';
+};
 
 const isPotonganFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
-    return normalized.startsWith('potongan_') || normalized.startsWith('koreksi');
+    return !isGrossDeductionFieldKey(normalized) && normalized.startsWith('potongan_');
 };
 
 const formatFallbackPotonganLabel = (field) => {
@@ -204,7 +209,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     selectedEmployees = [], onToggleEmployeeSelection = () => { },
     onSelectAllEmployees = () => { },
     isEditMode = false,
-    showDbPtrjInputColumns = false,
     useHistoryDb = false,
     snapshotVersion = null,
     gangPrefix = null,
@@ -215,6 +219,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     onDataReady = null,    // Callback to expose displayRows data to parent
     onTaxExportReady = null, // Callback to expose data getter for Tax Export
     onRowsGetterReady = null, // Callback to expose displayRows getter without copying rows to parent
+    valuePriorityMode: controlledValuePriorityMode = null,
+    onValuePriorityModeChange = null,
     onValuePriorityModeResolved = null, // Callback to sync active source mode to parent/header
     onRefresh = null,      // Callback to trigger parent refresh (for saving)
     sortBy = 'emp_code',     // 'name' | 'emp_code' | 'nik'
@@ -284,8 +290,23 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const initialDisplayState = useMemo(() => resolvePayrollDisplayModeState(), []);
     const [displayMode, setDisplayMode] = useState(initialDisplayState.mode);
     const [focusLensEnabled, setFocusLensEnabled] = useState(initialDisplayState.focusLens);
-    const [valuePriorityMode, setValuePriorityMode] = useState(resolveInitialValuePriorityMode);
+    const [internalValuePriorityMode, setInternalValuePriorityMode] = useState(resolveInitialValuePriorityMode);
+    const valuePriorityMode = controlledValuePriorityMode === null || controlledValuePriorityMode === undefined
+        ? internalValuePriorityMode
+        : normalizeValuePriorityMode(controlledValuePriorityMode);
+    const setValuePriorityMode = useCallback((nextValueOrUpdater) => {
+        const currentMode = normalizeValuePriorityMode(valuePriorityMode);
+        const nextValue = typeof nextValueOrUpdater === 'function'
+            ? nextValueOrUpdater(currentMode)
+            : nextValueOrUpdater;
+        const nextMode = normalizeValuePriorityMode(nextValue);
+        if (controlledValuePriorityMode === null || controlledValuePriorityMode === undefined) {
+            setInternalValuePriorityMode(nextMode);
+        }
+        onValuePriorityModeChange?.(nextMode);
+    }, [controlledValuePriorityMode, onValuePriorityModeChange, valuePriorityMode]);
     const [activeChapterGroup, setActiveChapterGroup] = useState(null);
+    const [activeGangCode, setActiveGangCode] = useState(null);
     const [isChapterBarVisible, setChapterBarVisible] = useState(true);
     const [chapterViewportWindow, setChapterViewportWindow] = useState({ startRatio: 0, widthRatio: 1 });
     const [tableHorizontalState, setTableHorizontalState] = useState({
@@ -2370,30 +2391,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         cols.push({ field: 'total_tunjangan', headers: ['TUNJANGAN', null, 'TOTAL TUNJ'], w: 95, className: 'text-right font-bold cell-total-soft' });
 
-        if (showDbPtrjInputColumns) {
-            const dbPtrjBaseColumns = [
-                { field: 'is_spsi_member', label: 'SPSI MEMBER', w: 88, className: 'text-center', render: (row) => row.is_spsi_member ? 'Ya' : 'Tidak' },
-                { field: 'pot_spsi', label: 'SPSI NILAI', w: 88, className: 'text-right' },
-                { field: 'masa_kerja_tahun', label: 'MASA THN', w: 72, className: 'text-center' },
-                { field: 'masa_kerja_label', label: 'MASA LABEL', w: 92, className: 'text-center' },
-                { field: 'masa_kerja_jumlah', label: 'MASA NILAI', w: 88, className: 'text-right' },
-                { field: 'beras_rate', label: 'BERAS RATE', w: 88, className: 'text-right' },
-                { field: 'beras_jumlah', label: 'BERAS NILAI', w: 88, className: 'text-right' },
-                { field: 'jabatan_rate', label: 'JAB RATE', w: 82, className: 'text-right', render: (row) => formatRawInputValue(resolveJabatanRate(row)) },
-                { field: 'jabatan_jumlah', label: 'JAB NILAI', w: 88, className: 'text-right' }
-            ];
-
-            for (const column of dbPtrjBaseColumns) {
-                cols.push({
-                    field: `db_ptrj_input_${column.field}`,
-                    headers: ['DB_PTRJ INPUT', 'MASTER/POT', column.label],
-                    w: column.w,
-                    className: column.className,
-                    render: column.render || ((row) => formatRawInputValue(row[column.field]))
-                });
-            }
-        }
-
         // PREMI
         const showPremiDetails = true;
         if (showPremiDetails) {
@@ -2424,28 +2421,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 });
         }
         cols.push({ field: 'total_premi', headers: [PREMI, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold cell-total-soft' });
-
-        if (showDbPtrjInputColumns) {
-            cols.push({
-                field: 'db_ptrj_input_premi_brondol',
-                headers: ['DB_PTRJ INPUT', 'PREMI', 'BRONDOL'],
-                w: 88,
-                className: 'text-right',
-                render: (row) => formatRawInputValue(row.premi_brondol)
-            });
-
-            Object.entries(dynamicHeaders.premi)
-                .filter(([, field]) => field !== 'brondol' && (activePremiFields.includes(field) || isEditMode))
-                .forEach(([label, field]) => {
-                    cols.push({
-                        field: `db_ptrj_input_${field}`,
-                        headers: ['DB_PTRJ INPUT', 'PREMI', label.replace('PREMI ', '')],
-                        w: 90,
-                        className: 'text-right',
-                        render: (row) => formatRawInputValue(row[field])
-                    });
-                });
-        }
 
         // PENDAPATAN LAINNYA
         const activePendapatan = getOtherIncomeDetailFields(activePendapatanFields);
@@ -2607,13 +2582,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             .sort(([a], [b]) => (a || '').localeCompare(b || ''));
 
         if (koreksiFields.length === 0 && !isEditMode) {
-            cols.push({ field: 'pot_koreksi', headers: [POTONGAN_UPAH_KOTOR, null, 'KOREKSI'], w: 80, className: 'text-right' });
+            cols.push({ field: 'pot_koreksi', headers: [POTONGAN_UPAH_KOTOR, 'KOREKSI GROSS', 'KOREKSI (-)'], w: 88, className: 'text-right cell-koreksi-gross' });
         } else {
             for (const [label, field] of koreksiFields) {
                 const displayLabel = label.replace(/^KOREKSI\s*/i, 'KOR. ') || label;
                 const canonicalName = buildCanonicalManualAdjustmentName('POTONGAN UPAH KOTOR', label);
                 cols.push({
-                    field, headers: [POTONGAN_UPAH_KOTOR, null, displayLabel], w: 90, className: 'text-right',
+                    field, headers: [POTONGAN_UPAH_KOTOR, 'KOREKSI GROSS', `${displayLabel} (-)`], w: 96, className: 'text-right cell-koreksi-gross',
                     render: (row) => {
                         const val = row[field] || 0;
                         if (isEditMode && row.type === 'employee') {
@@ -2628,11 +2603,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 });
             }
         }
-        cols.push({ field: 'potongan_upah_kotor_total', headers: [POTONGAN_UPAH_KOTOR, null, 'TOT KOR.'], w: 95, className: 'text-right font-bold cell-total-soft' });
+        cols.push({ field: 'potongan_upah_kotor_total', headers: [POTONGAN_UPAH_KOTOR, 'TOTAL KOREKSI', 'TOTAL (-)'], w: 98, className: 'text-right font-bold cell-total-soft cell-koreksi-gross' });
 
         // UPAH KOTOR
         cols.push({
-            field: 'jumlah_upah_kotor', headers: [UPAH_KOTOR, null, 'JUMLAH'], w: 110, className: 'text-right font-bold cell-gross-salary',
+            field: 'jumlah_upah_kotor', headers: [UPAH_KOTOR, 'SETELAH KOREKSI', 'JUMLAH'], w: 118, className: 'text-right font-bold cell-gross-salary',
             render: (row) => {
                 const empCode = row.emp_code || row.nik;
                 const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
@@ -2691,14 +2666,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             // POTONGAN UPAH BERSIH > POTONGAN BPJS > JUMLAH
             cols.push({ field: 'pot_bpjs_pekerja_total', headers: [POTONGAN_UPAH_BERSIH, 'CARUMAN', 'BPJS', 'TOTAL'], w: 80, className: 'text-right font-bold' });
             // Other deductions
-            cols.push({ field: 'pot_spsi', headers: [POTONGAN_UPAH_BERSIH, 'LAINNYA', null, 'SPSI'], w: 80, className: 'text-right' });
-            cols.push({ field: 'pot_pph21', headers: [POTONGAN_UPAH_BERSIH, 'LAINNYA', null, 'PPH21 (-)'], w: 80, className: 'text-right' });
+            cols.push({ field: 'pot_spsi', headers: [POTONGAN_UPAH_BERSIH, 'SETELAH UPAH KOTOR', null, 'SPSI (-)'], w: 86, className: 'text-right' });
+            cols.push({ field: 'pot_pph21', headers: [POTONGAN_UPAH_BERSIH, 'SETELAH UPAH KOTOR', null, 'PPH21 (-)'], w: 86, className: 'text-right' });
             
             // PENDAPATAN LAINNYA sebagai pengurang upah bersih
             for (const field of deductionOtherIncomeFields) {
                 cols.push({
                     field: `${field}_pengurang`,
-                    headers: [POTONGAN_UPAH_BERSIH, 'LAINNYA', null, formatOtherIncomeColumnLabel(field, '(-)')],
+                    headers: [POTONGAN_UPAH_BERSIH, 'SETELAH UPAH KOTOR', null, formatOtherIncomeColumnLabel(field, '(-)')],
                     w: 90,
                     className: 'text-right',
                     render: (row) => {
@@ -2711,7 +2686,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
             cols.push({
                 field: 'total_pendapatan_lainnya_pengurang',
-                headers: [POTONGAN_UPAH_BERSIH, 'LAINNYA', null, 'PEND. LAIN (-)'],
+                headers: [POTONGAN_UPAH_BERSIH, 'SETELAH UPAH KOTOR', null, 'PEND. LAIN (-)'],
                 w: 90,
                 className: 'text-right',
                 render: (row) => {
@@ -2723,7 +2698,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
             cols.push({
                 field: 'premi_pph',
-                headers: [POTONGAN_UPAH_BERSIH, 'LAINNYA', null, 'PREMI PPH (+)'],
+                headers: [POTONGAN_UPAH_BERSIH, 'SETELAH UPAH KOTOR', null, 'PREMI PPH (+)'],
                 w: 90,
                 className: 'text-right cell-premi-pph',
                 render: (row) => {
@@ -2743,7 +2718,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     const normalizedField = normalizeFieldKey(field);
                     const u = normalizedField.toUpperCase();
                     const addedType = addedPotonganTypeByField.get(normalizedField);
-                    if (addedType === 'POTONGAN_KOTOR') return false;
+                    if (addedType === 'POTONGAN_KOTOR' || isGrossDeductionFieldKey(normalizedField)) return false;
                     if (addedType === 'POTONGAN_BERSIH') return true;
                     return !u.startsWith('KOREKSI') && u !== 'SPSI' && u !== 'PPH21' && u !== 'PREMI_PPH';
                 })
@@ -2755,7 +2730,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 const canonicalName = buildCanonicalManualAdjustmentName('POTONGAN UPAH BERSIH', label);
                 cols.push({
                     field,
-                    headers: [POTONGAN_UPAH_BERSIH, 'LAINNYA', null, displayLabel],
+                    headers: [POTONGAN_UPAH_BERSIH, 'SETELAH UPAH KOTOR', null, displayLabel],
                     w: 90,
                     className: 'text-right',
                     render: (row) => {
@@ -2788,7 +2763,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         // Total Potongan Bersih
         cols.push({
             field: 'total_potongan_bersih',
-            headers: [POTONGAN_UPAH_BERSIH, 'TOTAL', null, 'TOTAL POT'],
+            headers: [POTONGAN_UPAH_BERSIH, 'TOTAL POTONGAN BERSIH', null, 'TOTAL (-)'],
             w: 100,
             className: 'text-right font-bold cell-deduction cell-total-soft',
             render: (row) => {
@@ -2821,7 +2796,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, showDbPtrjInputColumns, editedKontanCells, addedColumns, displayMode]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells, addedColumns, displayMode]);
 
     const chapterSegments = useMemo(() => buildPayrollViewportChapters(columnDefs), [columnDefs]);
     const stickyPaneWidth = useMemo(() => (
@@ -2931,7 +2906,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         '--payroll-header-pad-y': `${responsiveMetrics.headerPadY}px`,
         '--payroll-header-pad-x': `${responsiveMetrics.headerPadX}px`,
         '--payroll-body-pad-y': `${responsiveMetrics.bodyPadY}px`,
-        '--payroll-body-pad-x': `${responsiveMetrics.bodyPadX}px`
+        '--payroll-body-pad-x': `${responsiveMetrics.bodyPadX}px`,
+        '--payroll-row-height': `${rowHeight}px`
     }), [
         effectiveScale,
         responsiveScale,
@@ -2942,8 +2918,30 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         responsiveMetrics.headerPadY,
         responsiveMetrics.headerSubFontPx,
         responsiveMetrics.tableFontPx,
-        responsiveMetrics.toolbarScale
+        responsiveMetrics.toolbarScale,
+        rowHeight
     ]);
+    const renderValueSourceComparison = useCallback((row, field, renderedValue) => {
+        if (normalizeValuePriorityMode(valuePriorityMode) !== 'db_ptrj_only') return renderedValue;
+        const compare = row?.value_source_compare?.[field];
+        if (!compare) return renderedValue;
+
+        const dbValue = compare.db_ptrj;
+        const activeValue = compare.active;
+        const dbText = formatSourceCompareValue(dbValue);
+        const activeText = formatSourceCompareValue(activeValue);
+        const isSame = dbText === activeText;
+
+        return (
+            <div className="payroll-value-compare" title={`${activeText} | ${dbText}`}>
+                <span className="payroll-value-compare__main">{renderedValue ?? '-'}</span>
+                <span className={`payroll-value-compare__meta ${isSame ? 'is-match' : 'is-mismatch'}`}>
+                    {activeText} | {dbText}
+                </span>
+            </div>
+        );
+    }, [valuePriorityMode]);
+
     const getHeaderStyle = useCallback((_label, level = 0) => {
         const rowPalette = ['#0f172a', '#1e293b', '#334155'];
         const bg = rowPalette[Math.min(level, rowPalette.length - 1)];
@@ -3119,6 +3117,27 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
     }, [chapterSegments, focusedGroup, scrollToChapterGroup]);
 
+    const syncActiveGangMarker = useCallback((container = tableContainerRef.current) => {
+        if (!container) return;
+
+        const headerRowsCount = Math.max(headerRows.length, 1);
+        const markerTop = headerRowsCount * rowHeight;
+        const gangHeaders = Array.from(container.querySelectorAll('.gang-header-row'));
+        let nextGang = null;
+
+        for (const header of gangHeaders) {
+            const rect = header.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            if (rect.top - containerRect.top <= markerTop + 8) {
+                nextGang = header.getAttribute('data-gang-code') || nextGang;
+            } else {
+                break;
+            }
+        }
+
+        setActiveGangCode((prev) => (prev === nextGang ? prev : nextGang));
+    }, [headerRows.length, rowHeight]);
+
     useEffect(() => {
         syncActiveChapter();
     }, [syncActiveChapter]);
@@ -3140,26 +3159,30 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         let lastScrollLeft = container.scrollLeft;
         syncTableContainerWidth(container);
         syncHorizontalScrollState(container);
+        syncActiveGangMarker(container);
 
         const handleScroll = () => {
             const nextScrollLeft = container.scrollLeft;
-            if (nextScrollLeft === lastScrollLeft) return;
-
+            const didScrollHorizontally = nextScrollLeft !== lastScrollLeft;
             lastScrollLeft = nextScrollLeft;
             if (scrollSyncRafRef.current) return;
 
             scrollSyncRafRef.current = window.requestAnimationFrame(() => {
                 scrollSyncRafRef.current = 0;
-                setChapterBarVisible(true);
-                syncHorizontalScrollState(container);
+                syncActiveGangMarker(container);
 
-                const shouldAutoFocusChapter =
-                    displayMode === 'detail' &&
-                    !isHorizontalSliderDraggingRef.current &&
-                    Date.now() >= pauseAutoFocusUntilRef.current;
+                if (didScrollHorizontally) {
+                    setChapterBarVisible(true);
+                    syncHorizontalScrollState(container);
 
-                if (shouldAutoFocusChapter) {
-                    syncActiveChapter(container);
+                    const shouldAutoFocusChapter =
+                        displayMode === 'detail' &&
+                        !isHorizontalSliderDraggingRef.current &&
+                        Date.now() >= pauseAutoFocusUntilRef.current;
+
+                    if (shouldAutoFocusChapter) {
+                        syncActiveChapter(container);
+                    }
                 }
             });
         };
@@ -3176,12 +3199,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 clearTimeout(chapterBarHideTimerRef.current);
             }
         };
-    }, [displayMode, syncActiveChapter, syncHorizontalScrollState, syncTableContainerWidth]);
+    }, [displayMode, syncActiveChapter, syncActiveGangMarker, syncHorizontalScrollState, syncTableContainerWidth]);
 
     useEffect(() => {
         syncTableContainerWidth();
         syncHorizontalScrollState();
-    }, [displayRows.length, renderColumnDefs.length, displayMode, syncHorizontalScrollState, syncTableContainerWidth]);
+        syncActiveGangMarker();
+    }, [displayRows.length, renderColumnDefs.length, displayMode, syncActiveGangMarker, syncHorizontalScrollState, syncTableContainerWidth]);
 
     useEffect(() => {
         const onResize = () => {
@@ -3547,6 +3571,19 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     '--payroll-grand-total-offset': `${tableGrandTotalOffset}px`
                 }}
             >
+            {activeGangCode && (
+                <div
+                    className="gang-floating-marker"
+                    style={{ top: headerRows.length * rowHeight }}
+                    aria-live="polite"
+                >
+                    <span className="gang-leaf-orbit" aria-hidden="true">
+                        <span className="gang-leaf-orbit__leaf" />
+                    </span>
+                    <span className="gang-floating-marker__label">Gang</span>
+                    <strong>{activeGangCode}</strong>
+                </div>
+            )}
             {/* Loading / Streaming Progress Bar - Sticky Header */}
             {(loading || (effectiveProgress?.stage && effectiveProgress.stage !== 'complete')) && (
                 <div style={{
@@ -3865,8 +3902,20 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     {displayRows.map((row, rIdx) => {
                         if (row.type === 'gang_header') {
                             return (
-                                <tr key={row.id} className="gang-header-row">
-                                    <td colSpan={renderColumnDefs.length}>🏭 GANG: {row.gang_code}</td>
+                                <tr key={row.id} className="gang-header-row" data-gang-code={row.gang_code}>
+                                    <td
+                                        colSpan={renderColumnDefs.length}
+                                        style={{ top: headerRows.length * rowHeight }}
+                                    >
+                                        <div className="gang-header-banner">
+                                            <span className="gang-leaf-orbit" aria-hidden="true">
+                                                <span className="gang-leaf-orbit__leaf" />
+                                            </span>
+                                            <span className="gang-header-banner__eyebrow">GANG AKTIF</span>
+                                            <strong className="gang-header-banner__code">{row.gang_code}</strong>
+                                            <span className="gang-header-banner__rail" aria-hidden="true" />
+                                        </div>
+                                    </td>
                                 </tr>
                             );
                         }
@@ -3927,7 +3976,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                                 onMouseDown={(e) => { handleMouseDown(e, rIdx, cIdx, row.id); }}
                                                 onMouseOver={() => handleMouseOver(rIdx, cIdx)}
                                             >
-                                                {col.render(row)}
+                                                {renderValueSourceComparison(row, col.field, col.render(row))}
                                             </td>
                                         );
                                     }
@@ -3943,7 +3992,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             onMouseDown={(e) => { handleMouseDown(e, rIdx, cIdx, row.id); }}
                                             onMouseOver={() => handleMouseOver(rIdx, cIdx)}
                                         >
-                                            {displayVal ?? '-'}
+                                            {renderValueSourceComparison(row, col.field, displayVal ?? '-')}
                                         </td>
                                     );
                                 })}

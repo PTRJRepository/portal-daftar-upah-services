@@ -247,6 +247,7 @@ interface PayrollRow {
     taxable_pendapatan_bonus: number;
     taxable_pendapatan_custom: number;
     value_sync_frame?: Record<string, "red" | "green">;
+    value_source_compare?: Record<string, { db_ptrj: number | string | boolean | null; active: number | string | boolean | null }>;
     [key: string]: any;
 }
 
@@ -4303,6 +4304,7 @@ export class DataExtractorService {
                         task_code: empData.task_code,
                         task_desc: empData.task_desc,
                         value_sync_frame: empData.value_sync_frame,
+                        value_source_compare: empData.value_source_compare,
                         _phase: 3
                     });
                 }
@@ -4369,6 +4371,9 @@ export class DataExtractorService {
             const dbMasaKerjaJumlah = globalMasaKerjaMap[empCode] || 0;
             const dbPotSpsi = baselinePotSpsiByEmp[empCode] ?? Math.abs(Number(empPotongan["SPSI"]) || 0);
             const valueSyncFrame: Record<string, "red" | "green"> = { ...(emp.value_sync_frame || {}) };
+            const valueSourceCompare: Record<string, { db_ptrj: number | string | boolean | null; active: number | string | boolean | null }> = {
+                ...(emp.value_source_compare || {})
+            };
 
             // [MASA_KERJA] Calculate masa kerja display from join_date
             const masaKerjaDisplay = calculateMasaKerjaDisplay(emp.join_date, month, year);
@@ -4415,9 +4420,17 @@ export class DataExtractorService {
             valueSyncFrame.masa_kerja_jumlah = resolveSyncFrameColor(masaKerjaJumlah, dbMasaKerjaJumlah);
             valueSyncFrame.pot_spsi = resolveSyncFrameColor(pot_spsi, dbPotSpsi);
             valueSyncFrame.spsi = valueSyncFrame.pot_spsi;
+            valueSourceCompare.is_spsi_member = { db_ptrj: deriveInitialSpsiMember(dbPotSpsi), active: isSpsiMember };
+            valueSourceCompare.jabatan_jumlah = { db_ptrj: dbJabatanJumlah, active: jabatanJumlah };
+            valueSourceCompare.masa_kerja_jumlah = { db_ptrj: dbMasaKerjaJumlah, active: masaKerjaJumlah };
+            valueSourceCompare.pot_spsi = { db_ptrj: dbPotSpsi, active: pot_spsi };
             if (hari_kerja > 0) {
-                valueSyncFrame.jabatan_rate = resolveSyncFrameColor(jabatanRate, dbJabatanJumlah / hari_kerja);
-                valueSyncFrame.masa_kerja_rate = resolveSyncFrameColor(masaKerjaRate, dbMasaKerjaJumlah / hari_kerja);
+                const dbJabatanRate = dbJabatanJumlah / hari_kerja;
+                const dbMasaKerjaRate = dbMasaKerjaJumlah / hari_kerja;
+                valueSyncFrame.jabatan_rate = resolveSyncFrameColor(jabatanRate, dbJabatanRate);
+                valueSyncFrame.masa_kerja_rate = resolveSyncFrameColor(masaKerjaRate, dbMasaKerjaRate);
+                valueSourceCompare.jabatan_rate = { db_ptrj: dbJabatanRate, active: jabatanRate };
+                valueSourceCompare.masa_kerja_rate = { db_ptrj: dbMasaKerjaRate, active: masaKerjaRate };
             }
 
             // Canonical totals:
@@ -4570,6 +4583,7 @@ export class DataExtractorService {
             emp.status_ptkp = statusPTKP;
             emp.kategori_ter = kategoriTER;
             emp.value_sync_frame = valueSyncFrame;
+            emp.value_source_compare = valueSourceCompare;
             emp._phase = 4;
             emp._enriched = true;
             emp._loading = false;

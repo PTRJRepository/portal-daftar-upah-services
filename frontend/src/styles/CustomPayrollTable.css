@@ -86,6 +86,42 @@
     color: #b91c1c;
 }
 
+.payroll-value-compare {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    width: 100%;
+    line-height: 1.08;
+}
+
+.payroll-value-compare__main {
+    font-weight: inherit;
+}
+
+.payroll-value-compare__meta {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.64rem;
+    font-weight: 700;
+    color: #92400e;
+    opacity: 0.92;
+}
+
+.payroll-value-compare__meta.is-match {
+    color: #166534;
+}
+
+.payroll-value-compare__meta.is-mismatch {
+    color: #b91c1c;
+}
+
+.text-center .payroll-value-compare {
+    align-items: center;
+}
+
 .payroll-view-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -189,6 +225,29 @@
 
 .payroll-view-toolbar__button--tax {
     padding-right: 10px;
+}
+
+.payroll-view-toolbar__button--dbptrj {
+    border-color: #99f6e4;
+    color: #115e59;
+    background: #f0fdfa;
+}
+
+.payroll-view-toolbar__button--dbptrj:hover {
+    border-color: #14b8a6;
+    background: #ccfbf1;
+}
+
+.payroll-view-toolbar__button--dbptrj.is-active {
+    border-color: #0f766e;
+    color: #ffffff;
+    background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+    box-shadow: 0 8px 18px rgba(15, 118, 110, 0.22);
+}
+
+.payroll-view-toolbar__button--dbptrj.is-active .payroll-view-toolbar__button-state {
+    background: rgba(255, 255, 255, 0.18);
+    color: #ecfeff;
 }
 
 .payroll-view-toolbar__button--seed {
@@ -652,12 +711,152 @@
 
 /* --- Gang Header Row --- */
 .gang-header-row td {
-    background-color: #e2e8f0;
-    font-weight: bold;
-    color: #1a365d;
-    padding: calc(var(--payroll-body-pad-y, 3px) + 5px) calc(var(--payroll-body-pad-x, 6px) + 6px);
-    border-top: 2px solid #94a3b8;
-    border-bottom: 2px solid #94a3b8;
+    --gang-marker-navy: #0f172a;
+    --gang-marker-blue: #1e3a8a;
+    --gang-marker-gold: #f59e0b;
+    --gang-marker-leaf: #22c55e;
+    position: sticky;
+    top: calc(4 * var(--payroll-row-height, 28px));
+    left: 0;
+    z-index: 24;
+    background: linear-gradient(90deg, var(--gang-marker-navy) 0%, var(--gang-marker-blue) 44%, var(--gang-marker-gold) 100%);
+    color: #f8fafc;
+    padding: 0;
+    border-top: 2px solid #fbbf24;
+    border-bottom: 2px solid var(--gang-marker-navy);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    text-align: center;
+}
+
+.gang-header-banner {
+    min-height: calc(32px * var(--payroll-effective-scale, 1));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: calc(9px * var(--payroll-effective-scale, 1));
+    max-width: min(620px, calc(100vw - 54px));
+    margin: 0 auto;
+    padding: calc(4px * var(--payroll-effective-scale, 1)) calc(12px * var(--payroll-effective-scale, 1));
+    font-family: "Arial Black", "Trebuchet MS", sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.gang-leaf-orbit {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gang-leaf-orbit::before {
+    content: "";
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: #fbbf24;
+    box-shadow: 0 0 9px rgba(251, 191, 36, 0.72);
+}
+
+.gang-leaf-orbit__leaf {
+    width: 16px;
+    height: 7px;
+    border-radius: 100% 0 100% 0;
+    background: linear-gradient(135deg, #dcfce7 0%, #86efac 42%, #15803d 100%);
+    transform-origin: 50% 100%;
+    animation: gangPalmLeafBreathe 1.9s ease-in-out infinite;
+    box-shadow: 0 0 10px rgba(134, 239, 172, 0.52);
+}
+
+.gang-floating-marker .gang-leaf-orbit {
+    width: 15px;
+    height: 15px;
+    flex-basis: 15px;
+}
+
+.gang-floating-marker .gang-leaf-orbit__leaf {
+    width: 13px;
+    height: 6px;
+}
+
+.gang-header-banner__eyebrow {
+    color: #fde68a;
+    font-size: clamp(0.54rem, calc(0.62rem * var(--payroll-effective-scale, 1)), 0.72rem);
+    font-weight: 900;
+    opacity: 0.96;
+}
+
+.gang-header-banner__code {
+    color: #ffffff;
+    font-size: clamp(1.05rem, calc(1.34rem * var(--payroll-effective-scale, 1)), 1.7rem);
+    font-weight: 950;
+    line-height: 0.95;
+    text-shadow: 0 2px 0 rgba(15, 23, 42, 0.5);
+}
+
+.gang-header-banner__rail {
+    flex: 1 1 auto;
+    height: 3px;
+    min-width: 72px;
+    border-radius: 999px;
+    background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.72) 0 18px, rgba(255, 255, 255, 0.16) 18px 28px);
+}
+
+.gang-floating-marker {
+    position: sticky;
+    left: calc(10px * var(--payroll-effective-scale, 1));
+    width: max-content;
+    z-index: 19;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 28px;
+    margin-bottom: -28px;
+    padding: 0 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 191, 36, 0.88);
+    background: linear-gradient(90deg, rgba(15, 23, 42, 0.96) 0%, rgba(30, 58, 138, 0.94) 100%);
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.24);
+    pointer-events: none;
+}
+
+.gang-floating-marker__label {
+    color: #fde68a;
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.gang-floating-marker strong {
+    font-family: "Arial Black", "Trebuchet MS", sans-serif;
+    font-size: 1.05rem;
+    line-height: 1;
+    letter-spacing: 0.05em;
+}
+
+@keyframes gangPalmLeafBreathe {
+    0%, 100% {
+        opacity: 0.66;
+        transform: rotate(-18deg) scale(0.86);
+    }
+    50% {
+        opacity: 1;
+        transform: rotate(18deg) scale(1.08);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gang-leaf-orbit__leaf {
+        animation: none;
+        opacity: 0.9;
+        transform: rotate(-8deg);
+    }
 }
 
 /* --- Gang Total Row --- */
@@ -820,31 +1019,40 @@
 }
 
 .cell-group-potongan-upah-kotor {
-    background-color: #FEF2F2;
-    color: #991B1B;
+    background-color: #FFF7ED;
+    color: #9A3412;
+    border-left: 3px solid #f97316;
 }
 
 .cell-group-upah-kotor {
-    background-color: #F0FDF4;
+    background-color: #ECFDF5;
     font-weight: bold;
-    color: #14532D;
+    color: #065F46;
+    border-left: 3px solid #10b981;
 }
 
 .cell-group-potongan-upah-bersih {
-    background-color: #FDF2F8;
-    color: #9D174D;
+    background-color: #FEF2F2;
+    color: #991B1B;
+    border-left: 3px solid #ef4444;
 }
 
 .cell-group-upah-bersih {
-    background-color: #F0FDFA;
-    color: #115E59;
+    background-color: #ECFEFF;
+    color: #155E75;
     font-weight: bold;
+    border-left: 3px solid #06b6d4;
 }
 
 /* Special emphasis cell classes (kept for specific visual treatment) */
 .cell-deduction {
     font-weight: bold;
     color: #dc2626;
+}
+
+.cell-koreksi-gross {
+    color: #c2410c;
+    font-weight: 800;
 }
 
 .cell-net-salary {
@@ -1040,25 +1248,25 @@
 .header-group-premi,
 .payroll-scroll-dock--premi { --group-accent-rgb: 217, 119, 6; }
 
-.header-group-potongan-upah-kotor { border-bottom: 2px solid #ef4444 !important; }
+.header-group-potongan-upah-kotor { border-bottom: 3px solid #f97316 !important; }
 .header-group-potongan-upah-kotor,
-.payroll-scroll-dock--potongan-upah-kotor { --group-accent-rgb: 239, 68, 68; }
+.payroll-scroll-dock--potongan-upah-kotor { --group-accent-rgb: 249, 115, 22; }
 
-.header-group-upah-kotor { border-bottom: 2px solid #16a34a !important; }
+.header-group-upah-kotor { border-bottom: 3px solid #10b981 !important; }
 .header-group-upah-kotor,
-.payroll-scroll-dock--upah-kotor { --group-accent-rgb: 22, 163, 74; }
+.payroll-scroll-dock--upah-kotor { --group-accent-rgb: 16, 185, 129; }
 
 .header-group-pendapatan-lainnya { border-bottom: 2px solid #10b981 !important; }
 .header-group-pendapatan-lainnya,
 .payroll-scroll-dock--pendapatan-lainnya { --group-accent-rgb: 16, 185, 129; }
 
-.header-group-potongan-upah-bersih { border-bottom: 2px solid #ec4899 !important; }
+.header-group-potongan-upah-bersih { border-bottom: 3px solid #ef4444 !important; }
 .header-group-potongan-upah-bersih,
-.payroll-scroll-dock--potongan-upah-bersih { --group-accent-rgb: 236, 72, 153; }
+.payroll-scroll-dock--potongan-upah-bersih { --group-accent-rgb: 239, 68, 68; }
 
-.header-group-upah-bersih { border-bottom: 2px solid #14b8a6 !important; }
+.header-group-upah-bersih { border-bottom: 3px solid #06b6d4 !important; }
 .header-group-upah-bersih,
-.payroll-scroll-dock--upah-bersih { --group-accent-rgb: 20, 184, 166; }
+.payroll-scroll-dock--upah-bersih { --group-accent-rgb: 6, 182, 212; }
 
 /* === BODY CELL GROUP ACCENT COLORS (for Focus Mode spotlight bg) === */
 .cell-group-identitas         { --group-accent-rgb: 148, 163, 184; }
@@ -1068,11 +1276,11 @@
 .cell-group-penggajian        { --group-accent-rgb: 59, 130, 246; }
 .cell-group-tunjangan         { --group-accent-rgb: 249, 115, 22; }
 .cell-group-premi             { --group-accent-rgb: 217, 119, 6; }
-.cell-group-potongan-upah-kotor { --group-accent-rgb: 239, 68, 68; }
-.cell-group-upah-kotor        { --group-accent-rgb: 22, 163, 74; }
+.cell-group-potongan-upah-kotor { --group-accent-rgb: 249, 115, 22; }
+.cell-group-upah-kotor        { --group-accent-rgb: 16, 185, 129; }
 .cell-group-pendapatan-lainnya { --group-accent-rgb: 16, 185, 129; }
-.cell-group-potongan-upah-bersih { --group-accent-rgb: 236, 72, 153; }
-.cell-group-upah-bersih       { --group-accent-rgb: 20, 184, 166; }
+.cell-group-potongan-upah-bersih { --group-accent-rgb: 239, 68, 68; }
+.cell-group-upah-bersih       { --group-accent-rgb: 6, 182, 212; }
 
 
 /* Add Column Button inside Header */

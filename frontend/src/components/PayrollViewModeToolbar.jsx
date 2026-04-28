@@ -5,12 +5,6 @@ const MODE_OPTIONS = [
     { id: 'detail', label: 'Semua' }
 ];
 
-const VALUE_PRIORITY_OPTIONS = [
-    { id: 'smart', label: 'Smart (Adj+Buffer prioritas)' },
-    { id: 'db_ptrj_only', label: 'DB PTRJ Saja' },
-    { id: 'manual_buffer_only', label: 'Adjustment + Buffer Saja' }
-];
-
 export default function PayrollViewModeToolbar({
     mode = 'simple',
     focusLens = false,
@@ -60,19 +54,20 @@ export default function PayrollViewModeToolbar({
 
             <div className="payroll-view-toolbar__section">
                 <span className="payroll-view-toolbar__label">Sumber Nilai</span>
-                <label className="payroll-view-toolbar__select-wrap">
-                    <select
-                        className="payroll-view-toolbar__select"
-                        value={valuePriorityMode}
-                        onChange={(event) => onValuePriorityModeChange(event.target.value)}
-                    >
-                        {VALUE_PRIORITY_OPTIONS.map((option) => (
-                            <option key={option.id} value={option.id}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </select>
-                </label>
+                <button
+                    type="button"
+                    className={`payroll-view-toolbar__button payroll-view-toolbar__button--dbptrj ${valuePriorityMode === 'db_ptrj_only' ? 'is-active' : ''}`}
+                    aria-pressed={valuePriorityMode === 'db_ptrj_only'}
+                    title={valuePriorityMode === 'db_ptrj_only' ? 'Kembali ke Smart: manual adjustment/auto buffer diprioritaskan' : 'Tampilkan nilai asli dari db_ptrj pada kolom yang sama'}
+                    onClick={() => onValuePriorityModeChange(valuePriorityMode === 'db_ptrj_only' ? 'smart' : 'db_ptrj_only')}
+                >
+                    <span className="payroll-view-toolbar__button-copy">
+                        {valuePriorityMode === 'db_ptrj_only' ? 'DB_PTRJ Aktif' : 'Show DB_PTRJ'}
+                    </span>
+                    <span className="payroll-view-toolbar__button-state">
+                        {valuePriorityMode === 'db_ptrj_only' ? 'Kolom sama' : 'Toggle'}
+                    </span>
+                </button>
             </div>
 
             <div className="payroll-view-toolbar__section">
