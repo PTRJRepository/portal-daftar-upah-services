@@ -255,7 +255,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH, PENDAPATAN_LAINNYA
             adjustment_name: t.String(),
             amount: t.Number(),
-            remarks: t.Optional(t.String())
+            remarks: t.Optional(t.String()),
+            ad_code: t.Optional(t.String()),
+            task_code: t.Optional(t.String()),
+            base_task_code: t.Optional(t.String()),
+            task_desc: t.Optional(t.String())
         })
     })
     // --- Manual Adjustment for authenticated UI ---
@@ -336,7 +340,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             adjustment_type: t.String(),
             adjustment_name: t.String(),
             amount: t.Number(),
-            remarks: t.Optional(t.String())
+            remarks: t.Optional(t.String()),
+            ad_code: t.Optional(t.String()),
+            task_code: t.Optional(t.String()),
+            base_task_code: t.Optional(t.String()),
+            task_desc: t.Optional(t.String())
         })
     })
     .delete("/manual-adjustment/:id", async ({ params, query, set }) => {
@@ -455,7 +463,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             adjustment_type: t.String(),
             adjustment_name: t.String(),
             amount: t.Number(),
-            remarks: t.Optional(t.String())
+            remarks: t.Optional(t.String()),
+            ad_code: t.Optional(t.String()),
+            task_code: t.Optional(t.String()),
+            base_task_code: t.Optional(t.String()),
+            task_desc: t.Optional(t.String())
         })
     })
     /**
@@ -695,22 +707,22 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         try {
             // Verify API Key
             const apiKey = headers["x-api-key"];
-            if (!apiKey || apiKey !== process.env.API_KEY_BYPASS) {
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
                 set.status = 401;
                 return { success: false, message: "Unauthorized - Invalid API Key" };
             }
 
             const data = body as any;
-            const { period_month, period_year, emp_codes, filters } = data;
+            const { period_month, period_year, emp_codes = [], filters, division_code } = data;
 
             if (!period_month || !period_year) {
                 set.status = 400;
                 return { success: false, message: "period_month and period_year are required" };
             }
 
-            if (!Array.isArray(emp_codes) || emp_codes.length === 0) {
+            if ((!Array.isArray(emp_codes) || emp_codes.length === 0) && !division_code) {
                 set.status = 400;
-                return { success: false, message: "emp_codes array is required and cannot be empty" };
+                return { success: false, message: "emp_codes array or division_code is required" };
             }
 
             if (!Array.isArray(filters) || filters.length === 0) {
@@ -723,7 +735,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 Number(period_month),
                 Number(period_year),
                 emp_codes,
-                filters
+                filters,
+                division_code
             );
 
             return {
@@ -740,8 +753,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         body: t.Object({
             period_month: t.Number(),
             period_year: t.Number(),
-            emp_codes: t.Array(t.String()),
-            filters: t.Array(t.String())
+            emp_codes: t.Optional(t.Array(t.String())),
+            filters: t.Array(t.String()),
+            division_code: t.Optional(t.String())
         })
     })
 
@@ -997,7 +1011,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH, PENDAPATAN_LAINNYA
             adjustment_name: t.String(),
             amount: t.Number(),
-            remarks: t.Optional(t.String())
+            remarks: t.Optional(t.String()),
+            ad_code: t.Optional(t.String()),
+            task_code: t.Optional(t.String()),
+            base_task_code: t.Optional(t.String()),
+            task_desc: t.Optional(t.String())
         })
     })
     // --- Explicit Strict Income Deletion (Kontan/THR) ---

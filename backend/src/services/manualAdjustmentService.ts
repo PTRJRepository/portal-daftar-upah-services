@@ -15,6 +15,160 @@ function buildNormalizedSqlNameExpression(columnName: string): string {
     return expression;
 }
 
+export interface AdtransDuplicateSourceRow {
+    id: number;
+    doc_id: string;
+    doc_date: string;
+    doc_desc: string;
+    emp_code: string;
+    emp_name: string;
+    amount: number;
+}
+
+function normalizeAdtransFilter(filter: string): string {
+    const filterKey = filter.toLowerCase().trim();
+
+    if (filterKey.includes('spsi')) return 'spsi';
+    if (filterKey.includes('masa')) return 'masa kerja';
+    if (filterKey.includes('jabatan')) return 'jabatan';
+    if (filterKey.includes('premi')) return 'premi';
+    if (filterKey.includes('potongan')) return 'potongan';
+
+    return filterKey;
+}
+
+function matchesAdtransFilter(docDesc: string, filter: string): boolean {
+    const category = normalizeAdtransFilter(filter);
+    const normalizedDocDesc = docDesc.toUpperCase();
+
+    if (category === 'spsi') return normalizedDocDesc.includes('SPSI');
+    if (category === 'masa kerja') return normalizedDocDesc.includes('MASA') && normalizedDocDesc.includes('KERJA');
+    if (category === 'jabatan') return normalizedDocDesc.includes('JABATAN');
+    if (category === 'premi') return normalizedDocDesc.includes('PREMI');
+    if (category === 'potongan') return normalizedDocDesc.startsWith('POT');
+
+    return normalizedDocDesc.includes(category.toUpperCase());
+}
+
+function normalizeAdtransDivisionLocCode(divisionCode: string): string {
+    const normalized = divisionCode.trim().toUpperCase();
+    const locCodeMap: Record<string, string> = {
+        PG1A: 'P1A',
+        PG1B: 'P1B',
+        PG2A: 'P2A',
+        PG2B: 'P2B',
+        ARB1: 'AB1',
+        ARB2: 'AB2',
+        AREC: 'ARC',
+        PLASMA1A: 'P1A',
+        PLASMA1B: 'P1B',
+        PLASMA2A: 'P2A',
+        PLASMA2B: 'P2B',
+        '1A': 'P1A',
+        '1B': 'P1B',
+        '2A': 'P2A',
+        '2B': 'P2B'
+    };
+
+    return locCodeMap[normalized] || normalized;
+}
+
+function buildAdtransSqlPattern(filter: string): string {
+    const category = normalizeAdtransFilter(filter);
+
+    if (category === 'spsi') return '%SPSI%';
+    if (category === 'masa kerja') return 'MASA%KERJA%';
+    if (category === 'jabatan') return '%JABATAN%';
+    if (category === 'premi') return '%PREMI%';
+    if (category === 'potongan') return 'POT%';
+
+    return `%${category.toUpperCase()}%`;
+}
+
+function normalizeText(value: unknown): string {
+    return String(value || '').trim();
+}
+
+function resolveManualAdjustmentAdCode(data: Pick<ManualAdjustment, 'ad_code' | 'base_task_code' | 'task_code'>): string {
+    return normalizeText(data.ad_code || data.base_task_code || data.task_code).toUpperCase();
+}
+
+export function manualAdjustmentRequiresAdCode(adjustmentType: string): boolean {
+    return normalizeText(adjustmentType).toUpperCase() !== 'AUTO_BUFFER';
+}
+
+export function buildManualAdjustmentRemarks(data: ManualAdjustment): string | null {
+    const existingRemarks = normalizeText(data.remarks);
+    const adCode = resolveManualAdjustmentAdCode(data);
+    const taskDesc = normalizeText(data.task_desc);
+
+    if (!adCode) {
+        return existingRemarks || null;
+    }
+
+    const adCodeRemark = `AD CODE: ${adCode}${taskDesc ? ` - ${taskDesc}` : ''}`;
+    if (!existingRemarks) return adCodeRemark;
+    if (existingRemarks.toUpperCase().includes('AD CODE:')) return existingRemarks;
+
+    return `${adCodeRemark}; ${existingRemarks}`;
+}
+
+function validateManualAdjustmentAdCode(data: ManualAdjustment): void {
+    if (!manualAdjustmentRequiresAdCode(data.adjustment_type)) return;
+    if (resolveManualAdjustmentAdCode(data)) return;
+
+    throw new Error('ADCode wajib diisi untuk manual adjustment selain auto buffer');
+}
+
+export function buildAdtransDuplicateReport(rows: AdtransDuplicateSourceRow[], filters: string[]) {
+    const groups = new Map<string, AdtransDuplicateSourceRow[]>();
+
+    for (const row of rows) {
+        for (const filter of filters) {
+            if (!matchesAdtransFilter(row.doc_desc || '', filter)) continue;
+
+            const category = normalizeAdtransFilter(filter);
+            const key = `${row.emp_code}|${category}`;
+            const groupRows = groups.get(key) || [];
+            groupRows.push(row);
+            groups.set(key, groupRows);
+        }
+    }
+
+    const duplicates = Array.from(groups.entries())
+        .map(([key, groupRows]) => {
+            const [empCode, category] = key.split('|');
+            const sortedRows = [...groupRows].sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+            const keepRecord = sortedRows[sortedRows.length - 1];
+            const deleteRecords = sortedRows.slice(0, -1);
+
+            return {
+                emp_code: empCode,
+                emp_name: keepRecord?.emp_name || sortedRows[0]?.emp_name || '',
+                category,
+                record_count: sortedRows.length,
+                keep_id: keepRecord.id,
+                keep_doc_id: keepRecord.doc_id,
+                delete_ids: deleteRecords.map((record) => record.id),
+                delete_doc_ids: deleteRecords.map((record) => record.doc_id),
+                records: sortedRows.map((record) => ({
+                    id: record.id,
+                    doc_id: record.doc_id,
+                    doc_date: record.doc_date,
+                    doc_desc: record.doc_desc,
+                    amount: Number(record.amount || 0),
+                    action: record.id === keepRecord.id ? 'KEEP_NEWEST' : 'DELETE_OLD'
+                }))
+            };
+        })
+        .filter((duplicate) => duplicate.record_count > 1);
+
+    return {
+        duplicate_count: duplicates.length,
+        duplicates
+    };
+}
+
 export interface ManualAdjustment {
     id?: number;
     period_month: number;
@@ -27,6 +181,10 @@ export interface ManualAdjustment {
     adjustment_name: string;
     amount: number;
     remarks?: string;
+    ad_code?: string;
+    task_code?: string;
+    base_task_code?: string;
+    task_desc?: string;
     created_at?: Date;
     created_by?: string;
     updated_at?: Date;
@@ -196,11 +354,13 @@ export class ManualAdjustmentService {
         const parsedAmount = parseFloat(data.amount.toString()) || 0;
         const normalizedAdjustmentName = normalizeStoredAdjustmentName(data.adjustment_name);
         const normalizedAdjustmentNameSql = buildNormalizedSqlNameExpression('adjustment_name');
+        validateManualAdjustmentAdCode(data);
+        const remarks = buildManualAdjustmentRemarks(data);
 
         // --- PENDAPATAN_LAINNYA: Save to employee_other_incomes ---
         if (data.adjustment_type === 'PENDAPATAN_LAINNYA') {
             console.log(`[saveAdjustment] PENDAPATAN_LAINNYA: emp_code=${data.emp_code}, gang=${data.gang_code}, name=${normalizedAdjustmentName}, amount=${parsedAmount}`);
-            return await this.saveOtherIncome(db, { ...data, adjustment_name: normalizedAdjustmentName }, parsedAmount, user);
+            return await this.saveOtherIncome(db, { ...data, adjustment_name: normalizedAdjustmentName, remarks: remarks || undefined }, parsedAmount, user);
         }
 
         // --- Standard adjustments: Save to payroll_manual_adjustments ---
@@ -224,7 +384,7 @@ export class ManualAdjustmentService {
                     UPDATE dbo.payroll_manual_adjustments
                     SET amount = ?, remarks = ?, updated_at = GETDATE(), updated_by = ?
                     WHERE id = ?
-                `, [parsedAmount, data.remarks || null, user || 'system', existing.id]);
+                `, [parsedAmount, remarks, user || 'system', existing.id]);
                 return existing.id;
             }
         } else {
@@ -240,7 +400,7 @@ export class ManualAdjustmentService {
                 )
             `, [
                 data.period_month, data.period_year, data.emp_code, data.gang_code, data.division_code || null,
-                data.adjustment_type, normalizedAdjustmentName, parsedAmount, data.remarks || null, user || 'system'
+                data.adjustment_type, normalizedAdjustmentName, parsedAmount, remarks, user || 'system'
             ]);
             return result[0]?.id;
         }
@@ -261,45 +421,40 @@ export class ManualAdjustmentService {
     public async checkAdtransDirectly(
         periodMonth: number,
         periodYear: number,
-        empCodes: string[],
-        filters: string[]
-    ): Promise<any[]> {
+        empCodes: string[] = [],
+        filters: string[],
+        divisionCode?: string
+    ): Promise<any> {
         const dbMain = Database.getInstance(); // db_ptrj
-
-        if (!empCodes || empCodes.length === 0) {
-            return [];
-        }
 
         if (!filters || filters.length === 0) {
             return [];
         }
 
-        // Format empCodes for IN clause
-        const empList = empCodes.map(e => `'${e.trim()}'`).join(",");
-        
-        // Build the CASE statements dynamically based on requested filters
-        // Using UPPER for case-insensitive matching in SQL Server
-        const caseStatements = filters.map(f => {
-            const filterKey = f.toLowerCase().trim();
-            let sqlLike = `'%DEFAULTPATTERN%'`; // Fallback
-            
-            // Map common requested filters to actual DocDesc patterns
-            if (filterKey.includes('spsi')) {
-                sqlLike = `'%SPSI%'`;
-            } else if (filterKey.includes('masa')) {
-                sqlLike = `'MASA%KERJA%'`;
-            } else if (filterKey.includes('jabatan')) {
-                sqlLike = `'%JABATAN%'`;
-            } else if (filterKey.includes('premi')) {
-                sqlLike = `'%PREMI%'`;
-            } else if (filterKey.includes('potongan')) {
-                sqlLike = `'POT%'`;
-            } else {
-                // If not a predefined alias, use the raw filter word
-                sqlLike = `'%${f.toUpperCase()}%'`;
-            }
+        const normalizedEmpCodes = (empCodes || []).map((empCode) => empCode.trim()).filter(Boolean);
+        const normalizedDivisionCode = divisionCode ? normalizeAdtransDivisionLocCode(divisionCode) : '';
+        const scopeClauses: string[] = [];
+        const scopeParams: any[] = [];
 
-            return `SUM(CASE WHEN UPPER(DocDesc) LIKE ${sqlLike} THEN Amount ELSE 0 END) as [${filterKey}]`;
+        if (normalizedEmpCodes.length > 0) {
+            scopeClauses.push(`RTRIM(t.EmpCode) IN (${normalizedEmpCodes.map(() => '?').join(',')})`);
+            scopeParams.push(...normalizedEmpCodes);
+        }
+
+        if (normalizedDivisionCode) {
+            scopeClauses.push(`UPPER(RTRIM(t.LocCode)) = ?`);
+            scopeParams.push(normalizedDivisionCode);
+        }
+
+        if (scopeClauses.length === 0) {
+            return [];
+        }
+
+        const scopeSql = `(${scopeClauses.join(' OR ')})`;
+        const normalizedFilters = filters.map(normalizeAdtransFilter);
+        const caseStatements = normalizedFilters.map((filterKey) => {
+            const sqlLike = buildAdtransSqlPattern(filterKey).replace(/'/g, "''");
+            return `SUM(CASE WHEN UPPER(DocDesc) LIKE '${sqlLike}' THEN Amount ELSE 0 END) as [${filterKey}]`;
         }).join(", ");
 
         // IMPORTANT: diambil dari phymonth dan phyyear itu adalah real monthnya sesuai kalender
@@ -314,7 +469,7 @@ export class ManualAdjustmentService {
                     ln.Amount
                 FROM PR_ADTRANS t
                 JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
-                WHERE RTRIM(t.EmpCode) IN (${empList}) 
+                WHERE ${scopeSql} 
                   AND t.PhyMonth = ? 
                   AND t.PhyYear = ?
 
@@ -326,15 +481,75 @@ export class ManualAdjustmentService {
                     ln.Amount
                 FROM PR_ADTRANS_ARC t
                 JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
-                WHERE RTRIM(t.EmpCode) IN (${empList}) 
+                WHERE ${scopeSql} 
                   AND t.PhyMonth = ? 
                   AND t.PhyYear = ?
             ) src
             GROUP BY emp_code
         `;
         
-        const rows = await dbMain.query<any>(adtransQuery, [periodMonth, periodYear, periodMonth, periodYear]);
-        return rows;
+        const duplicateQuery = `
+            SELECT
+                t.ID as id,
+                RTRIM(t.DocID) as doc_id,
+                CONVERT(varchar(10), t.DocDate, 23) as doc_date,
+                RTRIM(t.DocDesc) as doc_desc,
+                RTRIM(t.EmpCode) as emp_code,
+                RTRIM(t.EmpName) as emp_name,
+                SUM(ln.Amount) as amount
+            FROM PR_ADTRANS t
+            JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+            WHERE ${scopeSql}
+              AND t.PhyMonth = ?
+              AND t.PhyYear = ?
+              AND (${normalizedFilters.map(() => 'UPPER(t.DocDesc) LIKE ?').join(' OR ')})
+            GROUP BY t.ID, t.DocID, t.DocDate, t.DocDesc, t.EmpCode, t.EmpName
+
+            UNION ALL
+
+            SELECT
+                t.ID as id,
+                RTRIM(t.DocID) as doc_id,
+                CONVERT(varchar(10), t.DocDate, 23) as doc_date,
+                RTRIM(t.DocDesc) as doc_desc,
+                RTRIM(t.EmpCode) as emp_code,
+                RTRIM(t.EmpName) as emp_name,
+                SUM(ln.Amount) as amount
+            FROM PR_ADTRANS_ARC t
+            JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+            WHERE ${scopeSql}
+              AND t.PhyMonth = ?
+              AND t.PhyYear = ?
+              AND (${normalizedFilters.map(() => 'UPPER(t.DocDesc) LIKE ?').join(' OR ')})
+            GROUP BY t.ID, t.DocID, t.DocDate, t.DocDesc, t.EmpCode, t.EmpName
+        `;
+
+        const patternParams = normalizedFilters.map((filter) => buildAdtransSqlPattern(filter));
+        const [rows, duplicateRows] = await Promise.all([
+            dbMain.query<any>(adtransQuery, [
+                ...scopeParams,
+                periodMonth,
+                periodYear,
+                ...scopeParams,
+                periodMonth,
+                periodYear
+            ]),
+            dbMain.query<AdtransDuplicateSourceRow>(duplicateQuery, [
+                ...scopeParams,
+                periodMonth,
+                periodYear,
+                ...patternParams,
+                ...scopeParams,
+                periodMonth,
+                periodYear,
+                ...patternParams
+            ])
+        ]);
+
+        return {
+            totals: rows,
+            duplicate_report: buildAdtransDuplicateReport(duplicateRows, normalizedFilters)
+        };
     }
 }
 

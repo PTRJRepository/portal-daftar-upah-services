@@ -155,6 +155,80 @@ Jika API key valid, request akan mendapat akses **ADMIN** dengan semua divisions
 
 ---
 
+## ADCode untuk Manual Adjustment
+
+Manual adjustment kategori `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, dan `PENDAPATAN_LAINNYA` wajib membawa `ad_code`. Hanya `AUTO_BUFFER` yang boleh disimpan tanpa `ad_code`.
+
+Remarks disimpan dengan format:
+
+```text
+AD CODE: <adcode> - <taskdesc>
+```
+
+Daftar ADCode diambil dari cache JSON `backend/data/taskcode_mapping_db_ptrj.json` yang bersumber dari `PR_TASKCODE` dengan filter:
+
+```sql
+SELECT DISTINCT [TaskDesc]
+FROM [db_ptrj].[dbo].[PR_TASKCODE]
+WHERE [TaskDesc] LIKE '(AL)%'
+   OR [TaskDesc] LIKE '(DE)%'
+ORDER BY [TaskDesc];
+```
+
+### GET `/payroll/manual-adjustment/taskcode-options`
+
+Endpoint untuk search ADCode saat user mengetik di popup tambah kolom manual adjustment.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `search` | string | ❌ | Cari berdasarkan ADCode, TaskCode, atau TaskDesc |
+| `division_code` | string | ❌ | Filter suffix lokasi/divisi jika tersedia |
+| `limit` | string | ❌ | Maksimal data, default 50, maksimum 100 |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "count": 1,
+  "data": [
+    {
+      "ad_code": "AL0001",
+      "task_code": "AL0001",
+      "base_task_code": "AL0001",
+      "task_desc": "(AL) BENEFIT IN KIND - ACCOMMODATION",
+      "doc_desc": "(AL) BENEFIT IN KIND - ACCOMMODATION",
+      "loc_code": null
+    }
+  ]
+}
+```
+
+**Payload Save Manual Adjustment:**
+
+```json
+{
+  "period_month": 4,
+  "period_year": 2026,
+  "emp_code": "A0001",
+  "gang_code": "G1H",
+  "division_code": "AB1",
+  "adjustment_type": "PREMI",
+  "adjustment_name": "PREMI MANUAL",
+  "amount": 100000,
+  "ad_code": "AL0001",
+  "task_code": "AL0001",
+  "task_desc": "(AL) BENEFIT IN KIND - ACCOMMODATION",
+  "remarks": "AD CODE: AL0001 - (AL) BENEFIT IN KIND - ACCOMMODATION"
+}
+```
+
+Jika `ad_code` kosong untuk kategori selain `AUTO_BUFFER`, API akan menolak request dengan error `ADCode wajib diisi untuk manual adjustment selain auto buffer`.
+
+---
+
 ## Endpoints
 
 ### 1. GET `/payroll/manual-adjustment/by-api-key`
@@ -1171,6 +1245,8 @@ Endpoint membaca data melalui SQL Gateway/API query dengan koneksi database yang
 
 #### Request Body
 
+Cek berdasarkan list employee tertentu:
+
 ```json
 {
   "period_month": 4,
@@ -1180,12 +1256,39 @@ Endpoint membaca data melalui SQL Gateway/API query dengan koneksi database yang
 }
 ```
 
+Cek langsung semua employee dalam satu divisi:
+
+```json
+{
+  "period_month": 4,
+  "period_year": 2026,
+  "division_code": "P2A",
+  "filters": ["spsi", "masa kerja", "jabatan"]
+}
+```
+
 | Field | Type | Required | Keterangan |
 |-------|------|----------|------------|
 | `period_month` | number | Yes | Bulan kalender yang akan dicek. Dipakai sebagai `PhyMonth`. |
 | `period_year` | number | Yes | Tahun kalender yang akan dicek. Dipakai sebagai `PhyYear`. |
-| `emp_codes` | string[] | Yes | List `EmpCode` yang akan dicek langsung ke `PR_ADTRANS` dan archive. |
+| `emp_codes` | string[] | Conditional | List `EmpCode` yang akan dicek langsung ke `PR_ADTRANS` dan archive. Wajib jika `division_code` tidak dikirim. |
+| `division_code` | string | Conditional | Filter semua employee dalam satu divisi berdasarkan `PR_ADTRANS.LocCode`. Bisa kirim kode Plantware 3 karakter seperti `P2A`, `AB1`, `ARA`, `ARC`, `DME`, `IJL`, atau alias seperti `PG2A`/`2A` yang akan dinormalisasi ke `P2A`. Wajib jika `emp_codes` kosong/tidak dikirim. |
 | `filters` | string[] | Yes | List keyword komponen yang akan dicocokkan ke pola `DocDesc`. |
+
+Kirim salah satu atau keduanya: `emp_codes` dan/atau `division_code`. Jika keduanya dikirim, scope query mencakup employee dalam `emp_codes` **atau** record dengan `LocCode = normalized division_code`.
+
+Normalisasi `division_code` untuk `LocCode`:
+
+| Input | Dipakai ke `PR_ADTRANS.LocCode` |
+|-------|---------------------------------|
+| `PG1A`, `1A`, `P1A` | `P1A` |
+| `PG1B`, `1B`, `P1B` | `P1B` |
+| `PG2A`, `2A`, `P2A` | `P2A` |
+| `PG2B`, `2B`, `P2B` | `P2B` |
+| `ARB1`, `AB1` | `AB1` |
+| `ARB2`, `AB2` | `AB2` |
+| `AREC`, `ARC` | `ARC` |
+| `ARA`, `DME`, `IJL` | tetap sesuai input |
 
 #### Mapping Filter ke `DocDesc`
 
@@ -1204,6 +1307,7 @@ Endpoint membaca data melalui SQL Gateway/API query dengan koneksi database yang
 API_KEY="your-api-key"
 BASE_URL="http://localhost:8002"
 
+# Cek employee tertentu
 curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/check-adtrans/by-api-key" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: ${API_KEY}" \
@@ -1213,38 +1317,105 @@ curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/check-adtrans/by-api-key"
     "emp_codes": ["B0065", "B0070"],
     "filters": ["spsi", "masa kerja", "jabatan", "premi"]
   }' | jq .
+
+# Cek semua employee dalam divisi dan tampilkan ringkasan duplicate
+curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/check-adtrans/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "P2A",
+    "filters": ["spsi", "masa kerja", "jabatan"]
+  }' | jq '.data.duplicate_report'
 ```
 
 #### Success Response
 
-Response berisi hasil agregasi `SUM(Amount)` per `emp_code` untuk setiap filter yang diminta.
+Response berisi dua bagian utama:
+
+- `data.totals`: hasil agregasi `SUM(Amount)` per `emp_code` untuk setiap filter yang diminta.
+- `data.duplicate_report`: daftar employee + kategori yang memiliki lebih dari satu record `PR_ADTRANS` pada periode/scope yang sama.
 
 ```json
 {
   "success": true,
   "message": "Adtrans check completed successfully",
-  "data": [
-    {
-      "emp_code": "B0065",
-      "spsi": 4000,
-      "masa kerja": 125000,
-      "jabatan": 250000,
-      "premi": 150000
-    },
-    {
-      "emp_code": "B0070",
-      "spsi": 0,
-      "masa kerja": 0,
-      "jabatan": 250000,
-      "premi": 87500
+  "data": {
+    "totals": [
+      {
+        "emp_code": "B0065",
+        "spsi": 4000,
+        "masa kerja": 125000,
+        "jabatan": 250000,
+        "premi": 150000
+      },
+      {
+        "emp_code": "B0070",
+        "spsi": 0,
+        "masa kerja": 0,
+        "jabatan": 250000,
+        "premi": 87500
+      }
+    ],
+    "duplicate_report": {
+      "duplicate_count": 1,
+      "duplicates": [
+        {
+          "emp_code": "C0028",
+          "emp_name": "ASBI AL GHIFARI ( YUNENGSIH",
+          "category": "spsi",
+          "record_count": 2,
+          "keep_id": "674653",
+          "keep_doc_id": "ADP2A26041438",
+          "delete_ids": ["674398"],
+          "delete_doc_ids": ["ADP2A26041177"],
+          "records": [
+            {
+              "id": "674398",
+              "doc_id": "ADP2A26041177",
+              "doc_date": "2026-04-27",
+              "doc_desc": "POTONGAN SPSI",
+              "amount": 4000,
+              "action": "DELETE_OLD"
+            },
+            {
+              "id": "674653",
+              "doc_id": "ADP2A26041438",
+              "doc_date": "2026-04-27",
+              "doc_desc": "POTONGAN SPSI",
+              "amount": 4000,
+              "action": "KEEP_NEWEST"
+            }
+          ]
+        }
+      ]
     }
-  ]
+  }
 }
 ```
+
+#### Duplicate Detection Rules
+
+Duplicate dihitung per kombinasi:
+
+```text
+emp_code + normalized filter/category
+```
+
+Contoh: employee `C0028` dengan dua record `DocDesc` yang match `spsi` akan muncul sebagai satu item duplicate kategori `spsi`.
+
+Aturan rekomendasi hapus:
+
+- `keep_id` / `keep_doc_id`: record dengan `ID` paling besar, dianggap record terbaru yang dipertahankan.
+- `delete_ids` / `delete_doc_ids`: record dengan `ID` lebih kecil, dianggap record lama yang disarankan dihapus.
+- Endpoint ini hanya memberi rekomendasi; tidak menjalankan delete.
 
 #### Catatan Penggunaan
 
 - Endpoint ini hanya untuk **membaca dan memverifikasi** data real di `db_ptrj`.
 - Endpoint ini **tidak mengupdate** manual adjustment, remarks, atau data di `extend_db_ptrj`.
 - Jika hasil filter bernilai `0`, artinya tidak ada `DocDesc` yang match untuk employee/filter tersebut pada `PhyMonth` dan `PhyYear` yang dikirim.
-- Untuk mengecek data yang baru di-update oleh user tertentu seperti `UpdatedBy = 'adm075'`, gunakan query investigasi terpisah; endpoint ini saat ini fokus ke pengecekan berdasarkan `EmpCode`, periode, dan filter `DocDesc`.
+- Untuk cek satu divisi penuh, cukup kirim `division_code` tanpa `emp_codes`; endpoint akan memakai `PR_ADTRANS.LocCode` sebagai scope.
+- `duplicate_report` cocok untuk kasus auto buffer/Plantware input yang seharusnya satu record per employee per kategori, misalnya potongan SPSI double di Divisi P2A.
+- Untuk mengecek data yang baru di-update oleh user tertentu seperti `UpdatedBy = 'adm075'`, gunakan query investigasi terpisah; endpoint ini saat ini fokus ke pengecekan berdasarkan `EmpCode`/`division_code`, periode, dan filter `DocDesc`.
