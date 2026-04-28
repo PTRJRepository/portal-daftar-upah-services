@@ -418,6 +418,48 @@ export class ManualAdjustmentService {
         await db.query(`DELETE FROM dbo.payroll_manual_adjustments WHERE id = ?`, [id]);
     }
 
+    public async deleteAdjustmentColumn(input: {
+        period_month: number;
+        period_year: number;
+        division_code?: string;
+        adjustment_type: string;
+        adjustment_name: string;
+    }): Promise<number> {
+        const db = this.getDatabase();
+        const normalizedAdjustmentName = normalizeStoredAdjustmentName(input.adjustment_name);
+        const normalizedAdjustmentNameSql = buildNormalizedSqlNameExpression('adjustment_name');
+        const params: any[] = [
+            input.period_month,
+            input.period_year,
+            input.adjustment_type,
+            normalizedAdjustmentName
+        ];
+        let divisionFilter = '';
+
+        if (input.division_code) {
+            divisionFilter = ' AND division_code = ?';
+            params.push(input.division_code);
+        }
+
+        const existing = await db.query<{ id: number }>(`
+            SELECT id FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ? AND period_year = ?
+              AND adjustment_type = ?
+              AND ${normalizedAdjustmentNameSql} = ?
+              ${divisionFilter}
+        `, params);
+
+        await db.query(`
+            DELETE FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ? AND period_year = ?
+              AND adjustment_type = ?
+              AND ${normalizedAdjustmentNameSql} = ?
+              ${divisionFilter}
+        `, params);
+
+        return existing.length;
+    }
+
     /**
      * Checks PR_ADTRANS (and ARC) directly for specific employee adjustments.
      * Uses PhyMonth and PhyYear to map to the real calendar month.

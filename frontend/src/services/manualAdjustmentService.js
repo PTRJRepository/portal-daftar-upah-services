@@ -38,3 +38,11 @@ export async function deleteManualAdjustment(token, id, params = {}) {
     });
     return response.data;
 }
+
+export async function deleteManualAdjustmentColumn(token, params = {}) {
+    const response = await axios.delete('payroll/manual-adjustment/column', {
+        params,
+        headers: authHeaders(token)
+    });
+    return response.data;
+}

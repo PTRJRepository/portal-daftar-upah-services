@@ -347,6 +347,45 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             task_desc: t.Optional(t.String())
         })
     })
+    .delete("/manual-adjustment/column", async ({ query, set }) => {
+        try {
+            const periodMonth = Number(query.period_month);
+            const periodYear = Number(query.period_year);
+            if (!Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12) {
+                set.status = 400;
+                return { success: false, error: "period_month tidak valid" };
+            }
+            if (!Number.isInteger(periodYear) || periodYear < 2000) {
+                set.status = 400;
+                return { success: false, error: "period_year tidak valid" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            const deletedCount = await manualAdjustmentService.deleteAdjustmentColumn({
+                period_month: periodMonth,
+                period_year: periodYear,
+                division_code: query.division_code || undefined,
+                adjustment_type: query.adjustment_type,
+                adjustment_name: query.adjustment_name
+            });
+
+            cacheService.clearByPattern(`:${periodMonth}:${periodYear}`);
+            return { success: true, deleted_count: deletedCount, message: "Manual adjustment column deleted successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment column DELETE error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            period_month: t.String(),
+            period_year: t.String(),
+            division_code: t.Optional(t.String()),
+            adjustment_type: t.String(),
+            adjustment_name: t.String()
+        })
+    })
     .delete("/manual-adjustment/:id", async ({ params, query, set }) => {
         try {
             const id = Number(params.id);
@@ -1016,6 +1055,50 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             task_code: t.Optional(t.String()),
             base_task_code: t.Optional(t.String()),
             task_desc: t.Optional(t.String())
+        })
+    })
+    .delete("/locked/manual-adjustment/column", async ({ query, set, currentUser }) => {
+        try {
+            if (!currentUser) {
+                set.status = 401;
+                return { success: false, error: "Unauthorized" };
+            }
+
+            const periodMonth = Number(query.period_month);
+            const periodYear = Number(query.period_year);
+            if (!Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12) {
+                set.status = 400;
+                return { success: false, error: "period_month tidak valid" };
+            }
+            if (!Number.isInteger(periodYear) || periodYear < 2000) {
+                set.status = 400;
+                return { success: false, error: "period_year tidak valid" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            const deletedCount = await manualAdjustmentService.deleteAdjustmentColumn({
+                period_month: periodMonth,
+                period_year: periodYear,
+                division_code: query.division_code || undefined,
+                adjustment_type: query.adjustment_type,
+                adjustment_name: query.adjustment_name
+            });
+
+            cacheService.clearByPattern(`:${periodMonth}:${periodYear}`);
+            return { success: true, deleted_count: deletedCount, message: "Manual adjustment column deleted successfully." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] locked/manual-adjustment column DELETE error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            period_month: t.String(),
+            period_year: t.String(),
+            division_code: t.Optional(t.String()),
+            adjustment_type: t.String(),
+            adjustment_name: t.String()
         })
     })
     // --- Explicit Strict Income Deletion (Kontan/THR) ---

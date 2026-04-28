@@ -2,12 +2,13 @@ import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from '
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import '../styles/CustomPayrollTable.css';
-import { getLockedRawTree, saveLockedManualEdit, saveLockedProfileOverride, saveLockedValueOverrides, seedLockedAutoBufferToManualAdjustment } from '../services/lockedDivisionService';
+import { getLockedRawTree, saveLockedManualEdit, saveLockedProfileOverride, saveLockedValueOverrides, seedLockedAutoBufferToManualAdjustment, deleteLockedManualAdjustmentColumn } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
 import PayrollScrollChapterBar from './PayrollScrollChapterBar';
 import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
+import { deleteManualAdjustmentColumn } from '../services/manualAdjustmentService';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
@@ -913,30 +914,69 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
     };
 
-    const handleRemoveAddedColumn = (field) => {
-        const targetColumn = addedColumns.find((item) => item.field === field);
+    const removeColumnFromScreen = (field) => {
+        setAddedColumns(prev => prev.filter((item) => item.field !== field));
+        setActivePremiFields(prev => prev.filter((item) => item !== field));
+        setActivePotFields(prev => prev.filter((item) => item !== field));
+        setDynamicHeaders(prev => ({
+            premi: Object.fromEntries(Object.entries(prev.premi || {}).filter(([, value]) => value !== field)),
+            potongan: Object.fromEntries(Object.entries(prev.potongan || {}).filter(([, value]) => value !== field))
+        }));
+        setEditedCells(prev => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.endsWith(`-${field}`))));
+        setRows(prev => prev.map((row) => {
+            if (!row || !(field in row)) return row;
+            const { [field]: _removed, ...rest } = row;
+            return rest;
+        }));
+    };
+
+    const resolveManualColumnDefinition = (field) => {
+        const addedColumn = addedColumns.find((item) => item.field === field);
+        if (addedColumn) return addedColumn;
+
+        for (const [name, mappedField] of Object.entries(dynamicHeaders.premi || {})) {
+            if (mappedField === field) return { field, name, type: 'PREMI' };
+        }
+        for (const [name, mappedField] of Object.entries(dynamicHeaders.potongan || {})) {
+            if (mappedField !== field) continue;
+            const normalized = normalizeFieldKey(field);
+            const type = normalized.startsWith('koreksi') || String(name || '').toUpperCase().startsWith('KOREKSI')
+                ? 'POTONGAN_KOTOR'
+                : 'POTONGAN_BERSIH';
+            return { field, name, type };
+        }
+        return null;
+    };
+
+    const handleRemoveManualColumn = (field) => {
+        const targetColumn = resolveManualColumnDefinition(field);
         if (!targetColumn) return;
 
+        const isUnsaved = addedColumns.some((item) => item.field === field);
         openPayrollConfirm({
             variant: 'danger',
-            title: 'Hapus kolom tambahan?',
-            message: `Kolom ${targetColumn.name || field} dan semua nilai edit yang belum disimpan pada kolom ini akan dihapus dari layar.`,
+            title: isUnsaved ? 'Hapus kolom tambahan?' : 'Hapus kolom manual adjustment?',
+            message: isUnsaved
+                ? `Kolom ${targetColumn.name || field} dan semua nilai edit yang belum disimpan pada kolom ini akan dihapus dari layar.`
+                : `Kolom ${targetColumn.name || field} akan dihapus dari database untuk periode ini. Tindakan ini tidak dapat dibatalkan.`,
             confirmText: 'Hapus Kolom',
-            onConfirm: () => {
-                setAddedColumns(prev => prev.filter((item) => item.field !== field));
-                setActivePremiFields(prev => prev.filter((item) => item !== field));
-                setActivePotFields(prev => prev.filter((item) => item !== field));
-                setDynamicHeaders(prev => ({
-                    premi: Object.fromEntries(Object.entries(prev.premi || {}).filter(([, value]) => value !== field)),
-                    potongan: Object.fromEntries(Object.entries(prev.potongan || {}).filter(([, value]) => value !== field))
-                }));
-                setEditedCells(prev => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.endsWith(`-${field}`))));
-                setRows(prev => prev.map((row) => {
-                    if (!row || !(field in row)) return row;
-                    const { [field]: _removed, ...rest } = row;
-                    return rest;
-                }));
-                showPayrollToast('info', 'Kolom dihapus', `Kolom ${targetColumn.name || field} dibatalkan dari perubahan.`);
+            onConfirm: async () => {
+                if (!isUnsaved) {
+                    const params = {
+                        period_month: month,
+                        period_year: year,
+                        division_code: division,
+                        adjustment_type: targetColumn.type,
+                        adjustment_name: targetColumn.name
+                    };
+                    const response = isProdMode()
+                        ? await deleteLockedManualAdjustmentColumn(token, params)
+                        : await deleteManualAdjustmentColumn(token, params);
+                    if (!response?.success) throw new Error(response?.error || 'Gagal menghapus kolom manual adjustment');
+                }
+                removeColumnFromScreen(field);
+                showPayrollToast('info', 'Kolom dihapus', `Kolom ${targetColumn.name || field} ${isUnsaved ? 'dibatalkan dari perubahan' : 'dihapus dari database'}.`);
+                if (!isUnsaved) triggerPayrollRefresh();
             }
         });
     };
@@ -3686,12 +3726,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             title={cell.level === 0 && isPayrollGroupToggleable(cell.label) ? 'Klik untuk melihat/menyembunyikan detail' : undefined}
                                         >
                                             <div>{formatHeaderLabel(cell.label)}</div>
-                                            {isEditMode && cell.field && addedColumns.some((item) => item.field === cell.field) && (
+                                            {isEditMode && cell.field && resolveManualColumnDefinition(cell.field) && (
                                                 <button
                                                     type="button"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
-                                                        handleRemoveAddedColumn(cell.field);
+                                                        handleRemoveManualColumn(cell.field);
                                                     }}
                                                     title="Hapus kolom manual adjustment ini"
                                                     style={{

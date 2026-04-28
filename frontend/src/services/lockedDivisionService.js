@@ -156,6 +156,19 @@ export async function saveLockedManualEdit(token, payload) {
     }
 }
 
+export async function deleteLockedManualAdjustmentColumn(token, params = {}) {
+    try {
+        const response = await axios.delete(`${BASE_URL}/manual-adjustment/column`, {
+            params,
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        return response.data
+    } catch (error) {
+        console.error('[LockedDivisionService] Failed to delete manual adjustment column:', error)
+        throw error
+    }
+}
+
 export async function saveLockedProfileOverride(token, payload) {
     try {
         const response = await axios.post(`payroll/overrides/profile`, payload, {
