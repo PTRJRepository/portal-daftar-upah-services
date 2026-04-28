@@ -63,10 +63,7 @@ export default function ManualAdjustmentColumnModal({
         if (adjustmentType !== 'POTONGAN_KOTOR' || !koreksiDefaultOption) return;
 
         setSelectedTaskCode(koreksiDefaultOption);
-        if (!docDescTouched) {
-            setDocDesc(koreksiDefaultOption.doc_desc || koreksiDefaultOption.task_desc || '(DE) POTONGAN PREMI');
-        }
-    }, [adjustmentType, koreksiDefaultOption, docDescTouched]);
+    }, [adjustmentType, koreksiDefaultOption]);
 
     useEffect(() => {
         if (!isOpen || !token) return;
@@ -207,7 +204,6 @@ export default function ManualAdjustmentColumnModal({
                                             setAdjustmentType(option.value);
                                             if (option.value === 'POTONGAN_KOTOR') {
                                                 setSearch(KOREKSI_DEFAULT_AD_CODE);
-                                                setDocDescTouched(false);
                                             } else {
                                                 setSelectedTaskCode(null);
                                                 setSearch(docDesc);
