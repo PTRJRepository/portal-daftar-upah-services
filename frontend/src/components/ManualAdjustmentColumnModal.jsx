@@ -8,6 +8,8 @@ const CATEGORY_OPTIONS = [
 ];
 
 const KOREKSI_DEFAULT_AD_CODE = 'DE0004';
+const KOREKSI_PREFIX = 'KOREKSI';
+const POTONGAN_PREFIX = 'POTONGAN';
 
 function resolveAdCode(taskCodeOption) {
     return taskCodeOption?.ad_code || taskCodeOption?.base_task_code || taskCodeOption?.task_code || '';
@@ -20,6 +22,40 @@ function buildRemarks(taskCodeOption) {
     return `AD CODE: ${adCode}${taskDesc ? ` - ${taskDesc}` : ''}`;
 }
 
+function removeLeadingPrefix(value, prefix) {
+    return String(value || '').replace(new RegExp(`^${prefix}\\s*`, 'i'), '').trimStart();
+}
+
+function containsWord(value, word) {
+    return new RegExp(`\\b${word}\\b`, 'i').test(String(value || ''));
+}
+
+function buildAdjustmentName(adjustmentType, docDesc) {
+    const trimmed = docDesc.trim();
+    if (adjustmentType === 'POTONGAN_KOTOR') {
+        return `${KOREKSI_PREFIX} ${removeLeadingPrefix(trimmed, KOREKSI_PREFIX)}`.trim();
+    }
+    if (adjustmentType === 'POTONGAN_BERSIH') {
+        return `${POTONGAN_PREFIX} ${removeLeadingPrefix(trimmed, POTONGAN_PREFIX)}`.trim();
+    }
+    return trimmed;
+}
+
+function validateAdjustmentName(adjustmentType, docDesc) {
+    const trimmed = docDesc.trim();
+    if (!trimmed) return 'Nama kolom wajib diisi.';
+    if (adjustmentType === 'POTONGAN_KOTOR') {
+        const suffix = removeLeadingPrefix(trimmed, KOREKSI_PREFIX);
+        if (!suffix.trim()) return 'Lanjutkan nama kolom setelah kata KOREKSI.';
+        if (containsWord(suffix, POTONGAN_PREFIX)) return 'Nama kolom Koreksi tidak boleh memakai kata POTONGAN.';
+    }
+    if (adjustmentType === 'POTONGAN_BERSIH') {
+        const suffix = removeLeadingPrefix(trimmed, POTONGAN_PREFIX);
+        if (!suffix.trim()) return 'Lanjutkan nama kolom setelah kata POTONGAN.';
+    }
+    return '';
+}
+
 export default function ManualAdjustmentColumnModal({
     isOpen,
     onClose,
@@ -30,7 +66,6 @@ export default function ManualAdjustmentColumnModal({
     const [adjustmentType, setAdjustmentType] = useState('PREMI');
     const [docDesc, setDocDesc] = useState('');
     const [search, setSearch] = useState('');
-    const [docDescTouched, setDocDescTouched] = useState(false);
     const [options, setOptions] = useState([]);
     const [selectedTaskCode, setSelectedTaskCode] = useState(null);
     const [loadingOptions, setLoadingOptions] = useState(false);
@@ -48,12 +83,21 @@ export default function ManualAdjustmentColumnModal({
         [options]
     );
 
+    const filteredOptions = useMemo(() => {
+        if (adjustmentType === 'POTONGAN_BERSIH') {
+            return options.filter((option) => String(option.task_desc || option.doc_desc || '').trim().startsWith('(DE)'));
+        }
+        return options;
+    }, [adjustmentType, options]);
+
+    const nameError = validateAdjustmentName(adjustmentType, docDesc);
+    const resolvedAdjustmentName = buildAdjustmentName(adjustmentType, docDesc);
+
     useEffect(() => {
         if (!isOpen) return;
         setAdjustmentType('PREMI');
         setDocDesc('');
         setSearch('');
-        setDocDescTouched(false);
         setSelectedTaskCode(null);
         setOptions([]);
         setError('');
@@ -74,7 +118,7 @@ export default function ManualAdjustmentColumnModal({
             setError('');
             try {
                 const result = await fetchTaskCodeOptions(token, {
-                    search: search || docDesc,
+                    search: adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_DEFAULT_AD_CODE : search,
                     divisionCode: division,
                     limit: 50
                 });
@@ -96,21 +140,22 @@ export default function ManualAdjustmentColumnModal({
     }, [isOpen, token, search, docDesc, division]);
 
     const canSave = Boolean(
-        docDesc.trim()
+        resolvedAdjustmentName
         && selectedTaskCode
+        && !nameError
         && !saving
     );
 
     const handleOptionSelect = (option) => {
         setSelectedTaskCode(option);
-        if (option.doc_desc && !docDescTouched) {
-            setDocDesc(option.doc_desc);
-            setSearch(option.doc_desc);
-        }
     };
 
     const handleSubmit = (event) => {
         event.preventDefault();
+        if (nameError) {
+            setError(nameError);
+            return;
+        }
         if (!canSave) return;
 
         setSaving(true);
@@ -118,7 +163,7 @@ export default function ManualAdjustmentColumnModal({
         try {
             onSaved?.({
                 adjustment_type: adjustmentType,
-                adjustment_name: docDesc.trim(),
+                adjustment_name: resolvedAdjustmentName,
                 ad_code: resolveAdCode(selectedTaskCode),
                 task_code: selectedTaskCode.task_code,
                 base_task_code: selectedTaskCode.base_task_code || resolveAdCode(selectedTaskCode),
@@ -180,17 +225,42 @@ export default function ManualAdjustmentColumnModal({
                     <div style={{ display: 'grid', gap: 14 }}>
                         <div>
                             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>DocDesc / Nama Kolom</label>
-                            <input
-                                value={docDesc}
-                                onChange={(e) => {
-                                    setDocDesc(e.target.value);
-                                    setSearch(e.target.value);
-                                    setDocDescTouched(Boolean(e.target.value.trim()));
-                                    setSelectedTaskCode(null);
-                                }}
-                                placeholder="Ketik nama premi/koreksi, contoh: PRUNING"
-                                style={{ width: '100%', padding: 10, borderRadius: 9, border: '1px solid #cbd5e1' }}
-                            />
+                            {(adjustmentType === 'POTONGAN_KOTOR' || adjustmentType === 'POTONGAN_BERSIH') ? (
+                                <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                                    <span style={{ padding: '10px 12px', border: '1px solid #cbd5e1', borderRight: 0, borderRadius: '9px 0 0 9px', background: '#f8fafc', color: '#0f172a', fontWeight: 800 }}>
+                                        {adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_PREFIX : POTONGAN_PREFIX}
+                                    </span>
+                                    <input
+                                        value={removeLeadingPrefix(docDesc, adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_PREFIX : POTONGAN_PREFIX)}
+                                        onChange={(e) => {
+                                            const prefix = adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_PREFIX : POTONGAN_PREFIX;
+                                            setDocDesc(`${prefix} ${e.target.value}`.trimEnd());
+                                            if (adjustmentType === 'POTONGAN_BERSIH') {
+                                                setSearch(e.target.value);
+                                                setSelectedTaskCode(null);
+                                            }
+                                        }}
+                                        placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'contoh: DENDA PANEN' : 'contoh: SPSI'}
+                                        style={{ flex: 1, padding: 10, borderRadius: '0 9px 9px 0', border: '1px solid #cbd5e1' }}
+                                    />
+                                </div>
+                            ) : (
+                                <input
+                                    value={docDesc}
+                                    onChange={(e) => {
+                                        setDocDesc(e.target.value);
+                                        setSearch(e.target.value);
+                                        setSelectedTaskCode(null);
+                                    }}
+                                    placeholder="Ketik nama premi, contoh: PRUNING"
+                                    style={{ width: '100%', padding: 10, borderRadius: 9, border: '1px solid #cbd5e1' }}
+                                />
+                            )}
+                            {nameError && (
+                                <div style={{ marginTop: 6, color: '#b45309', fontSize: 12, fontWeight: 700 }}>
+                                    {nameError}
+                                </div>
+                            )}
                         </div>
 
                         <div>
@@ -202,11 +272,17 @@ export default function ManualAdjustmentColumnModal({
                                         type="button"
                                         onClick={() => {
                                             setAdjustmentType(option.value);
+                                            setSelectedTaskCode(null);
                                             if (option.value === 'POTONGAN_KOTOR') {
+                                                setDocDesc((current) => buildAdjustmentName('POTONGAN_KOTOR', current || KOREKSI_PREFIX));
                                                 setSearch(KOREKSI_DEFAULT_AD_CODE);
+                                            } else if (option.value === 'POTONGAN_BERSIH') {
+                                                setDocDesc((current) => buildAdjustmentName('POTONGAN_BERSIH', current || POTONGAN_PREFIX));
+                                                setSearch('DE');
                                             } else {
-                                                setSelectedTaskCode(null);
-                                                setSearch(docDesc);
+                                                const cleanedName = removeLeadingPrefix(removeLeadingPrefix(docDesc, KOREKSI_PREFIX), POTONGAN_PREFIX);
+                                                setDocDesc(cleanedName);
+                                                setSearch(cleanedName);
                                             }
                                         }}
                                         style={{
@@ -231,15 +307,19 @@ export default function ManualAdjustmentColumnModal({
                             </label>
                             <input
                                 value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'Otomatis DE0004 - (DE) POTONGAN PREMI' : 'Cari ADCode, TaskCode, atau TaskDesc AL/DE...'}
+                                onChange={(e) => {
+                                    if (adjustmentType === 'POTONGAN_KOTOR') return;
+                                    setSearch(e.target.value);
+                                }}
+                                readOnly={adjustmentType === 'POTONGAN_KOTOR'}
+                                placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'Otomatis DE0004 - (DE) POTONGAN PREMI' : adjustmentType === 'POTONGAN_BERSIH' ? 'Cari ADCode potongan bersih, hanya (DE)...' : 'Cari ADCode, TaskCode, atau TaskDesc AL/DE...'}
                                 style={{ width: '100%', padding: 10, borderRadius: 9, border: '1px solid #cbd5e1', marginBottom: 8 }}
                             />
                             <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
                                 <div style={{ padding: '8px 12px', background: '#f8fafc', color: '#64748b', fontSize: 12 }}>
-                                    {loadingOptions ? 'Memuat preset...' : `${options.length} preset ditemukan`}
+                                    {loadingOptions ? 'Memuat preset...' : `${filteredOptions.length} preset ditemukan`}
                                 </div>
-                                {options.map((option) => {
+                                {filteredOptions.map((option) => {
                                     const active = selectedTaskCode?.task_code === option.task_code;
                                     return (
                                         <button
@@ -267,7 +347,7 @@ export default function ManualAdjustmentColumnModal({
                                         </button>
                                     );
                                 })}
-                                {!loadingOptions && options.length === 0 && (
+                                {!loadingOptions && filteredOptions.length === 0 && (
                                     <div style={{ padding: 18, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
                                         Tidak ada preset untuk filter ini.
                                     </div>
