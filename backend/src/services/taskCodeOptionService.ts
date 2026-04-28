@@ -204,10 +204,11 @@ export class TaskCodeOptionService {
             this.cachedOptions = options;
         }
 
-        return options
-            .filter((option) => matchesLocCode(option, locCode))
-            .filter((option) => matchesSearch(option, search))
-            .slice(0, limit);
+        const searchedOptions = options.filter((option) => matchesSearch(option, search));
+        const divisionOptions = searchedOptions.filter((option) => matchesLocCode(option, locCode));
+        const resultOptions = divisionOptions.length > 0 ? divisionOptions : searchedOptions;
+
+        return resultOptions.slice(0, limit);
     }
 }
 
