@@ -65,7 +65,7 @@ describe("manual adjustment ADCode rules", () => {
         })).toBe("AD CODE: DE001 - (DE) POTONGAN");
     });
 
-    it("rejects non-auto-buffer adjustment without ADCode before querying", async () => {
+    it("rejects new manual column initialization without ADCode before querying", async () => {
         const originalGetInstance = Database.getInstance;
         let queryCalled = false;
         const mockDb = {
@@ -89,9 +89,45 @@ describe("manual adjustment ADCode rules", () => {
                 gang_code: "G1H",
                 adjustment_type: "PREMI",
                 adjustment_name: "PREMI MANUAL",
-                amount: 1000
+                amount: 0,
+                remarks: "INIT_COLUMN - Kolom ditambahkan tanpa nilai"
             })).rejects.toThrow("ADCode wajib diisi");
             expect(queryCalled).toBe(false);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("allows legacy inline manual edits without ADCode", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [{ id: 88 }];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI EXISTING",
+                amount: 1000,
+                remarks: "Edited via UI"
+            });
+
+            expect(id).toBe(88);
+            expect(calls.length).toBe(2);
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }

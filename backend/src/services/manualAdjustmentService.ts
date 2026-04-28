@@ -115,9 +115,13 @@ export function buildManualAdjustmentRemarks(data: ManualAdjustment): string | n
 
 function validateManualAdjustmentAdCode(data: ManualAdjustment): void {
     if (!manualAdjustmentRequiresAdCode(data.adjustment_type)) return;
+
+    const remarks = normalizeText(data.remarks).toUpperCase();
+    const isManualColumnRequest = remarks.includes('INIT_COLUMN') || remarks.includes('AD CODE:');
+    if (!isManualColumnRequest) return;
     if (resolveManualAdjustmentAdCode(data)) return;
 
-    throw new Error('ADCode wajib diisi untuk manual adjustment selain auto buffer');
+    throw new Error('ADCode wajib diisi untuk kolom manual adjustment selain auto buffer');
 }
 
 export function buildAdtransDuplicateReport(rows: AdtransDuplicateSourceRow[], filters: string[]) {
