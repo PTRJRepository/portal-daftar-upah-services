@@ -629,8 +629,9 @@
 
 /* --- Cell Selection --- */
 .cell-selected {
-    background-color: rgba(33, 150, 243, 0.2) !important;
-    outline: 1px solid #2196f3;
+    background-color: #e0f2fe !important;
+    color: #0f172a !important;
+    outline: 1px solid #0284c7;
     outline-offset: -1px;
 }
 
@@ -780,63 +781,63 @@
 /* Body Cell Group Classes — CSS-only fallback, inline styles from cookies take priority */
 .cell-group-identitas {
     background-color: #F8FAFC;
-    color: #334155;
+    color: #1F2937;
 }
 
 .cell-group-pajak {
     background-color: #FAFAF9;
-    color: #44403C;
+    color: #292524;
 }
 
 .cell-group-absensi {
-    background-color: #F0FDF4;
-    color: #15803D;
+    background-color: #ECFDF3;
+    color: #14532D;
 }
 
 .cell-group-panen {
     background-color: #f1f5f9;
-    color: #64748b;
+    color: #475569;
 }
 
 .cell-group-penggajian {
-    background-color: #F0F9FF;
-    color: #0369A1;
+    background-color: #EFF6FF;
+    color: #1E3A8A;
 }
 
 .cell-group-tunjangan {
     background-color: #FFF7ED;
-    color: #C2410C;
+    color: #9A3412;
 }
 
 .cell-group-pendapatan-lainnya {
     background-color: #ECFDF5;
-    color: #047857;
+    color: #065F46;
 }
 
 .cell-group-premi {
-    background-color: #FFFAF0;
-    color: #B45309;
+    background-color: #FFFBEB;
+    color: #92400E;
 }
 
 .cell-group-potongan-upah-kotor {
     background-color: #FEF2F2;
-    color: #B91C1C;
+    color: #991B1B;
 }
 
 .cell-group-upah-kotor {
-    background-color: #ecfdf5;
+    background-color: #F0FDF4;
     font-weight: bold;
-    color: #166534;
+    color: #14532D;
 }
 
 .cell-group-potongan-upah-bersih {
     background-color: #FDF2F8;
-    color: #BE185D;
+    color: #9D174D;
 }
 
 .cell-group-upah-bersih {
     background-color: #F0FDFA;
-    color: #0F766E;
+    color: #115E59;
     font-weight: bold;
 }
 
@@ -956,13 +957,15 @@
     font-weight: 800 !important;
     font-size: 1rem !important;
     letter-spacing: 0.02em;
-    color: #ffffff;
-    text-shadow: 0 1px 4px rgba(239, 68, 68, 0.3);
+    color: #f8fafc;
+    background-color: #1e293b !important;
     box-shadow:
-        0 2px 8px rgba(239, 68, 68, 0.22),
-        0 0 0 1px rgba(239, 68, 68, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.12);
-    filter: drop-shadow(0 2px 6px rgba(239, 68, 68, 0.3));
+        inset 0 -3px 0 rgba(var(--group-accent-rgb, 59, 130, 246), 0.86),
+        inset 0 0 0 1px rgba(var(--group-accent-rgb, 59, 130, 246), 0.36),
+        0 2px 8px rgba(15, 23, 42, 0.18);
+    text-shadow: none;
+    filter: none;
+    transition: color 0.28s ease, background-color 0.28s ease, font-size 0.28s ease, font-weight 0.28s ease, box-shadow 0.32s ease;
 }
 
 .payroll-table-shell .payroll-table thead th[data-active-group="true"][data-header-level="0"] {
@@ -977,19 +980,26 @@
 
 .payroll-table-shell .payroll-table tbody td[data-active-group="true"],
 .payroll-table-shell .payroll-table tfoot td[data-active-group="true"] {
-    font-weight: 700;
-    font-size: 1.05rem;
+    font-weight: 750;
+    font-size: 1.03rem;
+    color: #0f172a !important;
+    background-color: rgba(var(--group-accent-rgb, 59, 130, 246), 0.14) !important;
     box-shadow:
-        0 2px 10px rgba(239, 68, 68, 0.2),
-        0 0 0 1px rgba(239, 68, 68, 0.35);
-    color: #0f172a;
-    background-color: rgba(254, 226, 226, 0.55);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+        inset 0 0 0 1px rgba(var(--group-accent-rgb, 59, 130, 246), 0.32),
+        inset 0 3px 0 rgba(255, 255, 255, 0.42);
+    text-shadow: none;
+    transition: background-color 0.32s ease, color 0.28s ease, font-size 0.28s ease, font-weight 0.28s ease, box-shadow 0.32s ease;
 }
 
 /* === FOCUS MODE: Active group spotlight on BODY CELLS === */
 
 /* Step 1: Dim all non-active body cells when focus mode is ON */
+.payroll-table-shell .payroll-table tbody td,
+.payroll-table-shell .payroll-table tfoot td,
+.payroll-table-shell .payroll-table thead th {
+    transition: background-color 0.32s ease, color 0.28s ease, opacity 0.28s ease, filter 0.32s ease, box-shadow 0.32s ease, font-size 0.28s ease, font-weight 0.28s ease, transform 0.24s ease;
+}
+
 .payroll-table-shell.focus-lens-on .payroll-table tbody td[data-focus-dim="true"] {
     opacity: 0.95;
     filter: none;
@@ -1467,26 +1477,352 @@
 /* Edit input base styles (fallback if not defined elsewhere) */
 .edit-input {
     padding: 2px 4px;
-    border: 1px solid #3b82f6;
+    border: 1px solid #94a3b8;
     border-radius: 3px;
     font-size: 12px;
     width: 70px;
     text-align: right;
-    color: #111827;
-    background-color: #ffffff;
+    color: #111827 !important;
+    background-color: #fff7ed !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.edit-input:focus {
+    outline: none;
+    border-color: #b45309;
+    box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.84);
+    background-color: #fffbeb !important;
+    color: #111827 !important;
+}
+
+.edit-input:hover {
+    border-color: #d97706;
 }
 
 .edit-input::placeholder {
-    color: #111827;
+    color: #78716c;
     opacity: 1;
+}
+
+/* Ensure edit inputs are ALWAYS visible, even in frozen/dark columns */
+.payroll-table tbody td.sticky-col.frozen-col-theme .edit-input,
+.payroll-table tbody td.sticky-col.frozen-col-theme select.edit-input,
+.payroll-table tbody tr.row-highlighted td .edit-input,
+.payroll-table tbody td[data-active-group="true"] .edit-input,
+.payroll-table tbody td[data-focus-dim="true"] .edit-input {
+    color: #111827 !important;
+    background-color: #fff7ed !important;
+    border-color: #94a3b8 !important;
+}
+
+.payroll-table tbody td.sticky-col.frozen-col-theme .edit-input:focus,
+.payroll-table tbody tr.row-highlighted td .edit-input:focus,
+.payroll-table tbody td[data-active-group="true"] .edit-input:focus,
+.payroll-table tbody td[data-focus-dim="true"] .edit-input:focus {
+    background-color: #fffbeb !important;
+    color: #111827 !important;
+    border-color: #b45309 !important;
+    box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.84);
 }
 
 /* Cell edited indicator */
 .cell-edited {
-    background-color: #dbeafe !important;
-    /* light blue bg */
-    border: 1px solid #3b82f6 !important;
-    /* blue border */
+    background-color: #fef3c7 !important;
+    border: 1px solid #b45309 !important;
+    color: #111827 !important;
+    font-weight: 800 !important;
+}
+
+/* ============================================
+   UNIFIED EDIT SAVE DOCK & NOTIFICATIONS
+   ============================================ */
+
+.payroll-edit-save-dock {
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    display: grid;
+    grid-template-columns: minmax(190px, 0.85fr) minmax(280px, 1.25fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid rgba(148, 163, 184, 0.55);
+    border-radius: 0 0 14px 14px;
+    background: linear-gradient(135deg, #f8fafc 0%, #fffbeb 48%, #f1f5f9 100%);
+    color: #0f172a;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.payroll-edit-save-dock.has-pending {
+    border-color: rgba(180, 83, 9, 0.45);
+    box-shadow: 0 12px 28px rgba(180, 83, 9, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.payroll-edit-save-dock__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.payroll-edit-save-dock__copy strong {
+    font-size: 0.84rem;
+    letter-spacing: -0.01em;
+    color: #0f172a;
+}
+
+.payroll-edit-save-dock__eyebrow {
+    color: #92400e;
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.payroll-edit-save-dock__metrics {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.payroll-edit-save-dock__metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid rgba(203, 213, 225, 0.9);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.74);
+    color: #475569;
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+
+.payroll-edit-save-dock__metric b {
+    color: #0f172a;
+    font-size: 0.76rem;
+}
+
+.payroll-edit-save-dock__metric.is-danger {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.payroll-edit-save-dock__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.payroll-edit-save-dock__primary,
+.payroll-edit-save-dock__secondary,
+.payroll-confirm-card__confirm,
+.payroll-confirm-card__cancel {
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 850;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: transform 0.16s ease, box-shadow 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.payroll-edit-save-dock__primary {
+    padding: 8px 14px;
+    border: 1px solid #92400e;
+    background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+    color: #fff7ed;
+    box-shadow: 0 8px 18px rgba(180, 83, 9, 0.24);
+}
+
+.payroll-edit-save-dock__primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(180, 83, 9, 0.28);
+}
+
+.payroll-edit-save-dock__primary:disabled {
+    cursor: not-allowed;
+    border-color: #cbd5e1;
+    background: #e2e8f0;
+    color: #64748b;
+    box-shadow: none;
+}
+
+.payroll-edit-save-dock__secondary {
+    padding: 8px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.7);
+    background: rgba(255, 255, 255, 0.68);
+    color: #475569;
+}
+
+.payroll-edit-save-dock__secondary:hover:not(:disabled) {
+    border-color: #b45309;
+    color: #92400e;
+}
+
+.payroll-edit-save-dock__secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.payroll-toast {
+    position: fixed;
+    top: 82px;
+    right: 18px;
+    z-index: 12000;
+    display: grid;
+    grid-template-columns: 6px minmax(220px, 1fr) 28px;
+    gap: 12px;
+    max-width: min(420px, calc(100vw - 32px));
+    padding: 12px 12px 12px 0;
+    border: 1px solid rgba(203, 213, 225, 0.9);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #0f172a;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+}
+
+.payroll-toast__rail {
+    width: 6px;
+    min-height: 100%;
+    background: #64748b;
+}
+
+.payroll-toast strong {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 0.84rem;
+}
+
+.payroll-toast p {
+    margin: 0;
+    color: #475569;
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+.payroll-toast button {
+    align-self: start;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.payroll-toast--success .payroll-toast__rail { background: #16a34a; }
+.payroll-toast--error .payroll-toast__rail { background: #dc2626; }
+.payroll-toast--info .payroll-toast__rail { background: #0284c7; }
+
+.payroll-confirm-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 13000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 23, 42, 0.48);
+    backdrop-filter: blur(4px);
+}
+
+.payroll-confirm-card {
+    width: min(520px, 100%);
+    display: grid;
+    grid-template-columns: 10px 1fr;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 22px;
+    background: #f8fafc;
+    color: #0f172a;
+    box-shadow: 0 28px 70px rgba(15, 23, 42, 0.34);
+}
+
+.payroll-confirm-card__mark {
+    grid-row: 1 / span 2;
+    background: #f59e0b;
+}
+
+.payroll-confirm-card--danger .payroll-confirm-card__mark {
+    background: #dc2626;
+}
+
+.payroll-confirm-card__body {
+    padding: 22px 24px 8px;
+}
+
+.payroll-confirm-card__eyebrow {
+    color: #92400e;
+    font-size: 0.66rem;
+    font-weight: 850;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.payroll-confirm-card h3 {
+    margin: 6px 0 8px;
+    color: #0f172a;
+    font-size: 1.14rem;
+}
+
+.payroll-confirm-card p {
+    margin: 0;
+    color: #475569;
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+
+.payroll-confirm-card__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 24px 22px;
+}
+
+.payroll-confirm-card__cancel,
+.payroll-confirm-card__confirm {
+    padding: 9px 15px;
+}
+
+.payroll-confirm-card__cancel {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+}
+
+.payroll-confirm-card__confirm {
+    border: 1px solid #92400e;
+    background: #b45309;
+    color: #fff7ed;
+}
+
+.payroll-confirm-card--danger .payroll-confirm-card__confirm {
+    border-color: #991b1b;
+    background: #dc2626;
+    color: #fff;
+}
+
+@media (max-width: 900px) {
+    .payroll-edit-save-dock {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .payroll-edit-save-dock__metrics,
+    .payroll-edit-save-dock__actions {
+        justify-content: flex-start;
+    }
 }
 
 /* ============================================
@@ -1628,7 +1964,7 @@
     gap: calc(8px * var(--payroll-dock-scale, 1));
     padding: calc(8px * var(--payroll-dock-scale, 1)) calc(14px * var(--payroll-dock-scale, 1)) calc(10px * var(--payroll-dock-scale, 1));
     box-shadow: 0 -10px 24px rgba(2, 6, 23, 0.48), 0 -1px 0 rgba(148, 163, 184, 0.2);
-    transition: transform 0.24s ease, opacity 0.24s ease;
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease, background 0.34s ease, box-shadow 0.34s ease;
     pointer-events: auto !important;
 }
 
@@ -1916,7 +2252,11 @@
 
 
 .footer-mode-toggle {
-    background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    min-width: calc(86px * var(--payroll-dock-scale, 1));
+    background: #0f172a;
     color: #fff;
     border: 1px solid rgba(245, 158, 11, 0.75);
     padding: calc(8px * var(--payroll-dock-scale, 1)) calc(14px * var(--payroll-dock-scale, 1));
@@ -1928,19 +2268,57 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-right: 0;
-    transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
-    box-shadow: 0 6px 14px rgba(245, 158, 11, 0.32);
+    transition: transform 0.18s ease, border-color 0.34s ease, box-shadow 0.34s ease, color 0.28s ease;
+    box-shadow: 0 6px 14px rgba(245, 158, 11, 0.22);
+}
+
+.footer-mode-toggle::before,
+.footer-mode-toggle::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    transition: opacity 0.34s ease, transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.footer-mode-toggle::before {
+    background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.footer-mode-toggle::after {
+    background: linear-gradient(180deg, #10b981 0%, #047857 100%);
+    opacity: 0;
+    transform: translateX(-18%);
 }
 
 .footer-mode-toggle.is-all {
-    background: linear-gradient(180deg, #10b981 0%, #047857 100%);
     border-color: rgba(16, 185, 129, 0.8);
-    box-shadow: 0 6px 14px rgba(16, 185, 129, 0.32);
+    box-shadow: 0 6px 14px rgba(16, 185, 129, 0.26);
+}
+
+.footer-mode-toggle.is-all::before {
+    opacity: 0;
+    transform: translateX(18%);
+}
+
+.footer-mode-toggle.is-all::after {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.footer-mode-toggle__label {
+    display: inline-block;
+    transition: opacity 0.22s ease, transform 0.22s ease;
 }
 
 .footer-mode-toggle:hover {
     transform: translateY(-1px);
-    filter: brightness(1.03);
+}
+
+.footer-mode-toggle:hover .footer-mode-toggle__label {
+    transform: translateY(-1px);
 }
 
 @media (max-width: 960px) {

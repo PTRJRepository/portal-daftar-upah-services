@@ -20,14 +20,19 @@ import { initPrintMode } from '../utils/printOptimizer';
 import '../styles/wages-summary-professional.css';
 import '../styles/wages-summary-print-simple.css';
 
-export default function WagesSummaryRebinmasPage({ onBack }) {
+export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
     const [searchParams] = useSearchParams();
 
-    // Filters - Default to current month
-    const [month, setMonth] = useState(new Date().getMonth() + 1);
-    const [year, setYear] = useState(new Date().getFullYear());
+    // Filters - Use selected payroll period when provided
+    const [month, setMonth] = useState(initialMonth || null);
+    const [year, setYear] = useState(initialYear || null);
     const [divisionType, setDivisionType] = useState('all'); // 'all', 'real', or 'virtual'
+
+    useEffect(() => {
+        if (initialMonth) setMonth(initialMonth);
+        if (initialYear) setYear(initialYear);
+    }, [initialMonth, initialYear]);
 
     // Data
     const [periods, setPeriods] = useState([]);
@@ -79,8 +84,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                 const result = await fetchAvailablePeriods(token);
                 setPeriods(result.periods || []);
 
-                // Set default period from server (latest base data)
-                if (result.default_period && result.default_period.month && result.default_period.year) {
+                if (!initialMonth && !initialYear && result.default_period && result.default_period.month && result.default_period.year) {
                     setMonth(result.default_period.month);
                     setYear(result.default_period.year);
                 }
@@ -92,7 +96,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
 
         // Initialize print mode for optimized printing
         initPrintMode();
-    }, [token]);
+    }, [token, initialMonth, initialYear]);
 
     // Fetch summary data
     const fetchData = useCallback(async () => {
@@ -817,7 +821,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                         className="wsp-input-edit"
                                         value={editingPPH21[div.division_code] !== undefined ? editingPPH21[div.division_code] : (div.original_pph21 ?? div.total_pph21)}
                                         onChange={(e) => handlePPH21Change(div.division_code, e.target.value)}
-                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #3b82f6', borderRadius: '4px', backgroundColor: '#ffffff', color: '#0f172a' }}
                                     />
                                     <button
                                         onClick={() => handleSavePPH21(div.division_code, editingPPH21[div.division_code])}
@@ -840,7 +844,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                         className="wsp-input-edit"
                                         value={editingSPSI[div.division_code] !== undefined ? editingSPSI[div.division_code] : (div.original_spsi ?? div.total_spsi)}
                                         onChange={(e) => handleSPSIChange(div.division_code, e.target.value)}
-                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #3b82f6', borderRadius: '4px', backgroundColor: '#ffffff', color: '#0f172a' }}
                                     />
                                     <button
                                         onClick={() => handleSaveSPSI(div.division_code, editingSPSI[div.division_code])}
@@ -876,7 +880,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
                                         className="wsp-input-edit"
                                         value={editingValues[div.division_code] !== undefined ? editingValues[div.division_code] : div.thumb_print}
                                         onChange={(e) => handleThumbprintChange(div.division_code, e.target.value)}
-                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #3b82f6', borderRadius: '4px', backgroundColor: '#ffffff', color: '#0f172a' }}
                                     />
                                     <button
                                         onClick={() => handleSaveThumbprint(div.division_code, editingValues[div.division_code])}

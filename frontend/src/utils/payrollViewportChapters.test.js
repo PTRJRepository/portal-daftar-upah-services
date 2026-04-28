@@ -8,9 +8,9 @@ import {
 } from './payrollViewportChapters';
 
 describe('resolvePayrollDisplayModeState', () => {
-    it('defaults to simple mode with focus lens off', () => {
+    it('defaults to detail mode with focus lens off', () => {
         expect(resolvePayrollDisplayModeState()).toEqual({
-            mode: 'simple',
+            mode: 'detail',
             focusLens: false
         });
     });

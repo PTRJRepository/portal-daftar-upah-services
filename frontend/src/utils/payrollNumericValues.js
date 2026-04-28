@@ -12,7 +12,7 @@ function normalizePayrollNumericInput(value) {
   }
 
   // Indonesian-style thousands/decimal: 1.234,56
-  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(compact)) {
+  if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(compact)) {
     return compact.replace(/\./g, "").replace(",", ".");
   }
 

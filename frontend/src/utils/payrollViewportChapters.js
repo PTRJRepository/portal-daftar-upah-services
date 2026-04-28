@@ -1,7 +1,7 @@
 import { getPayrollHeaderGroup } from './payrollHeaderGroups';
 
 export const resolvePayrollDisplayModeState = (state = {}) => ({
-    mode: state.mode === 'detail' ? 'detail' : 'simple',
+    mode: state.mode === 'simple' ? 'simple' : 'detail',
     focusLens: state.focusLens === true
 });
 

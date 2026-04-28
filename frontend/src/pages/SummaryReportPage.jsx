@@ -96,13 +96,16 @@ function EditableCell({ editMode, value, onSave, isCurrency }) {
                         onKeyDown={handleKeyDown}
                         style={{
                             width: '100%',
-                            border: 'none',
-                            background: 'transparent',
+                            border: '1px solid #3b82f6',
+                            borderRadius: '4px',
+                            background: '#ffffff',
                             textAlign: 'right',
                             fontSize: 'inherit',
                             fontFamily: 'inherit',
-                            color: 'inherit',
-                            outline: 'none'
+                            color: '#0f172a',
+                            outline: 'none',
+                            padding: '2px 6px',
+                            boxShadow: '0 0 0 2px rgba(37, 99, 235, 0.15)',
                         }}
                         autoFocus
                     />

@@ -19,8 +19,8 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
     const [searchParams] = useSearchParams();
 
     // Filters - Use initial props if provided
-    const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
-    const [year, setYear] = useState(initialYear || new Date().getFullYear());
+    const [month, setMonth] = useState(initialMonth || null);
+    const [year, setYear] = useState(initialYear || null);
     const [divisionType, setDivisionType] = useState('all'); // 'all', 'real', or 'virtual'
 
     // Sync state with props when they change (fix navigation freeze)
@@ -103,8 +103,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                 const result = await fetchAvailablePeriods(token);
                 setPeriods(result.periods || []);
 
-                // Set default period from server (latest base data)
-                if (result.default_period && result.default_period.month && result.default_period.year) {
+                if (!initialMonth && !initialYear && result.default_period && result.default_period.month && result.default_period.year) {
                     setMonth(result.default_period.month);
                     setYear(result.default_period.year);
                 }
@@ -113,7 +112,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
             }
         }
         loadPeriods();
-    }, [token]);
+    }, [token, initialMonth, initialYear]);
 
     const fetchData = useCallback(async () => {
         if (!token) return;

@@ -404,7 +404,7 @@ export default function ImpactReportPage({ onBack }) {
                                                 className="wsp-input-edit"
                                                 value={editingLuasArea[row.division_code] !== undefined ? editingLuasArea[row.division_code] : (row.original_luas_ha ?? row.luas_ha)}
                                                 onChange={(e) => handleLuasAreaChange(row.division_code, e.target.value)}
-                                                style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                                                style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #3b82f6', borderRadius: '4px', backgroundColor: '#ffffff', color: '#0f172a' }}
                                             />
                                             <button
                                                 onClick={() => handleSaveLuasArea(row.division_code, editingLuasArea[row.division_code])}

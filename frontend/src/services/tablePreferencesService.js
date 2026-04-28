@@ -15,18 +15,18 @@ const PREFERENCES_VERSION = 2;
 
 // Default body cell group colors (applied to body cells, NOT headers)
 export const DEFAULT_CELL_COLORS = {
-  IDENTITAS: { bg: '#F8FAFC', text: '#334155', border: '#CBD5E1' },      // Slate-50/700
-  PAJAK: { bg: '#FAFAF9', text: '#44403C', border: '#D6D3D1' },          // Stone-50/700
-  ABSENSI: { bg: '#F0FDF4', text: '#15803D', border: '#86EFAC' },        // Green-50/700
-  PANEN: { bg: '#F1F5F9', text: '#64748B', border: '#CBD5E1' },          // Slate disabled
-  PENGGAJIAN: { bg: '#F0F9FF', text: '#0369A1', border: '#7DD3FC' },     // Sky-50/700
-  TUNJANGAN: { bg: '#FFF7ED', text: '#C2410C', border: '#FDBA74' },      // Orange-50/700
-  'PENDAPATAN LAINNYA': { bg: '#ECFDF5', text: '#047857', border: '#6EE7B7' }, // Emerald-50/700
-  PREMI: { bg: '#FFFAF0', text: '#B45309', border: '#FCD34D' },          // Amber-50/700 (FloralWhite-ish)
-  'POTONGAN UPAH KOTOR': { bg: '#FEF2F2', text: '#B91C1C', border: '#FCA5A5' }, // Red-50/700
-  'UPAH KOTOR': { bg: '#ECFDF5', text: '#166534', border: '#86EFAC' },   // Green-50/800
-  'POTONGAN UPAH BERSIH': { bg: '#FDF2F8', text: '#BE185D', border: '#F9A8D4' }, // Pink-50/700
-  'UPAH BERSIH': { bg: '#F0FDFA', text: '#0F766E', border: '#5EEAD4' }   // Teal-50/700 (Not dark green to keep it soft, but distinct)
+  IDENTITAS: { bg: '#F8FAFC', text: '#1F2937', border: '#CBD5E1' },
+  PAJAK: { bg: '#FAFAF9', text: '#292524', border: '#D6D3D1' },
+  ABSENSI: { bg: '#ECFDF3', text: '#14532D', border: '#86EFAC' },
+  PANEN: { bg: '#F1F5F9', text: '#475569', border: '#CBD5E1' },
+  PENGGAJIAN: { bg: '#EFF6FF', text: '#1E3A8A', border: '#93C5FD' },
+  TUNJANGAN: { bg: '#FFF7ED', text: '#9A3412', border: '#FDBA74' },
+  'PENDAPATAN LAINNYA': { bg: '#ECFDF5', text: '#065F46', border: '#6EE7B7' },
+  PREMI: { bg: '#FFFBEB', text: '#92400E', border: '#FCD34D' },
+  'POTONGAN UPAH KOTOR': { bg: '#FEF2F2', text: '#991B1B', border: '#FCA5A5' },
+  'UPAH KOTOR': { bg: '#F0FDF4', text: '#14532D', border: '#86EFAC' },
+  'POTONGAN UPAH BERSIH': { bg: '#FDF2F8', text: '#9D174D', border: '#F9A8D4' },
+  'UPAH BERSIH': { bg: '#F0FDFA', text: '#115E59', border: '#5EEAD4' }
 };
 
 // Backward compat alias

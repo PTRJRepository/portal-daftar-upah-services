@@ -24,8 +24,12 @@ describe("parsePayrollInputNumber", () => {
   it("parses valid input strings and numbers", () => {
     expect(parsePayrollInputNumber("5000")).toBe(5000);
     expect(parsePayrollInputNumber("5,000")).toBe(5000);
-    expect(parsePayrollInputNumber("5.000")).toBe(5000);
     expect(parsePayrollInputNumber(5000)).toBe(5000);
+  });
+
+  it("keeps dot-only native numeric input as a decimal value", () => {
+    expect(parsePayrollInputNumber("5.000")).toBe(5);
+    expect(parsePayrollInputNumber("10.000")).toBe(10);
   });
 
   it("supports decimal input with both dot and comma separators", () => {
