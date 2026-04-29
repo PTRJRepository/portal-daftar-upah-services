@@ -1,4 +1,5 @@
 import { Database } from "../db/client";
+import { ADTRANS_DYNAMIC_PREMI_PATTERNS, mapAdtransPremiField, normalizeAdtransPotonganField } from "./payroll/adtransDocDescMapping";
 import { Config } from "../config";
 import { payrollService } from "./payrollService";
 import { gangService } from "./gangService";
@@ -1099,39 +1100,30 @@ export class DataExtractorService {
             const isSpsiMember = typeof emp.is_spsi_member === "boolean"
                 ? emp.is_spsi_member
                 : deriveInitialSpsiMember(dbPotSpsi);
-            let empJabatanDisplay = empJabatan;
-            let empMasaKerjaDisplay = empMasaKerjaJumlah;
-            let jabatanRate = hari_kerja > 0 ? empJabatan / hari_kerja : 0;
-            let masaKerjaRate = hari_kerja > 0 ? empMasaKerjaJumlah / hari_kerja : 0;
-            let pot_spsi = dbPotSpsi;
-
-            if (useAutoBuffer) {
-                const autoBuffer = payrollAutoBufferService.calculateAutomaticValues({
-                    jabatanText: empJobTitle,
-                    roleText: emp.jabatan || "",
-                    hariKerja: hari_kerja,
-                    kehadiran: hk,
-                    masaKerjaTahun: masaKerjaLama,
-                    isSpsiMember,
-                    dbJabatanJumlah: empJabatan,
-                    dbMasaKerjaJumlah: empMasaKerjaJumlah
-                });
-                empJabatanDisplay = autoBuffer.jabatanAmount;
-                empMasaKerjaDisplay = autoBuffer.masaKerjaAmount;
-                jabatanRate = autoBuffer.jabatanRate;
-                masaKerjaRate = autoBuffer.masaKerjaRate;
-                pot_spsi = autoBuffer.spsiDeduction;
-            }
+            const autoBufferVerification = payrollAutoBufferService.calculateVerificationValues({
+                jabatanText: empJobTitle,
+                roleText: emp.jabatan || "",
+                hariKerja: hari_kerja,
+                kehadiran: hk,
+                masaKerjaTahun: masaKerjaLama,
+                isSpsiMember,
+                dbJabatanJumlah: empJabatan,
+                dbMasaKerjaJumlah: empMasaKerjaJumlah,
+                dbPotSpsi,
+                useAutoBuffer
+            });
+            let empJabatanDisplay = autoBufferVerification.display.jabatanAmount;
+            let empMasaKerjaDisplay = autoBufferVerification.display.masaKerjaAmount;
+            let jabatanRate = autoBufferVerification.display.jabatanRate;
+            let masaKerjaRate = autoBufferVerification.display.masaKerjaRate;
+            let pot_spsi = autoBufferVerification.display.spsiDeduction;
             const valueSyncFrame: Record<string, "red" | "green"> = {
-                jabatan_jumlah: resolveSyncFrameColor(empJabatanDisplay, empJabatan),
-                masa_kerja_jumlah: resolveSyncFrameColor(empMasaKerjaDisplay, empMasaKerjaJumlah),
-                pot_spsi: resolveSyncFrameColor(pot_spsi, dbPotSpsi)
+                ...autoBufferVerification.valueSyncFrame
             };
-            valueSyncFrame.spsi = valueSyncFrame.pot_spsi;
-            if (hari_kerja > 0) {
-                valueSyncFrame.jabatan_rate = resolveSyncFrameColor(jabatanRate, empJabatan / hari_kerja);
-                valueSyncFrame.masa_kerja_rate = resolveSyncFrameColor(masaKerjaRate, empMasaKerjaJumlah / hari_kerja);
-            }
+            const valueSourceCompare: Record<string, { db_ptrj: number | string | boolean | null; active: number | string | boolean | null }> = {
+                ...autoBufferVerification.valueSourceCompare,
+                is_spsi_member: { db_ptrj: deriveInitialSpsiMember(dbPotSpsi), active: isSpsiMember }
+            };
 
             const empLemburJumlahPure = empLemburDetails.jumlah || 0;
             const empLemburJamPure = empLemburDetails.jam || 0;
@@ -1771,7 +1763,8 @@ export class DataExtractorService {
                 // [RESTORED] premi object for aggregation seeder compatibility
                 premi: empPremi,
                 premi_details: premiDetails[emp.emp_code] || [],
-                value_sync_frame: valueSyncFrame
+                value_sync_frame: valueSyncFrame,
+                value_source_compare: valueSourceCompare
             };
 
             dataRows.push(row);
@@ -2454,9 +2447,10 @@ export class DataExtractorService {
         const db = serverProfile ? Database.getInstance(undefined, serverProfile) : this.db;
         const empList = empCodes.map(e => `'${e}'`).join(",");
 
-        // Query DocDesc containing 'PREMI' but EXCLUDE those containing 'PPH'
-        // DocDesc will be used as column header
-        // Also EXCLUDE TaskDesc = 'ACCRUALS-CHECKROLL' (Premi PPH diambil dari query terpisah)
+        const premiCondition = ADTRANS_DYNAMIC_PREMI_PATTERNS
+            .map((pattern) => `UPPER(t.DocDesc) LIKE '${pattern}'`)
+            .join(" OR ");
+
         // [CRITICAL] INNER JOIN HR_GANGLN ensures only valid gang members from HR_GANGLN are processed
         // This prevents orphaned adtrans records for employees not in the current gang
         let rows = await db.query<{ emp_code: string; doc_desc: string; amount: number; task_code: string; task_desc: string }>(`
@@ -2483,7 +2477,7 @@ export class DataExtractorService {
             ) ln ON t.ID = ln.MasterID
             LEFT JOIN PR_TASKCODE mt ON ln.TaskCode = mt.TaskCode
             WHERE ${isHistorical ? `(
-                  UPPER(t.DocDesc) LIKE '%PREMI%'
+                  (${premiCondition})
                   AND UPPER(t.DocDesc) NOT LIKE '%PPH%'
                   AND UPPER(t.DocDesc) NOT LIKE '%JABATAN%'
                   AND UPPER(t.DocDesc) NOT LIKE '%BERAS%'
@@ -2496,7 +2490,7 @@ export class DataExtractorService {
               )` : `(
                   (
                       (UPPER(mt.TaskDesc) LIKE '%(AL)%' AND UPPER(mt.TaskDesc) LIKE '%TUNJANGAN%') OR
-                      UPPER(t.DocDesc) LIKE '%PREMI%'
+                      (${premiCondition})
                   )
                   AND (mt.TaskDesc IS NULL OR UPPER(mt.TaskDesc) NOT LIKE '%MASA%')
                   AND (mt.TaskDesc IS NULL OR UPPER(mt.TaskDesc) NOT LIKE '%LEMBUR%')
@@ -2898,18 +2892,7 @@ export class DataExtractorService {
     }
 
     private normalizePremiName(docDesc: string): string {
-        let name = docDesc.trim().toUpperCase();
-
-        // Match Python manual handling
-        if (name.includes("KOREKSI")) return "koreksi";
-        if (name.includes("BRONDOL")) return "brondol";
-
-        // Standard normalization
-        name = name
-            .replace(/^TUNJANGAN\s*PREMI\s*/i, "")
-            .replace(/^PREMI\s*/i, "");
-
-        return `premi_${name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")}`;
+        return mapAdtransPremiField(docDesc);
     }
 
     private normalizePotonganName(docDesc: string, taskDesc?: string | null, taskCode?: string | null): { key: string; title: string } {
@@ -2922,9 +2905,7 @@ export class DataExtractorService {
         // Pattern: KOREKSI, KOREKSI A, KOREKSI PANEN, KOREKSI X, etc.
         // Each variation becomes a separate key for display in POTONGAN UPAH KOTOR
         if (upper.includes("KOREKSI")) {
-            // Use the full DocDesc as the key, normalized
-            const key = upper.replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
-            return { key, title: cleanTitle };
+            return normalizeAdtransPotonganField(cleanTitle);
         }
 
         // [RULE 1.5] Specific for Potongan PPh21 matching TaskDesc or DocDesc
@@ -4393,45 +4374,26 @@ export class DataExtractorService {
                 ? emp.is_spsi_member
                 : deriveInitialSpsiMember(dbPotSpsi);
             emp.is_spsi_member = isSpsiMember;
-            let jabatanJumlah = dbJabatanJumlah;
-            let masaKerjaJumlah = dbMasaKerjaJumlah;
-            let jabatanRate = hari_kerja > 0 ? dbJabatanJumlah / hari_kerja : 0;
-            let masaKerjaRate = hari_kerja > 0 ? dbMasaKerjaJumlah / hari_kerja : 0;
-            let pot_spsi = dbPotSpsi;
-
-            if (useAutoBuffer) {
-                const autoBuffer = payrollAutoBufferService.calculateAutomaticValues({
-                    jabatanText: emp.jabatan_estate || emp.jabatan || "",
-                    roleText: emp.jabatan || emp.role || "",
-                    hariKerja: hari_kerja,
-                    kehadiran: hk,
-                    masaKerjaTahun,
-                    isSpsiMember,
-                    dbJabatanJumlah,
-                    dbMasaKerjaJumlah
-                });
-                jabatanJumlah = autoBuffer.jabatanAmount;
-                masaKerjaJumlah = autoBuffer.masaKerjaAmount;
-                jabatanRate = autoBuffer.jabatanRate;
-                masaKerjaRate = autoBuffer.masaKerjaRate;
-                pot_spsi = autoBuffer.spsiDeduction;
-            }
-            valueSyncFrame.jabatan_jumlah = resolveSyncFrameColor(jabatanJumlah, dbJabatanJumlah);
-            valueSyncFrame.masa_kerja_jumlah = resolveSyncFrameColor(masaKerjaJumlah, dbMasaKerjaJumlah);
-            valueSyncFrame.pot_spsi = resolveSyncFrameColor(pot_spsi, dbPotSpsi);
-            valueSyncFrame.spsi = valueSyncFrame.pot_spsi;
+            const autoBufferVerification = payrollAutoBufferService.calculateVerificationValues({
+                jabatanText: emp.jabatan_estate || emp.jabatan || "",
+                roleText: emp.jabatan || emp.role || "",
+                hariKerja: hari_kerja,
+                kehadiran: hk,
+                masaKerjaTahun,
+                isSpsiMember,
+                dbJabatanJumlah,
+                dbMasaKerjaJumlah,
+                dbPotSpsi,
+                useAutoBuffer
+            });
+            let jabatanJumlah = autoBufferVerification.display.jabatanAmount;
+            let masaKerjaJumlah = autoBufferVerification.display.masaKerjaAmount;
+            let jabatanRate = autoBufferVerification.display.jabatanRate;
+            let masaKerjaRate = autoBufferVerification.display.masaKerjaRate;
+            let pot_spsi = autoBufferVerification.display.spsiDeduction;
+            Object.assign(valueSyncFrame, autoBufferVerification.valueSyncFrame);
             valueSourceCompare.is_spsi_member = { db_ptrj: deriveInitialSpsiMember(dbPotSpsi), active: isSpsiMember };
-            valueSourceCompare.jabatan_jumlah = { db_ptrj: dbJabatanJumlah, active: jabatanJumlah };
-            valueSourceCompare.masa_kerja_jumlah = { db_ptrj: dbMasaKerjaJumlah, active: masaKerjaJumlah };
-            valueSourceCompare.pot_spsi = { db_ptrj: dbPotSpsi, active: pot_spsi };
-            if (hari_kerja > 0) {
-                const dbJabatanRate = dbJabatanJumlah / hari_kerja;
-                const dbMasaKerjaRate = dbMasaKerjaJumlah / hari_kerja;
-                valueSyncFrame.jabatan_rate = resolveSyncFrameColor(jabatanRate, dbJabatanRate);
-                valueSyncFrame.masa_kerja_rate = resolveSyncFrameColor(masaKerjaRate, dbMasaKerjaRate);
-                valueSourceCompare.jabatan_rate = { db_ptrj: dbJabatanRate, active: jabatanRate };
-                valueSourceCompare.masa_kerja_rate = { db_ptrj: dbMasaKerjaRate, active: masaKerjaRate };
-            }
+            Object.assign(valueSourceCompare, autoBufferVerification.valueSourceCompare);
 
             // Canonical totals:
             // - total_tunjangan is inclusive of lembur_jumlah

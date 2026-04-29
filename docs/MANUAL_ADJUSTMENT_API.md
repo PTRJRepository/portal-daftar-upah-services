@@ -1328,10 +1328,12 @@ Normalisasi `division_code` untuk `LocCode`:
 | Input Filter | SQL Pattern ke `DocDesc` | Contoh Penggunaan |
 |--------------|---------------------------|-------------------|
 | `spsi` / `potongan spsi` | `%SPSI%` | Cek potongan SPSI. |
-| `masa kerja` / `tunjangan masa kerja` | `MASA%KERJA%` | Cek tunjangan masa kerja. |
+| `masa kerja` / `tunjangan masa kerja` | `%MASA%KERJA%` | Cek tunjangan masa kerja, termasuk `TUNJANGAN MASA KERJA`. |
 | `jabatan` / `tunjangan jabatan` | `%JABATAN%` | Cek tunjangan jabatan. |
-| `premi` | `%PREMI%` | Cek premi secara umum. |
-| `potongan` | `POT%` | Cek potongan umum yang `DocDesc` diawali `POT`. |
+| `premi` | `%PREMI%`, `%INSENTIF%`, `%PANEN%`, `%KINERJA%`, `%RAWAT%`, `%PRUN%` | Cek premi dynamic. Keyword ini tidak menjadi kolom static. |
+| `brondol` | `%BRONDOL%` | Brondol special/static: jumlahkan ke kolom `brondol` yang sudah ada. |
+| `koreksi` | `%KOREKSI%` | Koreksi selalu masuk `potongan upah kotor` sebagai kolom dynamic. |
+| `potongan` | `POT%`, `POTONGAN%` | Cek potongan umum dynamic; tidak mencakup static SPSI/PPH dan tidak double-count `koreksi` jika filter `koreksi` juga dikirim. |
 | filter lain | `%FILTER%` | Cek premi/komponen dynamic berdasarkan keyword yang dikirim. |
 
 #### Contoh cURL
@@ -1359,7 +1361,7 @@ curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/check-adtrans/by-api-key"
     "period_month": 4,
     "period_year": 2026,
     "division_code": "P2A",
-    "filters": ["spsi", "masa kerja", "jabatan"]
+    "filters": ["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]
   }' | jq '.data.duplicate_report'
 ```
 
@@ -1466,7 +1468,7 @@ Aturan rekomendasi hapus:
 | `period_month` | number | ✅ | Bulan (1-12) |
 | `period_year` | number | ✅ | Tahun |
 | `division_code` | string | ✅ | Kode divisi (e.g. `AB1`, `PG2A`) |
-| `filters` | string[] | ❌ | Kategori filter (default: `['spsi', 'masa kerja', 'jabatan']`) |
+| `filters` | string[] | ❌ | Kategori filter (default: `['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan']`) |
 
 **Example:**
 
@@ -1478,7 +1480,7 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/compare-adtrans/by
     "period_month": 4,
     "period_year": 2026,
     "division_code": "AB1",
-    "filters": ["spsi", "masa kerja", "jabatan"]
+    "filters": ["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]
   }'
 ```
 
@@ -1551,6 +1553,9 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/compare-adtrans/by
 | `spsi` | `AUTO SPSI` |
 | `masa kerja` | `AUTO MASA KERJA` |
 | `jabatan` | `AUTO TUNJANGAN JABATAN` |
+| `premi` | `adjustment_type = 'PREMI'`, nama sesuai `adjustment_name` |
+| `koreksi` | `adjustment_type = 'POTONGAN_KOTOR'` dan `adjustment_name` mengandung `KOREKSI` |
+| `potongan` | `adjustment_type = 'POTONGAN_KOTOR'` selain `KOREKSI` |
 
 ---
 
@@ -1560,7 +1565,7 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/compare-adtrans/by
 
 Endpoint ini memakai bypass API key yang sama: header `X-API-Key` wajib diisi.
 
-**Aturan EmpCode PTRJ:** saat endpoint mengecek `PR_ADTRANS` / `PR_ADTRANS_ARC`, identifier employee selalu di-resolve dulu ke format `EmpCode` PTRJ yang diawali huruf, misalnya `A0001` atau `B0745`. Jika `payroll_manual_adjustments.emp_code` berisi NIK/KTP numeric, endpoint akan mencari pasangan di `HR_EMPLOYEE.NewICNo` lalu memakai `HR_EMPLOYEE.EmpCode` untuk query `PR_ADTRANS.EmpCode`. Jangan memakai NIK numeric langsung untuk query `PR_ADTRANS.EmpCode` karena akan menghasilkan false `EXTRA_IN_ADJUSTMENTS`.
+**Aturan EmpCode PTRJ:** saat endpoint mengecek `PR_ADTRANS` / `PR_ADTRANS_ARC`, identifier employee selalu di-resolve dulu ke format `EmpCode` PTRJ yang diawali huruf, misalnya `A0001` atau `B0745`. Jika `payroll_manual_adjustments.emp_code` berisi NIK/KTP numeric, endpoint akan mencari pasangan di `HR_EMPLOYEE.NewICNo` lalu memakai `HR_EMPLOYEE.EmpCode` untuk query `PR_ADTRANS.EmpCode`. Field response `emp_code` juga memakai EmpCode PTRJ letter; nilai numeric asal hanya muncul sebagai `stored_emp_identifier` jika berbeda. Jangan memakai NIK numeric langsung untuk query `PR_ADTRANS.EmpCode` karena akan menghasilkan false `EXTRA_IN_ADJUSTMENTS`.
 
 **Request Body:**
 
@@ -1569,7 +1574,7 @@ Endpoint ini memakai bypass API key yang sama: header `X-API-Key` wajib diisi.
 | `period_month` | number | ✅ | Bulan (1-12), dipakai sebagai `PhyMonth` saat cek `db_ptrj` |
 | `period_year` | number | ✅ | Tahun, dipakai sebagai `PhyYear` saat cek `db_ptrj` |
 | `division_code` | string | ✅ | Kode divisi, termasuk virtual division seperti `NRS` |
-| `filters` | string[] | ❌ | Kategori filter (default: `['spsi', 'masa kerja', 'jabatan']`) |
+| `filters` | string[] | ❌ | Kategori filter (default: `['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan']`) |
 
 **Example:**
 
@@ -1581,7 +1586,7 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/reverse-compare-ad
     "period_month": 4,
     "period_year": 2026,
     "division_code": "NRS",
-    "filters": ["spsi", "masa kerja", "jabatan"]
+    "filters": ["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]
   }'
 ```
 
@@ -1595,7 +1600,7 @@ curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/reverse-compare
     "period_month": 4,
     "period_year": 2026,
     "division_code": "NRS",
-    "filters": ["spsi", "masa kerja", "jabatan"]
+    "filters": ["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]
   }' | jq '.data.comparisons[] | select(.status == "EXTRA_IN_ADJUSTMENTS")'
 ```
 
@@ -1684,7 +1689,7 @@ curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/reverse-compare
 | `period_month` | number | ✅ | Bulan (1-12) |
 | `period_year` | number | ✅ | Tahun |
 | `division_code` | string | ✅ | Kode divisi (e.g. `AB1`, `PG2A`) |
-| `filters` | string[] | ❌ | Kategori filter (default: `['spsi', 'masa kerja', 'jabatan']`) |
+| `filters` | string[] | ❌ | Kategori filter (default: `['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan']`) |
 | `sync_mode` | string | ❌ | Mode sync: `MISSING_ONLY`, `MISMATCH_AND_MISSING`, `ALL` (default: `MISMATCH_AND_MISSING`) |
 | `created_by` | string | ❌ | User pencatat (default: `sync_adtrans_api`) |
 

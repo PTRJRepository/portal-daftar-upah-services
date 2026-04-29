@@ -1,5 +1,6 @@
 import { Database } from "../db/client";
 import { cacheService } from "./cacheService";
+import { ADTRANS_DYNAMIC_PREMI_PATTERNS } from "./payroll/adtransDocDescMapping";
 
 interface ColumnDef {
     field: string;
@@ -80,6 +81,9 @@ export class HeaderService {
             : `${year}-${(month + 1).toString().padStart(2, "0")}-01`;
 
         try {
+            const premiCondition = ADTRANS_DYNAMIC_PREMI_PATTERNS
+                .map((pattern) => `UPPER(t.DocDesc) LIKE '${pattern}'`)
+                .join(" OR ");
             const sql = gangCode
                 ? `
                     SELECT DISTINCT t.DocDesc
@@ -88,8 +92,9 @@ export class HeaderService {
                     JOIN HR_GANGLN g ON ln.EmpCode = g.GangMember
                     WHERE g.GangCode = ?
                       AND t.DocDate >= ? AND t.DocDate < ?
-                      AND UPPER(t.DocDesc) LIKE '%PREMI%'
+                      AND (${premiCondition})
                       AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
+                      AND UPPER(t.DocDesc) NOT LIKE '%BRONDOL%'
                       AND ln.Amount > 0
                     ORDER BY t.DocDesc
                 `
@@ -98,8 +103,9 @@ export class HeaderService {
                     FROM PR_ADTRANS_ARC t
                     JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
                     WHERE t.DocDate >= ? AND t.DocDate < ?
-                      AND UPPER(t.DocDesc) LIKE '%PREMI%'
+                      AND (${premiCondition})
                       AND UPPER(t.DocDesc) NOT LIKE '%ADJ%'
+                      AND UPPER(t.DocDesc) NOT LIKE '%BRONDOL%'
                       AND ln.Amount > 0
                     ORDER BY t.DocDesc
                 `;
@@ -158,8 +164,8 @@ export class HeaderService {
             const params = gangCode ? [gangCode, startDate, endDate] : [startDate, endDate];
             const rows = await this.db.query<{ DocDesc: string }>(sql, params);
 
-            // Filter out PPH21, SPSI, BPJS, koreksi, ADJ
-            const excluded = ["pph21", "spsi", "bpjs", "astek", "koreksi", "sehat", "adj"];
+            // Filter out static/non-dynamic potongan headers.
+            const excluded = ["pph21", "spsi", "bpjs", "astek", "sehat", "adj"];
             const headers = rows
                 .map(r => r.DocDesc?.trim())
                 .filter(h => {

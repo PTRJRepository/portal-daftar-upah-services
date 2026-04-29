@@ -7,6 +7,14 @@ import {
     normalizeStoredAdjustmentName,
     shouldDeleteStoredAdjustment
 } from "./payroll/manualAdjustments/manualAdjustmentNaming";
+import {
+    buildAdtransDocDescSqlCondition,
+    buildAdtransDocDescSqlPatterns,
+    matchesAdtransDocDescFilter,
+    normalizeAdtransFilter,
+    normalizeAdtransPotonganField,
+    mapAdtransPremiField
+} from "./payroll/adtransDocDescMapping";
 
 function buildNormalizedSqlNameExpression(columnName: string): string {
     let expression = `UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(REPLACE(${columnName}, CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), CHAR(160), ' '))))`;
@@ -54,29 +62,8 @@ export interface ReverseAdtransComparisonItem {
     remarks: string | null;
 }
 
-function normalizeAdtransFilter(filter: string): string {
-    const filterKey = filter.toLowerCase().trim();
-
-    if (filterKey.includes('spsi')) return 'spsi';
-    if (filterKey.includes('masa')) return 'masa kerja';
-    if (filterKey.includes('jabatan')) return 'jabatan';
-    if (filterKey.includes('premi')) return 'premi';
-    if (filterKey.includes('potongan')) return 'potongan';
-
-    return filterKey;
-}
-
 function matchesAdtransFilter(docDesc: string, filter: string): boolean {
-    const category = normalizeAdtransFilter(filter);
-    const normalizedDocDesc = docDesc.toUpperCase();
-
-    if (category === 'spsi') return normalizedDocDesc.includes('SPSI');
-    if (category === 'masa kerja') return normalizedDocDesc.includes('MASA') && normalizedDocDesc.includes('KERJA');
-    if (category === 'jabatan') return normalizedDocDesc.includes('JABATAN');
-    if (category === 'premi') return normalizedDocDesc.includes('PREMI');
-    if (category === 'potongan') return normalizedDocDesc.startsWith('POT');
-
-    return normalizedDocDesc.includes(category.toUpperCase());
+    return matchesAdtransDocDescFilter(docDesc, filter);
 }
 
 function normalizeAdtransDivisionLocCode(divisionCode: string): string {
@@ -116,17 +103,19 @@ function resolveAdtransLocCode(divisionCode: string): string {
     return normalizeAdtransDivisionLocCode(resolved);
 }
 
-function buildAdtransSqlPattern(filter: string): string {
-    const category = normalizeAdtransFilter(filter);
-
-    if (category === 'spsi') return '%SPSI%';
-    if (category === 'masa kerja') return '%MASA%KERJA%';
-    if (category === 'jabatan') return '%JABATAN%';
-    if (category === 'premi') return '%PREMI%';
-    if (category === 'potongan') return 'POT%';
-
-    return `%${category.toUpperCase()}%`;
+function buildAdtransSqlPatterns(filter: string): string[] {
+    return buildAdtransDocDescSqlPatterns(filter);
 }
+
+function buildAdtransSqlPattern(filter: string): string {
+    return buildAdtransSqlPatterns(filter)[0];
+}
+
+function buildAdtransSqlCondition(columnName: string, filter: string): string {
+    return buildAdtransDocDescSqlCondition(columnName, filter);
+}
+
+const DEFAULT_ADTRANS_COMPARE_FILTERS = ['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan'];
 
 function normalizeText(value: unknown): string {
     return String(value || '').trim();
@@ -646,8 +635,7 @@ export class ManualAdjustmentService {
         const scopeSql = `(${scopeClauses.join(' OR ')})`;
         const normalizedFilters = filters.map(normalizeAdtransFilter);
         const caseStatements = normalizedFilters.map((filterKey) => {
-            const sqlLike = buildAdtransSqlPattern(filterKey).replace(/'/g, "''");
-            return `SUM(CASE WHEN UPPER(DocDesc) LIKE '${sqlLike}' THEN Amount ELSE 0 END) as [${filterKey}]`;
+            return `SUM(CASE WHEN ${buildAdtransSqlCondition('DocDesc', filterKey)} THEN Amount ELSE 0 END) as [${filterKey}]`;
         }).join(", ");
 
         // IMPORTANT: diambil dari phymonth dan phyyear itu adalah real monthnya sesuai kalender
@@ -681,6 +669,12 @@ export class ManualAdjustmentService {
             GROUP BY emp_code
         `;
         
+        const duplicateDocDescConditions = normalizedFilters
+            .flatMap((filter) => buildAdtransSqlPatterns(filter))
+            .map(() => 'UPPER(t.DocDesc) LIKE ?')
+            .join(' OR ');
+        const patternParams = normalizedFilters.flatMap((filter) => buildAdtransSqlPatterns(filter));
+
         const duplicateQuery = `
             SELECT
                 t.ID as id,
@@ -695,7 +689,7 @@ export class ManualAdjustmentService {
             WHERE ${scopeSql}
               AND t.PhyMonth = ?
               AND t.PhyYear = ?
-              AND (${normalizedFilters.map(() => 'UPPER(t.DocDesc) LIKE ?').join(' OR ')})
+              AND (${duplicateDocDescConditions})
             GROUP BY t.ID, t.DocID, t.DocDate, t.DocDesc, t.EmpCode, t.EmpName
 
             UNION ALL
@@ -713,11 +707,10 @@ export class ManualAdjustmentService {
             WHERE ${scopeSql}
               AND t.PhyMonth = ?
               AND t.PhyYear = ?
-              AND (${normalizedFilters.map(() => 'UPPER(t.DocDesc) LIKE ?').join(' OR ')})
+              AND (${duplicateDocDescConditions})
             GROUP BY t.ID, t.DocID, t.DocDate, t.DocDesc, t.EmpCode, t.EmpName
         `;
 
-        const patternParams = normalizedFilters.map((filter) => buildAdtransSqlPattern(filter));
         const [rows, duplicateRows] = await Promise.all([
             dbMain.query<any>(adtransQuery, [
                 ...scopeParams,
@@ -754,7 +747,7 @@ export class ManualAdjustmentService {
         periodMonth: number,
         periodYear: number,
         divisionCode: string,
-        filters: string[] = ['spsi', 'masa kerja', 'jabatan', 'premi', 'potongan']
+        filters: string[] = DEFAULT_ADTRANS_COMPARE_FILTERS
     ): Promise<{
         division: string;
         period_month: number;
@@ -791,8 +784,7 @@ export class ManualAdjustmentService {
 
         // 1. Get PR_ADTRANS totals per employee per category from db_ptrj
         const caseStatements = normalizedFilters.map((filterKey) => {
-            const sqlLike = buildAdtransSqlPattern(filterKey).replace(/'/g, "''");
-            return `SUM(CASE WHEN UPPER(DocDesc) LIKE '${sqlLike}' THEN Amount ELSE 0 END) as [${filterKey}]`;
+            return `SUM(CASE WHEN ${buildAdtransSqlCondition('DocDesc', filterKey)} THEN Amount ELSE 0 END) as [${filterKey}]`;
         }).join(", ");
         const requestedDivision = divisionConfigService.getDivision(divisionCode);
         const virtualGangCodes = requestedDivision?.type === 'virtual'
@@ -861,6 +853,7 @@ export class ManualAdjustmentService {
         const adjustmentRows = await dbExtend.query<any>(`
             SELECT
                 emp_code,
+                adjustment_type,
                 adjustment_name,
                 amount,
                 remarks,
@@ -868,29 +861,36 @@ export class ManualAdjustmentService {
                 division_code
             FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ?
-              AND adjustment_type = 'AUTO_BUFFER'
               AND UPPER(RTRIM(division_code)) IN (${adjustmentDivisionCodes.map(() => '?').join(',')})
         `, [periodMonth, periodYear, ...adjustmentDivisionCodes]);
 
-        // 3. Build map of stored adjustments: emp_code -> adjustment_name -> amount
-        const storedMap = new Map<string, Map<string, { amount: number; remarks: string; gang_code: string }>>();
-        for (const row of adjustmentRows) {
-            const empCode = String(row.emp_code || '').trim().toUpperCase();
-            const adjName = String(row.adjustment_name || '').trim().toUpperCase();
-            if (!storedMap.has(empCode)) storedMap.set(empCode, new Map());
-            storedMap.get(empCode)!.set(adjName, {
-                amount: Number(row.amount || 0),
-                remarks: String(row.remarks || ''),
-                gang_code: String(row.gang_code || '')
-            });
-        }
-
-        // 4. Map ADTRANS category to AUTO_BUFFER adjustment name
         const categoryToAdjustmentName: Record<string, string> = {
             'spsi': 'AUTO SPSI',
             'masa kerja': 'AUTO MASA KERJA',
             'jabatan': 'AUTO TUNJANGAN JABATAN'
         };
+
+        // 3. Build map of stored adjustments: emp_code -> category -> amount
+        const storedMap = new Map<string, Map<string, { amount: number; remarks: string; gang_code: string; adjustment_name: string }>>();
+        for (const row of adjustmentRows) {
+            const empCode = String(row.emp_code || '').trim().toUpperCase();
+            const adjustmentType = String(row.adjustment_type || '').trim().toUpperCase();
+            const adjustmentName = String(row.adjustment_name || '').trim().toUpperCase();
+            let category = normalizedFilters.find((filterKey) => categoryToAdjustmentName[filterKey] === adjustmentName);
+            if (!category && adjustmentType === 'PREMI') category = 'premi';
+            if (!category && adjustmentType === 'POTONGAN_KOTOR') category = adjustmentName.includes('KOREKSI') ? 'koreksi' : 'potongan';
+            if (!category || !normalizedFilters.includes(category)) continue;
+
+            if (!storedMap.has(empCode)) storedMap.set(empCode, new Map());
+            storedMap.get(empCode)!.set(category, {
+                amount: Number(row.amount || 0),
+                remarks: String(row.remarks || ''),
+                gang_code: String(row.gang_code || ''),
+                adjustment_name: adjustmentName
+            });
+        }
+
+        // 4. Map ADTRANS category to adjustment name
 
         // 5. Compare each employee's ADTRANS values with stored adjustments
         const comparisons: AdtransComparisonItem[] = [];
@@ -906,11 +906,9 @@ export class ManualAdjustmentService {
 
             for (const filterKey of normalizedFilters) {
                 const sourceAmount = Number(adtransRow[filterKey] || 0);
-                const adjustmentName = categoryToAdjustmentName[filterKey];
-                if (!adjustmentName) continue; // skip non-AUTO_BUFFER categories like 'premi', 'potongan'
-
-                const stored = empStored?.get(adjustmentName);
+                const stored = empStored?.get(filterKey);
                 if (Math.abs(sourceAmount) <= 0.01 && !stored) continue;
+                const adjustmentName = stored?.adjustment_name || categoryToAdjustmentName[filterKey] || filterKey.toUpperCase();
 
                 const storedAmount = stored ? Number(stored.amount || 0) : null;
 
@@ -944,7 +942,7 @@ export class ManualAdjustmentService {
             division: divisionCode,
             period_month: periodMonth,
             period_year: periodYear,
-            compared_categories: normalizedFilters.filter(f => categoryToAdjustmentName[f]),
+            compared_categories: normalizedFilters,
             total_employees: adtransRows.length,
             match_count: matchCount,
             mismatch_count: mismatchCount,
@@ -958,7 +956,7 @@ export class ManualAdjustmentService {
         periodMonth: number,
         periodYear: number,
         divisionCode: string,
-        filters: string[] = ['spsi', 'masa kerja', 'jabatan']
+        filters: string[] = DEFAULT_ADTRANS_COMPARE_FILTERS
     ): Promise<{
         division: string;
         period_month: number;
@@ -977,26 +975,10 @@ export class ManualAdjustmentService {
             'masa kerja': 'AUTO MASA KERJA',
             'jabatan': 'AUTO TUNJANGAN JABATAN'
         };
-        const adjustmentNameToCategory = new Map(
-            normalizedFilters
-                .filter((filterKey) => categoryToAdjustmentName[filterKey])
-                .map((filterKey) => [categoryToAdjustmentName[filterKey], filterKey])
-        );
-        const adjustmentNames = Array.from(adjustmentNameToCategory.keys());
-
-        if (adjustmentNames.length === 0) {
-            return {
-                division: divisionCode,
-                period_month: periodMonth,
-                period_year: periodYear,
-                compared_categories: [],
-                total_adjustments: 0,
-                match_count: 0,
-                mismatch_count: 0,
-                extra_in_adjustments: 0,
-                comparisons: []
-            };
-        }
+        const autoBufferAdjustmentNames = normalizedFilters
+            .filter((filterKey) => categoryToAdjustmentName[filterKey])
+            .map((filterKey) => categoryToAdjustmentName[filterKey]);
+        const includesManualCategories = normalizedFilters.some((filterKey) => ['premi', 'koreksi', 'potongan'].includes(filterKey));
 
         const normalizedDivisionCode = resolveAdtransLocCode(divisionCode);
         const adjustmentDivisionCodes = Array.from(new Set([
@@ -1007,6 +989,7 @@ export class ManualAdjustmentService {
         const adjustmentRows = await dbExtend.query<any>(`
             SELECT
                 emp_code,
+                adjustment_type,
                 adjustment_name,
                 amount,
                 remarks,
@@ -1014,11 +997,13 @@ export class ManualAdjustmentService {
                 division_code
             FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ?
-              AND adjustment_type = 'AUTO_BUFFER'
               AND UPPER(RTRIM(division_code)) IN (${adjustmentDivisionCodes.map(() => '?').join(',')})
-              AND UPPER(RTRIM(adjustment_name)) IN (${adjustmentNames.map(() => '?').join(',')})
+              AND (
+                  (adjustment_type = 'AUTO_BUFFER' AND UPPER(RTRIM(adjustment_name)) IN (${autoBufferAdjustmentNames.length ? autoBufferAdjustmentNames.map(() => '?').join(',') : "''"}))
+                  ${includesManualCategories ? "OR adjustment_type IN ('PREMI', 'POTONGAN_KOTOR')" : ""}
+              )
             ORDER BY emp_code, adjustment_name
-        `, [periodMonth, periodYear, ...adjustmentDivisionCodes, ...adjustmentNames]);
+        `, [periodMonth, periodYear, ...adjustmentDivisionCodes, ...autoBufferAdjustmentNames]);
 
         const dbPtrj = Database.getInstance();
         const ptrjEmpCodeByStoredIdentifier = new Map<string, string>();
@@ -1066,8 +1051,13 @@ export class ManualAdjustmentService {
             const empCode = String(row.emp_code || '').trim();
             const ptrjEmpCode = ptrjEmpCodeByStoredIdentifier.get(empCode) || empCode.toUpperCase();
             const adjustmentName = String(row.adjustment_name || '').trim().toUpperCase();
-            const category = adjustmentNameToCategory.get(adjustmentName);
-            if (!category) continue;
+            const adjustmentType = String(row.adjustment_type || '').trim().toUpperCase();
+            let category = normalizedFilters.find((filterKey) => categoryToAdjustmentName[filterKey] === adjustmentName);
+            if (!category && adjustmentType === 'PREMI') category = 'premi';
+            if (!category && adjustmentType === 'POTONGAN_KOTOR') {
+                category = adjustmentName.includes('KOREKSI') ? 'koreksi' : 'potongan';
+            }
+            if (!category || !normalizedFilters.includes(category)) continue;
 
             const storedAmount = Number(row.amount || 0);
             const sourceAmount = Number(sourceMap.get(ptrjEmpCode)?.[category] || 0);
@@ -1102,7 +1092,7 @@ export class ManualAdjustmentService {
             division: divisionCode,
             period_month: periodMonth,
             period_year: periodYear,
-            compared_categories: normalizedFilters.filter((filterKey) => categoryToAdjustmentName[filterKey]),
+            compared_categories: normalizedFilters,
             total_adjustments: comparisons.length,
             match_count: matchCount,
             mismatch_count: mismatchCount,
@@ -1120,7 +1110,7 @@ export class ManualAdjustmentService {
         periodMonth: number,
         periodYear: number,
         divisionCode: string,
-        filters: string[] = ['spsi', 'masa kerja', 'jabatan'],
+        filters: string[] = DEFAULT_ADTRANS_COMPARE_FILTERS,
         syncMode: 'MISSING_ONLY' | 'MISMATCH_AND_MISSING' | 'ALL' = 'MISMATCH_AND_MISSING',
         createdBy: string = 'sync_adtrans_api'
     ): Promise<{

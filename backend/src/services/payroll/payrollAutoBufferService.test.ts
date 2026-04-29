@@ -69,4 +69,23 @@ describe("payrollAutoBufferService", () => {
         expect(result.jabatanAmount).toBe(0);
         expect(result.jabatanUsedFallback).toBe(false);
     });
+
+    it("keeps db_ptrj display values while comparing against active auto-buffer values", () => {
+        const result = payrollAutoBufferService.calculateVerificationValues({
+            jabatanText: "karyawan",
+            roleText: "karyawan",
+            hariKerja: 25,
+            kehadiran: 25,
+            masaKerjaTahun: 3,
+            isSpsiMember: true,
+            dbJabatanJumlah: 400,
+            dbMasaKerjaJumlah: 0,
+            dbPotSpsi: 400,
+            useAutoBuffer: false
+        });
+
+        expect(result.display.spsiDeduction).toBe(400);
+        expect(result.valueSourceCompare.pot_spsi).toEqual({ db_ptrj: 400, active: 4000 });
+        expect(result.valueSyncFrame.pot_spsi).toBe("red");
+    });
 });

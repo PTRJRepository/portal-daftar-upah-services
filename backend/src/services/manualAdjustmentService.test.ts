@@ -340,6 +340,45 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         });
     });
 
+    it("maps ADTRANS DocDesc variants to comparison categories", () => {
+        const report = buildAdtransDuplicateReport([
+            { id: 1, doc_id: "DOC-SPSI", doc_date: "2026-04-01", doc_desc: "POTONGAN SPSI", emp_code: "A0001", emp_name: "BUDI", amount: 4000 },
+            { id: 2, doc_id: "DOC-MASA", doc_date: "2026-04-01", doc_desc: "TUNJANGAN MASA KERJA", emp_code: "A0001", emp_name: "BUDI", amount: 15000 },
+            { id: 3, doc_id: "DOC-JAB", doc_date: "2026-04-01", doc_desc: "TUNJANGAN JABATAN", emp_code: "A0001", emp_name: "BUDI", amount: 45000 },
+            { id: 4, doc_id: "DOC-PREM", doc_date: "2026-04-01", doc_desc: "INSENTIF PANEN", emp_code: "A0001", emp_name: "BUDI", amount: 5000 },
+            { id: 5, doc_id: "DOC-POT", doc_date: "2026-04-01", doc_desc: "POTONGAN ALAT", emp_code: "A0001", emp_name: "BUDI", amount: -1000 },
+            { id: 6, doc_id: "DOC-KOR", doc_date: "2026-04-01", doc_desc: "KOREKSI PANEN", emp_code: "A0001", emp_name: "BUDI", amount: -2000 }
+        ], ["spsi", "masa kerja", "jabatan", "premi", "potongan", "koreksi"]);
+
+        expect(report.duplicates).toEqual([]);
+    });
+
+    it("uses ADTRANS DocDesc business rules in direct check SQL patterns", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            await manualAdjustmentService.checkAdtransDirectly(4, 2026, ["A0001"], ["premi", "brondol", "koreksi", "potongan"], "P1A");
+
+            expect(calls[0].sql).toContain("LIKE '%PREMI%' OR UPPER(DocDesc) LIKE '%INSENTIF%' OR UPPER(DocDesc) LIKE '%PANEN%' OR UPPER(DocDesc) LIKE '%KINERJA%' OR UPPER(DocDesc) LIKE '%RAWAT%' OR UPPER(DocDesc) LIKE '%PRUN%'");
+            expect(calls[0].sql).toContain("LIKE '%BRONDOL%'");
+            expect(calls[0].sql).toContain("LIKE '%KOREKSI%'");
+            expect(calls[0].sql).toContain("LIKE 'POT%' OR UPPER(DocDesc) LIKE 'POTONGAN%'");
+            expect(calls[1].params).toContain("%BRONDOL%");
+            expect(calls[1].params).toContain("%KOREKSI%");
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("queries by normalized division LocCode when emp_codes is omitted", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
@@ -459,6 +498,31 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         }
     });
 
+    it("includes premi, koreksi, and potongan missing details in compare defaults", async () => {
+        const originalGetInstance = Database.getInstance;
+        const dbPtrj = {
+            query: async () => [{ emp_code: "A0001", nik: "1902050504860001", spsi: 0, "masa kerja": 0, jabatan: 0, premi: 5000, koreksi: -2000, potongan: -1000 }]
+        };
+        const dbExtend = {
+            query: async () => []
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await manualAdjustmentService.compareAdtransWithAdjustments(4, 2026, "P1A");
+
+            expect(result.compared_categories).toEqual(["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]);
+            expect(result.comparisons.map((item) => ({ emp_code: item.emp_code, category: item.category, status: item.status, source_amount: item.source_amount }))).toEqual([
+                { emp_code: "A0001", category: "premi", status: "MISSING", source_amount: 5000 },
+                { emp_code: "A0001", category: "koreksi", status: "MISSING", source_amount: -2000 },
+                { emp_code: "A0001", category: "potongan", status: "MISSING", source_amount: -1000 }
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("limits virtual division compare rows to the virtual gang scope", async () => {
         const originalGetInstance = Database.getInstance;
         const dbPtrj = {
@@ -536,6 +600,41 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
                 { emp_code: "B0745", category: "spsi", status: "MATCH" },
                 { emp_code: "B0746", category: "spsi", status: "EXTRA_IN_ADJUSTMENTS" },
                 { emp_code: "B0747", category: "masa kerja", status: "MISMATCH" }
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("includes premi, koreksi, and potongan rows in reverse compare defaults with PTRJ EmpCode", async () => {
+        const originalGetInstance = Database.getInstance;
+        const dbExtend = {
+            query: async () => [
+                { emp_code: "1902050504860001", adjustment_type: "PREMI", adjustment_name: "INSENTIF PANEN", amount: 5000, remarks: "premi manual", gang_code: "A2M", division_code: "P1A" },
+                { emp_code: "1902050504860001", adjustment_type: "POTONGAN_KOTOR", adjustment_name: "KOREKSI PANEN", amount: -2000, remarks: "koreksi manual", gang_code: "A2M", division_code: "P1A" },
+                { emp_code: "1902050504860001", adjustment_type: "POTONGAN_KOTOR", adjustment_name: "POTONGAN ALAT", amount: -1000, remarks: "potongan manual", gang_code: "A2M", division_code: "P1A" }
+            ]
+        };
+        let dbPtrjCall = 0;
+        const dbPtrj = {
+            queryOne: async (_sql: string) => ({ nik: "1902050504860001", emp_code: "A0001", emp_name: "BUDI TEST", gang_code: "A2M" }),
+            query: async () => {
+                dbPtrjCall++;
+                if (dbPtrjCall === 1) return [{ emp_code: "A0001", premi: 5000, koreksi: -2000, potongan: 0 }];
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await (manualAdjustmentService as any).reverseCompareAdtransWithAdjustments(4, 2026, "P1A");
+
+            expect(result.compared_categories).toEqual(["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]);
+            expect(result.comparisons.map((item: any) => ({ emp_code: item.emp_code, category: item.category, status: item.status }))).toEqual([
+                { emp_code: "A0001", category: "premi", status: "MATCH" },
+                { emp_code: "A0001", category: "koreksi", status: "MATCH" },
+                { emp_code: "A0001", category: "potongan", status: "EXTRA_IN_ADJUSTMENTS" }
             ]);
         } finally {
             (Database as any).getInstance = originalGetInstance;

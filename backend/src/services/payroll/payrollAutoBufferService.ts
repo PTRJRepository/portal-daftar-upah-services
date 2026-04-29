@@ -28,6 +28,11 @@ export interface PayrollAutoBufferInput {
     dbMasaKerjaJumlah?: number | null;
 }
 
+export interface PayrollAutoBufferVerificationInput extends PayrollAutoBufferInput {
+    dbPotSpsi?: number | null;
+    useAutoBuffer?: boolean | null;
+}
+
 export interface PayrollAutoBufferResult {
     jabatanAmount: number;
     jabatanRate: number;
@@ -36,6 +41,32 @@ export interface PayrollAutoBufferResult {
     masaKerjaRate: number;
     masaKerjaUsedFallback: boolean;
     spsiDeduction: number;
+}
+
+export interface PayrollAutoBufferVerificationResult {
+    display: {
+        jabatanAmount: number;
+        jabatanRate: number;
+        masaKerjaAmount: number;
+        masaKerjaRate: number;
+        spsiDeduction: number;
+    };
+    active: {
+        jabatanAmount: number;
+        jabatanRate: number;
+        masaKerjaAmount: number;
+        masaKerjaRate: number;
+        spsiDeduction: number;
+    };
+    db: {
+        jabatanAmount: number;
+        jabatanRate: number;
+        masaKerjaAmount: number;
+        masaKerjaRate: number;
+        spsiDeduction: number;
+    };
+    valueSyncFrame: Record<string, PayrollSyncFrameColor>;
+    valueSourceCompare: Record<string, { db_ptrj: number; active: number }>;
 }
 
 function toNumber(value: unknown): number {
@@ -255,6 +286,69 @@ class PayrollAutoBufferService {
 
     public calculateSpsiDeduction(isSpsiMember: boolean): number {
         return isSpsiMember ? 4000 : 0;
+    }
+
+    public calculateVerificationValues(input: PayrollAutoBufferVerificationInput): PayrollAutoBufferVerificationResult {
+        const hariKerja = Math.max(0, toNumber(input.hariKerja));
+        const dbJabatanAmount = toNumber(input.dbJabatanJumlah);
+        const dbMasaKerjaAmount = toNumber(input.dbMasaKerjaJumlah);
+        const dbSpsiDeduction = Math.abs(toNumber(input.dbPotSpsi));
+        const dbJabatanRate = hariKerja > 0 ? dbJabatanAmount / hariKerja : 0;
+        const dbMasaKerjaRate = hariKerja > 0 ? dbMasaKerjaAmount / hariKerja : 0;
+
+        const activeAutoBuffer = this.calculateAutomaticValues(input);
+        const useAutoBuffer = input.useAutoBuffer !== false;
+        const display = useAutoBuffer
+            ? {
+                jabatanAmount: activeAutoBuffer.jabatanAmount,
+                jabatanRate: activeAutoBuffer.jabatanRate,
+                masaKerjaAmount: activeAutoBuffer.masaKerjaAmount,
+                masaKerjaRate: activeAutoBuffer.masaKerjaRate,
+                spsiDeduction: activeAutoBuffer.spsiDeduction
+            }
+            : {
+                jabatanAmount: dbJabatanAmount,
+                jabatanRate: dbJabatanRate,
+                masaKerjaAmount: dbMasaKerjaAmount,
+                masaKerjaRate: dbMasaKerjaRate,
+                spsiDeduction: dbSpsiDeduction
+            };
+
+        const active = {
+            jabatanAmount: activeAutoBuffer.jabatanAmount,
+            jabatanRate: activeAutoBuffer.jabatanRate,
+            masaKerjaAmount: activeAutoBuffer.masaKerjaAmount,
+            masaKerjaRate: activeAutoBuffer.masaKerjaRate,
+            spsiDeduction: activeAutoBuffer.spsiDeduction
+        };
+        const db = {
+            jabatanAmount: dbJabatanAmount,
+            jabatanRate: dbJabatanRate,
+            masaKerjaAmount: dbMasaKerjaAmount,
+            masaKerjaRate: dbMasaKerjaRate,
+            spsiDeduction: dbSpsiDeduction
+        };
+
+        return {
+            display,
+            active,
+            db,
+            valueSyncFrame: {
+                jabatan_jumlah: resolveSyncColor(active.jabatanAmount, db.jabatanAmount),
+                masa_kerja_jumlah: resolveSyncColor(active.masaKerjaAmount, db.masaKerjaAmount),
+                pot_spsi: resolveSyncColor(active.spsiDeduction, db.spsiDeduction),
+                spsi: resolveSyncColor(active.spsiDeduction, db.spsiDeduction),
+                jabatan_rate: resolveSyncColor(active.jabatanRate, db.jabatanRate),
+                masa_kerja_rate: resolveSyncColor(active.masaKerjaRate, db.masaKerjaRate)
+            },
+            valueSourceCompare: {
+                jabatan_jumlah: { db_ptrj: db.jabatanAmount, active: active.jabatanAmount },
+                masa_kerja_jumlah: { db_ptrj: db.masaKerjaAmount, active: active.masaKerjaAmount },
+                pot_spsi: { db_ptrj: db.spsiDeduction, active: active.spsiDeduction },
+                jabatan_rate: { db_ptrj: db.jabatanRate, active: active.jabatanRate },
+                masa_kerja_rate: { db_ptrj: db.masaKerjaRate, active: active.masaKerjaRate }
+            }
+        };
     }
 }
 

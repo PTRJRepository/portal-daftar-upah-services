@@ -8,6 +8,7 @@ import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
 import PayrollScrollChapterBar from './PayrollScrollChapterBar';
 import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
+import { DeferredPayrollNumberInput } from './PayrollDeferredEditInput';
 import { deleteManualAdjustmentColumn } from '../services/manualAdjustmentService';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
@@ -112,6 +113,7 @@ const formatBytes = (bytes) => {
 };
 
 const clampNumber = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
+const EMPTY_CELL_STYLE = Object.freeze({});
 
 const getInitialViewportWidth = () => {
     if (typeof window === 'undefined') return 1920;
@@ -659,11 +661,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         if (stream.gangs && stream.gangs.length > 0 && rows.length > 0) {
             // Merge stream rows with any pending edits
             if (Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0) {
-                const editedCellEntries = Object.values(editedCells);
+                const editedCellsByEmployee = new Map();
+                Object.values(editedCells).forEach((item) => {
+                    const empCode = item?.emp_code || item?.nik;
+                    if (!empCode) return;
+                    const existing = editedCellsByEmployee.get(empCode);
+                    if (existing) {
+                        existing.push(item);
+                    } else {
+                        editedCellsByEmployee.set(empCode, [item]);
+                    }
+                });
+
                 resultRows = rows.map(row => {
                     if (row.type !== 'employee') return row;
                     const empCode = row.emp_code || row.nik;
-                    const employeeEdits = editedCellEntries.filter((item) => (item?.emp_code || item?.nik) === empCode);
+                    const employeeEdits = editedCellsByEmployee.get(empCode) || [];
                     const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
                     if (employeeEdits.length === 0 && !kontanEdit) return row;
 
@@ -1044,13 +1057,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             };
         });
 
-        // Optimistically update the UI
-        setRows(prevRows => prevRows.map(row => {
-            if ((row.emp_code || row.nik) === empCode) {
-                return { ...row, [field]: numValue };
-            }
-            return row;
-        }));
+        // Pending edits are applied through displayRows overlay; avoid rewriting
+        // the full row set for every committed input value.
     };
 
     const handleProfileEdit = (row, field, value) => {
@@ -2419,7 +2427,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
                             if (isEditMode && row.type === 'employee') {
                                 const displayVal = editedCells[editKey]?.value ?? val;
-                                return <input type="number" step="any" className={`edit-input ${isEdited ? 'cell-edited' : ''}`} value={displayVal === 0 ? '' : displayVal} onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'PREMI', canonicalName)} placeholder="0" onClick={(e) => e.stopPropagation()} />;
+                                return (
+                                    <DeferredPayrollNumberInput
+                                        className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                        value={displayVal}
+                                        emptyWhenZero
+                                        onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'PREMI', canonicalName)}
+                                        placeholder="0"
+                                    />
+                                );
                             }
 
                             if (val === 0) return '-';
@@ -2469,11 +2485,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     const hasPendingDelete = cellEdit && cellEdit.value === 0;
                     return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <input
-                                type="number" step="any" className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
+                            <DeferredPayrollNumberInput
+                                className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
                                 value={displayVal}
-                                onChange={(e) => {
-                                    const rawVal = e.target.value;
+                                onCommit={(rawVal) => {
                                     const newVal = parsePayrollInputNumber(rawVal);
                                     if (newVal === null) return;
                                     setEditedKontanCells(prev => {
@@ -2491,9 +2506,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             }
                                         };
                                     });
-                                    setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: newVal } : r));
                                 }}
-                                placeholder="0" onClick={(e) => e.stopPropagation()} style={{ width: '65px' }}
+                                placeholder="0"
+                                style={{ width: '65px' }}
                             />
                             {hasPendingDelete && (
                                 <button
@@ -2605,7 +2620,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const editKey = `${empCode}-${field}`;
                             const isEdited = !!editedCells[editKey];
                             const displayVal = editedCells[editKey]?.value ?? val;
-                            return <input type="number" step="any" className={`edit-input ${isEdited ? 'cell-edited' : ''}`} value={displayVal === 0 ? '' : displayVal} onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'POTONGAN_KOTOR', canonicalName)} placeholder="0" onClick={(e) => e.stopPropagation()} />;
+                            return (
+                                <DeferredPayrollNumberInput
+                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                    value={displayVal}
+                                    emptyWhenZero
+                                    onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'POTONGAN_KOTOR', canonicalName)}
+                                    placeholder="0"
+                                />
+                            );
                         }
                         return val === 0 ? '-' : formatNumber(val);
                     }
@@ -2750,14 +2773,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const isEdited = !!editedCells[editKey];
                             const displayVal = editedCells[editKey]?.value ?? val;
                             return (
-                                <input
-                                    type="number"
-                                    step="any"
+                                <DeferredPayrollNumberInput
                                     className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                    value={displayVal === 0 ? '' : displayVal}
-                                    onChange={(e) => handleCellEdit(row, field, e.target.value, val, 'POTONGAN_BERSIH', canonicalName)}
+                                    value={displayVal}
+                                    emptyWhenZero
+                                    onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'POTONGAN_BERSIH', canonicalName)}
                                     placeholder="0"
-                                    onClick={(e) => e.stopPropagation()}
                                 />
                             );
                         }
@@ -2935,14 +2956,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const compare = row?.value_source_compare?.[field];
         if (!compare) return renderedValue;
 
-        // SPSI is auto-buffer only; there is no manual edit, so hide raw db_ptrj comparison
-        if (field === 'pot_spsi') return renderedValue;
-
         const dbValue = compare.db_ptrj;
         const activeValue = compare.active;
         const dbText = formatSourceCompareValue(dbValue);
         const activeText = formatSourceCompareValue(activeValue);
-        const isSame = dbText === activeText;
+        const dbNumeric = Number(dbValue);
+        const activeNumeric = Number(activeValue);
+        const isSame = Number.isFinite(dbNumeric) && Number.isFinite(activeNumeric)
+            ? Math.abs(dbNumeric - activeNumeric) <= 0.01
+            : dbText === activeText;
 
         return (
             <div className="payroll-value-compare" title={`${activeText} | ${dbText}`}>
@@ -3290,27 +3312,31 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             onRowsGetterReady(() => displayRows);
         }
     }, [displayRows, onRowsGetterReady]);
-    // Helper to get body cell inline style from cookie preferences
-    const getCellGroupStyle = useCallback((group) => {
-        if (!group || !cellColors[group]) return {};
-        if (group === PANEN) {
-            return {
-                backgroundColor: '#f1f5f9',
-                color: '#64748b'
+    const cellGroupStyles = useMemo(() => {
+        const styles = {};
+        Object.entries(cellColors || {}).forEach(([group, colors]) => {
+            if (!colors) return;
+            styles[group] = {
+                backgroundColor: colors.bg,
+                color: colors.text
             };
-        }
-        if (group === UPAH_KOTOR) {
-            return {
-                backgroundColor: '#ecfdf5',
-                color: '#166534'
-            };
-        }
-        const colors = cellColors[group];
-        return {
-            backgroundColor: colors.bg,
-            color: colors.text
+        });
+        styles[PANEN] = {
+            backgroundColor: '#f1f5f9',
+            color: '#64748b'
         };
+        styles[UPAH_KOTOR] = {
+            backgroundColor: '#ecfdf5',
+            color: '#166534'
+        };
+        return styles;
     }, [cellColors]);
+
+    // Helper to get body cell inline style from cookie preferences.
+    const getCellGroupStyle = useCallback((group) => {
+        if (!group) return EMPTY_CELL_STYLE;
+        return cellGroupStyles[group] || EMPTY_CELL_STYLE;
+    }, [cellGroupStyles]);
 
     // Selection Logic - supports Ctrl+Click for multi-select
     const handleMouseDown = (e, rowIndex, colIndex, rowId) => {
@@ -3370,9 +3396,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         } else { setSelectionStats(null); }
     }, [selection, displayRows, renderColumnDefs]);
 
-    const isCellSelected = (r, c) => {
-        return selection.some(s => s.r === r && s.c === c);
-    };
+    const selectedCellKeys = useMemo(
+        () => new Set(selection.map((item) => `${item.r}-${item.c}`)),
+        [selection]
+    );
+
+    const isCellSelected = useCallback((r, c) => {
+        return selectedCellKeys.has(`${r}-${c}`);
+    }, [selectedCellKeys]);
 
     const handleContextMenu = (e, row) => {
         e.preventDefault();
@@ -4060,7 +4091,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             <PayrollScrollChapterBar
                 activeGroup={focusedGroup || 'IDENTITAS'}
                 allGroups={[...new Set(columnDefs.map(c => c.group).filter(Boolean))]}
-                isVisible={displayMode === 'simple' ? true : isChapterBarVisible}
+                isVisible={!isEditMode && (displayMode === 'simple' ? true : isChapterBarVisible)}
                 onSelectGroup={(group) => {
                     if (!group) return;
                     // Keep current mode; in simple mode this switches focused chapter directly.

@@ -180,31 +180,34 @@ async function main() {
             change.target_is_spsi_member ? 1 : 0,
             nextNikIndex?.next_index || 1,
             "SPSI_DB_PTRJ_SYNC_ONCE",
-            `One-time SPSI sync from db_ptrj amount ${change.db_ptrj_spsi_amount}`,
+            `SPSI sync amount ${change.db_ptrj_spsi_amount}`,
             "spsi-db-ptrj-sync-once"
         ]);
 
         if (change.letter_emp_code) {
-            const nextLetterIndex = await extDb.queryOne<any>(`
-                SELECT ISNULL(MAX(update_index), 0) + 1 AS next_index
-                FROM dbo.employee_profile_override_history
-                WHERE emp_code = ?
-            `, [change.letter_emp_code]);
+            const letterCodes = String(change.letter_emp_code).split(",").map((c) => c.trim()).filter(Boolean);
+            for (const code of letterCodes.slice(0, 1)) {
+                const nextLetterIndex = await extDb.queryOne<any>(`
+                    SELECT ISNULL(MAX(update_index), 0) + 1 AS next_index
+                    FROM dbo.employee_profile_override_history
+                    WHERE emp_code = ?
+                `, [code]);
 
-            await extDb.query(`
-                INSERT INTO dbo.employee_profile_override_history (
-                    emp_code, nik, is_spsi_member, effective_start_date, employee_status_at_change,
-                    update_index, change_source, change_reason, changed_by
-                ) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?)
-            `, [
-                change.letter_emp_code,
-                change.nik,
-                change.target_is_spsi_member ? 1 : 0,
-                nextLetterIndex?.next_index || 1,
-                "SPSI_DB_PTRJ_SYNC_ONCE",
-                `One-time SPSI sync from db_ptrj amount ${change.db_ptrj_spsi_amount}`,
-                "spsi-db-ptrj-sync-once"
-            ]);
+                await extDb.query(`
+                    INSERT INTO dbo.employee_profile_override_history (
+                        emp_code, nik, is_spsi_member, effective_start_date, employee_status_at_change,
+                        update_index, change_source, change_reason, changed_by
+                    ) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?)
+                `, [
+                    code,
+                    change.nik,
+                    change.target_is_spsi_member ? 1 : 0,
+                    nextLetterIndex?.next_index || 1,
+                    "SPSI_DB_PTRJ_SYNC_ONCE",
+                    `SPSI sync amount ${change.db_ptrj_spsi_amount}`,
+                    "spsi-db-ptrj-sync-once"
+                ]);
+            }
         }
     }
 

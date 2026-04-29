@@ -52,6 +52,7 @@ import PayslipPrintPage from './pages/PayslipPrintPage'
 
 // Report Pages
 import CustomPayrollTable from './components/CustomPayrollTable'
+import DbPtrjCompareReportModal from './components/DbPtrjCompareReportModal'
 import GangAttendanceMatrix from './components/GangAttendanceMatrix'
 import GangOvertimeMatrix from './components/GangOvertimeMatrix'
 import GangEmployeeInfo from './components/GangEmployeeInfo'
@@ -73,6 +74,7 @@ import { downloadTaxReportExcel, downloadMonthlyTaxReportExcelFromDOM } from './
 import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from './utils/payrollSnapshotQuery'
 import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payrollSourceMode'
 import { getEmployeeRows } from './utils/payrollRowAccessors'
+import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
 import ProductivityReportPage from './pages/ProductivityReportPage'
 import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
@@ -99,6 +101,7 @@ const OperationalReportWrapper = () => {
   const [exportLoading, setExportLoading] = useState(false);
   const [taxDomExportLoading, setTaxDomExportLoading] = useState(false);
   const [payrollRowsGetter, setPayrollRowsGetter] = useState(null);
+  const [dbPtrjCompareReport, setDbPtrjCompareReport] = useState(null);
   const [domPremiKeys, setDomPremiKeys] = useState([]);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -287,6 +290,21 @@ const OperationalReportWrapper = () => {
     }
   }
 
+  const handleOpenDbPtrjCompareReport = useCallback(() => {
+    const rows = payrollRowsGetter ? payrollRowsGetter() : [];
+    const report = buildDbPtrjCompareReport(rows);
+    setDbPtrjCompareReport({
+      ...report,
+      division,
+      gang,
+      gangPrefix,
+      month,
+      year,
+      generatedAt: new Date().toISOString()
+    });
+    setIsActionsOpen(false);
+  }, [division, gang, gangPrefix, month, payrollRowsGetter, year]);
+
   const handleOpenTaxReport = () => {
     const params = new URLSearchParams({
       division: division || '',
@@ -439,6 +457,7 @@ const OperationalReportWrapper = () => {
     }
     return periods;
   }, [month, year]);
+  const isDbPtrjCompareDisabled = viewMode !== 'table' || !payrollRowsGetter;
 
   if (!division) {
     return (
@@ -451,6 +470,13 @@ const OperationalReportWrapper = () => {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {dbPtrjCompareReport && (
+        <DbPtrjCompareReportModal
+          report={dbPtrjCompareReport}
+          onClose={() => setDbPtrjCompareReport(null)}
+        />
+      )}
+
       {/* Seeding Status Indicator (Only renders when seeding is active) */}
       {seedingStatus && (
         <div style={{
@@ -718,6 +744,27 @@ const OperationalReportWrapper = () => {
                     </select>
                   </div>
                 )}
+
+                <button
+                  onClick={handleOpenDbPtrjCompareReport}
+                  disabled={isDbPtrjCompareDisabled}
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.5rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: isDbPtrjCompareDisabled ? 'transparent' : '#fef2f2',
+                    color: isDbPtrjCompareDisabled ? '#94a3b8' : '#b91c1c',
+                    cursor: isDbPtrjCompareDisabled ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    gap: '8px',
+                    alignItems: 'center',
+                    fontWeight: 700
+                  }}
+                  title="Bandingkan nilai active/backend dengan nilai asli DB_PTRJ pada baris yang sedang tampil"
+                >
+                  Compare DB_PTRJ
+                </button>
                 
                 <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
                 

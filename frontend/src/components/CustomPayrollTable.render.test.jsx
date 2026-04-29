@@ -5,7 +5,13 @@ import { renderToString } from 'react-dom/server';
 import CustomPayrollTable from './CustomPayrollTable';
 
 const mocked = vi.hoisted(() => ({
-    chapterBarProps: null
+    chapterBarProps: null,
+    streamEmployee: {
+        nik: '3171',
+        emp_code: 'B0001',
+        gang_code: 'D1H',
+        emp_name: 'Test Employee'
+    }
 }));
 
 vi.mock('../utils/payrollViewportChapters', async () => {
@@ -25,12 +31,7 @@ vi.mock('../hooks/usePayrollStream', () => ({
             {
                 gang_code: 'D1H',
                 employees: [
-                    {
-                        nik: '3171',
-                        emp_code: 'B0001',
-                        gang_code: 'D1H',
-                        emp_name: 'Test Employee'
-                    }
+                    mocked.streamEmployee
                 ],
                 gang_totals: {}
             }
@@ -95,5 +96,36 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('Tambah kolom potongan bersih baru');
         expect(mocked.chapterBarProps?.isVisible).toBe(false);
         expect(() => mocked.chapterBarProps.onSelectGroup('IDENTITAS')).not.toThrow();
+    });
+
+    it('shows DB_PTRJ comparison for mismatched SPSI auto-buffer values with a red frame', () => {
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            pot_spsi: 4000,
+            value_source_compare: {
+                pot_spsi: { active: 4000, db_ptrj: 400 }
+            },
+            value_sync_frame: {
+                pot_spsi: 'red'
+            }
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+                valuePriorityMode="db_ptrj_only"
+            />
+        );
+
+        expect(html).toContain('title="4.000 | 400"');
+        expect(html).toContain('cell-sync-red');
+        expect(html).toContain('payroll-value-compare__meta is-mismatch');
     });
 });

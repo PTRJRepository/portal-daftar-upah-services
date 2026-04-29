@@ -923,7 +923,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 Number(period_month),
                 Number(period_year),
                 division_code,
-                filters || ['spsi', 'masa kerja', 'jabatan']
+                filters || ['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan']
             );
 
             return {
@@ -977,7 +977,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 Number(period_month),
                 Number(period_year),
                 division_code,
-                filters || ['spsi', 'masa kerja', 'jabatan']
+                filters || ['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan']
             );
 
             return {
@@ -1036,7 +1036,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 Number(period_month),
                 Number(period_year),
                 division_code,
-                filters || ['spsi', 'masa kerja', 'jabatan'],
+                filters || ['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan'],
                 syncMode as 'MISSING_ONLY' | 'MISMATCH_AND_MISSING' | 'ALL',
                 created_by || 'sync_adtrans_api'
             );
