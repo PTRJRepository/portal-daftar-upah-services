@@ -41,6 +41,7 @@ export interface AdtransComparisonItem {
 
 export interface ReverseAdtransComparisonItem {
     emp_code: string;
+    stored_emp_identifier: string | null;
     category: string;
     adjustment_name: string;
     stored_amount: number;
@@ -114,20 +115,6 @@ function resolveAdtransLocCode(divisionCode: string): string {
     return normalizeAdtransDivisionLocCode(resolved);
 }
 
-/**
- * Resolve a division code (real or virtual) to the LocCode used in PR_ADTRANS.
- * Virtual divisions (e.g. NRS, INF, WKS_AR) have a sourceDivision (e.g. PG1B, PG1A, AB2)
- * that maps to the actual LocCode in db_ptrj.
- */
-function resolveAdtransLocCode(divisionCode: string): string {
-    const resolved = divisionCode.trim().toUpperCase();
-    const sourceDivision = divisionConfigService.getSourceDivision(resolved);
-    if (sourceDivision) {
-        return normalizeAdtransDivisionLocCode(sourceDivision);
-    }
-    return normalizeAdtransDivisionLocCode(resolved);
-}
-
 function buildAdtransSqlPattern(filter: string): string {
     const category = normalizeAdtransFilter(filter);
 
@@ -181,7 +168,7 @@ function validateManualAdjustmentAdCode(data: ManualAdjustment): void {
     if (!manualAdjustmentRequiresAdCode(data.adjustment_type)) return;
 
     const remarks = normalizeText(data.remarks).toUpperCase();
-    const isManualColumnRequest = remarks.includes('INIT_COLUMN') || remarks.includes('AD CODE:') || remarks.includes('SYNC:');
+    const isManualColumnRequest = remarks.includes('INIT_COLUMN') || remarks.includes('AD CODE:');
     if (!isManualColumnRequest) return;
     if (resolveManualAdjustmentAdCode(data)) return;
 
@@ -718,6 +705,7 @@ export class ManualAdjustmentService {
         match_count: number;
         mismatch_count: number;
         missing_in_adjustments: number;
+        extra_in_db_ptrj: number;
         comparisons: AdtransComparisonItem[];
     }> {
         const dbPtrj = Database.getInstance(); // db_ptrj - source of truth
@@ -737,6 +725,7 @@ export class ManualAdjustmentService {
                 match_count: 0,
                 mismatch_count: 0,
                 missing_in_adjustments: 0,
+                extra_in_db_ptrj: 0,
                 comparisons: []
             };
         }
@@ -764,14 +753,17 @@ export class ManualAdjustmentService {
         const adtransQuery = `
             SELECT
                 emp_code,
+                MAX(nik) as nik,
                 ${caseStatements}
             FROM (
                 SELECT
                     RTRIM(t.EmpCode) as emp_code,
+                    RTRIM(ISNULL(e.NewICNo, '')) as nik,
                     t.DocDesc,
                     ln.Amount
                 FROM PR_ADTRANS t
                 ${gangJoin}
+                LEFT JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(t.EmpCode)
                 JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
                 WHERE UPPER(RTRIM(t.LocCode)) = ?
                   AND t.PhyMonth = ?
@@ -782,10 +774,12 @@ export class ManualAdjustmentService {
 
                 SELECT
                     RTRIM(t.EmpCode) as emp_code,
+                    RTRIM(ISNULL(e.NewICNo, '')) as nik,
                     t.DocDesc,
                     ln.Amount
                 FROM PR_ADTRANS_ARC t
                 ${gangJoin}
+                LEFT JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(t.EmpCode)
                 JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
                 WHERE UPPER(RTRIM(t.LocCode)) = ?
                   AND t.PhyMonth = ?
@@ -822,7 +816,7 @@ export class ManualAdjustmentService {
         // 3. Build map of stored adjustments: emp_code -> adjustment_name -> amount
         const storedMap = new Map<string, Map<string, { amount: number; remarks: string; gang_code: string }>>();
         for (const row of adjustmentRows) {
-            const empCode = String(row.emp_code || '').trim();
+            const empCode = String(row.emp_code || '').trim().toUpperCase();
             const adjName = String(row.adjustment_name || '').trim().toUpperCase();
             if (!storedMap.has(empCode)) storedMap.set(empCode, new Map());
             storedMap.get(empCode)!.set(adjName, {
@@ -844,10 +838,12 @@ export class ManualAdjustmentService {
         let matchCount = 0;
         let mismatchCount = 0;
         let missingCount = 0;
+        let extraInDbPtrjCount = 0;
 
         for (const adtransRow of adtransRows) {
-            const empCode = String(adtransRow.emp_code || '').trim();
-            const empStored = storedMap.get(empCode);
+            const empCode = String(adtransRow.emp_code || '').trim().toUpperCase();
+            const sourceNik = String(adtransRow.nik || '').trim().toUpperCase();
+            const empStored = storedMap.get(empCode) || (sourceNik ? storedMap.get(sourceNik) : undefined);
 
             for (const filterKey of normalizedFilters) {
                 const sourceAmount = Number(adtransRow[filterKey] || 0);
@@ -855,6 +851,8 @@ export class ManualAdjustmentService {
                 if (!adjustmentName) continue; // skip non-AUTO_BUFFER categories like 'premi', 'potongan'
 
                 const stored = empStored?.get(adjustmentName);
+                if (Math.abs(sourceAmount) <= 0.01 && !stored) continue;
+
                 const storedAmount = stored ? Number(stored.amount || 0) : null;
 
                 const isMatch = storedAmount !== null && Math.abs(sourceAmount - storedAmount) <= 0.01;
@@ -864,6 +862,10 @@ export class ManualAdjustmentService {
                 if (status === 'MATCH') matchCount++;
                 else if (status === 'MISMATCH') mismatchCount++;
                 else missingCount++;
+
+                if (Math.abs(sourceAmount) > 0.01 && status !== 'MATCH') {
+                    extraInDbPtrjCount++;
+                }
 
                 comparisons.push({
                     emp_code: empCode,
@@ -888,6 +890,7 @@ export class ManualAdjustmentService {
             match_count: matchCount,
             mismatch_count: mismatchCount,
             missing_in_adjustments: missingCount,
+            extra_in_db_ptrj: extraInDbPtrjCount,
             comparisons
         };
     }
@@ -1004,7 +1007,8 @@ export class ManualAdjustmentService {
             else mismatchCount++;
 
             comparisons.push({
-                emp_code: empCode,
+                emp_code: ptrjEmpCode,
+                stored_emp_identifier: empCode !== ptrjEmpCode ? empCode : null,
                 category,
                 adjustment_name: adjustmentName,
                 stored_amount: storedAmount,

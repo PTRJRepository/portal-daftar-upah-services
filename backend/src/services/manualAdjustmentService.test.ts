@@ -148,6 +148,41 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("allows edit-mode sync manual remarks without ADCode", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [{ id: 90 }];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI EXISTING",
+                amount: 1000,
+                remarks: "PREMI EXISTING | MANUAL EDIT | 1000 | sync:MANUAL | match:MANUAL"
+            });
+
+            expect(id).toBe(90);
+            expect(calls.some((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"))).toBe(true);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("stores emp_name when saving manual adjustment rows", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
@@ -329,6 +364,46 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         }
     });
 
+    it("reports db_ptrj values as mismatch when the stored adjustment is keyed by NIK with zero amount", async () => {
+        const originalGetInstance = Database.getInstance;
+        const dbPtrj = {
+            query: async () => [{ emp_code: "A0001", nik: "1902050504860001", spsi: 4000 }]
+        };
+        const dbExtend = {
+            query: async () => [{
+                emp_code: "1902050504860001",
+                adjustment_name: "AUTO SPSI",
+                amount: 0,
+                remarks: "AUTO SPSI | non-spsi | 0",
+                gang_code: "A2M",
+                division_code: "P1A"
+            }]
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await manualAdjustmentService.compareAdtransWithAdjustments(4, 2026, "P1A", ["spsi"]);
+
+            expect((result as any).extra_in_db_ptrj).toBe(1);
+            expect(result.mismatch_count).toBe(1);
+            expect(result.missing_in_adjustments).toBe(0);
+            expect(result.comparisons).toEqual([{
+                emp_code: "A0001",
+                category: "spsi",
+                adjustment_name: "AUTO SPSI",
+                source_amount: 4000,
+                stored_amount: 0,
+                diff: 4000,
+                status: "MISMATCH",
+                gang_code: "A2M",
+                remarks: "AUTO SPSI | non-spsi | 0"
+            }]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("limits virtual division compare rows to the virtual gang scope", async () => {
         const originalGetInstance = Database.getInstance;
         const dbPtrj = {
@@ -444,7 +519,8 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
 
             expect(result.match_count).toBe(1);
             expect(result.extra_in_adjustments).toBe(0);
-            expect(result.comparisons[0].emp_code).toBe("1902050504860001");
+            expect(result.comparisons[0].emp_code).toBe("A0001");
+            expect(result.comparisons[0].stored_emp_identifier).toBe("1902050504860001");
             expect(calls.some((call) => call.sql.includes("RTRIM(t.EmpCode) IN (?)") && call.params.includes("A0001"))).toBe(true);
             expect(calls.some((call) => call.sql.includes("RTRIM(t.EmpCode) IN (?)") && call.params.includes("1902050504860001"))).toBe(false);
         } finally {
