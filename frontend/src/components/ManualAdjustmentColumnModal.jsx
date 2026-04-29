@@ -15,6 +15,35 @@ const KOREKSI_DEFAULT_AD_CODE = 'DE0004';
 const KOREKSI_PREFIX = 'KOREKSI';
 const POTONGAN_PREFIX = 'POTONGAN';
 
+function expectedTaskDescPrefix(adjustmentType) {
+    if (adjustmentType === 'PREMI') return '(AL)';
+    if (adjustmentType === 'POTONGAN_KOTOR' || adjustmentType === 'POTONGAN_BERSIH') return '(DE)';
+    return '';
+}
+
+function normalizeSearchWords(value) {
+    return String(value || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, ' ')
+        .split(' ')
+        .filter((word) => word.length >= 3 && !['PREMI', 'POTONGAN', 'KOREKSI', 'MANUAL', 'EDIT', 'SYNC', 'MATCH'].includes(word));
+}
+
+function scoreTaskCodeOption(option, searchWords) {
+    const haystack = `${option?.task_desc || ''} ${option?.doc_desc || ''} ${option?.ad_code || ''} ${option?.task_code || ''} ${option?.base_task_code || ''}`.toUpperCase();
+    return searchWords.reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
+}
+
+function pickBestTaskCodeOption(options, adjustmentType, adjustmentName) {
+    const prefix = expectedTaskDescPrefix(adjustmentType);
+    const prefixedOptions = prefix
+        ? options.filter((option) => String(option.task_desc || option.doc_desc || '').trim().toUpperCase().startsWith(prefix))
+        : options;
+    const candidates = prefixedOptions.length ? prefixedOptions : options;
+    const searchWords = normalizeSearchWords(adjustmentName);
+    return [...candidates].sort((a, b) => scoreTaskCodeOption(b, searchWords) - scoreTaskCodeOption(a, searchWords))[0] || null;
+}
+
 function resolveAdCode(taskCodeOption) {
     return taskCodeOption?.ad_code || taskCodeOption?.base_task_code || taskCodeOption?.task_code || '';
 }
@@ -135,6 +164,13 @@ export default function ManualAdjustmentColumnModal({
     }, [adjustmentType, koreksiDefaultOption]);
 
     useEffect(() => {
+        if (!isOpen || selectedTaskCode || !resolvedAdjustmentName || options.length === 0) return;
+
+        const bestOption = pickBestTaskCodeOption(options, adjustmentType, resolvedAdjustmentName);
+        if (bestOption) setSelectedTaskCode(bestOption);
+    }, [isOpen, selectedTaskCode, resolvedAdjustmentName, options, adjustmentType]);
+
+    useEffect(() => {
         if (!isOpen || !token) return;
 
         let cancelled = false;
@@ -188,7 +224,6 @@ export default function ManualAdjustmentColumnModal({
 
     const canSave = Boolean(
         resolvedAdjustmentName
-        && selectedTaskCode
         && !nameError
         && !saving
     );
@@ -241,15 +276,19 @@ export default function ManualAdjustmentColumnModal({
         setSaving(true);
         setError('');
         try {
+            const fallbackTaskCode = selectedTaskCode || pickBestTaskCodeOption(options, adjustmentType, resolvedAdjustmentName);
+            const adCode = resolveAdCode(fallbackTaskCode);
             onSaved?.({
                 adjustment_type: adjustmentType,
                 adjustment_name: resolvedAdjustmentName,
-                ad_code: resolveAdCode(selectedTaskCode),
-                task_code: selectedTaskCode.task_code,
-                base_task_code: selectedTaskCode.base_task_code || resolveAdCode(selectedTaskCode),
-                task_desc: selectedTaskCode.task_desc,
-                loc_code: selectedTaskCode.loc_code,
-                remarks: presetRemarks || buildRemarks(selectedTaskCode, resolvedAdjustmentName, 0)
+                ad_code: adCode,
+                task_code: fallbackTaskCode?.task_code,
+                base_task_code: fallbackTaskCode?.base_task_code || adCode,
+                task_desc: fallbackTaskCode?.task_desc,
+                loc_code: fallbackTaskCode?.loc_code,
+                remarks: presetRemarks || (fallbackTaskCode
+                    ? buildRemarks(fallbackTaskCode, resolvedAdjustmentName, 0)
+                    : `${resolvedAdjustmentName} | MANUAL EDIT | 0 | sync:MISS | match:MISMATCH`)
             });
             onClose?.();
         } catch (e) {

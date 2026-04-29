@@ -240,7 +240,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     .post("/manual-adjustment-presets", async ({ body, currentUser, set }) => {
         try {
             const { manualAdjustmentPresetService } = await import("../services/manualAdjustmentPresetService");
-            const id = await manualAdjustmentPresetService.createPreset(body as any, currentUser?.username || "system");
+            const { resolveManualAdjustmentPresetMapping } = await import("../services/manualAdjustmentService");
+            const input = body as any;
+            const mappedFields = await resolveManualAdjustmentPresetMapping(input, input.adjustment_name);
+            const presetInput = { ...input, ...mappedFields };
+            const id = await manualAdjustmentPresetService.createPreset(presetInput, currentUser?.username || "system");
             return { success: true, id, message: "Manual adjustment preset saved successfully." };
         } catch (e: any) {
             console.error("[PayrollRoutes] manual-adjustment-presets POST error:", e);
@@ -251,7 +255,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         body: t.Object({
             adjustment_type: t.String(),
             adjustment_name: t.String(),
-            ad_code: t.String(),
+            ad_code: t.Optional(t.String()),
             task_code: t.Optional(t.String()),
             base_task_code: t.Optional(t.String()),
             task_desc: t.Optional(t.String()),

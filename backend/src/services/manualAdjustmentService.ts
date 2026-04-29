@@ -196,7 +196,7 @@ function scoreTaskCodeOption(option: TaskCodeOption, searchWords: string[]): num
     return searchWords.reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
 }
 
-async function resolveManualAdjustmentPresetMapping(data: ManualAdjustment, adjustmentName: string): Promise<Partial<ManualAdjustment>> {
+export async function resolveManualAdjustmentPresetMapping(data: ManualAdjustment, adjustmentName: string): Promise<Partial<ManualAdjustment>> {
     if (resolveManualAdjustmentAdCode(data)) return {};
 
     const prefix = expectedTaskDescPrefix(data.adjustment_type);
