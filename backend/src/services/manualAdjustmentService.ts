@@ -120,7 +120,7 @@ function buildAdtransSqlPattern(filter: string): string {
     const category = normalizeAdtransFilter(filter);
 
     if (category === 'spsi') return '%SPSI%';
-    if (category === 'masa kerja') return 'MASA%KERJA%';
+    if (category === 'masa kerja') return '%MASA%KERJA%';
     if (category === 'jabatan') return '%JABATAN%';
     if (category === 'premi') return '%PREMI%';
     if (category === 'potongan') return 'POT%';
@@ -203,12 +203,19 @@ export async function resolveManualAdjustmentPresetMapping(data: ManualAdjustmen
     if (!prefix) return {};
 
     const searchWords = normalizeSearchWords(`${adjustmentName} ${data.remarks || ""}`);
-    const options = await taskCodeOptionService.searchOptions({
-        search: searchWords[0] || prefix,
+    let options = await taskCodeOptionService.searchOptions({
+        search: searchWords[0] || undefined,
         divisionCode: data.division_code,
         limit: 100
     });
-    const matchingOptions = options.filter((option) => normalizeText(option.task_desc).toUpperCase().startsWith(prefix));
+    let matchingOptions = options.filter((option) => normalizeText(option.task_desc).toUpperCase().startsWith(prefix));
+    if (!matchingOptions.length) {
+        options = await taskCodeOptionService.searchOptions({
+            divisionCode: data.division_code,
+            limit: 100
+        });
+        matchingOptions = options.filter((option) => normalizeText(option.task_desc).toUpperCase().startsWith(prefix));
+    }
     const candidates = matchingOptions.length ? matchingOptions : options;
     const sorted = [...candidates].sort((a, b) => scoreTaskCodeOption(b, searchWords) - scoreTaskCodeOption(a, searchWords));
     const selected = sorted[0];

@@ -183,7 +183,15 @@ export default function ManualAdjustmentColumnModal({
                     divisionCode: division,
                     limit: 50
                 });
-                if (!cancelled) setOptions(Array.isArray(result) ? result : result?.data || []);
+                let loadedOptions = Array.isArray(result) ? result : result?.data || [];
+                if (loadedOptions.length === 0 && search) {
+                    const fallbackResult = await fetchTaskCodeOptions(token, {
+                        divisionCode: division,
+                        limit: 100
+                    });
+                    loadedOptions = Array.isArray(fallbackResult) ? fallbackResult : fallbackResult?.data || [];
+                }
+                if (!cancelled) setOptions(loadedOptions);
             } catch (e) {
                 if (!cancelled) {
                     setOptions([]);
