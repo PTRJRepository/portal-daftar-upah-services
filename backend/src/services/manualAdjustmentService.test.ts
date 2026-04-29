@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import { Database } from "../db/client";
+import { taskCodeOptionService } from "./taskCodeOptionService";
+import { manualAdjustmentPresetService } from "./manualAdjustmentPresetService";
 import {
     buildAdtransDuplicateReport,
     buildManualAdjustmentRemarks,
@@ -142,7 +144,7 @@ describe("manual adjustment ADCode rules", () => {
             });
 
             expect(id).toBe(88);
-            expect(calls.length).toBe(4);
+            expect(calls.some((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"))).toBe(true);
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }
@@ -180,6 +182,59 @@ describe("manual adjustment ADCode rules", () => {
             expect(calls.some((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"))).toBe(true);
         } finally {
             (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("fills preset ADCode from task mapping for edit-mode saves", async () => {
+        const originalGetInstance = Database.getInstance;
+        const originalSearchOptions = taskCodeOptionService.searchOptions;
+        const originalUpsertPreset = manualAdjustmentPresetService.upsertPreset;
+        const upsertPreset = mock(async () => 123);
+        const mockDb = {
+            queryOne: async () => null,
+            query: async () => [{ id: 91 }]
+        };
+
+        (Database as any).getInstance = () => mockDb;
+        (taskCodeOptionService as any).searchOptions = async () => [{
+            ad_code: "AL001",
+            task_code: "AL001P2A",
+            base_task_code: "AL001",
+            task_desc: "(AL) PANEN",
+            loc_code: "P2A",
+            task_type: null,
+            task_grp: null,
+            task_nature: null,
+            is_deduction: 0,
+            adj_ad_code: "AL001",
+            doc_desc: "(AL) PANEN"
+        }];
+        (manualAdjustmentPresetService as any).upsertPreset = upsertPreset;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                division_code: "PG2A",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PANEN",
+                amount: 1000,
+                remarks: "PREMI PANEN | MANUAL EDIT | 1000 | sync:MANUAL | match:MANUAL"
+            });
+
+            expect(id).toBe(91);
+            expect(upsertPreset.mock.calls[0][0]).toMatchObject({
+                ad_code: "AL001",
+                task_code: "AL001P2A",
+                base_task_code: "AL001",
+                task_desc: "(AL) PANEN"
+            });
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+            (taskCodeOptionService as any).searchOptions = originalSearchOptions;
+            (manualAdjustmentPresetService as any).upsertPreset = originalUpsertPreset;
         }
     });
 
@@ -499,8 +554,11 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         const dbPtrj = {
             queryOne: async (_sql: string, params?: any[]) => {
                 calls.push({ sql: _sql, params: params || [] });
+                if (_sql.includes("HR_EMPLOYEE") && _sql.includes("HR_GANGLN")) {
+                    return { nik: "1902050504860001", emp_code: "A0001", emp_name: "BUDI TEST", gang_code: "A2M" };
+                }
                 if (params?.[0] === "1902050504860001") {
-                    return { nik: "1902050504860001", emp_code: "A0001", emp_name: "BUDI TEST" };
+                    return { nik: "1902050504860001", emp_code: "Z9999", emp_name: "BUDI OLD" };
                 }
                 return null;
             },

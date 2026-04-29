@@ -2,6 +2,7 @@ import { Database } from "../db/client";
 import { employeeIdentityResolverService } from "./employeeIdentityResolverService";
 import { Config } from "../config";
 import { divisionConfigService } from "./config/DivisionConfigService";
+import { taskCodeOptionService, type TaskCodeOption } from "./taskCodeOptionService";
 import {
     normalizeStoredAdjustmentName,
     shouldDeleteStoredAdjustment
@@ -173,6 +174,52 @@ function validateManualAdjustmentAdCode(data: ManualAdjustment): void {
     if (resolveManualAdjustmentAdCode(data)) return;
 
     throw new Error('ADCode wajib diisi untuk kolom manual adjustment selain auto buffer');
+}
+
+function expectedTaskDescPrefix(adjustmentType: string): "(AL)" | "(DE)" | null {
+    const type = normalizeText(adjustmentType).toUpperCase();
+    if (type === "PREMI") return "(AL)";
+    if (type === "POTONGAN_KOTOR" || type === "POTONGAN_BERSIH") return "(DE)";
+    return null;
+}
+
+function normalizeSearchWords(value: unknown): string[] {
+    return normalizeText(value)
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, " ")
+        .split(" ")
+        .filter((word) => word.length >= 3 && !["PREMI", "POTONGAN", "KOREKSI", "MANUAL", "EDIT", "SYNC", "MATCH"].includes(word));
+}
+
+function scoreTaskCodeOption(option: TaskCodeOption, searchWords: string[]): number {
+    const haystack = `${option.task_desc} ${option.ad_code} ${option.task_code} ${option.base_task_code || ""}`.toUpperCase();
+    return searchWords.reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
+}
+
+async function resolveManualAdjustmentPresetMapping(data: ManualAdjustment, adjustmentName: string): Promise<Partial<ManualAdjustment>> {
+    if (resolveManualAdjustmentAdCode(data)) return {};
+
+    const prefix = expectedTaskDescPrefix(data.adjustment_type);
+    if (!prefix) return {};
+
+    const searchWords = normalizeSearchWords(`${adjustmentName} ${data.remarks || ""}`);
+    const options = await taskCodeOptionService.searchOptions({
+        search: searchWords[0] || prefix,
+        divisionCode: data.division_code,
+        limit: 100
+    });
+    const matchingOptions = options.filter((option) => normalizeText(option.task_desc).toUpperCase().startsWith(prefix));
+    const candidates = matchingOptions.length ? matchingOptions : options;
+    const sorted = [...candidates].sort((a, b) => scoreTaskCodeOption(b, searchWords) - scoreTaskCodeOption(a, searchWords));
+    const selected = sorted[0];
+    if (!selected?.ad_code) return {};
+
+    return {
+        ad_code: selected.ad_code,
+        task_code: selected.task_code,
+        base_task_code: selected.base_task_code || selected.ad_code,
+        task_desc: selected.task_desc
+    };
 }
 
 export function buildAdtransDuplicateReport(rows: AdtransDuplicateSourceRow[], filters: string[]) {
@@ -474,20 +521,25 @@ export class ManualAdjustmentService {
             // Auto-save as preset for recent/history (fire-and-forget)
             try {
                 const { manualAdjustmentPresetService } = await import("./manualAdjustmentPresetService");
-                await manualAdjustmentPresetService.upsertPreset({
-                    adjustment_type: data.adjustment_type,
-                    adjustment_name: normalizedAdjustmentName,
-                    ad_code: data.ad_code || '',
-                    task_code: data.task_code,
-                    base_task_code: data.base_task_code,
-                    task_desc: data.task_desc,
-                    division_code: data.division_code || null,
-                    remarks_template: buildManualAdjustmentRemarks({
-                        ...data,
+                const mappedPresetFields = await resolveManualAdjustmentPresetMapping(data, normalizedAdjustmentName);
+                const presetData = { ...data, ...mappedPresetFields };
+                const presetAdCode = resolveManualAdjustmentAdCode(presetData);
+                if (presetAdCode) {
+                    await manualAdjustmentPresetService.upsertPreset({
+                        adjustment_type: data.adjustment_type,
                         adjustment_name: normalizedAdjustmentName,
-                        remarks: data.remarks
-                    }) || undefined
-                }, user);
+                        ad_code: presetAdCode,
+                        task_code: presetData.task_code,
+                        base_task_code: presetData.base_task_code,
+                        task_desc: presetData.task_desc,
+                        division_code: data.division_code || null,
+                        remarks_template: buildManualAdjustmentRemarks({
+                            ...presetData,
+                            adjustment_name: normalizedAdjustmentName,
+                            remarks: data.remarks
+                        }) || undefined
+                    }, user);
+                }
             } catch (e) {
                 // Silent fail — preset upsert is best-effort
                 console.warn('[saveAdjustment] Auto-preset upsert failed:', e);
@@ -961,12 +1013,30 @@ export class ManualAdjustmentService {
             ORDER BY emp_code, adjustment_name
         `, [periodMonth, periodYear, ...adjustmentDivisionCodes, ...adjustmentNames]);
 
+        const dbPtrj = Database.getInstance();
         const ptrjEmpCodeByStoredIdentifier = new Map<string, string>();
         for (const row of adjustmentRows) {
             const storedIdentifier = String(row.emp_code || '').trim();
             if (!storedIdentifier || ptrjEmpCodeByStoredIdentifier.has(storedIdentifier)) continue;
 
-            const identity = await employeeIdentityResolverService.resolve(storedIdentifier);
+            const gangCode = String(row.gang_code || '').trim().toUpperCase();
+            let gangScopedIdentity: any = null;
+            if (gangCode) {
+                gangScopedIdentity = await dbPtrj.queryOne<any>(`
+                    SELECT TOP 1
+                        RTRIM(ISNULL(e.NewICNo, '')) as nik,
+                        RTRIM(e.EmpCode) as emp_code,
+                        RTRIM(e.EmpName) as emp_name,
+                        RTRIM(gl.GangCode) as gang_code
+                    FROM HR_EMPLOYEE e
+                    JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                    WHERE (RTRIM(e.EmpCode) = ? OR RTRIM(ISNULL(e.NewICNo, '')) = ?)
+                      AND UPPER(RTRIM(gl.GangCode)) = ?
+                    ORDER BY e.EmpCode DESC
+                `, [storedIdentifier, storedIdentifier, gangCode]);
+            }
+
+            const identity = gangScopedIdentity || await employeeIdentityResolverService.resolve(storedIdentifier);
             ptrjEmpCodeByStoredIdentifier.set(storedIdentifier, identity?.emp_code || storedIdentifier.toUpperCase());
         }
 
