@@ -1028,6 +1028,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 [key]: {
                     emp_code: empCode,
                     nik: row.nik,
+                    emp_name: row.nama || row.emp_name || null,
                     field,
                     value: numValue,
                     originalValue: persistedOriginal,
@@ -1062,6 +1063,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             [key]: {
                 emp_code: empCode,
                 nik: row.nik,
+                emp_name: row.nama || row.emp_name || null,
                 field,
                 value: nextValue,
                 originalValue: row[field] ?? null,
@@ -1221,12 +1223,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 period_month: month,
                 period_year: year,
                 emp_code: edit.emp_code || edit.nik,
+                nik: edit.nik,
+                emp_name: edit.emp_name || null,
                 gang_code: edit.gang_code,
                 division_code: division,
                 adjustment_type: edit.type,
                 adjustment_name: edit.name,
                 amount: edit.value,
-                remarks: edit.remarks || `Edited via UI on ${new Date().toLocaleString()}`,
+                remarks: edit.remarks || (edit.ad_code
+                    ? `${edit.name} | ${edit.ad_code}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL`
+                    : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
                 ad_code: edit.ad_code,
                 task_code: edit.task_code,
                 base_task_code: edit.base_task_code,
@@ -1282,14 +1288,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 period_year: year,
                 nik: k.nik,
                 emp_code: k.emp_code,
+                emp_name: k.emp_name || null,
                 gang_code: k.gang_code,
                 division_code: division,
                 adjustment_type: 'PENDAPATAN_LAINNYA',
                 adjustment_name: 'KONTAN',
                 amount: k.value,
                 remarks: k.value === 0
-                    ? `KONTAN DELETED via UI on ${new Date().toLocaleString()}`
-                    : `KONTAN edited via UI on ${new Date().toLocaleString()}`
+                    ? `KONTAN | DELETED | 0 | sync:MANUAL | match:MANUAL`
+                    : `KONTAN | PENDAPATAN LAINNYA | ${k.value} | sync:MANUAL | match:MANUAL`
             };
 
             let resOk = false;
@@ -1500,7 +1507,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 gang_code: gangCode && gangCode !== 'ALL' ? gangCode : 'ALL',
                 use_history_db: !!useHistoryDb,
                 snapshot_version: snapshotVersion ?? undefined,
-                replace_existing: true
+                replace_existing: true,
+                value_priority_mode: valuePriorityMode || 'smart'
             };
 
             let responseJson;
@@ -2476,6 +2484,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             [editKey]: {
                                                 nik: row.nik,
                                                 emp_code: row.emp_code,
+                                                emp_name: row.nama || row.emp_name || null,
                                                 value: newVal,
                                                 originalValue: persistedOriginal,
                                                 gang_code: row.gang_code
@@ -2925,6 +2934,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         if (normalizeValuePriorityMode(valuePriorityMode) !== 'db_ptrj_only') return renderedValue;
         const compare = row?.value_source_compare?.[field];
         if (!compare) return renderedValue;
+
+        // SPSI is auto-buffer only; there is no manual edit, so hide raw db_ptrj comparison
+        if (field === 'pot_spsi') return renderedValue;
 
         const dbValue = compare.db_ptrj;
         const activeValue = compare.active;

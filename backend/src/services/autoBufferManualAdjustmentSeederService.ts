@@ -3,6 +3,7 @@ import { Config } from "../config";
 import { dataExtractorService } from "./dataExtractorService";
 import { payrollAutoBufferService } from "./payroll/payrollAutoBufferService";
 import { buildAutoBufferSeedRemark } from "./payroll/manualAdjustments/autoBufferAdcodeMap";
+import { payrollProfileSeedService } from "./payrollProfileSeedService";
 import { deriveInitialSpsiMember } from "../utils/payrollProfileRules";
 
 const AUTO_BUFFER_ADJUSTMENT_TYPE = "AUTO_BUFFER";
@@ -31,6 +32,7 @@ export interface AutoBufferManualAdjustmentSeedInput {
     snapshot_version?: number | null;
     // Backward-compatible request field; seeder now always replaces scoped AUTO_BUFFER rows.
     replace_existing?: boolean;
+    value_priority_mode?: string | null;
     created_by?: string;
 }
 
@@ -38,6 +40,7 @@ export interface AutoBufferManualAdjustmentSeedEntry {
     period_month: number;
     period_year: number;
     emp_code: string;
+    emp_name?: string | null;
     gang_code: string;
     division_code: string;
     adjustment_type: typeof AUTO_BUFFER_ADJUSTMENT_TYPE;
@@ -49,6 +52,10 @@ export interface AutoBufferManualAdjustmentSeedEntry {
 type ExtractedPayrollLike = {
     emp_code?: string;
     nik?: string;
+    new_nik?: string;
+    actual_nik?: string;
+    emp_name?: string;
+    nama?: string;
     gang_code?: string;
     jabatan?: string;
     jabatan_estate?: string;
@@ -73,9 +80,10 @@ export function buildAutoBufferSeedEntries(
     const entries: AutoBufferManualAdjustmentSeedEntry[] = [];
 
     for (const row of rows || []) {
-        const empCode = normalizeString(row.emp_code || row.nik).toUpperCase();
+        const empCode = normalizeString(row.nik || row.new_nik || row.actual_nik || row.emp_code).toUpperCase();
         if (!empCode) continue;
 
+        const empName = normalizeString(row.emp_name || row.nama).toUpperCase() || null;
         const gangCode = normalizeString(row.gang_code).toUpperCase() || "UNKNOWN";
         const hariKerja = Math.max(0, toNumber(row.hari_kerja));
         const kehadiran = Math.max(0, toNumber(row.jumlah_hk));
@@ -107,6 +115,7 @@ export function buildAutoBufferSeedEntries(
                 period_month: periodMonth,
                 period_year: periodYear,
                 emp_code: empCode,
+                emp_name: empName,
                 gang_code: gangCode,
                 division_code: normalizedDivision,
                 adjustment_type: AUTO_BUFFER_ADJUSTMENT_TYPE,
@@ -122,6 +131,7 @@ export function buildAutoBufferSeedEntries(
                 period_month: periodMonth,
                 period_year: periodYear,
                 emp_code: empCode,
+                emp_name: empName,
                 gang_code: gangCode,
                 division_code: normalizedDivision,
                 adjustment_type: AUTO_BUFFER_ADJUSTMENT_TYPE,
@@ -137,6 +147,7 @@ export function buildAutoBufferSeedEntries(
                 period_month: periodMonth,
                 period_year: periodYear,
                 emp_code: empCode,
+                emp_name: empName,
                 gang_code: gangCode,
                 division_code: normalizedDivision,
                 adjustment_type: AUTO_BUFFER_ADJUSTMENT_TYPE,
@@ -168,6 +179,43 @@ export class AutoBufferManualAdjustmentSeederService {
         return Database.getExtendedInstance();
     }
 
+    private async applyProfileSpsiOverrides(rows: ExtractedPayrollLike[], db: Pick<Database, "query">) {
+        const keys = [...new Set((rows || []).flatMap((row) => [row.emp_code, row.nik, row.new_nik, row.actual_nik].map(normalizeString).filter(Boolean)))];
+        if (!keys.length) return;
+
+        const overrideRows: any[] = [];
+        const CHUNK = 500;
+        for (let i = 0; i < keys.length; i += CHUNK) {
+            const chunk = keys.slice(i, i + CHUNK);
+            const placeholders = chunk.map(() => "?").join(",");
+            overrideRows.push(...await db.query<any>(`
+                SELECT emp_code, nik, is_spsi_member, effective_start_date, update_index
+                FROM dbo.employee_profile_override_history
+                WHERE (emp_code IN (${placeholders}) OR nik IN (${placeholders}))
+                  AND is_active_record = 1
+                  AND is_spsi_member IS NOT NULL
+            `, [...chunk, ...chunk]));
+        }
+
+        const latestByKey = payrollProfileSeedService.pickLatestProfileOverrides(overrideRows);
+        for (const row of overrideRows) {
+            const latest = latestByKey.get(row.emp_code);
+            if (!latest) continue;
+            const nik = normalizeString(row.nik).toUpperCase();
+            if (nik && !latestByKey.has(nik)) {
+                latestByKey.set(nik, latest);
+            }
+        }
+
+        for (const row of rows || []) {
+            const candidates = [row.emp_code, row.nik, row.new_nik, row.actual_nik].map(normalizeString).map((key) => key.toUpperCase()).filter(Boolean);
+            const override = candidates.map((key) => latestByKey.get(key)).find(Boolean);
+            if (override) {
+                row.is_spsi_member = !!override.is_spsi_member;
+            }
+        }
+    }
+
     public async seedPeriod(input: AutoBufferManualAdjustmentSeedInput) {
         const periodMonth = Math.floor(toNumber(input.period_month));
         const periodYear = Math.floor(toNumber(input.period_year));
@@ -175,6 +223,7 @@ export class AutoBufferManualAdjustmentSeederService {
         const gangCode = normalizeString(input.gang_code || "ALL").toUpperCase() || "ALL";
         const useHistoryDb = input.use_history_db === true;
         const snapshotVersion = input.snapshot_version == null ? null : Math.floor(toNumber(input.snapshot_version));
+        const valuePriorityMode = normalizeString(input.value_priority_mode) || "smart";
         const createdBy = normalizeString(input.created_by) || "system";
 
         if (periodMonth < 1 || periodMonth > 12) {
@@ -200,17 +249,20 @@ export class AutoBufferManualAdjustmentSeederService {
             true,
             true,
             snapshotVersion,
-            "db_ptrj_only"
+            valuePriorityMode
         );
 
+        const db = this.getDatabase();
+        const extractedRows = extracted.data_rows as ExtractedPayrollLike[];
+        await this.applyProfileSpsiOverrides(extractedRows, db);
+
         const entries = buildAutoBufferSeedEntries(
-            extracted.data_rows as ExtractedPayrollLike[],
+            extractedRows,
             periodMonth,
             periodYear,
             divisionCode
         );
 
-        const db = this.getDatabase();
         const countQuery = `
             SELECT COUNT(1) as count
             FROM dbo.payroll_manual_adjustments
@@ -243,13 +295,14 @@ export class AutoBufferManualAdjustmentSeederService {
         for (const entry of entries) {
             await db.query(`
                 INSERT INTO dbo.payroll_manual_adjustments (
-                    period_month, period_year, emp_code, gang_code, division_code,
+                    period_month, period_year, emp_code, emp_name, gang_code, division_code,
                     adjustment_type, adjustment_name, amount, remarks, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 entry.period_month,
                 entry.period_year,
                 entry.emp_code,
+                entry.emp_name || null,
                 entry.gang_code,
                 entry.division_code,
                 entry.adjustment_type,
@@ -260,6 +313,14 @@ export class AutoBufferManualAdjustmentSeederService {
             ]);
             inserted += 1;
         }
+
+        const validation = await this.validatePeriod({
+            period_month: periodMonth,
+            period_year: periodYear,
+            division_code: divisionCode,
+            gang_code: gangCode,
+            created_by: createdBy
+        });
 
         return {
             period_month: periodMonth,
@@ -272,7 +333,8 @@ export class AutoBufferManualAdjustmentSeederService {
             updated,
             deleted_existing: deletedExisting,
             replace_existing: true,
-            value_priority_mode_source: "db_ptrj_only"
+            value_priority_mode_source: valuePriorityMode,
+            validation
         };
     }
 
@@ -326,8 +388,9 @@ export class AutoBufferManualAdjustmentSeederService {
         }
 
         const trueValuesQuery = `
-            SELECT RTRIM(t.EmpCode) as emp_code, 
-                   CASE 
+            SELECT RTRIM(t.EmpCode) as emp_code,
+                   MAX(RTRIM(ISNULL(e.NewICNo, ''))) as nik,
+                   CASE
                        WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'AUTO TUNJANGAN JABATAN'
                        WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'AUTO MASA KERJA'
                        WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'AUTO SPSI'
@@ -346,6 +409,7 @@ export class AutoBufferManualAdjustmentSeederService {
                 ${gangJoin}
                 WHERE t.DocDate >= ? AND t.DocDate < ? ${gangCondition}
             ) t
+            LEFT JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(t.EmpCode)
             JOIN (
                 SELECT MasterID, Amount FROM PR_ADTRANSLN
                 UNION ALL
@@ -367,8 +431,12 @@ export class AutoBufferManualAdjustmentSeederService {
         // Map true values for quick lookup
         const trueValuesMap = new Map<string, number>();
         for (const row of trueValues) {
-            const key = `${row.emp_code}_${row.adjustment_name}`;
-            trueValuesMap.set(key, toNumber(row.total));
+            const keys = [row.emp_code, row.nik]
+                .map((value) => normalizeString(value).toUpperCase())
+                .filter(Boolean);
+            for (const empKey of keys) {
+                trueValuesMap.set(`${empKey}_${row.adjustment_name}`, toNumber(row.total));
+            }
         }
 
         let updatedCount = 0;
@@ -377,7 +445,7 @@ export class AutoBufferManualAdjustmentSeederService {
 
         // 3. Compare and Update
         for (const record of existingRecords) {
-            const key = `${record.emp_code}_${record.adjustment_name}`;
+            const key = `${normalizeString(record.emp_code).toUpperCase()}_${record.adjustment_name}`;
             const dbAmount = trueValuesMap.get(key) || 0;
             const currentAmount = Math.abs(toNumber(record.amount)); // Comparing absolute values for safety since SPSI is a deduction
             const absoluteDbAmount = Math.abs(dbAmount);

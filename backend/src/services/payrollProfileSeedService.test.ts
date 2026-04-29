@@ -20,4 +20,14 @@ describe("PayrollProfileSeedService", () => {
             effective_start_date: "2025-03-01"
         });
     });
+
+    it("keeps user SPSI override ahead of seeded transaction status", () => {
+        const service = new PayrollProfileSeedService();
+        const seededMembers = new Map([["B0001", true]]);
+        const overrides = service.pickLatestProfileOverrides([
+            { emp_code: "B0001", is_spsi_member: false, update_index: 2 }
+        ]);
+
+        expect(service.resolveSpsiMember("B0001", seededMembers, overrides)).toBe(false);
+    });
 });

@@ -255,7 +255,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             task_code: t.Optional(t.String()),
             base_task_code: t.Optional(t.String()),
             task_desc: t.Optional(t.String()),
-            division_code: t.Optional(t.String())
+            division_code: t.Optional(t.String()),
+            remarks_template: t.Optional(t.String())
         })
     })
     .post("/manual-adjustment-presets/infer", async ({ body, set }) => {
@@ -310,6 +311,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 period_year: data.period_year,
                 nik: data.nik,
                 emp_code: data.emp_code,
+                emp_name: data.emp_name,
                 gang_code: data.gang_code,
                 adjustment_type: data.adjustment_type,
                 adjustment_name: data.adjustment_name,
@@ -337,6 +339,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             period_year: t.Number(),
             nik: t.Optional(t.String()),  // Real NIK (KTP) - for PENDAPATAN_LAINNYA
             emp_code: t.String(),
+            emp_name: t.Optional(t.String()),
             gang_code: t.String(),
             division_code: t.Optional(t.String()),
             adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH, PENDAPATAN_LAINNYA
@@ -622,7 +625,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         body: t.Object({
             emp_code: t.String(),
             nik: t.Optional(t.String()),
-            is_spsi_member: t.Boolean(),
+            is_spsi_member: t.Optional(t.Boolean()),
             effective_start_date: t.Optional(t.Union([t.String(), t.Null()])),
             employee_status_at_change: t.Optional(t.String()),
             change_reason: t.Optional(t.String())
@@ -682,7 +685,6 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             const id = await payrollOverlayService.saveProfileOverride({
                 emp_code,
-                is_spsi_member: false, // Required field, default to false
                 effective_start_date: join_date,
                 changed_by: username,
                 change_source: "DAFTAR_UPAH_UI",
@@ -885,6 +887,181 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         })
     })
 
+    /**
+     * @route POST /payroll/manual-adjustment/compare-adtrans/by-api-key
+     * @description Compare PR_ADTRANS (db_ptrj) values with payroll_manual_adjustments (extend_db_ptrj).
+     *              Returns per-employee per-category comparison showing source vs stored amount.
+     * @access Public (with X-API-Key)
+     */
+    .post("/manual-adjustment/compare-adtrans/by-api-key", async ({ body, headers, set }) => {
+        try {
+            const apiKey = headers["x-api-key"];
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, message: "Unauthorized - Invalid API Key" };
+            }
+
+            const data = body as any;
+            const { period_month, period_year, division_code, filters } = data;
+
+            if (!period_month || !period_year) {
+                set.status = 400;
+                return { success: false, message: "period_month and period_year are required" };
+            }
+
+            if (!division_code) {
+                set.status = 400;
+                return { success: false, message: "division_code is required" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const result = await manualAdjustmentService.compareAdtransWithAdjustments(
+                Number(period_month),
+                Number(period_year),
+                division_code,
+                filters || ['spsi', 'masa kerja', 'jabatan']
+            );
+
+            return {
+                success: true,
+                message: "Comparison completed successfully",
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/compare-adtrans error:", e);
+            set.status = 500;
+            return { success: false, message: e.message || "Internal server error" };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            filters: t.Optional(t.Array(t.String()))
+        })
+    })
+
+    /**
+     * @route POST /payroll/manual-adjustment/reverse-compare-adtrans/by-api-key
+     * @description Compare payroll_manual_adjustments (extend_db_ptrj) values with PR_ADTRANS (db_ptrj).
+     *              Returns stored AUTO_BUFFER rows that match, mismatch, or exist only in adjustments.
+     * @access Public (with X-API-Key)
+     */
+    .post("/manual-adjustment/reverse-compare-adtrans/by-api-key", async ({ body, headers, set }) => {
+        try {
+            const apiKey = headers["x-api-key"];
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, message: "Unauthorized - Invalid API Key" };
+            }
+
+            const data = body as any;
+            const { period_month, period_year, division_code, filters } = data;
+
+            if (!period_month || !period_year) {
+                set.status = 400;
+                return { success: false, message: "period_month and period_year are required" };
+            }
+
+            if (!division_code) {
+                set.status = 400;
+                return { success: false, message: "division_code is required" };
+            }
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const result = await manualAdjustmentService.reverseCompareAdtransWithAdjustments(
+                Number(period_month),
+                Number(period_year),
+                division_code,
+                filters || ['spsi', 'masa kerja', 'jabatan']
+            );
+
+            return {
+                success: true,
+                message: "Reverse comparison completed successfully",
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/reverse-compare-adtrans error:", e);
+            set.status = 500;
+            return { success: false, message: e.message || "Internal server error" };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            filters: t.Optional(t.Array(t.String()))
+        })
+    })
+
+    /**
+     * @route POST /payroll/manual-adjustment/sync-adtrans/by-api-key
+     * @description Sync PR_ADTRANS (db_ptrj) values into payroll_manual_adjustments (extend_db_ptrj).
+     *              Only syncs items that are MISMATCH or MISSING from comparison.
+     * @access Public (with X-API-Key)
+     */
+    .post("/manual-adjustment/sync-adtrans/by-api-key", async ({ body, headers, set }) => {
+        try {
+            const apiKey = headers["x-api-key"];
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, message: "Unauthorized - Invalid API Key" };
+            }
+
+            const data = body as any;
+            const { period_month, period_year, division_code, filters, sync_mode, created_by } = data;
+
+            if (!period_month || !period_year) {
+                set.status = 400;
+                return { success: false, message: "period_month and period_year are required" };
+            }
+
+            if (!division_code) {
+                set.status = 400;
+                return { success: false, message: "division_code is required" };
+            }
+
+            const validSyncModes = ['MISSING_ONLY', 'MISMATCH_AND_MISSING', 'ALL'];
+            const syncMode = validSyncModes.includes(sync_mode) ? sync_mode : 'MISMATCH_AND_MISSING';
+
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+
+            const result = await manualAdjustmentService.syncAdtransToAdjustments(
+                Number(period_month),
+                Number(period_year),
+                division_code,
+                filters || ['spsi', 'masa kerja', 'jabatan'],
+                syncMode as 'MISSING_ONLY' | 'MISMATCH_AND_MISSING' | 'ALL',
+                created_by || 'sync_adtrans_api'
+            );
+
+            // Clear cache for this period
+            const pattern = `:${period_month}:${period_year}`;
+            cacheService.clearByPattern(pattern);
+
+            return {
+                success: true,
+                message: `Sync completed: ${result.synced_count} records synced, ${result.skipped_match} matches skipped`,
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/sync-adtrans error:", e);
+            set.status = 500;
+            return { success: false, message: e.message || "Internal server error" };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            filters: t.Optional(t.Array(t.String())),
+            sync_mode: t.Optional(t.String()),
+            created_by: t.Optional(t.String())
+        })
+    })
+
     .post("/manual-adjustment/seed-auto-buffer", async ({ body, currentUser, set }) => {
         try {
             const { autoBufferManualAdjustmentSeederService } = await import("../services/autoBufferManualAdjustmentSeederService");
@@ -899,6 +1076,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 use_history_db: payload.use_history_db,
                 snapshot_version: payload.snapshot_version,
                 replace_existing: payload.replace_existing,
+                value_priority_mode: payload.value_priority_mode,
                 created_by: currentUser?.username || "system"
             });
 
@@ -923,7 +1101,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             gang_code: t.Optional(t.String()),
             use_history_db: t.Optional(t.Boolean()),
             snapshot_version: t.Optional(t.Number()),
-            replace_existing: t.Optional(t.Boolean())
+            replace_existing: t.Optional(t.Boolean()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
     // --- Locked Report: Raw Tree (Alias for Proxy/Frontend Compat) ---
@@ -1132,6 +1311,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             period_year: t.Number(),
             nik: t.Optional(t.String()),  // Real NIK (KTP) - for PENDAPATAN_LAINNYA
             emp_code: t.String(),
+            emp_name: t.Optional(t.String()),
             gang_code: t.String(),
             division_code: t.Optional(t.String()),
             adjustment_type: t.String(), // PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH, PENDAPATAN_LAINNYA
@@ -2083,6 +2263,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 use_history_db: payload.use_history_db,
                 snapshot_version: payload.snapshot_version,
                 replace_existing: payload.replace_existing,
+                value_priority_mode: payload.value_priority_mode,
                 created_by: currentUser?.username || "system"
             });
 
@@ -2107,7 +2288,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             gang_code: t.Optional(t.String()),
             use_history_db: t.Optional(t.Boolean()),
             snapshot_version: t.Optional(t.Number()),
-            replace_existing: t.Optional(t.Boolean())
+            replace_existing: t.Optional(t.Boolean()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
     .post("/locked/manual-adjustment/auto-buffer-validate", async ({ body, set, currentUser }) => {

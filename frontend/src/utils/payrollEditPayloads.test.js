@@ -19,4 +19,17 @@ describe("splitPayrollEdits", () => {
         expect(result.profileItems[0].is_spsi_member).toBe(true);
         expect(result.valueItems[0].field_name).toBe("premi_dynamic");
     });
+
+    it("does not default SPSI checkbox to Non-SPSI when only effective start date changes", () => {
+        const result = splitPayrollEdits({
+            month: 4,
+            year: 2026,
+            division: "AB1",
+            edits: [
+                { emp_code: "B0001", nik: "3171", field: "effective_start_date", value: "2025-03-01", gang_code: "A1" }
+            ]
+        });
+
+        expect(result.profileItems[0]).not.toHaveProperty("is_spsi_member");
+    });
 });

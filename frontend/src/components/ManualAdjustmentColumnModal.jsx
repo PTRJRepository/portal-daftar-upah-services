@@ -91,6 +91,7 @@ export default function ManualAdjustmentColumnModal({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [presetError, setPresetError] = useState('');
+    const [presetRemarks, setPresetRemarks] = useState('');
 
     const selectedCategory = useMemo(
         () => CATEGORY_OPTIONS.find((item) => item.value === adjustmentType) || CATEGORY_OPTIONS[0],
@@ -123,6 +124,8 @@ export default function ManualAdjustmentColumnModal({
         setPresets([]);
         setError('');
         setPresetError('');
+        setPresetRemarks('');
+        setPresetRemarks('');
     }, [isOpen]);
 
     useEffect(() => {
@@ -201,6 +204,7 @@ export default function ManualAdjustmentColumnModal({
         setDocDesc(preset.adjustment_name || '');
         setSearch(resolveAdCode(presetOption));
         setSelectedTaskCode(matchingOption);
+        setPresetRemarks(preset.remarks_template || buildRemarks(matchingOption, preset.adjustment_name || '', 0));
     };
 
     const handleSavePreset = async () => {
@@ -215,7 +219,8 @@ export default function ManualAdjustmentColumnModal({
                 task_code: selectedTaskCode.task_code,
                 base_task_code: selectedTaskCode.base_task_code || resolveAdCode(selectedTaskCode),
                 task_desc: selectedTaskCode.task_desc,
-                division_code: division && division !== 'ALL' ? division : undefined
+                division_code: division && division !== 'ALL' ? division : undefined,
+                remarks_template: buildRemarks(selectedTaskCode, resolvedAdjustmentName, 0)
             });
             await loadPresets();
         } catch (e) {
@@ -244,7 +249,7 @@ export default function ManualAdjustmentColumnModal({
                 base_task_code: selectedTaskCode.base_task_code || resolveAdCode(selectedTaskCode),
                 task_desc: selectedTaskCode.task_desc,
                 loc_code: selectedTaskCode.loc_code,
-                remarks: buildRemarks(selectedTaskCode, resolvedAdjustmentName, 0)
+                remarks: presetRemarks || buildRemarks(selectedTaskCode, resolvedAdjustmentName, 0)
             });
             onClose?.();
         } catch (e) {
@@ -488,6 +493,20 @@ export default function ManualAdjustmentColumnModal({
                         {selectedTaskCode && (
                             <div style={{ padding: 12, borderRadius: 12, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#14532d' }}>
                                 <strong>Dipilih:</strong> {selectedTaskCode.doc_desc || docDesc} · ADCode {resolveAdCode(selectedTaskCode)} · {selectedTaskCode.task_desc || '-'} · {selectedCategory.label}
+                            </div>
+                        )}
+
+                        {presetRemarks && (
+                            <div style={{ padding: 12, borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a' }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Remarks Preset:</div>
+                                <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{presetRemarks}</code>
+                            </div>
+                        )}
+
+                        {presetRemarks && (
+                            <div style={{ padding: 12, borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a' }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Remarks Preset:</div>
+                                <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{presetRemarks}</code>
                             </div>
                         )}
 

@@ -148,7 +148,15 @@
       "PowerShell(Get-NetTCPConnection *)",
       "Bash(bun pm *)",
       "Bash(ls backend/.env*)",
-      "Bash(grep -n \"API_KEY_BYPASS\" backend/.env)"
+      "Bash(grep -n \"API_KEY_BYPASS\" backend/.env)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(e['adjustment_name'], '|', e['remarks']\\) for e in d['data'][:9]]\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"count: {d['count']}\\\\\"\\)\")",
+      "Bash(bun *)",
+      "Bash(bunx tsc *)",
+      "Bash(git *)",
+      "Bash(gh auth *)",
+      "Bash(PORT=8012 bun run src/index.ts)",
+      "Bash(npx vitest *)"
     ],
     "deny": [],
     "ask": [],

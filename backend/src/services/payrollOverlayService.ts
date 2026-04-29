@@ -8,7 +8,7 @@ type QueryableDb = Pick<Database, "query" | "queryOne">;
 export interface SaveProfileOverrideInput {
     emp_code: string;
     nik?: string | null;
-    is_spsi_member: boolean;
+    is_spsi_member?: boolean | null;
     effective_start_date?: string | null;
     changed_by: string;
     change_reason?: string | null;
@@ -62,7 +62,7 @@ export class PayrollOverlayService {
         `, [
             input.emp_code,
             input.nik || null,
-            input.is_spsi_member ? 1 : 0,
+            typeof input.is_spsi_member === "boolean" ? (input.is_spsi_member ? 1 : 0) : null,
             normalizeEffectiveStartDate(input.effective_start_date),
             input.employee_status_at_change || null,
             next?.next_index || 1,

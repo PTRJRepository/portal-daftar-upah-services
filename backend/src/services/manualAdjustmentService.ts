@@ -1,5 +1,7 @@
 import { Database } from "../db/client";
+import { employeeIdentityResolverService } from "./employeeIdentityResolverService";
 import { Config } from "../config";
+import { divisionConfigService } from "./config/DivisionConfigService";
 import {
     normalizeStoredAdjustmentName,
     shouldDeleteStoredAdjustment
@@ -23,6 +25,31 @@ export interface AdtransDuplicateSourceRow {
     emp_code: string;
     emp_name: string;
     amount: number;
+}
+
+export interface AdtransComparisonItem {
+    emp_code: string;
+    category: string;
+    adjustment_name: string;
+    source_amount: number;
+    stored_amount: number | null;
+    diff: number | null;
+    status: 'MATCH' | 'MISMATCH' | 'MISSING';
+    gang_code: string | null;
+    remarks: string | null;
+}
+
+export interface ReverseAdtransComparisonItem {
+    emp_code: string;
+    category: string;
+    adjustment_name: string;
+    stored_amount: number;
+    source_amount: number;
+    diff: number;
+    status: 'MATCH' | 'MISMATCH' | 'EXTRA_IN_ADJUSTMENTS';
+    gang_code: string | null;
+    division_code: string | null;
+    remarks: string | null;
 }
 
 function normalizeAdtransFilter(filter: string): string {
@@ -73,6 +100,34 @@ function normalizeAdtransDivisionLocCode(divisionCode: string): string {
     return locCodeMap[normalized] || normalized;
 }
 
+/**
+ * Resolve a division code (real or virtual) to the LocCode used in PR_ADTRANS.
+ * Virtual divisions (e.g. NRS, INF, WKS_AR) have a sourceDivision (e.g. PG1B, PG1A, AB2)
+ * that maps to the actual LocCode in db_ptrj.
+ */
+function resolveAdtransLocCode(divisionCode: string): string {
+    const resolved = divisionCode.trim().toUpperCase();
+    const sourceDivision = divisionConfigService.getSourceDivision(resolved);
+    if (sourceDivision) {
+        return normalizeAdtransDivisionLocCode(sourceDivision);
+    }
+    return normalizeAdtransDivisionLocCode(resolved);
+}
+
+/**
+ * Resolve a division code (real or virtual) to the LocCode used in PR_ADTRANS.
+ * Virtual divisions (e.g. NRS, INF, WKS_AR) have a sourceDivision (e.g. PG1B, PG1A, AB2)
+ * that maps to the actual LocCode in db_ptrj.
+ */
+function resolveAdtransLocCode(divisionCode: string): string {
+    const resolved = divisionCode.trim().toUpperCase();
+    const sourceDivision = divisionConfigService.getSourceDivision(resolved);
+    if (sourceDivision) {
+        return normalizeAdtransDivisionLocCode(sourceDivision);
+    }
+    return normalizeAdtransDivisionLocCode(resolved);
+}
+
 function buildAdtransSqlPattern(filter: string): string {
     const category = normalizeAdtransFilter(filter);
 
@@ -97,10 +152,19 @@ export function manualAdjustmentRequiresAdCode(adjustmentType: string): boolean 
     return normalizeText(adjustmentType).toUpperCase() !== 'AUTO_BUFFER';
 }
 
+function isPipeDelimitedRemarks(remarks: string): boolean {
+    return remarks.includes('|') && /\|\s*-?\d+\s*\|\s*sync:/i.test(remarks);
+}
+
 export function buildManualAdjustmentRemarks(data: ManualAdjustment): string | null {
     const existingRemarks = normalizeText(data.remarks);
     const adCode = resolveManualAdjustmentAdCode(data);
     const taskDesc = normalizeText(data.task_desc);
+
+    // If remarks is already in pipe-delimited preset format, preserve it as-is
+    if (existingRemarks && isPipeDelimitedRemarks(existingRemarks)) {
+        return existingRemarks;
+    }
 
     if (!adCode) {
         return existingRemarks || null;
@@ -179,6 +243,7 @@ export interface ManualAdjustment {
     period_year: number;
     nik?: string;       // Real NIK (KTP) - primary identifier
     emp_code: string;   // Emp code (B0065, etc.) - for lookup
+    emp_name?: string;
     gang_code: string;
     division_code?: string;
     adjustment_type: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH' | 'PENDAPATAN_LAINNYA' | 'AUTO_BUFFER';
@@ -247,8 +312,18 @@ export class ManualAdjustmentService {
         }
 
         if (adjustmentType) {
-            query += ` AND adjustment_type = ?`;
-            params.push(adjustmentType);
+            const MANUAL_ALIAS_TYPES = ['PREMI', 'POTONGAN_KOTOR', 'POTONGAN_BERSIH', 'PENDAPATAN_LAINNYA'];
+            const rawTypes = adjustmentType.split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
+            const resolvedTypes = rawTypes.flatMap(t =>
+                t === 'MANUAL' ? MANUAL_ALIAS_TYPES : [t]
+            );
+            if (resolvedTypes.length === 1) {
+                query += ` AND adjustment_type = ?`;
+                params.push(resolvedTypes[0]);
+            } else if (resolvedTypes.length > 1) {
+                query += ` AND adjustment_type IN (${resolvedTypes.map(() => '?').join(', ')})`;
+                params.push(...resolvedTypes);
+            }
         }
 
         if (adjustmentName) {
@@ -360,6 +435,8 @@ export class ManualAdjustmentService {
         const normalizedAdjustmentNameSql = buildNormalizedSqlNameExpression('adjustment_name');
         validateManualAdjustmentAdCode(data);
         const remarks = buildManualAdjustmentRemarks(data);
+        const identity = await employeeIdentityResolverService.resolve(data.nik || data.emp_code);
+        const empName = String(data.emp_name || identity?.emp_name || '').trim().toUpperCase() || null;
 
         // --- PENDAPATAN_LAINNYA: Save to employee_other_incomes ---
         if (data.adjustment_type === 'PENDAPATAN_LAINNYA') {
@@ -386,9 +463,9 @@ export class ManualAdjustmentService {
                 // Update
                 await db.query(`
                     UPDATE dbo.payroll_manual_adjustments
-                    SET amount = ?, remarks = ?, updated_at = GETDATE(), updated_by = ?
+                    SET amount = ?, remarks = ?, emp_name = ?, updated_at = GETDATE(), updated_by = ?
                     WHERE id = ?
-                `, [parsedAmount, remarks, user || 'system', existing.id]);
+                `, [parsedAmount, remarks, empName, user || 'system', existing.id]);
                 return existing.id;
             }
         } else {
@@ -397,15 +474,38 @@ export class ManualAdjustmentService {
             // Insert
             const result = await db.query(`
                 INSERT INTO dbo.payroll_manual_adjustments (
-                    period_month, period_year, emp_code, gang_code, division_code,
+                    period_month, period_year, emp_code, emp_name, gang_code, division_code,
                     adjustment_type, adjustment_name, amount, remarks, created_by
                 ) OUTPUT INSERTED.id VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `, [
-                data.period_month, data.period_year, data.emp_code, data.gang_code, data.division_code || null,
+                data.period_month, data.period_year, data.emp_code, empName, data.gang_code, data.division_code || null,
                 data.adjustment_type, normalizedAdjustmentName, parsedAmount, remarks, user || 'system'
             ]);
+
+            // Auto-save as preset for recent/history (fire-and-forget)
+            try {
+                const { manualAdjustmentPresetService } = await import("./manualAdjustmentPresetService");
+                await manualAdjustmentPresetService.upsertPreset({
+                    adjustment_type: data.adjustment_type,
+                    adjustment_name: normalizedAdjustmentName,
+                    ad_code: data.ad_code || '',
+                    task_code: data.task_code,
+                    base_task_code: data.base_task_code,
+                    task_desc: data.task_desc,
+                    division_code: data.division_code || null,
+                    remarks_template: buildManualAdjustmentRemarks({
+                        ...data,
+                        adjustment_name: normalizedAdjustmentName,
+                        remarks: data.remarks
+                    }) || undefined
+                }, user);
+            } catch (e) {
+                // Silent fail — preset upsert is best-effort
+                console.warn('[saveAdjustment] Auto-preset upsert failed:', e);
+            }
+
             return result[0]?.id;
         }
     }
@@ -478,7 +578,8 @@ export class ManualAdjustmentService {
         }
 
         const normalizedEmpCodes = (empCodes || []).map((empCode) => empCode.trim()).filter(Boolean);
-        const normalizedDivisionCode = divisionCode ? normalizeAdtransDivisionLocCode(divisionCode) : '';
+        // Virtual divisions (NRS, INF, WKS_AR, etc.) resolve to their source division's LocCode
+        const normalizedDivisionCode = divisionCode ? resolveAdtransLocCode(divisionCode) : '';
         const scopeClauses: string[] = [];
         const scopeParams: any[] = [];
 
@@ -595,6 +696,444 @@ export class ManualAdjustmentService {
         return {
             totals: rows,
             duplicate_report: buildAdtransDuplicateReport(duplicateRows, normalizedFilters)
+        };
+    }
+
+    /**
+     * Compare PR_ADTRANS (db_ptrj) values with payroll_manual_adjustments (extend_db_ptrj).
+     * Returns per-employee per-category comparison showing source vs stored amount,
+     * with match/mismatch status.
+     */
+    public async compareAdtransWithAdjustments(
+        periodMonth: number,
+        periodYear: number,
+        divisionCode: string,
+        filters: string[] = ['spsi', 'masa kerja', 'jabatan', 'premi', 'potongan']
+    ): Promise<{
+        division: string;
+        period_month: number;
+        period_year: number;
+        compared_categories: string[];
+        total_employees: number;
+        match_count: number;
+        mismatch_count: number;
+        missing_in_adjustments: number;
+        comparisons: AdtransComparisonItem[];
+    }> {
+        const dbPtrj = Database.getInstance(); // db_ptrj - source of truth
+        const dbExtend = this.getDatabase();   // extend_db_ptrj - stored adjustments
+
+        // Virtual divisions (NRS, INF, WKS_AR, etc.) resolve to their source division's LocCode
+        const normalizedDivisionCode = resolveAdtransLocCode(divisionCode);
+        const normalizedFilters = filters.map(normalizeAdtransFilter).filter(Boolean);
+
+        if (normalizedFilters.length === 0) {
+            return {
+                division: divisionCode,
+                period_month: periodMonth,
+                period_year: periodYear,
+                compared_categories: [],
+                total_employees: 0,
+                match_count: 0,
+                mismatch_count: 0,
+                missing_in_adjustments: 0,
+                comparisons: []
+            };
+        }
+
+        // 1. Get PR_ADTRANS totals per employee per category from db_ptrj
+        const caseStatements = normalizedFilters.map((filterKey) => {
+            const sqlLike = buildAdtransSqlPattern(filterKey).replace(/'/g, "''");
+            return `SUM(CASE WHEN UPPER(DocDesc) LIKE '${sqlLike}' THEN Amount ELSE 0 END) as [${filterKey}]`;
+        }).join(", ");
+        const requestedDivision = divisionConfigService.getDivision(divisionCode);
+        const virtualGangCodes = requestedDivision?.type === 'virtual'
+            ? [
+                requestedDivision.code,
+                ...requestedDivision.aliases.filter((alias) => requestedDivision.gangPattern?.test(alias.trim().toUpperCase()))
+            ].map((code) => code.trim().toUpperCase())
+            : [];
+        const uniqueVirtualGangCodes = Array.from(new Set(virtualGangCodes));
+        const gangJoin = uniqueVirtualGangCodes.length > 0
+            ? `JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(t.EmpCode)`
+            : ``;
+        const gangWhere = uniqueVirtualGangCodes.length > 0
+            ? `AND UPPER(RTRIM(gl.GangCode)) IN (${uniqueVirtualGangCodes.map(() => '?').join(',')})`
+            : ``;
+
+        const adtransQuery = `
+            SELECT
+                emp_code,
+                ${caseStatements}
+            FROM (
+                SELECT
+                    RTRIM(t.EmpCode) as emp_code,
+                    t.DocDesc,
+                    ln.Amount
+                FROM PR_ADTRANS t
+                ${gangJoin}
+                JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+                WHERE UPPER(RTRIM(t.LocCode)) = ?
+                  AND t.PhyMonth = ?
+                  AND t.PhyYear = ?
+                  ${gangWhere}
+
+                UNION ALL
+
+                SELECT
+                    RTRIM(t.EmpCode) as emp_code,
+                    t.DocDesc,
+                    ln.Amount
+                FROM PR_ADTRANS_ARC t
+                ${gangJoin}
+                JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+                WHERE UPPER(RTRIM(t.LocCode)) = ?
+                  AND t.PhyMonth = ?
+                  AND t.PhyYear = ?
+                  ${gangWhere}
+            ) src
+            GROUP BY emp_code
+        `;
+
+        const adtransRows = await dbPtrj.query<any>(adtransQuery, [
+            normalizedDivisionCode, periodMonth, periodYear, ...uniqueVirtualGangCodes,
+            normalizedDivisionCode, periodMonth, periodYear, ...uniqueVirtualGangCodes
+        ]);
+
+        // 2. Get payroll_manual_adjustments for AUTO_BUFFER from extend_db_ptrj
+        const adjustmentDivisionCodes = Array.from(new Set([
+            divisionCode.trim().toUpperCase(),
+            normalizedDivisionCode
+        ].filter(Boolean)));
+        const adjustmentRows = await dbExtend.query<any>(`
+            SELECT
+                emp_code,
+                adjustment_name,
+                amount,
+                remarks,
+                gang_code,
+                division_code
+            FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ? AND period_year = ?
+              AND adjustment_type = 'AUTO_BUFFER'
+              AND UPPER(RTRIM(division_code)) IN (${adjustmentDivisionCodes.map(() => '?').join(',')})
+        `, [periodMonth, periodYear, ...adjustmentDivisionCodes]);
+
+        // 3. Build map of stored adjustments: emp_code -> adjustment_name -> amount
+        const storedMap = new Map<string, Map<string, { amount: number; remarks: string; gang_code: string }>>();
+        for (const row of adjustmentRows) {
+            const empCode = String(row.emp_code || '').trim();
+            const adjName = String(row.adjustment_name || '').trim().toUpperCase();
+            if (!storedMap.has(empCode)) storedMap.set(empCode, new Map());
+            storedMap.get(empCode)!.set(adjName, {
+                amount: Number(row.amount || 0),
+                remarks: String(row.remarks || ''),
+                gang_code: String(row.gang_code || '')
+            });
+        }
+
+        // 4. Map ADTRANS category to AUTO_BUFFER adjustment name
+        const categoryToAdjustmentName: Record<string, string> = {
+            'spsi': 'AUTO SPSI',
+            'masa kerja': 'AUTO MASA KERJA',
+            'jabatan': 'AUTO TUNJANGAN JABATAN'
+        };
+
+        // 5. Compare each employee's ADTRANS values with stored adjustments
+        const comparisons: AdtransComparisonItem[] = [];
+        let matchCount = 0;
+        let mismatchCount = 0;
+        let missingCount = 0;
+
+        for (const adtransRow of adtransRows) {
+            const empCode = String(adtransRow.emp_code || '').trim();
+            const empStored = storedMap.get(empCode);
+
+            for (const filterKey of normalizedFilters) {
+                const sourceAmount = Number(adtransRow[filterKey] || 0);
+                const adjustmentName = categoryToAdjustmentName[filterKey];
+                if (!adjustmentName) continue; // skip non-AUTO_BUFFER categories like 'premi', 'potongan'
+
+                const stored = empStored?.get(adjustmentName);
+                const storedAmount = stored ? Number(stored.amount || 0) : null;
+
+                const isMatch = storedAmount !== null && Math.abs(sourceAmount - storedAmount) <= 0.01;
+                const isMissing = storedAmount === null;
+                const status: 'MATCH' | 'MISMATCH' | 'MISSING' = isMissing ? 'MISSING' : (isMatch ? 'MATCH' : 'MISMATCH');
+
+                if (status === 'MATCH') matchCount++;
+                else if (status === 'MISMATCH') mismatchCount++;
+                else missingCount++;
+
+                comparisons.push({
+                    emp_code: empCode,
+                    category: filterKey,
+                    adjustment_name: adjustmentName,
+                    source_amount: sourceAmount,
+                    stored_amount: storedAmount,
+                    diff: storedAmount !== null ? sourceAmount - storedAmount : null,
+                    status,
+                    gang_code: stored?.gang_code || null,
+                    remarks: stored?.remarks || null
+                });
+            }
+        }
+
+        return {
+            division: divisionCode,
+            period_month: periodMonth,
+            period_year: periodYear,
+            compared_categories: normalizedFilters.filter(f => categoryToAdjustmentName[f]),
+            total_employees: adtransRows.length,
+            match_count: matchCount,
+            mismatch_count: mismatchCount,
+            missing_in_adjustments: missingCount,
+            comparisons
+        };
+    }
+
+    public async reverseCompareAdtransWithAdjustments(
+        periodMonth: number,
+        periodYear: number,
+        divisionCode: string,
+        filters: string[] = ['spsi', 'masa kerja', 'jabatan']
+    ): Promise<{
+        division: string;
+        period_month: number;
+        period_year: number;
+        compared_categories: string[];
+        total_adjustments: number;
+        match_count: number;
+        mismatch_count: number;
+        extra_in_adjustments: number;
+        comparisons: ReverseAdtransComparisonItem[];
+    }> {
+        const dbExtend = this.getDatabase();
+        const normalizedFilters = filters.map(normalizeAdtransFilter).filter(Boolean);
+        const categoryToAdjustmentName: Record<string, string> = {
+            'spsi': 'AUTO SPSI',
+            'masa kerja': 'AUTO MASA KERJA',
+            'jabatan': 'AUTO TUNJANGAN JABATAN'
+        };
+        const adjustmentNameToCategory = new Map(
+            normalizedFilters
+                .filter((filterKey) => categoryToAdjustmentName[filterKey])
+                .map((filterKey) => [categoryToAdjustmentName[filterKey], filterKey])
+        );
+        const adjustmentNames = Array.from(adjustmentNameToCategory.keys());
+
+        if (adjustmentNames.length === 0) {
+            return {
+                division: divisionCode,
+                period_month: periodMonth,
+                period_year: periodYear,
+                compared_categories: [],
+                total_adjustments: 0,
+                match_count: 0,
+                mismatch_count: 0,
+                extra_in_adjustments: 0,
+                comparisons: []
+            };
+        }
+
+        const normalizedDivisionCode = resolveAdtransLocCode(divisionCode);
+        const adjustmentDivisionCodes = Array.from(new Set([
+            divisionCode.trim().toUpperCase(),
+            normalizedDivisionCode
+        ].filter(Boolean)));
+
+        const adjustmentRows = await dbExtend.query<any>(`
+            SELECT
+                emp_code,
+                adjustment_name,
+                amount,
+                remarks,
+                gang_code,
+                division_code
+            FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ? AND period_year = ?
+              AND adjustment_type = 'AUTO_BUFFER'
+              AND UPPER(RTRIM(division_code)) IN (${adjustmentDivisionCodes.map(() => '?').join(',')})
+              AND UPPER(RTRIM(adjustment_name)) IN (${adjustmentNames.map(() => '?').join(',')})
+            ORDER BY emp_code, adjustment_name
+        `, [periodMonth, periodYear, ...adjustmentDivisionCodes, ...adjustmentNames]);
+
+        const ptrjEmpCodeByStoredIdentifier = new Map<string, string>();
+        for (const row of adjustmentRows) {
+            const storedIdentifier = String(row.emp_code || '').trim();
+            if (!storedIdentifier || ptrjEmpCodeByStoredIdentifier.has(storedIdentifier)) continue;
+
+            const identity = await employeeIdentityResolverService.resolve(storedIdentifier);
+            ptrjEmpCodeByStoredIdentifier.set(storedIdentifier, identity?.emp_code || storedIdentifier.toUpperCase());
+        }
+
+        // PR_ADTRANS.EmpCode is the PTRJ employee code (letter-prefixed, e.g. A0001), not numeric NIK/KTP.
+        const ptrjEmpCodes = Array.from(new Set(Array.from(ptrjEmpCodeByStoredIdentifier.values()).filter(Boolean)));
+        const adtransResult = ptrjEmpCodes.length > 0
+            ? await this.checkAdtransDirectly(periodMonth, periodYear, ptrjEmpCodes, normalizedFilters, divisionCode)
+            : { totals: [] };
+        const sourceMap = new Map<string, any>();
+        for (const row of adtransResult.totals || []) {
+            sourceMap.set(String(row.emp_code || '').trim().toUpperCase(), row);
+        }
+
+        const comparisons: ReverseAdtransComparisonItem[] = [];
+        let matchCount = 0;
+        let mismatchCount = 0;
+        let extraCount = 0;
+
+        for (const row of adjustmentRows) {
+            const empCode = String(row.emp_code || '').trim();
+            const ptrjEmpCode = ptrjEmpCodeByStoredIdentifier.get(empCode) || empCode.toUpperCase();
+            const adjustmentName = String(row.adjustment_name || '').trim().toUpperCase();
+            const category = adjustmentNameToCategory.get(adjustmentName);
+            if (!category) continue;
+
+            const storedAmount = Number(row.amount || 0);
+            const sourceAmount = Number(sourceMap.get(ptrjEmpCode)?.[category] || 0);
+            const diff = sourceAmount - storedAmount;
+            const isMatch = Math.abs(diff) <= 0.01;
+            const status: 'MATCH' | 'MISMATCH' | 'EXTRA_IN_ADJUSTMENTS' = isMatch
+                ? 'MATCH'
+                : sourceAmount === 0 && storedAmount !== 0
+                    ? 'EXTRA_IN_ADJUSTMENTS'
+                    : 'MISMATCH';
+
+            if (status === 'MATCH') matchCount++;
+            else if (status === 'EXTRA_IN_ADJUSTMENTS') extraCount++;
+            else mismatchCount++;
+
+            comparisons.push({
+                emp_code: empCode,
+                category,
+                adjustment_name: adjustmentName,
+                stored_amount: storedAmount,
+                source_amount: sourceAmount,
+                diff,
+                status,
+                gang_code: row.gang_code ? String(row.gang_code).trim() : null,
+                division_code: row.division_code ? String(row.division_code).trim() : null,
+                remarks: row.remarks ? String(row.remarks) : null
+            });
+        }
+
+        return {
+            division: divisionCode,
+            period_month: periodMonth,
+            period_year: periodYear,
+            compared_categories: normalizedFilters.filter((filterKey) => categoryToAdjustmentName[filterKey]),
+            total_adjustments: comparisons.length,
+            match_count: matchCount,
+            mismatch_count: mismatchCount,
+            extra_in_adjustments: extraCount,
+            comparisons
+        };
+    }
+
+    /**
+     * Sync PR_ADTRANS values (db_ptrj) into payroll_manual_adjustments (extend_db_ptrj).
+     * Only syncs items that are MISMATCH or MISSING from comparison.
+     * Returns count of synced records.
+     */
+    public async syncAdtransToAdjustments(
+        periodMonth: number,
+        periodYear: number,
+        divisionCode: string,
+        filters: string[] = ['spsi', 'masa kerja', 'jabatan'],
+        syncMode: 'MISSING_ONLY' | 'MISMATCH_AND_MISSING' | 'ALL' = 'MISMATCH_AND_MISSING',
+        createdBy: string = 'sync_adtrans_api'
+    ): Promise<{
+        division: string;
+        period_month: number;
+        period_year: number;
+        sync_mode: string;
+        total_compared: number;
+        synced_count: number;
+        skipped_match: number;
+        synced_details: { emp_code: string; category: string; adjustment_name: string; old_amount: number | null; new_amount: number; action: 'INSERT' | 'UPDATE' }[];
+    }> {
+        const comparison = await this.compareAdtransWithAdjustments(periodMonth, periodYear, divisionCode, filters);
+        const dbExtend = this.getDatabase();
+
+        const toSync = comparison.comparisons.filter((item) => {
+            if (syncMode === 'ALL') return true;
+            if (syncMode === 'MISSING_ONLY') return item.status === 'MISSING';
+            if (syncMode === 'MISMATCH_AND_MISSING') return item.status === 'MISMATCH' || item.status === 'MISSING';
+            return false;
+        });
+
+        const syncedDetails: { emp_code: string; category: string; adjustment_name: string; old_amount: number | null; new_amount: number; action: 'INSERT' | 'UPDATE' }[] = [];
+        const remarksMap: Record<string, string> = {
+            'spsi': 'potongan spsi',
+            'masa kerja': 'masa kerja',
+            'jabatan': 'tunjangan jabatan'
+        };
+
+        for (const item of toSync) {
+            const adcode = remarksMap[item.category] || item.category;
+            const remarks = `${item.adjustment_name} | ${adcode} | ${item.source_amount} | sync:SYNC | match:MATCH`;
+            const identity = await employeeIdentityResolverService.resolve(item.emp_code);
+            const empName = identity?.emp_name || null;
+
+            if (item.status === 'MISSING' || item.stored_amount === null) {
+                // INSERT - need gang_code, get from PR_ADTRANS or default
+                const gangCode = item.gang_code || 'UNKNOWN';
+                const result = await dbExtend.query<{ id: number }>(`
+                    INSERT INTO dbo.payroll_manual_adjustments (
+                        period_month, period_year, emp_code, emp_name, gang_code, division_code,
+                        adjustment_type, adjustment_name, amount, remarks, created_by
+                    ) OUTPUT INSERTED.id VALUES (
+                        ?, ?, ?, ?, ?, ?,
+                        'AUTO_BUFFER', ?, ?, ?, ?
+                    )
+                `, [
+                    periodMonth, periodYear, item.emp_code, empName, gangCode, divisionCode,
+                    item.adjustment_name, item.source_amount, remarks, createdBy
+                ]);
+                syncedDetails.push({
+                    emp_code: item.emp_code,
+                    category: item.category,
+                    adjustment_name: item.adjustment_name,
+                    old_amount: null,
+                    new_amount: item.source_amount,
+                    action: 'INSERT'
+                });
+            } else {
+                // UPDATE
+                const normalizedAdjNameSql = buildNormalizedSqlNameExpression('adjustment_name');
+                await dbExtend.query(`
+                    UPDATE dbo.payroll_manual_adjustments
+                    SET amount = ?, remarks = ?, emp_name = ?, updated_at = GETDATE(), updated_by = ?
+                    WHERE period_month = ? AND period_year = ?
+                      AND emp_code = ?
+                      AND adjustment_type = 'AUTO_BUFFER'
+                      AND ${normalizedAdjNameSql} = ?
+                `, [
+                    item.source_amount, remarks, empName, createdBy,
+                    periodMonth, periodYear,
+                    item.emp_code,
+                    item.adjustment_name
+                ]);
+                syncedDetails.push({
+                    emp_code: item.emp_code,
+                    category: item.category,
+                    adjustment_name: item.adjustment_name,
+                    old_amount: item.stored_amount,
+                    new_amount: item.source_amount,
+                    action: 'UPDATE'
+                });
+            }
+        }
+
+        return {
+            division: divisionCode,
+            period_month: periodMonth,
+            period_year: periodYear,
+            sync_mode: syncMode,
+            total_compared: comparison.comparisons.length,
+            synced_count: syncedDetails.length,
+            skipped_match: comparison.comparisons.length - toSync.length,
+            synced_details: syncedDetails
         };
     }
 }

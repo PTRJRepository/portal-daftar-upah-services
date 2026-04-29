@@ -19,7 +19,6 @@ export function splitPayrollEdits({ month, year, division, edits }) {
             const current = profileMap.get(key) || {
                 emp_code: edit.emp_code,
                 nik: edit.nik,
-                is_spsi_member: false,
                 effective_start_date: null,
                 employee_status_at_change: edit.employee_status || null
             };

@@ -19,6 +19,7 @@ import { employeeGangHistoryService } from "./employeeGangHistoryService";
 import { duplicateNikMitigationService } from "./DuplicateNikMitigationService";
 import { resolveHistorySeederCleanupPolicy } from "../utils/historySeederCleanup";
 import { payrollSnapshotBatchService } from "./payrollSnapshotBatchService";
+import { payrollProfileSeedService } from "./payrollProfileSeedService";
 import { debug, error as logError } from "../utils/logger";
 import { processInBatches } from "../utils/batchProcessor";
 
@@ -686,6 +687,8 @@ export class HistorySeederService {
                 }
             }
 
+            const spsiOverrides = await this.getProfileOverrides(empCodes);
+
             if (!result.records_inserted['hr_employee']) result.records_inserted['hr_employee'] = 0;
             HistorySeederService.updateProgress({ current_step: `Menyimpan data HR Karyawan... (0/${emps.length})`, employees_processed: 0 });
             let processed = 0;
@@ -703,7 +706,7 @@ export class HistorySeederService {
                         await historyDatabaseService.saveHrEmployeeHistory({
                             history_id: historyId, period_month: options.periodMonth, period_year: options.periodYear, nik: r.nik?.trim(), emp_code: empCode,
                             emp_name: r.emp_name?.trim(), company_code: r.company_code?.trim(), division_code: r.division_code?.trim(), loc_code: r.loc_code?.trim(),
-                            gang_code: r.gang_code?.trim(), position: jabatan || null, jabatan, is_spsi_member: spsiMemberMap.get(empCode) || false,
+                            gang_code: r.gang_code?.trim(), position: jabatan || null, jabatan, is_spsi_member: payrollProfileSeedService.resolveSpsiMember(empCode, spsiMemberMap, spsiOverrides),
                             join_date: r.join_date, terminate_date: r.terminate_date, status: r.status?.trim(), employee_type: r.employee_type?.trim(),
                             gender: r.gender?.trim(), religion: r.religion?.trim(), birth_place: r.birth_place?.trim(), birth_date: r.birth_date, marital_status: r.marital_status?.trim(),
                             ptkp_beras: r.ptkp_beras?.trim(), upah_dasar: r.upah_dasar ?? 0, total_hk: r.total_hk || 0, source_table: 'HR_EMPLOYEE_JOIN'
@@ -720,6 +723,25 @@ export class HistorySeederService {
                 }
             });
         } catch (e: any) { result.errors.push(`Error seeding Employee HR: ${e.message}`); }
+    }
+
+    private async getProfileOverrides(empCodes: string[]) {
+        if (!empCodes.length) return new Map();
+
+        const rows: any[] = [];
+        const CHUNK = 500;
+        for (let i = 0; i < empCodes.length; i += CHUNK) {
+            const chunk = empCodes.slice(i, i + CHUNK);
+            const placeholders = chunk.map(() => "?").join(",");
+            rows.push(...await Database.getExtendedInstance().query<any>(`
+                SELECT emp_code, nik, is_spsi_member, effective_start_date, update_index
+                FROM dbo.employee_profile_override_history
+                WHERE emp_code IN (${placeholders})
+                  AND is_active_record = 1
+            `, chunk));
+        }
+
+        return payrollProfileSeedService.pickLatestProfileOverrides(rows);
     }
 
     private async seedGangHrHistory(historyId: string, options: SeederOptions, result: SeederResult): Promise<void> {

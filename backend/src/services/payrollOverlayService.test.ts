@@ -42,6 +42,30 @@ describe("PayrollOverlayService", () => {
         ]);
     });
 
+    it("keeps SPSI profile value null when profile edit did not include checkbox", async () => {
+        const queryCalls: Array<{ sql: string; params?: any[] | Record<string, any> }> = [];
+        const db = {
+            async queryOne() {
+                return { next_index: 2 };
+            },
+            async query(sql: string, params?: any[] | Record<string, any>) {
+                queryCalls.push({ sql, params });
+                return [{ id: 100 }];
+            }
+        };
+
+        const service = new PayrollOverlayService(db as any);
+        await service.saveProfileOverride({
+            emp_code: "B0001",
+            nik: "3171",
+            effective_start_date: "2024-01-10",
+            changed_by: "tester",
+            change_source: "DAFTAR_UPAH_UI"
+        });
+
+        expect(queryCalls[0].params?.[2]).toBeNull();
+    });
+
     it("resolves latest profile overrides from history rows", async () => {
         const db = {
             async queryOne() {

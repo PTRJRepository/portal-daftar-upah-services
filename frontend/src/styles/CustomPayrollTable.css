@@ -1147,18 +1147,13 @@
 
 .payroll-table-shell.mode-simple .payroll-table thead th[data-header-level="2"],
 .payroll-table-shell.mode-simple .payroll-table thead th[data-header-level="3"],
-.payroll-table-shell.mode-simple .payroll-table thead th[data-header-level="4"] {
-    color: rgba(248, 250, 252, 0.76);
-    font-weight: 500;
-    font-size: var(--payroll-header-font-size, 0.88rem);
-}
-
+.payroll-table-shell.mode-simple .payroll-table thead th[data-header-level="4"],
 .payroll-table-shell.mode-detail .payroll-table thead th[data-header-level="2"],
 .payroll-table-shell.mode-detail .payroll-table thead th[data-header-level="3"],
 .payroll-table-shell.mode-detail .payroll-table thead th[data-header-level="4"] {
     color: rgba(248, 250, 252, 0.92);
-    font-weight: 600;
-    font-size: var(--payroll-header-font-size, 0.88rem);
+    font-weight: 650;
+    font-size: calc(var(--payroll-header-font-size, 0.88rem) + 0.04rem);
 }
 
 .payroll-table-shell .payroll-table thead th[data-active-group="true"] {
@@ -1199,7 +1194,23 @@
     transition: background-color 0.32s ease, color 0.28s ease, font-size 0.28s ease, font-weight 0.28s ease, box-shadow 0.32s ease;
 }
 
-/* === FOCUS MODE: Active group spotlight on BODY CELLS === */
+.payroll-table-shell.mode-simple .payroll-table tbody td,
+.payroll-table-shell.mode-simple .payroll-table tfoot td,
+.payroll-table-shell.mode-detail .payroll-table tbody td,
+.payroll-table-shell.mode-detail .payroll-table tfoot td {
+    font-size: calc(var(--payroll-font-size-base, 12px) + 0.5px);
+    font-weight: 650;
+}
+
+.payroll-table-shell.mode-simple .payroll-table tbody td.sticky-col.frozen-col-theme,
+.payroll-table-shell.mode-simple .payroll-table tfoot td.sticky-col.frozen-col-theme,
+.payroll-table-shell.mode-detail .payroll-table tbody td.sticky-col.frozen-col-theme,
+.payroll-table-shell.mode-detail .payroll-table tfoot td.sticky-col.frozen-col-theme {
+    font-size: calc(var(--payroll-font-size-base, 12px) + 1px) !important;
+    font-weight: 750 !important;
+}
+
+/* === UNIFIED MODE: all modes keep focus-style legibility === */
 
 /* Step 1: Dim all non-active body cells when focus mode is ON */
 .payroll-table-shell .payroll-table tbody td,
@@ -1211,7 +1222,7 @@
 .payroll-table-shell.focus-lens-on .payroll-table tbody td[data-focus-dim="true"] {
     opacity: 0.95;
     filter: none;
-    font-weight: 400;
+    font-weight: 650;
 }
 
 .payroll-table-shell.focus-lens-on .payroll-table thead th[data-focus-dim="true"] {

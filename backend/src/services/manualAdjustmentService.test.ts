@@ -142,7 +142,46 @@ describe("manual adjustment ADCode rules", () => {
             });
 
             expect(id).toBe(88);
-            expect(calls.length).toBe(2);
+            expect(calls.length).toBe(4);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("stores emp_name when saving manual adjustment rows", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [{ id: 89 }];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "1902050504860001",
+                gang_code: "P1A",
+                division_code: "P1A",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI EXISTING",
+                amount: 1000,
+                remarks: "Edited via UI",
+                emp_name: "BUDI TEST"
+            } as any);
+
+            expect(id).toBe(89);
+            const insertCall = calls.find((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"));
+            expect(insertCall?.sql).toContain("emp_name");
+            expect(insertCall?.params).toContain("BUDI TEST");
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }
@@ -176,7 +215,7 @@ describe("manual adjustment ADCode rules", () => {
             });
 
             expect(id).toBe(99);
-            expect(calls.length).toBe(2);
+            expect(calls.length).toBe(3);
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }
@@ -238,6 +277,176 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
             expect(calls[0].sql).not.toContain("RTRIM(t.EmpCode) IN ()");
             expect(calls[0].params).toEqual(["P2A", 4, 2026, "P2A", 4, 2026]);
             expect(calls[1].params).toEqual(["P2A", 4, 2026, "%SPSI%", "P2A", 4, 2026, "%SPSI%"]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("matches stored auto buffer rows when compare uses a division alias", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const dbPtrj = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [{ emp_code: "A0091", spsi: 4000 }];
+            }
+        };
+        const dbExtend = {
+            query: async (sql: string, params?: any[]) => {
+                const queryParams = params || [];
+                calls.push({ sql, params: queryParams });
+                if (!queryParams.includes("P2A")) return [];
+                return [{
+                    emp_code: "A0091",
+                    adjustment_name: "AUTO SPSI",
+                    amount: 4000,
+                    remarks: "AUTO SPSI | potongan spsi | 4000",
+                    gang_code: "C1H",
+                    division_code: "P2A"
+                }];
+            }
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await manualAdjustmentService.compareAdtransWithAdjustments(4, 2026, "PG2A", ["spsi"]);
+
+            expect(result.comparisons).toEqual([{
+                emp_code: "A0091",
+                category: "spsi",
+                adjustment_name: "AUTO SPSI",
+                source_amount: 4000,
+                stored_amount: 4000,
+                diff: 0,
+                status: "MATCH",
+                gang_code: "C1H",
+                remarks: "AUTO SPSI | potongan spsi | 4000"
+            }]);
+            expect(calls[1].params).toEqual([4, 2026, "PG2A", "P2A"]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("limits virtual division compare rows to the virtual gang scope", async () => {
+        const originalGetInstance = Database.getInstance;
+        const dbPtrj = {
+            query: async (sql: string, params?: any[]) => {
+                const queryParams = params || [];
+                if (queryParams.includes("B2N")) return [{ emp_code: "B0745", spsi: 4000 }];
+                return [
+                    { emp_code: "B0745", spsi: 4000 },
+                    { emp_code: "B0001", spsi: 4000 }
+                ];
+            }
+        };
+        const dbExtend = {
+            query: async () => [{
+                emp_code: "B0745",
+                adjustment_name: "AUTO SPSI",
+                amount: 4000,
+                remarks: "AUTO SPSI | potongan spsi | 4000",
+                gang_code: "B2N",
+                division_code: "NRS"
+            }]
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await manualAdjustmentService.compareAdtransWithAdjustments(4, 2026, "NRS", ["spsi"]);
+
+            expect(result.comparisons.map((item) => item.emp_code)).toEqual(["B0745"]);
+            expect(result.missing_in_adjustments).toBe(0);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("reports auto buffer rows that exist in adjustments but not in db_ptrj", async () => {
+        const originalGetInstance = Database.getInstance;
+        const dbExtend = {
+            query: async () => [
+                { emp_code: "B0745", adjustment_name: "AUTO SPSI", amount: 4000, remarks: "AUTO SPSI | potongan spsi | 4000", gang_code: "B2N", division_code: "NRS" },
+                { emp_code: "B0746", adjustment_name: "AUTO SPSI", amount: 4000, remarks: "AUTO SPSI | potongan spsi | 4000", gang_code: "B2N", division_code: "NRS" },
+                { emp_code: "B0747", adjustment_name: "AUTO MASA KERJA", amount: 2500, remarks: "AUTO MASA KERJA | masa kerja | 2500", gang_code: "B2N", division_code: "NRS" }
+            ]
+        };
+        let dbPtrjCall = 0;
+        const dbPtrj = {
+            queryOne: async (_sql: string, params?: any[]) => {
+                const identifier = params?.[0];
+                if (identifier === "B0745" || identifier === "B0746" || identifier === "B0747") {
+                    return { nik: "", emp_code: identifier, emp_name: "TEST" };
+                }
+                return null;
+            },
+            query: async () => {
+                dbPtrjCall++;
+                if (dbPtrjCall === 1) {
+                    return [
+                        { emp_code: "B0745", spsi: 4000, "masa kerja": 0 },
+                        { emp_code: "B0747", spsi: 0, "masa kerja": 5000 }
+                    ];
+                }
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await (manualAdjustmentService as any).reverseCompareAdtransWithAdjustments(4, 2026, "NRS", ["spsi", "masa kerja"]);
+
+            expect(result.extra_in_adjustments).toBe(1);
+            expect(result.mismatch_count).toBe(1);
+            expect(result.match_count).toBe(1);
+            expect(result.comparisons.map((item: any) => ({ emp_code: item.emp_code, category: item.category, status: item.status }))).toEqual([
+                { emp_code: "B0745", category: "spsi", status: "MATCH" },
+                { emp_code: "B0746", category: "spsi", status: "EXTRA_IN_ADJUSTMENTS" },
+                { emp_code: "B0747", category: "masa kerja", status: "MISMATCH" }
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("resolves numeric adjustment identifiers to PTRJ EmpCode before reverse compare", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const dbExtend = {
+            query: async () => [
+                { emp_code: "1902050504860001", adjustment_name: "AUTO SPSI", amount: 4000, remarks: "AUTO SPSI | potongan spsi | 4000", gang_code: "A2M", division_code: "P1A" }
+            ]
+        };
+        let dbPtrjCall = 0;
+        const dbPtrj = {
+            queryOne: async (_sql: string, params?: any[]) => {
+                calls.push({ sql: _sql, params: params || [] });
+                if (params?.[0] === "1902050504860001") {
+                    return { nik: "1902050504860001", emp_code: "A0001", emp_name: "BUDI TEST" };
+                }
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                dbPtrjCall++;
+                if (dbPtrjCall === 1) return [{ emp_code: "A0001", spsi: 4000 }];
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await (manualAdjustmentService as any).reverseCompareAdtransWithAdjustments(4, 2026, "P1A", ["spsi"]);
+
+            expect(result.match_count).toBe(1);
+            expect(result.extra_in_adjustments).toBe(0);
+            expect(result.comparisons[0].emp_code).toBe("1902050504860001");
+            expect(calls.some((call) => call.sql.includes("RTRIM(t.EmpCode) IN (?)") && call.params.includes("A0001"))).toBe(true);
+            expect(calls.some((call) => call.sql.includes("RTRIM(t.EmpCode) IN (?)") && call.params.includes("1902050504860001"))).toBe(false);
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }

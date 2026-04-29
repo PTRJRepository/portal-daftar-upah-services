@@ -1,3 +1,5 @@
+import type { EmployeeProfileOverrideRow } from "../types/payroll/payrollOverlay";
+import { pickLatestProfileOverrides } from "../utils/payrollOverlayLatest";
 import {
     deriveInitialSpsiMember,
     resolveThrCompatibleEffectiveStartDate
@@ -22,6 +24,14 @@ export class PayrollProfileSeedService {
                 row.join_date || null
             )
         };
+    }
+
+    resolveSpsiMember(empCode: string, seededMembers: Map<string, boolean>, profileOverrides: Map<string, EmployeeProfileOverrideRow>) {
+        return profileOverrides.get(empCode)?.is_spsi_member ?? seededMembers.get(empCode) ?? false;
+    }
+
+    pickLatestProfileOverrides(rows: EmployeeProfileOverrideRow[]) {
+        return pickLatestProfileOverrides(rows);
     }
 }
 
