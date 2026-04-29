@@ -380,6 +380,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             adjustment_name: t.String(),
             amount: t.Number(),
             remarks: t.Optional(t.String()),
+            metadata_json: t.Optional(t.String()),
             ad_code: t.Optional(t.String()),
             task_code: t.Optional(t.String()),
             base_task_code: t.Optional(t.String()),
@@ -466,6 +467,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             adjustment_name: t.String(),
             amount: t.Number(),
             remarks: t.Optional(t.String()),
+            metadata_json: t.Optional(t.String()),
             ad_code: t.Optional(t.String()),
             task_code: t.Optional(t.String()),
             base_task_code: t.Optional(t.String()),
@@ -2614,4 +2616,96 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             use_history: t.Optional(t.String()),
             snapshot_version: t.Optional(t.String()),
         })
+    })
+    // --- Premium Definitions (from JSON file) ---
+    .get("/premium-definitions", async ({ set }) => {
+        try {
+            const { premiumDefinitionService } = await import("../services/premiumDefinitionService");
+            const definitions = premiumDefinitionService.getActiveDefinitions();
+            return { success: true, count: definitions.length, data: definitions };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] premium-definitions GET error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    })
+    .post("/premium-definitions", async ({ body, set }) => {
+        try {
+            const { premiumDefinitionService } = await import("../services/premiumDefinitionService");
+            const data = body as any;
+            premiumDefinitionService.addOrUpdateDefinition({
+                adjustment_name: data.adjustment_name,
+                ad_code: data.ad_code,
+                task_desc: data.task_desc,
+                input_type: data.input_type,
+                is_active: data.is_active ?? true
+            });
+            return { success: true, message: "Premium definition saved." };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] premium-definitions POST error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            adjustment_name: t.String(),
+            ad_code: t.String(),
+            task_desc: t.String(),
+            input_type: t.String(),
+            is_active: t.Optional(t.Boolean())
+        })
+    })
+    .post("/premium-import-excel", async ({ body, query, set }) => {
+        try {
+            const { importPremiumExcel } = await import("../services/premiumImportService");
+            const { ManualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const file = (body as any)?.file;
+            if (!file || !file.data) {
+                set.status = 400;
+                return { success: false, error: "File Excel wajib diunggah." };
+            }
+            const buffer = Buffer.from(file.data);
+            const periodMonth = Number((query as any)?.period_month);
+            const periodYear = Number((query as any)?.period_year);
+            const divisionCode = String((query as any)?.division_code || 'ALL');
+            if (!periodMonth || !periodYear) {
+                set.status = 400;
+                return { success: false, error: "period_month dan period_year wajib diisi." };
+            }
+            const service = ManualAdjustmentService.getInstance();
+            const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service);
+            if (!result.success) set.status = 400;
+            return { success: result.success, ...result };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] premium-import-excel error:", e);
+            set.status = 500;
+            return { success: false, error: e.message || "Gagal mengimpor Excel." };
+        }
+    })
+    .post("/premium-import-excel", async ({ body, query, set }) => {
+        try {
+            const { importPremiumExcel } = await import("../services/premiumImportService");
+            const { ManualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const file = (body as any)?.file;
+            if (!file || !file.data) {
+                set.status = 400;
+                return { success: false, error: "File Excel wajib diunggah." };
+            }
+            const buffer = Buffer.from(file.data);
+            const periodMonth = Number((query as any)?.period_month);
+            const periodYear = Number((query as any)?.period_year);
+            const divisionCode = String((query as any)?.division_code || 'ALL');
+            if (!periodMonth || !periodYear) {
+                set.status = 400;
+                return { success: false, error: "period_month dan period_year wajib diisi." };
+            }
+            const service = ManualAdjustmentService.getInstance();
+            const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service);
+            if (!result.success) set.status = 400;
+            return { success: result.success, ...result };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] premium-import-excel error:", e);
+            set.status = 500;
+            return { success: false, error: e.message || "Gagal mengimpor Excel." };
+        }
     })

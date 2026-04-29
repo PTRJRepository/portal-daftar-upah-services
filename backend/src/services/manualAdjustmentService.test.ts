@@ -185,6 +185,106 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("preserves existing metadata_json when an amount-only update is saved", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("payroll_manual_adjustments")) {
+                    return { id: 55 };
+                }
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 123000,
+                remarks: "PREMI PRUNING | MANUAL EDIT | 123000 | sync:MANUAL | match:MANUAL"
+            });
+
+            const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(id).toBe(55);
+            expect(updateCall?.sql).toContain("metadata_json = metadata_json");
+            expect(updateCall?.params).toEqual([
+                123000,
+                "PREMI PRUNING | MANUAL EDIT | 123000 | sync:MANUAL | match:MANUAL",
+                null,
+                "system",
+                55
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("updates metadata_json when structured premium detail is provided", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("payroll_manual_adjustments")) {
+                    return { id: 56 };
+                }
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const metadata = JSON.stringify({
+                input_type: "blok",
+                items: [{ subblok: "P0808", gang_code: "G1H", jumlah: 123000 }],
+                total_amount: 123000
+            });
+
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 123000,
+                remarks: "PREMI PRUNING | MANUAL EDIT | 123000 | sync:MANUAL | match:MANUAL",
+                metadata_json: metadata
+            });
+
+            const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(id).toBe(56);
+            expect(updateCall?.sql).toContain("metadata_json = ?");
+            expect(updateCall?.params).toEqual([
+                123000,
+                "PREMI PRUNING | MANUAL EDIT | 123000 | sync:MANUAL | match:MANUAL",
+                metadata,
+                null,
+                "system",
+                56
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("fills preset ADCode from task mapping for edit-mode saves", async () => {
         const originalGetInstance = Database.getInstance;
         const originalSearchOptions = taskCodeOptionService.searchOptions;

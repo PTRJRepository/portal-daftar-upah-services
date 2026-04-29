@@ -19,25 +19,29 @@ This is the PT Rebinmas Daftar Upah payroll reporting system. It is a full-stack
 cd backend
 bun run dev                                      # start API with watch mode, default port 8002
 bun run start                                    # start API without watch mode
-bun run test                                     # run Bun tests
+bun run test                                     # run all Bun tests
 bun test src/services/manualAdjustmentService.test.ts
 bun test src/services/manualAdjustmentService.test.ts -t "requires ADCode"
 ```
+
+The backend loads `backend/.env` from `backend/src/config.ts`; default runtime values include `PORT=8002`, `HOST=0.0.0.0`, and SQL Gateway `DB_API_URL=http://localhost:8001`.
 
 ### Frontend
 
 ```bash
 cd frontend
-npm run dev          # Vite dev server, default port 5173
+npm run dev          # Vite dev server; vite.config.js pins server port 5175
 npm run dev:network  # host 0.0.0.0 on port 5175
 npm run dev:proxy    # proxy mode with /backend/upah prefix
 npm run dev:lan      # LAN mode targeting configured backend host
 npm run build        # production build
 npm run preview      # preview production build on port 5175
 npm run test         # currently prints tests-disabled and exits 0
+npx vitest run src/utils/payrollSourceMode.test.js
+npx vitest run src/components/CustomPayrollTable.render.test.jsx
 ```
 
-If Vite reports an outdated optimized dependency, remove `frontend/node_modules/.vite`, reinstall if needed, and restart the dev server.
+There are no package scripts for linting or type-checking. Run focused frontend tests with `npx vitest run <path>` because `npm run test` is disabled. If Vite reports an outdated optimized dependency, remove `frontend/node_modules/.vite`, reinstall if needed, and restart the dev server.
 
 ### Core verification scripts
 
@@ -62,7 +66,7 @@ Bun/Elysia backend -> SQL Gateway API -> MSSQL databases
 
 Gateway requests go to `POST {DB_API_URL}/v1/query` with `{ sql, params, server, database }`. Use `?` placeholders with array params in backend queries; the database client converts them to gateway parameters.
 
-The frontend talks to backend endpoints directly in dev (`/payroll/*`, `/summary/*`, `/auth/*`) or through the proxy prefix (`/backend/upah/*`) when proxy mode is enabled. The backend also serves the built frontend in production with SPA fallback for non-API routes.
+The frontend talks to backend endpoints directly in dev (`/payroll/*`, `/summary/*`, `/auth/*`, `/api/*`) or through the proxy prefix (`/backend/upah/*`) when proxy mode is enabled. `frontend/vite.config.js` computes the backend target from `VITE_BACKEND_HOST`, `VITE_BACKEND_PORT`, `BACKEND_HOST`, `BACKEND_PORT`, or `PORT`, and uses `/upah/` as the production/proxy base path. The backend also serves the built frontend in production with SPA fallback for `/` and `/upah/*` routes.
 
 ## Database Profiles and Source Rules
 
@@ -96,7 +100,8 @@ Important services:
 
 ## Frontend Structure
 
-- `frontend/src/pages/`: page-level routes. `/upah/operational` is handled by `MainPage.jsx`.
+- `frontend/src/App.jsx`: main route tree, report wrappers, operational report state, and header-level source-mode controls.
+- `frontend/src/pages/`: page-level routes for dashboard, reports, history, tax, employee, seeding, spreadsheet sync, and mill production views.
 - `frontend/src/components/CustomPayrollTable.jsx`: custom Daftar Upah table, value-source mode, streaming rendering, edit mode, export integration, sticky gang rows.
 - `frontend/src/components/PayrollViewModeToolbar.jsx`: table display controls, including the `Show DB_PTRJ` value-source toggle.
 - `frontend/src/hooks/usePayrollStream.js`: consumes `/payroll/report/division-raw-tree/stream` with SSE.
@@ -171,3 +176,163 @@ Payroll history/aggregation workflows should preserve historical records. Prefer
 - Backend `bun run test` runs Bun tests; TypeScript checks may include `_dev_utils` files if invoked broadly, so isolate failures before treating them as production errors.
 - Current frontend tests are disabled by package script.
 - Existing generated files, debugging exports, and `.claude`/worktree artifacts may be present; do not stage or commit them unless explicitly requested.
+
+---
+
+## ACTIVE FEATURE: Structured Dynamic Premium Manual Adjustments with Detail Metadata
+
+### Status: IN PROGRESS — Step 1 partially done, Steps 2-4 pending
+
+This section documents the current feature being built. The full PRD is at `C:\Users\nbgmf\.claude\plans\buat-rencan-a-dan-radiant-swan.md`.
+
+### What is this feature?
+
+The manual adjustment system currently only supports simple `amount` input per employee per premium column. This feature adds **structured detail metadata** — sub blok, expense code, nomor kendaraan — stored as JSON in a new `metadata_json` column on `payroll_manual_adjustments`. It also enforces **format baku** (standardized premium names) from a fixed JSON definition file.
+
+### Key Design Decisions (confirmed by user)
+
+1. **Premium definitions stored as JSON file** at `backend/data/premium_definitions.json` — NOT in a DB table. Easy to edit manually.
+2. **`ad_code` field now contains `task_desc` values** (full description like `(AL) TUNJANGAN PREMI ((PM) PRUNING)`) — NOT short codes like `AL3PM0601P1A`. User explicitly requested this change.
+3. **4+1 input types**:
+   - `amount` — plain nominal only, no popup needed
+   - `blok` — multi-row: subblok + gang_code + jumlah per row (used by PRUNING, RAKING, JAGA, KINERJA)
+   - `exp` — single-row: expense_code + jumlah (used by JAGA TANGGUNG JAWAB)
+   - `kendaraan` — multi-row: nomor_kendaraan + expense_code + jumlah (used by RITASE)
+   - `blok,exp` — combo: blok items + single expense in one metadata_json (used by KINERJA)
+4. **Excel import only for PREMI PRUNING and PREMI RAKING** (many subbloks per person)
+5. **`remarks` preserved for backward compatibility** — metadata goes to new `metadata_json` column
+6. **`exp` type is single-row** — one expense_code per cell (not multi-row like blok)
+
+### Premium Definitions (Format Baku)
+
+File: `backend/data/premium_definitions.json` (ALREADY CREATED)
+
+| adjustment_name | ad_code (= task_desc) | input_type |
+|---|---|---|
+| PREMI JAGA | (AL) TUNJANGAN JAGA GENSET | blok |
+| PREMI JAGA TANGGUNG JAWAB | (AL) TUNJANGAN PREMI (WORKSHOP CONTROL ACCOUNT) | exp |
+| PREMI KINERJA | (AL) TUNJANGAN PREMI - TUNJANGAN PREMI KINERJA | blok,exp |
+| PREMI TIKET | (AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING) | amount |
+| PREMI PRUNING | (AL) TUNJANGAN PREMI ((PM) PRUNING) | blok |
+| PREMI RAKING | (AL) TUNJANGAN PREMI ((PM) WEEDING - CIRCLE RAKING) | blok |
+| PREMI RITASE | (AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL) | kendaraan |
+| PREMI CUCI MOBIL | (AL) TUNJANGAN TRANSPORT | amount |
+
+### Metadata JSON Structures
+
+```jsonc
+// Type: blok (multi-row)
+{
+  "input_type": "blok",
+  "items": [
+    { "subblok": "P0921", "gang_code": "B1H", "jumlah": 2323 },
+    { "subblok": "P0922", "gang_code": "B1H", "jumlah": 1500 }
+  ],
+  "total_amount": 3823
+}
+
+// Type: exp (single-row)
+{
+  "input_type": "exp",
+  "expense_code": "LABOUR",
+  "jumlah": 5000,
+  "total_amount": 5000
+}
+
+// Type: kendaraan (multi-row)
+{
+  "input_type": "kendaraan",
+  "items": [
+    { "nomor_kendaraan": "B1234AB", "expense_code": "TRANSPORT", "jumlah": 3000 }
+  ],
+  "total_amount": 3000
+}
+
+// Type: blok,exp (combo)
+{
+  "input_type": "blok,exp",
+  "blok_items": [
+    { "subblok": "P0921", "gang_code": "B1H", "jumlah": 2000 }
+  ],
+  "expense": { "expense_code": "LABOUR", "jumlah": 1000 },
+  "total_amount": 3000
+}
+```
+
+### Implementation Progress
+
+#### DONE (Step 1):
+- [x] `backend/data/premium_definitions.json` — created with 8 definitions, ad_code = task_desc
+- [x] `backend/src/services/premiumDefinitionService.ts` — full service singleton
+- [x] API routes in `backend/src/api/payroll.ts`: `GET /premium-definitions`, `POST /premium-definitions`
+- [x] SQL migration: `ALTER TABLE dbo.payroll_manual_adjustments ADD metadata_json NVARCHAR(MAX) NULL` on `extend_db_ptrj` (SERVER_PROFILE_1) — executed 2026-04-29
+
+#### DONE (Step 2):
+- [x] `metadata_json?: string | null` added to `ManualAdjustment` interface
+- [x] `saveAdjustment()` INSERT/UPDATE includes `metadata_json` (serialized to JSON string)
+- [x] Body schemas updated: `metadata_json: t.Optional(t.String())` on manual-edit and manual-adjustment routes
+- [x] `applyManualAdjustmentsToEmployee()` uses `metadata_json.total_amount` as effective amount with fallback to `amount`
+
+#### DONE (Step 3):
+- [x] `ManualAdjustmentColumnModal.jsx`: PREMI type now shows dropdown of active premium definitions, auto-fills ad_code/task_desc/input_type
+- [x] `PremiumDetailPopup.jsx` created with 4 input modes: blok, exp, kendaraan, blok,exp
+- [x] `CustomPayrollTable.jsx`: edit mode renders detail button (✓/⋯) for non-amount premi cells; opens popup; save payload includes `metadata_json`
+- [x] `frontend/src/services/manualAdjustmentService.js`: `fetchPremiumDefinitions()`, `savePremiumDefinition()`, `importPremiumExcel()` added
+
+#### DONE (Step 4 - Backend utility only):
+- [x] `backend/src/services/premiumImportService.ts` created — accepts Excel (Empcode|GangCode|Subblok|Jumlah|Jenis), only PREMI PRUNING/RAKING, groups by emp_code, builds metadata_json
+- [x] `POST /premium-import-excel` endpoint added to payroll.ts
+- [x] **Note**: Excel import is intended as a one-time seeder shortcut, NOT a production UI feature. No frontend component created. Users enter detail manually per-cell via popup.
+
+### Critical Code Locations for Manual Adjustment System
+
+**Backend — Data flow:**
+1. `backend/src/api/payroll.ts:338-388` — `POST /manual-edit` route, calls `saveAdjustment()`
+2. `backend/src/api/payroll.ts:433-474` — `POST /manual-adjustment` route (authenticated UI save)
+3. `backend/src/services/manualAdjustmentService.ts:303-324` — `ManualAdjustment` interface
+4. `backend/src/services/manualAdjustmentService.ts:345-404` — `getAdjustments()` SELECT query
+5. `backend/src/services/manualAdjustmentService.ts:498-584` — `saveAdjustment()` INSERT/UPDATE upsert
+6. `backend/src/services/manualAdjustmentService.ts:169-188` — `buildManualAdjustmentRemarks()` — pipe-delimited format
+7. `backend/src/services/payroll/manualAdjustments/manualAdjustmentApplier.ts:82-201` — applies adjustments to employee row, mode='override' replaces DB value
+8. `backend/src/services/payroll/manualAdjustments/manualAdjustmentNaming.ts:15-19` — `normalizeStoredAdjustmentName()` — trim, collapse whitespace, uppercase
+9. `backend/src/services/dataExtractorService.ts:680-691` — fetches manual adjustments during payroll extraction
+10. `backend/src/services/dataExtractorService.ts:1163-1176` — applies adjustments with `mode: 'override'`
+
+**Frontend — Edit mode flow:**
+1. `frontend/src/components/CustomPayrollTable.jsx:268-272` — edit mode state: editedCells, addedColumns, manualAdjustmentModal
+2. `frontend/src/components/CustomPayrollTable.jsx:1063-1098` — `handleCellEdit()` stores edit with employee identity
+3. `frontend/src/components/CustomPayrollTable.jsx:1269-1287` — save payload structure sent to `/payroll/manual-adjustment`
+4. `frontend/src/components/CustomPayrollTable.jsx:916` — `handleAddColumn()` opens modal
+5. `frontend/src/components/CustomPayrollTable.jsx:943` — `handleManualAdjustmentSaved()` processes column creation
+6. `frontend/src/components/CustomPayrollTable.jsx:2454-2477` — renders DeferredPayrollNumberInput for dynamic PREMI cells
+7. `frontend/src/components/ManualAdjustmentColumnModal.jsx:8-16` — categories: PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH
+8. `frontend/src/services/manualAdjustmentService.js:27-32` — `saveManualAdjustment()` POST call
+9. `frontend/src/utils/payrollManualAdjustmentNames.js:41-50` — `buildCanonicalManualAdjustmentName()`
+
+**Database:**
+- Table: `dbo.payroll_manual_adjustments` on `extend_db_ptrj` database (SERVER_PROFILE_1)
+- Access via: `Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE)` at `manualAdjustmentService.ts:338-339`
+- Current columns: id, period_month, period_year, emp_code, emp_name, gang_code, division_code, adjustment_type, adjustment_name, amount, remarks, created_by, created_at, updated_by, updated_at
+- **HAS: `metadata_json NVARCHAR(MAX) NULL`** — migration executed 2026-04-29
+
+### Existing Data Normalization Needs
+
+Current preset data in DB has non-standard names that need normalization to format baku:
+- `CUCI MOBIL` → `PREMI CUCI MOBIL`
+- `JARAK` → needs mapping decision
+- `PREMI EXISTING` → review and assign proper definition
+- Some have old-style short ADCodes like `AL3PM2207` in remarks that should eventually align with new task_desc format
+
+### Seeded Data
+
+**PREMI PRUNING for April 2026** has been seeded from `backend/data/pruning_raking_sub_block_detail.json`:
+- Total: 316 records across 7 divisions (ARA:53, ARC:84, DME:50, ARB2:23, ARB1:58, NRS:3, PG2A:45)
+- Each record has `metadata_json` in blok format with items array (subblok + gang_code + jumlah)
+- Seeder script: `_dev_utils/scripts/seed_pruning_data.ts`
+
+### Backward Compatibility Rules
+
+- `metadata_json` is nullable — old rows without it work exactly as before
+- `remarks` field continues to store pipe-delimited string: `name | adcode | amount | sync:STATUS | match:STATUS`
+- Effective amount calculation: `effectiveAmount = metadata_json?.total_amount ?? amount`
+- Frontend: if column has no premium definition, fall back to current free-text behavior (for existing non-standard columns)

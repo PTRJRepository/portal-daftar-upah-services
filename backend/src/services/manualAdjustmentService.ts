@@ -313,6 +313,7 @@ export interface ManualAdjustment {
     adjustment_name: string;
     amount: number;
     remarks?: string;
+    metadata_json?: string | null;  // JSON string containing detail items (blok/exp/kendaraan)
     ad_code?: string;
     task_code?: string;
     base_task_code?: string;
@@ -529,28 +530,43 @@ export class ManualAdjustmentService {
                 await db.query(`DELETE FROM dbo.payroll_manual_adjustments WHERE id = ?`, [existing.id]);
                 return existing.id;
             } else {
-                // Update
+                // Update. Preserve existing detail metadata when a regular amount edit
+                // does not submit metadata_json, otherwise seeded sub-block detail is lost.
+                const hasMetadataJsonInput = Object.prototype.hasOwnProperty.call(data, 'metadata_json');
+                const metadataJsonStr = data.metadata_json
+                    ? (typeof data.metadata_json === 'string' ? data.metadata_json : JSON.stringify(data.metadata_json))
+                    : null;
                 await db.query(`
                     UPDATE dbo.payroll_manual_adjustments
-                    SET amount = ?, remarks = ?, emp_name = ?, updated_at = GETDATE(), updated_by = ?
+                    SET amount = ?,
+                        remarks = ?,
+                        metadata_json = ${hasMetadataJsonInput ? '?' : 'metadata_json'},
+                        emp_name = ?,
+                        updated_at = GETDATE(),
+                        updated_by = ?
                     WHERE id = ?
-                `, [parsedAmount, remarks, empName, user || 'system', existing.id]);
+                `, hasMetadataJsonInput
+                    ? [parsedAmount, remarks, metadataJsonStr, empName, user || 'system', existing.id]
+                    : [parsedAmount, remarks, empName, user || 'system', existing.id]);
                 return existing.id;
             }
         } else {
             if (shouldDeleteStoredAdjustment(parsedAmount, data.remarks)) return 0; // Don't insert zero
 
             // Insert
+            const insertMetadataJsonStr = data.metadata_json
+                ? (typeof data.metadata_json === 'string' ? data.metadata_json : JSON.stringify(data.metadata_json))
+                : null;
             const result = await db.query(`
                 INSERT INTO dbo.payroll_manual_adjustments (
                     period_month, period_year, emp_code, emp_name, gang_code, division_code,
-                    adjustment_type, adjustment_name, amount, remarks, created_by
+                    adjustment_type, adjustment_name, amount, remarks, metadata_json, created_by
                 ) OUTPUT INSERTED.id VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `, [
                 data.period_month, data.period_year, data.emp_code, empName, data.gang_code, data.division_code || null,
-                data.adjustment_type, normalizedAdjustmentName, parsedAmount, remarks, user || 'system'
+                data.adjustment_type, normalizedAdjustmentName, parsedAmount, remarks, insertMetadataJsonStr, user || 'system'
             ]);
 
             // Auto-save as preset for recent/history (fire-and-forget)

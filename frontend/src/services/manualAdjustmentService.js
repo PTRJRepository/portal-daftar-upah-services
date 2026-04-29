@@ -46,3 +46,33 @@ export async function deleteManualAdjustmentColumn(token, params = {}) {
     });
     return response.data;
 }
+
+// --- Premium Definitions ---
+
+export async function fetchPremiumDefinitions(token) {
+    const response = await axios.get('payroll/premium-definitions', {
+        headers: authHeaders(token)
+    });
+    return response.data;
+}
+
+export async function savePremiumDefinition(token, payload) {
+    const response = await axios.post('payroll/premium-definitions', payload, {
+        headers: authHeaders(token)
+    });
+    return response.data;
+}
+
+export async function importPremiumExcel(token, formData, periodMonth, periodYear) {
+    const response = await axios.post(
+        `payroll/premium-import-excel?period_month=${periodMonth}&period_year=${periodYear}`,
+        formData,
+        {
+            headers: {
+                ...authHeaders(token),
+                'Content-Type': 'multipart/form-data'
+            }
+        }
+    );
+    return response.data;
+}

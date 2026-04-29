@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { fetchTaskCodeOptions } from '../services/manualAdjustmentService';
+import { fetchTaskCodeOptions, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
 import {
     createManualAdjustmentPreset,
     fetchManualAdjustmentPresets
@@ -148,6 +148,11 @@ export default function ManualAdjustmentColumnModal({
     const [presetError, setPresetError] = useState('');
     const [presetRemarks, setPresetRemarks] = useState('');
 
+    // --- Premium Definitions (format baku) ---
+    const [premiumDefinitions, setPremiumDefinitions] = useState([]);
+    const [selectedPremiumDef, setSelectedPremiumDef] = useState(null);
+    const [loadingDefs, setLoadingDefs] = useState(false);
+
     const selectedCategory = useMemo(
         () => CATEGORY_OPTIONS.find((item) => item.value === adjustmentType) || CATEGORY_OPTIONS[0],
         [adjustmentType]
@@ -181,6 +186,7 @@ export default function ManualAdjustmentColumnModal({
         setPresetError('');
         setPresetRemarks('');
         setPresetSaving(false);
+        setSelectedPremiumDef(null);
     }, [isOpen, initialAdjustmentType]);
 
     useEffect(() => {
@@ -253,12 +259,49 @@ export default function ManualAdjustmentColumnModal({
         loadPresets();
     }, [isOpen, token, division]);
 
+    // Load premium definitions (format baku) when modal opens
+    useEffect(() => {
+        if (!isOpen || !token) return;
+        let cancelled = false;
+        (async () => {
+            setLoadingDefs(true);
+            try {
+                const result = await fetchPremiumDefinitions(token);
+                const defs = Array.isArray(result) ? result : result?.data || [];
+                if (!cancelled) setPremiumDefinitions(defs);
+            } catch (e) {
+                if (!cancelled) setPremiumDefinitions([]);
+            } finally {
+                if (!cancelled) setLoadingDefs(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [isOpen, token]);
+
     const canSave = Boolean(
         resolvedAdjustmentName
         && !nameError
         && selectedTaskCode
         && !saving
     );
+
+    const handlePremiumDefSelect = (def) => {
+        setSelectedPremiumDef(def);
+        if (def) {
+            setDocDesc(def.adjustment_name);
+            setPresetRemarks('');
+            // Create a synthetic taskCode option from the definition
+            const syntheticOption = {
+                ad_code: def.ad_code,
+                task_code: def.ad_code,
+                base_task_code: def.ad_code,
+                task_desc: def.task_desc,
+                doc_desc: def.adjustment_name,
+                loc_code: division && division !== 'ALL' ? division : null
+            };
+            setSelectedTaskCode(syntheticOption);
+        }
+    };
 
     const handleOptionSelect = (option) => {
         setSelectedTaskCode(option);
@@ -321,7 +364,8 @@ export default function ManualAdjustmentColumnModal({
                 loc_code: fallbackTaskCode?.loc_code,
                 remarks: presetRemarks || (fallbackTaskCode
                     ? buildRemarks(fallbackTaskCode, resolvedAdjustmentName, 0)
-                    : `${resolvedAdjustmentName} | MANUAL EDIT | 0 | sync:MISS | match:MISMATCH`)
+                    : `${resolvedAdjustmentName} | MANUAL EDIT | 0 | sync:MISS | match:MISMATCH`),
+                input_type: selectedPremiumDef?.input_type || undefined
             });
             onClose?.();
         } catch (e) {
@@ -432,7 +476,9 @@ export default function ManualAdjustmentColumnModal({
                         </div>
 
                         <div>
-                            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>DocDesc / Nama Kolom</label>
+                            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                                {adjustmentType === 'PREMI' ? 'Definisi Premi (Format Baku)' : 'DocDesc / Nama Kolom'}
+                            </label>
                             {(adjustmentType === 'POTONGAN_KOTOR' || adjustmentType === 'POTONGAN_BERSIH') ? (
                                 <div style={{ display: 'flex', alignItems: 'stretch' }}>
                                     <span style={{ padding: '10px 12px', border: '1px solid #cbd5e1', borderRight: 0, borderRadius: '9px 0 0 9px', background: '#f8fafc', color: '#0f172a', fontWeight: 800 }}>
@@ -448,6 +494,63 @@ export default function ManualAdjustmentColumnModal({
                                         placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'contoh: DENDA PANEN' : 'contoh: SPSI'}
                                         style={{ flex: 1, padding: 10, borderRadius: '0 9px 9px 0', border: '1px solid #cbd5e1' }}
                                     />
+                                </div>
+                            ) : adjustmentType === 'PREMI' ? (
+                                <div>
+                                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
+                                        <div style={{ padding: '8px 12px', background: '#f8fafc', color: '#64748b', fontSize: 12 }}>
+                                            {loadingDefs ? 'Memuat definisi premi...' : `${premiumDefinitions.length} definisi premi aktif`}
+                                        </div>
+                                        {premiumDefinitions.map((def) => {
+                                            const active = selectedPremiumDef?.adjustment_name === def.adjustment_name;
+                                            const typeLabel = {
+                                                'amount': 'Nominal',
+                                                'blok': 'Blok Detail',
+                                                'exp': 'Expense',
+                                                'kendaraan': 'Kendaraan',
+                                                'blok,exp': 'Blok + Expense'
+                                            }[def.input_type] || def.input_type;
+                                            return (
+                                                <button
+                                                    key={def.adjustment_name}
+                                                    type="button"
+                                                    onClick={() => handlePremiumDefSelect(def)}
+                                                    style={{
+                                                        width: '100%',
+                                                        textAlign: 'left',
+                                                        padding: '10px 12px',
+                                                        border: 0,
+                                                        borderTop: '1px solid #f1f5f9',
+                                                        background: active ? '#ecfdf5' : '#ffffff',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                                                        <strong style={{ color: '#0f172a' }}>{def.adjustment_name}</strong>
+                                                        <span style={{
+                                                            fontSize: 11,
+                                                            fontWeight: 700,
+                                                            color: active ? '#16a34a' : '#64748b',
+                                                            border: '1px solid #e2e8f0',
+                                                            borderRadius: 999,
+                                                            padding: '2px 8px',
+                                                            background: active ? '#f0fdf4' : '#f8fafc'
+                                                        }}>
+                                                            {typeLabel}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                                                        {def.ad_code}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                        {!loadingDefs && premiumDefinitions.length === 0 && (
+                                            <div style={{ padding: 18, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+                                                Tidak ada definisi premi aktif.
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             ) : (
                                 <input

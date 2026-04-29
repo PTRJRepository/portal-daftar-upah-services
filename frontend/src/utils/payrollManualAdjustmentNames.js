@@ -16,6 +16,14 @@ const TYPE_BY_GROUP = {
   'POTONGAN UPAH BERSIH': 'POTONGAN_BERSIH',
 };
 
+const LEGACY_PREMIUM_ALIASES = {
+  'CUCI MOBIL': 'PREMI CUCI MOBIL',
+  'PREMI CUCI MOBIL': 'PREMI CUCI MOBIL',
+  JARAK: 'PREMI JARAK',
+  'PREMI JARAK': 'PREMI JARAK',
+  'PREMI EXISTING': 'PREMI EXISTING',
+};
+
 function escapeRegExp(input) {
   return String(input || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -47,6 +55,72 @@ export function buildCanonicalManualAdjustmentName(groupLabel, rawName) {
   const suffix = removeCanonicalPrefix(cleanedName, canonicalPrefix);
   if (!suffix) return canonicalPrefix;
   return `${canonicalPrefix} ${suffix}`.trim();
+}
+
+function normalizePremiumDefinitionName(input) {
+  return sanitizeManualAdjustmentLabel(input)
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function withoutPremiPrefix(input) {
+  return normalizePremiumDefinitionName(input).replace(/^PREMI(?:\s+|$)/, '').trim();
+}
+
+function findDefinitionByName(definitions, targetName) {
+  const normalizedTarget = normalizePremiumDefinitionName(targetName);
+  if (!normalizedTarget) return null;
+
+  return (definitions || []).find((definition) => (
+    normalizePremiumDefinitionName(definition?.adjustment_name) === normalizedTarget
+  )) || null;
+}
+
+export function resolvePremiumDefinitionForAdjustment({ label, canonicalName, definitions, remarks } = {}) {
+  const activeDefinitions = (definitions || []).filter((definition) => definition?.is_active !== false);
+  const candidates = [
+    canonicalName,
+    buildCanonicalManualAdjustmentName('PREMI', label),
+    label,
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const exact = findDefinitionByName(activeDefinitions, candidate);
+    if (exact) return { definition: exact, adjustmentName: exact.adjustment_name };
+  }
+
+  const normalizedCandidates = new Set(candidates.flatMap((candidate) => [
+    normalizePremiumDefinitionName(candidate),
+    withoutPremiPrefix(candidate),
+  ]));
+
+  for (const candidate of normalizedCandidates) {
+    const aliasTarget = LEGACY_PREMIUM_ALIASES[candidate];
+    const aliasDefinition = findDefinitionByName(activeDefinitions, aliasTarget);
+    if (aliasDefinition) return { definition: aliasDefinition, adjustmentName: aliasDefinition.adjustment_name };
+  }
+
+  for (const definition of activeDefinitions) {
+    const definitionName = normalizePremiumDefinitionName(definition?.adjustment_name);
+    const definitionSuffix = withoutPremiPrefix(definitionName);
+    if (normalizedCandidates.has(definitionName) || normalizedCandidates.has(definitionSuffix)) {
+      return { definition, adjustmentName: definition.adjustment_name };
+    }
+  }
+
+  const normalizedRemarks = normalizePremiumDefinitionName(remarks);
+  if (normalizedRemarks) {
+    for (const definition of activeDefinitions) {
+      const definitionName = normalizePremiumDefinitionName(definition?.adjustment_name);
+      const taskDesc = normalizePremiumDefinitionName(definition?.task_desc || definition?.ad_code);
+      if ((definitionName && normalizedRemarks.includes(definitionName)) || (taskDesc && normalizedRemarks.includes(taskDesc))) {
+        return { definition, adjustmentName: definition.adjustment_name };
+      }
+    }
+  }
+
+  return { definition: null, adjustmentName: canonicalName || buildCanonicalManualAdjustmentName('PREMI', label) };
 }
 
 function toSnakeCase(input) {

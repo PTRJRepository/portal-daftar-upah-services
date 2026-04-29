@@ -13,6 +13,7 @@ export interface ManualAdjustmentLike {
     adjustment_type: ManualAdjustmentType;
     adjustment_name: string;
     amount: number;
+    metadata_json?: string | null;
 }
 
 export interface ManualAdjustmentFieldSyncMeta {
@@ -93,7 +94,21 @@ export function applyManualAdjustmentsToEmployee(input: ManualAdjustmentApplierI
     >();
 
     for (const adjustment of input.adjustments || []) {
-        const amount = toAmount(adjustment.amount);
+        // Use metadata_json.total_amount as effective amount if present, fallback to amount
+        let effectiveAmount: number;
+        if (adjustment.metadata_json) {
+            try {
+                const parsed = typeof adjustment.metadata_json === 'string'
+                    ? JSON.parse(adjustment.metadata_json)
+                    : adjustment.metadata_json;
+                effectiveAmount = toAmount(parsed?.total_amount ?? adjustment.amount);
+            } catch {
+                effectiveAmount = toAmount(adjustment.amount);
+            }
+        } else {
+            effectiveAmount = toAmount(adjustment.amount);
+        }
+        const amount = effectiveAmount;
         const name = String(adjustment.adjustment_name || '');
         if (adjustment.adjustment_type === 'PENDAPATAN_LAINNYA') {
             continue;

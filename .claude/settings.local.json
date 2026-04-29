@@ -156,7 +156,9 @@
       "Bash(git *)",
       "Bash(gh auth *)",
       "Bash(PORT=8012 bun run src/index.ts)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "PowerShell(Get-Content *)",
+      "Bash(python3 *)"
     ],
     "deny": [],
     "ask": [],

@@ -25,6 +25,7 @@ import { calculateMasaKerjaDisplay, deriveInitialSpsiMember } from "../utils/pay
 import { debug, info, warn, error as logError } from "../utils/logger";
 import { PayrollCalculator } from "./payroll/components/PayrollCalculator";
 import { applyManualAdjustmentsToEmployee } from "./payroll/manualAdjustments/manualAdjustmentApplier";
+import { toManualAdjustmentFieldName } from "./payroll/manualAdjustments/manualAdjustmentNaming";
 import { payrollAutoBufferService, resolveSyncFrameColor } from "./payroll/payrollAutoBufferService";
 import { divisionConfigService } from "./config/DivisionConfigService";
 import { buildLeaveSqlExpressions } from "./payroll/extractors/leaveRules";
@@ -41,6 +42,19 @@ function normalizePayrollValuePriorityMode(value?: string | null): PayrollValueP
     return "smart";
 }
 
+export interface ManualAdjustmentSourcePolicy {
+    applyAmounts: boolean;
+    fetchRowsForMetadata: boolean;
+}
+
+export function resolveManualAdjustmentSourcePolicy(value?: string | null): ManualAdjustmentSourcePolicy {
+    const valuePriorityMode = normalizePayrollValuePriorityMode(value);
+    return {
+        applyAmounts: valuePriorityMode !== "db_ptrj_only",
+        fetchRowsForMetadata: true
+    };
+}
+
 function pickStaticPotonganForManualBuffer(source: Record<string, number>): Record<string, number> {
     const result: Record<string, number> = {};
     for (const [key, rawValue] of Object.entries(source || {})) {
@@ -50,6 +64,52 @@ function pickStaticPotonganForManualBuffer(source: Record<string, number>): Reco
         }
     }
     return result;
+}
+
+function parseManualAdjustmentMetadata(value: any): any | null {
+    if (!value) return null;
+    try {
+        return typeof value === 'string' ? JSON.parse(value) : value;
+    } catch {
+        return null;
+    }
+}
+
+function attachManualAdjustmentMetadata(
+    target: { manual_adjustment_metadata?: Record<string, any>; manual_adjustment_metadata_mismatch?: Record<string, { amount: number; detail_total: number; diff: number }> },
+    adjustments: any[]
+): void {
+    for (const adjustment of adjustments || []) {
+        if (String(adjustment.adjustment_type || '').trim().toUpperCase() !== 'PREMI') continue;
+        const metadata = parseManualAdjustmentMetadata(adjustment.metadata_json);
+        if (!metadata) continue;
+
+        const fieldName = toManualAdjustmentFieldName('PREMI', String(adjustment.adjustment_name || ''));
+        const amount = Number(adjustment.amount || 0);
+        const detailTotal = Number(metadata.total_amount ?? amount) || 0;
+        const enrichedMetadata = {
+            ...metadata,
+            adjustment_name: adjustment.adjustment_name,
+            amount,
+            detail_total: detailTotal,
+            detail_matches_amount: Math.abs(amount - detailTotal) <= 0.01
+        };
+
+        target.manual_adjustment_metadata ||= {};
+        target.manual_adjustment_metadata[fieldName] = enrichedMetadata;
+        if (!fieldName.startsWith('premi_')) {
+            target.manual_adjustment_metadata[`premi_${fieldName}`] = enrichedMetadata;
+        }
+
+        if (!enrichedMetadata.detail_matches_amount) {
+            target.manual_adjustment_metadata_mismatch ||= {};
+            target.manual_adjustment_metadata_mismatch[fieldName] = {
+                amount,
+                detail_total: detailTotal,
+                diff: detailTotal - amount
+            };
+        }
+    }
 }
 
 interface EmployeeRow {
@@ -249,6 +309,8 @@ interface PayrollRow {
     taxable_pendapatan_custom: number;
     value_sync_frame?: Record<string, "red" | "green">;
     value_source_compare?: Record<string, { db_ptrj: number | string | boolean | null; active: number | string | boolean | null }>;
+    manual_adjustment_metadata?: Record<string, any>;
+    manual_adjustment_metadata_mismatch?: Record<string, { amount: number; detail_total: number; diff: number }>;
     [key: string]: any;
 }
 
@@ -301,8 +363,10 @@ export class DataExtractorService {
         meta: { execution_time_ms: number; row_count: number }
     }> {
         const valuePriorityMode = normalizePayrollValuePriorityMode(valuePriorityModeInput);
+        const manualAdjustmentPolicy = resolveManualAdjustmentSourcePolicy(valuePriorityMode);
         const useAutoBuffer = valuePriorityMode !== "db_ptrj_only";
-        const allowManualAdjustments = valuePriorityMode !== "db_ptrj_only";
+        const allowManualAdjustments = manualAdjustmentPolicy.applyAmounts;
+        const fetchManualAdjustmentRows = manualAdjustmentPolicy.fetchRowsForMetadata;
         const manualBufferOnlyMode = valuePriorityMode === "manual_buffer_only";
         const startTime = Date.now();
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
@@ -684,7 +748,7 @@ export class DataExtractorService {
             }, { empcodeMap: {} as Record<string, string>, nikMap: {} as Record<string, string> }),
             safeQuery(
                 'getManualAdj',
-                () => allowManualAdjustments
+                () => fetchManualAdjustmentRows
                     ? manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode)
                     : Promise.resolve([]),
                 []
@@ -793,7 +857,7 @@ export class DataExtractorService {
             upah_dasar: (upahPokok[code] && upahPokok[code] > 0) ? upahPokok[code] : undefined
         }));
 
-        const manualAdjustments = allowManualAdjustments && Array.isArray(manualAdjustmentsRaw)
+        const manualAdjustments = fetchManualAdjustmentRows && Array.isArray(manualAdjustmentsRaw)
             ? manualAdjustmentsRaw
             : [];
 
@@ -1165,7 +1229,7 @@ export class DataExtractorService {
                 : [];
             const premiKeysBefore = new Set(Object.keys(empPremi));
             const potonganKeysBefore = new Set(Object.keys(empPotongan));
-            const manualApplied = empAdjustments.length > 0
+            const manualApplied = allowManualAdjustments && empAdjustments.length > 0
                 ? applyManualAdjustmentsToEmployee({
                     adjustments: empAdjustments as any[],
                     empPremi,
@@ -1767,6 +1831,7 @@ export class DataExtractorService {
                 value_sync_frame: valueSyncFrame,
                 value_source_compare: valueSourceCompare
             };
+            attachManualAdjustmentMetadata(row, empAdjustments);
 
             dataRows.push(row);
         }
@@ -3389,8 +3454,10 @@ export class DataExtractorService {
         dynamic_potongan_titles?: Record<string, string>;
     }> {
         const valuePriorityMode = normalizePayrollValuePriorityMode(valuePriorityModeInput);
+        const manualAdjustmentPolicy = resolveManualAdjustmentSourcePolicy(valuePriorityMode);
         const useAutoBuffer = valuePriorityMode !== "db_ptrj_only";
-        const allowManualAdjustments = valuePriorityMode !== "db_ptrj_only";
+        const allowManualAdjustments = manualAdjustmentPolicy.applyAmounts;
+        const fetchManualAdjustmentRows = manualAdjustmentPolicy.fetchRowsForMetadata;
         const manualBufferOnlyMode = valuePriorityMode === "manual_buffer_only";
         const startTime = Date.now();
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
@@ -3984,7 +4051,7 @@ export class DataExtractorService {
 
         const emptyPremiResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string>, details: {} as Record<string, any[]> };
         const emptyPotonganResult = { amounts: {} as Record<string, Record<string, number>>, titleMap: {} as Record<string, string> };
-        const manualAdjustmentsPromise = allowManualAdjustments
+        const manualAdjustmentsPromise = fetchManualAdjustmentRows
             ? safeQuery(
                 'manualAdjustments',
                 () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode),
@@ -4203,10 +4270,10 @@ export class DataExtractorService {
             }
             total_premi += empBrondol;
 
-            const empAdjustments = allowManualAdjustments
+            const empAdjustments = fetchManualAdjustmentRows
                 ? (manualAdjustmentsByEmpCode.get(empCodeKey) || [])
                 : [];
-            if (empAdjustments.length > 0) {
+            if (allowManualAdjustments && empAdjustments.length > 0) {
                 const premiKeysBefore = new Set(Object.keys(empPremi));
                 const potonganKeysBefore = new Set(Object.keys(empPotongan));
                 const manualApplied = applyManualAdjustmentsToEmployee({
@@ -4258,6 +4325,7 @@ export class DataExtractorService {
                     }
                 }
             }
+            attachManualAdjustmentMetadata(emp, empAdjustments);
 
             globalPremiResult.amounts[emp.emp_code] = empPremi;
             globalPotonganResult.amounts[emp.emp_code] = empPotongan;
@@ -4287,6 +4355,8 @@ export class DataExtractorService {
                         task_desc: empData.task_desc,
                         value_sync_frame: empData.value_sync_frame,
                         value_source_compare: empData.value_source_compare,
+                        manual_adjustment_metadata: empData.manual_adjustment_metadata,
+                        manual_adjustment_metadata_mismatch: empData.manual_adjustment_metadata_mismatch,
                         _phase: 3
                     });
                 }

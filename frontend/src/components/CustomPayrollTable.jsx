@@ -8,8 +8,9 @@ import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
 import PayrollScrollChapterBar from './PayrollScrollChapterBar';
 import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
+import PremiumDetailPopup from './PremiumDetailPopup';
 import { DeferredPayrollNumberInput } from './PayrollDeferredEditInput';
-import { deleteManualAdjustmentColumn, saveManualAdjustment } from '../services/manualAdjustmentService';
+import { deleteManualAdjustmentColumn, saveManualAdjustment, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
@@ -21,7 +22,7 @@ import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
 import { resolveJabatanRate } from '../utils/payrollRowAccessors';
 import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
 import { isPayrollNumericField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
-import { buildCanonicalManualAdjustmentName, buildManualColumnPlaceholderPayload, buildPendingManualColumn } from '../utils/payrollManualAdjustmentNames';
+import { buildCanonicalManualAdjustmentName, buildManualColumnPlaceholderPayload, buildPendingManualColumn, resolvePremiumDefinitionForAdjustment } from '../utils/payrollManualAdjustmentNames';
 import { parsePayrollInputNumber, resolvePersistentOriginalNumber, toFinitePayrollNumber } from '../utils/payrollNumericValues';
 import { getPayrollEffectiveScale, getPayrollResponsiveScaleForWidth } from '../utils/payrollResponsiveScale';
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
@@ -268,9 +269,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     // Manual Edit State
     const [editedCells, setEditedCells] = useState({}); // { 'nik-field': { value, originalValue, gang_code, type, name } }
     const [addedColumns, setAddedColumns] = useState([]); // Track new columns added in edit mode
+    const [pendingDeletedColumns, setPendingDeletedColumns] = useState([]);
     const [manualAdjustmentModal, setManualAdjustmentModal] = useState({ isOpen: false, groupLabel: null });
     const [isSavingEdits, setIsSavingEdits] = useState(false);
     const [isSeedingAutoBuffer, setIsSeedingAutoBuffer] = useState(false);
+
+    // Premium detail popup state
+    const emptyPremiumPopup = { isOpen: false, editKey: null, inputType: null, definitionName: null, initialData: null };
+    const [premiumPopup, setPremiumPopup] = useState(emptyPremiumPopup);
+    const [premiumDefinitions, setPremiumDefinitions] = useState([]);
 
     // Kontan (Other Income) State - Always editable column
     const [editedKontanCells, setEditedKontanCells] = useState({}); // { 'nik-kontan': { value, originalValue, gang_code } }
@@ -329,16 +336,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const manualCount = Object.keys(editedCells).length;
         const kontanValues = Object.values(editedKontanCells);
         const kontanCount = kontanValues.length;
-        const deleteCount = kontanValues.filter((item) => item.value === 0).length;
+        const kontanDeleteCount = kontanValues.filter((item) => item.value === 0).length;
         const addedColumnCount = addedColumns.filter((item) => !item.placeholder_saved).length;
+        const deletedColumnCount = pendingDeletedColumns.length;
         return {
             manualCount,
             kontanCount,
-            deleteCount,
+            deleteCount: kontanDeleteCount + deletedColumnCount,
             addedColumnCount,
-            totalCount: manualCount + kontanCount + addedColumnCount
+            deletedColumnCount,
+            totalCount: manualCount + kontanCount + addedColumnCount + deletedColumnCount
         };
-    }, [addedColumns.length, editedCells, editedKontanCells]);
+    }, [addedColumns, editedCells, editedKontanCells, pendingDeletedColumns.length]);
     const hasPendingEdits = pendingSaveSummary.totalCount > 0;
 
     const tableRef = useRef(null);
@@ -664,8 +673,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const displayRows = useMemo(() => {
         let resultRows;
 
-        if (stream.gangs && stream.gangs.length > 0 && rows.length > 0) {
-            // Merge stream rows with any pending edits
+        if (stream.gangs && stream.gangs.length > 0) {
+            const baseRows = streamRows;
             if (Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0) {
                 const editedCellsByEmployee = new Map();
                 Object.values(editedCells).forEach((item) => {
@@ -679,7 +688,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     }
                 });
 
-                resultRows = rows.map(row => {
+                resultRows = baseRows.map(row => {
                     if (row.type !== 'employee') return row;
                     const empCode = row.emp_code || row.nik;
                     const employeeEdits = editedCellsByEmployee.get(empCode) || [];
@@ -701,10 +710,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     };
                 });
             } else {
-                resultRows = rows;
+                resultRows = baseRows;
             }
-        } else if (stream.gangs && stream.gangs.length > 0) {
-            resultRows = streamRows;
         } else {
             resultRows = rows;
         }
@@ -913,6 +920,17 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             .catch(console.error);
     }, []);
 
+    // Load premium definitions for popup usage
+    useEffect(() => {
+        if (!token) return;
+        fetchPremiumDefinitions(token)
+            .then(result => {
+                const defs = Array.isArray(result) ? result : result?.data || [];
+                setPremiumDefinitions(defs);
+            })
+            .catch(() => setPremiumDefinitions([]));
+    }, [token]);
+
     const handleAddColumn = (groupLabel) => {
         setManualAdjustmentModal({ isOpen: true, groupLabel });
     };
@@ -968,9 +986,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             placeholder_saved: false
         };
 
-        await persistManualColumnPlaceholder(nextColumn);
-        nextColumn.placeholder_saved = true;
-
         setDynamicHeaders(prev => ({
             ...prev,
             [pendingColumn.activeFieldBucket]: {
@@ -990,7 +1005,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return exists ? prev : [...prev, nextColumn];
         });
 
-        showPayrollToast('success', 'Kolom tersimpan', `Kolom ${pendingColumn.adjustmentName} sudah disimpan sebagai placeholder di database.`);
+        showPayrollToast('info', 'Kolom ditambahkan', `Kolom ${pendingColumn.adjustmentName} akan disimpan saat tombol Simpan Perubahan ditekan.`);
     };
 
     const removeColumnFromScreen = (field) => {
@@ -1034,28 +1049,29 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const isUnsaved = addedColumns.some((item) => item.field === field && !item.placeholder_saved);
         openPayrollConfirm({
             variant: 'danger',
-            title: isUnsaved ? 'Hapus kolom tambahan?' : 'Hapus kolom manual adjustment?',
+            title: isUnsaved ? 'Hapus kolom tambahan?' : 'Antrekan hapus kolom manual adjustment?',
             message: isUnsaved
                 ? `Kolom ${targetColumn.name || field} dan semua nilai edit yang belum disimpan pada kolom ini akan dihapus dari layar.`
-                : `Kolom ${targetColumn.name || field} akan dihapus dari database untuk periode ini. Tindakan ini tidak dapat dibatalkan.`,
-            confirmText: 'Hapus Kolom',
+                : `Kolom ${targetColumn.name || field} akan masuk daftar perubahan dan baru dihapus dari database saat tombol Simpan Perubahan ditekan.`,
+            confirmText: isUnsaved ? 'Hapus Kolom' : 'Masukkan ke Perubahan',
             onConfirm: async () => {
                 if (!isUnsaved) {
-                    const params = {
-                        period_month: month,
-                        period_year: year,
-                        division_code: division,
-                        adjustment_type: targetColumn.type,
-                        adjustment_name: targetColumn.name
+                    const deletion = {
+                        field,
+                        name: targetColumn.name,
+                        type: targetColumn.type,
+                        params: {
+                            period_month: month,
+                            period_year: year,
+                            division_code: division,
+                            adjustment_type: targetColumn.type,
+                            adjustment_name: targetColumn.name
+                        }
                     };
-                    const response = isProdMode()
-                        ? await deleteLockedManualAdjustmentColumn(token, params)
-                        : await deleteManualAdjustmentColumn(token, params);
-                    if (!response?.success) throw new Error(response?.error || 'Gagal menghapus kolom manual adjustment');
+                    setPendingDeletedColumns(prev => prev.some((item) => item.field === field) ? prev : [...prev, deletion]);
                 }
                 removeColumnFromScreen(field);
-                showPayrollToast('info', 'Kolom dihapus', `Kolom ${targetColumn.name || field} ${isUnsaved ? 'dibatalkan dari perubahan' : 'dihapus dari database'}.`);
-                if (!isUnsaved) triggerPayrollRefresh();
+                showPayrollToast('info', 'Kolom dihapus dari layar', `Kolom ${targetColumn.name || field} ${isUnsaved ? 'dibatalkan dari perubahan' : 'akan dihapus saat tombol Simpan Perubahan ditekan'}.`);
             }
         });
     };
@@ -1095,6 +1111,78 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         // Pending edits are applied through displayRows overlay; avoid rewriting
         // the full row set for every committed input value.
+    };
+
+    const deriveLegacyPremiumMetadata = ({ amount, inputType, row, adjustmentName }) => {
+        const totalAmount = Number(amount || 0);
+        if (!inputType || inputType === 'amount' || totalAmount === 0) return null;
+
+        const base = {
+            input_type: inputType,
+            total_amount: totalAmount,
+            adjustment_name: adjustmentName,
+            legacy_source: true
+        };
+
+        if (inputType === 'blok') {
+            return {
+                ...base,
+                items: [{ subblok: '', gang_code: row?.gang_code || '', jumlah: totalAmount }]
+            };
+        }
+
+        if (inputType === 'exp') {
+            return {
+                ...base,
+                expense_code: '',
+                jumlah: totalAmount
+            };
+        }
+
+        if (inputType === 'kendaraan') {
+            return {
+                ...base,
+                items: [{ nomor_kendaraan: '', expense_code: '', jumlah: totalAmount }]
+            };
+        }
+
+        if (inputType === 'blok,exp') {
+            return {
+                ...base,
+                blok_items: [{ subblok: '', gang_code: row?.gang_code || '', jumlah: totalAmount }],
+                expense: { expense_code: '', jumlah: 0 }
+            };
+        }
+
+        return null;
+    };
+
+    const resolvePremiumPopupInitialData = ({ edit, amount, inputType, row, field, adjustmentName }) => {
+        if (edit?.metadata_json) return edit.metadata_json;
+        const storedMetadata = row?.manual_adjustment_metadata?.[field];
+        if (storedMetadata) {
+            return typeof storedMetadata === 'string' ? storedMetadata : JSON.stringify(storedMetadata);
+        }
+        const derived = deriveLegacyPremiumMetadata({ amount, inputType, row, adjustmentName });
+        return derived ? JSON.stringify(derived) : null;
+    };
+
+    const handlePremiumPopupSave = (metadataJson, totalAmount) => {
+        const { editKey } = premiumPopup;
+        if (!editKey) return;
+        setEditedCells(prev => {
+            const existing = prev[editKey];
+            if (!existing) return prev;
+            return {
+                ...prev,
+                [editKey]: {
+                    ...existing,
+                    value: totalAmount,
+                    metadata_json: metadataJson ? JSON.stringify(metadataJson) : undefined
+                }
+            };
+        });
+        setPremiumPopup(emptyPremiumPopup);
     };
 
     const handleProfileEdit = (row, field, value) => {
@@ -1181,7 +1269,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         let successCount = 0;
         const masterTaxEdits = editsArray.filter(e => e.type === 'MASTER_TAX');
-        const normalEdits = editsArray.filter(e => e.type !== 'MASTER_TAX');
+        const jobTitleEdits = editsArray.filter(e => e.type === 'PROFILE' && e.field === 'jabatan_estate');
+        const normalEdits = editsArray.filter(e => e.type !== 'MASTER_TAX' && !(e.type === 'PROFILE' && e.field === 'jabatan_estate'));
         const { profileItems, valueItems } = splitPayrollEdits({
             month,
             year,
@@ -1202,6 +1291,20 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 if (res.data?.success) successCount++;
             } catch (err) {
                 console.error('Error saving PTKP edit:', err);
+            }
+        }
+
+        for (const edit of jobTitleEdits) {
+            try {
+                const { data } = await axios.post('employee-estate/update', {
+                    empCode: edit.emp_code || edit.nik,
+                    jobTitle: edit.value
+                }, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (data?.success) successCount++;
+            } catch (err) {
+                console.error('Error saving jabatan edit:', err);
             }
         }
 
@@ -1283,7 +1386,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 ad_code: edit.ad_code,
                 task_code: edit.task_code,
                 base_task_code: edit.base_task_code,
-                task_desc: edit.task_desc
+                task_desc: edit.task_desc,
+                metadata_json: edit.metadata_json || undefined
             };
 
             let resOk = false;
@@ -1320,6 +1424,24 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         setEditedCells({});
         setAddedColumns([]);
+        return { changedCount: successCount };
+    };
+
+    const saveDeletedManualColumns = async () => {
+        if (pendingDeletedColumns.length === 0) return { changedCount: 0 };
+
+        let successCount = 0;
+        for (const deletion of pendingDeletedColumns) {
+            const response = isProdMode()
+                ? await deleteLockedManualAdjustmentColumn(token, deletion.params)
+                : await deleteManualAdjustmentColumn(token, deletion.params);
+            if (!response?.success) {
+                throw new Error(response?.error || `Gagal menghapus kolom ${deletion.name || deletion.field}`);
+            }
+            successCount++;
+        }
+
+        setPendingDeletedColumns([]);
         return { changedCount: successCount };
     };
 
@@ -1427,6 +1549,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 savedCount += result.changedCount;
             }
 
+            if (pendingDeletedColumns.length > 0) {
+                const result = await saveDeletedManualColumns();
+                savedCount += result.changedCount;
+                deleteCount += result.changedCount;
+            }
+
             if (Object.keys(editedKontanCells).length > 0) {
                 const result = await saveEditedKontanCells();
                 savedCount += result.changedCount;
@@ -1442,7 +1570,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 'success',
                 'Perubahan tersimpan',
                 deleteCount > 0
-                    ? `${savedCount} perubahan tersimpan, termasuk ${deleteCount} penghapusan KONTAN.`
+                    ? `${savedCount} perubahan tersimpan, termasuk ${deleteCount} penghapusan.`
                     : `${savedCount} perubahan berhasil disimpan.`
             );
             triggerPayrollRefresh();
@@ -1461,12 +1589,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
 
         const deleteRows = Object.values(editedKontanCells).filter(k => k.value === 0);
-        if (deleteRows.length > 0) {
+        if (deleteRows.length > 0 || pendingDeletedColumns.length > 0) {
             const names = deleteRows.map(k => k.emp_code || k.nik).join(', ');
+            const columnNames = pendingDeletedColumns.map(item => item.name || item.field).join(', ');
+            const messages = [];
+            if (deleteRows.length > 0) messages.push(`${deleteRows.length} nilai KONTAN akan dihapus untuk: ${names}.`);
+            if (pendingDeletedColumns.length > 0) messages.push(`${pendingDeletedColumns.length} kolom manual adjustment akan dihapus: ${columnNames}.`);
             openPayrollConfirm({
                 variant: 'danger',
-                title: 'Konfirmasi hapus KONTAN',
-                message: `${deleteRows.length} nilai KONTAN akan dihapus untuk: ${names}. Nilai 0 berarti data KONTAN dihapus dari database.`,
+                title: 'Konfirmasi hapus data',
+                message: `${messages.join(' ')} Penghapusan baru dijalankan setelah tombol ini dikonfirmasi.`,
                 confirmText: 'Hapus & Simpan',
                 onConfirm: performSaveAllEdits
             });
@@ -1477,62 +1609,56 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     };
 
     // --- DATA FETCHING ---
-    const [savingJabatan, setSavingJabatan] = useState({});
-    const handleJobTitleChange = async (empCode, newTitle) => {
-        // Optimistic update — match by emp_code (the actual key used in employee_estate table)
-        setRows(prev => prev.map(r => r.emp_code === empCode ? { ...r, jabatan_estate: newTitle } : r));
-        setSavingJabatan(prev => ({ ...prev, [empCode]: 'saving' }));
-        try {
-            const res = await fetch('/employee-estate/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ empCode, jobTitle: newTitle })
-            });
-            if (!res.ok) throw new Error('Failed to save');
-            const json = await res.json();
-            if (!json.success) throw new Error(json.error);
-            setSavingJabatan(prev => ({ ...prev, [empCode]: 'saved' }));
-            setTimeout(() => setSavingJabatan(prev => { const n = { ...prev }; delete n[empCode]; return n; }), 2000);
-        } catch (e) {
-            console.error(e);
-            setSavingJabatan(prev => ({ ...prev, [empCode]: 'error' }));
-            alert('Gagal menyimpan jabatan: ' + e.message);
-        }
+    const handleJobTitleChange = (row, newTitle) => {
+        const empCode = row.emp_code || row.nik;
+        const key = `${empCode}-jabatan_estate`;
+
+        setEditedCells(prev => ({
+            ...prev,
+            [key]: {
+                emp_code: empCode,
+                nik: row.nik,
+                emp_name: row.nama || row.emp_name || null,
+                field: 'jabatan_estate',
+                value: newTitle,
+                originalValue: row.jabatan_estate ?? null,
+                gang_code: row.gang_code,
+                type: 'PROFILE',
+                name: 'JABATAN'
+            }
+        }));
+
+        setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, jabatan_estate: newTitle } : r));
     };
 
-    const handleBulkSave = async () => {
-        if (!confirm('Simpan/Seed semua jabatan yang tampil ke database?')) return;
-        setLoading(true);
-        try {
-            const employees = displayRows.filter(r => r.type === 'employee');
-            const payload = employees.map(r => ({
-                empcode: r.nik,
-                employee_name: r.nama,
-                gang: r.gang_code,
-                divisi_id: division,
-                jabatan: r.jabatan_estate || 'Karyawan'
-            }));
-
-            const res = await fetch('/employee-estate/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ jobs: payload })
-            });
-
-            if (!res.ok) throw new Error(await res.text());
-            const json = await res.json();
-
-            if (json.success) {
-                alert(`Berhasil menyimpan ${json.count} data jabatan.`);
-            } else {
-                throw new Error(json.error);
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Gagal seed data: ' + e.message);
-        } finally {
-            setLoading(false);
+    const handleBulkSave = () => {
+        const employees = displayRows.filter(r => r.type === 'employee');
+        if (employees.length === 0) {
+            showPayrollToast('info', 'Tidak ada jabatan', 'Tidak ada data karyawan yang bisa dimasukkan ke daftar perubahan.');
+            return;
         }
+
+        setEditedCells(prev => {
+            const next = { ...prev };
+            for (const row of employees) {
+                const empCode = row.emp_code || row.nik;
+                if (!empCode) continue;
+                const key = `${empCode}-jabatan_estate`;
+                next[key] = {
+                    emp_code: empCode,
+                    nik: row.nik,
+                    emp_name: row.nama || row.emp_name || null,
+                    field: 'jabatan_estate',
+                    value: row.jabatan_estate || 'Karyawan',
+                    originalValue: row.jabatan_estate ?? null,
+                    gang_code: row.gang_code,
+                    type: 'PROFILE',
+                    name: 'JABATAN'
+                };
+            }
+            return next;
+        });
+        showPayrollToast('info', 'Jabatan masuk daftar perubahan', `${employees.length} jabatan akan disimpan saat tombol Simpan Perubahan ditekan.`);
     };
 
     const handleSeedAutoBufferToManualAdjustment = useCallback(async () => {
@@ -2356,19 +2482,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             className: 'text-left p-0',
             render: (row) => {
                 if (row.type !== 'employee') return row.jabatan_estate || '-';
-                const status = savingJabatan[row.emp_code];
-                const borderColor = status === 'saving' ? '#f59e0b' : status === 'saved' ? '#10b981' : status === 'error' ? '#ef4444' : 'transparent';
+                const empCode = row.emp_code || row.nik;
+                const editKey = `${empCode}-jabatan_estate`;
+                const isEdited = !!editedCells[editKey];
+                const displayValue = editedCells[editKey]?.value ?? row.jabatan_estate ?? '';
                 return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '2px', width: '100%', height: '100%' }}>
                         <select
-                            value={row.jabatan_estate || ''}
-                            onChange={(e) => handleJobTitleChange(row.emp_code, e.target.value)}
+                            value={displayValue}
+                            onChange={(e) => handleJobTitleChange(row, e.target.value)}
                             onClick={(e) => e.stopPropagation()}
                             onMouseDown={(e) => e.stopPropagation()}
+                            className={isEdited ? 'cell-edited' : ''}
                             style={{
                                 flex: 1, padding: '0 4px', height: '100%', minHeight: '24px',
-                                fontSize: '10px', border: `2px solid ${borderColor}`, borderRadius: '3px',
-                                backgroundColor: 'transparent', cursor: 'pointer', outline: 'none',
+                                fontSize: '10px', border: isEdited ? '1px solid #b45309' : '1px solid transparent', borderRadius: '3px',
+                                backgroundColor: isEdited ? '#fef3c7' : 'transparent', cursor: 'pointer', outline: 'none',
                                 transition: 'border-color 0.3s'
                             }}
                         >
@@ -2383,9 +2512,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             <option value="operator">Operator</option>
                             <option value="helper">Helper</option>
                         </select>
-                        {status === 'saving' && <span style={{ fontSize: '10px' }} title="Menyimpan...">⏳</span>}
-                        {status === 'saved' && <span style={{ fontSize: '10px' }} title="Tersimpan!">✅</span>}
-                        {status === 'error' && <span style={{ fontSize: '10px' }} title="Gagal simpan!">❌</span>}
+                        {isEdited && <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 800 }} title="Menunggu Simpan Perubahan">*</span>}
                     </div>
                 );
             }
@@ -2465,13 +2592,74 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const isEdited = !!editedCells[editKey];
 
                             if (isEditMode && row.type === 'employee') {
-                                const displayVal = editedCells[editKey]?.value ?? val;
+                                const edit = editedCells[editKey];
+                                const displayVal = edit?.value ?? val;
+                                const resolvedPremium = resolvePremiumDefinitionForAdjustment({
+                                    label,
+                                    canonicalName,
+                                    definitions: premiumDefinitions,
+                                    remarks: edit?.remarks || row?.manual_adjustment_remarks || row?.remarks
+                                });
+                                const premiumDef = resolvedPremium.definition;
+                                const resolvedAdjustmentName = resolvedPremium.adjustmentName || canonicalName;
+                                const inputType = premiumDef?.input_type || 'amount';
+                                const popupInitialData = resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: resolvedAdjustmentName });
+                                const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
+                                const hasMetadata = !!edit?.metadata_json || !!popupInitialData;
+
+                                if (inputType !== 'amount' && premiumDef) {
+                                    return (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <DeferredPayrollNumberInput
+                                                className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                                value={displayVal}
+                                                emptyWhenZero
+                                                onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'PREMI', resolvedAdjustmentName)}
+                                                placeholder="0"
+                                                style={{ flex: 1 }}
+                                            />
+                                            {mismatch && (
+                                                <span
+                                                    title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                                    style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
+                                                >
+                                                    !
+                                                </span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                title={mismatch ? `Detail beda ${formatNumber(Math.abs(mismatch.diff))}` : 'Edit detail'}
+                                                onClick={() => setPremiumPopup({
+                                                    isOpen: true,
+                                                    editKey,
+                                                    inputType,
+                                                    definitionName: premiumDef.adjustment_name,
+                                                    initialData: popupInitialData
+                                                })}
+                                                style={{
+                                                    border: '1px solid #cbd5e1',
+                                                    background: hasMetadata ? '#dcfce7' : '#f8fafc',
+                                                    borderRadius: 6,
+                                                    padding: '2px 6px',
+                                                    cursor: 'pointer',
+                                                    fontSize: 12,
+                                                    color: hasMetadata ? '#16a34a' : '#64748b',
+                                                    fontWeight: 700,
+                                                    lineHeight: 1
+                                                }}
+                                            >
+                                                {hasMetadata ? '✓' : '⋯'}
+                                            </button>
+                                        </div>
+                                    );
+                                }
+
                                 return (
                                     <DeferredPayrollNumberInput
                                         className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
                                         value={displayVal}
                                         emptyWhenZero
-                                        onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'PREMI', canonicalName)}
+                                        onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'PREMI', resolvedAdjustmentName)}
                                         placeholder="0"
                                     />
                                 );
@@ -2865,7 +3053,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, savingJabatan, isEditMode, editedKontanCells, addedColumns, displayMode]);
+    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, isEditMode, editedKontanCells, addedColumns, displayMode]);
 
     const chapterSegments = useMemo(() => buildPayrollViewportChapters(columnDefs), [columnDefs]);
     const stickyPaneWidth = useMemo(() => (
@@ -4151,6 +4339,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 token={token}
                 division={division}
                 initialAdjustmentType={ADJUSTMENT_TYPE_BY_GROUP_LABEL[manualAdjustmentModal.groupLabel] || 'PREMI'}
+            />
+            <PremiumDetailPopup
+                isOpen={premiumPopup.isOpen}
+                onClose={() => setPremiumPopup(emptyPremiumPopup)}
+                onSave={handlePremiumPopupSave}
+                inputType={premiumPopup.inputType}
+                definitionName={premiumPopup.definitionName}
+                initialData={premiumPopup.initialData}
             />
             {payrollToast && (
                 <div className={`payroll-toast payroll-toast--${payrollToast.type}`} role="status">
